@@ -53,9 +53,10 @@ import IngresoCard from "./ingreso-card"
 import RegistrarPagoDialog from "./registrar-pago-dialog"
 import VistaEventoDialog from "./vista-evento-dialog"
 import ConfiguracionDialog from "./configuracion-dialog"
+import AsignacionesDashboardCard from "./asignaciones-dashboard-card"
 
 export default function CentroControlFinanciero() {
-  const { costosOperativos, eventos, pagosPersonal, personal } = useStore()
+  const { costosOperativos, eventos, pagosPersonal, personal, state } = useStore()
   
   // Estados
   const [diasAnticipacion, setDiasAnticipacion] = useState(7)
@@ -79,9 +80,10 @@ export default function CentroControlFinanciero() {
       eventos,
       pagosPersonal,
       personal,
-      diasAnticipacion
+      diasAnticipacion,
+      state
     ),
-    [costosOperativos, eventos, pagosPersonal, personal, diasAnticipacion]
+    [costosOperativos, eventos, pagosPersonal, personal, diasAnticipacion, state]
   )
 
   const ingresosEsperados = useMemo(() => 
@@ -297,6 +299,9 @@ export default function CentroControlFinanciero() {
           </CardContent>
         </Card>
       )}
+
+      {/* Panel de Asignaciones de Personal */}
+      <AsignacionesDashboardCard />
 
       {/* Controles y Filtros */}
       <Card>

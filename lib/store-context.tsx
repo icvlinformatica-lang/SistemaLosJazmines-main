@@ -23,6 +23,9 @@ import {
   generateId,
   generarPagosPendientesAutomaticos,
   actualizarEstadoPagos,
+  sincronizarPagosConAsignaciones,
+  migrarServiciosAPreciosDinamicos,
+  obtenerPreciosServicio,
 } from "./store"
 
 interface StoreContextType {
@@ -112,6 +115,7 @@ interface StoreContextType {
   getPagosPorEvento: (eventoId: string) => PagoPersonal[]
   getPagosPendientes: () => PagoPersonal[]
   generarPagosPendientes: () => void
+  sincronizarPagos: () => { pagosCreados: number; pagosObsoletos: number }
 }
 
 const StoreContext = createContext<StoreContextType | null>(null)
@@ -418,11 +422,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  // Auto-generar pagos pendientes al cargar
+  const sincronizarPagos = () => {
+    let resultado = { pagosCreados: 0, pagosObsoletos: 0 }
+    setState((prev) => {
+      const newState = { ...prev }
+      resultado = sincronizarPagosConAsignaciones(newState)
+      return newState
+    })
+    return resultado
+  }
+
+  // Migrar datos legacy y auto-generar pagos pendientes al cargar
   useEffect(() => {
-    if (isHydrated) {
-      generarPagosPendientes()
-    }
+  if (isHydrated) {
+    // Migrar servicios con precios fijos a margenGanancia dinámico
+    setState((prev) => {
+      const newState = { ...prev }
+      migrarServiciosAPreciosDinamicos(newState)
+      return newState
+    })
+    generarPagosPendientes()
+  }
   }, [isHydrated])
 
   // === Eventos (Calendario) ===
@@ -579,6 +599,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         getPagosPorEvento,
         getPagosPendientes,
         generarPagosPendientes,
+        sincronizarPagos,
       }}
     >
       {children}

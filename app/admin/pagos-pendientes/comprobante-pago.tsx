@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Printer, Download, CheckCircle2 } from "lucide-react"
 import type { PagoPersonal, PersonalEvento } from "@/lib/store"
@@ -78,6 +78,7 @@ export default function ComprobantePago({ open, onOpenChange, pago, personal }: 
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Comprobante de Pago</DialogTitle>
+          <DialogDescription>Detalle del comprobante generado para este pago.</DialogDescription>
         </DialogHeader>
 
         <div ref={comprobanteRef}>

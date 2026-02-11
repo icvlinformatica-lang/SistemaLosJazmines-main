@@ -16,9 +16,9 @@ import {
   TrendingUp,
   Package
 } from "lucide-react"
-import { calcularTotalesPaquete } from "@/lib/store"
+import { calcularTotalesPaquete, obtenerPreciosServicio } from "@/lib/store"
 import { useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -36,7 +36,7 @@ export default function ServiciosPage() {
     deletePaqueteSalon,
     addServicio,
     updateServicio,
-    deleteServicio
+    deleteServicio,
   } = useStore()
 
   const [tabActual, setTabActual] = useState<"quinta" | "casona" | "salon" | "catalogo">("quinta")
@@ -323,9 +323,10 @@ export default function ServiciosPage() {
                   </thead>
                   <tbody className="divide-y">
                     {servicios.filter(s => s.activo).map((servicio) => {
-                      const ganancia = servicio.precioOficial - servicio.precioInterno
-                      const margen = servicio.precioInterno > 0
-                        ? ((ganancia / servicio.precioInterno) * 100)
+                      const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
+                      const ganancia = precioOficial - precioInterno
+                      const margen = precioInterno > 0
+                        ? ((ganancia / precioInterno) * 100)
                         : 0
 
                       return (
@@ -341,13 +342,13 @@ export default function ServiciosPage() {
                             <Badge variant="outline">{servicio.categoria}</Badge>
                           </td>
                           <td className="px-4 py-3 text-right text-red-600 font-semibold">
-                            {formatearPrecio(servicio.precioInterno)}
+                            {formatearPrecio(precioInterno)}
                             <span className="text-xs text-muted-foreground ml-1">
                               /{servicio.unidad === "Fijo" ? "fijo" : servicio.unidad === "Por Persona" ? "pers" : "hora"}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                            {formatearPrecio(servicio.precioOficial)}
+                            {formatearPrecio(precioOficial)}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
@@ -543,13 +544,13 @@ function DialogoServicio({
     servicio: any
     onGuardar: (data: any) => void
   }) {
+    const { state } = useStore()
     const [formData, setFormData] = useState({
       codigo: servicio?.codigo || "",
       nombre: servicio?.nombre || "",
       descripcion: servicio?.descripcion || "",
       categoria: servicio?.categoria || "Salon y Espacio",
-      precioInterno: servicio?.precioInterno || 0,
-      precioOficial: servicio?.precioOficial || 0,
+      margenGanancia: servicio?.margenGanancia ?? 30,
       unidad: servicio?.unidad || "Fijo",
       proveedor: servicio?.proveedor || "",
       notas: servicio?.notas || "",
@@ -563,8 +564,7 @@ function DialogoServicio({
           nombre: servicio.nombre || "",
           descripcion: servicio.descripcion || "",
           categoria: servicio.categoria || "Salon y Espacio",
-          precioInterno: servicio.precioInterno || 0,
-          precioOficial: servicio.precioOficial || 0,
+          margenGanancia: servicio.margenGanancia ?? 30,
           unidad: servicio.unidad || "Fijo",
           proveedor: servicio.proveedor || "",
           notas: servicio.notas || "",
@@ -576,8 +576,7 @@ function DialogoServicio({
           nombre: "",
           descripcion: "",
           categoria: "Salon y Espacio",
-          precioInterno: 0,
-          precioOficial: 0,
+          margenGanancia: 30,
           unidad: "Fijo",
           proveedor: "",
           notas: "",
@@ -591,10 +590,15 @@ function DialogoServicio({
       onCerrar()
     }
 
-    const ganancia = formData.precioOficial - formData.precioInterno
-    const margen = formData.precioInterno > 0
-      ? ((ganancia / formData.precioInterno) * 100)
+    // Calcular precios dinámicamente si estamos editando un servicio existente
+    const precioInternoCalc = servicio?.id
+      ? state.personal
+          .filter((p: any) => p.activo && p.servicioVinculadoId === servicio.id)
+          .reduce((sum: number, p: any) => sum + p.tarifaBase, 0)
       : 0
+    const precioOficialCalc = precioInternoCalc * (1 + formData.margenGanancia / 100)
+    const ganancia = precioOficialCalc - precioInternoCalc
+    const margen = formData.margenGanancia
 
     return (
       <Dialog open={abierto} onOpenChange={onCerrar}>
@@ -603,6 +607,9 @@ function DialogoServicio({
             <DialogTitle>
               {servicio ? "Editar Servicio" : "Agregar Servicio"}
             </DialogTitle>
+            <DialogDescription>
+              {servicio ? "Modifica los datos del servicio existente." : "Completa los datos para registrar un nuevo servicio."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -678,69 +685,62 @@ function DialogoServicio({
               </div>
             </div>
 
-            {/* Precios */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-red-600">Precio Interno (Costo)</Label>
-                <Input
-                  type="number"
-                  value={formData.precioInterno}
-                  onChange={(e) => setFormData({ ...formData, precioInterno: parseFloat(e.target.value) || 0 })}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Lo que te cuesta realmente
-                </p>
-              </div>
-              <div>
-                <Label className="text-green-600">Precio Oficial (Venta)</Label>
-                <Input
-                  type="number"
-                  value={formData.precioOficial}
-                  onChange={(e) => setFormData({ ...formData, precioOficial: parseFloat(e.target.value) || 0 })}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Lo que cobras al cliente
-                </p>
-              </div>
+            {/* Margen de Ganancia */}
+            <div>
+              <Label>Margen de Ganancia (%)</Label>
+              <Input
+                type="number"
+                value={formData.margenGanancia}
+                onChange={(e) => setFormData({ ...formData, margenGanancia: parseFloat(e.target.value) || 0 })}
+                placeholder="30"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se aplica sobre el costo del personal vinculado
+              </p>
             </div>
 
-            {/* Cálculo de Ganancia */}
+            {/* Cálculo de Precios Dinámicos */}
             <Card className="bg-muted/50">
               <CardContent className="pt-4">
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
-                    <p className="text-xs text-muted-foreground">Ganancia</p>
-                    <p className="text-lg font-bold text-blue-600">
+                    <p className="text-xs text-muted-foreground">Costo (Personal)</p>
+                    <p className="text-lg font-bold text-red-600">
                       {new Intl.NumberFormat('es-AR', {
                         style: 'currency',
                         currency: 'ARS',
                         minimumFractionDigits: 0
-                      }).format(ganancia)}
+                      }).format(precioInternoCalc)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Margen</p>
+                    <p className="text-xs text-muted-foreground">Precio Venta</p>
+                    <p className="text-lg font-bold text-green-600">
+                      {new Intl.NumberFormat('es-AR', {
+                        style: 'currency',
+                        currency: 'ARS',
+                        minimumFractionDigits: 0
+                      }).format(precioOficialCalc)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Ganancia</p>
                     <p className="text-lg font-bold">
                       <Badge className={
                         margen >= 15 ? "bg-green-500" :
                           margen >= 10 ? "bg-yellow-500" :
                             "bg-red-500"
                       }>
-                        {margen.toFixed(1)}%
+                        {margen}%
                       </Badge>
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Factor</p>
-                    <p className="text-lg font-bold">
-                      {formData.precioInterno > 0
-                        ? (formData.precioOficial / formData.precioInterno).toFixed(2)
-                        : "0.00"}x
-                    </p>
-                  </div>
                 </div>
+                {precioInternoCalc === 0 && servicio?.id && (
+                  <p className="text-xs text-amber-600 text-center mt-2">
+                    No hay personal vinculado. Vincula personal desde la seccion Personal.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -839,6 +839,7 @@ function DialogoPaquete({
         // Agregar
         const servicio = servicios.find(s => s.id === servicioId)
         if (servicio) {
+          const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
           setFormData({
             ...formData,
             serviciosIncluidos: [
@@ -849,8 +850,8 @@ function DialogoPaquete({
                 categoria: servicio.categoria,
                 unidad: servicio.unidad,
                 cantidad: 1,
-                precioInterno: servicio.precioInterno,
-                precioOficial: servicio.precioOficial
+                precioInterno,
+                precioOficial
               }
             ]
           })
@@ -868,13 +869,23 @@ function DialogoPaquete({
     }
 
     const handleGuardar = () => {
-      // Calcular totales
+      // Calcular totales usando precios dinámicos con snapshot del paquete
       const costoTotal = formData.serviciosIncluidos.reduce(
-        (sum: number, si: any) => sum + (si.precioInterno * si.cantidad),
+        (sum: number, si: any) => {
+          const srv = servicios.find((s: any) => s.id === si.servicioId)
+          if (!srv) return sum + (si.precioInterno || 0) * si.cantidad
+          const { precioInterno } = obtenerPreciosServicio(srv, state)
+          return sum + precioInterno * si.cantidad
+        },
         0
       )
       const precioOficial = formData.serviciosIncluidos.reduce(
-        (sum: number, si: any) => sum + (si.precioOficial * si.cantidad),
+        (sum: number, si: any) => {
+          const srv = servicios.find((s: any) => s.id === si.servicioId)
+          if (!srv) return sum + (si.precioOficial || 0) * si.cantidad
+          const { precioOficial: po } = obtenerPreciosServicio(srv, state)
+          return sum + po * si.cantidad
+        },
         0
       )
       const ganancia = precioOficial - costoTotal
@@ -918,6 +929,9 @@ function DialogoPaquete({
             <DialogTitle>
               {paquete?.id ? "Editar Paquete" : "Crear Paquete"} - {formData.salon}
             </DialogTitle>
+            <DialogDescription>
+              {paquete?.id ? "Modifica los datos del paquete existente." : "Configura los servicios y precios del nuevo paquete."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-6 py-4">
@@ -1027,12 +1041,9 @@ function DialogoPaquete({
                                   <Input
                                     type="number"
                                     value={servicioIncluido.precioInterno}
-                                    onChange={(e) => updateServicioIncluido(
-                                      servicio.id,
-                                      'precioInterno',
-                                      parseFloat(e.target.value) || 0
-                                    )}
-                                    className="h-8"
+                                    readOnly
+                                    className="h-8 bg-muted"
+                                    title="Calculado desde tarifas del personal vinculado"
                                   />
                                 </div>
                                 <div>
@@ -1040,12 +1051,9 @@ function DialogoPaquete({
                                   <Input
                                     type="number"
                                     value={servicioIncluido.precioOficial}
-                                    onChange={(e) => updateServicioIncluido(
-                                      servicio.id,
-                                      'precioOficial',
-                                      parseFloat(e.target.value) || 0
-                                    )}
-                                    className="h-8"
+                                    readOnly
+                                    className="h-8 bg-muted"
+                                    title="Calculado con margen de ganancia"
                                   />
                                 </div>
                               </div>

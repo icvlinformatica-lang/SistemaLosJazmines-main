@@ -163,6 +163,35 @@ export interface PagoEvento {
   vuelto?: number
 }
 
+// --- Asignaciones de Personal ---
+
+/**
+ * Tracking de asignación de personal a un evento/servicio específico.
+ * Permite saber quién trabaja en cada evento y comparar costos planeados vs reales.
+ */
+export interface AsignacionPersonal {
+  id: string
+  eventoId: string
+  /** ID del ServicioEvento dentro del evento */
+  servicioEventoId: string
+  /** Rol que se requiere cubrir (ej: "Mozo", "Bartender") */
+  rolRequerido: string
+  /** ID del personal asignado (null si aún no se asignó) */
+  personalAsignadoId: string | null
+  /** Nombre del personal para visualización rápida */
+  personalNombre?: string
+  /** Costo planeado según el servicio */
+  costoPlaneado: number
+  /** Costo real según la tarifa del personal asignado */
+  costoReal: number
+  /** Si el personal confirmó su asistencia */
+  confirmado: boolean
+  /** Fecha en que se realizó la asignación (ISO string) */
+  fechaAsignacion: string
+  /** Notas adicionales sobre esta asignación */
+  notas?: string
+}
+
 // --- Servicios ---
 
 export type CategoriaServicio =
@@ -182,9 +211,10 @@ export interface Servicio {
   descripcion: string
   categoria: CategoriaServicio
 
-  // ACTUALIZADO: Doble precio
-  precioInterno: number      // Costo real del servicio
-  precioOficial: number      // Precio que se cobra al cliente
+  /** Porcentaje de margen de ganancia sobre el costo base (ej: 30 para 30%).
+   *  precioInterno se calcula sumando tarifaBase del personal vinculado.
+   *  precioOficial = precioInterno * (1 + margenGanancia / 100). */
+  margenGanancia: number
 
   unidad: "Fijo" | "Por Persona" | "Por Hora"
   proveedor?: string
@@ -196,7 +226,7 @@ export interface ServicioEvento {
   servicioId: string
   nombre: string
   cantidad: number
-  precioUnitario: number
+  // precioUnitario se obtiene dinámicamente con obtenerPreciosServicio()
   unidad: "Fijo" | "Por Persona" | "Por Hora"
   notas?: string
   proveedor?: string
@@ -246,6 +276,19 @@ export interface EventoGuardado extends Evento {
   pagos?: PagoEvento[]
   planCuotas?: number
   montoTotalPlan?: number
+
+  // --- Extensiones para asignaciones y costos calculados ---
+  /** Asignaciones de personal a los servicios de este evento */
+  asignaciones?: AsignacionPersonal[]
+  /** Resumen de costos calculados automáticamente */
+  costosCalculados?: {
+    /** Suma de costos planeados (según servicios) */
+    costoPlaneado: number
+    /** Suma de costos reales (según personal asignado) */
+    costoReal: number
+    /** Diferencia entre planeado y real (positivo = ahorro, negativo = exceso) */
+    diferencia: number
+  }
 }
 
 export interface EventoHistorial {
@@ -376,6 +419,10 @@ export interface PagoPersonal {
   firmaEmpresa?: string // base64 de la firma
   comprobanteFirmado?: boolean
   notasPago?: string
+
+  // --- Extensión para vincular con asignación ---
+  /** ID de la AsignacionPersonal relacionada (si existe) */
+  asignacionId?: string
 }
 
 export interface AppState {
@@ -396,6 +443,8 @@ export interface AppState {
   // NUEVAS LÍNEAS PARA PERSONAL Y PAGOS:
   personal: PersonalEvento[]
   pagosPersonal: PagoPersonal[]
+  // Asignaciones globales de personal a eventos
+  asignaciones: AsignacionPersonal[]
 }
 
 export interface CalculoCompra {
@@ -1054,6 +1103,7 @@ export function loadState(): AppState {
     temporadas: [],
     personal: [],
     pagosPersonal: [],
+    asignaciones: [],
   }
 
   if (typeof window === "undefined") {
@@ -1078,6 +1128,7 @@ export function loadState(): AppState {
         temporadas: parsed.temporadas || [],
         personal: parsed.personal || [],
         pagosPersonal: parsed.pagosPersonal || [],
+        asignaciones: parsed.asignaciones || [],
       }
     } catch {
       return defaultState
@@ -1111,8 +1162,14 @@ export function formatCurrency(value: number): string {
   }).format(value)
 }
 
-export function calcularCostoServicios(servicios: ServicioEvento[]): number {
-  return servicios.reduce((sum, s) => sum + s.precioUnitario * s.cantidad, 0)
+export function calcularCostoServicios(servicios: ServicioEvento[], state?: AppState): number {
+  if (!state) return 0
+  return servicios.reduce((sum, s) => {
+    const servicioCatalogo = state.servicios.find(srv => srv.id === s.servicioId)
+    if (!servicioCatalogo) return sum
+    const { precioOficial } = obtenerPreciosServicio(servicioCatalogo, state)
+    return sum + precioOficial * s.cantidad
+  }, 0)
 }
 
 export function calcularCostosOperativos(
@@ -1741,8 +1798,9 @@ export function getPagosPendientes(state: AppState): PagoPersonal[] {
 }
 
 /**
- * Genera automáticamente pagos pendientes para eventos próximos (7-15 días)
- * Debe ejecutarse periódicamente o al cargar la app
+ * Genera automáticamente pagos pendientes para eventos próximos (7-15 días).
+ * Prioriza asignaciones confirmadas; cae al flujo legacy para eventos sin asignaciones.
+ * Debe ejecutarse periódicamente o al cargar la app.
  */
 export function generarPagosPendientesAutomaticos(state: AppState): void {
   const hoy = new Date()
@@ -1751,53 +1809,198 @@ export function generarPagosPendientesAutomaticos(state: AppState): void {
   const en15Dias = new Date(hoy)
   en15Dias.setDate(en15Dias.getDate() + 15)
 
-  // Buscar eventos próximos
   state.eventos.forEach((evento) => {
     const fechaEvento = new Date(evento.fecha)
-    
-    // Solo eventos entre 7 y 15 días en el futuro
+
+    // Solo eventos entre 7 y 15 días en el futuro, no cancelados/completados
     if (fechaEvento < en7Dias || fechaEvento > en15Dias) return
     if (evento.estado === "cancelado" || evento.estado === "completado") return
 
-    // Verificar si hay servicios en el evento
-    if (!evento.servicios || evento.servicios.length === 0) return
+    // --- Flujo basado en asignaciones (nuevo) ---
+    if (evento.asignaciones && evento.asignaciones.length > 0) {
+      evento.asignaciones.forEach((asignacion) => {
+        // Solo procesar asignaciones con personal asignado y confirmado
+        if (!asignacion.personalAsignadoId || !asignacion.confirmado) return
 
-    evento.servicios.forEach((servicioEvento) => {
-      // Buscar personal vinculado a este servicio
-      const personalVinculado = state.personal.filter(
-        (p) => p.servicioVinculadoId === servicioEvento.servicioId && p.activo
-      )
-
-      personalVinculado.forEach((personal) => {
-        // Verificar si ya existe un pago para este personal en este evento
+        // Verificar si ya existe un pago con mismo personalId + eventoId + asignacionId
         const pagoExistente = state.pagosPersonal.find(
-          (p) => p.eventoId === evento.id && p.personalId === personal.id
+          (p) =>
+            p.eventoId === evento.id &&
+            p.personalId === asignacion.personalAsignadoId &&
+            p.asignacionId === asignacion.id
         )
 
         if (!pagoExistente) {
-          // Crear pago pendiente
+          // Buscar nombre del servicio vinculado
+          const servicioEvento = evento.servicios?.find(
+            (s) => s.servicioId === asignacion.servicioEventoId
+          )
+          const servicioNombre = servicioEvento
+            ? `${servicioEvento.nombre} (${asignacion.rolRequerido})`
+            : asignacion.rolRequerido
+
           const fechaLimite = new Date(fechaEvento)
           fechaLimite.setDate(fechaLimite.getDate() - 7)
 
           const nuevoPago: PagoPersonal = {
             id: generateId(),
-            personalId: personal.id,
+            personalId: asignacion.personalAsignadoId,
             eventoId: evento.id,
-            nombrePersonal: `${personal.nombre} ${personal.apellido}`,
-            servicioNombre: servicioEvento.nombre,
-            montoTotal: servicioEvento.precioUnitario * servicioEvento.cantidad,
+            nombrePersonal: asignacion.personalNombre || "Personal",
+            servicioNombre,
+            montoTotal: asignacion.costoReal,
             fechaEvento: evento.fecha,
             fechaLimitePago: fechaLimite.toISOString().split("T")[0],
             estado: fechaLimite < hoy ? "vencido" : "pendiente",
+            asignacionId: asignacion.id,
           }
 
           state.pagosPersonal.push(nuevoPago)
         }
       })
-    })
+    } else {
+      // --- Flujo legacy para eventos sin asignaciones (backwards compatible) ---
+      if (!evento.servicios || evento.servicios.length === 0) return
+
+      evento.servicios.forEach((servicioEvento) => {
+        const personalVinculado = state.personal.filter(
+          (p) => p.servicioVinculadoId === servicioEvento.servicioId && p.activo
+        )
+
+        personalVinculado.forEach((personal) => {
+          const pagoExistente = state.pagosPersonal.find(
+            (p) =>
+              p.eventoId === evento.id &&
+              p.personalId === personal.id &&
+              !p.asignacionId // Legacy: sin asignacionId
+          )
+
+          if (!pagoExistente) {
+            const fechaLimite = new Date(fechaEvento)
+            fechaLimite.setDate(fechaLimite.getDate() - 7)
+
+            const nuevoPago: PagoPersonal = {
+              id: generateId(),
+              personalId: personal.id,
+              eventoId: evento.id,
+              nombrePersonal: `${personal.nombre} ${personal.apellido}`,
+              servicioNombre: servicioEvento.nombre,
+              montoTotal: personal.tarifaBase,
+              fechaEvento: evento.fecha,
+              fechaLimitePago: fechaLimite.toISOString().split("T")[0],
+              estado: fechaLimite < hoy ? "vencido" : "pendiente",
+            }
+
+            state.pagosPersonal.push(nuevoPago)
+          }
+        })
+      })
+    }
   })
 
   saveState(state)
+}
+
+/**
+ * Sincroniza pagos con asignaciones para TODOS los eventos activos.
+ * - Genera pagos faltantes para asignaciones confirmadas.
+ * - Marca pagos huérfanos (cuya asignación fue eliminada o desasignada) como "obsoleto".
+ * Ideal para ejecutar al migrar datos o como corrección periódica.
+ */
+export function sincronizarPagosConAsignaciones(state: AppState): {
+  pagosCreados: number
+  pagosObsoletos: number
+} {
+  const hoy = new Date()
+  let pagosCreados = 0
+  let pagosObsoletos = 0
+
+  // 1. Generar pagos faltantes para asignaciones confirmadas
+  state.eventos.forEach((evento) => {
+    if (evento.estado === "cancelado" || evento.estado === "completado") return
+    if (!evento.asignaciones || evento.asignaciones.length === 0) return
+
+    evento.asignaciones.forEach((asignacion) => {
+      if (!asignacion.personalAsignadoId || !asignacion.confirmado) return
+
+      const pagoExistente = state.pagosPersonal.find(
+        (p) =>
+          p.eventoId === evento.id &&
+          p.personalId === asignacion.personalAsignadoId &&
+          p.asignacionId === asignacion.id
+      )
+
+      if (!pagoExistente) {
+        const fechaEvento = new Date(evento.fecha)
+        const fechaLimite = new Date(fechaEvento)
+        fechaLimite.setDate(fechaLimite.getDate() - 7)
+
+        const servicioEvento = evento.servicios?.find(
+          (s) => s.servicioId === asignacion.servicioEventoId
+        )
+        const servicioNombre = servicioEvento
+          ? `${servicioEvento.nombre} (${asignacion.rolRequerido})`
+          : asignacion.rolRequerido
+
+        const nuevoPago: PagoPersonal = {
+          id: generateId(),
+          personalId: asignacion.personalAsignadoId,
+          eventoId: evento.id,
+          nombrePersonal: asignacion.personalNombre || "Personal",
+          servicioNombre,
+          montoTotal: asignacion.costoReal,
+          fechaEvento: evento.fecha,
+          fechaLimitePago: fechaLimite.toISOString().split("T")[0],
+          estado: fechaLimite < hoy ? "vencido" : "pendiente",
+          asignacionId: asignacion.id,
+        }
+
+        state.pagosPersonal.push(nuevoPago)
+        pagosCreados++
+      }
+    })
+  })
+
+  // 2. Marcar pagos huérfanos como obsoletos
+  // Un pago es huérfano si tiene asignacionId pero la asignación ya no existe
+  // o la asignación ya no está confirmada/asignada
+  state.pagosPersonal.forEach((pago) => {
+    if (!pago.asignacionId) return // Legacy, no tocar
+    if (pago.estado === "pagado") return // Ya pagado, no tocar
+
+    // Buscar el evento y la asignación
+    const evento = state.eventos.find((e) => e.id === pago.eventoId)
+    if (!evento) {
+      // El evento fue eliminado: marcar obsoleto
+      pago.estado = "vencido" as EstadoPago
+      pago.notasPago = (pago.notasPago || "") + " [OBSOLETO: evento eliminado]"
+      pagosObsoletos++
+      return
+    }
+
+    const asignacion = evento.asignaciones?.find(
+      (a) => a.id === pago.asignacionId
+    )
+
+    if (!asignacion) {
+      // La asignación fue eliminada
+      pago.estado = "vencido" as EstadoPago
+      pago.notasPago = (pago.notasPago || "") + " [OBSOLETO: asignación eliminada]"
+      pagosObsoletos++
+      return
+    }
+
+    if (!asignacion.personalAsignadoId || !asignacion.confirmado) {
+      // La asignación fue desasignada o desconfirmada
+      pago.estado = "vencido" as EstadoPago
+      pago.notasPago =
+        (pago.notasPago || "") + " [OBSOLETO: personal desasignado]"
+      pagosObsoletos++
+    }
+  })
+
+  saveState(state)
+  return { pagosCreados, pagosObsoletos }
 }
 
 /**
@@ -1814,6 +2017,314 @@ export function actualizarEstadoPagos(state: AppState): void {
         pago.estado = "vencido"
         cambios = true
       }
+    }
+  })
+
+  if (cambios) {
+    saveState(state)
+  }
+}
+
+// ==========================================
+// FUNCIONES HELPER: CÁLCULO AUTOMÁTICO DE COSTOS
+// ==========================================
+
+/**
+ * Calcula el costo base (precioInterno) de un servicio.
+ * Suma las tarifas de todo el personal activo vinculado a este servicio.
+ *
+ * @param servicioId - ID del servicio
+ * @param state - Estado global de la app
+ * @returns Costo interno del servicio basado en tarifas del personal
+ */
+export function calcularPrecioInternoServicio(servicioId: string, state: AppState): number {
+  const personalVinculado = state.personal.filter(
+    (p) => p.activo && p.servicioVinculadoId === servicioId
+  )
+
+  return personalVinculado.reduce((total, p) => total + p.tarifaBase, 0)
+}
+
+/**
+ * Calcula el precio de venta (precioOficial) de un servicio.
+ * Aplica el margen de ganancia al precio interno.
+ *
+ * @param servicio - El servicio a calcular
+ * @param state - Estado global de la app
+ * @returns Precio oficial con margen aplicado
+ */
+export function calcularPrecioOficialServicio(servicio: Servicio, state: AppState): number {
+  const precioInterno = calcularPrecioInternoServicio(servicio.id, state)
+  const multiplicador = 1 + (servicio.margenGanancia / 100)
+  return precioInterno * multiplicador
+}
+
+/**
+ * Obtiene los precios calculados de un servicio.
+ * Uso: const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
+ *
+ * @param servicio - El servicio a consultar
+ * @param state - Estado global de la app
+ * @returns Objeto con precioInterno y precioOficial calculados dinámicamente
+ */
+export function obtenerPreciosServicio(servicio: Servicio, state: AppState): {
+  precioInterno: number
+  precioOficial: number
+} {
+  const precioInterno = calcularPrecioInternoServicio(servicio.id, state)
+  const precioOficial = calcularPrecioOficialServicio(servicio, state)
+
+  return { precioInterno, precioOficial }
+}
+
+// ==========================================
+// FUNCIONES DE GESTIÓN DE ASIGNACIONES DE PERSONAL
+// ==========================================
+
+/**
+ * Genera asignaciones vacías (sin personal asignado) para un servicio
+ * a partir del personal activo vinculado al servicio.
+ *
+ * @param evento - El evento al que pertenece el servicio
+ * @param servicioEvento - El ServicioEvento dentro del evento
+ * @param state - Estado global para buscar personal vinculado
+ * @returns Array de AsignacionPersonal sin personal asignado
+ */
+export function generarAsignacionesParaServicio(
+  evento: EventoGuardado,
+  servicioEvento: ServicioEvento,
+  state: AppState
+): AsignacionPersonal[] {
+  const asignaciones: AsignacionPersonal[] = []
+
+  const servicioCatalogo = state.servicios.find(
+    (s) => s.id === servicioEvento.servicioId
+  )
+
+  if (!servicioCatalogo) return asignaciones
+
+  // Obtener personal vinculado al servicio
+  const personalVinculado = state.personal.filter(
+    (p) => p.activo && p.servicioVinculadoId === servicioCatalogo.id
+  )
+
+  // Generar una asignación por cada miembro del personal vinculado
+  for (const personal of personalVinculado) {
+    const asignacion: AsignacionPersonal = {
+      id: generateId(),
+      eventoId: evento.id,
+      servicioEventoId: servicioEvento.servicioId,
+      rolRequerido: personal.funcion,
+      personalAsignadoId: null, // Sin asignar inicialmente
+      costoPlaneado: personal.tarifaBase,
+      costoReal: 0,
+      confirmado: false,
+      fechaAsignacion: new Date().toISOString(),
+    }
+
+    asignaciones.push(asignacion)
+  }
+
+  return asignaciones
+}
+
+/**
+ * Asigna un miembro del personal a una asignación existente en un evento.
+ * Actualiza costos, estado de confirmación y recalcula costos del evento.
+ *
+ * @param state - Estado global mutable
+ * @param eventoId - ID del evento
+ * @param asignacionId - ID de la asignación a cubrir
+ * @param personalId - ID del personal a asignar
+ * @returns true si la asignación fue exitosa, false en caso de error
+ */
+export function asignarPersonalAEvento(
+  state: AppState,
+  eventoId: string,
+  asignacionId: string,
+  personalId: string
+): boolean {
+  // Buscar el evento
+  const evento = state.eventos.find((e) => e.id === eventoId)
+  if (!evento) return false
+
+  // Buscar la asignación dentro del evento
+  const asignacion = evento.asignaciones?.find((a) => a.id === asignacionId)
+  if (!asignacion) return false
+
+  // Buscar el personal
+  const personal = state.personal.find((p) => p.id === personalId)
+  if (!personal) return false
+
+  // Actualizar la asignación
+  asignacion.personalAsignadoId = personalId
+  asignacion.personalNombre = `${personal.nombre} ${personal.apellido}`
+  asignacion.costoReal = personal.tarifaBase
+  asignacion.confirmado = true
+  asignacion.fechaAsignacion = new Date().toISOString()
+
+  // Recalcular costos del evento
+  evento.costosCalculados = calcularCostosEvento(evento)
+
+  saveState(state)
+  return true
+}
+
+/**
+ * Desasigna un miembro del personal de una asignación en un evento.
+ * Si existe un pago asociado pendiente, lo elimina. Recalcula costos.
+ *
+ * @param state - Estado global mutable
+ * @param eventoId - ID del evento
+ * @param asignacionId - ID de la asignación a liberar
+ * @returns true si la desasignación fue exitosa, false en caso de error
+ */
+export function desasignarPersonalDeEvento(
+  state: AppState,
+  eventoId: string,
+  asignacionId: string
+): boolean {
+  // Buscar el evento
+  const evento = state.eventos.find((e) => e.id === eventoId)
+  if (!evento) return false
+
+  // Buscar la asignación dentro del evento
+  const asignacion = evento.asignaciones?.find((a) => a.id === asignacionId)
+  if (!asignacion) return false
+
+  // Eliminar pago asociado si existe y está pendiente
+  const indicePago = state.pagosPersonal.findIndex(
+    (p) =>
+      p.asignacionId === asignacionId &&
+      p.eventoId === eventoId &&
+      (p.estado === "pendiente" || p.estado === "vencido")
+  )
+  if (indicePago !== -1) {
+    state.pagosPersonal.splice(indicePago, 1)
+  }
+
+  // Limpiar la asignación
+  asignacion.personalAsignadoId = null
+  asignacion.personalNombre = undefined
+  asignacion.costoReal = 0
+  asignacion.confirmado = false
+
+  // Recalcular costos del evento
+  evento.costosCalculados = calcularCostosEvento(evento)
+
+  saveState(state)
+  return true
+}
+
+/**
+ * Calcula el resumen de costos de un evento basado en sus asignaciones.
+ *
+ * @param evento - El evento con asignaciones
+ * @returns Objeto con costoPlaneado, costoReal y diferencia
+ */
+export function calcularCostosEvento(
+  evento: EventoGuardado
+): { costoPlaneado: number; costoReal: number; diferencia: number } {
+  const asignaciones = evento.asignaciones || []
+
+  const costoPlaneado = asignaciones.reduce(
+    (sum, a) => sum + a.costoPlaneado,
+    0
+  )
+  const costoReal = asignaciones.reduce(
+    (sum, a) => sum + a.costoReal,
+    0
+  )
+
+  return {
+    costoPlaneado,
+    costoReal,
+    diferencia: costoPlaneado - costoReal,
+  }
+}
+
+/**
+ * Agrega un servicio a un evento y genera automáticamente las asignaciones
+ * de personal según los recursosNecesarios del servicio en catálogo.
+ *
+ * @param state - Estado global mutable
+ * @param eventoId - ID del evento al que agregar el servicio
+ * @param servicioEvento - El ServicioEvento a agregar
+ * @returns true si se agregó correctamente, false en caso de error
+ */
+export function addServicioAEvento(
+  state: AppState,
+  eventoId: string,
+  servicioEvento: ServicioEvento
+): boolean {
+  // Buscar el evento
+  const evento = state.eventos.find((e) => e.id === eventoId)
+  if (!evento) return false
+
+  // Inicializar arrays si no existen
+  if (!evento.servicios) {
+    evento.servicios = []
+  }
+  if (!evento.asignaciones) {
+    evento.asignaciones = []
+  }
+
+  // Agregar el servicio al evento
+  evento.servicios.push(servicioEvento)
+
+  // Generar asignaciones automáticas para este servicio
+  const nuevasAsignaciones = generarAsignacionesParaServicio(
+    evento,
+    servicioEvento,
+    state
+  )
+
+  // Agregar las asignaciones al evento
+  evento.asignaciones.push(...nuevasAsignaciones)
+
+  // Recalcular costos del evento
+  evento.costosCalculados = calcularCostosEvento(evento)
+
+  saveState(state)
+  return true
+}
+
+// ==========================================
+// MIGRACIÓN: Servicios con precios fijos → precios dinámicos
+// ==========================================
+
+/**
+ * Migra servicios que aún tienen precioInterno/precioOficial hardcodeados
+ * al nuevo modelo basado en margenGanancia calculado dinámicamente.
+ * Ejecutar UNA VEZ al cargar la app si hay datos legacy.
+ */
+export function migrarServiciosAPreciosDinamicos(state: AppState): void {
+  let cambios = false
+
+  state.servicios.forEach((servicio) => {
+    const s = servicio as Record<string, unknown>
+
+    if ("precioInterno" in s && "precioOficial" in s) {
+      const precioInterno = Number(s.precioInterno) || 0
+      const precioOficial = Number(s.precioOficial) || 0
+
+      if (precioInterno > 0) {
+        const margen = ((precioOficial - precioInterno) / precioInterno) * 100
+        servicio.margenGanancia = Math.round(margen)
+      } else {
+        servicio.margenGanancia = 30
+      }
+
+      delete s.precioInterno
+      delete s.precioOficial
+      delete s.recursosNecesarios
+      delete s.modoCalculoCosto
+      cambios = true
+    }
+
+    if (servicio.margenGanancia === undefined || servicio.margenGanancia === null) {
+      servicio.margenGanancia = 30
+      cambios = true
     }
   })
 
