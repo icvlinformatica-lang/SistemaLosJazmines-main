@@ -792,6 +792,7 @@ function DialogoPaquete({
     servicios: any[]
     onGuardar: (data: any) => void
   }) {
+    const { state } = useStore()
     const [formData, setFormData] = useState({
       salon: paquete?.salon || "Quinta",
       nombre: paquete?.nombre || "",
@@ -837,7 +838,7 @@ function DialogoPaquete({
         })
       } else {
         // Agregar
-        const servicio = servicios.find(s => s.id === servicioId)
+        const servicio = servicios.find((s: any) => s.id === servicioId)
         if (servicio) {
           const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
           setFormData({
