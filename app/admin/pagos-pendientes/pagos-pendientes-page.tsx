@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -618,6 +619,7 @@ export default function PagosPendientesPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Detalle del Pago</DialogTitle>
+            <DialogDescription>Informacion completa del pago y su asignacion vinculada.</DialogDescription>
           </DialogHeader>
 
           {pagoSeleccionado && (() => {
@@ -771,6 +773,7 @@ export default function PagosPendientesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar Pago</DialogTitle>
+            <DialogDescription>Registra el monto, metodo y comprobante del pago al personal.</DialogDescription>
           </DialogHeader>
 
           {pagoSeleccionado && (

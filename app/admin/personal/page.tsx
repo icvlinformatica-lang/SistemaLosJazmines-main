@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useStore } from "@/lib/store-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -282,6 +282,9 @@ export default function PersonalPage() {
             <DialogTitle>
               {personalEditando ? "Editar Personal" : "Agregar Nuevo Personal"}
             </DialogTitle>
+            <DialogDescription>
+              {personalEditando ? "Modifica los datos del miembro del personal." : "Completa los datos para registrar un nuevo miembro del equipo."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
