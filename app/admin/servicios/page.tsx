@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { calcularTotalesPaquete } from "@/lib/store"
 import { useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -603,6 +603,9 @@ function DialogoServicio({
             <DialogTitle>
               {servicio ? "Editar Servicio" : "Agregar Servicio"}
             </DialogTitle>
+            <DialogDescription>
+              {servicio ? "Modifica los datos del servicio existente." : "Completa los datos para registrar un nuevo servicio."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -918,6 +921,9 @@ function DialogoPaquete({
             <DialogTitle>
               {paquete?.id ? "Editar Paquete" : "Crear Paquete"} - {formData.salon}
             </DialogTitle>
+            <DialogDescription>
+              {paquete?.id ? "Modifica los datos del paquete existente." : "Configura los servicios y precios del nuevo paquete."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-6 py-4">
