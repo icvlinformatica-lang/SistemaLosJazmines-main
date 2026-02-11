@@ -870,40 +870,34 @@ function DialogoPaquete({
     }
 
     const handleGuardar = () => {
-      // Calcular totales usando precios dinámicos con snapshot del paquete
-      const costoTotal = formData.serviciosIncluidos.reduce(
-        (sum: number, si: any) => {
-          const srv = servicios.find((s: any) => s.id === si.servicioId)
-          if (!srv) return sum + (si.precioInterno || 0) * si.cantidad
-          const { precioInterno } = obtenerPreciosServicio(srv, state)
-          return sum + precioInterno * si.cantidad
-        },
-        0
-      )
-      const precioOficial = formData.serviciosIncluidos.reduce(
-        (sum: number, si: any) => {
-          const srv = servicios.find((s: any) => s.id === si.servicioId)
-          if (!srv) return sum + (si.precioOficial || 0) * si.cantidad
-          const { precioOficial: po } = obtenerPreciosServicio(srv, state)
-          return sum + po * si.cantidad
-        },
-        0
-      )
-      const ganancia = precioOficial - costoTotal
-
+      // Guardar usando los totales calculados dinamicamente
       const paqueteCompleto = {
         ...formData,
-        costoTotal,
-        precioOficial,
-        ganancia
+        costoTotal: totales.costoTotal,
+        precioOficial: totales.ventaTotal,
+        ganancia: totales.ganancia,
       }
 
       onGuardar(paqueteCompleto)
       onCerrar()
     }
 
-    // Calcular totales en tiempo real
-    const totales = calcularTotalesPaquete(formData.serviciosIncluidos)
+    // Calcular totales en tiempo real usando precios dinamicos
+    const totales = (() => {
+      let costoTotal = 0
+      let ventaTotal = 0
+      formData.serviciosIncluidos.forEach((si: any) => {
+        const srv = servicios.find((s: any) => s.id === si.servicioId)
+        if (srv) {
+          const { precioInterno, precioOficial } = obtenerPreciosServicio(srv, state)
+          costoTotal += precioInterno * si.cantidad
+          ventaTotal += precioOficial * si.cantidad
+        }
+      })
+      const ganancia = ventaTotal - costoTotal
+      const margenPorcentaje = costoTotal > 0 ? (ganancia / costoTotal) * 100 : 0
+      return { costoTotal, ventaTotal, ganancia, margenPorcentaje }
+    })()
 
     const formatearPrecio = (precio: number) => {
       return new Intl.NumberFormat('es-AR', {
@@ -1063,8 +1057,8 @@ function DialogoPaquete({
                             </div>
 
                             {estaSeleccionado && (
-                              <div className="ml-7 grid grid-cols-3 gap-2">
-                                <div>
+                              <div className="ml-7 flex items-end gap-3">
+                                <div className="w-20">
                                   <Label className="text-xs">Cantidad</Label>
                                   <Input
                                     type="number"
@@ -1078,38 +1072,10 @@ function DialogoPaquete({
                                     className="h-8"
                                   />
                                 </div>
-                                <div>
-                                  <Label className="text-xs text-red-600">P. Interno</Label>
-                                  <Input
-                                    type="number"
-                                    value={servicioIncluido.precioInterno}
-                                    readOnly
-                                    className="h-8 bg-muted"
-                                    title="Calculado desde tarifas del personal vinculado"
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs text-green-600">P. Oficial</Label>
-                                  <Input
-                                    type="number"
-                                    value={servicioIncluido.precioOficial}
-                                    readOnly
-                                    className="h-8 bg-muted"
-                                    title="Calculado con margen de ganancia"
-                                  />
-                                </div>
-                              </div>
-                            )}
-
-                            {estaSeleccionado && (
-                              <div className="ml-7 flex justify-between text-xs">
-                                <span className="text-muted-foreground">Subtotal:</span>
-                                <div className="flex gap-3">
-                                  <span className="text-red-600">
-                                    {formatearPrecio(servicioIncluido.precioInterno * servicioIncluido.cantidad)}
-                                  </span>
-                                  <span className="text-green-600">
-                                    {formatearPrecio(servicioIncluido.precioOficial * servicioIncluido.cantidad)}
+                                <div className="flex-1 flex justify-between items-center text-sm">
+                                  <span className="text-muted-foreground">Venta:</span>
+                                  <span className="font-semibold text-green-600">
+                                    {formatearPrecio(poDynamic * servicioIncluido.cantidad)}
                                   </span>
                                 </div>
                               </div>
@@ -1134,23 +1100,23 @@ function DialogoPaquete({
             {/* Totales */}
             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
               <CardHeader>
-                <CardTitle className="text-lg">Resumen Financiero</CardTitle>
+                <CardTitle className="text-lg">Resumen del Paquete</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Costo Total:</span>
+                  <span className="text-sm text-muted-foreground">Costo (personal):</span>
                   <span className="text-lg font-bold text-red-600">
                     {formatearPrecio(totales.costoTotal)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Precio Oficial:</span>
+                  <span className="text-sm text-muted-foreground">Venta (con margen):</span>
                   <span className="text-lg font-bold text-green-600">
-                    {formatearPrecio(totales.precioOficial)}
+                    {formatearPrecio(totales.ventaTotal)}
                   </span>
                 </div>
                 <div className="border-t pt-3 flex justify-between items-center">
-                  <span className="font-semibold">Ganancia Estimada:</span>
+                  <span className="font-semibold">Ganancia:</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xl font-bold text-blue-600">
                       {formatearPrecio(totales.ganancia)}
