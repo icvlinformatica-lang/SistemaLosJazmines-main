@@ -53,6 +53,7 @@ import IngresoCard from "./ingreso-card"
 import RegistrarPagoDialog from "./registrar-pago-dialog"
 import VistaEventoDialog from "./vista-evento-dialog"
 import ConfiguracionDialog from "./configuracion-dialog"
+import AsignacionesDashboardCard from "./asignaciones-dashboard-card"
 
 export default function CentroControlFinanciero() {
   const { costosOperativos, eventos, pagosPersonal, personal } = useStore()
@@ -297,6 +298,9 @@ export default function CentroControlFinanciero() {
           </CardContent>
         </Card>
       )}
+
+      {/* Panel de Asignaciones de Personal */}
+      <AsignacionesDashboardCard />
 
       {/* Controles y Filtros */}
       <Card>

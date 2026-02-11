@@ -1818,8 +1818,9 @@ export function getPagosPendientes(state: AppState): PagoPersonal[] {
 }
 
 /**
- * Genera automáticamente pagos pendientes para eventos próximos (7-15 días)
- * Debe ejecutarse periódicamente o al cargar la app
+ * Genera automáticamente pagos pendientes para eventos próximos (7-15 días).
+ * Prioriza asignaciones confirmadas; cae al flujo legacy para eventos sin asignaciones.
+ * Debe ejecutarse periódicamente o al cargar la app.
  */
 export function generarPagosPendientesAutomaticos(state: AppState): void {
   const hoy = new Date()
@@ -1828,53 +1829,198 @@ export function generarPagosPendientesAutomaticos(state: AppState): void {
   const en15Dias = new Date(hoy)
   en15Dias.setDate(en15Dias.getDate() + 15)
 
-  // Buscar eventos próximos
   state.eventos.forEach((evento) => {
     const fechaEvento = new Date(evento.fecha)
-    
-    // Solo eventos entre 7 y 15 días en el futuro
+
+    // Solo eventos entre 7 y 15 días en el futuro, no cancelados/completados
     if (fechaEvento < en7Dias || fechaEvento > en15Dias) return
     if (evento.estado === "cancelado" || evento.estado === "completado") return
 
-    // Verificar si hay servicios en el evento
-    if (!evento.servicios || evento.servicios.length === 0) return
+    // --- Flujo basado en asignaciones (nuevo) ---
+    if (evento.asignaciones && evento.asignaciones.length > 0) {
+      evento.asignaciones.forEach((asignacion) => {
+        // Solo procesar asignaciones con personal asignado y confirmado
+        if (!asignacion.personalAsignadoId || !asignacion.confirmado) return
 
-    evento.servicios.forEach((servicioEvento) => {
-      // Buscar personal vinculado a este servicio
-      const personalVinculado = state.personal.filter(
-        (p) => p.servicioVinculadoId === servicioEvento.servicioId && p.activo
-      )
-
-      personalVinculado.forEach((personal) => {
-        // Verificar si ya existe un pago para este personal en este evento
+        // Verificar si ya existe un pago con mismo personalId + eventoId + asignacionId
         const pagoExistente = state.pagosPersonal.find(
-          (p) => p.eventoId === evento.id && p.personalId === personal.id
+          (p) =>
+            p.eventoId === evento.id &&
+            p.personalId === asignacion.personalAsignadoId &&
+            p.asignacionId === asignacion.id
         )
 
         if (!pagoExistente) {
-          // Crear pago pendiente
+          // Buscar nombre del servicio vinculado
+          const servicioEvento = evento.servicios?.find(
+            (s) => s.servicioId === asignacion.servicioEventoId
+          )
+          const servicioNombre = servicioEvento
+            ? `${servicioEvento.nombre} (${asignacion.rolRequerido})`
+            : asignacion.rolRequerido
+
           const fechaLimite = new Date(fechaEvento)
           fechaLimite.setDate(fechaLimite.getDate() - 7)
 
           const nuevoPago: PagoPersonal = {
             id: generateId(),
-            personalId: personal.id,
+            personalId: asignacion.personalAsignadoId,
             eventoId: evento.id,
-            nombrePersonal: `${personal.nombre} ${personal.apellido}`,
-            servicioNombre: servicioEvento.nombre,
-            montoTotal: servicioEvento.precioUnitario * servicioEvento.cantidad,
+            nombrePersonal: asignacion.personalNombre || "Personal",
+            servicioNombre,
+            montoTotal: asignacion.costoReal,
             fechaEvento: evento.fecha,
             fechaLimitePago: fechaLimite.toISOString().split("T")[0],
             estado: fechaLimite < hoy ? "vencido" : "pendiente",
+            asignacionId: asignacion.id,
           }
 
           state.pagosPersonal.push(nuevoPago)
         }
       })
-    })
+    } else {
+      // --- Flujo legacy para eventos sin asignaciones (backwards compatible) ---
+      if (!evento.servicios || evento.servicios.length === 0) return
+
+      evento.servicios.forEach((servicioEvento) => {
+        const personalVinculado = state.personal.filter(
+          (p) => p.servicioVinculadoId === servicioEvento.servicioId && p.activo
+        )
+
+        personalVinculado.forEach((personal) => {
+          const pagoExistente = state.pagosPersonal.find(
+            (p) =>
+              p.eventoId === evento.id &&
+              p.personalId === personal.id &&
+              !p.asignacionId // Legacy: sin asignacionId
+          )
+
+          if (!pagoExistente) {
+            const fechaLimite = new Date(fechaEvento)
+            fechaLimite.setDate(fechaLimite.getDate() - 7)
+
+            const nuevoPago: PagoPersonal = {
+              id: generateId(),
+              personalId: personal.id,
+              eventoId: evento.id,
+              nombrePersonal: `${personal.nombre} ${personal.apellido}`,
+              servicioNombre: servicioEvento.nombre,
+              montoTotal: servicioEvento.precioUnitario * servicioEvento.cantidad,
+              fechaEvento: evento.fecha,
+              fechaLimitePago: fechaLimite.toISOString().split("T")[0],
+              estado: fechaLimite < hoy ? "vencido" : "pendiente",
+            }
+
+            state.pagosPersonal.push(nuevoPago)
+          }
+        })
+      })
+    }
   })
 
   saveState(state)
+}
+
+/**
+ * Sincroniza pagos con asignaciones para TODOS los eventos activos.
+ * - Genera pagos faltantes para asignaciones confirmadas.
+ * - Marca pagos huérfanos (cuya asignación fue eliminada o desasignada) como "obsoleto".
+ * Ideal para ejecutar al migrar datos o como corrección periódica.
+ */
+export function sincronizarPagosConAsignaciones(state: AppState): {
+  pagosCreados: number
+  pagosObsoletos: number
+} {
+  const hoy = new Date()
+  let pagosCreados = 0
+  let pagosObsoletos = 0
+
+  // 1. Generar pagos faltantes para asignaciones confirmadas
+  state.eventos.forEach((evento) => {
+    if (evento.estado === "cancelado" || evento.estado === "completado") return
+    if (!evento.asignaciones || evento.asignaciones.length === 0) return
+
+    evento.asignaciones.forEach((asignacion) => {
+      if (!asignacion.personalAsignadoId || !asignacion.confirmado) return
+
+      const pagoExistente = state.pagosPersonal.find(
+        (p) =>
+          p.eventoId === evento.id &&
+          p.personalId === asignacion.personalAsignadoId &&
+          p.asignacionId === asignacion.id
+      )
+
+      if (!pagoExistente) {
+        const fechaEvento = new Date(evento.fecha)
+        const fechaLimite = new Date(fechaEvento)
+        fechaLimite.setDate(fechaLimite.getDate() - 7)
+
+        const servicioEvento = evento.servicios?.find(
+          (s) => s.servicioId === asignacion.servicioEventoId
+        )
+        const servicioNombre = servicioEvento
+          ? `${servicioEvento.nombre} (${asignacion.rolRequerido})`
+          : asignacion.rolRequerido
+
+        const nuevoPago: PagoPersonal = {
+          id: generateId(),
+          personalId: asignacion.personalAsignadoId,
+          eventoId: evento.id,
+          nombrePersonal: asignacion.personalNombre || "Personal",
+          servicioNombre,
+          montoTotal: asignacion.costoReal,
+          fechaEvento: evento.fecha,
+          fechaLimitePago: fechaLimite.toISOString().split("T")[0],
+          estado: fechaLimite < hoy ? "vencido" : "pendiente",
+          asignacionId: asignacion.id,
+        }
+
+        state.pagosPersonal.push(nuevoPago)
+        pagosCreados++
+      }
+    })
+  })
+
+  // 2. Marcar pagos huérfanos como obsoletos
+  // Un pago es huérfano si tiene asignacionId pero la asignación ya no existe
+  // o la asignación ya no está confirmada/asignada
+  state.pagosPersonal.forEach((pago) => {
+    if (!pago.asignacionId) return // Legacy, no tocar
+    if (pago.estado === "pagado") return // Ya pagado, no tocar
+
+    // Buscar el evento y la asignación
+    const evento = state.eventos.find((e) => e.id === pago.eventoId)
+    if (!evento) {
+      // El evento fue eliminado: marcar obsoleto
+      pago.estado = "vencido" as EstadoPago
+      pago.notasPago = (pago.notasPago || "") + " [OBSOLETO: evento eliminado]"
+      pagosObsoletos++
+      return
+    }
+
+    const asignacion = evento.asignaciones?.find(
+      (a) => a.id === pago.asignacionId
+    )
+
+    if (!asignacion) {
+      // La asignación fue eliminada
+      pago.estado = "vencido" as EstadoPago
+      pago.notasPago = (pago.notasPago || "") + " [OBSOLETO: asignación eliminada]"
+      pagosObsoletos++
+      return
+    }
+
+    if (!asignacion.personalAsignadoId || !asignacion.confirmado) {
+      // La asignación fue desasignada o desconfirmada
+      pago.estado = "vencido" as EstadoPago
+      pago.notasPago =
+        (pago.notasPago || "") + " [OBSOLETO: personal desasignado]"
+      pagosObsoletos++
+    }
+  })
+
+  saveState(state)
+  return { pagosCreados, pagosObsoletos }
 }
 
 /**

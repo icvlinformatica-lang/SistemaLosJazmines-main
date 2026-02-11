@@ -23,6 +23,7 @@ import {
   generateId,
   generarPagosPendientesAutomaticos,
   actualizarEstadoPagos,
+  sincronizarPagosConAsignaciones,
 } from "./store"
 
 interface StoreContextType {
@@ -112,6 +113,7 @@ interface StoreContextType {
   getPagosPorEvento: (eventoId: string) => PagoPersonal[]
   getPagosPendientes: () => PagoPersonal[]
   generarPagosPendientes: () => void
+  sincronizarPagos: () => { pagosCreados: number; pagosObsoletos: number }
 }
 
 const StoreContext = createContext<StoreContextType | null>(null)
@@ -418,6 +420,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  const sincronizarPagos = () => {
+    let resultado = { pagosCreados: 0, pagosObsoletos: 0 }
+    setState((prev) => {
+      const newState = { ...prev }
+      resultado = sincronizarPagosConAsignaciones(newState)
+      return newState
+    })
+    return resultado
+  }
+
   // Auto-generar pagos pendientes al cargar
   useEffect(() => {
     if (isHydrated) {
@@ -579,6 +591,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         getPagosPorEvento,
         getPagosPendientes,
         generarPagosPendientes,
+        sincronizarPagos,
       }}
     >
       {children}
