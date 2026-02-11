@@ -24,6 +24,8 @@ import {
   generarPagosPendientesAutomaticos,
   actualizarEstadoPagos,
   sincronizarPagosConAsignaciones,
+  migrarServiciosAPreciosDinamicos,
+  obtenerPreciosServicio,
 } from "./store"
 
 interface StoreContextType {
@@ -430,11 +432,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return resultado
   }
 
-  // Auto-generar pagos pendientes al cargar
+  // Migrar datos legacy y auto-generar pagos pendientes al cargar
   useEffect(() => {
-    if (isHydrated) {
-      generarPagosPendientes()
-    }
+  if (isHydrated) {
+    // Migrar servicios con precios fijos a margenGanancia dinámico
+    setState((prev) => {
+      const newState = { ...prev }
+      migrarServiciosAPreciosDinamicos(newState)
+      return newState
+    })
+    generarPagosPendientes()
+  }
   }, [isHydrated])
 
   // === Eventos (Calendario) ===

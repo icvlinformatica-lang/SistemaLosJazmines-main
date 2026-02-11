@@ -163,28 +163,7 @@ export interface PagoEvento {
   vuelto?: number
 }
 
-// --- Recursos y Asignaciones de Personal ---
-
-/**
- * Define qué recursos necesita un servicio para funcionar.
- * Puede ser personal (Mozo, DJ, etc.) o un insumo específico.
- */
-export interface RecursoNecesario {
-  /** Tipo de recurso: personal humano o insumo material */
-  tipo: "personal" | "insumo"
-  /** Rol requerido si tipo === "personal" (ej: "Mozo", "Bartender", "DJ") */
-  rol?: string
-  /** Cantidad de este recurso (ej: 2 mozos, 3 kg de hielo) */
-  cantidad: number
-  /** ID de un PersonalEvento específico (asignación directa opcional) */
-  personalEspecifico?: string
-  /** ID de un insumo del catálogo si tipo === "insumo" */
-  insumoId?: string
-  /** Cantidad estimada del insumo (en su unidad de stock) */
-  cantidadEstimada?: number
-  /** Costo estimado de este recurso */
-  costoEstimado: number
-}
+// --- Asignaciones de Personal ---
 
 /**
  * Tracking de asignación de personal a un evento/servicio específico.
@@ -232,27 +211,22 @@ export interface Servicio {
   descripcion: string
   categoria: CategoriaServicio
 
-  // ACTUALIZADO: Doble precio
-  precioInterno: number      // Costo real del servicio
-  precioOficial: number      // Precio que se cobra al cliente
+  /** Porcentaje de margen de ganancia sobre el costo base (ej: 30 para 30%).
+   *  precioInterno se calcula sumando tarifaBase del personal vinculado.
+   *  precioOficial = precioInterno * (1 + margenGanancia / 100). */
+  margenGanancia: number
 
   unidad: "Fijo" | "Por Persona" | "Por Hora"
   proveedor?: string
   notas?: string
   activo: boolean
-
-  // --- Extensiones para cálculo automático de costos ---
-  /** Recursos necesarios para prestar este servicio (personal, insumos) */
-  recursosNecesarios?: RecursoNecesario[]
-  /** Modo de cálculo: "manual" usa precioInterno directamente, "automatico" suma costos de recursos */
-  modoCalculoCosto?: "automatico" | "manual"
 }
 
 export interface ServicioEvento {
   servicioId: string
   nombre: string
   cantidad: number
-  precioUnitario: number
+  // precioUnitario se obtiene dinámicamente con obtenerPreciosServicio()
   unidad: "Fijo" | "Por Persona" | "Por Hora"
   notas?: string
   proveedor?: string
@@ -1188,8 +1162,14 @@ export function formatCurrency(value: number): string {
   }).format(value)
 }
 
-export function calcularCostoServicios(servicios: ServicioEvento[]): number {
-  return servicios.reduce((sum, s) => sum + s.precioUnitario * s.cantidad, 0)
+export function calcularCostoServicios(servicios: ServicioEvento[], state?: AppState): number {
+  if (!state) return 0
+  return servicios.reduce((sum, s) => {
+    const servicioCatalogo = state.servicios.find(srv => srv.id === s.servicioId)
+    if (!servicioCatalogo) return sum
+    const { precioOficial } = obtenerPreciosServicio(servicioCatalogo, state)
+    return sum + precioOficial * s.cantidad
+  }, 0)
 }
 
 export function calcularCostosOperativos(
@@ -1905,7 +1885,7 @@ export function generarPagosPendientesAutomaticos(state: AppState): void {
               eventoId: evento.id,
               nombrePersonal: `${personal.nombre} ${personal.apellido}`,
               servicioNombre: servicioEvento.nombre,
-              montoTotal: servicioEvento.precioUnitario * servicioEvento.cantidad,
+              montoTotal: personal.tarifaBase,
               fechaEvento: evento.fecha,
               fechaLimitePago: fechaLimite.toISOString().split("T")[0],
               estado: fechaLimite < hoy ? "vencido" : "pendiente",
@@ -2050,52 +2030,51 @@ export function actualizarEstadoPagos(state: AppState): void {
 // ==========================================
 
 /**
- * Calcula el costo de un servicio según su modo de cálculo.
+ * Calcula el costo base (precioInterno) de un servicio.
+ * Suma las tarifas de todo el personal activo vinculado a este servicio.
  *
- * - Si modoCalculoCosto === "manual" (o no está definido), retorna precioInterno directamente.
- * - Si modoCalculoCosto === "automatico", suma los costos de recursosNecesarios.
- *   Para recursos de tipo "personal", busca personal con ese rol y toma el promedio de tarifaBase.
+ * @param servicioId - ID del servicio
+ * @param state - Estado global de la app
+ * @returns Costo interno del servicio basado en tarifas del personal
+ */
+export function calcularPrecioInternoServicio(servicioId: string, state: AppState): number {
+  const personalVinculado = state.personal.filter(
+    (p) => p.activo && p.servicioVinculadoId === servicioId
+  )
+
+  return personalVinculado.reduce((total, p) => total + p.tarifaBase, 0)
+}
+
+/**
+ * Calcula el precio de venta (precioOficial) de un servicio.
+ * Aplica el margen de ganancia al precio interno.
  *
  * @param servicio - El servicio a calcular
- * @param state - Estado global de la app para buscar personal
- * @returns El costo calculado del servicio
+ * @param state - Estado global de la app
+ * @returns Precio oficial con margen aplicado
  */
-export function calcularCostoServicio(servicio: Servicio, state: AppState): number {
-  // Si no tiene modo de cálculo o es manual, retornar precio interno directamente
-  if (!servicio.modoCalculoCosto || servicio.modoCalculoCosto === "manual") {
-    return servicio.precioInterno
-  }
+export function calcularPrecioOficialServicio(servicio: Servicio, state: AppState): number {
+  const precioInterno = calcularPrecioInternoServicio(servicio.id, state)
+  const multiplicador = 1 + (servicio.margenGanancia / 100)
+  return precioInterno * multiplicador
+}
 
-  // Modo automático: sumar costos de cada recurso necesario
-  if (!servicio.recursosNecesarios || servicio.recursosNecesarios.length === 0) {
-    return servicio.precioInterno // Fallback si no hay recursos definidos
-  }
+/**
+ * Obtiene los precios calculados de un servicio.
+ * Uso: const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
+ *
+ * @param servicio - El servicio a consultar
+ * @param state - Estado global de la app
+ * @returns Objeto con precioInterno y precioOficial calculados dinámicamente
+ */
+export function obtenerPreciosServicio(servicio: Servicio, state: AppState): {
+  precioInterno: number
+  precioOficial: number
+} {
+  const precioInterno = calcularPrecioInternoServicio(servicio.id, state)
+  const precioOficial = calcularPrecioOficialServicio(servicio, state)
 
-  let costoTotal = 0
-
-  for (const recurso of servicio.recursosNecesarios) {
-    if (recurso.tipo === "personal") {
-      // Buscar personal activo con este rol
-      const personalConRol = state.personal.filter(
-        (p) => p.activo && p.funcion.toLowerCase() === (recurso.rol || "").toLowerCase()
-      )
-
-      if (personalConRol.length > 0) {
-        // Calcular promedio de tarifaBase del personal con ese rol
-        const promedioTarifa =
-          personalConRol.reduce((sum, p) => sum + p.tarifaBase, 0) / personalConRol.length
-        costoTotal += promedioTarifa * recurso.cantidad
-      } else {
-        // Si no hay personal registrado con ese rol, usar costoEstimado del recurso
-        costoTotal += recurso.costoEstimado * recurso.cantidad
-      }
-    } else {
-      // Tipo "insumo": usar costoEstimado directamente
-      costoTotal += recurso.costoEstimado * recurso.cantidad
-    }
-  }
-
-  return costoTotal
+  return { precioInterno, precioOficial }
 }
 
 // ==========================================
@@ -2104,11 +2083,11 @@ export function calcularCostoServicio(servicio: Servicio, state: AppState): numb
 
 /**
  * Genera asignaciones vacías (sin personal asignado) para un servicio
- * a partir de sus recursosNecesarios de tipo "personal".
+ * a partir del personal activo vinculado al servicio.
  *
  * @param evento - El evento al que pertenece el servicio
  * @param servicioEvento - El ServicioEvento dentro del evento
- * @param state - Estado global para buscar el catálogo de servicios
+ * @param state - Estado global para buscar personal vinculado
  * @returns Array de AsignacionPersonal sin personal asignado
  */
 export function generarAsignacionesParaServicio(
@@ -2118,39 +2097,32 @@ export function generarAsignacionesParaServicio(
 ): AsignacionPersonal[] {
   const asignaciones: AsignacionPersonal[] = []
 
-  // Buscar el servicio en el catálogo
   const servicioCatalogo = state.servicios.find(
     (s) => s.id === servicioEvento.servicioId
   )
 
-  // Si no existe en catálogo o no tiene recursos definidos, retornar vacío
-  if (!servicioCatalogo?.recursosNecesarios) {
-    return asignaciones
-  }
+  if (!servicioCatalogo) return asignaciones
 
-  // Generar un ID estable para el ServicioEvento (basado en servicioId)
-  const servicioEventoId = servicioEvento.servicioId
+  // Obtener personal vinculado al servicio
+  const personalVinculado = state.personal.filter(
+    (p) => p.activo && p.servicioVinculadoId === servicioCatalogo.id
+  )
 
-  for (const recurso of servicioCatalogo.recursosNecesarios) {
-    // Solo procesar recursos de tipo "personal"
-    if (recurso.tipo !== "personal") continue
-
-    // Crear N asignaciones según la cantidad requerida
-    for (let i = 0; i < recurso.cantidad; i++) {
-      const asignacion: AsignacionPersonal = {
-        id: generateId(),
-        eventoId: evento.id,
-        servicioEventoId,
-        rolRequerido: recurso.rol || "Sin especificar",
-        personalAsignadoId: null,
-        costoPlaneado: recurso.costoEstimado,
-        costoReal: 0,
-        confirmado: false,
-        fechaAsignacion: new Date().toISOString(),
-      }
-
-      asignaciones.push(asignacion)
+  // Generar una asignación por cada miembro del personal vinculado
+  for (const personal of personalVinculado) {
+    const asignacion: AsignacionPersonal = {
+      id: generateId(),
+      eventoId: evento.id,
+      servicioEventoId: servicioEvento.servicioId,
+      rolRequerido: personal.funcion,
+      personalAsignadoId: null, // Sin asignar inicialmente
+      costoPlaneado: personal.tarifaBase,
+      costoReal: 0,
+      confirmado: false,
+      fechaAsignacion: new Date().toISOString(),
     }
+
+    asignaciones.push(asignacion)
   }
 
   return asignaciones
@@ -2315,4 +2287,48 @@ export function addServicioAEvento(
 
   saveState(state)
   return true
+}
+
+// ==========================================
+// MIGRACIÓN: Servicios con precios fijos → precios dinámicos
+// ==========================================
+
+/**
+ * Migra servicios que aún tienen precioInterno/precioOficial hardcodeados
+ * al nuevo modelo basado en margenGanancia calculado dinámicamente.
+ * Ejecutar UNA VEZ al cargar la app si hay datos legacy.
+ */
+export function migrarServiciosAPreciosDinamicos(state: AppState): void {
+  let cambios = false
+
+  state.servicios.forEach((servicio) => {
+    const s = servicio as Record<string, unknown>
+
+    if ("precioInterno" in s && "precioOficial" in s) {
+      const precioInterno = Number(s.precioInterno) || 0
+      const precioOficial = Number(s.precioOficial) || 0
+
+      if (precioInterno > 0) {
+        const margen = ((precioOficial - precioInterno) / precioInterno) * 100
+        servicio.margenGanancia = Math.round(margen)
+      } else {
+        servicio.margenGanancia = 30
+      }
+
+      delete s.precioInterno
+      delete s.precioOficial
+      delete s.recursosNecesarios
+      delete s.modoCalculoCosto
+      cambios = true
+    }
+
+    if (servicio.margenGanancia === undefined || servicio.margenGanancia === null) {
+      servicio.margenGanancia = 30
+      cambios = true
+    }
+  })
+
+  if (cambios) {
+    saveState(state)
+  }
 }

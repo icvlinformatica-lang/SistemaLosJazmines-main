@@ -16,7 +16,7 @@ import {
   TrendingUp,
   Package
 } from "lucide-react"
-import { calcularTotalesPaquete } from "@/lib/store"
+import { calcularTotalesPaquete, obtenerPreciosServicio } from "@/lib/store"
 import { useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -323,9 +323,10 @@ export default function ServiciosPage() {
                   </thead>
                   <tbody className="divide-y">
                     {servicios.filter(s => s.activo).map((servicio) => {
-                      const ganancia = servicio.precioOficial - servicio.precioInterno
-                      const margen = servicio.precioInterno > 0
-                        ? ((ganancia / servicio.precioInterno) * 100)
+                      const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
+                      const ganancia = precioOficial - precioInterno
+                      const margen = precioInterno > 0
+                        ? ((ganancia / precioInterno) * 100)
                         : 0
 
                       return (
@@ -341,13 +342,13 @@ export default function ServiciosPage() {
                             <Badge variant="outline">{servicio.categoria}</Badge>
                           </td>
                           <td className="px-4 py-3 text-right text-red-600 font-semibold">
-                            {formatearPrecio(servicio.precioInterno)}
+                            {formatearPrecio(precioInterno)}
                             <span className="text-xs text-muted-foreground ml-1">
                               /{servicio.unidad === "Fijo" ? "fijo" : servicio.unidad === "Por Persona" ? "pers" : "hora"}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                            {formatearPrecio(servicio.precioOficial)}
+                            {formatearPrecio(precioOficial)}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
@@ -543,13 +544,13 @@ function DialogoServicio({
     servicio: any
     onGuardar: (data: any) => void
   }) {
+    const { state } = useStore()
     const [formData, setFormData] = useState({
       codigo: servicio?.codigo || "",
       nombre: servicio?.nombre || "",
       descripcion: servicio?.descripcion || "",
       categoria: servicio?.categoria || "Salon y Espacio",
-      precioInterno: servicio?.precioInterno || 0,
-      precioOficial: servicio?.precioOficial || 0,
+      margenGanancia: servicio?.margenGanancia ?? 30,
       unidad: servicio?.unidad || "Fijo",
       proveedor: servicio?.proveedor || "",
       notas: servicio?.notas || "",
@@ -563,8 +564,7 @@ function DialogoServicio({
           nombre: servicio.nombre || "",
           descripcion: servicio.descripcion || "",
           categoria: servicio.categoria || "Salon y Espacio",
-          precioInterno: servicio.precioInterno || 0,
-          precioOficial: servicio.precioOficial || 0,
+          margenGanancia: servicio.margenGanancia ?? 30,
           unidad: servicio.unidad || "Fijo",
           proveedor: servicio.proveedor || "",
           notas: servicio.notas || "",
@@ -576,8 +576,7 @@ function DialogoServicio({
           nombre: "",
           descripcion: "",
           categoria: "Salon y Espacio",
-          precioInterno: 0,
-          precioOficial: 0,
+          margenGanancia: 30,
           unidad: "Fijo",
           proveedor: "",
           notas: "",
@@ -591,10 +590,15 @@ function DialogoServicio({
       onCerrar()
     }
 
-    const ganancia = formData.precioOficial - formData.precioInterno
-    const margen = formData.precioInterno > 0
-      ? ((ganancia / formData.precioInterno) * 100)
+    // Calcular precios dinámicamente si estamos editando un servicio existente
+    const precioInternoCalc = servicio?.id
+      ? state.personal
+          .filter((p: any) => p.activo && p.servicioVinculadoId === servicio.id)
+          .reduce((sum: number, p: any) => sum + p.tarifaBase, 0)
       : 0
+    const precioOficialCalc = precioInternoCalc * (1 + formData.margenGanancia / 100)
+    const ganancia = precioOficialCalc - precioInternoCalc
+    const margen = formData.margenGanancia
 
     return (
       <Dialog open={abierto} onOpenChange={onCerrar}>
