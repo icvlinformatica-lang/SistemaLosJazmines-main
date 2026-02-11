@@ -1001,8 +1001,13 @@ function DialogoPaquete({
                         )
                         const estaSeleccionado = !!servicioIncluido
 
+                        const personalVinculado = state.personal.filter(
+                          (p: any) => p.activo && p.servicioVinculadoId === servicio.id
+                        )
+                        const { precioInterno: piDynamic, precioOficial: poDynamic } = obtenerPreciosServicio(servicio, state)
+
                         return (
-                          <div key={servicio.id} className="border rounded-lg p-3 space-y-2">
+                          <div key={servicio.id} className={`border rounded-lg p-3 space-y-2 ${estaSeleccionado ? "border-primary/50 bg-primary/5" : ""}`}>
                             <div className="flex items-start gap-3">
                               <Checkbox
                                 checked={estaSeleccionado}
@@ -1014,10 +1019,46 @@ function DialogoPaquete({
                                     <p className="font-medium text-sm">{servicio.nombre}</p>
                                     <p className="text-xs text-muted-foreground">{servicio.descripcion}</p>
                                   </div>
-                                  <Badge variant="outline" className="text-xs">
-                                    {servicio.codigo}
-                                  </Badge>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-xs">
+                                      {servicio.codigo}
+                                    </Badge>
+                                  </div>
                                 </div>
+
+                                {/* Personal vinculado - siempre visible */}
+                                {personalVinculado.length > 0 ? (
+                                  <div className="mt-2 space-y-1">
+                                    <p className="text-xs font-medium text-muted-foreground">Personal vinculado:</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {personalVinculado.map((p: any) => (
+                                        <span
+                                          key={p.id}
+                                          className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full"
+                                        >
+                                          <span className="font-medium">{p.nombre} {p.apellido}</span>
+                                          <span className="text-muted-foreground">({p.funcion})</span>
+                                          <span className="text-primary font-semibold">{formatearPrecio(p.tarifaBase)}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="flex gap-4 text-xs mt-1">
+                                      <span className="text-red-600">
+                                        Costo: <span className="font-semibold">{formatearPrecio(piDynamic)}</span>
+                                      </span>
+                                      <span className="text-green-600">
+                                        Venta: <span className="font-semibold">{formatearPrecio(poDynamic)}</span>
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        Margen: {servicio.margenGanancia}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-amber-600 mt-1">
+                                    Sin personal vinculado - asigna personal desde la seccion Personal
+                                  </p>
+                                )}
                               </div>
                             </div>
 
