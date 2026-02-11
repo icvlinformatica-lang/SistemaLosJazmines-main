@@ -37,7 +37,6 @@ export default function ServiciosPage() {
     addServicio,
     updateServicio,
     deleteServicio,
-    state,
   } = useStore()
 
   const [tabActual, setTabActual] = useState<"quinta" | "casona" | "salon" | "catalogo">("quinta")
