@@ -1951,3 +1951,222 @@ export function calcularCostoServicio(servicio: Servicio, state: AppState): numb
 
   return costoTotal
 }
+
+// ==========================================
+// FUNCIONES DE GESTIÓN DE ASIGNACIONES DE PERSONAL
+// ==========================================
+
+/**
+ * Genera asignaciones vacías (sin personal asignado) para un servicio
+ * a partir de sus recursosNecesarios de tipo "personal".
+ *
+ * @param evento - El evento al que pertenece el servicio
+ * @param servicioEvento - El ServicioEvento dentro del evento
+ * @param state - Estado global para buscar el catálogo de servicios
+ * @returns Array de AsignacionPersonal sin personal asignado
+ */
+export function generarAsignacionesParaServicio(
+  evento: EventoGuardado,
+  servicioEvento: ServicioEvento,
+  state: AppState
+): AsignacionPersonal[] {
+  const asignaciones: AsignacionPersonal[] = []
+
+  // Buscar el servicio en el catálogo
+  const servicioCatalogo = state.servicios.find(
+    (s) => s.id === servicioEvento.servicioId
+  )
+
+  // Si no existe en catálogo o no tiene recursos definidos, retornar vacío
+  if (!servicioCatalogo?.recursosNecesarios) {
+    return asignaciones
+  }
+
+  // Generar un ID estable para el ServicioEvento (basado en servicioId)
+  const servicioEventoId = servicioEvento.servicioId
+
+  for (const recurso of servicioCatalogo.recursosNecesarios) {
+    // Solo procesar recursos de tipo "personal"
+    if (recurso.tipo !== "personal") continue
+
+    // Crear N asignaciones según la cantidad requerida
+    for (let i = 0; i < recurso.cantidad; i++) {
+      const asignacion: AsignacionPersonal = {
+        id: generateId(),
+        eventoId: evento.id,
+        servicioEventoId,
+        rolRequerido: recurso.rol || "Sin especificar",
+        personalAsignadoId: null,
+        costoPlaneado: recurso.costoEstimado,
+        costoReal: 0,
+        confirmado: false,
+        fechaAsignacion: new Date().toISOString(),
+      }
+
+      asignaciones.push(asignacion)
+    }
+  }
+
+  return asignaciones
+}
+
+/**
+ * Asigna un miembro del personal a una asignación existente en un evento.
+ * Actualiza costos, estado de confirmación y recalcula costos del evento.
+ *
+ * @param state - Estado global mutable
+ * @param eventoId - ID del evento
+ * @param asignacionId - ID de la asignación a cubrir
+ * @param personalId - ID del personal a asignar
+ * @returns true si la asignación fue exitosa, false en caso de error
+ */
+export function asignarPersonalAEvento(
+  state: AppState,
+  eventoId: string,
+  asignacionId: string,
+  personalId: string
+): boolean {
+  // Buscar el evento
+  const evento = state.eventos.find((e) => e.id === eventoId)
+  if (!evento) return false
+
+  // Buscar la asignación dentro del evento
+  const asignacion = evento.asignaciones?.find((a) => a.id === asignacionId)
+  if (!asignacion) return false
+
+  // Buscar el personal
+  const personal = state.personal.find((p) => p.id === personalId)
+  if (!personal) return false
+
+  // Actualizar la asignación
+  asignacion.personalAsignadoId = personalId
+  asignacion.personalNombre = `${personal.nombre} ${personal.apellido}`
+  asignacion.costoReal = personal.tarifaBase
+  asignacion.confirmado = true
+  asignacion.fechaAsignacion = new Date().toISOString()
+
+  // Recalcular costos del evento
+  evento.costosCalculados = calcularCostosEvento(evento)
+
+  saveState(state)
+  return true
+}
+
+/**
+ * Desasigna un miembro del personal de una asignación en un evento.
+ * Si existe un pago asociado pendiente, lo elimina. Recalcula costos.
+ *
+ * @param state - Estado global mutable
+ * @param eventoId - ID del evento
+ * @param asignacionId - ID de la asignación a liberar
+ * @returns true si la desasignación fue exitosa, false en caso de error
+ */
+export function desasignarPersonalDeEvento(
+  state: AppState,
+  eventoId: string,
+  asignacionId: string
+): boolean {
+  // Buscar el evento
+  const evento = state.eventos.find((e) => e.id === eventoId)
+  if (!evento) return false
+
+  // Buscar la asignación dentro del evento
+  const asignacion = evento.asignaciones?.find((a) => a.id === asignacionId)
+  if (!asignacion) return false
+
+  // Eliminar pago asociado si existe y está pendiente
+  const indicePago = state.pagosPersonal.findIndex(
+    (p) =>
+      p.asignacionId === asignacionId &&
+      p.eventoId === eventoId &&
+      (p.estado === "pendiente" || p.estado === "vencido")
+  )
+  if (indicePago !== -1) {
+    state.pagosPersonal.splice(indicePago, 1)
+  }
+
+  // Limpiar la asignación
+  asignacion.personalAsignadoId = null
+  asignacion.personalNombre = undefined
+  asignacion.costoReal = 0
+  asignacion.confirmado = false
+
+  // Recalcular costos del evento
+  evento.costosCalculados = calcularCostosEvento(evento)
+
+  saveState(state)
+  return true
+}
+
+/**
+ * Calcula el resumen de costos de un evento basado en sus asignaciones.
+ *
+ * @param evento - El evento con asignaciones
+ * @returns Objeto con costoPlaneado, costoReal y diferencia
+ */
+export function calcularCostosEvento(
+  evento: EventoGuardado
+): { costoPlaneado: number; costoReal: number; diferencia: number } {
+  const asignaciones = evento.asignaciones || []
+
+  const costoPlaneado = asignaciones.reduce(
+    (sum, a) => sum + a.costoPlaneado,
+    0
+  )
+  const costoReal = asignaciones.reduce(
+    (sum, a) => sum + a.costoReal,
+    0
+  )
+
+  return {
+    costoPlaneado,
+    costoReal,
+    diferencia: costoPlaneado - costoReal,
+  }
+}
+
+/**
+ * Agrega un servicio a un evento y genera automáticamente las asignaciones
+ * de personal según los recursosNecesarios del servicio en catálogo.
+ *
+ * @param state - Estado global mutable
+ * @param eventoId - ID del evento al que agregar el servicio
+ * @param servicioEvento - El ServicioEvento a agregar
+ * @returns true si se agregó correctamente, false en caso de error
+ */
+export function addServicioAEvento(
+  state: AppState,
+  eventoId: string,
+  servicioEvento: ServicioEvento
+): boolean {
+  // Buscar el evento
+  const evento = state.eventos.find((e) => e.id === eventoId)
+  if (!evento) return false
+
+  // Inicializar arrays si no existen
+  if (!evento.servicios) {
+    evento.servicios = []
+  }
+  if (!evento.asignaciones) {
+    evento.asignaciones = []
+  }
+
+  // Agregar el servicio al evento
+  evento.servicios.push(servicioEvento)
+
+  // Generar asignaciones automáticas para este servicio
+  const nuevasAsignaciones = generarAsignacionesParaServicio(
+    evento,
+    servicioEvento,
+    state
+  )
+
+  // Agregar las asignaciones al evento
+  evento.asignaciones.push(...nuevasAsignaciones)
+
+  // Recalcular costos del evento
+  evento.costosCalculados = calcularCostosEvento(evento)
+
+  saveState(state)
+  return true
+}
