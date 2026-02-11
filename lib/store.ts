@@ -163,6 +163,56 @@ export interface PagoEvento {
   vuelto?: number
 }
 
+// --- Recursos y Asignaciones de Personal ---
+
+/**
+ * Define qué recursos necesita un servicio para funcionar.
+ * Puede ser personal (Mozo, DJ, etc.) o un insumo específico.
+ */
+export interface RecursoNecesario {
+  /** Tipo de recurso: personal humano o insumo material */
+  tipo: "personal" | "insumo"
+  /** Rol requerido si tipo === "personal" (ej: "Mozo", "Bartender", "DJ") */
+  rol?: string
+  /** Cantidad de este recurso (ej: 2 mozos, 3 kg de hielo) */
+  cantidad: number
+  /** ID de un PersonalEvento específico (asignación directa opcional) */
+  personalEspecifico?: string
+  /** ID de un insumo del catálogo si tipo === "insumo" */
+  insumoId?: string
+  /** Cantidad estimada del insumo (en su unidad de stock) */
+  cantidadEstimada?: number
+  /** Costo estimado de este recurso */
+  costoEstimado: number
+}
+
+/**
+ * Tracking de asignación de personal a un evento/servicio específico.
+ * Permite saber quién trabaja en cada evento y comparar costos planeados vs reales.
+ */
+export interface AsignacionPersonal {
+  id: string
+  eventoId: string
+  /** ID del ServicioEvento dentro del evento */
+  servicioEventoId: string
+  /** Rol que se requiere cubrir (ej: "Mozo", "Bartender") */
+  rolRequerido: string
+  /** ID del personal asignado (null si aún no se asignó) */
+  personalAsignadoId: string | null
+  /** Nombre del personal para visualización rápida */
+  personalNombre?: string
+  /** Costo planeado según el servicio */
+  costoPlaneado: number
+  /** Costo real según la tarifa del personal asignado */
+  costoReal: number
+  /** Si el personal confirmó su asistencia */
+  confirmado: boolean
+  /** Fecha en que se realizó la asignación (ISO string) */
+  fechaAsignacion: string
+  /** Notas adicionales sobre esta asignación */
+  notas?: string
+}
+
 // --- Servicios ---
 
 export type CategoriaServicio =
@@ -190,6 +240,12 @@ export interface Servicio {
   proveedor?: string
   notas?: string
   activo: boolean
+
+  // --- Extensiones para cálculo automático de costos ---
+  /** Recursos necesarios para prestar este servicio (personal, insumos) */
+  recursosNecesarios?: RecursoNecesario[]
+  /** Modo de cálculo: "manual" usa precioInterno directamente, "automatico" suma costos de recursos */
+  modoCalculoCosto?: "automatico" | "manual"
 }
 
 export interface ServicioEvento {
@@ -246,6 +302,19 @@ export interface EventoGuardado extends Evento {
   pagos?: PagoEvento[]
   planCuotas?: number
   montoTotalPlan?: number
+
+  // --- Extensiones para asignaciones y costos calculados ---
+  /** Asignaciones de personal a los servicios de este evento */
+  asignaciones?: AsignacionPersonal[]
+  /** Resumen de costos calculados automáticamente */
+  costosCalculados?: {
+    /** Suma de costos planeados (según servicios) */
+    costoPlaneado: number
+    /** Suma de costos reales (según personal asignado) */
+    costoReal: number
+    /** Diferencia entre planeado y real (positivo = ahorro, negativo = exceso) */
+    diferencia: number
+  }
 }
 
 export interface EventoHistorial {
@@ -376,6 +445,10 @@ export interface PagoPersonal {
   firmaEmpresa?: string // base64 de la firma
   comprobanteFirmado?: boolean
   notasPago?: string
+
+  // --- Extensión para vincular con asignación ---
+  /** ID de la AsignacionPersonal relacionada (si existe) */
+  asignacionId?: string
 }
 
 export interface AppState {
@@ -396,6 +469,8 @@ export interface AppState {
   // NUEVAS LÍNEAS PARA PERSONAL Y PAGOS:
   personal: PersonalEvento[]
   pagosPersonal: PagoPersonal[]
+  // Asignaciones globales de personal a eventos
+  asignaciones: AsignacionPersonal[]
 }
 
 export interface CalculoCompra {
@@ -1054,6 +1129,7 @@ export function loadState(): AppState {
     temporadas: [],
     personal: [],
     pagosPersonal: [],
+    asignaciones: [],
   }
 
   if (typeof window === "undefined") {
@@ -1078,6 +1154,7 @@ export function loadState(): AppState {
         temporadas: parsed.temporadas || [],
         personal: parsed.personal || [],
         pagosPersonal: parsed.pagosPersonal || [],
+        asignaciones: parsed.asignaciones || [],
       }
     } catch {
       return defaultState
@@ -1820,4 +1897,57 @@ export function actualizarEstadoPagos(state: AppState): void {
   if (cambios) {
     saveState(state)
   }
+}
+
+// ==========================================
+// FUNCIONES HELPER: CÁLCULO AUTOMÁTICO DE COSTOS
+// ==========================================
+
+/**
+ * Calcula el costo de un servicio según su modo de cálculo.
+ *
+ * - Si modoCalculoCosto === "manual" (o no está definido), retorna precioInterno directamente.
+ * - Si modoCalculoCosto === "automatico", suma los costos de recursosNecesarios.
+ *   Para recursos de tipo "personal", busca personal con ese rol y toma el promedio de tarifaBase.
+ *
+ * @param servicio - El servicio a calcular
+ * @param state - Estado global de la app para buscar personal
+ * @returns El costo calculado del servicio
+ */
+export function calcularCostoServicio(servicio: Servicio, state: AppState): number {
+  // Si no tiene modo de cálculo o es manual, retornar precio interno directamente
+  if (!servicio.modoCalculoCosto || servicio.modoCalculoCosto === "manual") {
+    return servicio.precioInterno
+  }
+
+  // Modo automático: sumar costos de cada recurso necesario
+  if (!servicio.recursosNecesarios || servicio.recursosNecesarios.length === 0) {
+    return servicio.precioInterno // Fallback si no hay recursos definidos
+  }
+
+  let costoTotal = 0
+
+  for (const recurso of servicio.recursosNecesarios) {
+    if (recurso.tipo === "personal") {
+      // Buscar personal activo con este rol
+      const personalConRol = state.personal.filter(
+        (p) => p.activo && p.funcion.toLowerCase() === (recurso.rol || "").toLowerCase()
+      )
+
+      if (personalConRol.length > 0) {
+        // Calcular promedio de tarifaBase del personal con ese rol
+        const promedioTarifa =
+          personalConRol.reduce((sum, p) => sum + p.tarifaBase, 0) / personalConRol.length
+        costoTotal += promedioTarifa * recurso.cantidad
+      } else {
+        // Si no hay personal registrado con ese rol, usar costoEstimado del recurso
+        costoTotal += recurso.costoEstimado * recurso.cantidad
+      }
+    } else {
+      // Tipo "insumo": usar costoEstimado directamente
+      costoTotal += recurso.costoEstimado * recurso.cantidad
+    }
+  }
+
+  return costoTotal
 }
