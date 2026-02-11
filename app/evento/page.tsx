@@ -324,7 +324,6 @@ function EventoPageContent() {
           servicioId: si.servicioId,
           nombre: si.nombre,
           cantidad: si.cantidad || 1,
-          precioUnitario: si.precioOficial,
           unidad: si.unidad,
           notas: `Paquete: ${paq.nombre}`,
           proveedor: undefined,
@@ -701,7 +700,7 @@ function EventoPageContent() {
   const costoTotalMateriaPrima = compras.reduce((sum, c) => sum + c.costoMateriaPrima, 0) + comprasBarras.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
   const presupuestoCompra = compras.reduce((sum, c) => sum + c.costoEstimado, 0) + comprasBarras.reduce((sum, c) => sum + c.costoEstimado, 0)
   const serviciosEvento = evento.servicios || []
-  const costoServicios = costoPaquetesOficial > 0 ? costoPaquetesOficial : calcularCostoServicios(serviciosEvento)
+  const costoServicios = costoPaquetesOficial > 0 ? costoPaquetesOficial : calcularCostoServicios(serviciosEvento, state)
   const costoOperativo = calcularCostosOperativos(evento, costosOperativos || [])
 
   const barras = evento.barras || []

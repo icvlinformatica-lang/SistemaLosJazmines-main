@@ -9,7 +9,10 @@ import type {
   EventoGuardado,
   PagoPersonal,
   PersonalEvento,
+  Servicio,
+  AppState,
 } from "./store"
+import { obtenerPreciosServicio } from "./store"
 
 // ==========================================
 // FUNCIONES DE FORMATO
@@ -89,7 +92,8 @@ export function generarEgresosUnificados(
   eventos: EventoGuardado[],
   pagosPersonal: PagoPersonal[],
   personal: PersonalEvento[],
-  diasAnticipacion: number = 7
+  diasAnticipacion: number = 7,
+  state?: AppState
 ): EgresoUnificado[] {
   const egresos: EgresoUnificado[] = []
   const hoy = new Date()
@@ -167,7 +171,13 @@ export function generarEgresosUnificados(
           id: `srv-${evento.id}-${idx}`,
           tipo: "servicio-evento",
           concepto: servicio.nombre,
-          monto: servicio.precioUnitario * servicio.cantidad,
+          monto: (() => {
+            if (!state) return 0
+            const srv = state.servicios.find((s) => s.id === servicio.servicioId)
+            if (!srv) return 0
+            const { precioOficial } = obtenerPreciosServicio(srv, state)
+            return precioOficial * servicio.cantidad
+          })(),
           estado,
           fechaVencimiento: fechaVencStr,
           diasRestantes: diasRest,

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useStore } from "@/lib/store-context"
-import { formatCurrency } from "@/lib/store"
+import { formatCurrency, obtenerPreciosServicio } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -55,7 +55,7 @@ interface VencimientoServicio {
 type VencimientoItem = VencimientoGastoFijo | VencimientoServicio
 
 export default function VencimientosPage() {
-  const { costosOperativos, eventos, updateEvento } = useStore()
+  const { costosOperativos, eventos, updateEvento, state } = useStore()
   const [filtro, setFiltro] = useState<"todos" | "pendientes" | "pagados">("todos")
   const [diasAnticipacion, setDiasAnticipacion] = useState(7)
   const [editDiasDialog, setEditDiasDialog] = useState(false)
@@ -97,7 +97,12 @@ export default function VencimientosPage() {
           servicioIdx: idx,
           servicioNombre: srv.nombre,
           proveedor: srv.proveedor,
-          monto: srv.precioUnitario * srv.cantidad,
+          monto: (() => {
+            const servicioCat = state.servicios.find((s: any) => s.id === srv.servicioId)
+            if (!servicioCat) return 0
+            const { precioOficial } = obtenerPreciosServicio(servicioCat, state)
+            return precioOficial * srv.cantidad
+          })(),
           pagado: srv.pagado || false,
           fechaLimite: srv.fechaLimitePago || limitDate.toISOString().split("T")[0],
         })

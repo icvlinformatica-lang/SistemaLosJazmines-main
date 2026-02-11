@@ -36,7 +36,8 @@ export default function ServiciosPage() {
     deletePaqueteSalon,
     addServicio,
     updateServicio,
-    deleteServicio
+    deleteServicio,
+    state,
   } = useStore()
 
   const [tabActual, setTabActual] = useState<"quinta" | "casona" | "salon" | "catalogo">("quinta")
@@ -685,69 +686,62 @@ function DialogoServicio({
               </div>
             </div>
 
-            {/* Precios */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-red-600">Precio Interno (Costo)</Label>
-                <Input
-                  type="number"
-                  value={formData.precioInterno}
-                  onChange={(e) => setFormData({ ...formData, precioInterno: parseFloat(e.target.value) || 0 })}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Lo que te cuesta realmente
-                </p>
-              </div>
-              <div>
-                <Label className="text-green-600">Precio Oficial (Venta)</Label>
-                <Input
-                  type="number"
-                  value={formData.precioOficial}
-                  onChange={(e) => setFormData({ ...formData, precioOficial: parseFloat(e.target.value) || 0 })}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Lo que cobras al cliente
-                </p>
-              </div>
+            {/* Margen de Ganancia */}
+            <div>
+              <Label>Margen de Ganancia (%)</Label>
+              <Input
+                type="number"
+                value={formData.margenGanancia}
+                onChange={(e) => setFormData({ ...formData, margenGanancia: parseFloat(e.target.value) || 0 })}
+                placeholder="30"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se aplica sobre el costo del personal vinculado
+              </p>
             </div>
 
-            {/* Cálculo de Ganancia */}
+            {/* Cálculo de Precios Dinámicos */}
             <Card className="bg-muted/50">
               <CardContent className="pt-4">
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
-                    <p className="text-xs text-muted-foreground">Ganancia</p>
-                    <p className="text-lg font-bold text-blue-600">
+                    <p className="text-xs text-muted-foreground">Costo (Personal)</p>
+                    <p className="text-lg font-bold text-red-600">
                       {new Intl.NumberFormat('es-AR', {
                         style: 'currency',
                         currency: 'ARS',
                         minimumFractionDigits: 0
-                      }).format(ganancia)}
+                      }).format(precioInternoCalc)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Margen</p>
+                    <p className="text-xs text-muted-foreground">Precio Venta</p>
+                    <p className="text-lg font-bold text-green-600">
+                      {new Intl.NumberFormat('es-AR', {
+                        style: 'currency',
+                        currency: 'ARS',
+                        minimumFractionDigits: 0
+                      }).format(precioOficialCalc)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Ganancia</p>
                     <p className="text-lg font-bold">
                       <Badge className={
                         margen >= 15 ? "bg-green-500" :
                           margen >= 10 ? "bg-yellow-500" :
                             "bg-red-500"
                       }>
-                        {margen.toFixed(1)}%
+                        {margen}%
                       </Badge>
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Factor</p>
-                    <p className="text-lg font-bold">
-                      {formData.precioInterno > 0
-                        ? (formData.precioOficial / formData.precioInterno).toFixed(2)
-                        : "0.00"}x
-                    </p>
-                  </div>
                 </div>
+                {precioInternoCalc === 0 && servicio?.id && (
+                  <p className="text-xs text-amber-600 text-center mt-2">
+                    No hay personal vinculado. Vincula personal desde la seccion Personal.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -846,6 +840,7 @@ function DialogoPaquete({
         // Agregar
         const servicio = servicios.find(s => s.id === servicioId)
         if (servicio) {
+          const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
           setFormData({
             ...formData,
             serviciosIncluidos: [
@@ -856,8 +851,8 @@ function DialogoPaquete({
                 categoria: servicio.categoria,
                 unidad: servicio.unidad,
                 cantidad: 1,
-                precioInterno: servicio.precioInterno,
-                precioOficial: servicio.precioOficial
+                precioInterno,
+                precioOficial
               }
             ]
           })
@@ -875,13 +870,23 @@ function DialogoPaquete({
     }
 
     const handleGuardar = () => {
-      // Calcular totales
+      // Calcular totales usando precios dinámicos con snapshot del paquete
       const costoTotal = formData.serviciosIncluidos.reduce(
-        (sum: number, si: any) => sum + (si.precioInterno * si.cantidad),
+        (sum: number, si: any) => {
+          const srv = servicios.find((s: any) => s.id === si.servicioId)
+          if (!srv) return sum + (si.precioInterno || 0) * si.cantidad
+          const { precioInterno } = obtenerPreciosServicio(srv, state)
+          return sum + precioInterno * si.cantidad
+        },
         0
       )
       const precioOficial = formData.serviciosIncluidos.reduce(
-        (sum: number, si: any) => sum + (si.precioOficial * si.cantidad),
+        (sum: number, si: any) => {
+          const srv = servicios.find((s: any) => s.id === si.servicioId)
+          if (!srv) return sum + (si.precioOficial || 0) * si.cantidad
+          const { precioOficial: po } = obtenerPreciosServicio(srv, state)
+          return sum + po * si.cantidad
+        },
         0
       )
       const ganancia = precioOficial - costoTotal
@@ -1037,12 +1042,9 @@ function DialogoPaquete({
                                   <Input
                                     type="number"
                                     value={servicioIncluido.precioInterno}
-                                    onChange={(e) => updateServicioIncluido(
-                                      servicio.id,
-                                      'precioInterno',
-                                      parseFloat(e.target.value) || 0
-                                    )}
-                                    className="h-8"
+                                    readOnly
+                                    className="h-8 bg-muted"
+                                    title="Calculado desde tarifas del personal vinculado"
                                   />
                                 </div>
                                 <div>
@@ -1050,12 +1052,9 @@ function DialogoPaquete({
                                   <Input
                                     type="number"
                                     value={servicioIncluido.precioOficial}
-                                    onChange={(e) => updateServicioIncluido(
-                                      servicio.id,
-                                      'precioOficial',
-                                      parseFloat(e.target.value) || 0
-                                    )}
-                                    className="h-8"
+                                    readOnly
+                                    className="h-8 bg-muted"
+                                    title="Calculado con margen de ganancia"
                                   />
                                 </div>
                               </div>
