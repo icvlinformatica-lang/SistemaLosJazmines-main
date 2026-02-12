@@ -321,33 +321,41 @@ function generateContractHTML(
 <p><strong>3) <span class="section-title">Forma de pago:</span></strong></p>
 <div class="clause" style="margin-left:20px;">
   ${cuotasInfo || `<p>En este acto se abona la suma de (PESOS ________________) en concepto de sena y el saldo de PESOS ________________ a cancelar en _____ cuotas. Las cuotas se ajustan mensualmente segun indice IPC Nacional.</p>`}
-  ${planCuotas && planCuotas.numeroCuotas > 0 && planCuotas.fechaInicioPlan ? `
+  ${modalidadPago !== "completo" && planCuotas && planCuotas.numeroCuotas > 0 && planCuotas.fechaInicioPlan ? `
   <div style="margin-top:12px;">
-    <p style="font-weight:bold;margin-bottom:4px;">Calendario de cuotas:</p>
+    <p style="font-weight:bold;margin-bottom:4px;">Calendario de pagos:</p>
     <table style="width:100%;border-collapse:collapse;font-size:10pt;">
       <thead>
         <tr>
-          <th style="border:1px solid #999;padding:4px 8px;text-align:left;background:#f0f0f0;">Cuota</th>
-          <th style="border:1px solid #999;padding:4px 8px;text-align:left;background:#f0f0f0;">Fecha Vencimiento</th>
-          <th style="border:1px solid #999;padding:4px 8px;text-align:right;background:#f0f0f0;">Monto Base</th>
+          <th style="border:1px solid #999;padding:4px 8px;text-align:left;background:#f0f0f0;">Concepto</th>
+          <th style="border:1px solid #999;padding:4px 8px;text-align:left;background:#f0f0f0;">Fecha</th>
+          <th style="border:1px solid #999;padding:4px 8px;text-align:right;background:#f0f0f0;">Monto</th>
         </tr>
       </thead>
       <tbody>
+        ${modalidadPago === "sena" && montoSena > 0 ? `<tr style="background:#f8faf8;">
+            <td style="border:1px solid #999;padding:4px 8px;font-weight:bold;">Sena (al firmar contrato)</td>
+            <td style="border:1px solid #999;padding:4px 8px;">Al firmar</td>
+            <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-family:monospace;font-weight:bold;">${formatCurrency(montoSena)}</td>
+          </tr>` : ""}
         ${Array.from({ length: planCuotas.numeroCuotas }).map((_, idx) => {
           const cuotaNum = idx + 1
           const fechaCuota = calcularFechaCuota(planCuotas.fechaInicioPlan, cuotaNum, planCuotas.diaVencimiento || 10)
-          const monto = planCuotas.montoCuota || Math.round(planCuotas.montoTotal / planCuotas.numeroCuotas)
           return `<tr>
             <td style="border:1px solid #999;padding:4px 8px;">Cuota ${cuotaNum}</td>
             <td style="border:1px solid #999;padding:4px 8px;">${fechaCuota}</td>
-            <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-family:monospace;">${formatCurrency(monto)}</td>
+            <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-family:monospace;">${formatCurrency(montoCuotaCalc)}</td>
           </tr>`
         }).join("")}
       </tbody>
       <tfoot>
+        ${porcentajeRecargo > 0 ? `<tr>
+          <td colspan="2" style="border:1px solid #999;padding:4px 8px;text-align:right;font-size:9pt;color:#666;">Recargo por financiacion (${porcentajeRecargo}%):</td>
+          <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-family:monospace;font-size:9pt;color:#666;">${formatCurrency(importeRecargo)}</td>
+        </tr>` : ""}
         <tr>
           <td colspan="2" style="border:1px solid #999;padding:4px 8px;font-weight:bold;text-align:right;">Total:</td>
-          <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-weight:bold;font-family:monospace;">${formatCurrency(planCuotas.montoTotal)}</td>
+          <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-weight:bold;font-family:monospace;">${formatCurrency(totalFinalContrato)}</td>
         </tr>
       </tfoot>
     </table>
@@ -522,14 +530,46 @@ function ContractPreview({
             </div>
 
             {/* Forma de Pago */}
-            {evento.planDeCuotas && evento.planDeCuotas.numeroCuotas > 0 && (
-              <div>
-                <p className="font-bold">3) <span className="underline">Forma de pago:</span></p>
-                <div className="ml-5 mt-2 text-sm">
-                  <p>Total: {formatCurrency(evento.planDeCuotas.montoTotal)} en {evento.planDeCuotas.numeroCuotas} cuotas + IPC</p>
+            {evento.planDeCuotas && evento.planDeCuotas.montoTotal > 0 && (() => {
+              const plan = evento.planDeCuotas
+              const mod = plan.modalidadPago || "cuotas"
+              const sena = plan.montoSena || 0
+              const recargo = plan.porcentajeRecargo || 0
+              const financiado = mod === "sena" ? Math.max(0, plan.montoTotal - sena) : plan.montoTotal
+              const recargoMonto = financiado * (recargo / 100)
+              const conRecargo = financiado + recargoMonto
+              const cuotasEf = mod === "completo" ? 1 : plan.numeroCuotas
+              const montoCuota = cuotasEf > 0 ? conRecargo / cuotasEf : 0
+              const totalFinal = (mod === "sena" ? sena : 0) + conRecargo
+
+              return (
+                <div>
+                  <p className="font-bold">3) <span className="underline">Forma de pago:</span></p>
+                  <div className="ml-5 mt-2 space-y-1 text-sm">
+                    <p>
+                      <span className="font-medium">Modalidad:</span>{" "}
+                      {mod === "completo" ? "Pago completo" : mod === "sena" ? "Sena + Cuotas" : "Financiado en cuotas"}
+                    </p>
+                    <p>Precio del evento: {formatCurrency(plan.montoTotal)}</p>
+                    {mod === "sena" && sena > 0 && (
+                      <p className="text-emerald-700">Sena al firmar: {formatCurrency(sena)}</p>
+                    )}
+                    {mod !== "completo" && (
+                      <>
+                        <p>Monto financiado: {formatCurrency(financiado)}</p>
+                        {recargo > 0 && (
+                          <p className="text-amber-700">Recargo por financiacion ({recargo}%): +{formatCurrency(recargoMonto)}</p>
+                        )}
+                        <p className="font-semibold">
+                          {cuotasEf} cuotas de {formatCurrency(montoCuota)} + IPC
+                        </p>
+                      </>
+                    )}
+                    <p className="font-bold border-t border-border pt-1">Total final: {formatCurrency(totalFinal)}</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Servicios */}
             {serviciosIncluidos.length > 0 && (
@@ -747,8 +787,14 @@ export default function ContratosPage() {
                       <Badge variant={selectedEvento.contrato?.nombreCompleto ? "default" : "outline"} className="text-xs">
                         {selectedEvento.contrato?.nombreCompleto ? "Cliente cargado" : "Sin datos cliente"}
                       </Badge>
-                      <Badge variant={selectedEvento.planDeCuotas?.numeroCuotas ? "default" : "outline"} className="text-xs">
-                        {selectedEvento.planDeCuotas?.numeroCuotas ? `${selectedEvento.planDeCuotas.numeroCuotas} cuotas` : "Sin plan cuotas"}
+                      <Badge variant={selectedEvento.planDeCuotas?.montoTotal ? "default" : "outline"} className="text-xs">
+                        {selectedEvento.planDeCuotas?.montoTotal
+                          ? selectedEvento.planDeCuotas.modalidadPago === "completo"
+                            ? "Pago completo"
+                            : selectedEvento.planDeCuotas.modalidadPago === "sena"
+                              ? `Sena + ${selectedEvento.planDeCuotas.numeroCuotas} cuotas`
+                              : `${selectedEvento.planDeCuotas.numeroCuotas} cuotas${selectedEvento.planDeCuotas.porcentajeRecargo ? ` (+${selectedEvento.planDeCuotas.porcentajeRecargo}%)` : ""}`
+                          : "Sin plan de pago"}
                       </Badge>
                       <Badge variant={serviciosIncluidos.length > 0 ? "default" : "outline"} className="text-xs">
                         {serviciosIncluidos.length > 0 ? `${serviciosIncluidos.length} servicios` : "Sin servicios"}
@@ -783,7 +829,7 @@ export default function ContratosPage() {
         </Card>
 
         {/* Info about missing data */}
-        {selectedEvento && (!selectedEvento.contrato?.nombreCompleto || !selectedEvento.planDeCuotas?.numeroCuotas) && (
+        {selectedEvento && (!selectedEvento.contrato?.nombreCompleto || !selectedEvento.planDeCuotas?.montoTotal) && (
           <Card>
             <CardContent className="p-5">
               <p className="text-sm text-muted-foreground">
