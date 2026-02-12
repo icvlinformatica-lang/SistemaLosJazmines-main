@@ -39,6 +39,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Slider } from "@/components/ui/slider"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
@@ -80,6 +82,11 @@ import {
   UtensilsCrossed,
   Phone,
   Package,
+  Percent,
+  CreditCard,
+  Banknote,
+  Receipt,
+  Info,
 } from "lucide-react"
 
 function EventoPageContent() {
@@ -153,6 +160,7 @@ function EventoPageContent() {
   const [localNombre, setLocalNombre] = useState("")
   const [localFecha, setLocalFecha] = useState("")
   const [localHorario, setLocalHorario] = useState("")
+  const [localHorarioFin, setLocalHorarioFin] = useState("")
   const [localNombrePareja, setLocalNombrePareja] = useState("")
   const [localDniNovio1, setLocalDniNovio1] = useState("")
   const [localDniNovio2, setLocalDniNovio2] = useState("")
@@ -169,12 +177,16 @@ function EventoPageContent() {
   const [localContratoEmail, setLocalContratoEmail] = useState("")
   const [localContratoDireccion, setLocalContratoDireccion] = useState("")
   const [localContratoFechaNac, setLocalContratoFechaNac] = useState("")
+  const [localCondicionIVA, setLocalCondicionIVA] = useState<string>("Consumidor Final")
 
   // Plan de cuotas local state
   const [localMontoTotal, setLocalMontoTotal] = useState(0)
   const [localNumeroCuotas, setLocalNumeroCuotas] = useState(1)
   const [localDiaVencimiento, setLocalDiaVencimiento] = useState(10)
   const [localFechaInicioPlan, setLocalFechaInicioPlan] = useState("")
+  const [localModalidadPago, setLocalModalidadPago] = useState<"completo" | "sena" | "cuotas">("cuotas")
+  const [localMontoSena, setLocalMontoSena] = useState(0)
+  const [localPorcentajeRecargo, setLocalPorcentajeRecargo] = useState(0)
   const [expandedPaquetes, setExpandedPaquetes] = useState<Record<string, boolean>>({})
 
   // Sincronizar estado local cuando cambia el evento (al cargar)
@@ -183,6 +195,7 @@ function EventoPageContent() {
       setLocalNombre(evento.nombre || "")
       setLocalFecha(evento.fecha || "")
       setLocalHorario(evento.horario || "")
+      setLocalHorarioFin(evento.horarioFin || "")
       setLocalNombrePareja(evento.nombrePareja || "")
       setLocalDniNovio1(evento.dniNovio1 || "")
       setLocalDniNovio2(evento.dniNovio2 || "")
@@ -198,11 +211,15 @@ function EventoPageContent() {
       setLocalContratoEmail(evento.contrato?.email || "")
       setLocalContratoDireccion(evento.contrato?.direccion || "")
       setLocalContratoFechaNac(evento.contrato?.fechaNacimiento || "")
+      setLocalCondicionIVA(evento.condicionIVA || "Consumidor Final")
       // Plan de cuotas
       setLocalMontoTotal(evento.planDeCuotas?.montoTotal || 0)
       setLocalNumeroCuotas(evento.planDeCuotas?.numeroCuotas || 1)
       setLocalDiaVencimiento(evento.planDeCuotas?.diaVencimiento || 10)
       setLocalFechaInicioPlan(evento.planDeCuotas?.fechaInicioPlan || "")
+      setLocalModalidadPago(evento.planDeCuotas?.modalidadPago || "cuotas")
+      setLocalMontoSena(evento.planDeCuotas?.montoSena || 0)
+      setLocalPorcentajeRecargo(evento.planDeCuotas?.porcentajeRecargo || 0)
     }
   }, [evento?.id, editingEventoId]) // Solo cuando cambia el ID del evento o el parámetro de edición
 
@@ -409,8 +426,10 @@ function EventoPageContent() {
       nombre: evento.nombre,
       fecha: evento.fecha,
       horario: evento.horario,
+      horarioFin: evento.horarioFin,
       salon: evento.salon,
       tipoEvento: evento.tipoEvento,
+      condicionIVA: evento.condicionIVA,
       nombrePareja: evento.nombrePareja,
       dniNovio1: evento.dniNovio1,
       dniNovio2: evento.dniNovio2,
@@ -438,14 +457,26 @@ function EventoPageContent() {
         direccion: localContratoDireccion || undefined,
         fechaNacimiento: localContratoFechaNac || undefined,
       },
-      planDeCuotas: localMontoTotal > 0 && localNumeroCuotas > 0 && localFechaInicioPlan ? {
-        numeroCuotas: localNumeroCuotas,
-        montoCuota: Math.round((localMontoTotal / localNumeroCuotas) * 100) / 100,
-        montoTotal: localMontoTotal,
-        diaVencimiento: localDiaVencimiento || 10,
-        fechaInicioPlan: localFechaInicioPlan,
-        cuotasPagadas: evento.planDeCuotas?.cuotasPagadas || [],
-      } : undefined,
+      planDeCuotas: localMontoTotal > 0 ? (() => {
+        const modalidad = localModalidadPago
+        const montoFinanciado = modalidad === "sena" 
+          ? Math.max(0, localMontoTotal - localMontoSena) 
+          : localMontoTotal
+        const montoConRecargo = montoFinanciado * (1 + localPorcentajeRecargo / 100)
+        const cuotasEfectivas = modalidad === "completo" ? 1 : localNumeroCuotas
+        const montoCuotaCalc = cuotasEfectivas > 0 ? Math.round((montoConRecargo / cuotasEfectivas) * 100) / 100 : 0
+        return {
+          numeroCuotas: cuotasEfectivas,
+          montoCuota: montoCuotaCalc,
+          montoTotal: localMontoTotal,
+          diaVencimiento: localDiaVencimiento || 10,
+          fechaInicioPlan: localFechaInicioPlan || "",
+          cuotasPagadas: evento.planDeCuotas?.cuotasPagadas || [],
+          modalidadPago: modalidad,
+          montoSena: modalidad === "sena" ? localMontoSena : undefined,
+          porcentajeRecargo: localPorcentajeRecargo > 0 ? localPorcentajeRecargo : undefined,
+        }
+      })() : undefined,
       // Legacy fields for backwards compatibility with calendario-pagos
       planCuotas: localMontoTotal > 0 && localNumeroCuotas > 0 ? localNumeroCuotas : undefined,
       montoTotalPlan: localMontoTotal > 0 ? localMontoTotal : undefined,
@@ -827,6 +858,20 @@ function EventoPageContent() {
                   value={localHorario}
                   onChange={(e) => setLocalHorario(e.target.value)}
                   onBlur={() => handleBlur("horario", localHorario)}
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="horarioFin" className="flex items-center gap-2 text-base">
+                  <Clock className="h-5 w-5" />
+                  Hora Fin
+                </Label>
+                <Input
+                  id="horarioFin"
+                  type="time"
+                  value={localHorarioFin}
+                  onChange={(e) => setLocalHorarioFin(e.target.value)}
+                  onBlur={() => handleBlur("horarioFin", localHorarioFin)}
                   className="h-12 text-base"
                 />
               </div>
@@ -1454,122 +1499,360 @@ function EventoPageContent() {
                   />
                 </div>
               </div>
-            </TabsContent>
-
-            {/* TAB 2: PLAN DE CUOTAS */}
-            <TabsContent value="cuotas" className="space-y-4 mt-4 overflow-hidden">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="montoTotalContrato">Monto Total del Evento</Label>
-                  <Input
-                    id="montoTotalContrato"
-                    type="number"
-                    min="0"
-                    value={localMontoTotal || ""}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0
-                      setLocalMontoTotal(val)
-                    }}
-                    placeholder="100000"
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="numeroCuotasContrato">Cantidad de Cuotas</Label>
-                  <Input
-                    id="numeroCuotasContrato"
-                    type="number"
-                    min="1"
-                    max="24"
-                    value={localNumeroCuotas || ""}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 1
-                      setLocalNumeroCuotas(val)
-                    }}
-                    placeholder="6"
-                    className="h-11"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center h-11 px-3 rounded-md border border-input bg-muted">
-                <span className="text-sm text-muted-foreground mr-2">Monto por Cuota:</span>
-                <span className="font-mono font-semibold">
-                  {formatCurrency(localMontoTotal > 0 && localNumeroCuotas > 0 ? localMontoTotal / localNumeroCuotas : 0)}
-                </span>
-              </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="diaVencimientoContrato">Dia de Vencimiento</Label>
+                  <Label htmlFor="condicionIVA">Condicion IVA</Label>
                   <Select
-                    value={localDiaVencimiento.toString()}
-                    onValueChange={(value) => setLocalDiaVencimiento(parseInt(value))}
+                    value={localCondicionIVA}
+                    onValueChange={(v) => {
+                      setLocalCondicionIVA(v)
+                      updateEventoActual({ condicionIVA: v as "Consumidor Final" | "Responsable Inscripto" | "Monotributista" | "Exento" })
+                    }}
                   >
                     <SelectTrigger className="h-11">
-                      <SelectValue placeholder="Dia del mes" />
+                      <SelectValue placeholder="Seleccionar..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {[1, 5, 10, 15, 20, 25, 30].map(dia => (
-                        <SelectItem key={dia} value={dia.toString()}>
-                          Dia {dia} de cada mes
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="Consumidor Final">Consumidor Final</SelectItem>
+                      <SelectItem value="Responsable Inscripto">Responsable Inscripto</SelectItem>
+                      <SelectItem value="Monotributista">Monotributista</SelectItem>
+                      <SelectItem value="Exento">Exento</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="fechaInicioPlanContrato">Fecha Primera Cuota</Label>
-                  <Input
-                    id="fechaInicioPlanContrato"
-                    type="date"
-                    value={localFechaInicioPlan}
-                    onChange={(e) => setLocalFechaInicioPlan(e.target.value)}
-                    className="h-11"
-                  />
-                </div>
+              </div>
+            </TabsContent>
+
+            {/* TAB 2: PLAN DE CUOTAS */}
+            <TabsContent value="cuotas" className="space-y-5 mt-4 overflow-hidden">
+              {/* --- MONTO TOTAL DEL EVENTO --- */}
+              <div className="space-y-2">
+                <Label htmlFor="montoTotalContrato" className="flex items-center gap-2 text-base font-semibold">
+                  <DollarSign className="h-4 w-4" />
+                  Monto Total del Evento
+                </Label>
+                <Input
+                  id="montoTotalContrato"
+                  type="number"
+                  min="0"
+                  value={localMontoTotal || ""}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0
+                    setLocalMontoTotal(val)
+                  }}
+                  placeholder="Ej: 500000"
+                  className="h-12 text-lg font-mono"
+                />
               </div>
 
-              {/* PREVIEW DEL PLAN DE CUOTAS */}
-              {localNumeroCuotas > 0 && localFechaInicioPlan && localMontoTotal > 0 && (
-                <div className="mt-4 p-4 rounded-lg border bg-muted/50">
-                  <h4 className="text-sm font-semibold mb-3">Vista Previa del Plan</h4>
-                  <div className="space-y-2 text-sm">
-                    {Array.from({ length: localNumeroCuotas }).map((_, idx) => {
-                      const cuotaNum = idx + 1
-                      const fechaCuota = calcularFechaCuota(
-                        localFechaInicioPlan,
-                        cuotaNum,
-                        localDiaVencimiento || 10
-                      )
-                      const estaPagada = evento.planDeCuotas?.cuotasPagadas?.includes(cuotaNum)
+              {/* --- MODALIDAD DE PAGO --- */}
+              <div className="space-y-3">
+                <Label className="flex items-center gap-2 text-base font-semibold">
+                  <CreditCard className="h-4 w-4" />
+                  Modalidad de Pago
+                </Label>
+                <RadioGroup
+                  value={localModalidadPago}
+                  onValueChange={(v) => setLocalModalidadPago(v as "completo" | "sena" | "cuotas")}
+                  className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+                >
+                  <label
+                    htmlFor="pago-completo"
+                    className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${localModalidadPago === "completo" ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
+                  >
+                    <RadioGroupItem value="completo" id="pago-completo" />
+                    <div>
+                      <p className="font-medium text-sm">Pago Completo</p>
+                      <p className="text-xs text-muted-foreground">Un solo pago</p>
+                    </div>
+                  </label>
+                  <label
+                    htmlFor="pago-sena"
+                    className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${localModalidadPago === "sena" ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
+                  >
+                    <RadioGroupItem value="sena" id="pago-sena" />
+                    <div>
+                      <p className="font-medium text-sm">{"Seña + Cuotas"}</p>
+                      <p className="text-xs text-muted-foreground">{"Seña inicial + saldo en cuotas"}</p>
+                    </div>
+                  </label>
+                  <label
+                    htmlFor="pago-cuotas"
+                    className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${localModalidadPago === "cuotas" ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
+                  >
+                    <RadioGroupItem value="cuotas" id="pago-cuotas" />
+                    <div>
+                      <p className="font-medium text-sm">Solo Cuotas</p>
+                      <p className="text-xs text-muted-foreground">Todo financiado</p>
+                    </div>
+                  </label>
+                </RadioGroup>
+              </div>
 
-                      return (
-                        <div key={idx} className="flex items-center justify-between py-1.5 px-2 rounded bg-background">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">Cuota {cuotaNum}</span>
-                            {estaPagada && (
-                              <Badge variant="outline" className="text-emerald-600 border-emerald-300 text-xs">
-                                Pagada
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 text-muted-foreground">
-                            <span>{fechaCuota}</span>
-                            <span className="font-mono font-semibold">
-                              {formatCurrency(localMontoTotal / localNumeroCuotas)}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
-                    <span className="text-sm font-medium">Total del Plan</span>
-                    <span className="font-mono font-bold text-base">{formatCurrency(localMontoTotal)}</span>
-                  </div>
+              {/* --- SEÑA (solo si modalidad = "sena") --- */}
+              {localModalidadPago === "sena" && (
+                <div className="space-y-2 p-4 rounded-lg border border-dashed border-primary/40 bg-primary/5">
+                  <Label htmlFor="montoSena" className="flex items-center gap-2 font-semibold">
+                    <Banknote className="h-4 w-4" />
+                    {"Monto de la Seña"}
+                  </Label>
+                  <Input
+                    id="montoSena"
+                    type="number"
+                    min="0"
+                    max={localMontoTotal}
+                    value={localMontoSena || ""}
+                    onChange={(e) => setLocalMontoSena(parseFloat(e.target.value) || 0)}
+                    placeholder="Ej: 100000"
+                    className="h-11 font-mono"
+                  />
+                  {localMontoSena > 0 && localMontoTotal > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {"Saldo a financiar: "}<span className="font-mono font-semibold">{formatCurrency(Math.max(0, localMontoTotal - localMontoSena))}</span>
+                      {" ("}{Math.round((localMontoSena / localMontoTotal) * 100)}{"% de seña)"}
+                    </p>
+                  )}
                 </div>
               )}
+
+              {/* --- CUOTAS Y RECARGO (solo si no es "completo") --- */}
+              {localModalidadPago !== "completo" && (
+                <>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="numeroCuotasContrato" className="font-semibold">Cantidad de Cuotas</Label>
+                      <Input
+                        id="numeroCuotasContrato"
+                        type="number"
+                        min="1"
+                        max="48"
+                        value={localNumeroCuotas || ""}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 1
+                          setLocalNumeroCuotas(val)
+                        }}
+                        placeholder="6"
+                        className="h-11"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="porcentajeRecargo" className="flex items-center gap-2 font-semibold">
+                        <Percent className="h-4 w-4" />
+                        Recargo por Financiacion ({localPorcentajeRecargo}%)
+                      </Label>
+                      <div className="flex items-center gap-3">
+                        <Slider
+                          value={[localPorcentajeRecargo]}
+                          onValueChange={(v) => setLocalPorcentajeRecargo(v[0])}
+                          min={0}
+                          max={50}
+                          step={0.5}
+                          className="flex-1"
+                        />
+                        <Input
+                          id="porcentajeRecargo"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={localPorcentajeRecargo || ""}
+                          onChange={(e) => setLocalPorcentajeRecargo(parseFloat(e.target.value) || 0)}
+                          className="h-9 w-20 font-mono text-center"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {[
+                          { cuotas: "1-6", pct: 0 },
+                          { cuotas: "7-10", pct: 5 },
+                          { cuotas: "11-12", pct: 8 },
+                          { cuotas: "13-18", pct: 12 },
+                          { cuotas: "19-24", pct: 15 },
+                          { cuotas: "25+", pct: 20 },
+                        ].map(({ cuotas, pct }) => (
+                          <button
+                            type="button"
+                            key={cuotas}
+                            onClick={() => setLocalPorcentajeRecargo(pct)}
+                            className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors cursor-pointer ${
+                              localPorcentajeRecargo === pct
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-muted border-input text-muted-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {cuotas}: {pct}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="diaVencimientoContrato">Dia de Vencimiento</Label>
+                      <Select
+                        value={localDiaVencimiento.toString()}
+                        onValueChange={(value) => setLocalDiaVencimiento(parseInt(value))}
+                      >
+                        <SelectTrigger className="h-11">
+                          <SelectValue placeholder="Dia del mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1, 5, 10, 15, 20, 25, 30].map(dia => (
+                            <SelectItem key={dia} value={dia.toString()}>
+                              Dia {dia} de cada mes
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="fechaInicioPlanContrato">Fecha Primera Cuota</Label>
+                      <Input
+                        id="fechaInicioPlanContrato"
+                        type="date"
+                        value={localFechaInicioPlan}
+                        onChange={(e) => setLocalFechaInicioPlan(e.target.value)}
+                        className="h-11"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* --- RESUMEN FINANCIERO --- */}
+              {localMontoTotal > 0 && (() => {
+                const esCompleto = localModalidadPago === "completo"
+                const montoSenaEfectivo = localModalidadPago === "sena" ? localMontoSena : 0
+                const montoFinanciado = esCompleto ? localMontoTotal : Math.max(0, localMontoTotal - montoSenaEfectivo)
+                const importeRecargo = montoFinanciado * (localPorcentajeRecargo / 100)
+                const montoConRecargo = montoFinanciado + importeRecargo
+                const cuotasEfectivas = esCompleto ? 1 : localNumeroCuotas
+                const montoPorCuota = cuotasEfectivas > 0 ? montoConRecargo / cuotasEfectivas : 0
+                const totalFinal = montoSenaEfectivo + montoConRecargo
+
+                return (
+                  <div className="p-4 rounded-lg border-2 border-primary/20 bg-primary/5 space-y-3">
+                    <h4 className="text-sm font-bold flex items-center gap-2">
+                      <Receipt className="h-4 w-4" />
+                      Resumen Financiero
+                    </h4>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <span className="text-muted-foreground">Precio del evento:</span>
+                      <span className="font-mono text-right">{formatCurrency(localMontoTotal)}</span>
+
+                      {localModalidadPago === "sena" && (
+                        <>
+                          <span className="text-muted-foreground">{"Seña:"}</span>
+                          <span className="font-mono text-right text-emerald-600">- {formatCurrency(montoSenaEfectivo)}</span>
+                        </>
+                      )}
+
+                      {!esCompleto && (
+                        <>
+                          <span className="text-muted-foreground">Monto a financiar:</span>
+                          <span className="font-mono text-right">{formatCurrency(montoFinanciado)}</span>
+                        </>
+                      )}
+
+                      {localPorcentajeRecargo > 0 && !esCompleto && (
+                        <>
+                          <span className="text-muted-foreground">Recargo ({localPorcentajeRecargo}%):</span>
+                          <span className="font-mono text-right text-amber-600">+ {formatCurrency(importeRecargo)}</span>
+                        </>
+                      )}
+
+                      {!esCompleto && localPorcentajeRecargo > 0 && (
+                        <>
+                          <span className="text-muted-foreground">Financiado con recargo:</span>
+                          <span className="font-mono text-right">{formatCurrency(montoConRecargo)}</span>
+                        </>
+                      )}
+
+                      {!esCompleto && (
+                        <>
+                          <div className="col-span-2 border-t border-border my-1" />
+                          <span className="font-semibold">Monto por cuota ({cuotasEfectivas}x):</span>
+                          <span className="font-mono font-bold text-right text-base">{formatCurrency(montoPorCuota)}</span>
+                        </>
+                      )}
+
+                      <div className="col-span-2 border-t border-border my-1" />
+                      <span className="font-bold">
+                        {esCompleto ? "Total a pagar:" : "Total final (con recargo):"}
+                      </span>
+                      <span className="font-mono font-bold text-right text-base">{formatCurrency(totalFinal)}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* --- VISTA PREVIA DEL PLAN DE CUOTAS --- */}
+              {localModalidadPago !== "completo" && localNumeroCuotas > 0 && localFechaInicioPlan && localMontoTotal > 0 && (() => {
+                const montoSenaEfectivo = localModalidadPago === "sena" ? localMontoSena : 0
+                const montoFinanciado = Math.max(0, localMontoTotal - montoSenaEfectivo)
+                const montoConRecargo = montoFinanciado * (1 + localPorcentajeRecargo / 100)
+                const montoPorCuota = localNumeroCuotas > 0 ? montoConRecargo / localNumeroCuotas : 0
+
+                return (
+                  <div className="p-4 rounded-lg border bg-muted/50">
+                    <h4 className="text-sm font-semibold mb-3">Vista Previa del Plan</h4>
+                    <div className="space-y-2 text-sm">
+                      {localModalidadPago === "sena" && montoSenaEfectivo > 0 && (
+                        <div className="flex items-center justify-between py-1.5 px-2 rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                          <div className="flex items-center gap-2">
+                            <Banknote className="h-4 w-4 text-emerald-600" />
+                            <span className="font-medium text-emerald-700 dark:text-emerald-400">{"Seña (al firmar contrato)"}</span>
+                          </div>
+                          <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+                            {formatCurrency(montoSenaEfectivo)}
+                          </span>
+                        </div>
+                      )}
+                      {Array.from({ length: localNumeroCuotas }).map((_, idx) => {
+                        const cuotaNum = idx + 1
+                        const fechaCuota = calcularFechaCuota(
+                          localFechaInicioPlan,
+                          cuotaNum,
+                          localDiaVencimiento || 10
+                        )
+                        const estaPagada = evento.planDeCuotas?.cuotasPagadas?.includes(cuotaNum)
+
+                        return (
+                          <div key={idx} className="flex items-center justify-between py-1.5 px-2 rounded bg-background">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">Cuota {cuotaNum}</span>
+                              {estaPagada && (
+                                <Badge variant="outline" className="text-emerald-600 border-emerald-300 text-xs">
+                                  Pagada
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 text-muted-foreground">
+                              <span>{fechaCuota}</span>
+                              <span className="font-mono font-semibold">
+                                {formatCurrency(montoPorCuota)}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
+                      <span className="text-sm font-medium">Total del Plan</span>
+                      <span className="font-mono font-bold text-base">
+                        {formatCurrency(montoSenaEfectivo + montoConRecargo)}
+                      </span>
+                    </div>
+                    {localPorcentajeRecargo > 0 && (
+                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                        <Info className="h-3 w-3" />
+                        Incluye {localPorcentajeRecargo}% de recargo por financiacion sobre {formatCurrency(montoFinanciado)}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </TabsContent>
           </Tabs>
         </SectionCard>
