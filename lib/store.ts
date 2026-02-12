@@ -150,6 +150,9 @@ export interface Evento {
     diaVencimiento: number
     fechaInicioPlan: string
     cuotasPagadas?: number[]
+    modalidadPago?: "completo" | "sena" | "cuotas"
+    montoSena?: number
+    porcentajeRecargo?: number
   }
 }
 

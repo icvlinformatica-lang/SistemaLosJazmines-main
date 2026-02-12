@@ -89,10 +89,32 @@ function generateContractHTML(
   const precioEvento = evento.precioVenta || paquetePrecio || 0
 
   // Plan de cuotas info
+  const modalidadPago = planCuotas?.modalidadPago || "cuotas"
+  const montoSena = planCuotas?.montoSena || 0
+  const porcentajeRecargo = planCuotas?.porcentajeRecargo || 0
+  const montoFinanciado = modalidadPago === "sena" ? Math.max(0, (planCuotas?.montoTotal || 0) - montoSena) : (planCuotas?.montoTotal || 0)
+  const importeRecargo = montoFinanciado * (porcentajeRecargo / 100)
+  const montoConRecargo = montoFinanciado + importeRecargo
+  const montoCuotaCalc = planCuotas && planCuotas.numeroCuotas > 0 ? montoConRecargo / planCuotas.numeroCuotas : 0
+  const totalFinalContrato = (modalidadPago === "sena" ? montoSena : 0) + montoConRecargo
+
   let cuotasInfo = ""
-  if (planCuotas && planCuotas.numeroCuotas > 0 && planCuotas.montoTotal > 0) {
-    const montoCuota = planCuotas.montoCuota || Math.round(planCuotas.montoTotal / planCuotas.numeroCuotas)
-    cuotasInfo = `En este acto se acuerda el pago total de (PESOS ${formatCurrency(planCuotas.montoTotal)}) a cancelar en ${planCuotas.numeroCuotas} cuotas. El monto de cada cuota es de PESOS (${formatCurrency(montoCuota)}) + IPC acumulativo. Cuotas posteriores se deberan abonar de forma mensual y consecutiva (el ${planCuotas.diaVencimiento || 10} de cada mes). Las cuotas se ajustan mensualmente segun indice IPC Nacional.`
+  if (planCuotas && planCuotas.montoTotal > 0) {
+    if (modalidadPago === "completo") {
+      cuotasInfo = `Se abona el monto total de (PESOS ${formatCurrency(planCuotas.montoTotal)}) en un unico pago al momento de la firma del presente contrato.`
+    } else if (modalidadPago === "sena" && montoSena > 0) {
+      cuotasInfo = `En este acto se abona la suma de (PESOS ${formatCurrency(montoSena)}) en concepto de sena y el saldo de PESOS ${formatCurrency(montoFinanciado)} a cancelar en ${planCuotas.numeroCuotas} cuotas.`
+      if (porcentajeRecargo > 0) {
+        cuotasInfo += ` Se aplica un recargo por financiacion del ${porcentajeRecargo}% sobre el saldo financiado, resultando un monto financiado con recargo de PESOS ${formatCurrency(montoConRecargo)}.`
+      }
+      cuotasInfo += ` El monto de cada cuota es de PESOS (${formatCurrency(montoCuotaCalc)}) + IPC acumulativo. Cuotas posteriores se deberan abonar de forma mensual y consecutiva (el ${planCuotas.diaVencimiento || 10} de cada mes). Las cuotas se ajustan mensualmente segun indice IPC Nacional.`
+    } else {
+      cuotasInfo = `En este acto se acuerda el pago total de (PESOS ${formatCurrency(planCuotas.montoTotal)}) a cancelar en ${planCuotas.numeroCuotas} cuotas.`
+      if (porcentajeRecargo > 0) {
+        cuotasInfo += ` Se aplica un recargo por financiacion del ${porcentajeRecargo}%, resultando un monto total financiado de PESOS ${formatCurrency(montoConRecargo)}.`
+      }
+      cuotasInfo += ` El monto de cada cuota es de PESOS (${formatCurrency(montoCuotaCalc)}) + IPC acumulativo. Cuotas posteriores se deberan abonar de forma mensual y consecutiva (el ${planCuotas.diaVencimiento || 10} de cada mes). Las cuotas se ajustan mensualmente segun indice IPC Nacional.`
+    }
   }
 
   // Servicios list
