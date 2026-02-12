@@ -153,6 +153,7 @@ function EventoPageContent() {
   const [localNombre, setLocalNombre] = useState("")
   const [localFecha, setLocalFecha] = useState("")
   const [localHorario, setLocalHorario] = useState("")
+  const [localHorarioFin, setLocalHorarioFin] = useState("")
   const [localNombrePareja, setLocalNombrePareja] = useState("")
   const [localDniNovio1, setLocalDniNovio1] = useState("")
   const [localDniNovio2, setLocalDniNovio2] = useState("")
@@ -169,6 +170,7 @@ function EventoPageContent() {
   const [localContratoEmail, setLocalContratoEmail] = useState("")
   const [localContratoDireccion, setLocalContratoDireccion] = useState("")
   const [localContratoFechaNac, setLocalContratoFechaNac] = useState("")
+  const [localCondicionIVA, setLocalCondicionIVA] = useState<string>("Consumidor Final")
 
   // Plan de cuotas local state
   const [localMontoTotal, setLocalMontoTotal] = useState(0)
@@ -183,6 +185,7 @@ function EventoPageContent() {
       setLocalNombre(evento.nombre || "")
       setLocalFecha(evento.fecha || "")
       setLocalHorario(evento.horario || "")
+      setLocalHorarioFin(evento.horarioFin || "")
       setLocalNombrePareja(evento.nombrePareja || "")
       setLocalDniNovio1(evento.dniNovio1 || "")
       setLocalDniNovio2(evento.dniNovio2 || "")
@@ -198,6 +201,7 @@ function EventoPageContent() {
       setLocalContratoEmail(evento.contrato?.email || "")
       setLocalContratoDireccion(evento.contrato?.direccion || "")
       setLocalContratoFechaNac(evento.contrato?.fechaNacimiento || "")
+      setLocalCondicionIVA(evento.condicionIVA || "Consumidor Final")
       // Plan de cuotas
       setLocalMontoTotal(evento.planDeCuotas?.montoTotal || 0)
       setLocalNumeroCuotas(evento.planDeCuotas?.numeroCuotas || 1)
@@ -409,8 +413,10 @@ function EventoPageContent() {
       nombre: evento.nombre,
       fecha: evento.fecha,
       horario: evento.horario,
+      horarioFin: evento.horarioFin,
       salon: evento.salon,
       tipoEvento: evento.tipoEvento,
+      condicionIVA: evento.condicionIVA,
       nombrePareja: evento.nombrePareja,
       dniNovio1: evento.dniNovio1,
       dniNovio2: evento.dniNovio2,
@@ -827,6 +833,20 @@ function EventoPageContent() {
                   value={localHorario}
                   onChange={(e) => setLocalHorario(e.target.value)}
                   onBlur={() => handleBlur("horario", localHorario)}
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="horarioFin" className="flex items-center gap-2 text-base">
+                  <Clock className="h-5 w-5" />
+                  Hora Fin
+                </Label>
+                <Input
+                  id="horarioFin"
+                  type="time"
+                  value={localHorarioFin}
+                  onChange={(e) => setLocalHorarioFin(e.target.value)}
+                  onBlur={() => handleBlur("horarioFin", localHorarioFin)}
                   className="h-12 text-base"
                 />
               </div>
@@ -1452,6 +1472,29 @@ function EventoPageContent() {
                     onChange={(e) => setLocalContratoFechaNac(e.target.value)}
                     className="h-11"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="condicionIVA">Condicion IVA</Label>
+                  <Select
+                    value={localCondicionIVA}
+                    onValueChange={(v) => {
+                      setLocalCondicionIVA(v)
+                      updateEventoActual({ condicionIVA: v as "Consumidor Final" | "Responsable Inscripto" | "Monotributista" | "Exento" })
+                    }}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Seleccionar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Consumidor Final">Consumidor Final</SelectItem>
+                      <SelectItem value="Responsable Inscripto">Responsable Inscripto</SelectItem>
+                      <SelectItem value="Monotributista">Monotributista</SelectItem>
+                      <SelectItem value="Exento">Exento</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </TabsContent>

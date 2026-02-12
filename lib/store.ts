@@ -129,6 +129,9 @@ export interface Evento {
   servicios?: ServicioEvento[]
   paquetesSeleccionados?: string[] // IDs de PaqueteSalon seleccionados
 
+  horarioFin?: string
+  condicionIVA?: "Consumidor Final" | "Responsable Inscripto" | "Monotributista" | "Exento"
+
   // Datos del contrato
   contrato?: {
     nombreCompleto?: string
