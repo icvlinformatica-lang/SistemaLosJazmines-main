@@ -51,18 +51,16 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    // Sanitize body to avoid undefined values - convert undefined to null
-    const sanitized = {
-      nombre: body.nombre !== undefined ? body.nombre : null,
-      categoria: body.categoria !== undefined ? body.categoria : null,
-      instrucciones: body.instrucciones !== undefined ? body.instrucciones : null,
-    }
+    // Convert undefined/null safely
+    const nombre = body.nombre != null ? body.nombre : null
+    const categoria = body.categoria != null ? body.categoria : null
+    const instrucciones = body.instrucciones != null ? body.instrucciones : null
 
     const [coctelData] = await sql`
       UPDATE cocteles SET
-        nombre = COALESCE(${sanitized.nombre}, nombre),
-        categoria = COALESCE(${sanitized.categoria}, categoria),
-        instrucciones = COALESCE(${sanitized.instrucciones}, instrucciones),
+        nombre = COALESCE(${nombre}, nombre),
+        categoria = COALESCE(${categoria}, categoria),
+        instrucciones = COALESCE(${instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -72,23 +70,23 @@ export async function PUT(
       return NextResponse.json({ error: "Coctel not found" }, { status: 404 })
     }
 
-    // Update insumos: delete existing and insert new
-    if (body.insumos) {
+    // Support both "insumos" and "ingredientes" keys
+    const insumosList = body.insumos || body.ingredientes || null
+
+    if (insumosList) {
       await sql`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
 
-      if (body.insumos.length > 0) {
-        for (const insumo of body.insumos) {
-          await sql`
-            INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad, unidad)
-            VALUES (
-              ${generateId()},
-              ${id},
-              ${insumo.insumoBarraId},
-              ${insumo.cantidadPorCoctel},
-              ${insumo.unidadCoctel || "CC"}
-            )
-          `
-        }
+      for (const insumo of insumosList) {
+        await sql`
+          INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad, unidad)
+          VALUES (
+            ${generateId()},
+            ${id},
+            ${insumo.insumoBarraId || insumo.insumoId},
+            ${insumo.cantidadPorCoctel ?? insumo.cantidadBasePorPersona ?? insumo.cantidad ?? 0},
+            ${insumo.unidadCoctel || insumo.unidadReceta || insumo.unidad || "CC"}
+          )
+        `
       }
     }
 
@@ -97,7 +95,7 @@ export async function PUT(
       nombre: coctelData.nombre,
       categoria: coctelData.categoria,
       instrucciones: coctelData.instrucciones || "",
-      insumos: body.insumos || [],
+      insumos: insumosList || [],
     }
 
     return NextResponse.json(coctel)

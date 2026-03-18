@@ -8,10 +8,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    
-    const [recetaData] = await sql`
-      SELECT * FROM recetas WHERE id = ${id}
-    `
+
+    const [recetaData] = await sql`SELECT * FROM recetas WHERE id = ${id}`
 
     if (!recetaData) {
       return NextResponse.json({ error: "Receta not found" }, { status: 404 })
@@ -28,16 +26,14 @@ export async function GET(
       unidadReceta: i.unidad_receta,
     }))
 
-    const receta = {
+    return NextResponse.json({
       id: recetaData.id,
       nombre: recetaData.nombre,
       categoria: recetaData.categoria,
       porcionesBase: recetaData.porciones_base || 1,
       instrucciones: recetaData.instrucciones || "",
       insumos,
-    }
-
-    return NextResponse.json(receta)
+    })
   } catch (err) {
     console.error("[API] Error fetching receta:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -53,20 +49,18 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    // Sanitize body to avoid undefined values - convert undefined to null
-    const sanitized = {
-      nombre: body.nombre !== undefined ? body.nombre : null,
-      categoria: body.categoria !== undefined ? body.categoria : null,
-      porcionesBase: body.porcionesBase !== undefined ? body.porcionesBase : null,
-      instrucciones: body.instrucciones !== undefined ? body.instrucciones : null,
-    }
+    // Explicitly convert every field to null if missing to avoid UNDEFINED_VALUE
+    const nombre: string | null = (body.nombre !== undefined && body.nombre !== "") ? String(body.nombre) : null
+    const categoria: string | null = (body.categoria !== undefined && body.categoria !== "") ? String(body.categoria) : null
+    const porcionesBase: number | null = body.porcionesBase !== undefined ? Number(body.porcionesBase) : null
+    const instrucciones: string | null = body.instrucciones !== undefined ? (body.instrucciones || null) : null
 
     const [recetaData] = await sql`
       UPDATE recetas SET
-        nombre = COALESCE(${sanitized.nombre}, nombre),
-        categoria = COALESCE(${sanitized.categoria}, categoria),
-        porciones_base = COALESCE(${sanitized.porcionesBase}, porciones_base),
-        instrucciones = COALESCE(${sanitized.instrucciones}, instrucciones),
+        nombre = COALESCE(${nombre}, nombre),
+        categoria = COALESCE(${categoria}, categoria),
+        porciones_base = COALESCE(${porcionesBase}, porciones_base),
+        instrucciones = COALESCE(${instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -76,37 +70,35 @@ export async function PUT(
       return NextResponse.json({ error: "Receta not found" }, { status: 404 })
     }
 
-    // Update insumos: delete existing and insert new
-    if (body.insumos) {
+    // Accept both "insumos" and "ingredientes" keys
+    const insumosList: any[] | null = body.insumos || body.ingredientes || null
+
+    if (insumosList) {
       await sql`DELETE FROM receta_insumos WHERE receta_id = ${id}`
 
-      if (body.insumos.length > 0) {
-        for (const insumo of body.insumos) {
-          await sql`
-            INSERT INTO receta_insumos (id, receta_id, insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta)
-            VALUES (
-              ${generateId()},
-              ${id},
-              ${insumo.insumoId},
-              ${insumo.detalleCorte || null},
-              ${insumo.cantidadBasePorPersona},
-              ${insumo.unidadReceta || "GRS"}
-            )
-          `
-        }
+      for (const ing of insumosList) {
+        const insumoId: string = ing.insumoId || ing.id
+        const detalleCorte: string | null = ing.detalleCorte || null
+        const cantidad: number = Number(ing.cantidadBasePorPersona ?? ing.cantidad ?? 0)
+        const unidad: string = ing.unidadReceta || ing.unidad || "GRS"
+
+        await sql`
+          INSERT INTO receta_insumos
+            (id, receta_id, insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta)
+          VALUES
+            (${generateId()}, ${id}, ${insumoId}, ${detalleCorte}, ${cantidad}, ${unidad})
+        `
       }
     }
 
-    const receta = {
+    return NextResponse.json({
       id: recetaData.id,
       nombre: recetaData.nombre,
       categoria: recetaData.categoria,
       porcionesBase: recetaData.porciones_base || 1,
       instrucciones: recetaData.instrucciones || "",
-      insumos: body.insumos || [],
-    }
-
-    return NextResponse.json(receta)
+      insumos: insumosList || [],
+    })
   } catch (err) {
     console.error("[API] Error updating receta:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
