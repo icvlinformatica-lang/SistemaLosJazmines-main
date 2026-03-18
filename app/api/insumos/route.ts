@@ -1,7 +1,7 @@
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
-// GET all insumos de cocina
+// GET all insumos de cocina - uses descripcion column
 export async function GET() {
   try {
     const data = await sql`

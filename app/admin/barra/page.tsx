@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, Suspense } from "react"
+
 import { useInsumosBarra } from "@/lib/hooks/use-almacen"
 import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"

@@ -293,11 +293,22 @@ export default function ConfiguracionPage() {
             setRestoreStatus("Sincronizando recetas...")
             for (const receta of data.recetas) {
               const existing = existingRecetasMap.get(receta.nombre)
+              
+              // Map insumos array to ingredientes format expected by API
+              // Backup format: { insumoId, detalleCorte, cantidadBasePorPersona, unidadReceta }
+              // API format: { insumoId, cantidad, unidad, detalleCorte }
+              const ingredientes = (receta.insumos || receta.ingredientes || []).map((ing: any) => ({
+                insumoId: ing.insumoId || ing.id,
+                cantidad: ing.cantidadBasePorPersona ?? ing.cantidad ?? 0,
+                unidad: ing.unidadReceta || ing.unidad || "UN",
+                detalleCorte: ing.detalleCorte || "",
+              }))
+              
               const payload = {
                 nombre: receta.nombre,
                 categoria: receta.categoria || "Otros",
                 porciones: receta.porciones ?? 1,
-                ingredientes: receta.ingredientes || [],
+                ingredientes: ingredientes,
               }
 
               if (existing) {
@@ -325,11 +336,20 @@ export default function ConfiguracionPage() {
             setRestoreStatus("Sincronizando cocteles...")
             for (const coctel of data.cocteles) {
               const existing = existingCoctelesMap.get(coctel.nombre)
+              
+              // Map insumos array to ingredientes format expected by API
+              const ingredientes = (coctel.insumos || coctel.ingredientes || []).map((ing: any) => ({
+                insumoId: ing.insumoId || ing.id,
+                cantidad: ing.cantidadBasePorPersona ?? ing.cantidad ?? 0,
+                unidad: ing.unidadReceta || ing.unidad || "UN",
+                detalleCorte: ing.detalleCorte || "",
+              }))
+              
               const payload = {
                 nombre: coctel.nombre,
                 categoria: coctel.categoria || "Otros",
                 porciones: coctel.porciones ?? 1,
-                ingredientes: coctel.ingredientes || [],
+                ingredientes: ingredientes,
               }
 
               if (existing) {
