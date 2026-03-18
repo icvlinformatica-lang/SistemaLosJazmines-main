@@ -51,11 +51,18 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
+    // Sanitize body to avoid undefined values - convert undefined to null
+    const sanitized = {
+      nombre: body.nombre !== undefined ? body.nombre : null,
+      categoria: body.categoria !== undefined ? body.categoria : null,
+      instrucciones: body.instrucciones !== undefined ? body.instrucciones : null,
+    }
+
     const [coctelData] = await sql`
       UPDATE cocteles SET
-        nombre = COALESCE(${body.nombre}, nombre),
-        categoria = COALESCE(${body.categoria}, categoria),
-        instrucciones = COALESCE(${body.instrucciones}, instrucciones),
+        nombre = COALESCE(${sanitized.nombre}, nombre),
+        categoria = COALESCE(${sanitized.categoria}, categoria),
+        instrucciones = COALESCE(${sanitized.instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
