@@ -125,8 +125,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
-    setState(loadState())
-    setIsHydrated(true)
+    const initializeData = async () => {
+      // Load local state first
+      const localState = loadState()
+      setState(localState)
+      
+      // Then sync with database for the migrated modules
+      try {
+        const fetchSafe = async (url: string) => {
+          try {
+            const r = await fetch(url)
+            if (!r.ok) return []
+            const data = await r.json()
+            return Array.isArray(data) ? data : []
+          } catch {
+            return []
+          }
+        }
+        
+        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes] = await Promise.all([
+          fetchSafe("/api/insumos"),
+          fetchSafe("/api/insumos-barra"),
+          fetchSafe("/api/recetas"),
+          fetchSafe("/api/cocteles"),
+          fetchSafe("/api/barra-templates"),
+        ])
+        
+        setState(prev => ({
+          ...prev,
+          insumos: insumosRes.length > 0 ? insumosRes : prev.insumos,
+          insumosBarra: insumosBarraRes.length > 0 ? insumosBarraRes : prev.insumosBarra,
+          recetas: recetasRes.length > 0 ? recetasRes : prev.recetas,
+          cocteles: coctelesRes.length > 0 ? coctelesRes : prev.cocteles,
+          barrasTemplates: barraTemplatesRes.length > 0 ? barraTemplatesRes : prev.barrasTemplates,
+        }))
+      } catch (error) {
+        console.error("[v0] Error syncing with database:", error)
+        // Keep using local state if API fails
+      }
+      
+      setIsHydrated(true)
+    }
+    
+    initializeData()
   }, [])
 
   useEffect(() => {
@@ -135,130 +176,287 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state, isHydrated])
 
-  // === Insumos (Cocina) ===
-  const addInsumo = (insumo: Omit<Insumo, "id">) => {
-    setState((prev) => ({
-      ...prev,
-      insumos: [...prev.insumos, { ...insumo, id: generateId() }],
-    }))
+  // === Insumos (Cocina) - Synced with API ===
+  const addInsumo = async (insumo: Omit<Insumo, "id">) => {
+    try {
+      const res = await fetch("/api/insumos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(insumo),
+      })
+      if (res.ok) {
+        const newInsumo = await res.json()
+        setState((prev) => ({
+          ...prev,
+          insumos: [...prev.insumos, newInsumo],
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error adding insumo:", error)
+    }
   }
 
-  const updateInsumo = (id: string, updates: Partial<Insumo>) => {
-    setState((prev) => ({
-      ...prev,
-      insumos: prev.insumos.map((i) => (i.id === id ? { ...i, ...updates } : i)),
-    }))
+  const updateInsumo = async (id: string, updates: Partial<Insumo>) => {
+    try {
+      const res = await fetch(`/api/insumos/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setState((prev) => ({
+          ...prev,
+          insumos: prev.insumos.map((i) => (i.id === id ? updated : i)),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error updating insumo:", error)
+    }
   }
 
-  const deleteInsumo = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      insumos: prev.insumos.filter((i) => i.id !== id),
-    }))
+  const deleteInsumo = async (id: string) => {
+    try {
+      const res = await fetch(`/api/insumos/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        setState((prev) => ({
+          ...prev,
+          insumos: prev.insumos.filter((i) => i.id !== id),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error deleting insumo:", error)
+    }
   }
 
   const setInsumos = (insumos: Insumo[]) => {
     setState((prev) => ({ ...prev, insumos }))
   }
 
-  // === Insumos Barra ===
-  const addInsumoBarra = (insumo: Omit<InsumoBarra, "id">) => {
-    setState((prev) => ({
-      ...prev,
-      insumosBarra: [...prev.insumosBarra, { ...insumo, id: generateId() }],
-    }))
+  // === Insumos Barra - Synced with API ===
+  const addInsumoBarra = async (insumo: Omit<InsumoBarra, "id">) => {
+    try {
+      const res = await fetch("/api/insumos-barra", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(insumo),
+      })
+      if (res.ok) {
+        const newInsumo = await res.json()
+        setState((prev) => ({
+          ...prev,
+          insumosBarra: [...prev.insumosBarra, newInsumo],
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error adding insumo barra:", error)
+    }
   }
 
-  const updateInsumoBarra = (id: string, updates: Partial<InsumoBarra>) => {
-    setState((prev) => ({
-      ...prev,
-      insumosBarra: prev.insumosBarra.map((i) => (i.id === id ? { ...i, ...updates } : i)),
-    }))
+  const updateInsumoBarra = async (id: string, updates: Partial<InsumoBarra>) => {
+    try {
+      const res = await fetch(`/api/insumos-barra/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setState((prev) => ({
+          ...prev,
+          insumosBarra: prev.insumosBarra.map((i) => (i.id === id ? updated : i)),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error updating insumo barra:", error)
+    }
   }
 
-  const deleteInsumoBarra = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      insumosBarra: prev.insumosBarra.filter((i) => i.id !== id),
-    }))
+  const deleteInsumoBarra = async (id: string) => {
+    try {
+      const res = await fetch(`/api/insumos-barra/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        setState((prev) => ({
+          ...prev,
+          insumosBarra: prev.insumosBarra.filter((i) => i.id !== id),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error deleting insumo barra:", error)
+    }
   }
 
   const setInsumosBarra = (insumosBarra: InsumoBarra[]) => {
     setState((prev) => ({ ...prev, insumosBarra }))
   }
 
-  // === Recetas ===
-  const addReceta = (receta: Omit<Receta, "id">) => {
-    setState((prev) => ({
-      ...prev,
-      recetas: [...prev.recetas, { ...receta, id: generateId() }],
-    }))
+  // === Recetas - Synced with API ===
+  const addReceta = async (receta: Omit<Receta, "id">) => {
+    try {
+      const res = await fetch("/api/recetas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(receta),
+      })
+      if (res.ok) {
+        const newReceta = await res.json()
+        setState((prev) => ({
+          ...prev,
+          recetas: [...prev.recetas, newReceta],
+        }))
+        return newReceta
+      }
+    } catch (error) {
+      console.error("[v0] Error adding receta:", error)
+    }
   }
 
-  const updateReceta = (id: string, updates: Partial<Receta>) => {
-    setState((prev) => ({
-      ...prev,
-      recetas: prev.recetas.map((r) => (r.id === id ? { ...r, ...updates } : r)),
-    }))
+  const updateReceta = async (id: string, updates: Partial<Receta>) => {
+    try {
+      const res = await fetch(`/api/recetas/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setState((prev) => ({
+          ...prev,
+          recetas: prev.recetas.map((r) => (r.id === id ? updated : r)),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error updating receta:", error)
+    }
   }
 
-  const deleteReceta = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      recetas: prev.recetas.filter((r) => r.id !== id),
-    }))
+  const deleteReceta = async (id: string) => {
+    try {
+      const res = await fetch(`/api/recetas/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        setState((prev) => ({
+          ...prev,
+          recetas: prev.recetas.filter((r) => r.id !== id),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error deleting receta:", error)
+    }
   }
 
   const setRecetas = (recetas: Receta[]) => {
     setState((prev) => ({ ...prev, recetas }))
   }
 
-  // === Cocteles ===
-  const addCoctel = (coctel: Omit<Coctel, "id">) => {
-    setState((prev) => ({
-      ...prev,
-      cocteles: [...prev.cocteles, { ...coctel, id: generateId() }],
-    }))
+  // === Cocteles - Synced with API ===
+  const addCoctel = async (coctel: Omit<Coctel, "id">) => {
+    try {
+      const res = await fetch("/api/cocteles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(coctel),
+      })
+      if (res.ok) {
+        const newCoctel = await res.json()
+        setState((prev) => ({
+          ...prev,
+          cocteles: [...prev.cocteles, newCoctel],
+        }))
+        return newCoctel
+      }
+    } catch (error) {
+      console.error("[v0] Error adding coctel:", error)
+    }
   }
 
-  const updateCoctel = (id: string, updates: Partial<Coctel>) => {
-    setState((prev) => ({
-      ...prev,
-      cocteles: prev.cocteles.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-    }))
+  const updateCoctel = async (id: string, updates: Partial<Coctel>) => {
+    try {
+      const res = await fetch(`/api/cocteles/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setState((prev) => ({
+          ...prev,
+          cocteles: prev.cocteles.map((c) => (c.id === id ? updated : c)),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error updating coctel:", error)
+    }
   }
 
-  const deleteCoctel = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      cocteles: prev.cocteles.filter((c) => c.id !== id),
-    }))
+  const deleteCoctel = async (id: string) => {
+    try {
+      const res = await fetch(`/api/cocteles/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        setState((prev) => ({
+          ...prev,
+          cocteles: prev.cocteles.filter((c) => c.id !== id),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error deleting coctel:", error)
+    }
   }
 
   const setCocteles = (cocteles: Coctel[]) => {
     setState((prev) => ({ ...prev, cocteles }))
   }
 
-  // === Barras Templates ===
-  const addBarraTemplate = (template: Omit<BarraTemplate, "id">) => {
-    setState((prev) => ({
-      ...prev,
-      barrasTemplates: [...(prev.barrasTemplates || []), { ...template, id: generateId() }],
-    }))
+  // === Barras Templates - Synced with API ===
+  const addBarraTemplate = async (template: Omit<BarraTemplate, "id">) => {
+    try {
+      const res = await fetch("/api/barra-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(template),
+      })
+      if (res.ok) {
+        const newTemplate = await res.json()
+        setState((prev) => ({
+          ...prev,
+          barrasTemplates: [...(prev.barrasTemplates || []), newTemplate],
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error adding barra template:", error)
+    }
   }
 
-  const updateBarraTemplate = (id: string, updates: Partial<BarraTemplate>) => {
-    setState((prev) => ({
-      ...prev,
-      barrasTemplates: (prev.barrasTemplates || []).map((t) => (t.id === id ? { ...t, ...updates } : t)),
-    }))
+  const updateBarraTemplate = async (id: string, updates: Partial<BarraTemplate>) => {
+    try {
+      const res = await fetch(`/api/barra-templates/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setState((prev) => ({
+          ...prev,
+          barrasTemplates: (prev.barrasTemplates || []).map((t) => (t.id === id ? updated : t)),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error updating barra template:", error)
+    }
   }
 
-  const deleteBarraTemplate = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      barrasTemplates: (prev.barrasTemplates || []).filter((t) => t.id !== id),
-    }))
+  const deleteBarraTemplate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/barra-templates/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        setState((prev) => ({
+          ...prev,
+          barrasTemplates: (prev.barrasTemplates || []).filter((t) => t.id !== id),
+        }))
+      }
+    } catch (error) {
+      console.error("[v0] Error deleting barra template:", error)
+    }
   }
 
   // === Servicios ===

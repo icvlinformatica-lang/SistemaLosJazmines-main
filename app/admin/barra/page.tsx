@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react"
 
-import { useStore } from "@/lib/store-context"
+import { useInsumosBarra } from "@/lib/hooks/use-almacen"
 import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,11 +25,12 @@ const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR", "GRS", "L"]
 const categorias: CategoriaInsumoBarra[] = ["Alcoholes", "Licores", "Mixers", "Jugos", "Garnish", "Otros"]
 
 function BarraAlmacenContent() {
-  const { state, addInsumoBarra, updateInsumoBarra, deleteInsumoBarra } = useStore()
+  const { insumosBarra, isLoading, addInsumoBarra, updateInsumoBarra, deleteInsumoBarra } = useInsumosBarra()
   const [searchTerm, setSearchTerm] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaInsumoBarra | "Todos">("Todos")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<InsumoBarra | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [formData, setFormData] = useState({
     codigo: "",
@@ -41,7 +42,7 @@ function BarraAlmacenContent() {
     proveedor: "",
   })
 
-  const filteredInsumos = state.insumosBarra.filter((insumo) => {
+  const filteredInsumos = insumosBarra.filter((insumo) => {
     const matchesSearch =
       insumo.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       insumo.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
@@ -62,14 +63,21 @@ function BarraAlmacenContent() {
     setEditingInsumo(null)
   }
 
-  const handleSubmit = () => {
-    if (editingInsumo) {
-      updateInsumoBarra(editingInsumo.id, formData)
-    } else {
-      addInsumoBarra(formData)
+  const handleSubmit = async () => {
+    setIsSubmitting(true)
+    try {
+      if (editingInsumo) {
+        await updateInsumoBarra(editingInsumo.id, formData)
+      } else {
+        await addInsumoBarra(formData)
+      }
+      resetForm()
+      setIsAddDialogOpen(false)
+    } catch (error) {
+      console.error("Error saving insumo barra:", error)
+    } finally {
+      setIsSubmitting(false)
     }
-    resetForm()
-    setIsAddDialogOpen(false)
   }
 
   const handleEdit = (insumo: InsumoBarra) => {
@@ -86,10 +94,24 @@ function BarraAlmacenContent() {
     setIsAddDialogOpen(true)
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("Estas seguro de eliminar este insumo de barra?")) {
-      deleteInsumoBarra(id)
+      try {
+        await deleteInsumoBarra(id)
+      } catch (error) {
+        console.error("Error deleting insumo barra:", error)
+      }
     }
+  }
+
+  if (isLoading) {
+    return (
+      <main className="mx-auto max-w-4xl px-6 py-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-muted-foreground">Cargando insumos de barra...</div>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -248,7 +270,9 @@ function BarraAlmacenContent() {
                     <Button variant="outline" className="bg-transparent" onClick={() => setIsAddDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleSubmit}>{editingInsumo ? "Guardar" : "Agregar"}</Button>
+                    <Button onClick={handleSubmit} disabled={isSubmitting}>
+                      {isSubmitting ? "Guardando..." : editingInsumo ? "Guardar" : "Agregar"}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>

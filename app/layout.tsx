@@ -1,7 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
+
 import { StoreProvider } from "@/lib/store-context"
 import { UIProvider } from "@/lib/ui-context"
 import { Sidebar } from "@/components/sidebar"
@@ -36,7 +36,6 @@ export default function RootLayout({
             <Toaster />
           </UIProvider>
         </StoreProvider>
-        <Analytics />
       {/* v0 – built-with badge */}
   <div dangerouslySetInnerHTML={{ __html: `<div id="v0-built-with-button-65d3d872-fea1-43a5-a807-20fd30efb934" style="
 border: 1px solid hsl(0deg 0% 100% / 12%);

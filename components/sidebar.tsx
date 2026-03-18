@@ -27,6 +27,7 @@ import {
   List,
   Users,
   Bell,
+  Lock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -38,6 +39,7 @@ interface MenuItem {
   label: string
   icon: React.ElementType
   children?: { href: string; label: string; icon: React.ElementType }[]
+  locked?: boolean
 }
 
 const menuItems: MenuItem[] = [
@@ -46,6 +48,7 @@ const menuItems: MenuItem[] = [
     href: "/eventos",
     label: "Eventos",
     icon: Calendar,
+    locked: true,
     children: [
       { href: "/eventos/lista", label: "Lista", icon: List },
       { href: "/eventos/calendario", label: "Calendario", icon: Calendar },
@@ -75,6 +78,7 @@ const menuItems: MenuItem[] = [
     href: "/admin/servicios",
     label: "Finanzas",
     icon: Briefcase,
+    locked: true,
     children: [
       { href: "/admin/servicios", label: "Servicios", icon: Briefcase },
       { href: "/admin/personal", label: "Personal", icon: Users },
@@ -182,31 +186,37 @@ export function Sidebar() {
             const Icon = item.icon
             const active = isSectionActive(item)
             const hasChildren = item.children && item.children.length > 0
-            const expanded = hasChildren && isSectionExpanded(item)
+            const expanded = hasChildren && isSectionExpanded(item) && !item.locked
+            const isLocked = item.locked
 
             if (hasChildren) {
               return (
                 <div key={item.label}>
-                  <button
-                    type="button"
-                    onClick={() => toggleSection(item.label)}
+                  <div
                     className={cn(
                       "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-left",
-                      active
-                        ? "bg-[#f5f0e8]/15 text-[#f5f0e8]"
-                        : "text-[#f5f0e8]/80 hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8]"
+                      isLocked
+                        ? "text-[#f5f0e8]/40 cursor-not-allowed"
+                        : active
+                          ? "bg-[#f5f0e8]/15 text-[#f5f0e8] cursor-pointer"
+                          : "text-[#f5f0e8]/80 hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8] cursor-pointer"
                     )}
+                    onClick={() => !isLocked && toggleSection(item.label)}
                   >
                     <Icon className="h-5 w-5 shrink-0" />
                     <span className="text-sm font-medium flex-1">{item.label}</span>
-                    <ChevronDown
-                      className={cn(
-                        "h-4 w-4 shrink-0 transition-transform duration-200",
-                        expanded ? "rotate-0" : "-rotate-90"
-                      )}
-                    />
-                  </button>
-                  {expanded && (
+                    {isLocked ? (
+                      <Lock className="h-4 w-4 shrink-0 text-[#f5f0e8]/40" />
+                    ) : (
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 shrink-0 transition-transform duration-200",
+                          expanded ? "rotate-0" : "-rotate-90"
+                        )}
+                      />
+                    )}
+                  </div>
+                  {expanded && !isLocked && (
                     <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-[#f5f0e8]/15 pl-2">
                       {item.children.map((child) => {
                         const ChildIcon = child.icon
@@ -251,15 +261,15 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Planificar Fiesta Button */}
+        {/* Planificar Fiesta Button - Locked */}
         <div className="px-3 pb-3 -mt-[10px]">
-          <button
-            onClick={handlePlanificarFiesta}
-            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533] hover:bg-[#c49a2e] active:bg-[#b38d28] text-[#1a1a1a] font-semibold text-sm transition-colors"
+          <div
+            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533]/40 text-[#1a1a1a]/50 font-semibold text-sm cursor-not-allowed"
           >
             <Sparkles className="h-5 w-5 shrink-0" />
-            <span>Planificar Fiesta</span>
-          </button>
+            <span className="flex-1">Planificar Fiesta</span>
+            <Lock className="h-4 w-4 shrink-0" />
+          </div>
         </div>
 
         {/* Collapse toggle */}
