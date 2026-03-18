@@ -132,12 +132,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       // Then sync with database for the migrated modules
       try {
+        const fetchSafe = async (url: string) => {
+          try {
+            const r = await fetch(url)
+            if (!r.ok) return []
+            const data = await r.json()
+            return Array.isArray(data) ? data : []
+          } catch {
+            return []
+          }
+        }
+        
         const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes] = await Promise.all([
-          fetch("/api/insumos").then(r => r.ok ? r.json() : []),
-          fetch("/api/insumos-barra").then(r => r.ok ? r.json() : []),
-          fetch("/api/recetas").then(r => r.ok ? r.json() : []),
-          fetch("/api/cocteles").then(r => r.ok ? r.json() : []),
-          fetch("/api/barra-templates").then(r => r.ok ? r.json() : []),
+          fetchSafe("/api/insumos"),
+          fetchSafe("/api/insumos-barra"),
+          fetchSafe("/api/recetas"),
+          fetchSafe("/api/cocteles"),
+          fetchSafe("/api/barra-templates"),
         ])
         
         setState(prev => ({
