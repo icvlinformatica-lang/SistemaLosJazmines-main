@@ -226,8 +226,8 @@ export default function ConfiguracionPage() {
                 codigo: insumo.codigo,
                 descripcion: insumo.descripcion,
                 unidad: insumo.unidad,
-                stock_actual: insumo.stockActual ?? insumo.stock_actual ?? 0,
-                precio_unitario: insumo.precioUnitario ?? insumo.precio_unitario ?? 0,
+                stockActual: insumo.stockActual ?? insumo.stock_actual ?? 0,
+                precioUnitario: insumo.precioUnitario ?? insumo.precio_unitario ?? 0,
                 proveedor: insumo.proveedor || "",
               }
 
@@ -263,8 +263,8 @@ export default function ConfiguracionPage() {
                 descripcion: insumo.descripcion,
                 unidad: insumo.unidad,
                 categoria: insumo.categoria || "Otros",
-                stock_actual: insumo.stockActual ?? insumo.stock_actual ?? 0,
-                precio_unitario: insumo.precioUnitario ?? insumo.precio_unitario ?? 0,
+                stockActual: insumo.stockActual ?? insumo.stock_actual ?? 0,
+                precioUnitario: insumo.precioUnitario ?? insumo.precio_unitario ?? 0,
                 proveedor: insumo.proveedor || "",
               }
 
