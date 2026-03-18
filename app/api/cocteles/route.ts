@@ -1,31 +1,16 @@
-import { createClient } from "@/lib/supabase/server"
+import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET all cocteles with their insumos
 export async function GET() {
   try {
-    const supabase = await createClient()
-    
-    // Get cocteles
-    const { data: coctelesData, error: coctelesError } = await supabase
-      .from("cocteles")
-      .select("*")
-      .order("nombre", { ascending: true })
+    const coctelesData = await sql`
+      SELECT * FROM cocteles ORDER BY nombre ASC
+    `
 
-    if (coctelesError) {
-      console.error("[API] Error fetching cocteles:", coctelesError)
-      return NextResponse.json({ error: coctelesError.message }, { status: 500 })
-    }
-
-    // Get all coctel_insumos
-    const { data: insumosData, error: insumosError } = await supabase
-      .from("coctel_insumos")
-      .select("*")
-
-    if (insumosError) {
-      console.error("[API] Error fetching coctel_insumos:", insumosError)
-      return NextResponse.json({ error: insumosError.message }, { status: 500 })
-    }
+    const insumosData = await sql`
+      SELECT * FROM coctel_insumos
+    `
 
     // Transform to app format
     const cocteles = coctelesData.map((coctel) => {
@@ -51,7 +36,7 @@ export async function GET() {
 
     return NextResponse.json(cocteles)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error fetching cocteles:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -59,40 +44,33 @@ export async function GET() {
 // POST create new coctel
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
     const body = await request.json()
+    const id = generateId()
 
-    // Create coctel
-    const { data: coctelData, error: coctelError } = await supabase
-      .from("cocteles")
-      .insert({
-        nombre: body.nombre,
-        descripcion: body.descripcion || null,
-        categoria: body.categoria || "Con Alcohol",
-      })
-      .select()
-      .single()
-
-    if (coctelError) {
-      console.error("[API] Error creating coctel:", coctelError)
-      return NextResponse.json({ error: coctelError.message }, { status: 500 })
-    }
+    const [coctelData] = await sql`
+      INSERT INTO cocteles (id, nombre, descripcion, categoria)
+      VALUES (
+        ${id},
+        ${body.nombre},
+        ${body.descripcion || null},
+        ${body.categoria || "Con Alcohol"}
+      )
+      RETURNING *
+    `
 
     // Create coctel_insumos if provided
     if (body.insumos && body.insumos.length > 0) {
-      const insumosToInsert = body.insumos.map((i: { insumoBarraId: string; cantidadPorCoctel: number; unidadCoctel?: string }) => ({
-        coctel_id: coctelData.id,
-        insumo_id: i.insumoBarraId,
-        cantidad: i.cantidadPorCoctel,
-        unidad: i.unidadCoctel || "CC",
-      }))
-
-      const { error: insumosError } = await supabase
-        .from("coctel_insumos")
-        .insert(insumosToInsert)
-
-      if (insumosError) {
-        console.error("[API] Error creating coctel_insumos:", insumosError)
+      for (const insumo of body.insumos) {
+        await sql`
+          INSERT INTO coctel_insumos (id, coctel_id, insumo_id, cantidad, unidad)
+          VALUES (
+            ${generateId()},
+            ${id},
+            ${insumo.insumoBarraId},
+            ${insumo.cantidadPorCoctel},
+            ${insumo.unidadCoctel || "CC"}
+          )
+        `
       }
     }
 
@@ -109,7 +87,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(coctel, { status: 201 })
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error creating coctel:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -1,31 +1,16 @@
-import { createClient } from "@/lib/supabase/server"
+import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET all recetas with their insumos
 export async function GET() {
   try {
-    const supabase = await createClient()
-    
-    // Get recetas
-    const { data: recetasData, error: recetasError } = await supabase
-      .from("recetas")
-      .select("*")
-      .order("nombre", { ascending: true })
+    const recetasData = await sql`
+      SELECT * FROM recetas ORDER BY nombre ASC
+    `
 
-    if (recetasError) {
-      console.error("[API] Error fetching recetas:", recetasError)
-      return NextResponse.json({ error: recetasError.message }, { status: 500 })
-    }
-
-    // Get all receta_insumos
-    const { data: insumosData, error: insumosError } = await supabase
-      .from("receta_insumos")
-      .select("*")
-
-    if (insumosError) {
-      console.error("[API] Error fetching receta_insumos:", insumosError)
-      return NextResponse.json({ error: insumosError.message }, { status: 500 })
-    }
+    const insumosData = await sql`
+      SELECT * FROM receta_insumos
+    `
 
     // Transform to app format
     const recetas = recetasData.map((receta) => {
@@ -51,7 +36,7 @@ export async function GET() {
 
     return NextResponse.json(recetas)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error fetching recetas:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -59,43 +44,35 @@ export async function GET() {
 // POST create new receta
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
     const body = await request.json()
+    const id = generateId()
 
-    // Create receta
-    const { data: recetaData, error: recetaError } = await supabase
-      .from("recetas")
-      .insert({
-        nombre: body.nombre,
-        descripcion: body.descripcion || null,
-        porciones: body.porciones || 1,
-        tiempo_preparacion: body.tiempoPreparacion || null,
-        categoria: body.categoria || "Plato Principal",
-      })
-      .select()
-      .single()
-
-    if (recetaError) {
-      console.error("[API] Error creating receta:", recetaError)
-      return NextResponse.json({ error: recetaError.message }, { status: 500 })
-    }
+    const [recetaData] = await sql`
+      INSERT INTO recetas (id, nombre, descripcion, porciones, tiempo_preparacion, categoria)
+      VALUES (
+        ${id},
+        ${body.nombre},
+        ${body.descripcion || null},
+        ${body.porciones || 1},
+        ${body.tiempoPreparacion || null},
+        ${body.categoria || "Plato Principal"}
+      )
+      RETURNING *
+    `
 
     // Create receta_insumos if provided
     if (body.insumos && body.insumos.length > 0) {
-      const insumosToInsert = body.insumos.map((i: { insumoId: string; cantidadBasePorPersona: number; unidadReceta?: string }) => ({
-        receta_id: recetaData.id,
-        insumo_id: i.insumoId,
-        cantidad: i.cantidadBasePorPersona,
-        unidad: i.unidadReceta || "GRS",
-      }))
-
-      const { error: insumosError } = await supabase
-        .from("receta_insumos")
-        .insert(insumosToInsert)
-
-      if (insumosError) {
-        console.error("[API] Error creating receta_insumos:", insumosError)
-        // Don't fail, just log
+      for (const insumo of body.insumos) {
+        await sql`
+          INSERT INTO receta_insumos (id, receta_id, insumo_id, cantidad, unidad)
+          VALUES (
+            ${generateId()},
+            ${id},
+            ${insumo.insumoId},
+            ${insumo.cantidadBasePorPersona},
+            ${insumo.unidadReceta || "GRS"}
+          )
+        `
       }
     }
 
@@ -112,7 +89,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(receta, { status: 201 })
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error creating receta:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

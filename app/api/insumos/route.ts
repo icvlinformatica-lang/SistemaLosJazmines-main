@@ -1,19 +1,12 @@
-import { createClient } from "@/lib/supabase/server"
+import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET all insumos (cocina)
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data, error } = await supabase
-      .from("insumos")
-      .select("*")
-      .order("nombre", { ascending: true })
-
-    if (error) {
-      console.error("[API] Error fetching insumos:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    const data = await sql`
+      SELECT * FROM insumos ORDER BY nombre ASC
+    `
 
     // Transform DB format to app format
     const insumos = data.map((item) => ({
@@ -28,7 +21,7 @@ export async function GET() {
 
     return NextResponse.json(insumos)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error fetching insumos:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -36,26 +29,22 @@ export async function GET() {
 // POST create new insumo
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
     const body = await request.json()
+    const id = generateId()
 
-    const { data, error } = await supabase
-      .from("insumos")
-      .insert({
-        nombre: body.descripcion || body.nombre,
-        categoria: body.categoria || "General",
-        unidad: body.unidad,
-        cantidad: body.stockActual ?? body.cantidad ?? 0,
-        precio_unitario: body.precioUnitario ?? body.precio_unitario ?? 0,
-        umbral_minimo: body.minimo ?? body.umbral_minimo ?? 0,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error("[API] Error creating insumo:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    const [data] = await sql`
+      INSERT INTO insumos (id, nombre, categoria, unidad, cantidad, precio_unitario, umbral_minimo)
+      VALUES (
+        ${id},
+        ${body.descripcion || body.nombre},
+        ${body.categoria || "General"},
+        ${body.unidad},
+        ${body.stockActual ?? body.cantidad ?? 0},
+        ${body.precioUnitario ?? body.precio_unitario ?? 0},
+        ${body.minimo ?? body.umbral_minimo ?? 0}
+      )
+      RETURNING *
+    `
 
     // Return in app format
     const insumo = {
@@ -70,7 +59,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(insumo, { status: 201 })
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error creating insumo:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

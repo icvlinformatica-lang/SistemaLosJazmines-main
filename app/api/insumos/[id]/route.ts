@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET single insumo
@@ -8,17 +8,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     
-    const { data, error } = await supabase
-      .from("insumos")
-      .select("*")
-      .eq("id", id)
-      .single()
+    const [data] = await sql`
+      SELECT * FROM insumos WHERE id = ${id}
+    `
 
-    if (error) {
-      console.error("[API] Error fetching insumo:", error)
-      return NextResponse.json({ error: error.message }, { status: 404 })
+    if (!data) {
+      return NextResponse.json({ error: "Insumo not found" }, { status: 404 })
     }
 
     const insumo = {
@@ -33,7 +29,7 @@ export async function GET(
 
     return NextResponse.json(insumo)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error fetching insumo:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -45,26 +41,23 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     const body = await request.json()
 
-    const { data, error } = await supabase
-      .from("insumos")
-      .update({
-        nombre: body.descripcion || body.nombre,
-        categoria: body.categoria || "General",
-        unidad: body.unidad,
-        cantidad: body.stockActual ?? body.cantidad,
-        precio_unitario: body.precioUnitario ?? body.precio_unitario,
-        umbral_minimo: body.minimo ?? body.umbral_minimo,
-      })
-      .eq("id", id)
-      .select()
-      .single()
+    const [data] = await sql`
+      UPDATE insumos SET
+        nombre = ${body.descripcion || body.nombre},
+        categoria = COALESCE(${body.categoria}, categoria),
+        unidad = COALESCE(${body.unidad}, unidad),
+        cantidad = COALESCE(${body.stockActual ?? body.cantidad}, cantidad),
+        precio_unitario = COALESCE(${body.precioUnitario ?? body.precio_unitario}, precio_unitario),
+        umbral_minimo = COALESCE(${body.minimo ?? body.umbral_minimo}, umbral_minimo),
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `
 
-    if (error) {
-      console.error("[API] Error updating insumo:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!data) {
+      return NextResponse.json({ error: "Insumo not found" }, { status: 404 })
     }
 
     const insumo = {
@@ -79,7 +72,7 @@ export async function PUT(
 
     return NextResponse.json(insumo)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error updating insumo:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -91,21 +84,12 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
 
-    const { error } = await supabase
-      .from("insumos")
-      .delete()
-      .eq("id", id)
-
-    if (error) {
-      console.error("[API] Error deleting insumo:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    await sql`DELETE FROM insumos WHERE id = ${id}`
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error deleting insumo:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

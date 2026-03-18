@@ -40,6 +40,7 @@
     "@radix-ui/react-tooltip": "latest",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
+    "postgres": "^3.4.5",
     "@vercel/analytics": "latest",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",

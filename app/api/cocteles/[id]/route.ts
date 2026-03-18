@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET single coctel with insumos
@@ -8,26 +8,20 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     
-    const { data: coctelData, error: coctelError } = await supabase
-      .from("cocteles")
-      .select("*")
-      .eq("id", id)
-      .single()
+    const [coctelData] = await sql`
+      SELECT * FROM cocteles WHERE id = ${id}
+    `
 
-    if (coctelError) {
-      console.error("[API] Error fetching coctel:", coctelError)
-      return NextResponse.json({ error: coctelError.message }, { status: 404 })
+    if (!coctelData) {
+      return NextResponse.json({ error: "Coctel not found" }, { status: 404 })
     }
 
-    // Get insumos for this coctel
-    const { data: insumosData } = await supabase
-      .from("coctel_insumos")
-      .select("*")
-      .eq("coctel_id", id)
+    const insumosData = await sql`
+      SELECT * FROM coctel_insumos WHERE coctel_id = ${id}
+    `
 
-    const insumos = (insumosData || []).map((i) => ({
+    const insumos = insumosData.map((i) => ({
       insumoBarraId: i.insumo_id,
       cantidadPorCoctel: Number(i.cantidad),
       unidadCoctel: i.unidad,
@@ -46,7 +40,7 @@ export async function GET(
 
     return NextResponse.json(coctel)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error fetching coctel:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -58,39 +52,39 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     const body = await request.json()
 
-    // Update coctel
-    const { data: coctelData, error: coctelError } = await supabase
-      .from("cocteles")
-      .update({
-        nombre: body.nombre,
-        descripcion: body.descripcion || null,
-        categoria: body.categoria || "Con Alcohol",
-      })
-      .eq("id", id)
-      .select()
-      .single()
+    const [coctelData] = await sql`
+      UPDATE cocteles SET
+        nombre = ${body.nombre},
+        descripcion = ${body.descripcion || null},
+        categoria = ${body.categoria || "Con Alcohol"},
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `
 
-    if (coctelError) {
-      console.error("[API] Error updating coctel:", coctelError)
-      return NextResponse.json({ error: coctelError.message }, { status: 500 })
+    if (!coctelData) {
+      return NextResponse.json({ error: "Coctel not found" }, { status: 404 })
     }
 
     // Update insumos: delete existing and insert new
     if (body.insumos) {
-      await supabase.from("coctel_insumos").delete().eq("coctel_id", id)
+      await sql`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
 
       if (body.insumos.length > 0) {
-        const insumosToInsert = body.insumos.map((i: { insumoBarraId: string; cantidadPorCoctel: number; unidadCoctel?: string }) => ({
-          coctel_id: id,
-          insumo_id: i.insumoBarraId,
-          cantidad: i.cantidadPorCoctel,
-          unidad: i.unidadCoctel || "CC",
-        }))
-
-        await supabase.from("coctel_insumos").insert(insumosToInsert)
+        for (const insumo of body.insumos) {
+          await sql`
+            INSERT INTO coctel_insumos (id, coctel_id, insumo_id, cantidad, unidad)
+            VALUES (
+              ${generateId()},
+              ${id},
+              ${insumo.insumoBarraId},
+              ${insumo.cantidadPorCoctel},
+              ${insumo.unidadCoctel || "CC"}
+            )
+          `
+        }
       }
     }
 
@@ -107,7 +101,7 @@ export async function PUT(
 
     return NextResponse.json(coctel)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error updating coctel:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -119,21 +113,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
 
-    const { error } = await supabase
-      .from("cocteles")
-      .delete()
-      .eq("id", id)
-
-    if (error) {
-      console.error("[API] Error deleting coctel:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    await sql`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
+    await sql`DELETE FROM cocteles WHERE id = ${id}`
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error deleting coctel:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET single receta with insumos
@@ -8,26 +8,20 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     
-    const { data: recetaData, error: recetaError } = await supabase
-      .from("recetas")
-      .select("*")
-      .eq("id", id)
-      .single()
+    const [recetaData] = await sql`
+      SELECT * FROM recetas WHERE id = ${id}
+    `
 
-    if (recetaError) {
-      console.error("[API] Error fetching receta:", recetaError)
-      return NextResponse.json({ error: recetaError.message }, { status: 404 })
+    if (!recetaData) {
+      return NextResponse.json({ error: "Receta not found" }, { status: 404 })
     }
 
-    // Get insumos for this receta
-    const { data: insumosData } = await supabase
-      .from("receta_insumos")
-      .select("*")
-      .eq("receta_id", id)
+    const insumosData = await sql`
+      SELECT * FROM receta_insumos WHERE receta_id = ${id}
+    `
 
-    const insumos = (insumosData || []).map((i) => ({
+    const insumos = insumosData.map((i) => ({
       insumoId: i.insumo_id,
       detalleCorte: "",
       cantidadBasePorPersona: Number(i.cantidad),
@@ -46,7 +40,7 @@ export async function GET(
 
     return NextResponse.json(receta)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error fetching receta:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -58,41 +52,41 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     const body = await request.json()
 
-    // Update receta
-    const { data: recetaData, error: recetaError } = await supabase
-      .from("recetas")
-      .update({
-        nombre: body.nombre,
-        descripcion: body.descripcion || null,
-        porciones: body.porciones || 1,
-        tiempo_preparacion: body.tiempoPreparacion || null,
-        categoria: body.categoria || "Plato Principal",
-      })
-      .eq("id", id)
-      .select()
-      .single()
+    const [recetaData] = await sql`
+      UPDATE recetas SET
+        nombre = ${body.nombre},
+        descripcion = ${body.descripcion || null},
+        porciones = ${body.porciones || 1},
+        tiempo_preparacion = ${body.tiempoPreparacion || null},
+        categoria = ${body.categoria || "Plato Principal"},
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `
 
-    if (recetaError) {
-      console.error("[API] Error updating receta:", recetaError)
-      return NextResponse.json({ error: recetaError.message }, { status: 500 })
+    if (!recetaData) {
+      return NextResponse.json({ error: "Receta not found" }, { status: 404 })
     }
 
     // Update insumos: delete existing and insert new
     if (body.insumos) {
-      await supabase.from("receta_insumos").delete().eq("receta_id", id)
+      await sql`DELETE FROM receta_insumos WHERE receta_id = ${id}`
 
       if (body.insumos.length > 0) {
-        const insumosToInsert = body.insumos.map((i: { insumoId: string; cantidadBasePorPersona: number; unidadReceta?: string }) => ({
-          receta_id: id,
-          insumo_id: i.insumoId,
-          cantidad: i.cantidadBasePorPersona,
-          unidad: i.unidadReceta || "GRS",
-        }))
-
-        await supabase.from("receta_insumos").insert(insumosToInsert)
+        for (const insumo of body.insumos) {
+          await sql`
+            INSERT INTO receta_insumos (id, receta_id, insumo_id, cantidad, unidad)
+            VALUES (
+              ${generateId()},
+              ${id},
+              ${insumo.insumoId},
+              ${insumo.cantidadBasePorPersona},
+              ${insumo.unidadReceta || "GRS"}
+            )
+          `
+        }
       }
     }
 
@@ -108,7 +102,7 @@ export async function PUT(
 
     return NextResponse.json(receta)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error updating receta:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -120,22 +114,14 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
 
-    // Delete receta (insumos will cascade)
-    const { error } = await supabase
-      .from("recetas")
-      .delete()
-      .eq("id", id)
-
-    if (error) {
-      console.error("[API] Error deleting receta:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    // Delete insumos first (cascade should handle this, but just in case)
+    await sql`DELETE FROM receta_insumos WHERE receta_id = ${id}`
+    await sql`DELETE FROM recetas WHERE id = ${id}`
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error deleting receta:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET single barra template
@@ -8,17 +8,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     
-    const { data, error } = await supabase
-      .from("barra_templates")
-      .select("*")
-      .eq("id", id)
-      .single()
+    const [data] = await sql`
+      SELECT * FROM barra_templates WHERE id = ${id}
+    `
 
-    if (error) {
-      console.error("[API] Error fetching barra_template:", error)
-      return NextResponse.json({ error: error.message }, { status: 404 })
+    if (!data) {
+      return NextResponse.json({ error: "Barra template not found" }, { status: 404 })
     }
 
     const template = {
@@ -29,7 +25,7 @@ export async function GET(
 
     return NextResponse.json(template)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error fetching barra_template:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -41,23 +37,20 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
     const body = await request.json()
 
-    const { data, error } = await supabase
-      .from("barra_templates")
-      .update({
-        nombre: body.nombre,
-        descripcion: body.descripcion || null,
-        cocteles: body.coctelesIncluidos || [],
-      })
-      .eq("id", id)
-      .select()
-      .single()
+    const [data] = await sql`
+      UPDATE barra_templates SET
+        nombre = ${body.nombre},
+        descripcion = ${body.descripcion || null},
+        cocteles = ${JSON.stringify(body.coctelesIncluidos || [])},
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `
 
-    if (error) {
-      console.error("[API] Error updating barra_template:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!data) {
+      return NextResponse.json({ error: "Barra template not found" }, { status: 404 })
     }
 
     const template = {
@@ -68,7 +61,7 @@ export async function PUT(
 
     return NextResponse.json(template)
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error updating barra_template:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -80,21 +73,12 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
 
-    const { error } = await supabase
-      .from("barra_templates")
-      .delete()
-      .eq("id", id)
-
-    if (error) {
-      console.error("[API] Error deleting barra_template:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    await sql`DELETE FROM barra_templates WHERE id = ${id}`
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error("[API] Unexpected error:", err)
+    console.error("[API] Error deleting barra_template:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
