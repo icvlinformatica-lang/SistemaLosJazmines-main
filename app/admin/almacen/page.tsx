@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react"
 
-import { useStore } from "@/lib/store-context"
+import { useInsumos } from "@/lib/hooks/use-almacen"
 import { type Insumo, type Unidad, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,10 +24,11 @@ import { Plus, Search, Pencil, Trash2 } from "lucide-react"
 const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR"]
 
 function AlmacenContent() {
-  const { state, addInsumo, updateInsumo, deleteInsumo } = useStore()
+  const { insumos, isLoading, addInsumo, updateInsumo, deleteInsumo } = useInsumos()
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<Insumo | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -39,14 +40,12 @@ function AlmacenContent() {
     proveedor: "",
   })
 
-  const filteredInsumos = state.insumos.filter(
+  const filteredInsumos = insumos.filter(
     (insumo) =>
       insumo.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       insumo.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (insumo.proveedor || "").toLowerCase().includes(searchTerm.toLowerCase()),
   )
-
-  const totalItems = state.insumos.length
 
   const resetForm = () => {
     setFormData({
@@ -60,14 +59,21 @@ function AlmacenContent() {
     setEditingInsumo(null)
   }
 
-  const handleSubmit = () => {
-    if (editingInsumo) {
-      updateInsumo(editingInsumo.id, formData)
-    } else {
-      addInsumo(formData)
+  const handleSubmit = async () => {
+    setIsSubmitting(true)
+    try {
+      if (editingInsumo) {
+        await updateInsumo(editingInsumo.id, formData)
+      } else {
+        await addInsumo(formData)
+      }
+      resetForm()
+      setIsAddDialogOpen(false)
+    } catch (error) {
+      console.error("Error saving insumo:", error)
+    } finally {
+      setIsSubmitting(false)
     }
-    resetForm()
-    setIsAddDialogOpen(false)
   }
 
   const handleEdit = (insumo: Insumo) => {
@@ -83,10 +89,24 @@ function AlmacenContent() {
     setIsAddDialogOpen(true)
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("¿Estás seguro de eliminar este insumo?")) {
-      deleteInsumo(id)
+      try {
+        await deleteInsumo(id)
+      } catch (error) {
+        console.error("Error deleting insumo:", error)
+      }
     }
+  }
+
+  if (isLoading) {
+    return (
+      <main className="mx-auto max-w-4xl px-6 py-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-muted-foreground">Cargando insumos...</div>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -225,7 +245,9 @@ function AlmacenContent() {
                     <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleSubmit}>{editingInsumo ? "Guardar" : "Agregar"}</Button>
+                    <Button onClick={handleSubmit} disabled={isSubmitting}>
+                      {isSubmitting ? "Guardando..." : editingInsumo ? "Guardar" : "Agregar"}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
