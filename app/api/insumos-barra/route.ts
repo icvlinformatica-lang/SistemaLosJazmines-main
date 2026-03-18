@@ -1,7 +1,7 @@
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
-// GET all insumos de barra from database
+// GET all insumos de barra
 export async function GET() {
   try {
     const data = await sql`
