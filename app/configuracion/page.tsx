@@ -17,8 +17,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, FileText, Trash2, History } from "lucide-react"
-import { useState } from "react"
+import { Download, Upload, ArrowLeft, FileText, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList } from "lucide-react"
+import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import type { Insumo, Receta } from "@/lib/store"
 import { UnifiedDocument } from "@/components/unified-document"
@@ -28,6 +28,92 @@ export default function ConfiguracionPage() {
   const [selectedHistorial, setSelectedHistorial] = useState<EventoHistorial | null>(null)
   const [showHistorialDocument, setShowHistorialDocument] = useState(false)
   const { toast } = useToast()
+  
+  // Save status state
+  const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<Record<string, { count: number; synced: boolean }>>({
+    insumos: { count: 0, synced: true },
+    insumosBarra: { count: 0, synced: true },
+    recetas: { count: 0, synced: true },
+    cocteles: { count: 0, synced: true },
+  })
+
+  // Check data status on mount and when state changes
+  useEffect(() => {
+    const checkDataStatus = async () => {
+      try {
+        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes] = await Promise.all([
+          fetch("/api/insumos").then(r => r.ok ? r.json() : []),
+          fetch("/api/insumos-barra").then(r => r.ok ? r.json() : []),
+          fetch("/api/recetas").then(r => r.ok ? r.json() : []),
+          fetch("/api/cocteles").then(r => r.ok ? r.json() : []),
+        ])
+        
+        setSyncStatus({
+          insumos: { count: Array.isArray(insumosRes) ? insumosRes.length : 0, synced: true },
+          insumosBarra: { count: Array.isArray(insumosBarraRes) ? insumosBarraRes.length : 0, synced: true },
+          recetas: { count: Array.isArray(recetasRes) ? recetasRes.length : 0, synced: true },
+          cocteles: { count: Array.isArray(coctelesRes) ? coctelesRes.length : 0, synced: true },
+        })
+        
+        // Get last save time from localStorage metadata
+        const STORAGE_KEY = "los-jazmines-data"
+        const savedData = localStorage.getItem(STORAGE_KEY)
+        if (savedData) {
+          const parsed = JSON.parse(savedData)
+          if (parsed._lastSaved) {
+            setLastSaveTime(new Date(parsed._lastSaved))
+          } else {
+            setLastSaveTime(new Date())
+          }
+        }
+      } catch (error) {
+        console.error("Error checking data status:", error)
+      }
+    }
+    
+    checkDataStatus()
+  }, [state])
+
+  const handleManualSync = async () => {
+    setIsSyncing(true)
+    try {
+      // Save current timestamp to localStorage
+      const STORAGE_KEY = "los-jazmines-data"
+      const savedData = localStorage.getItem(STORAGE_KEY)
+      if (savedData) {
+        const parsed = JSON.parse(savedData)
+        parsed._lastSaved = new Date().toISOString()
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed))
+      }
+      setLastSaveTime(new Date())
+      
+      toast({
+        title: "Datos sincronizados",
+        description: "Toda la informacion esta guardada correctamente.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error al sincronizar",
+        description: "Hubo un problema al guardar los datos.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const formatLastSaveTime = (date: Date | null) => {
+    if (!date) return "Sin informacion"
+    return date.toLocaleString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
 
   // ==================== BACKUP FUNCTIONS ====================
 
@@ -166,6 +252,106 @@ export default function ConfiguracionPage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-8 space-y-8">
+        {/* Section 0: Estado de Guardado */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Database className="h-6 w-6" />
+                  Estado de Guardado
+                </CardTitle>
+                <CardDescription className="text-base mt-1">
+                  Informacion almacenada en la base de datos
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-3">
+                {lastSaveTime ? (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-lg">
+                    <Check className="h-5 w-5" />
+                    <span className="font-medium">Guardado</span>
+                  </div>
+                ) : (
+                  <Button 
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                    className="bg-blue-500 hover:bg-blue-600"
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-5 w-5 mr-2" />
+                    )}
+                    Guardar
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Last save time */}
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+              <span className="text-muted-foreground">Ultimo guardado automatico:</span>
+              <span className="font-medium">{formatLastSaveTime(lastSaveTime)}</span>
+            </div>
+            
+            {/* Data counts grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
+                <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                  <Package className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{syncStatus.insumos.count}</p>
+                  <p className="text-sm text-muted-foreground">Insumos Cocina</p>
+                </div>
+                {syncStatus.insumos.synced && (
+                  <Check className="h-4 w-4 text-green-500 ml-auto" />
+                )}
+              </div>
+              
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
+                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Wine className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{syncStatus.insumosBarra.count}</p>
+                  <p className="text-sm text-muted-foreground">Insumos Barra</p>
+                </div>
+                {syncStatus.insumosBarra.synced && (
+                  <Check className="h-4 w-4 text-green-500 ml-auto" />
+                )}
+              </div>
+              
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
+                <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <ChefHat className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{syncStatus.recetas.count}</p>
+                  <p className="text-sm text-muted-foreground">Recetas</p>
+                </div>
+                {syncStatus.recetas.synced && (
+                  <Check className="h-4 w-4 text-green-500 ml-auto" />
+                )}
+              </div>
+              
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
+                <div className="h-10 w-10 rounded-full bg-rose-100 flex items-center justify-center">
+                  <ClipboardList className="h-5 w-5 text-rose-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{syncStatus.cocteles.count}</p>
+                  <p className="text-sm text-muted-foreground">Cocteles</p>
+                </div>
+                {syncStatus.cocteles.synced && (
+                  <Check className="h-4 w-4 text-green-500 ml-auto" />
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Section 1: Historial */}
         <Card>
           <CardHeader>

@@ -42,7 +42,10 @@ function BarraAlmacenContent() {
     proveedor: "",
   })
 
-  const filteredInsumos = insumosBarra.filter((insumo) => {
+  // Safety check: ensure insumosBarra is always an array
+  const safeInsumosBarra = Array.isArray(insumosBarra) ? insumosBarra : []
+  
+  const filteredInsumos = safeInsumosBarra.filter((insumo) => {
     const matchesSearch =
       insumo.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       insumo.descripcion.toLowerCase().includes(searchTerm.toLowerCase())

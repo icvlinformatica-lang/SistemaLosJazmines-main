@@ -40,7 +40,10 @@ function AlmacenContent() {
     proveedor: "",
   })
 
-  const filteredInsumos = insumos.filter(
+  // Safety check: ensure insumos is always an array
+  const safeInsumos = Array.isArray(insumos) ? insumos : []
+  
+  const filteredInsumos = safeInsumos.filter(
     (insumo) =>
       insumo.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       insumo.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
