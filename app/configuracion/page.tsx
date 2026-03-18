@@ -17,8 +17,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, FileText, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList } from "lucide-react"
+import { Download, Upload, ArrowLeft, FileText, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2 } from "lucide-react"
 import { useState, useEffect } from "react"
+import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
 import type { Insumo, Receta } from "@/lib/store"
 import { UnifiedDocument } from "@/components/unified-document"
@@ -38,6 +39,11 @@ export default function ConfiguracionPage() {
     recetas: { count: 0, synced: true },
     cocteles: { count: 0, synced: true },
   })
+  
+  // Restore progress state
+  const [isRestoring, setIsRestoring] = useState(false)
+  const [restoreProgress, setRestoreProgress] = useState(0)
+  const [restoreStatus, setRestoreStatus] = useState("")
 
   // Check data status on mount and when state changes
   useEffect(() => {
@@ -147,12 +153,12 @@ export default function ConfiguracionPage() {
     const input = document.createElement("input")
     input.type = "file"
     input.accept = ".json,application/json"
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
 
       const reader = new FileReader()
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         try {
           const parsed = JSON.parse(event.target?.result as string)
 
@@ -169,23 +175,218 @@ export default function ConfiguracionPage() {
 
           // SAFETY CHECK 2: User Confirmation
           const confirmed = window.confirm(
-            "ATENCION: Esto borrara los datos actuales y cargara los del archivo. Estas seguro?"
+            "ATENCION: Esto sincronizara los datos del archivo con la base de datos en la nube. Los insumos y recetas existentes se actualizaran y los nuevos se crearan. Continuar?"
           )
           
           if (!confirmed) return
 
-          // EXECUTION: Clear and restore
+          // START CLOUD SYNC
+          setIsRestoring(true)
+          setRestoreProgress(0)
+          setRestoreStatus("Preparando sincronizacion...")
+
+          const results = {
+            insumosCreated: 0,
+            insumosUpdated: 0,
+            insumosBarraCreated: 0,
+            insumosBarraUpdated: 0,
+            recetasCreated: 0,
+            recetasUpdated: 0,
+            coctelesCreated: 0,
+            coctelesUpdated: 0,
+          }
+
+          // Get existing data from DB to compare
+          const [existingInsumos, existingInsumosBarra, existingRecetas, existingCocteles] = await Promise.all([
+            fetch("/api/insumos").then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []),
+            fetch("/api/insumos-barra").then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []),
+            fetch("/api/recetas").then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []),
+            fetch("/api/cocteles").then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []),
+          ])
+
+          const existingInsumosMap = new Map(existingInsumos.map((i: any) => [i.codigo, i]))
+          const existingInsumosBarraMap = new Map(existingInsumosBarra.map((i: any) => [i.codigo, i]))
+          const existingRecetasMap = new Map(existingRecetas.map((r: any) => [r.nombre, r]))
+          const existingCoctelesMap = new Map(existingCocteles.map((c: any) => [c.nombre, c]))
+
+          // Calculate total items for progress
+          const totalItems = 
+            (data.insumos?.length || 0) + 
+            (data.insumosBarra?.length || 0) + 
+            (data.recetas?.length || 0) + 
+            (data.cocteles?.length || 0)
+          let processedItems = 0
+
+          // SYNC INSUMOS (Cocina)
+          if (data.insumos && Array.isArray(data.insumos)) {
+            setRestoreStatus("Sincronizando insumos de cocina...")
+            for (const insumo of data.insumos) {
+              const existing = existingInsumosMap.get(insumo.codigo)
+              const payload = {
+                codigo: insumo.codigo,
+                descripcion: insumo.descripcion,
+                unidad: insumo.unidad,
+                stock_actual: insumo.stockActual ?? insumo.stock_actual ?? 0,
+                precio_unitario: insumo.precioUnitario ?? insumo.precio_unitario ?? 0,
+                proveedor: insumo.proveedor || "",
+              }
+
+              if (existing) {
+                // Update existing
+                await fetch(`/api/insumos/${existing.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.insumosUpdated++
+              } else {
+                // Create new
+                await fetch("/api/insumos", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.insumosCreated++
+              }
+              processedItems++
+              setRestoreProgress(Math.round((processedItems / totalItems) * 100))
+            }
+          }
+
+          // SYNC INSUMOS BARRA
+          if (data.insumosBarra && Array.isArray(data.insumosBarra)) {
+            setRestoreStatus("Sincronizando insumos de barra...")
+            for (const insumo of data.insumosBarra) {
+              const existing = existingInsumosBarraMap.get(insumo.codigo)
+              const payload = {
+                codigo: insumo.codigo,
+                descripcion: insumo.descripcion,
+                unidad: insumo.unidad,
+                categoria: insumo.categoria || "Otros",
+                stock_actual: insumo.stockActual ?? insumo.stock_actual ?? 0,
+                precio_unitario: insumo.precioUnitario ?? insumo.precio_unitario ?? 0,
+                proveedor: insumo.proveedor || "",
+              }
+
+              if (existing) {
+                await fetch(`/api/insumos-barra/${existing.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.insumosBarraUpdated++
+              } else {
+                await fetch("/api/insumos-barra", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.insumosBarraCreated++
+              }
+              processedItems++
+              setRestoreProgress(Math.round((processedItems / totalItems) * 100))
+            }
+          }
+
+          // SYNC RECETAS
+          if (data.recetas && Array.isArray(data.recetas)) {
+            setRestoreStatus("Sincronizando recetas...")
+            for (const receta of data.recetas) {
+              const existing = existingRecetasMap.get(receta.nombre)
+              const payload = {
+                nombre: receta.nombre,
+                categoria: receta.categoria || "Otros",
+                porciones: receta.porciones ?? 1,
+                ingredientes: receta.ingredientes || [],
+              }
+
+              if (existing) {
+                await fetch(`/api/recetas/${existing.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.recetasUpdated++
+              } else {
+                await fetch("/api/recetas", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.recetasCreated++
+              }
+              processedItems++
+              setRestoreProgress(Math.round((processedItems / totalItems) * 100))
+            }
+          }
+
+          // SYNC COCTELES
+          if (data.cocteles && Array.isArray(data.cocteles)) {
+            setRestoreStatus("Sincronizando cocteles...")
+            for (const coctel of data.cocteles) {
+              const existing = existingCoctelesMap.get(coctel.nombre)
+              const payload = {
+                nombre: coctel.nombre,
+                categoria: coctel.categoria || "Otros",
+                porciones: coctel.porciones ?? 1,
+                ingredientes: coctel.ingredientes || [],
+              }
+
+              if (existing) {
+                await fetch(`/api/cocteles/${existing.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.coctelesUpdated++
+              } else {
+                await fetch("/api/cocteles", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                })
+                results.coctelesCreated++
+              }
+              processedItems++
+              setRestoreProgress(Math.round((processedItems / totalItems) * 100))
+            }
+          }
+
+          // Also save to localStorage for local state
           const STORAGE_KEY = "los-jazmines-data"
-          localStorage.removeItem(STORAGE_KEY)
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-          
-          // CRITICAL: Reload immediately
-          window.location.reload()
+          const existingLocalData = localStorage.getItem(STORAGE_KEY)
+          const localData = existingLocalData ? JSON.parse(existingLocalData) : {}
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            ...localData,
+            ...data,
+            _lastSaved: new Date().toISOString(),
+          }))
+
+          setRestoreProgress(100)
+          setRestoreStatus("Sincronizacion completada!")
+          setLastSaveTime(new Date())
+
+          // Show results
+          const totalCreated = results.insumosCreated + results.insumosBarraCreated + results.recetasCreated + results.coctelesCreated
+          const totalUpdated = results.insumosUpdated + results.insumosBarraUpdated + results.recetasUpdated + results.coctelesUpdated
+
+          toast({
+            title: "Sincronizacion exitosa",
+            description: `${totalCreated} registros creados, ${totalUpdated} actualizados.`,
+          })
+
+          // Refresh data status
+          setTimeout(() => {
+            setIsRestoring(false)
+            window.location.reload()
+          }, 2000)
+
         } catch (error) {
           console.error("[v0] Import error:", error)
+          setIsRestoring(false)
           toast({
-            title: "Error al leer archivo",
-            description: "El archivo esta danado o no es compatible.",
+            title: "Error al sincronizar",
+            description: "Hubo un problema al procesar el archivo.",
             variant: "destructive",
           })
         }
@@ -468,23 +669,37 @@ export default function ConfiguracionPage() {
             </Card>
 
             {/* Card B: Import/Restore */}
-            <Card className="border-2 border-orange-200 bg-orange-50">
+            <Card className="border-2 border-green-200 bg-green-50">
               <CardContent className="pt-6 pb-6 flex flex-col items-center text-center space-y-4">
-                <div className="h-16 w-16 rounded-full bg-orange-500 flex items-center justify-center">
-                  <Upload className="h-8 w-8 text-white" />
+                <div className="h-16 w-16 rounded-full bg-green-500 flex items-center justify-center">
+                  <Cloud className="h-8 w-8 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-orange-900">RESTAURAR COPIA</h3>
-                  <p className="text-base text-orange-700 mt-1">Cargar datos desde archivo</p>
+                  <h3 className="text-lg font-semibold text-green-900">RESTAURAR A LA NUBE</h3>
+                  <p className="text-base text-green-700 mt-1">Sincronizar archivo con la base de datos</p>
                 </div>
-                <Button 
-                  onClick={importFullBackup} 
-                  className="w-full h-16 text-lg bg-orange-500 hover:bg-orange-600 text-white"
-                >
-                  <Upload className="mr-3 h-6 w-6" />
-                  RESTAURAR COPIA
-                </Button>
-                <p className="text-sm text-orange-600">Cargar archivo</p>
+                
+                {isRestoring ? (
+                  <div className="w-full space-y-3">
+                    <div className="flex items-center justify-center gap-2 text-green-700">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span className="text-sm font-medium">{restoreStatus}</span>
+                    </div>
+                    <Progress value={restoreProgress} className="h-3" />
+                    <p className="text-lg font-bold text-green-800">{restoreProgress}%</p>
+                  </div>
+                ) : (
+                  <>
+                    <Button 
+                      onClick={importFullBackup} 
+                      className="w-full h-16 text-lg bg-green-500 hover:bg-green-600 text-white"
+                    >
+                      <Upload className="mr-3 h-6 w-6" />
+                      RESTAURAR Y SINCRONIZAR
+                    </Button>
+                    <p className="text-sm text-green-600">Carga archivo JSON y guarda en la nube</p>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
