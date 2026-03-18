@@ -12,25 +12,21 @@ export async function GET() {
       SELECT * FROM coctel_insumos
     `
 
-    // Transform to app format
     const cocteles = coctelesData.map((coctel) => {
       const insumos = insumosData
         .filter((i) => i.coctel_id === coctel.id)
         .map((i) => ({
-          insumoBarraId: i.insumo_id,
+          insumoBarraId: i.insumo_barra_id,
           cantidadPorCoctel: Number(i.cantidad),
           unidadCoctel: i.unidad,
         }))
 
       return {
         id: coctel.id,
-        codigo: coctel.nombre.substring(0, 3).toUpperCase() + coctel.id.substring(0, 4),
         nombre: coctel.nombre,
-        descripcion: coctel.descripcion || "",
-        imagen: "",
-        categoria: coctel.categoria || "Con Alcohol",
+        categoria: coctel.categoria,
+        instrucciones: coctel.instrucciones || "",
         insumos,
-        preparacion: "",
       }
     })
 
@@ -48,12 +44,12 @@ export async function POST(request: Request) {
     const id = generateId()
 
     const [coctelData] = await sql`
-      INSERT INTO cocteles (id, nombre, descripcion, categoria)
+      INSERT INTO cocteles (id, nombre, categoria, instrucciones)
       VALUES (
         ${id},
         ${body.nombre},
-        ${body.descripcion || null},
-        ${body.categoria || "Con Alcohol"}
+        ${body.categoria || "Con Alcohol"},
+        ${body.instrucciones || null}
       )
       RETURNING *
     `
@@ -62,7 +58,7 @@ export async function POST(request: Request) {
     if (body.insumos && body.insumos.length > 0) {
       for (const insumo of body.insumos) {
         await sql`
-          INSERT INTO coctel_insumos (id, coctel_id, insumo_id, cantidad, unidad)
+          INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad, unidad)
           VALUES (
             ${generateId()},
             ${id},
@@ -76,13 +72,10 @@ export async function POST(request: Request) {
 
     const coctel = {
       id: coctelData.id,
-      codigo: coctelData.nombre.substring(0, 3).toUpperCase() + coctelData.id.substring(0, 4),
       nombre: coctelData.nombre,
-      descripcion: coctelData.descripcion || "",
-      imagen: "",
-      categoria: coctelData.categoria || "Con Alcohol",
+      categoria: coctelData.categoria,
+      instrucciones: coctelData.instrucciones || "",
       insumos: body.insumos || [],
-      preparacion: "",
     }
 
     return NextResponse.json(coctel, { status: 201 })

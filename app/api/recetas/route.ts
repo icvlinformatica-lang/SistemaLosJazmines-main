@@ -12,24 +12,22 @@ export async function GET() {
       SELECT * FROM receta_insumos
     `
 
-    // Transform to app format
     const recetas = recetasData.map((receta) => {
       const insumos = insumosData
         .filter((i) => i.receta_id === receta.id)
         .map((i) => ({
           insumoId: i.insumo_id,
-          detalleCorte: "",
-          cantidadBasePorPersona: Number(i.cantidad),
-          unidadReceta: i.unidad,
+          detalleCorte: i.detalle_corte || "",
+          cantidadBasePorPersona: Number(i.cantidad_base_por_persona),
+          unidadReceta: i.unidad_receta,
         }))
 
       return {
         id: receta.id,
-        codigo: receta.nombre.substring(0, 3).toUpperCase() + receta.id.substring(0, 4),
         nombre: receta.nombre,
-        descripcion: receta.descripcion || "",
-        imagen: "",
-        categoria: receta.categoria || "Plato Principal",
+        categoria: receta.categoria,
+        porcionesBase: receta.porciones_base || 1,
+        instrucciones: receta.instrucciones || "",
         insumos,
       }
     })
@@ -48,14 +46,13 @@ export async function POST(request: Request) {
     const id = generateId()
 
     const [recetaData] = await sql`
-      INSERT INTO recetas (id, nombre, descripcion, porciones, tiempo_preparacion, categoria)
+      INSERT INTO recetas (id, nombre, categoria, porciones_base, instrucciones)
       VALUES (
         ${id},
         ${body.nombre},
-        ${body.descripcion || null},
-        ${body.porciones || 1},
-        ${body.tiempoPreparacion || null},
-        ${body.categoria || "Plato Principal"}
+        ${body.categoria || "Plato Principal"},
+        ${body.porcionesBase || 1},
+        ${body.instrucciones || null}
       )
       RETURNING *
     `
@@ -64,11 +61,12 @@ export async function POST(request: Request) {
     if (body.insumos && body.insumos.length > 0) {
       for (const insumo of body.insumos) {
         await sql`
-          INSERT INTO receta_insumos (id, receta_id, insumo_id, cantidad, unidad)
+          INSERT INTO receta_insumos (id, receta_id, insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta)
           VALUES (
             ${generateId()},
             ${id},
             ${insumo.insumoId},
+            ${insumo.detalleCorte || null},
             ${insumo.cantidadBasePorPersona},
             ${insumo.unidadReceta || "GRS"}
           )
@@ -76,14 +74,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // Return in app format
     const receta = {
       id: recetaData.id,
-      codigo: recetaData.nombre.substring(0, 3).toUpperCase() + recetaData.id.substring(0, 4),
       nombre: recetaData.nombre,
-      descripcion: recetaData.descripcion || "",
-      imagen: "",
-      categoria: recetaData.categoria || "Plato Principal",
+      categoria: recetaData.categoria,
+      porcionesBase: recetaData.porciones_base || 1,
+      instrucciones: recetaData.instrucciones || "",
       insumos: body.insumos || [],
     }
 

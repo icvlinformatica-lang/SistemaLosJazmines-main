@@ -23,18 +23,17 @@ export async function GET(
 
     const insumos = insumosData.map((i) => ({
       insumoId: i.insumo_id,
-      detalleCorte: "",
-      cantidadBasePorPersona: Number(i.cantidad),
-      unidadReceta: i.unidad,
+      detalleCorte: i.detalle_corte || "",
+      cantidadBasePorPersona: Number(i.cantidad_base_por_persona),
+      unidadReceta: i.unidad_receta,
     }))
 
     const receta = {
       id: recetaData.id,
-      codigo: recetaData.nombre.substring(0, 3).toUpperCase() + recetaData.id.substring(0, 4),
       nombre: recetaData.nombre,
-      descripcion: recetaData.descripcion || "",
-      imagen: "",
-      categoria: recetaData.categoria || "Plato Principal",
+      categoria: recetaData.categoria,
+      porcionesBase: recetaData.porciones_base || 1,
+      instrucciones: recetaData.instrucciones || "",
       insumos,
     }
 
@@ -56,11 +55,10 @@ export async function PUT(
 
     const [recetaData] = await sql`
       UPDATE recetas SET
-        nombre = ${body.nombre},
-        descripcion = ${body.descripcion || null},
-        porciones = ${body.porciones || 1},
-        tiempo_preparacion = ${body.tiempoPreparacion || null},
-        categoria = ${body.categoria || "Plato Principal"},
+        nombre = COALESCE(${body.nombre}, nombre),
+        categoria = COALESCE(${body.categoria}, categoria),
+        porciones_base = COALESCE(${body.porcionesBase}, porciones_base),
+        instrucciones = COALESCE(${body.instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -77,11 +75,12 @@ export async function PUT(
       if (body.insumos.length > 0) {
         for (const insumo of body.insumos) {
           await sql`
-            INSERT INTO receta_insumos (id, receta_id, insumo_id, cantidad, unidad)
+            INSERT INTO receta_insumos (id, receta_id, insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta)
             VALUES (
               ${generateId()},
               ${id},
               ${insumo.insumoId},
+              ${insumo.detalleCorte || null},
               ${insumo.cantidadBasePorPersona},
               ${insumo.unidadReceta || "GRS"}
             )
@@ -92,11 +91,10 @@ export async function PUT(
 
     const receta = {
       id: recetaData.id,
-      codigo: recetaData.nombre.substring(0, 3).toUpperCase() + recetaData.id.substring(0, 4),
       nombre: recetaData.nombre,
-      descripcion: recetaData.descripcion || "",
-      imagen: "",
-      categoria: recetaData.categoria || "Plato Principal",
+      categoria: recetaData.categoria,
+      porcionesBase: recetaData.porciones_base || 1,
+      instrucciones: recetaData.instrucciones || "",
       insumos: body.insumos || [],
     }
 
@@ -115,7 +113,6 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    // Delete insumos first (cascade should handle this, but just in case)
     await sql`DELETE FROM receta_insumos WHERE receta_id = ${id}`
     await sql`DELETE FROM recetas WHERE id = ${id}`
 

@@ -3,7 +3,19 @@
 import useSWR from "swr"
 import type { Receta, Coctel, BarraTemplate } from "@/lib/store"
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    console.error(`[v0] Fetch error for ${url}:`, res.status)
+    return []
+  }
+  const data = await res.json()
+  if (data && data.error) {
+    console.error(`[v0] API error for ${url}:`, data.error)
+    return []
+  }
+  return Array.isArray(data) ? data : []
+}
 
 // Hook for Recetas
 export function useRecetas() {

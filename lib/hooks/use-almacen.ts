@@ -3,7 +3,20 @@
 import useSWR from "swr"
 import type { Insumo, InsumoBarra } from "@/lib/store"
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    console.error(`[v0] Fetch error for ${url}:`, res.status)
+    return []
+  }
+  const data = await res.json()
+  // If API returns an error object, return empty array
+  if (data && data.error) {
+    console.error(`[v0] API error for ${url}:`, data.error)
+    return []
+  }
+  return Array.isArray(data) ? data : []
+}
 
 // Hook for Insumos (Cocina)
 export function useInsumos() {

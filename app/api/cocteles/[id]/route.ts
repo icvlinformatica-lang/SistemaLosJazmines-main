@@ -22,20 +22,17 @@ export async function GET(
     `
 
     const insumos = insumosData.map((i) => ({
-      insumoBarraId: i.insumo_id,
+      insumoBarraId: i.insumo_barra_id,
       cantidadPorCoctel: Number(i.cantidad),
       unidadCoctel: i.unidad,
     }))
 
     const coctel = {
       id: coctelData.id,
-      codigo: coctelData.nombre.substring(0, 3).toUpperCase() + coctelData.id.substring(0, 4),
       nombre: coctelData.nombre,
-      descripcion: coctelData.descripcion || "",
-      imagen: "",
-      categoria: coctelData.categoria || "Con Alcohol",
+      categoria: coctelData.categoria,
+      instrucciones: coctelData.instrucciones || "",
       insumos,
-      preparacion: "",
     }
 
     return NextResponse.json(coctel)
@@ -56,9 +53,9 @@ export async function PUT(
 
     const [coctelData] = await sql`
       UPDATE cocteles SET
-        nombre = ${body.nombre},
-        descripcion = ${body.descripcion || null},
-        categoria = ${body.categoria || "Con Alcohol"},
+        nombre = COALESCE(${body.nombre}, nombre),
+        categoria = COALESCE(${body.categoria}, categoria),
+        instrucciones = COALESCE(${body.instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -75,7 +72,7 @@ export async function PUT(
       if (body.insumos.length > 0) {
         for (const insumo of body.insumos) {
           await sql`
-            INSERT INTO coctel_insumos (id, coctel_id, insumo_id, cantidad, unidad)
+            INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad, unidad)
             VALUES (
               ${generateId()},
               ${id},
@@ -90,13 +87,10 @@ export async function PUT(
 
     const coctel = {
       id: coctelData.id,
-      codigo: coctelData.nombre.substring(0, 3).toUpperCase() + coctelData.id.substring(0, 4),
       nombre: coctelData.nombre,
-      descripcion: coctelData.descripcion || "",
-      imagen: "",
-      categoria: coctelData.categoria || "Con Alcohol",
+      categoria: coctelData.categoria,
+      instrucciones: coctelData.instrucciones || "",
       insumos: body.insumos || [],
-      preparacion: "",
     }
 
     return NextResponse.json(coctel)

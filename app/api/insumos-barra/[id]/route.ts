@@ -19,13 +19,13 @@ export async function GET(
 
     const insumo = {
       id: data.id,
-      codigo: data.nombre.substring(0, 3).toUpperCase() + data.id.substring(0, 4),
-      descripcion: data.nombre,
+      codigo: data.codigo,
+      descripcion: data.descripcion,
       unidad: data.unidad,
-      stockActual: Number(data.cantidad),
+      stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
-      proveedor: "",
-      categoria: data.categoria || "Otros",
+      proveedor: data.proveedor || "",
+      categoria: data.categoria,
     }
 
     return NextResponse.json(insumo)
@@ -46,12 +46,13 @@ export async function PUT(
 
     const [data] = await sql`
       UPDATE insumos_barra SET
-        nombre = ${body.descripcion || body.nombre},
-        categoria = COALESCE(${body.categoria}, categoria),
+        codigo = COALESCE(${body.codigo}, codigo),
+        descripcion = COALESCE(${body.descripcion}, descripcion),
         unidad = COALESCE(${body.unidad}, unidad),
-        cantidad = COALESCE(${body.stockActual ?? body.cantidad}, cantidad),
-        precio_unitario = COALESCE(${body.precioUnitario ?? body.precio_unitario}, precio_unitario),
-        umbral_minimo = COALESCE(${body.minimo ?? body.umbral_minimo}, umbral_minimo),
+        stock_actual = COALESCE(${body.stockActual}, stock_actual),
+        precio_unitario = COALESCE(${body.precioUnitario}, precio_unitario),
+        proveedor = COALESCE(${body.proveedor}, proveedor),
+        categoria = COALESCE(${body.categoria}, categoria),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -63,13 +64,13 @@ export async function PUT(
 
     const insumo = {
       id: data.id,
-      codigo: data.nombre.substring(0, 3).toUpperCase() + data.id.substring(0, 4),
-      descripcion: data.nombre,
+      codigo: data.codigo,
+      descripcion: data.descripcion,
       unidad: data.unidad,
-      stockActual: Number(data.cantidad),
+      stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
-      proveedor: "",
-      categoria: data.categoria || "Otros",
+      proveedor: data.proveedor || "",
+      categoria: data.categoria,
     }
 
     return NextResponse.json(insumo)
