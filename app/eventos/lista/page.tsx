@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -9,11 +9,10 @@ import {
   type EventoGuardado,
   type EstadoEvento,
   SALONES,
-  loadState,
-  deleteEvento as deleteEventoFromStore,
   calcularComprasSegmentadas,
   type CalculoCompraSegmentado,
 } from "@/lib/store"
+import { useEventos } from "@/lib/use-eventos"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -81,10 +80,9 @@ import {
   Sparkles,
   ShoppingCart,
   X,
+  Archive,
 } from "lucide-react"
 import { generateId } from "@/lib/store"
-
-// cache-bust: v2 - estadoConfig includes en_preparacion, confirmado removed
 const estadoConfig: Record<string, { label: string; className: string }> = {
   pendiente: {
     label: "Pendiente",
@@ -121,7 +119,13 @@ function formatFecha(fecha: string) {
 export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { state, eventos, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateEvento, updateInsumo, updateInsumoBarra, deleteEvento, setEventoActual } = useStore()
+  const { recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual } = useStore()
+  const { eventos, loading: loadingEventos, fetchEventos, actualizarEvento: actualizarEventoDB, eliminarEvento: eliminarEventoDB } = useEventos()
+
+  // Wrapper para actualizar evento en DB + sync local
+  const updateEvento = async (id: string, cambios: Partial<EventoGuardado>) => {
+    await actualizarEventoDB(id, cambios)
+  }
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filtroEstado, setFiltroEstado] = useState<string>("todos")
@@ -346,8 +350,8 @@ export default function EventosListaPage() {
       updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
     })
 
-    // Volver a pendiente
-    updateEvento(selectedEventoId, { estado: "pendiente" })
+    // Volver a pendiente via API
+    await updateEvento(selectedEventoId, { estado: "pendiente" })
 
     // Registrar en historial
     const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
@@ -367,7 +371,7 @@ export default function EventosListaPage() {
     setSelectedEventoId(null)
   }
 
-  const confirmEliminar = () => {
+  const confirmEliminar = async () => {
     if (!selectedEventoId) return
     const evento = eventos.find((e) => e.id === selectedEventoId)
 
@@ -394,12 +398,11 @@ export default function EventosListaPage() {
       })
     }
 
-    const fullState = loadState()
-    deleteEventoFromStore(fullState, selectedEventoId)
-    deleteEvento(selectedEventoId)
+    const motivo = recuperarStockAlEliminar ? "Stock recuperado al eliminar" : undefined
+    await eliminarEventoDB(selectedEventoId, motivo)
     toast({
       title: "Evento eliminado",
-      description: recuperarStockAlEliminar ? "El evento fue eliminado y el stock fue recuperado." : "El evento fue eliminado correctamente.",
+      description: recuperarStockAlEliminar ? "El evento fue eliminado y el stock fue recuperado." : "El evento fue movido a la papelera.",
     })
     setDeleteDialogOpen(false)
     setSelectedEventoId(null)
@@ -416,7 +419,7 @@ export default function EventosListaPage() {
     setImprimirDialogOpen(true)
   }
 
-  const handleConfirmarImpresion = () => {
+  const handleConfirmarImpresion = async () => {
     if (!imprimirEventoId) return
     const evento = eventos.find((e) => e.id === imprimirEventoId)
     if (!evento) return
@@ -464,8 +467,8 @@ export default function EventosListaPage() {
         }),
       }).catch(() => {})
 
-      // Cambiar estado a En Preparacion
-      updateEvento(imprimirEventoId, { estado: "en_preparacion" })
+      // Cambiar estado a En Preparacion via API
+      await updateEvento(imprimirEventoId, { estado: "en_preparacion" })
       toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
     } else {
       toast({ title: "Documento reimpreso", description: "El stock no fue modificado (ya se desconto anteriormente)." })
@@ -497,6 +500,12 @@ export default function EventosListaPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/eventos/papelera">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+                <Archive className="h-4 w-4" />
+                <span className="hidden sm:inline">Papelera</span>
+              </Button>
+            </Link>
             <Button
               variant={modoConsolidar ? "secondary" : "outline"}
               size="sm"
