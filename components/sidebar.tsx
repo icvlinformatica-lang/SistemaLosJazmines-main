@@ -48,7 +48,6 @@ const menuItems: MenuItem[] = [
     href: "/eventos",
     label: "Eventos",
     icon: Calendar,
-    locked: true,
     children: [
       { href: "/eventos/lista", label: "Lista", icon: List },
       { href: "/eventos/calendario", label: "Calendario", icon: Calendar },
