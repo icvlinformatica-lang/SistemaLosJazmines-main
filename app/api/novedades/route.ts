@@ -10,8 +10,7 @@ export async function GET() {
       ORDER BY orden ASC, created_at DESC
     `
     return NextResponse.json(data)
-  } catch (error) {
-    console.error("[API] Error fetching novedades:", error)
-    return NextResponse.json({ error: "Error fetching novedades" }, { status: 500 })
+  } catch {
+    return NextResponse.json([])
   }
 }

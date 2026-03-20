@@ -397,43 +397,17 @@ export default function RecetarioPage() {
                         <Utensils className="h-4 w-4 text-muted-foreground" />
                         <Label className="text-sm font-medium">Como cargas esta receta?</Label>
                       </div>
-                      <div className="flex gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setFormData({ ...formData, factorRendimiento: 1 })}
-                          className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
-                            formData.factorRendimiento === 1
-                              ? "border-foreground bg-foreground text-background"
-                              : "border-border bg-background text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          Por persona
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFormData({ ...formData, factorRendimiento: formData.factorRendimiento > 1 ? formData.factorRendimiento : 2 })}
-                          className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
-                            formData.factorRendimiento > 1
-                              ? "border-foreground bg-foreground text-background"
-                              : "border-border bg-background text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          Por preparacion
-                        </button>
+                      <div className="flex items-center gap-3 pt-1">
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">Esta receta rinde para</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          className="w-20 text-center"
+                          value={formData.factorRendimiento}
+                          onChange={(e) => setFormData({ ...formData, factorRendimiento: Math.max(1, parseInt(e.target.value) || 1) })}
+                        />
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">personas</span>
                       </div>
-                      {formData.factorRendimiento > 1 && (
-                        <div className="flex items-center gap-3 pt-1">
-                          <span className="text-sm text-muted-foreground whitespace-nowrap">Esta receta rinde para</span>
-                          <Input
-                            type="number"
-                            min={2}
-                            className="w-20 text-center"
-                            value={formData.factorRendimiento}
-                            onChange={(e) => setFormData({ ...formData, factorRendimiento: Math.max(2, parseInt(e.target.value) || 2) })}
-                          />
-                          <span className="text-sm text-muted-foreground whitespace-nowrap">personas</span>
-                        </div>
-                      )}
                     </div>
 
                     <div>
