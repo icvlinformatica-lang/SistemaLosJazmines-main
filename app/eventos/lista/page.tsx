@@ -640,6 +640,7 @@ export default function EventosListaPage() {
                   {eventosFiltrados.map((evento) => {
                     const config = estadoConfig[evento.estado]
                     const totalInvitados = getTotalInvitados(evento)
+                    const displayName = evento.nombrePareja || evento.nombre || "Sin nombre"
                     return (
                       <TableRow
                         key={evento.id}
