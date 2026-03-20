@@ -2,6 +2,7 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET all recetas with their insumos
+// NOTE: factor_rendimiento column not yet in DB — defaults to 1
 export async function GET() {
   try {
     const recetasData = await sql`
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
         ${body.imagen || null},
         ${body.categoria || "Plato Principal"}
       )
-      RETURNING *
+      RETURNING id, codigo, nombre, descripcion, imagen, categoria
     `
 
     if (body.insumos && body.insumos.length > 0) {

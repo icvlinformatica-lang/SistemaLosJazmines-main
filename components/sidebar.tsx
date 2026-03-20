@@ -38,7 +38,7 @@ interface MenuItem {
   href: string
   label: string
   icon: React.ElementType
-  children?: { href: string; label: string; icon: React.ElementType }[]
+  children?: { href: string; label: string; icon: React.ElementType; locked?: boolean }[]
   locked?: boolean
 }
 
@@ -50,9 +50,9 @@ const menuItems: MenuItem[] = [
     icon: Calendar,
     children: [
       { href: "/eventos/lista", label: "Lista", icon: List },
-      { href: "/eventos/calendario", label: "Calendario", icon: Calendar },
-      { href: "/eventos/pagos", label: "Pagos", icon: CreditCard },
-      { href: "/eventos/contratos", label: "Contratos", icon: FileText },
+      { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: true },
+      { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: true },
+      { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: true },
     ],
   },
   {
@@ -220,6 +220,19 @@ export function Sidebar() {
                       {item.children.map((child) => {
                         const ChildIcon = child.icon
                         const childActive = isActive(child.href)
+                        const childLocked = child.locked
+                        if (childLocked) {
+                          return (
+                            <div
+                              key={child.href}
+                              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-[#f5f0e8]/30 cursor-not-allowed"
+                            >
+                              <ChildIcon className="h-4 w-4 shrink-0" />
+                              <span className="flex-1">{child.label}</span>
+                              <Lock className="h-3 w-3 shrink-0" />
+                            </div>
+                          )
+                        }
                         return (
                           <Link
                             key={child.href}
