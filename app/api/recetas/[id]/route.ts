@@ -8,7 +8,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-
     const [recetaData] = await sql`SELECT * FROM recetas WHERE id = ${id}`
 
     if (!recetaData) {
@@ -28,10 +27,11 @@ export async function GET(
 
     return NextResponse.json({
       id: recetaData.id,
+      codigo: recetaData.codigo,
       nombre: recetaData.nombre,
+      descripcion: recetaData.descripcion || "",
+      imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
-      porcionesBase: recetaData.porciones_base || 1,
-      instrucciones: recetaData.instrucciones || "",
       insumos,
     })
   } catch (err) {
@@ -49,19 +49,14 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    // Explicitly convert every field to null if missing to avoid UNDEFINED_VALUE
-    const nombre: string | null = (body.nombre !== undefined && body.nombre !== "") ? String(body.nombre) : null
-    const categoria: string | null = (body.categoria !== undefined && body.categoria !== "") ? String(body.categoria) : null
-    const porcionesBase: number | null = body.porcionesBase !== undefined ? Number(body.porcionesBase) : null
-    const instrucciones: string | null = body.instrucciones !== undefined ? (body.instrucciones || null) : null
-
     const [recetaData] = await sql`
       UPDATE recetas SET
-        nombre = COALESCE(${nombre}, nombre),
-        categoria = COALESCE(${categoria}, categoria),
-        porciones_base = COALESCE(${porcionesBase}, porciones_base),
-        instrucciones = COALESCE(${instrucciones}, instrucciones),
-        updated_at = NOW()
+        nombre      = COALESCE(${body.nombre ?? null}, nombre),
+        codigo      = COALESCE(${body.codigo ?? null}, codigo),
+        descripcion = COALESCE(${body.descripcion ?? null}, descripcion),
+        imagen      = COALESCE(${body.imagen ?? null}, imagen),
+        categoria   = COALESCE(${body.categoria ?? null}, categoria),
+        updated_at  = NOW()
       WHERE id = ${id}
       RETURNING *
     `
@@ -70,34 +65,43 @@ export async function PUT(
       return NextResponse.json({ error: "Receta not found" }, { status: 404 })
     }
 
-    // Accept both "insumos" and "ingredientes" keys
-    const insumosList: any[] | null = body.insumos || body.ingredientes || null
-
-    if (insumosList) {
+    // Si se envían insumos, reemplazarlos completos
+    if (body.insumos !== undefined) {
       await sql`DELETE FROM receta_insumos WHERE receta_id = ${id}`
 
-      for (const ing of insumosList) {
-        const insumoId: string = ing.insumoId || ing.id
-        const detalleCorte: string | null = ing.detalleCorte || null
-        const cantidad: number = Number(ing.cantidadBasePorPersona ?? ing.cantidad ?? 0)
-        const unidad: string = ing.unidadReceta || ing.unidad || "GRS"
-
+      for (const insumo of body.insumos) {
         await sql`
-          INSERT INTO receta_insumos
-            (id, receta_id, insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta)
-          VALUES
-            (${generateId()}, ${id}, ${insumoId}, ${detalleCorte}, ${cantidad}, ${unidad})
+          INSERT INTO receta_insumos (id, receta_id, insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta)
+          VALUES (
+            ${generateId()},
+            ${id},
+            ${insumo.insumoId},
+            ${insumo.detalleCorte || null},
+            ${insumo.cantidadBasePorPersona},
+            ${insumo.unidadReceta || "GRS"}
+          )
         `
       }
     }
 
+    // Leer los insumos actualizados para devolver
+    const insumosData = await sql`
+      SELECT * FROM receta_insumos WHERE receta_id = ${id}
+    `
+
     return NextResponse.json({
       id: recetaData.id,
+      codigo: recetaData.codigo,
       nombre: recetaData.nombre,
+      descripcion: recetaData.descripcion || "",
+      imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
-      porcionesBase: recetaData.porciones_base || 1,
-      instrucciones: recetaData.instrucciones || "",
-      insumos: insumosList || [],
+      insumos: insumosData.map((i) => ({
+        insumoId: i.insumo_id,
+        detalleCorte: i.detalle_corte || "",
+        cantidadBasePorPersona: Number(i.cantidad_base_por_persona),
+        unidadReceta: i.unidad_receta,
+      })),
     })
   } catch (err) {
     console.error("[API] Error updating receta:", err)
@@ -112,10 +116,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-
-    await sql`DELETE FROM receta_insumos WHERE receta_id = ${id}`
+    // receta_insumos se borra en cascada por la FK
     await sql`DELETE FROM recetas WHERE id = ${id}`
-
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[API] Error deleting receta:", err)

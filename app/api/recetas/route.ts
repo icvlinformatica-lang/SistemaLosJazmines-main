@@ -24,10 +24,11 @@ export async function GET() {
 
       return {
         id: receta.id,
+        codigo: receta.codigo,
         nombre: receta.nombre,
+        descripcion: receta.descripcion || "",
+        imagen: receta.imagen || "",
         categoria: receta.categoria,
-        porcionesBase: receta.porciones_base || 1,
-        instrucciones: receta.instrucciones || "",
         insumos,
       }
     })
@@ -44,20 +45,21 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const id = generateId()
+    const codigo = body.codigo || id.substring(0, 6).toUpperCase()
 
     const [recetaData] = await sql`
-      INSERT INTO recetas (id, nombre, categoria, porciones_base, instrucciones)
+      INSERT INTO recetas (id, codigo, nombre, descripcion, imagen, categoria)
       VALUES (
         ${id},
+        ${codigo},
         ${body.nombre},
-        ${body.categoria || "Plato Principal"},
-        ${body.porcionesBase || 1},
-        ${body.instrucciones || null}
+        ${body.descripcion || null},
+        ${body.imagen || null},
+        ${body.categoria || "Plato Principal"}
       )
       RETURNING *
     `
 
-    // Create receta_insumos if provided
     if (body.insumos && body.insumos.length > 0) {
       for (const insumo of body.insumos) {
         await sql`
@@ -74,16 +76,15 @@ export async function POST(request: Request) {
       }
     }
 
-    const receta = {
+    return NextResponse.json({
       id: recetaData.id,
+      codigo: recetaData.codigo,
       nombre: recetaData.nombre,
+      descripcion: recetaData.descripcion || "",
+      imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
-      porcionesBase: recetaData.porciones_base || 1,
-      instrucciones: recetaData.instrucciones || "",
       insumos: body.insumos || [],
-    }
-
-    return NextResponse.json(receta, { status: 201 })
+    }, { status: 201 })
   } catch (err) {
     console.error("[API] Error creating receta:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
