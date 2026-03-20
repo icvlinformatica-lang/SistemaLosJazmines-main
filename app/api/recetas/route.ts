@@ -2,7 +2,6 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
-// v4 - factor_rendimiento column removed (not in preview DB, exists in Supabase prod only)
 export async function GET() {
   try {
     const recetasData = await sql`
@@ -79,7 +78,7 @@ export async function POST(request: Request) {
       }
     }
 
-    await logActivity("receta", "creado", body.nombre, `Categoría: ${body.categoria || "Plato Principal"}`)
+    await logActivity("receta", "creado", body.nombre, `Categoria: ${body.categoria || "Plato Principal"}`)
     return NextResponse.json({
       id: recetaData.id,
       codigo: recetaData.codigo,

@@ -1,5 +1,5 @@
 "use client"
-// cache-bust: v4
+// cache-bust: v5 - isEditMode fix
 import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -163,7 +163,8 @@ export default function RecetarioPage() {
   const { state, addReceta, updateReceta, deleteReceta } = useStore()
   const [selectedReceta, setSelectedReceta] = useState<Receta | null>(state.recetas[0] || null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditMode, setIsEditMode] = useState<boolean>(false)
+  const [editingRecetaId, setEditingRecetaId] = useState<string | null>(null)
+  const isEditMode = editingRecetaId !== null
   const [recetaSearch, setRecetaSearch] = useState("")
   const [recetaViewMode, setRecetaViewMode] = useState<"list" | "grid">("list")
   const [showCapacity, setShowCapacity] = useState(false)
@@ -230,7 +231,7 @@ export default function RecetarioPage() {
       cantidadBasePorPersona: 0,
       unidadReceta: undefined,
     })
-    setIsEditMode(false)
+    setEditingRecetaId(null)
   }
 
   const handleIngredientSelect = (insumoId: string) => {
@@ -288,7 +289,7 @@ export default function RecetarioPage() {
       insumos: [...selectedReceta.insumos],
       factorRendimiento: selectedReceta.factorRendimiento || 1,
     })
-    setIsEditMode(true)
+    setEditingRecetaId(selectedReceta.id)
     setIsAddDialogOpen(true)
   }
 

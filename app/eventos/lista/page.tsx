@@ -75,6 +75,7 @@ import {
   ChevronUp,
   LayoutDashboard,
   CheckCircle,
+  RotateCcw,
 } from "lucide-react"
 import { generateId } from "@/lib/store"
 
@@ -116,6 +117,7 @@ export default function EventosListaPage() {
   const [filtroEstado, setFiltroEstado] = useState<string>("todos")
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [recuperarStockDialogOpen, setRecuperarStockDialogOpen] = useState(false)
   const [selectedEventoId, setSelectedEventoId] = useState<string | null>(null)
   const [showDashboard, setShowDashboard] = useState(true)
   const [imprimirDialogOpen, setImprimirDialogOpen] = useState(false)
@@ -192,6 +194,61 @@ export default function EventosListaPage() {
     setSelectedEventoId(null)
   }
 
+  const handleRecuperarStock = (eventoId: string) => {
+    setSelectedEventoId(eventoId)
+    setRecuperarStockDialogOpen(true)
+  }
+
+  const confirmRecuperarStock = () => {
+    if (!selectedEventoId) return
+    const evento = eventos.find((e) => e.id === selectedEventoId)
+    if (!evento) return
+
+    // Recalcular el delta igual que al descontar
+    const cantidadPorReceta: Record<string, number> = {}
+    ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
+    ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
+    ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
+    ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
+
+    const stockDelta: Record<string, number> = {}
+    Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
+      const receta = recetas.find((r) => r.id === recetaId)
+      if (!receta) return
+      receta.insumos.forEach((ri) => {
+        const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
+        stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
+      })
+    })
+
+    // Devolver el stock (sumar lo que se habia descontado)
+    Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
+      const insumo = insumos.find((i) => i.id === insumoId)
+      if (!insumo) return
+      updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
+    })
+
+    // Volver a pendiente
+    updateEvento(selectedEventoId, { estado: "pendiente" })
+
+    // Registrar en historial
+    const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "evento",
+        accion: "modificado",
+        nombre: nombreEvento,
+        detalle: `Stock recuperado — evento vuelto a Pendiente (${Object.keys(stockDelta).length} insumos restituidos)`,
+      }),
+    }).catch(() => {})
+
+    toast({ title: "Stock recuperado", description: "Los insumos fueron restituidos y el evento volvio a Pendiente." })
+    setRecuperarStockDialogOpen(false)
+    setSelectedEventoId(null)
+  }
+
   const confirmEliminar = () => {
     if (!selectedEventoId) return
     const fullState = loadState()
@@ -250,11 +307,24 @@ export default function EventosListaPage() {
         updateInsumo(insumoId, { stockActual: nuevoStock })
       })
 
+      // Registrar en historial de actividad
+      const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
+      fetch("/api/activity-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "evento",
+          accion: "modificado",
+          nombre: nombreEvento,
+          detalle: `Stock descontado al imprimir documento (${Object.keys(stockDelta).length} insumos afectados)`,
+        }),
+      }).catch(() => {})
+
       // Cambiar estado a En Preparacion
       updateEvento(imprimirEventoId, { estado: "en_preparacion" })
       toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
     } else {
-      toast({ title: "Documento generado", description: "El stock no fue modificado (ya se desconto anteriormente)." })
+      toast({ title: "Documento reimpreso", description: "El stock no fue modificado (ya se desconto anteriormente)." })
     }
 
     setImprimirDialogOpen(false)
@@ -481,7 +551,7 @@ export default function EventosListaPage() {
                                 <span className="sr-only">Acciones</span>
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuContent align="end" className="w-52">
                               <DropdownMenuItem onClick={() => handleVerEditar(evento)}>
                                 <Eye className="h-4 w-4 mr-2" />
                                 Ver / Editar
@@ -490,6 +560,18 @@ export default function EventosListaPage() {
                                 <Printer className="h-4 w-4 mr-2" />
                                 Imprimir Documento
                               </DropdownMenuItem>
+                              {evento.estado === "en_preparacion" && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleRecuperarStock(evento.id)}
+                                    className="text-amber-600 focus:text-amber-600"
+                                  >
+                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                    Recuperar Stock
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleEliminar(evento.id)}
@@ -537,12 +619,23 @@ export default function EventosListaPage() {
       {/* Print Sections Dialog */}
       <Dialog open={imprimirDialogOpen} onOpenChange={setImprimirDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Imprimir Documento</DialogTitle>
-            <DialogDescription>
-              Selecciona las secciones que deseas incluir en el documento.
-            </DialogDescription>
-          </DialogHeader>
+          {(() => {
+            const eventoImprimir = imprimirEventoId ? eventos.find((e) => e.id === imprimirEventoId) : null
+            const yaDescontado = eventoImprimir?.estado !== "pendiente"
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Imprimir Documento</DialogTitle>
+                  <DialogDescription>
+                    {eventoImprimir?.nombrePareja || eventoImprimir?.nombre || "Evento"}
+                  </DialogDescription>
+                </DialogHeader>
+                {yaDescontado && (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
+                    <Printer className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>El stock de este evento ya fue descontado. Reimprimir <strong>no modificara</strong> el inventario.</span>
+                  </div>
+                )}
           <div className="space-y-4 py-4">
             <div className="flex items-center gap-3">
               <Checkbox
@@ -606,8 +699,34 @@ export default function EventosListaPage() {
               Imprimir
             </Button>
           </DialogFooter>
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
+
+      {/* Recuperar Stock Dialog */}
+      <AlertDialog open={recuperarStockDialogOpen} onOpenChange={setRecuperarStockDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Recuperar Stock</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esto restituira al inventario todos los insumos que fueron descontados al imprimir este evento,
+              y el evento volvera al estado <strong>Pendiente</strong>.
+              Usa esta opcion solo si el evento fue cancelado o necesita ser replaneado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmRecuperarStock}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Si, Recuperar Stock
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
