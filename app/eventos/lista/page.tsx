@@ -127,6 +127,7 @@ export default function EventosListaPage() {
   const [filtroEstado, setFiltroEstado] = useState<string>("todos")
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [recuperarStockAlEliminar, setRecuperarStockAlEliminar] = useState(false)
   const [recuperarStockDialogOpen, setRecuperarStockDialogOpen] = useState(false)
   const [selectedEventoId, setSelectedEventoId] = useState<string | null>(null)
   const [showDashboard, setShowDashboard] = useState(true)
@@ -300,6 +301,7 @@ export default function EventosListaPage() {
 
   const handleEliminar = (eventoId: string) => {
     setSelectedEventoId(eventoId)
+    setRecuperarStockAlEliminar(false)
     setDeleteDialogOpen(true)
   }
 
@@ -367,15 +369,41 @@ export default function EventosListaPage() {
 
   const confirmEliminar = () => {
     if (!selectedEventoId) return
+    const evento = eventos.find((e) => e.id === selectedEventoId)
+
+    // Si el evento esta en preparacion y el usuario quiere recuperar el stock
+    if (recuperarStockAlEliminar && evento && evento.estado === "en_preparacion") {
+      const cantidadPorReceta: Record<string, number> = {}
+      ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
+      ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
+      ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
+      ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
+      const stockDelta: Record<string, number> = {}
+      Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
+        const receta = recetas.find((r) => r.id === recetaId)
+        if (!receta) return
+        receta.insumos.forEach((ri) => {
+          const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
+          stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
+        })
+      })
+      Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
+        const insumo = insumos.find((i) => i.id === insumoId)
+        if (!insumo) return
+        updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
+      })
+    }
+
     const fullState = loadState()
     deleteEventoFromStore(fullState, selectedEventoId)
     deleteEvento(selectedEventoId)
     toast({
       title: "Evento eliminado",
-      description: "El evento fue eliminado correctamente",
+      description: recuperarStockAlEliminar ? "El evento fue eliminado y el stock fue recuperado." : "El evento fue eliminado correctamente.",
     })
     setDeleteDialogOpen(false)
     setSelectedEventoId(null)
+    setRecuperarStockAlEliminar(false)
   }
 
   const getTotalInvitados = (e: EventoGuardado) => {
@@ -913,6 +941,52 @@ export default function EventosListaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion no se puede deshacer. El evento sera eliminado permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {(() => {
+            const evento = selectedEventoId ? eventos.find((e) => e.id === selectedEventoId) : null
+            const tieneStockDescontado = evento?.estado === "en_preparacion"
+            return tieneStockDescontado ? (
+              <div
+                className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 cursor-pointer"
+                onClick={() => setRecuperarStockAlEliminar((v) => !v)}
+              >
+                <Checkbox
+                  id="recuperar-stock-eliminar"
+                  checked={recuperarStockAlEliminar}
+                  onCheckedChange={(v) => setRecuperarStockAlEliminar(!!v)}
+                  className="mt-0.5 shrink-0"
+                />
+                <div>
+                  <label htmlFor="recuperar-stock-eliminar" className="text-sm font-medium text-amber-900 cursor-pointer">
+                    Recuperar el stock
+                  </label>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Los insumos descontados al imprimir este evento seran restituidos al inventario.
+                  </p>
+                </div>
+              </div>
+            ) : null
+          })()}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmEliminar}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              Si, Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Recuperar Stock Dialog */}
       <AlertDialog open={recuperarStockDialogOpen} onOpenChange={setRecuperarStockDialogOpen}>
