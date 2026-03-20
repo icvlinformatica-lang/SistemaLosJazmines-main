@@ -163,7 +163,7 @@ export default function RecetarioPage() {
   const { state, addReceta, updateReceta, deleteReceta } = useStore()
   const [selectedReceta, setSelectedReceta] = useState<Receta | null>(state.recetas[0] || null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditMode, setIsEditMode] = useState(false)
+  const [isEditMode, setIsEditMode] = useState<boolean>(false)
   const [recetaSearch, setRecetaSearch] = useState("")
   const [recetaViewMode, setRecetaViewMode] = useState<"list" | "grid">("list")
   const [showCapacity, setShowCapacity] = useState(false)
@@ -798,7 +798,7 @@ export default function RecetarioPage() {
                       ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2 p-3">
+                  <div className="grid grid-cols-3 gap-1.5 p-2">
                     {state.recetas
                       .filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()))
                       .map((receta) => (
@@ -806,11 +806,11 @@ export default function RecetarioPage() {
                           key={receta.id}
                           onClick={() => setSelectedReceta(receta)}
                           className={cn(
-                            "rounded-lg overflow-hidden border text-left transition-all hover:shadow-md",
+                            "rounded-md overflow-hidden border text-left transition-all hover:shadow-md",
                             selectedReceta?.id === receta.id ? "border-primary ring-2 ring-primary/30" : "border-border",
                           )}
                         >
-                          <div className="h-20 w-full bg-primary/5 flex items-center justify-center overflow-hidden">
+                          <div className="h-12 w-full bg-primary/5 flex items-center justify-center overflow-hidden">
                             {receta.imagen ? (
                               <img
                                 src={receta.imagen}
@@ -822,11 +822,11 @@ export default function RecetarioPage() {
                                 }}
                               />
                             ) : null}
-                            <ChefHat className={cn("h-8 w-8 text-primary/30", receta.imagen ? "hidden" : "")} />
+                            <ChefHat className={cn("h-5 w-5 text-primary/30", receta.imagen ? "hidden" : "")} />
                           </div>
-                          <div className="p-2">
-                            <p className="text-xs font-semibold truncate leading-tight">{receta.nombre}</p>
-                            <p className="text-xs text-muted-foreground truncate mt-0.5">{receta.categoria}</p>
+                          <div className="px-1.5 py-1">
+                            <p className="text-[10px] font-semibold truncate leading-tight">{receta.nombre}</p>
+                            <p className="text-[9px] text-muted-foreground truncate">{receta.categoria}</p>
                           </div>
                         </button>
                       ))}
