@@ -269,7 +269,7 @@ export interface CostoOperativo {
 export const SALONES = ["Quinta", "Casona", "Salon"] as const
 export type SalonNombre = (typeof SALONES)[number]
 
-export type EstadoEvento = "pendiente" | "confirmado" | "completado" | "cancelado"
+export type EstadoEvento = "pendiente" | "en_preparacion" | "completado" | "cancelado"
 
 export interface EventoGuardado extends Evento {
   estado: EstadoEvento

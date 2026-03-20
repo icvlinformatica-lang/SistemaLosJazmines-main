@@ -10,8 +10,6 @@ import {
   type EstadoEvento,
   SALONES,
   loadState,
-  confirmarEvento,
-  cancelarEvento,
   deleteEvento as deleteEventoFromStore,
 } from "@/lib/store"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
@@ -65,21 +63,18 @@ import { useToast } from "@/hooks/use-toast"
 import {
   Plus,
   Eye,
-  FileText,
-  CheckCircle,
+  Printer,
   Trash2,
   Calendar as CalendarIcon,
   Users,
   Building2,
   Search,
   MoreHorizontal,
-  Sparkles,
-  XCircle,
   ClipboardList,
-  Printer,
   ChevronDown,
   ChevronUp,
   LayoutDashboard,
+  CheckCircle,
 } from "lucide-react"
 import { generateId } from "@/lib/store"
 
@@ -88,13 +83,13 @@ const estadoConfig: Record<EstadoEvento, { label: string; className: string }> =
     label: "Pendiente",
     className: "bg-amber-100 text-amber-800 border-amber-300",
   },
-  confirmado: {
-    label: "Confirmado",
-    className: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  en_preparacion: {
+    label: "En Preparacion",
+    className: "bg-sky-100 text-sky-800 border-sky-300",
   },
   completado: {
     label: "Completado",
-    className: "bg-sky-100 text-sky-800 border-sky-300",
+    className: "bg-emerald-100 text-emerald-800 border-emerald-300",
   },
   cancelado: {
     label: "Cancelado",
@@ -115,14 +110,12 @@ function formatFecha(fecha: string) {
 export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { state, eventos, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateEvento, deleteEvento, setEventoActual } = useStore()
+  const { state, eventos, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateEvento, updateInsumo, updateInsumoBarra, deleteEvento, setEventoActual } = useStore()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filtroEstado, setFiltroEstado] = useState<string>("todos")
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [selectedEventoId, setSelectedEventoId] = useState<string | null>(null)
   const [showDashboard, setShowDashboard] = useState(true)
   const [imprimirDialogOpen, setImprimirDialogOpen] = useState(false)
@@ -187,16 +180,6 @@ export default function EventosListaPage() {
     }, 50)
   }
 
-  const handleConfirmar = (eventoId: string) => {
-    setSelectedEventoId(eventoId)
-    setConfirmDialogOpen(true)
-  }
-
-  const handleCancelar = (eventoId: string) => {
-    setSelectedEventoId(eventoId)
-    setCancelDialogOpen(true)
-  }
-
   const handleEliminar = (eventoId: string) => {
     setSelectedEventoId(eventoId)
     setDeleteDialogOpen(true)
@@ -204,27 +187,8 @@ export default function EventosListaPage() {
 
   const confirmConfirmar = () => {
     if (!selectedEventoId) return
-    const fullState = loadState()
-    confirmarEvento(fullState, selectedEventoId)
-    updateEvento(selectedEventoId, { estado: "confirmado" })
-    toast({
-      title: "Evento confirmado",
-      description: "El estado del evento cambio a Confirmado",
-    })
-    setConfirmDialogOpen(false)
-    setSelectedEventoId(null)
-  }
-
-  const confirmCancelar = () => {
-    if (!selectedEventoId) return
-    const fullState = loadState()
-    cancelarEvento(fullState, selectedEventoId)
-    updateEvento(selectedEventoId, { estado: "cancelado" })
-    toast({
-      title: "Evento cancelado",
-      description: "El estado del evento cambio a Cancelado",
-    })
-    setCancelDialogOpen(false)
+    updateEvento(selectedEventoId, { estado: "en_preparacion" })
+    toast({ title: "Evento actualizado", description: "El estado cambio a En Preparacion" })
     setSelectedEventoId(null)
   }
 
@@ -256,17 +220,45 @@ export default function EventosListaPage() {
     const evento = eventos.find((e) => e.id === imprimirEventoId)
     if (!evento) return
 
+    // Imprimir el documento
     imprimirDocumentoEvento(
-      {
-        evento,
-        recetas,
-        insumos,
-        insumosBarra,
-        cocteles,
-        barrasTemplates,
-      },
+      { evento, recetas, insumos, insumosBarra, cocteles, barrasTemplates },
       seccionesSeleccionadas
     )
+
+    // Descontar stock de insumos de cocina
+    const totalPersonas = (evento.adultos || 0) + (evento.adolescentes || 0) + (evento.ninos || 0) + (evento.personasDietasEspeciales || 0)
+    const todasLasRecetasIds = [
+      ...(evento.recetasAdultos || []),
+      ...(evento.recetasAdolescentes || []),
+      ...(evento.recetasNinos || []),
+      ...(evento.recetasDietasEspeciales || []),
+    ]
+    const cantidadPorReceta: Record<string, number> = {}
+    ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
+    ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
+    ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
+    ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
+
+    const stockDelta: Record<string, number> = {}
+    Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
+      const receta = recetas.find((r) => r.id === recetaId)
+      if (!receta) return
+      receta.insumos.forEach((ri) => {
+        const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
+        stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
+      })
+    })
+    Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
+      const insumo = insumos.find((i) => i.id === insumoId)
+      if (!insumo) return
+      const nuevoStock = Math.max(0, (insumo.stockActual || 0) - cantidad)
+      updateInsumo(insumoId, { stockActual: nuevoStock })
+    })
+
+    // Cambiar estado a En Preparacion
+    updateEvento(imprimirEventoId, { estado: "en_preparacion" })
+    toast({ title: "Documento generado", description: "El evento paso a estado En Preparacion y se desconto el stock." })
 
     setImprimirDialogOpen(false)
     setImprimirEventoId(null)
@@ -277,7 +269,7 @@ export default function EventosListaPage() {
   // Summary stats
   const totalEventos = eventos?.length || 0
   const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
-  const eventosConfirmados = (eventos || []).filter((e) => e.estado === "confirmado").length
+  const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
 
   return (
     <div className="min-h-screen bg-background">
@@ -326,15 +318,15 @@ export default function EventosListaPage() {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="border-emerald-200 bg-emerald-50">
+              <Card className="border-sky-200 bg-sky-50">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-200">
-                      <CheckCircle className="h-5 w-5 text-emerald-800" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-200">
+                      <CheckCircle className="h-5 w-5 text-sky-800" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-emerald-900">{eventosConfirmados}</p>
-                      <p className="text-xs text-emerald-700 font-medium">Confirmados</p>
+                      <p className="text-2xl font-bold text-sky-900">{eventosEnPreparacion}</p>
+                      <p className="text-xs text-sky-700 font-medium">En Preparacion</p>
                     </div>
                   </div>
                 </CardContent>
@@ -373,9 +365,9 @@ export default function EventosListaPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="pendiente">Pendiente</SelectItem>
-              <SelectItem value="confirmado">Confirmado</SelectItem>
-              <SelectItem value="completado">Completado</SelectItem>
+                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                  <SelectItem value="en_preparacion">En Preparacion</SelectItem>
+                  <SelectItem value="completado">Completado</SelectItem>
               <SelectItem value="cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
@@ -497,32 +489,10 @@ export default function EventosListaPage() {
                                 <Eye className="h-4 w-4 mr-2" />
                                 Ver / Editar
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setEventoActual(evento)
-                                  router.push(`/evento?id=${evento.id}`)
-                                }}
-                              >
-                                <FileText className="h-4 w-4 mr-2" />
-                                Gastos Operativos
-                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
                                 <Printer className="h-4 w-4 mr-2" />
                                 Imprimir Documento
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {evento.estado === "pendiente" && (
-                                <DropdownMenuItem onClick={() => handleConfirmar(evento.id)}>
-                                  <CheckCircle className="h-4 w-4 mr-2 text-emerald-600" />
-                                  <span className="text-emerald-600">Confirmar</span>
-                                </DropdownMenuItem>
-                              )}
-                              {(evento.estado === "pendiente" || evento.estado === "confirmado") && (
-                                <DropdownMenuItem onClick={() => handleCancelar(evento.id)}>
-                                  <XCircle className="h-4 w-4 mr-2 text-amber-600" />
-                                  <span className="text-amber-600">Cancelar</span>
-                                </DropdownMenuItem>
-                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleEliminar(evento.id)}
@@ -544,50 +514,6 @@ export default function EventosListaPage() {
           </Card>
         )}
       </main>
-
-      {/* Confirm Dialog */}
-      <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Evento</AlertDialogTitle>
-            <AlertDialogDescription>
-              El estado del evento cambiara a &quot;Confirmado&quot;.
-              Esto indica que el evento esta aprobado y en agenda.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmConfirmar}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              Si, Confirmar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Cancel Dialog */}
-      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar Evento</AlertDialogTitle>
-            <AlertDialogDescription>
-              El estado del evento cambiara a &quot;Cancelado&quot;.
-              Podras cambiar el estado nuevamente mas adelante si es necesario.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Volver</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmCancelar}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              Si, Cancelar Evento
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

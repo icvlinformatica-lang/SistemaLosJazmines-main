@@ -2,7 +2,6 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
-// GET all recetas — factor_rendimiento column excluded (not in preview DB, exists in Supabase prod)
 export async function GET() {
   try {
     const recetasData = await sql`
@@ -44,7 +43,6 @@ export async function GET() {
   }
 }
 
-// POST create new receta
 export async function POST(request: Request) {
   try {
     const body = await request.json()
