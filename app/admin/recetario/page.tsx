@@ -661,13 +661,25 @@ export default function RecetarioPage() {
                       <div className="flex items-center gap-3">
                         <div
                           className={cn(
-                            "flex h-10 w-10 items-center justify-center rounded-lg",
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden",
                             selectedReceta?.id === receta.id ? "bg-primary-foreground/20" : "bg-primary/10",
                           )}
                         >
+                          {receta.imagen ? (
+                            <img
+                              src={receta.imagen}
+                              alt={receta.nombre}
+                              className="h-10 w-10 object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none"
+                                e.currentTarget.nextElementSibling?.removeAttribute("style")
+                              }}
+                            />
+                          ) : null}
                           <ChefHat
                             className={cn(
                               "h-5 w-5",
+                              receta.imagen ? "hidden" : "",
                               selectedReceta?.id === receta.id ? "text-primary-foreground" : "text-primary",
                             )}
                           />
