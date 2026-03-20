@@ -11,6 +11,8 @@ import {
   SALONES,
   loadState,
   deleteEvento as deleteEventoFromStore,
+  calcularComprasSegmentadas,
+  type CalculoCompraSegmentado,
 } from "@/lib/store"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
 import { Button } from "@/components/ui/button"
@@ -77,6 +79,8 @@ import {
   CheckCircle,
   RotateCcw,
   Sparkles,
+  ShoppingCart,
+  X,
 } from "lucide-react"
 import { generateId } from "@/lib/store"
 
@@ -135,6 +139,12 @@ export default function EventosListaPage() {
     hojaGastos: true,
   })
 
+  // Consolidar compras
+  const [modoConsolidar, setModoConsolidar] = useState(false)
+  const [eventosSeleccionados, setEventosSeleccionados] = useState<Set<string>>(new Set())
+  const [compraConsolidada, setCompraConsolidada] = useState<CalculoCompraSegmentado[] | null>(null)
+  const [consolidadaDialogOpen, setConsolidadaDialogOpen] = useState(false)
+
   // Filter events
   const eventosFiltrados = (eventos || [])
     .filter((e) => {
@@ -152,6 +162,106 @@ export default function EventosListaPage() {
       if (!b.fecha) return -1
       return a.fecha.localeCompare(b.fecha)
     })
+
+  const toggleEventoSeleccionado = (id: string) => {
+    setEventosSeleccionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const generarCompraConsolidada = () => {
+    const seleccionados = (eventos || []).filter((e) => eventosSeleccionados.has(e.id))
+    const mapa: Record<string, CalculoCompraSegmentado> = {}
+    const sinRecetas: string[] = []
+
+    for (const evento of seleccionados) {
+      const tieneRecetas =
+        (evento.recetasAdultos?.length || 0) +
+        (evento.recetasAdolescentes?.length || 0) +
+        (evento.recetasNinos?.length || 0) +
+        (evento.recetasDietasEspeciales?.length || 0) > 0
+
+      if (!tieneRecetas) {
+        sinRecetas.push(evento.nombrePareja || evento.nombre || "Sin nombre")
+        continue
+      }
+
+      const compras = calcularComprasSegmentadas(evento, recetas, insumos)
+      for (const compra of compras) {
+        if (mapa[compra.insumoId]) {
+          mapa[compra.insumoId].cantidadNecesaria += compra.cantidadNecesaria
+          mapa[compra.insumoId].cantidadAComprar += compra.cantidadAComprar
+          mapa[compra.insumoId].costoEstimado += compra.costoEstimado
+          mapa[compra.insumoId].costoMateriaPrima += compra.costoMateriaPrima
+        } else {
+          mapa[compra.insumoId] = { ...compra }
+        }
+      }
+    }
+
+    if (sinRecetas.length > 0) {
+      toast({
+        title: "Aviso",
+        description: `${sinRecetas.join(", ")} no ${sinRecetas.length === 1 ? "tiene" : "tienen"} recetas asignadas y ${sinRecetas.length === 1 ? "fue ignorado" : "fueron ignorados"}.`,
+      })
+    }
+
+    const resultado = Object.values(mapa).sort((a, b) =>
+      a.insumo.descripcion.localeCompare(b.insumo.descripcion)
+    )
+    setCompraConsolidada(resultado)
+    setConsolidadaDialogOpen(true)
+  }
+
+  const imprimirConsolidado = () => {
+    if (!compraConsolidada) return
+    const seleccionados = (eventos || []).filter((e) => eventosSeleccionados.has(e.id))
+    const totalPersonas = seleccionados.reduce((sum, e) =>
+      sum + (e.adultos || 0) + (e.adolescentes || 0) + (e.ninos || 0) + (e.personasDietasEspeciales || 0), 0)
+    const costoTotal = compraConsolidada.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
+
+    const filas = compraConsolidada
+      .map((c, i) => `
+        <tr style="background:${i % 2 === 0 ? "#f9fafb" : "#fff"}">
+          <td style="padding:6px 10px;font-size:9pt;">${c.insumo.descripcion}</td>
+          <td style="padding:6px 10px;font-size:9pt;text-align:right;font-family:monospace;">${c.cantidadNecesaria.toFixed(2)} ${c.insumo.unidad}</td>
+          <td style="padding:6px 10px;font-size:9pt;text-align:right;font-family:monospace;">${formatCurrency(c.costoMateriaPrima)}</td>
+        </tr>`)
+      .join("")
+
+    const fechas = seleccionados.map((e) => formatFecha(e.fecha)).join(", ")
+    const nombres = seleccionados.map((e) => e.nombrePareja || e.nombre || "Sin nombre").join(" / ")
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>Compra Consolidada</title>
+      <style>body{font-family:Arial,sans-serif;margin:20px;color:#111;}
+      table{border-collapse:collapse;width:100%;}
+      th{background:#111;color:#fff;padding:7px 10px;font-size:9pt;text-align:left;}
+      tfoot td{background:#111;color:#fff;padding:7px 10px;font-size:10pt;font-weight:bold;}
+      @media print{body{margin:10mm;}}</style></head>
+      <body>
+      <h2 style="margin:0 0 4px;font-size:16pt;">LISTA DE COMPRAS CONSOLIDADA</h2>
+      <p style="margin:0 0 2px;font-size:9pt;color:#555;">${nombres}</p>
+      <p style="margin:0 0 12px;font-size:9pt;color:#555;">${fechas} · ${seleccionados.length} eventos · ${totalPersonas} personas · ${formatCurrency(costoTotal)} costo estimado</p>
+      <table><thead><tr>
+        <th>INSUMO</th><th style="text-align:right;width:130px;">CANTIDAD</th><th style="text-align:right;width:110px;">COSTO</th>
+      </tr></thead><tbody>${filas}</tbody>
+      <tfoot><tr>
+        <td colspan="2" style="text-align:right;">TOTAL:</td>
+        <td style="text-align:right;">${formatCurrency(costoTotal)}</td>
+      </tr></tfoot></table>
+      </body></html>`
+
+    const w = window.open("", "_blank")
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => { w.print(); w.close() }, 300)
+  }
 
   const handleVerEditar = (evento: EventoGuardado) => {
     setEventoActual(evento)
@@ -358,10 +468,24 @@ export default function EventosListaPage() {
               </p>
             </div>
           </div>
-          <Button onClick={handleNuevoEvento} className="gap-2">
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Nuevo Evento</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={modoConsolidar ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => {
+                setModoConsolidar(!modoConsolidar)
+                setEventosSeleccionados(new Set())
+              }}
+              className="gap-2"
+            >
+              <ShoppingCart className="h-4 w-4" />
+              <span className="hidden sm:inline">{modoConsolidar ? "Cancelar" : "Consolidar compras"}</span>
+            </Button>
+            <Button onClick={handleNuevoEvento} className="gap-2">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Nuevo Evento</span>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -482,10 +606,28 @@ export default function EventosListaPage() {
           </Card>
         ) : (
           <Card>
+            {/* Banner de consolidacion */}
+            {modoConsolidar && (
+              <div className="flex items-center justify-between gap-4 border-b bg-sky-50 px-4 py-3">
+                <div className="flex items-center gap-2 text-sm text-sky-800">
+                  <ShoppingCart className="h-4 w-4 shrink-0" />
+                  {eventosSeleccionados.size === 0
+                    ? "Selecciona al menos 2 eventos para consolidar"
+                    : `${eventosSeleccionados.size} evento${eventosSeleccionados.size !== 1 ? "s" : ""} seleccionado${eventosSeleccionados.size !== 1 ? "s" : ""}`}
+                </div>
+                {eventosSeleccionados.size >= 2 && (
+                  <Button size="sm" onClick={generarCompraConsolidada} className="gap-2 shrink-0">
+                    <ShoppingCart className="h-4 w-4" />
+                    Generar compra consolidada
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {modoConsolidar && <TableHead className="w-10" />}
                     <TableHead className="min-w-[180px]">Nombre</TableHead>
                     <TableHead className="min-w-[100px]">Fecha</TableHead>
                     <TableHead className="min-w-[90px]">Salon</TableHead>
@@ -498,10 +640,19 @@ export default function EventosListaPage() {
                   {eventosFiltrados.map((evento) => {
                     const config = estadoConfig[evento.estado]
                     const totalInvitados = getTotalInvitados(evento)
-                    const displayName = evento.nombrePareja || evento.nombre || "Sin nombre"
-
                     return (
-                      <TableRow key={evento.id} className="group">
+                      <TableRow
+                        key={evento.id}
+                        className={`group ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""}`}
+                      >
+                        {modoConsolidar && (
+                          <TableCell className="w-10">
+                            <Checkbox
+                              checked={eventosSeleccionados.has(evento.id)}
+                              onCheckedChange={() => toggleEventoSeleccionado(evento.id)}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <div>
                             <p className="font-medium text-foreground truncate max-w-[200px]">
@@ -708,6 +859,57 @@ export default function EventosListaPage() {
               </>
             )
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Compra Consolidada Dialog */}
+      <Dialog open={consolidadaDialogOpen} onOpenChange={setConsolidadaDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Compra Consolidada</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const seleccionados = (eventos || []).filter((e) => eventosSeleccionados.has(e.id))
+                const totalPersonas = seleccionados.reduce((sum, e) =>
+                  sum + (e.adultos || 0) + (e.adolescentes || 0) + (e.ninos || 0) + (e.personasDietasEspeciales || 0), 0)
+                const costoTotal = (compraConsolidada || []).reduce((sum, c) => sum + c.costoMateriaPrima, 0)
+                return `${seleccionados.length} eventos · ${totalPersonas} personas · ${formatCurrency(costoTotal)} costo estimado`
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Insumo</TableHead>
+                  <TableHead className="text-right w-36">Cantidad</TableHead>
+                  <TableHead className="text-right w-28">Costo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(compraConsolidada || []).map((c) => (
+                  <TableRow key={c.insumoId}>
+                    <TableCell className="font-medium text-sm">{c.insumo.descripcion}</TableCell>
+                    <TableCell className="text-right text-sm font-mono">
+                      {c.cantidadNecesaria.toFixed(2)} {c.insumo.unidad}
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-mono">
+                      {formatCurrency(c.costoMateriaPrima)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter className="border-t pt-4 gap-2">
+            <Button variant="outline" onClick={() => setConsolidadaDialogOpen(false)}>
+              Cerrar
+            </Button>
+            <Button onClick={imprimirConsolidado} className="gap-2">
+              <Printer className="h-4 w-4" />
+              Imprimir
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
