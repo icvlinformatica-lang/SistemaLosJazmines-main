@@ -2,7 +2,6 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // GET all recetas with their insumos
-// NOTE: factor_rendimiento column not yet in DB — defaults to 1
 export async function GET() {
   try {
     const recetasData = await sql`
