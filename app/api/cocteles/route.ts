@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET all cocteles with their insumos
 export async function GET() {
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
       insumos: body.insumos || [],
     }
 
+    await logActivity("coctel", "creado", body.nombre, `Categoria: ${body.categoria || "Con Alcohol"}`)
     return NextResponse.json(coctel, { status: 201 })
   } catch (err) {
     console.error("[API] Error creating coctel:", err)

@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET single insumo barra
 export async function GET(
@@ -74,6 +75,7 @@ export async function PUT(
       categoria: data.categoria,
     }
 
+    await logActivity("insumo_barra", "modificado", data.descripcion, `Stock: ${data.stock_actual} | Precio: ${data.precio_unitario}`)
     return NextResponse.json(insumo)
   } catch (err) {
     console.error("[API] Error updating insumo_barra:", err)
@@ -89,7 +91,9 @@ export async function DELETE(
   try {
     const { id } = await params
 
+    const [insumo] = await sql`SELECT descripcion FROM insumos_barra WHERE id = ${id}`
     await sql`DELETE FROM insumos_barra WHERE id = ${id}`
+    if (insumo) await logActivity("insumo_barra", "eliminado", insumo.descripcion)
 
     return NextResponse.json({ success: true })
   } catch (err) {
