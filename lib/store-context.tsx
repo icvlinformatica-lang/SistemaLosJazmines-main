@@ -126,53 +126,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initializeData = async () => {
-      // Load local state first
-      const localState = loadState()
-      setState(localState)
-      
-      // Then sync with database for the migrated modules
-      try {
-        const fetchSafe = async (url: string) => {
-          try {
-            const r = await fetch(url)
-            if (!r.ok) return []
-            const data = await r.json()
-            return Array.isArray(data) ? data : []
-          } catch {
-            return []
-          }
+      const fetchSafe = async (url: string) => {
+        try {
+          const r = await fetch(url)
+          if (!r.ok) return null
+          const data = await r.json()
+          return Array.isArray(data) ? data : null
+        } catch {
+          return null
         }
-        
-        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes] = await Promise.all([
-          fetchSafe("/api/insumos"),
-          fetchSafe("/api/insumos-barra"),
-          fetchSafe("/api/recetas"),
-          fetchSafe("/api/cocteles"),
-          fetchSafe("/api/barra-templates"),
-        ])
-        
-        setState(prev => ({
-          ...prev,
-          insumos: insumosRes.length > 0 ? insumosRes : prev.insumos,
-          insumosBarra: insumosBarraRes.length > 0 ? insumosBarraRes : prev.insumosBarra,
-          recetas: recetasRes.length > 0 ? recetasRes : prev.recetas,
-          cocteles: coctelesRes.length > 0 ? coctelesRes : prev.cocteles,
-          barrasTemplates: barraTemplatesRes.length > 0 ? barraTemplatesRes : prev.barrasTemplates,
-        }))
-      } catch (error) {
-        console.error("[v0] Error syncing with database:", error)
-        // Keep using local state if API fails
       }
-      
+
+      // Fetch all DB modules in parallel
+      const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes] = await Promise.all([
+        fetchSafe("/api/insumos"),
+        fetchSafe("/api/insumos-barra"),
+        fetchSafe("/api/recetas"),
+        fetchSafe("/api/cocteles"),
+        fetchSafe("/api/barra-templates"),
+      ])
+
+      // Load localStorage for non-DB modules only (eventos, servicios, personal, etc.)
+      const localState = loadState()
+
+      // Merge: DB data takes absolute priority over localStorage for migrated modules
+      setState({
+        ...localState,
+        insumos: insumosRes ?? localState.insumos,
+        insumosBarra: insumosBarraRes ?? localState.insumosBarra,
+        recetas: recetasRes ?? localState.recetas,
+        cocteles: coctelesRes ?? localState.cocteles,
+        barrasTemplates: barraTemplatesRes ?? localState.barrasTemplates,
+      })
+
       setIsHydrated(true)
     }
-    
+
     initializeData()
   }, [])
 
   useEffect(() => {
     if (isHydrated) {
-      saveState(state)
+      // Only save non-DB modules to localStorage to avoid stale data
+      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, ...localOnly } = state
+      saveState({ ...localOnly, insumos: [], insumosBarra: [], recetas: [], cocteles: [], barrasTemplates: [] })
     }
   }, [state, isHydrated])
 
