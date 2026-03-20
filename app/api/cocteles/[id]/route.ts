@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET single coctel with insumos
 export async function GET(
@@ -99,6 +100,7 @@ export async function PUT(
       insumos: insumosList || [],
     }
 
+    await logActivity("coctel", "modificado", coctelData.nombre)
     return NextResponse.json(coctel)
   } catch (err) {
     console.error("[API] Error updating coctel:", err)
@@ -114,8 +116,10 @@ export async function DELETE(
   try {
     const { id } = await params
 
+    const [coctel] = await sql`SELECT nombre FROM cocteles WHERE id = ${id}`
     await sql`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
     await sql`DELETE FROM cocteles WHERE id = ${id}`
+    if (coctel) await logActivity("coctel", "eliminado", coctel.nombre)
 
     return NextResponse.json({ success: true })
   } catch (err) {

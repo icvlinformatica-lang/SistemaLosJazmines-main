@@ -121,21 +121,22 @@ export default function ConfiguracionPage() {
   }, [state])
 
   // Load activity log
-  useEffect(() => {
-    const fetchActivity = async () => {
-      setIsLoadingActivity(true)
-      try {
-        const res = await fetch("/api/activity-log")
-        if (res.ok) {
-          const data = await res.json()
-          setActivityLog(Array.isArray(data) ? data : [])
-        }
-      } catch {
-        // silently fail
-      } finally {
-        setIsLoadingActivity(false)
+  const fetchActivity = async () => {
+    setIsLoadingActivity(true)
+    try {
+      const res = await fetch("/api/activity-log")
+      if (res.ok) {
+        const data = await res.json()
+        setActivityLog(Array.isArray(data) ? data : [])
       }
+    } catch {
+      // silently fail
+    } finally {
+      setIsLoadingActivity(false)
     }
+  }
+
+  useEffect(() => {
     fetchActivity()
   }, [])
 
@@ -626,6 +627,17 @@ export default function ConfiguracionPage() {
                   Registro de acciones realizadas en el sistema
                 </CardDescription>
               </div>
+            <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={fetchActivity}
+                  disabled={isLoadingActivity}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-1 ${isLoadingActivity ? "animate-spin" : ""}`} />
+                  Actualizar
+                </Button>
               {activityLog.length > 0 && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -653,6 +665,7 @@ export default function ConfiguracionPage() {
                   </AlertDialogContent>
                 </AlertDialog>
               )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>

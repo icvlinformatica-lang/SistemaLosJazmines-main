@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET all insumos de barra - uses descripcion column
 export async function GET() {
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
       categoria: data.categoria,
     }
 
+    await logActivity("insumo_barra", "creado", body.descripcion, `Codigo: ${body.codigo} | Unidad: ${body.unidad}`)
     return NextResponse.json(insumo, { status: 201 })
   } catch (err) {
     console.error("[API] Error creating insumo_barra:", err)
