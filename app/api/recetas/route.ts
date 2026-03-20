@@ -2,6 +2,7 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
+// v4 - factor_rendimiento column removed (not in preview DB, exists in Supabase prod only)
 export async function GET() {
   try {
     const recetasData = await sql`

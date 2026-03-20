@@ -226,39 +226,36 @@ export default function EventosListaPage() {
       seccionesSeleccionadas
     )
 
-    // Descontar stock de insumos de cocina
-    const totalPersonas = (evento.adultos || 0) + (evento.adolescentes || 0) + (evento.ninos || 0) + (evento.personasDietasEspeciales || 0)
-    const todasLasRecetasIds = [
-      ...(evento.recetasAdultos || []),
-      ...(evento.recetasAdolescentes || []),
-      ...(evento.recetasNinos || []),
-      ...(evento.recetasDietasEspeciales || []),
-    ]
-    const cantidadPorReceta: Record<string, number> = {}
-    ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
-    ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
-    ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
-    ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
+    // Solo descontar stock si el evento aun esta pendiente (no se desconto antes)
+    if (evento.estado === "pendiente") {
+      const cantidadPorReceta: Record<string, number> = {}
+      ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
+      ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
+      ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
+      ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
 
-    const stockDelta: Record<string, number> = {}
-    Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
-      const receta = recetas.find((r) => r.id === recetaId)
-      if (!receta) return
-      receta.insumos.forEach((ri) => {
-        const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
-        stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
+      const stockDelta: Record<string, number> = {}
+      Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
+        const receta = recetas.find((r) => r.id === recetaId)
+        if (!receta) return
+        receta.insumos.forEach((ri) => {
+          const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
+          stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
+        })
       })
-    })
-    Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
-      const insumo = insumos.find((i) => i.id === insumoId)
-      if (!insumo) return
-      const nuevoStock = Math.max(0, (insumo.stockActual || 0) - cantidad)
-      updateInsumo(insumoId, { stockActual: nuevoStock })
-    })
+      Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
+        const insumo = insumos.find((i) => i.id === insumoId)
+        if (!insumo) return
+        const nuevoStock = Math.max(0, (insumo.stockActual || 0) - cantidad)
+        updateInsumo(insumoId, { stockActual: nuevoStock })
+      })
 
-    // Cambiar estado a En Preparacion
-    updateEvento(imprimirEventoId, { estado: "en_preparacion" })
-    toast({ title: "Documento generado", description: "El evento paso a estado En Preparacion y se desconto el stock." })
+      // Cambiar estado a En Preparacion
+      updateEvento(imprimirEventoId, { estado: "en_preparacion" })
+      toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
+    } else {
+      toast({ title: "Documento generado", description: "El stock no fue modificado (ya se desconto anteriormente)." })
+    }
 
     setImprimirDialogOpen(false)
     setImprimirEventoId(null)
