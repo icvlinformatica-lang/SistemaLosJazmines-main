@@ -1,5 +1,5 @@
 "use client"
-
+// bundle-bust: Sparkles import verified
 import React from "react"
 
 import Link from "next/link"
