@@ -163,7 +163,7 @@ export default function RecetarioPage() {
   const { state, addReceta, updateReceta, deleteReceta } = useStore()
   const [selectedReceta, setSelectedReceta] = useState<Receta | null>(state.recetas[0] || null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditMode, setIsEditMode] = useState<boolean>(false)
+  const [isEditMode, setIsEditMode] = useState<boolean>(false) // true when editing existing receta
   const [recetaSearch, setRecetaSearch] = useState("")
   const [recetaViewMode, setRecetaViewMode] = useState<"list" | "grid">("list")
   const [showCapacity, setShowCapacity] = useState(false)
@@ -690,8 +690,8 @@ export default function RecetarioPage() {
           </Collapsible>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-          <Card className="flex flex-col">
+        <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
+          <Card className="flex flex-col lg:sticky lg:top-6" style={{ height: "calc(100vh - 200px)" }}>
             <CardHeader className="pb-3 shrink-0">
               <div className="flex items-center justify-between">
                 <div>
@@ -733,8 +733,8 @@ export default function RecetarioPage() {
                 />
               </div>
             </CardHeader>
-            <CardContent className="p-0 flex-1 overflow-hidden">
-              <ScrollArea className="h-[calc(100vh-380px)]">
+            <CardContent className="p-0 flex-1 min-h-0 overflow-hidden">
+              <ScrollArea className="h-full">
                 {recetaViewMode === "list" ? (
                   <div className="space-y-1 p-3">
                     {state.recetas

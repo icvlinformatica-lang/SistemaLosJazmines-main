@@ -2,7 +2,7 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
-// GET all recetas with their insumos
+// GET all recetas with their insumos — factor_rendimiento excluded (not in preview DB)
 export async function GET() {
   try {
     const recetasData = await sql`
