@@ -76,6 +76,7 @@ import {
   LayoutDashboard,
   CheckCircle,
   RotateCcw,
+  Sparkles,
 } from "lucide-react"
 import { generateId } from "@/lib/store"
 
