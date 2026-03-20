@@ -2,7 +2,7 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
-// GET all recetas with their insumos — factor_rendimiento excluded (not in preview DB)
+// GET all recetas — factor_rendimiento column excluded (not in preview DB, exists in Supabase prod)
 export async function GET() {
   try {
     const recetasData = await sql`

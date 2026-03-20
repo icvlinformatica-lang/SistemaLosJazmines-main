@@ -163,7 +163,7 @@ export default function RecetarioPage() {
   const { state, addReceta, updateReceta, deleteReceta } = useStore()
   const [selectedReceta, setSelectedReceta] = useState<Receta | null>(state.recetas[0] || null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditMode, setIsEditMode] = useState<boolean>(false) // true when editing existing receta
+  const [isEditMode, setIsEditMode] = useState<boolean>(false) // true = editing, false = new
   const [recetaSearch, setRecetaSearch] = useState("")
   const [recetaViewMode, setRecetaViewMode] = useState<"list" | "grid">("list")
   const [showCapacity, setShowCapacity] = useState(false)

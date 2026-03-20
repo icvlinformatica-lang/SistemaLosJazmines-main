@@ -131,6 +131,7 @@ export default function EventosListaPage() {
     listaCompras: true,
     barraCocteles: true,
     guiaProduccion: true,
+    hojaGastos: true,
   })
 
   // Filter events
@@ -246,7 +247,7 @@ export default function EventosListaPage() {
 
   const handleImprimirDocumento = (eventoId: string) => {
     setImprimirEventoId(eventoId)
-    setSeccionesSeleccionadas({ listaCompras: true, barraCocteles: true, guiaProduccion: true })
+    setSeccionesSeleccionadas({ listaCompras: true, barraCocteles: true, guiaProduccion: true, hojaGastos: true })
     setImprimirDialogOpen(true)
   }
 
@@ -271,7 +272,7 @@ export default function EventosListaPage() {
     setImprimirEventoId(null)
   }
 
-  const ningunaSeccionSeleccionada = !seccionesSeleccionadas.listaCompras && !seccionesSeleccionadas.barraCocteles && !seccionesSeleccionadas.guiaProduccion
+  const ningunaSeccionSeleccionada = !seccionesSeleccionadas.listaCompras && !seccionesSeleccionadas.barraCocteles && !seccionesSeleccionadas.guiaProduccion && !seccionesSeleccionadas.hojaGastos
 
   // Summary stats
   const totalEventos = eventos?.length || 0
@@ -470,6 +471,16 @@ export default function EventosListaPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              title="Imprimir hoja de gastos"
+                              onClick={() => handleImprimirDocumento(evento.id)}
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -522,6 +533,7 @@ export default function EventosListaPage() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -643,6 +655,18 @@ export default function EventosListaPage() {
               />
               <Label htmlFor="sec-guiaProduccion" className="cursor-pointer text-sm font-medium leading-none">
                 Guia de Produccion (Mise en Place)
+              </Label>
+            </div>
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="sec-hojaGastos"
+                checked={seccionesSeleccionadas.hojaGastos}
+                onCheckedChange={(checked) =>
+                  setSeccionesSeleccionadas((prev) => ({ ...prev, hojaGastos: !!checked }))
+                }
+              />
+              <Label htmlFor="sec-hojaGastos" className="cursor-pointer text-sm font-medium leading-none">
+                Hoja de Gastos (Resumen Financiero)
               </Label>
             </div>
           </div>

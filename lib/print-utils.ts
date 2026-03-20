@@ -15,6 +15,7 @@ export interface DocumentSections {
   listaCompras: boolean
   barraCocteles: boolean
   guiaProduccion: boolean
+  hojaGastos: boolean
 }
 
 export interface PrintData {
@@ -89,6 +90,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
   const showListaCompras = sections.listaCompras
   const showBarraCocteles = sections.barraCocteles
   const showGuiaProduccion = sections.guiaProduccion
+  const showHojaGastos = sections.hojaGastos
 
   const recetasAdultos = evento.recetasAdultos || []
   const recetasAdolescentes = evento.recetasAdolescentes || []
@@ -316,6 +318,107 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       }
       html += `</div>`
     })
+  }
+
+  // ========== HOJA DE GASTOS ==========
+  if (showHojaGastos) {
+    if (showListaCompras || showBarraCocteles || showGuiaProduccion) {
+      html += `<div style="page-break-before:always;break-before:page;"></div>`
+    }
+
+    const costoCocinaTotalMP = compras.reduce((sum, c) => sum + (c.costoMateriaPrima || 0), 0)
+    const costoBarraTotalMP = comprasBarras.reduce((sum, c) => sum + (c.costoMateriaPrima || 0), 0)
+    const costoTotalGeneral = costoCocinaTotalMP + costoBarraTotalMP
+    const costoPorPersona = totalPersonas > 0 ? costoTotalGeneral / totalPersonas : 0
+
+    html += `<h2 style="${S.sectionTitle}">HOJA DE GASTOS - RESUMEN FINANCIERO</h2>`
+    html += `<p style="margin-bottom:16px;font-size:9pt;text-align:center;">`
+    if (evento.nombrePareja) html += `<strong>${evento.nombrePareja}</strong> | `
+    html += `${new Date(evento.fecha).toLocaleDateString("es-AR")} | ${totalPersonas} personas | ${evento.salon || ""}</p>`
+
+    // Resumen totales
+    html += `<table style="${S.table}margin-bottom:20px;"><thead><tr>`
+    html += `<th style="${S.thBlack}text-align:left;width:50%;">CONCEPTO</th>`
+    html += `<th style="${S.thBlack}text-align:right;">COSTO TOTAL</th>`
+    html += `<th style="${S.thBlack}text-align:right;">COSTO X PERSONA</th>`
+    html += `</tr></thead><tbody>`
+
+    const rows: { label: string; total: number }[] = [
+      { label: "Materia Prima - Cocina", total: costoCocinaTotalMP },
+      { label: "Materia Prima - Barra", total: costoBarraTotalMP },
+    ]
+    rows.forEach((row, i) => {
+      if (row.total === 0) return
+      const td = i % 2 === 0 ? S.tdEven : S.tdOdd
+      html += `<tr>`
+      html += `<td style="${td}font-weight:500;">${row.label}</td>`
+      html += `<td style="${td}text-align:right;font-family:monospace;">${formatCurrency(row.total)}</td>`
+      html += `<td style="${td}text-align:right;font-family:monospace;">${totalPersonas > 0 ? formatCurrency(row.total / totalPersonas) : "-"}</td>`
+      html += `</tr>`
+    })
+
+    html += `</tbody><tfoot><tr>`
+    html += `<td style="${S.tfootTd}font-size:11pt;">TOTAL MATERIA PRIMA</td>`
+    html += `<td style="${S.tfootTd}text-align:right;font-size:11pt;">${formatCurrency(costoTotalGeneral)}</td>`
+    html += `<td style="${S.tfootTd}text-align:right;font-size:11pt;">${formatCurrency(costoPorPersona)}</td>`
+    html += `</tr></tfoot></table>`
+
+    // Detalle por insumo - Cocina
+    if (compras.length > 0) {
+      html += `<h3 style="font-size:11pt;font-weight:bold;margin:16px 0 8px;">Detalle Cocina</h3>`
+      html += `<table style="${S.table}margin-bottom:20px;"><thead><tr>`
+      html += `<th style="${S.thGray}text-align:left;">INSUMO</th>`
+      html += `<th style="${S.thGray}text-align:right;width:90px;">CANTIDAD</th>`
+      html += `<th style="${S.thGray}text-align:right;width:80px;">P. UNIT.</th>`
+      html += `<th style="${S.thGray}text-align:right;width:90px;">COSTO TOTAL</th>`
+      html += `<th style="${S.thGray}text-align:right;width:80px;">X PERSONA</th>`
+      html += `</tr></thead><tbody>`
+      compras.forEach((item, i) => {
+        const d = item.insumo
+        if (!d || (item.costoMateriaPrima || 0) === 0) return
+        const td = i % 2 === 0 ? S.tdEven : S.tdOdd
+        html += `<tr>`
+        html += `<td style="${td}">${d.descripcion}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(item.cantidadNecesaria, d.unidad)}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;">${formatCurrency(d.precioUnitario)}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;font-weight:bold;">${formatCurrency(item.costoMateriaPrima || 0)}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;">${totalPersonas > 0 ? formatCurrency((item.costoMateriaPrima || 0) / totalPersonas) : "-"}</td>`
+        html += `</tr>`
+      })
+      html += `</tbody><tfoot><tr>`
+      html += `<td colspan="3" style="${S.tfootTd}text-align:right;">SUBTOTAL COCINA:</td>`
+      html += `<td style="${S.tfootTd}text-align:right;">${formatCurrency(costoCocinaTotalMP)}</td>`
+      html += `<td style="${S.tfootTd}text-align:right;">${totalPersonas > 0 ? formatCurrency(costoCocinaTotalMP / totalPersonas) : "-"}</td>`
+      html += `</tr></tfoot></table>`
+    }
+
+    // Detalle por insumo - Barra
+    if (comprasBarras.length > 0) {
+      html += `<h3 style="font-size:11pt;font-weight:bold;margin:16px 0 8px;">Detalle Barra</h3>`
+      html += `<table style="${S.table}margin-bottom:20px;"><thead><tr>`
+      html += `<th style="${S.thGray}text-align:left;">INSUMO</th>`
+      html += `<th style="${S.thGray}text-align:right;width:90px;">CANTIDAD</th>`
+      html += `<th style="${S.thGray}text-align:right;width:80px;">P. UNIT.</th>`
+      html += `<th style="${S.thGray}text-align:right;width:90px;">COSTO TOTAL</th>`
+      html += `<th style="${S.thGray}text-align:right;width:80px;">X PERSONA</th>`
+      html += `</tr></thead><tbody>`
+      comprasBarras.forEach((item, i) => {
+        if ((item.costoMateriaPrima || 0) === 0) return
+        const td = i % 2 === 0 ? S.tdEven : S.tdOdd
+        html += `<tr>`
+        html += `<td style="${td}">${item.insumoBarra.descripcion}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(item.cantidadNecesaria, item.insumoBarra.unidad)}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;">${formatCurrency(item.insumoBarra.precioUnitario)}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;font-weight:bold;">${formatCurrency(item.costoMateriaPrima || 0)}</td>`
+        html += `<td style="${td}text-align:right;font-family:monospace;">${totalPersonas > 0 ? formatCurrency((item.costoMateriaPrima || 0) / totalPersonas) : "-"}</td>`
+        html += `</tr>`
+      })
+      html += `</tbody><tfoot><tr>`
+      html += `<td colspan="3" style="${S.tfootTd}text-align:right;">SUBTOTAL BARRA:</td>`
+      html += `<td style="${S.tfootTd}text-align:right;">${formatCurrency(costoBarraTotalMP)}</td>`
+      html += `<td style="${S.tfootTd}text-align:right;">${totalPersonas > 0 ? formatCurrency(costoBarraTotalMP / totalPersonas) : "-"}</td>`
+      html += `</tr></tfoot></table>`
+    }
   }
 
   // ========== FOOTER ==========
