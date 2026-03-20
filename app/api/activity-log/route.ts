@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+// redeploy: env vars restored
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 

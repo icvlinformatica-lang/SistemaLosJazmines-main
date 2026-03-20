@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+// v6: factor_rendimiento removed from all queries
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
