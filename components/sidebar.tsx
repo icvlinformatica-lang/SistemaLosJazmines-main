@@ -261,15 +261,16 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Planificar Fiesta Button - Locked */}
+        {/* Planificar Fiesta Button - Active */}
         <div className="px-3 pb-3 -mt-[10px]">
-          <div
-            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533]/40 text-[#1a1a1a]/50 font-semibold text-sm cursor-not-allowed"
+          <button
+            type="button"
+            onClick={handlePlanificarFiesta}
+            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533] hover:bg-[#e0b040] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
           >
             <Sparkles className="h-5 w-5 shrink-0" />
-            <span className="flex-1">Planificar Fiesta</span>
-            <Lock className="h-4 w-4 shrink-0" />
-          </div>
+            <span className="flex-1 text-left">Planificar Fiesta</span>
+          </button>
         </div>
 
         {/* Collapse toggle */}
