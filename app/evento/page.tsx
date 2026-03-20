@@ -504,6 +504,12 @@ function EventoPageContent() {
         ...eventData,
         estado: "pendiente",
       } as any)
+      // Log activity
+      fetch("/api/activity-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo: "evento", accion: "planificado", nombre: eventData.nombrePareja || eventData.nombre || "Evento sin nombre" }),
+      }).catch(() => {})
       toast({
         title: "Evento guardado",
         description: "El evento se guardo correctamente",
@@ -561,6 +567,12 @@ function EventoPageContent() {
       }),
     }
     addEventoHistorial(historialEntry)
+    // Log closure
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "evento", accion: "eliminado", nombre: historialEntry.nombre, detalle: "Evento cerrado y descontado del stock" }),
+    }).catch(() => {})
 
     // 2b. If this event exists in the calendar, mark it as completado
     const calendarEvento = (state.eventos || []).find((e) => e.id === evento.id)

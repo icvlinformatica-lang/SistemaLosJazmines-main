@@ -1,11 +1,12 @@
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET all recetas with their insumos
 export async function GET() {
   try {
     const recetasData = await sql`
-      SELECT id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento
+      SELECT id, codigo, nombre, descripcion, imagen, categoria
       FROM recetas ORDER BY nombre ASC
     `
 
@@ -31,7 +32,7 @@ export async function GET() {
         descripcion: receta.descripcion || "",
         imagen: receta.imagen || "",
         categoria: receta.categoria,
-        factorRendimiento: receta.factor_rendimiento || 1,
+        factorRendimiento: 1,
         insumos,
       }
     })
@@ -51,17 +52,16 @@ export async function POST(request: Request) {
     const codigo = body.codigo || id.substring(0, 6).toUpperCase()
 
     const [recetaData] = await sql`
-      INSERT INTO recetas (id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento)
+      INSERT INTO recetas (id, codigo, nombre, descripcion, imagen, categoria)
       VALUES (
         ${id},
         ${codigo},
         ${body.nombre},
         ${body.descripcion || null},
         ${body.imagen || null},
-        ${body.categoria || "Plato Principal"},
-        ${body.factorRendimiento || 1}
+        ${body.categoria || "Plato Principal"}
       )
-      RETURNING id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento
+      RETURNING id, codigo, nombre, descripcion, imagen, categoria
     `
 
     if (body.insumos && body.insumos.length > 0) {
@@ -80,6 +80,7 @@ export async function POST(request: Request) {
       }
     }
 
+    await logActivity("receta", "creado", body.nombre, `Categoría: ${body.categoria || "Plato Principal"}`)
     return NextResponse.json({
       id: recetaData.id,
       codigo: recetaData.codigo,
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
       descripcion: recetaData.descripcion || "",
       imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
-      factorRendimiento: recetaData.factor_rendimiento || 1,
+      factorRendimiento: 1,
       insumos: body.insumos || [],
     }, { status: 201 })
   } catch (err) {

@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET single insumo
 export async function GET(
@@ -86,6 +87,7 @@ export async function DELETE(
   try {
     const { id } = await params
     await sql`DELETE FROM insumos WHERE id = ${id}`
+    await logActivity("insumo", "eliminado", id)
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[API] Error deleting insumo:", err)
