@@ -1,5 +1,6 @@
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET single receta with insumos
 export async function GET(
@@ -124,8 +125,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    // receta_insumos se borra en cascada por la FK
     await sql`DELETE FROM recetas WHERE id = ${id}`
+    await logActivity("receta", "eliminado", id)
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[API] Error deleting receta:", err)

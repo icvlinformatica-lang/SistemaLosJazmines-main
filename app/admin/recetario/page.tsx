@@ -1,5 +1,5 @@
 "use client"
-
+// cache-bust: v5 - isEditMode fix
 import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -32,7 +32,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users, Utensils } from "lucide-react"
+import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users, Utensils, Search, LayoutGrid, List } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 
@@ -163,7 +163,10 @@ export default function RecetarioPage() {
   const { state, addReceta, updateReceta, deleteReceta } = useStore()
   const [selectedReceta, setSelectedReceta] = useState<Receta | null>(state.recetas[0] || null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditMode, setIsEditMode] = useState(false)
+  const [editingRecetaId, setEditingRecetaId] = useState<string | null>(null)
+  const isEditMode = editingRecetaId !== null
+  const [recetaSearch, setRecetaSearch] = useState("")
+  const [recetaViewMode, setRecetaViewMode] = useState<"list" | "grid">("list")
   const [showCapacity, setShowCapacity] = useState(false)
 
   // Calculate how many 100-person events each recipe can cover with current stock
@@ -228,7 +231,7 @@ export default function RecetarioPage() {
       cantidadBasePorPersona: 0,
       unidadReceta: undefined,
     })
-    setIsEditMode(false)
+    setEditingRecetaId(null)
   }
 
   const handleIngredientSelect = (insumoId: string) => {
@@ -286,7 +289,7 @@ export default function RecetarioPage() {
       insumos: [...selectedReceta.insumos],
       factorRendimiento: selectedReceta.factorRendimiento || 1,
     })
-    setIsEditMode(true)
+    setEditingRecetaId(selectedReceta.id)
     setIsAddDialogOpen(true)
   }
 
@@ -688,73 +691,148 @@ export default function RecetarioPage() {
           </Collapsible>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Mis Recetas</CardTitle>
-              <CardDescription>{state.recetas.length} platos</CardDescription>
+        <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
+          <Card className="flex flex-col lg:sticky lg:top-6" style={{ height: "calc(100vh - 200px)" }}>
+            <CardHeader className="pb-3 shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Mis Recetas</CardTitle>
+                  <CardDescription>{state.recetas.filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase())).length} platos</CardDescription>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setRecetaViewMode("list")}
+                    className={cn(
+                      "p-1.5 rounded-md transition-colors",
+                      recetaViewMode === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    )}
+                    aria-label="Vista lista"
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecetaViewMode("grid")}
+                    className={cn(
+                      "p-1.5 rounded-md transition-colors",
+                      recetaViewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    )}
+                    aria-label="Vista mosaico"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="relative mt-2">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar receta..."
+                  value={recetaSearch}
+                  onChange={(e) => setRecetaSearch(e.target.value)}
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100vh-320px)]">
-                <div className="space-y-1 p-3">
-                  {state.recetas.map((receta) => (
-                    <button
-                      key={receta.id}
-                      onClick={() => setSelectedReceta(receta)}
-                      className={cn(
-                        "w-full rounded-lg p-3 text-left transition-colors",
-                        selectedReceta?.id === receta.id ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
+            <CardContent className="p-0 flex-1 min-h-0 overflow-hidden">
+              <ScrollArea className="h-full">
+                {recetaViewMode === "list" ? (
+                  <div className="space-y-1 p-3">
+                    {state.recetas
+                      .filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()))
+                      .map((receta) => (
+                        <button
+                          key={receta.id}
+                          onClick={() => setSelectedReceta(receta)}
                           className={cn(
-                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden",
-                            selectedReceta?.id === receta.id ? "bg-primary-foreground/20" : "bg-primary/10",
+                            "w-full rounded-lg p-3 text-left transition-colors",
+                            selectedReceta?.id === receta.id ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
                           )}
                         >
-                          {receta.imagen ? (
-                            <img
-                              src={receta.imagen}
-                              alt={receta.nombre}
-                              className="h-10 w-10 object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = "none"
-                                e.currentTarget.nextElementSibling?.removeAttribute("style")
-                              }}
-                            />
-                          ) : null}
-                          <ChefHat
-                            className={cn(
-                              "h-5 w-5",
-                              receta.imagen ? "hidden" : "",
-                              selectedReceta?.id === receta.id ? "text-primary-foreground" : "text-primary",
-                            )}
-                          />
-                        </div>
-                        <div className="flex-1 overflow-hidden">
-                          <div className="flex flex-col gap-1">
-                            <p className="truncate font-medium">{receta.nombre}</p>
-                            <Badge
-                              variant={selectedReceta?.id === receta.id ? "secondary" : "outline"}
-                              className="text-xs w-fit"
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={cn(
+                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden",
+                                selectedReceta?.id === receta.id ? "bg-primary-foreground/20" : "bg-primary/10",
+                              )}
                             >
-                              {receta.categoria}
-                            </Badge>
+                              {receta.imagen ? (
+                                <img
+                                  src={receta.imagen}
+                                  alt={receta.nombre}
+                                  className="h-10 w-10 object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = "none"
+                                    ;(e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove("hidden")
+                                  }}
+                                />
+                              ) : null}
+                              <ChefHat
+                                className={cn(
+                                  "h-5 w-5",
+                                  receta.imagen ? "hidden" : "",
+                                  selectedReceta?.id === receta.id ? "text-primary-foreground" : "text-primary",
+                                )}
+                              />
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                              <div className="flex flex-col gap-1">
+                                <p className="truncate font-medium">{receta.nombre}</p>
+                                <Badge
+                                  variant={selectedReceta?.id === receta.id ? "secondary" : "outline"}
+                                  className="text-xs w-fit"
+                                >
+                                  {receta.categoria}
+                                </Badge>
+                              </div>
+                              <p
+                                className={cn(
+                                  "truncate text-sm",
+                                  selectedReceta?.id === receta.id ? "text-primary-foreground/70" : "text-muted-foreground",
+                                )}
+                              >
+                                {receta.codigo} · {receta.insumos.length} insumos
+                              </p>
+                            </div>
                           </div>
-                          <p
-                            className={cn(
-                              "truncate text-sm",
-                              selectedReceta?.id === receta.id ? "text-primary-foreground/70" : "text-muted-foreground",
-                            )}
-                          >
-                            {receta.codigo} · {receta.insumos.length} insumos
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                        </button>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-1.5 p-2">
+                    {state.recetas
+                      .filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()))
+                      .map((receta) => (
+                        <button
+                          key={receta.id}
+                          onClick={() => setSelectedReceta(receta)}
+                          className={cn(
+                            "rounded-md overflow-hidden border text-left transition-all hover:shadow-md",
+                            selectedReceta?.id === receta.id ? "border-primary ring-2 ring-primary/30" : "border-border",
+                          )}
+                        >
+                          <div className="h-12 w-full bg-primary/5 flex items-center justify-center overflow-hidden">
+                            {receta.imagen ? (
+                              <img
+                                src={receta.imagen}
+                                alt={receta.nombre}
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none"
+                                  ;(e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove("hidden")
+                                }}
+                              />
+                            ) : null}
+                            <ChefHat className={cn("h-5 w-5 text-primary/30", receta.imagen ? "hidden" : "")} />
+                          </div>
+                          <div className="px-1.5 py-1">
+                            <p className="text-[10px] font-semibold truncate leading-tight">{receta.nombre}</p>
+                            <p className="text-[9px] text-muted-foreground truncate">{receta.categoria}</p>
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                )}
               </ScrollArea>
             </CardContent>
           </Card>

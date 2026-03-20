@@ -2,10 +2,10 @@
 
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
-import { formatCurrency, type EventoHistorial } from "@/lib/store"
+import { formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,20 +17,56 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, FileText, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2 } from "lucide-react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
 import type { Insumo, Receta } from "@/lib/store"
-import { UnifiedDocument } from "@/components/unified-document"
+import { ScrollArea } from "@/components/ui/scroll-area"
+
+type ActivityEntry = {
+  id: string
+  tipo: "insumo" | "insumo_barra" | "receta" | "coctel" | "evento"
+  accion: "creado" | "eliminado" | "modificado" | "planificado"
+  nombre: string
+  detalle?: string
+  created_at: string
+}
+
+const TIPO_LABELS: Record<string, string> = {
+  insumo: "Insumo",
+  insumo_barra: "Insumo Barra",
+  receta: "Receta",
+  coctel: "Coctel",
+  evento: "Evento",
+}
+
+const ACCION_ICON: Record<string, React.ReactNode> = {
+  creado: <Plus className="h-3.5 w-3.5" />,
+  eliminado: <Minus className="h-3.5 w-3.5" />,
+  modificado: <RefreshCw className="h-3.5 w-3.5" />,
+  planificado: <CalendarCheck className="h-3.5 w-3.5" />,
+}
+
+const ACCION_COLOR: Record<string, string> = {
+  creado: "bg-green-100 text-green-700 border-green-200",
+  eliminado: "bg-red-100 text-red-700 border-red-200",
+  modificado: "bg-blue-100 text-blue-700 border-blue-200",
+  planificado: "bg-amber-100 text-amber-700 border-amber-200",
+}
+
+const TIPO_ICON: Record<string, React.ReactNode> = {
+  insumo: <Package className="h-4 w-4 text-amber-600" />,
+  insumo_barra: <Wine className="h-4 w-4 text-purple-600" />,
+  receta: <ChefHat className="h-4 w-4 text-emerald-600" />,
+  coctel: <Wine className="h-4 w-4 text-rose-600" />,
+  evento: <CalendarCheck className="h-4 w-4 text-sky-600" />,
+}
 
 export default function ConfiguracionPage() {
-  const { state, insumos, recetas, historial, setInsumos, setRecetas, deleteEventoHistorial, clearHistorial } = useStore()
-  const [selectedHistorial, setSelectedHistorial] = useState<EventoHistorial | null>(null)
-  const [showHistorialDocument, setShowHistorialDocument] = useState(false)
+  const { state, insumos, recetas, historial, setInsumos, setRecetas } = useStore()
   const { toast } = useToast()
-  
-  // Save status state
+
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<Record<string, { count: number; synced: boolean }>>({
@@ -39,11 +75,13 @@ export default function ConfiguracionPage() {
     recetas: { count: 0, synced: true },
     cocteles: { count: 0, synced: true },
   })
-  
-  // Restore progress state
   const [isRestoring, setIsRestoring] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
   const [restoreStatus, setRestoreStatus] = useState("")
+
+  // Activity log state
+  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([])
+  const [isLoadingActivity, setIsLoadingActivity] = useState(true)
 
   // Check data status on mount and when state changes
   useEffect(() => {
@@ -81,6 +119,25 @@ export default function ConfiguracionPage() {
     
     checkDataStatus()
   }, [state])
+
+  // Load activity log
+  useEffect(() => {
+    const fetchActivity = async () => {
+      setIsLoadingActivity(true)
+      try {
+        const res = await fetch("/api/activity-log")
+        if (res.ok) {
+          const data = await res.json()
+          setActivityLog(Array.isArray(data) ? data : [])
+        }
+      } catch {
+        // silently fail
+      } finally {
+        setIsLoadingActivity(false)
+      }
+    }
+    fetchActivity()
+  }, [])
 
   const handleManualSync = async () => {
     setIsSyncing(true)
@@ -426,39 +483,21 @@ export default function ConfiguracionPage() {
     setTimeout(() => window.location.reload(), 1000)
   }
 
-  // ==================== HISTORIAL FUNCTIONS ====================
+  // ==================== ACTIVITY LOG FUNCTIONS ====================
 
-  const viewHistorialPDF = (entry: EventoHistorial) => {
-    setSelectedHistorial(entry)
-    setShowHistorialDocument(true)
-  }
-
-  const closeHistorialDocument = () => {
-    setShowHistorialDocument(false)
-    setSelectedHistorial(null)
-  }
-
-  // Parse the snapshot data for the UnifiedDocument component
-  const getSnapshotData = () => {
-    if (!selectedHistorial) return undefined
+  const handleClearActivity = async () => {
     try {
-      return JSON.parse(selectedHistorial.snapshot)
+      await fetch("/api/activity-log", { method: "DELETE" })
+      setActivityLog([])
+      toast({ title: "Historial limpiado" })
     } catch {
-      return undefined
+      toast({ title: "Error al limpiar", variant: "destructive" })
     }
   }
 
-  // If viewing a historial document, show it fullscreen
-  if (showHistorialDocument && selectedHistorial) {
-    const snapshotData = getSnapshotData()
-    return (
-      <div className="min-h-screen bg-background">
-        <UnifiedDocument 
-          snapshot={snapshotData} 
-          onClose={closeHistorialDocument}
-        />
-      </div>
-    )
+  const formatActivityTime = (iso: string) => {
+    const d = new Date(iso)
+    return d.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
   }
 
   return (
@@ -574,86 +613,90 @@ export default function ConfiguracionPage() {
           </CardContent>
         </Card>
 
-        {/* Section 1: Historial */}
+        {/* Section 1: Historial de Actividad */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <History className="h-6 w-6" />
-              Historial de Eventos
-            </CardTitle>
-            <CardDescription className="text-base">
-              Eventos cerrados anteriormente. Puedes reimprimir los documentos.
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <History className="h-6 w-6" />
+                  Historial de Actividad
+                </CardTitle>
+                <CardDescription className="text-base">
+                  Registro de acciones realizadas en el sistema
+                </CardDescription>
+              </div>
+              {activityLog.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Limpiar
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Limpiar historial</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esto eliminara permanentemente todo el historial de actividad.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive hover:bg-destructive/90"
+                        onClick={handleClearActivity}
+                      >
+                        Limpiar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            {historial.length === 0 ? (
+            {isLoadingActivity ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>Cargando actividad...</span>
+              </div>
+            ) : activityLog.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <p className="text-lg">No hay eventos en el historial</p>
-                <p className="text-base mt-1">Los eventos cerrados apareceran aqui</p>
+                <History className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                <p className="text-base">Sin actividad registrada</p>
+                <p className="text-sm mt-1">Las acciones apareceran aqui automaticamente</p>
               </div>
             ) : (
-              <div className="rounded-lg border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-base">Evento</TableHead>
-                      <TableHead className="text-base">Fecha</TableHead>
-                      <TableHead className="text-base text-right">Personas</TableHead>
-                      <TableHead className="text-base text-right">Costo</TableHead>
-                      <TableHead className="w-32"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {historial.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="font-medium text-base">{entry.nombre}</TableCell>
-                        <TableCell className="text-base">
-                          {new Date(entry.fecha).toLocaleDateString("es-AR")}
-                        </TableCell>
-                        <TableCell className="text-right text-base">{entry.totalPersonas}</TableCell>
-                        <TableCell className="text-right text-base">{formatCurrency(entry.costoTotal)}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1 justify-end">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-10 w-10"
-                              onClick={() => viewHistorialPDF(entry)}
-                              title="Ver PDF Original"
-                            >
-                              <FileText className="h-5 w-5" />
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-10 w-10" title="Eliminar">
-                                  <Trash2 className="h-5 w-5" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Eliminar del Historial</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Esto eliminara permanentemente este evento del historial.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel className="h-12">Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    className="h-12 bg-destructive hover:bg-destructive/90"
-                                    onClick={() => deleteEventoHistorial(entry.id)}
-                                  >
-                                    Eliminar
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <ScrollArea className="h-[420px] pr-2">
+                <div className="space-y-2">
+                  {activityLog.map((entry) => (
+                    <div key={entry.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        {TIPO_ICON[entry.tipo]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm truncate">{entry.nombre}</span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${ACCION_COLOR[entry.accion]}`}>
+                            {ACCION_ICON[entry.accion]}
+                            {entry.accion}
+                          </span>
+                          <Badge variant="outline" className="text-xs">
+                            {TIPO_LABELS[entry.tipo]}
+                          </Badge>
+                        </div>
+                        {entry.detalle && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{entry.detalle}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 pt-0.5">
+                        {formatActivityTime(entry.created_at)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
             )}
           </CardContent>
         </Card>

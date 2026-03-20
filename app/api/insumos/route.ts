@@ -1,5 +1,6 @@
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { logActivity } from "@/lib/activity-logger"
 
 // GET all insumos
 export async function GET() {
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
       RETURNING *
     `
 
+    await logActivity("insumo", "creado", data.descripcion, `Código: ${data.codigo}`)
     return NextResponse.json({
       id: data.id,
       codigo: data.codigo,
