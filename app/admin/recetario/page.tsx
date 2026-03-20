@@ -32,7 +32,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users } from "lucide-react"
+import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users, Utensils } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 
@@ -202,6 +202,7 @@ export default function RecetarioPage() {
     imagen: "",
     categoria: "Plato Principal" as RecetaCategoria,
     insumos: [] as InsumoReceta[],
+    factorRendimiento: 1,
   })
 
   const [newIngredient, setNewIngredient] = useState({
@@ -219,6 +220,7 @@ export default function RecetarioPage() {
       imagen: "",
       categoria: "Plato Principal" as RecetaCategoria,
       insumos: [],
+      factorRendimiento: 1,
     })
     setNewIngredient({
       insumoId: "",
@@ -282,6 +284,7 @@ export default function RecetarioPage() {
       imagen: selectedReceta.imagen || "",
       categoria: selectedReceta.categoria,
       insumos: [...selectedReceta.insumos],
+      factorRendimiento: selectedReceta.factorRendimiento || 1,
     })
     setIsEditMode(true)
     setIsAddDialogOpen(true)
@@ -383,6 +386,51 @@ export default function RecetarioPage() {
                           <SelectItem value="Sin Sal">Sin Sal</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    {/* Factor de Rendimiento */}
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Utensils className="h-4 w-4 text-muted-foreground" />
+                        <Label className="text-sm font-medium">Como cargas esta receta?</Label>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, factorRendimiento: 1 })}
+                          className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+                            formData.factorRendimiento === 1
+                              ? "border-foreground bg-foreground text-background"
+                              : "border-border bg-background text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Por persona
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, factorRendimiento: formData.factorRendimiento > 1 ? formData.factorRendimiento : 2 })}
+                          className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+                            formData.factorRendimiento > 1
+                              ? "border-foreground bg-foreground text-background"
+                              : "border-border bg-background text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Por preparacion
+                        </button>
+                      </div>
+                      {formData.factorRendimiento > 1 && (
+                        <div className="flex items-center gap-3 pt-1">
+                          <span className="text-sm text-muted-foreground whitespace-nowrap">Esta receta rinde para</span>
+                          <Input
+                            type="number"
+                            min={2}
+                            className="w-20 text-center"
+                            value={formData.factorRendimiento}
+                            onChange={(e) => setFormData({ ...formData, factorRendimiento: Math.max(2, parseInt(e.target.value) || 2) })}
+                          />
+                          <span className="text-sm text-muted-foreground whitespace-nowrap">personas</span>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -719,6 +767,12 @@ export default function RecetarioPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary">{selectedReceta.codigo}</Badge>
                       <Badge variant="default">{selectedReceta.categoria}</Badge>
+                      {(selectedReceta.factorRendimiento || 1) > 1 && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Utensils className="h-3 w-3" />
+                          Receta para {selectedReceta.factorRendimiento} porciones
+                        </Badge>
+                      )}
                       <CardTitle className="text-2xl">{selectedReceta.nombre}</CardTitle>
                     </div>
                     <CardDescription className="mt-2 max-w-xl">{selectedReceta.descripcion}</CardDescription>
@@ -755,11 +809,11 @@ export default function RecetarioPage() {
                   {selectedReceta.insumos.map((item, index) => {
                     const insumo = getInsumoById(item.insumoId)
                     if (!insumo) return null
-                    // Convert recipe units to stock units for cost calculation
+                    const factor = selectedReceta.factorRendimiento || 1
                     const normalizedQty = normalizeToStockUnit(item.cantidadBasePorPersona, item.unidadReceta, insumo.unidad)
-                    const costoPorPersona = normalizedQty * insumo.precioUnitario
-                    // Display the unit the user entered (unidadReceta), falling back to insumo.unidad
+                    const costoPorPersona = (normalizedQty / factor) * insumo.precioUnitario
                     const displayUnit = item.unidadReceta || insumo.unidad
+                    const cantPorPersona = item.cantidadBasePorPersona / factor
 
                     return (
                       <div key={index} className="flex items-center justify-between rounded-lg border p-4">
@@ -769,13 +823,20 @@ export default function RecetarioPage() {
                           </div>
                           <div>
                             <p className="font-medium">{insumo.descripcion}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {item.cantidadBasePorPersona} {displayUnit} por persona
-                            </p>
+                            {factor > 1 ? (
+                              <div className="text-sm text-muted-foreground space-y-0.5">
+                                <p>{item.cantidadBasePorPersona} {displayUnit} por preparacion</p>
+                                <p className="text-xs text-primary font-medium">→ {cantPorPersona.toFixed(1)} {displayUnit} por persona</p>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                {item.cantidadBasePorPersona} {displayUnit} por persona
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
-                          <Badge className="mb-1">{item.detalleCorte}</Badge>
+                          {item.detalleCorte && <Badge className="mb-1">{item.detalleCorte}</Badge>}
                           <p className="text-sm text-muted-foreground">{formatCurrency(costoPorPersona)}/pers</p>
                         </div>
                       </div>

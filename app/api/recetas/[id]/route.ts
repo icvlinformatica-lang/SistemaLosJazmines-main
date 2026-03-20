@@ -8,14 +8,18 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const [recetaData] = await sql`SELECT * FROM recetas WHERE id = ${id}`
+    const [recetaData] = await sql`
+      SELECT id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento
+      FROM recetas WHERE id = ${id}
+    `
 
     if (!recetaData) {
       return NextResponse.json({ error: "Receta not found" }, { status: 404 })
     }
 
     const insumosData = await sql`
-      SELECT * FROM receta_insumos WHERE receta_id = ${id}
+      SELECT insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta
+      FROM receta_insumos WHERE receta_id = ${id}
     `
 
     const insumos = insumosData.map((i) => ({
@@ -32,6 +36,7 @@ export async function GET(
       descripcion: recetaData.descripcion || "",
       imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
+      factorRendimiento: recetaData.factor_rendimiento || 1,
       insumos,
     })
   } catch (err) {
@@ -51,12 +56,13 @@ export async function PUT(
 
     const [recetaData] = await sql`
       UPDATE recetas SET
-        nombre      = COALESCE(${body.nombre ?? null}, nombre),
-        codigo      = COALESCE(${body.codigo ?? null}, codigo),
-        descripcion = COALESCE(${body.descripcion ?? null}, descripcion),
-        imagen      = COALESCE(${body.imagen ?? null}, imagen),
-        categoria   = COALESCE(${body.categoria ?? null}, categoria),
-        updated_at  = NOW()
+        nombre             = COALESCE(${body.nombre ?? null}, nombre),
+        codigo             = COALESCE(${body.codigo ?? null}, codigo),
+        descripcion        = COALESCE(${body.descripcion ?? null}, descripcion),
+        imagen             = COALESCE(${body.imagen ?? null}, imagen),
+        categoria          = COALESCE(${body.categoria ?? null}, categoria),
+        factor_rendimiento = COALESCE(${body.factorRendimiento ?? null}, factor_rendimiento),
+        updated_at         = NOW()
       WHERE id = ${id}
       RETURNING *
     `
@@ -86,7 +92,8 @@ export async function PUT(
 
     // Leer los insumos actualizados para devolver
     const insumosData = await sql`
-      SELECT * FROM receta_insumos WHERE receta_id = ${id}
+      SELECT insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta
+      FROM receta_insumos WHERE receta_id = ${id}
     `
 
     return NextResponse.json({
@@ -96,6 +103,7 @@ export async function PUT(
       descripcion: recetaData.descripcion || "",
       imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
+      factorRendimiento: recetaData.factor_rendimiento || 1,
       insumos: insumosData.map((i) => ({
         insumoId: i.insumo_id,
         detalleCorte: i.detalle_corte || "",
