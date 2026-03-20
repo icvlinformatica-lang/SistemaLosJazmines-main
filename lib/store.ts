@@ -95,6 +95,7 @@ export interface Receta {
   imagen?: string
   categoria: RecetaCategoria
   insumos: InsumoReceta[]
+  factorRendimiento: number // Default 1 — divide ingredient quantities per person
 }
 
 export interface DishSelection {
@@ -1279,12 +1280,12 @@ export function getDefaultRecipeUnit(stockUnit: Unidad): UnidadReceta {
 }
 
 export function calcularCostoReceta(receta: Receta, insumos: Insumo[]): number {
+  const factor = receta.factorRendimiento || 1
   return receta.insumos.reduce((total, ir) => {
     const insumo = insumos.find((i) => i.id === ir.insumoId)
     if (!insumo) return total
-    // Normalize the quantity to stock unit before multiplying by price
     const normalizedQty = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad)
-    return total + normalizedQty * insumo.precioUnitario
+    return total + (normalizedQty / factor) * insumo.precioUnitario
   }, 0)
 }
 
@@ -1317,13 +1318,14 @@ export function calcularComprasSegmentadas(
       if (!receta) return
 
       const portionMultiplier = multipliers[recetaId] || 1
+      const factor = receta.factorRendimiento || 1
 
       receta.insumos.forEach((ir) => {
         const insumo = insumos.find((i) => i.id === ir.insumoId)
         if (!insumo) return
 
         const normalizedQty = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad)
-        const cantidad = normalizedQty * paxCount * portionMultiplier
+        const cantidad = (normalizedQty / factor) * paxCount * portionMultiplier
 
         if (!comprasMap[ir.insumoId]) {
           comprasMap[ir.insumoId] = {
