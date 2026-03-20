@@ -79,13 +79,18 @@ import {
 } from "lucide-react"
 import { generateId } from "@/lib/store"
 
-const estadoConfig: Record<EstadoEvento, { label: string; className: string }> = {
+// cache-bust: v2 - estadoConfig includes en_preparacion, confirmado removed
+const estadoConfig: Record<string, { label: string; className: string }> = {
   pendiente: {
     label: "Pendiente",
     className: "bg-amber-100 text-amber-800 border-amber-300",
   },
   en_preparacion: {
     label: "En Preparacion",
+    className: "bg-sky-100 text-sky-800 border-sky-300",
+  },
+  confirmado: {
+    label: "Confirmado",
     className: "bg-sky-100 text-sky-800 border-sky-300",
   },
   completado: {

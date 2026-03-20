@@ -1,5 +1,5 @@
 "use client"
-// cache-bust: v5 - isEditMode fix
+// cache-bust: v6 - isEditMode derived from editingRecetaId
 import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"

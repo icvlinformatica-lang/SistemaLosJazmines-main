@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
