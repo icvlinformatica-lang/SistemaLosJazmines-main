@@ -19,16 +19,30 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Plus, Search, Pencil, Trash2 } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 
 const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR"]
+
+type SortField = "codigo" | "descripcion" | "stockActual"
+type SortDir = "asc" | "desc"
 
 function AlmacenContent() {
   const { insumos, isLoading, addInsumo, updateInsumo, deleteInsumo } = useInsumos()
   const [searchTerm, setSearchTerm] = useState("")
+  const [sortField, setSortField] = useState<SortField>("codigo")
+  const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<Insumo | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
 
   // Form state
   const [formData, setFormData] = useState({
@@ -43,12 +57,25 @@ function AlmacenContent() {
   // Safety check: ensure insumos is always an array
   const safeInsumos = Array.isArray(insumos) ? insumos : []
   
-  const filteredInsumos = safeInsumos.filter(
-    (insumo) =>
-      insumo.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      insumo.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (insumo.proveedor || "").toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const filteredInsumos = safeInsumos
+    .filter(
+      (insumo) =>
+        insumo.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        insumo.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (insumo.proveedor || "").toLowerCase().includes(searchTerm.toLowerCase()),
+    )
+    .sort((a, b) => {
+      let valA: string | number = a[sortField]
+      let valB: string | number = b[sortField]
+      if (sortField === "stockActual") {
+        valA = Number(valA)
+        valB = Number(valB)
+        return sortDir === "asc" ? valA - valB : valB - valA
+      }
+      return sortDir === "asc"
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA))
+    })
 
   const resetForm = () => {
     setFormData({
@@ -122,138 +149,111 @@ function AlmacenContent() {
       {/* Search and Add */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle>Inventario de Insumos</CardTitle>
               <CardDescription>{filteredInsumos.length} insumos encontrados</CardDescription>
             </div>
-            <div className="flex gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar insumo..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 w-[200px]"
-                />
+            <div className="flex flex-col gap-3 sm:items-end">
+              {/* Search + Add */}
+              <div className="flex gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar insumo..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 w-[200px]"
+                  />
+                </div>
+                <Dialog
+                  open={isAddDialogOpen}
+                  onOpenChange={(open) => {
+                    setIsAddDialogOpen(open)
+                    if (!open) resetForm()
+                  }}
+                >
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Agregar
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}</DialogTitle>
+                      <DialogDescription>
+                        {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacén"}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="codigo" className="text-right">Código</Label>
+                        <Input id="codigo" value={formData.codigo} onChange={(e) => setFormData({ ...formData, codigo: e.target.value })} className="col-span-3" placeholder="Ej: A1" />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="descripcion" className="text-right">Descripción</Label>
+                        <Input id="descripcion" value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="col-span-3" placeholder="Ej: Aceite Girasol" />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="unidad" className="text-right">Unidad</Label>
+                        <Select value={formData.unidad} onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}>
+                          <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
+                          <SelectContent>{unidades.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="stock" className="text-right">Stock</Label>
+                        <Input id="stock" type="number" value={formData.stockActual} onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })} className="col-span-3" />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="precio" className="text-right">Precio $</Label>
+                        <Input id="precio" type="number" step="0.01" value={formData.precioUnitario} onChange={(e) => setFormData({ ...formData, precioUnitario: Number.parseFloat(e.target.value) || 0 })} className="col-span-3" />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
+                        <Input id="proveedor" value={formData.proveedor} onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })} className="col-span-3" placeholder="Ej: Distribuidora Norte" />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancelar</Button>
+                      <Button onClick={handleSubmit} disabled={isSubmitting}>
+                        {isSubmitting ? "Guardando..." : editingInsumo ? "Guardar" : "Agregar"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
-              <Dialog
-                open={isAddDialogOpen}
-                onOpenChange={(open) => {
-                  setIsAddDialogOpen(open)
-                  if (!open) resetForm()
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Agregar
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}</DialogTitle>
-                    <DialogDescription>
-                      {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacén"}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="codigo" className="text-right">
-                        Código
-                      </Label>
-                      <Input
-                        id="codigo"
-                        value={formData.codigo}
-                        onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                        className="col-span-3"
-                        placeholder="Ej: A1"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="descripcion" className="text-right">
-                        Descripción
-                      </Label>
-                      <Input
-                        id="descripcion"
-                        value={formData.descripcion}
-                        onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                        className="col-span-3"
-                        placeholder="Ej: Aceite Girasol"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="unidad" className="text-right">
-                        Unidad
-                      </Label>
-                      <Select
-                        value={formData.unidad}
-                        onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}
-                      >
-                        <SelectTrigger className="col-span-3">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {unidades.map((u) => (
-                            <SelectItem key={u} value={u}>
-                              {u}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="stock" className="text-right">
-                        Stock
-                      </Label>
-                      <Input
-                        id="stock"
-                        type="number"
-                        value={formData.stockActual}
-                        onChange={(e) =>
-                          setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })
-                        }
-                        className="col-span-3"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="precio" className="text-right">
-                        Precio $
-                      </Label>
-                      <Input
-                        id="precio"
-                        type="number"
-                        step="0.01"
-                        value={formData.precioUnitario}
-                        onChange={(e) =>
-                          setFormData({ ...formData, precioUnitario: Number.parseFloat(e.target.value) || 0 })
-                        }
-                        className="col-span-3"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="proveedor" className="text-right">
-                        Proveedor
-                      </Label>
-                      <Input
-                        id="proveedor"
-                        value={formData.proveedor}
-                        onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
-                        className="col-span-3"
-                        placeholder="Ej: Distribuidora Norte"
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                      Cancelar
-                    </Button>
-                    <Button onClick={handleSubmit} disabled={isSubmitting}>
-                      {isSubmitting ? "Guardando..." : editingInsumo ? "Guardar" : "Agregar"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+
+              {/* Sort chips */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground mr-1">Ordenar:</span>
+                {(
+                  [
+                    { field: "codigo" as SortField, label: "N° Insumo" },
+                    { field: "descripcion" as SortField, label: "A–Z" },
+                    { field: "stockActual" as SortField, label: "Cantidad" },
+                  ] as const
+                ).map(({ field, label }) => {
+                  const active = sortField === field
+                  const Icon = active ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown
+                  return (
+                    <button
+                      key={field}
+                      type="button"
+                      onClick={() => handleSort(field)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        active
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                      }`}
+                    >
+                      <Icon className="h-3 w-3" />
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </CardHeader>
