@@ -78,6 +78,7 @@ import {
   DollarSign,
   AlertCircle,
   Briefcase,
+  Lock,
   ChevronDown,
   UtensilsCrossed,
   Phone,
@@ -637,6 +638,7 @@ function EventoPageContent() {
         subtitle,
         badge,
         children,
+        locked,
       }: {
         sectionKey: string
         icon: React.ReactNode
@@ -644,8 +646,25 @@ function EventoPageContent() {
         subtitle?: string
         badge?: React.ReactNode
         children: React.ReactNode
+        locked?: boolean
       }) => {
         const isOpen = openSections[sectionKey] ?? false
+        if (locked) {
+          return (
+            <div className="rounded-xl border border-border bg-card overflow-hidden opacity-60">
+              <div className="flex w-full items-center gap-4 px-5 py-4 cursor-not-allowed">
+                <div className="shrink-0">{icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-semibold text-card-foreground truncate">{title}</h2>
+                  </div>
+                  {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+                </div>
+                <Lock className="h-5 w-5 shrink-0 text-muted-foreground" />
+              </div>
+            </div>
+          )
+        }
         return (
           <Collapsible open={isOpen} onOpenChange={() => toggleSection(sectionKey)}>
             <div className="rounded-xl border border-border bg-card overflow-hidden transition-shadow hover:shadow-md">
@@ -1282,10 +1301,10 @@ function EventoPageContent() {
         {/* ==================== PAQUETES DE SERVICIOS ==================== */}
         <SectionCard
           sectionKey="servicios"
+          locked
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Package className="h-5 w-5 text-emerald-600" /></div>}
           title="Paquetes de Servicios"
-          subtitle={paquetesSeleccionados.length > 0 ? `${paquetesSeleccionados.length} paquete${paquetesSeleccionados.length > 1 ? "s" : ""} - Total: ${formatCurrency(costoPaquetesOficial)}` : evento.salon ? `Selecciona paquetes para ${evento.salon}` : "Primero selecciona un salon"}
-          badge={paquetesSeleccionados.length > 0 ? <Badge variant="secondary" className="text-xs">{paquetesSeleccionados.length} paquete{paquetesSeleccionados.length > 1 ? "s" : ""}</Badge> : undefined}
+          subtitle="Proximamente"
         >
           {/* No salon selected warning */}
           {!evento.salon && (
@@ -1413,10 +1432,10 @@ function EventoPageContent() {
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
           sectionKey="contrato"
+          locked
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><FileText className="h-5 w-5 text-sky-600" /></div>}
           title="Datos del Contrato"
-          subtitle={localContratoNombre ? `${localContratoNombre}${localContratoDni ? ` - DNI: ${localContratoDni}` : ""}` : "Informacion del cliente y plan de pagos"}
-          badge={localContratoNombre ? <Badge variant="secondary" className="text-xs">Cliente</Badge> : undefined}
+          subtitle="Proximamente"
         >
           <Tabs defaultValue="cliente">
             <TabsList className="grid w-full grid-cols-2">
