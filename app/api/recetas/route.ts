@@ -5,7 +5,7 @@ import { NextResponse } from "next/server"
 export async function GET() {
   try {
     const recetasData = await sql`
-      SELECT id, codigo, nombre, descripcion, imagen, categoria
+      SELECT id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento
       FROM recetas ORDER BY nombre ASC
     `
 
@@ -31,7 +31,7 @@ export async function GET() {
         descripcion: receta.descripcion || "",
         imagen: receta.imagen || "",
         categoria: receta.categoria,
-        factorRendimiento: 1,
+        factorRendimiento: receta.factor_rendimiento || 1,
         insumos,
       }
     })
@@ -51,16 +51,17 @@ export async function POST(request: Request) {
     const codigo = body.codigo || id.substring(0, 6).toUpperCase()
 
     const [recetaData] = await sql`
-      INSERT INTO recetas (id, codigo, nombre, descripcion, imagen, categoria)
+      INSERT INTO recetas (id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento)
       VALUES (
         ${id},
         ${codigo},
         ${body.nombre},
         ${body.descripcion || null},
         ${body.imagen || null},
-        ${body.categoria || "Plato Principal"}
+        ${body.categoria || "Plato Principal"},
+        ${body.factorRendimiento || 1}
       )
-      RETURNING id, codigo, nombre, descripcion, imagen, categoria
+      RETURNING id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento
     `
 
     if (body.insumos && body.insumos.length > 0) {
@@ -86,7 +87,7 @@ export async function POST(request: Request) {
       descripcion: recetaData.descripcion || "",
       imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
-      factorRendimiento: 1,
+      factorRendimiento: recetaData.factor_rendimiento || 1,
       insumos: body.insumos || [],
     }, { status: 201 })
   } catch (err) {

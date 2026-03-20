@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await params
     const [recetaData] = await sql`
-      SELECT id, codigo, nombre, descripcion, imagen, categoria
+      SELECT id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento
       FROM recetas WHERE id = ${id}
     `
 
@@ -36,7 +36,7 @@ export async function GET(
       descripcion: recetaData.descripcion || "",
       imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
-      factorRendimiento: 1,
+      factorRendimiento: recetaData.factor_rendimiento || 1,
       insumos,
     })
   } catch (err) {
@@ -56,12 +56,13 @@ export async function PUT(
 
     const [recetaData] = await sql`
       UPDATE recetas SET
-        nombre      = COALESCE(${body.nombre ?? null}, nombre),
-        codigo      = COALESCE(${body.codigo ?? null}, codigo),
-        descripcion = COALESCE(${body.descripcion ?? null}, descripcion),
-        imagen      = COALESCE(${body.imagen ?? null}, imagen),
-        categoria   = COALESCE(${body.categoria ?? null}, categoria),
-        updated_at  = NOW()
+        nombre             = COALESCE(${body.nombre ?? null}, nombre),
+        codigo             = COALESCE(${body.codigo ?? null}, codigo),
+        descripcion        = COALESCE(${body.descripcion ?? null}, descripcion),
+        imagen             = COALESCE(${body.imagen ?? null}, imagen),
+        categoria          = COALESCE(${body.categoria ?? null}, categoria),
+        factor_rendimiento = COALESCE(${body.factorRendimiento ?? null}, factor_rendimiento),
+        updated_at         = NOW()
       WHERE id = ${id}
       RETURNING *
     `
@@ -102,7 +103,7 @@ export async function PUT(
       descripcion: recetaData.descripcion || "",
       imagen: recetaData.imagen || "",
       categoria: recetaData.categoria,
-      factorRendimiento: 1,
+      factorRendimiento: recetaData.factor_rendimiento || 1,
       insumos: insumosData.map((i) => ({
         insumoId: i.insumo_id,
         detalleCorte: i.detalle_corte || "",
