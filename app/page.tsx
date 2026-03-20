@@ -1,12 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Lightbulb, HelpCircle } from "lucide-react"
-import { TutorialsModal } from "@/components/tutorials-modal"
+import { Bell, HelpCircle } from "lucide-react"
+import { NovedadesModal } from "@/components/novedades-modal"
 import { useUI } from "@/lib/ui-context"
 
 export default function HomePage() {
-  const [tutorialsOpen, setTutorialsOpen] = useState(false)
+  const [novedadesOpen, setNovedadesOpen] = useState(false)
   const { toggleSidebar } = useUI()
 
   const handleBackgroundClick = () => {
@@ -28,15 +28,15 @@ export default function HomePage() {
         className="absolute inset-0 bg-black/30 cursor-pointer"
       />
 
-      {/* Tutorial button - top right */}
+      {/* Novedades button - top right */}
       <div className="absolute top-5 right-5 z-10">
         <button
           type="button"
-          onClick={() => setTutorialsOpen(true)}
+          onClick={() => setNovedadesOpen(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2d5a3d] hover:bg-[#3a6f4e] text-[#f5f0e8] text-sm font-medium transition-colors shadow-lg"
         >
-          <Lightbulb className="h-4 w-4" />
-          <span>Tutorial</span>
+          <Bell className="h-4 w-4" />
+          <span>Novedades</span>
         </button>
       </div>
 
@@ -51,7 +51,7 @@ export default function HomePage() {
         </button>
       </div>
 
-      <TutorialsModal open={tutorialsOpen} onOpenChange={setTutorialsOpen} />
+      <NovedadesModal open={novedadesOpen} onOpenChange={setNovedadesOpen} />
     </div>
   )
 }
