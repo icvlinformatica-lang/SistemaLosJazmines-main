@@ -8,16 +8,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    
-    const [data] = await sql`
-      SELECT * FROM insumos WHERE id = ${id}
-    `
+    const [data] = await sql`SELECT * FROM insumos WHERE id = ${id}`
 
     if (!data) {
       return NextResponse.json({ error: "Insumo not found" }, { status: 404 })
     }
 
-    const insumo = {
+    return NextResponse.json({
       id: data.id,
       codigo: data.codigo,
       descripcion: data.descripcion,
@@ -25,17 +22,15 @@ export async function GET(
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
       proveedor: data.proveedor || "",
-    }
-
-    return NextResponse.json(insumo)
+    })
   } catch (err) {
     console.error("[API] Error fetching insumo:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-// PUT update insumo
-export async function PUT(
+// PATCH update insumo
+export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -45,13 +40,13 @@ export async function PUT(
 
     const [data] = await sql`
       UPDATE insumos SET
-        codigo = COALESCE(${body.codigo}, codigo),
-        descripcion = COALESCE(${body.descripcion}, descripcion),
-        unidad = COALESCE(${body.unidad}, unidad),
-        stock_actual = COALESCE(${body.stockActual}, stock_actual),
-        precio_unitario = COALESCE(${body.precioUnitario}, precio_unitario),
-        proveedor = COALESCE(${body.proveedor}, proveedor),
-        updated_at = NOW()
+        codigo          = COALESCE(${body.codigo ?? null}, codigo),
+        descripcion     = COALESCE(${body.descripcion ?? null}, descripcion),
+        unidad          = COALESCE(${body.unidad ?? null}, unidad),
+        stock_actual    = COALESCE(${body.stockActual ?? null}, stock_actual),
+        precio_unitario = COALESCE(${body.precioUnitario ?? null}, precio_unitario),
+        proveedor       = COALESCE(${body.proveedor ?? null}, proveedor),
+        updated_at      = NOW()
       WHERE id = ${id}
       RETURNING *
     `
@@ -60,7 +55,7 @@ export async function PUT(
       return NextResponse.json({ error: "Insumo not found" }, { status: 404 })
     }
 
-    const insumo = {
+    return NextResponse.json({
       id: data.id,
       codigo: data.codigo,
       descripcion: data.descripcion,
@@ -68,13 +63,19 @@ export async function PUT(
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
       proveedor: data.proveedor || "",
-    }
-
-    return NextResponse.json(insumo)
+    })
   } catch (err) {
     console.error("[API] Error updating insumo:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+// PUT update insumo (alias for PATCH for backwards compatibility)
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return PATCH(request, { params })
 }
 
 // DELETE insumo
@@ -84,9 +85,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-
     await sql`DELETE FROM insumos WHERE id = ${id}`
-
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[API] Error deleting insumo:", err)
