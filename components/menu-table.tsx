@@ -53,12 +53,14 @@ function MultiplierPopover({
   segment,
   current,
   onSelect,
+  onRemove,
   disabled,
 }: {
   recetaId: string
   segment: Segment
   current: number
   onSelect: (value: number) => void
+  onRemove: () => void
   disabled: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -75,6 +77,12 @@ function MultiplierPopover({
     setOpen(false)
   }
 
+  const handleRemove = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onRemove()
+    setOpen(false)
+  }
+
   return (
     <div className="relative flex items-center justify-center">
       <button
@@ -84,7 +92,7 @@ function MultiplierPopover({
         className={`flex items-center gap-1 rounded px-2 py-1 text-sm font-medium transition-colors select-none
           ${disabled ? "cursor-default opacity-60" : "hover:bg-emerald-100 cursor-pointer"}
           text-[#2d5a3d]`}
-        title={disabled ? undefined : "Ajustar multiplicador"}
+        title={disabled ? undefined : "Ajustar multiplicador o quitar"}
       >
         <span className="text-base">✓</span>
         {current > 1 && <span className="text-xs">({current}x)</span>}
@@ -105,6 +113,16 @@ function MultiplierPopover({
               {v}x
             </button>
           ))}
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="w-8 h-8 rounded text-sm font-semibold transition-colors text-red-500 hover:bg-red-50 hover:text-red-600 flex items-center justify-center"
+            title="Quitar plato"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+            </svg>
+          </button>
         </div>
       )}
     </div>
@@ -232,28 +250,14 @@ export function MenuTable({
                       return (
                         <td key={s.key} className="py-1.5 px-2 text-center">
                           {selected ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <MultiplierPopover
-                                recetaId={receta.id}
-                                segment={s.key}
-                                current={multiplier}
-                                onSelect={(v) => onMultiplierChange(receta.id, s.key, v)}
-                                disabled={esBloqueado}
-                              />
-                              {!esBloqueado && (
-                                <button
-                                  type="button"
-                                  onClick={() => onToggle(receta.id, s.key)}
-                                  className="w-6 h-6 flex items-center justify-center rounded text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
-                                  aria-label={`Quitar ${receta.nombre} de ${s.label}`}
-                                  title="Quitar plato"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-                                  </svg>
-                                </button>
-                              )}
-                            </div>
+                            <MultiplierPopover
+                              recetaId={receta.id}
+                              segment={s.key}
+                              current={multiplier}
+                              onSelect={(v) => onMultiplierChange(receta.id, s.key, v)}
+                              onRemove={() => onToggle(receta.id, s.key)}
+                              disabled={esBloqueado}
+                            />
                           ) : (
                             <button
                               type="button"
