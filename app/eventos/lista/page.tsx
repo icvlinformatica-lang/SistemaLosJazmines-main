@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -9,11 +9,10 @@ import {
   type EventoGuardado,
   type EstadoEvento,
   SALONES,
-  loadState,
-  deleteEvento as deleteEventoFromStore,
   calcularComprasSegmentadas,
   type CalculoCompraSegmentado,
 } from "@/lib/store"
+import { useEventos } from "@/lib/use-eventos"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -81,10 +80,9 @@ import {
   Sparkles,
   ShoppingCart,
   X,
+  Archive,
 } from "lucide-react"
 import { generateId } from "@/lib/store"
-
-// cache-bust: v2 - estadoConfig includes en_preparacion, confirmado removed
 const estadoConfig: Record<string, { label: string; className: string }> = {
   pendiente: {
     label: "Pendiente",
@@ -121,12 +119,19 @@ function formatFecha(fecha: string) {
 export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { state, eventos, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateEvento, updateInsumo, updateInsumoBarra, deleteEvento, setEventoActual } = useStore()
+  const { recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual } = useStore()
+  const { eventos, loading: loadingEventos, fetchEventos, actualizarEvento: actualizarEventoDB, eliminarEvento: eliminarEventoDB } = useEventos()
+
+  // Wrapper para actualizar evento en DB + sync local
+  const updateEvento = async (id: string, cambios: Partial<EventoGuardado>) => {
+    await actualizarEventoDB(id, cambios)
+  }
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filtroEstado, setFiltroEstado] = useState<string>("todos")
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [recuperarStockAlEliminar, setRecuperarStockAlEliminar] = useState(false)
   const [recuperarStockDialogOpen, setRecuperarStockDialogOpen] = useState(false)
   const [selectedEventoId, setSelectedEventoId] = useState<string | null>(null)
   const [showDashboard, setShowDashboard] = useState(true)
@@ -300,6 +305,7 @@ export default function EventosListaPage() {
 
   const handleEliminar = (eventoId: string) => {
     setSelectedEventoId(eventoId)
+    setRecuperarStockAlEliminar(false)
     setDeleteDialogOpen(true)
   }
 
@@ -315,7 +321,7 @@ export default function EventosListaPage() {
     setRecuperarStockDialogOpen(true)
   }
 
-  const confirmRecuperarStock = () => {
+  const confirmRecuperarStock = async () => {
     if (!selectedEventoId) return
     const evento = eventos.find((e) => e.id === selectedEventoId)
     if (!evento) return
@@ -344,8 +350,12 @@ export default function EventosListaPage() {
       updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
     })
 
-    // Volver a pendiente
-    updateEvento(selectedEventoId, { estado: "pendiente" })
+    // Volver a pendiente via API y resetear campos de stock
+    await updateEvento(selectedEventoId, {
+      estado: "pendiente",
+      stockDescontado: false,
+      fechaImpresion: null,
+    })
 
     // Registrar en historial
     const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
@@ -365,17 +375,42 @@ export default function EventosListaPage() {
     setSelectedEventoId(null)
   }
 
-  const confirmEliminar = () => {
+  const confirmEliminar = async () => {
     if (!selectedEventoId) return
-    const fullState = loadState()
-    deleteEventoFromStore(fullState, selectedEventoId)
-    deleteEvento(selectedEventoId)
+    const evento = eventos.find((e) => e.id === selectedEventoId)
+
+    // Si el evento esta en preparacion y el usuario quiere recuperar el stock
+    if (recuperarStockAlEliminar && evento && evento.estado === "en_preparacion") {
+      const cantidadPorReceta: Record<string, number> = {}
+      ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
+      ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
+      ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
+      ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
+      const stockDelta: Record<string, number> = {}
+      Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
+        const receta = recetas.find((r) => r.id === recetaId)
+        if (!receta) return
+        receta.insumos.forEach((ri) => {
+          const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
+          stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
+        })
+      })
+      Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
+        const insumo = insumos.find((i) => i.id === insumoId)
+        if (!insumo) return
+        updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
+      })
+    }
+
+    const motivo = recuperarStockAlEliminar ? "Stock recuperado al eliminar" : undefined
+    await eliminarEventoDB(selectedEventoId, motivo)
     toast({
       title: "Evento eliminado",
-      description: "El evento fue eliminado correctamente",
+      description: recuperarStockAlEliminar ? "El evento fue eliminado y el stock fue recuperado." : "El evento fue movido a la papelera.",
     })
     setDeleteDialogOpen(false)
     setSelectedEventoId(null)
+    setRecuperarStockAlEliminar(false)
   }
 
   const getTotalInvitados = (e: EventoGuardado) => {
@@ -388,7 +423,7 @@ export default function EventosListaPage() {
     setImprimirDialogOpen(true)
   }
 
-  const handleConfirmarImpresion = () => {
+  const handleConfirmarImpresion = async () => {
     if (!imprimirEventoId) return
     const evento = eventos.find((e) => e.id === imprimirEventoId)
     if (!evento) return
@@ -399,8 +434,8 @@ export default function EventosListaPage() {
       seccionesSeleccionadas
     )
 
-    // Solo descontar stock si el evento aun esta pendiente (no se desconto antes)
-    if (evento.estado === "pendiente") {
+    // Solo descontar stock si nunca fue descontado antes (campo stockDescontado)
+    if (!evento.stockDescontado) {
       const cantidadPorReceta: Record<string, number> = {}
       ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
       ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
@@ -436,8 +471,12 @@ export default function EventosListaPage() {
         }),
       }).catch(() => {})
 
-      // Cambiar estado a En Preparacion
-      updateEvento(imprimirEventoId, { estado: "en_preparacion" })
+      // Cambiar estado a En Preparacion y marcar stock como descontado
+      await updateEvento(imprimirEventoId, {
+        estado: "en_preparacion",
+        stockDescontado: true,
+        fechaImpresion: new Date().toISOString(),
+      })
       toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
     } else {
       toast({ title: "Documento reimpreso", description: "El stock no fue modificado (ya se desconto anteriormente)." })
@@ -469,6 +508,12 @@ export default function EventosListaPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/eventos/papelera">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+                <Archive className="h-4 w-4" />
+                <span className="hidden sm:inline">Papelera</span>
+              </Button>
+            </Link>
             <Button
               variant={modoConsolidar ? "secondary" : "outline"}
               size="sm"
@@ -913,6 +958,52 @@ export default function EventosListaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion no se puede deshacer. El evento sera eliminado permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {(() => {
+            const evento = selectedEventoId ? eventos.find((e) => e.id === selectedEventoId) : null
+            const tieneStockDescontado = evento?.estado === "en_preparacion"
+            return tieneStockDescontado ? (
+              <div
+                className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 cursor-pointer"
+                onClick={() => setRecuperarStockAlEliminar((v) => !v)}
+              >
+                <Checkbox
+                  id="recuperar-stock-eliminar"
+                  checked={recuperarStockAlEliminar}
+                  onCheckedChange={(v) => setRecuperarStockAlEliminar(!!v)}
+                  className="mt-0.5 shrink-0"
+                />
+                <div>
+                  <label htmlFor="recuperar-stock-eliminar" className="text-sm font-medium text-amber-900 cursor-pointer">
+                    Recuperar el stock
+                  </label>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Los insumos descontados al imprimir este evento seran restituidos al inventario.
+                  </p>
+                </div>
+              </div>
+            ) : null
+          })()}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmEliminar}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              Si, Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Recuperar Stock Dialog */}
       <AlertDialog open={recuperarStockDialogOpen} onOpenChange={setRecuperarStockDialogOpen}>

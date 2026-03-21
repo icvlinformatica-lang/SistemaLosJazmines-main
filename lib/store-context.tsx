@@ -30,6 +30,7 @@ import {
 
 interface StoreContextType {
   state: AppState
+  loading: boolean
   insumos: Insumo[]
   insumosBarra: InsumoBarra[]
   recetas: Receta[]
@@ -137,16 +138,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Fetch all DB modules in parallel
-      const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes] = await Promise.all([
+      // Fetch all DB modules in parallel — incluye eventos
+      const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes, eventosRes] = await Promise.all([
         fetchSafe("/api/insumos"),
         fetchSafe("/api/insumos-barra"),
         fetchSafe("/api/recetas"),
         fetchSafe("/api/cocteles"),
         fetchSafe("/api/barra-templates"),
+        fetchSafe("/api/eventos"),
       ])
 
-      // Load localStorage for non-DB modules only (eventos, servicios, personal, etc.)
+      // Load localStorage for non-DB modules only (servicios, personal, etc.)
       const localState = loadState()
 
       // Merge: DB data takes absolute priority over localStorage for migrated modules
@@ -157,6 +159,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         recetas: recetasRes ?? localState.recetas,
         cocteles: coctelesRes ?? localState.cocteles,
         barrasTemplates: barraTemplatesRes ?? localState.barrasTemplates,
+        eventos: eventosRes ?? localState.eventos,
       })
 
       setIsHydrated(true)
@@ -168,8 +171,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isHydrated) {
       // Only save non-DB modules to localStorage to avoid stale data
-      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, ...localOnly } = state
-      saveState({ ...localOnly, insumos: [], insumosBarra: [], recetas: [], cocteles: [], barrasTemplates: [] })
+      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, eventos, ...localOnly } = state
+      saveState({ ...localOnly, insumos: [], insumosBarra: [], recetas: [], cocteles: [], barrasTemplates: [], eventos: [] })
     }
   }, [state, isHydrated])
 
@@ -640,26 +643,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
   }, [isHydrated])
 
-  // === Eventos (Calendario) ===
-  const addEvento = (evento: EventoGuardado) => {
-    setState((prev) => ({
-      ...prev,
-      eventos: [...(prev.eventos || []), evento],
-    }))
+  // === Eventos (Calendario) — Synced with API ===
+  const addEvento = async (evento: EventoGuardado) => {
+    try {
+      const res = await fetch("/api/eventos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(evento),
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setState((prev) => ({
+          ...prev,
+          eventos: [...(prev.eventos || []), created],
+        }))
+      }
+    } catch (err) {
+      console.error("[v0] Error adding evento:", err)
+      setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
+    }
   }
 
-  const updateEvento = (id: string, updates: Partial<EventoGuardado>) => {
+  const updateEvento = async (id: string, updates: Partial<EventoGuardado>) => {
+    // Optimistic update first
     setState((prev) => ({
       ...prev,
       eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updates } : e)),
     }))
+    try {
+      await fetch(`/api/eventos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+    } catch (err) {
+      console.error("[v0] Error updating evento:", err)
+    }
   }
 
-  const deleteEvento = (id: string) => {
+  const deleteEvento = async (id: string) => {
     setState((prev) => ({
       ...prev,
       eventos: (prev.eventos || []).filter((e) => e.id !== id),
     }))
+    try {
+      await fetch(`/api/eventos/${id}`, { method: "DELETE" })
+    } catch (err) {
+      console.error("[v0] Error deleting evento:", err)
+    }
   }
 
   // === Evento ===
@@ -727,6 +758,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider
       value={{
         state,
+        loading: !isHydrated,
         insumos: state.insumos,
         insumosBarra: state.insumosBarra,
         recetas: state.recetas,
