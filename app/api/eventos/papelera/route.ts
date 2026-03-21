@@ -7,11 +7,20 @@ import { logActivity } from "@/lib/activity-logger"
 export async function GET() {
   try {
     const rows = await sql`
-      SELECT id, data, estado, nombre, fecha, eliminado_at, motivo
+      SELECT id, estado, nombre, fecha, eliminado_at, motivo,
+             COALESCE(evento_json, data) AS evento_data
       FROM eventos_eliminados
       ORDER BY eliminado_at DESC
     `
-    return NextResponse.json(rows)
+    return NextResponse.json(rows.map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      fecha: r.fecha,
+      estado: r.estado,
+      motivo: r.motivo,
+      eliminadoAt: r.eliminado_at,
+      ...(r.evento_data || {}),
+    })))
   } catch (err) {
     console.error("[API] Error fetching papelera:", err)
     return NextResponse.json([])

@@ -183,17 +183,37 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const [row] = await sql`SELECT * FROM eventos WHERE id = ${id}`
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    // Save to papelera
-    await sql`
-      INSERT INTO eventos_eliminados (id, nombre, fecha, estado, data)
-      VALUES (
-        ${row.id}, ${row.nombre}, ${row.fecha}, ${row.estado},
-        ${JSON.stringify(fromRow(row))}
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        data = EXCLUDED.data,
-        eliminado_at = NOW()
-    `
+    const eventoData = fromRow(row)
+
+    // Intentar guardar en papelera — si la tabla no tiene las columnas nuevas, solo soft-delete
+    try {
+      await sql`
+        INSERT INTO eventos_eliminados (id, nombre, fecha, estado, evento_json)
+        VALUES (
+          ${row.id}, ${row.nombre}, ${row.fecha}, ${row.estado},
+          ${JSON.stringify(eventoData)}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          evento_json = EXCLUDED.evento_json,
+          eliminado_at = NOW()
+      `
+    } catch (papeleraErr) {
+      // Si eventos_eliminados tiene schema viejo, intentar con columna "data"
+      try {
+        await sql`
+          INSERT INTO eventos_eliminados (id, nombre, fecha, estado, data)
+          VALUES (
+            ${row.id}, ${row.nombre}, ${row.fecha}, ${row.estado},
+            ${JSON.stringify(eventoData)}
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            data = EXCLUDED.data,
+            eliminado_at = NOW()
+        `
+      } catch {
+        console.error("[API] No se pudo guardar en papelera, continuando con soft-delete:", papeleraErr)
+      }
+    }
 
     await sql`UPDATE eventos SET deleted_at = NOW() WHERE id = ${id}`
     await logActivity("evento", "eliminado", row.nombre || "Sin nombre")
