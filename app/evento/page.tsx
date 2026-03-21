@@ -91,8 +91,7 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react"
-
-function EventoPageContent() {
+import { MenuTable } from "@/components/menu-table"
   const router = useRouter()
   const searchParams = useSearchParams()
   const editingEventoId = searchParams?.get("id")
@@ -1189,181 +1188,36 @@ function EventoPageContent() {
           }
           locked={esBloqueado}
         >
-          <Accordion type="single" collapsible className="space-y-3">
-            {/* Menu Adultos */}
-            <AccordionItem value="adultos" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">Adultos <span className="text-muted-foreground font-normal">({evento.adultos})</span></span>
-                  {recetasAdultosSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-base">{recetasAdultosSeleccionadas.length} platos</Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <div className="space-y-3">
-                  {recetasAdultosSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasAdultosSeleccionadas.map((receta) => (
-                        <DishCard
-                          key={receta.id}
-                          receta={receta}
-                          segment="adultos"
-                          multipliers={multipliersAdultos}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("adultos", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasAdultos.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Menu Adolescentes */}
-            <AccordionItem value="adolescentes" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <UserCheck className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">Adolescentes <span className="text-muted-foreground font-normal">({evento.adolescentes})</span></span>
-                  {recetasAdolescentesSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-base">{recetasAdolescentesSeleccionadas.length} platos</Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <div className="space-y-3">
-                  {recetasAdolescentesSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasAdolescentesSeleccionadas.map((receta) => (
-                        <DishCard
-                          key={receta.id}
-                          receta={receta}
-                          segment="adolescentes"
-                          multipliers={multipliersAdolescentes}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("adolescentes", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasAdolescentes.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Menu Ninos */}
-            <AccordionItem value="ninos" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <Baby className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">Ninos <span className="text-muted-foreground font-normal">({evento.ninos})</span></span>
-                  {recetasNinosSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-base">{recetasNinosSeleccionadas.length} platos</Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <div className="space-y-3">
-                  {recetasNinosSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasNinosSeleccionadas.map((receta) => (
-                        <DishCard key={receta.id} receta={receta} segment="ninos" multipliers={multipliersNinos} />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("ninos", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasNinos.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Platos Personalizados */}
-            <AccordionItem value="dietasEspeciales" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <Heart className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">
-                    Dietas Especiales <span className="text-muted-foreground font-normal">({evento.personasDietasEspeciales || 0})</span>
-                  </span>
-                  {recetasDietasEspecialesSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      {recetasDietasEspecialesSeleccionadas.length} platos
-                    </Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <p className="text-xs text-muted-foreground mb-3">
-                  Celiacos, Veganos, Vegetarianos, Sin Sal, etc.
-                </p>
-                <div className="space-y-3">
-                  {recetasDietasEspecialesSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasDietasEspecialesSeleccionadas.map((receta) => (
-                        <DishCard
-                          key={receta.id}
-                          receta={receta}
-                          segment="dietasEspeciales"
-                          multipliers={multipliersDietasEspeciales}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("dietasEspeciales", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato especial..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasDietasEspeciales.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+          <MenuTable
+            recetas={state.recetas}
+            recetasAdultos={recetasAdultos}
+            recetasAdolescentes={recetasAdolescentes}
+            recetasNinos={recetasNinos}
+            recetasDietasEspeciales={recetasDietasEspeciales}
+            multipliersAdultos={multipliersAdultos}
+            multipliersAdolescentes={multipliersAdolescentes}
+            multipliersNinos={multipliersNinos}
+            multipliersDietasEspeciales={multipliersDietasEspeciales}
+            adultos={evento.adultos}
+            adolescentes={evento.adolescentes}
+            ninos={evento.ninos}
+            personasDietasEspeciales={evento.personasDietasEspeciales || 0}
+            esBloqueado={esBloqueado}
+            onToggle={(recetaId, segment) => {
+              const isSelected = {
+                adultos: recetasAdultos,
+                adolescentes: recetasAdolescentes,
+                ninos: recetasNinos,
+                dietasEspeciales: recetasDietasEspeciales,
+              }[segment].includes(recetaId)
+              if (isSelected) {
+                removeRecetaFromSegment(segment, recetaId)
+              } else {
+                addRecetaToSegment(segment, recetaId)
+              }
+            }}
+            onMultiplierChange={(recetaId, segment, value) => updateMultiplier(segment, recetaId, value)}
+          />
         </SectionCard>
 
         {/* ==================== BAR SECTION ==================== */}
