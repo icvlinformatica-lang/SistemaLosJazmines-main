@@ -161,11 +161,22 @@ export async function POST(req: Request) {
       ON CONFLICT (id) DO UPDATE SET
         nombre = EXCLUDED.nombre, fecha = EXCLUDED.fecha, estado = EXCLUDED.estado,
         updated_at = NOW()
-      RETURNING *
     `
 
-    // Re-fetch to return clean object
-    const [created] = await sql`SELECT * FROM eventos WHERE id = ${r.id}`
+    // Re-fetch con columnas explícitas para evitar columna obsoleta "data"
+    const [created] = await sql`
+      SELECT
+        id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+        dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+        recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+        multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+        descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+        condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+        precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+        notas_internas, pagos, asignaciones, costos_calculados,
+        stock_descontado, fecha_impresion, created_at, updated_at
+      FROM eventos WHERE id = ${r.id}
+    `
     await logActivity("evento", "creado", nombre, `Fecha: ${r.fecha || "sin fecha"} | Salon: ${r.salon || "sin salon"}`)
     return NextResponse.json(fromRow(created), { status: 201 })
   } catch (err) {
