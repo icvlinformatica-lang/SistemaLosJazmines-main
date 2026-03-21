@@ -19,6 +19,7 @@ import {
   type ServicioEvento,
   type Servicio,
   type PaqueteSalon,
+  type EstadoEvento,
   SALONES,
   loadState,
   getEventoById,
@@ -102,6 +103,7 @@ function EventoPageContent() {
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
+  const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
@@ -384,6 +386,38 @@ function EventoPageContent() {
   const handlePreviewSections = () => {
     setShowSectionSelector(false)
     setShowUnifiedDoc(true)
+  }
+
+  // Guardar borrador antes de salir
+  const handleGuardarBorrador = async () => {
+    if (!evento) return
+    const borradorData = {
+      ...evento,
+      id: evento.id || generateId(),
+      estado: "borrador" as EstadoEvento,
+    }
+    if (isEditing) {
+      await updateEvento(borradorData.id, { estado: "borrador" })
+    } else {
+      await addEvento(borradorData)
+    }
+    setShowDraftDialog(false)
+    setEventoActual(null)
+    router.push("/eventos/lista")
+  }
+
+  const handleDescartarBorrador = () => {
+    setShowDraftDialog(false)
+    setEventoActual(null)
+    router.push("/eventos/lista")
+  }
+
+  // Interceptar navegacion hacia atras: mostrar dialog solo si es un evento nuevo (no guardado)
+  const handleNavigateAway = (e?: React.MouseEvent) => {
+    // Si ya existe en la lista (isEditing) no preguntamos
+    if (isEditing) return
+    if (e) e.preventDefault()
+    setShowDraftDialog(true)
   }
 
   // NUEVO: Guardar/Actualizar Evento
@@ -842,9 +876,19 @@ function EventoPageContent() {
       {/* Header */}
       <header className="border-b border-border bg-card px-6 py-3 sticky top-0 z-40">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
-          <Link href="/" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
+          {isEditing ? (
+            <Link href="/eventos/lista" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handleNavigateAway}
+              className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          )}
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-semibold truncate">Planificador de Evento</h1>
             {evento.nombrePareja && (
@@ -2166,6 +2210,31 @@ function EventoPageContent() {
                 className="h-12 text-base bg-emerald-600 hover:bg-emerald-700"
               >
                 Si, Cerrar Evento
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Draft Dialog — mostrado al salir sin guardar evento nuevo */}
+        <AlertDialog open={showDraftDialog} onOpenChange={setShowDraftDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Queres guardar este borrador?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Podes guardar el evento como borrador y continuar la carga en otro momento. Lo vas a ver en la lista de eventos con la etiqueta <strong>Borrador</strong>.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                variant="ghost"
+                className="sm:mr-auto text-destructive hover:text-destructive"
+                onClick={handleDescartarBorrador}
+              >
+                No, descartar
+              </Button>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleGuardarBorrador} className="bg-primary">
+                Si, guardar borrador
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
