@@ -934,6 +934,7 @@ function EventoPageContent() {
                   onChange={(e) => setLocalNombrePareja(e.target.value)}
                   onBlur={() => handleBlur("nombrePareja", localNombrePareja)}
                   className="h-11 text-base"
+                  autoComplete="off"
                 />
               </div>
             </div>
