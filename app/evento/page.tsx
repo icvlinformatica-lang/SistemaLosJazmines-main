@@ -19,6 +19,7 @@ import {
   type ServicioEvento,
   type Servicio,
   type PaqueteSalon,
+  type EstadoEvento,
   SALONES,
   loadState,
   getEventoById,
@@ -90,8 +91,7 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react"
-
-function EventoPageContent() {
+import { MenuTable } from "@/components/menu-table"
   const router = useRouter()
   const searchParams = useSearchParams()
   const editingEventoId = searchParams?.get("id")
@@ -102,6 +102,7 @@ function EventoPageContent() {
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
+  const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
@@ -384,6 +385,38 @@ function EventoPageContent() {
   const handlePreviewSections = () => {
     setShowSectionSelector(false)
     setShowUnifiedDoc(true)
+  }
+
+  // Guardar borrador antes de salir
+  const handleGuardarBorrador = async () => {
+    if (!evento) return
+    const borradorData = {
+      ...evento,
+      id: evento.id || generateId(),
+      estado: "borrador" as EstadoEvento,
+    }
+    if (isEditing) {
+      await updateEvento(borradorData.id, { estado: "borrador" })
+    } else {
+      await addEvento(borradorData)
+    }
+    setShowDraftDialog(false)
+    setEventoActual(null)
+    router.push("/eventos/lista")
+  }
+
+  const handleDescartarBorrador = () => {
+    setShowDraftDialog(false)
+    setEventoActual(null)
+    router.push("/eventos/lista")
+  }
+
+  // Interceptar navegacion hacia atras: mostrar dialog solo si es un evento nuevo (no guardado)
+  const handleNavigateAway = (e?: React.MouseEvent) => {
+    // Si ya existe en la lista (isEditing) no preguntamos
+    if (isEditing) return
+    if (e) e.preventDefault()
+    setShowDraftDialog(true)
   }
 
   // NUEVO: Guardar/Actualizar Evento
@@ -842,9 +875,19 @@ function EventoPageContent() {
       {/* Header */}
       <header className="border-b border-border bg-card px-6 py-3 sticky top-0 z-40">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
-          <Link href="/" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
+          {isEditing ? (
+            <Link href="/eventos/lista" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handleNavigateAway}
+              className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          )}
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-semibold truncate">Planificador de Evento</h1>
             {evento.nombrePareja && (
@@ -896,16 +939,54 @@ function EventoPageContent() {
 
         <SectionCard
           sectionKey="detalles"
-          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><CalendarIcon className="h-5 w-5 text-primary" /></div>}
+          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600/10"><CalendarIcon className="h-5 w-5 text-emerald-700" /></div>}
           title="Detalles del Evento"
           subtitle={evento.tipoEvento ? `${evento.tipoEvento}${evento.nombrePareja ? ` - ${evento.nombrePareja}` : ""}` : "Configura la fecha, salon y comensales"}
+          className="bg-emerald-50/60 border-emerald-100"
         >
-          <div className="space-y-6">
-            {/* Row 1: Date, Time, Venue */}
-            <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-5">
+
+            {/* Fila 1: Tipo de Evento + Nombre Festejados */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="fecha" className="flex items-center gap-2 text-base">
-                  <CalendarIcon className="h-5 w-5" />
+                <Label htmlFor="tipoEvento" className="text-sm font-medium">Tipo de Evento</Label>
+                <Select
+                  value={evento.tipoEvento || ""}
+                  onValueChange={(value) => updateEventoActual({ tipoEvento: value as any })}
+                >
+                  <SelectTrigger id="tipoEvento" className="h-11 text-base">
+                    <SelectValue placeholder="Seleccionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Casamiento">Casamiento</SelectItem>
+                    <SelectItem value="Cumpleanos de 15">Cumpleanos de 15</SelectItem>
+                    <SelectItem value="Empresarial">Empresarial</SelectItem>
+                    <SelectItem value="Cumpleanos">Cumpleanos</SelectItem>
+                    <SelectItem value="Bautismo">Bautismo</SelectItem>
+                    <SelectItem value="Otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nombrePareja" className="text-sm font-medium">Nombre de los Festejados</Label>
+                <Input
+                  id="nombrePareja"
+                  type="text"
+                  placeholder="Ej: Juan y Maria"
+                  value={localNombrePareja}
+                  onChange={(e) => setLocalNombrePareja(e.target.value)}
+                  onBlur={() => handleBlur("nombrePareja", localNombrePareja)}
+                  className="h-11 text-base"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+
+            {/* Fila 2: Fecha + Horario + Hora Fin */}
+            <div className="grid gap-4 grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="fecha" className="flex items-center gap-1.5 text-sm font-medium">
+                  <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                   Fecha
                 </Label>
                 <Input
@@ -914,27 +995,37 @@ function EventoPageContent() {
                   value={localFecha}
                   onChange={(e) => setLocalFecha(e.target.value)}
                   onBlur={() => handleBlur("fecha", localFecha)}
-                  className="h-12 text-base"
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="horario" className="flex items-center gap-2 text-base">
-                  <Clock className="h-5 w-5" />
-                  Horario
+                <Label htmlFor="horario" className="flex items-center gap-1.5 text-sm font-medium">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Hora inicio
                 </Label>
                 <Input
                   id="horario"
                   type="time"
                   value={localHorario}
-                  onChange={(e) => setLocalHorario(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setLocalHorario(val)
+                    // Auto-rellenar hora fin sumando 8 horas solo si fin esta vacio
+                    if (val && !localHorarioFin) {
+                      const [h, m] = val.split(":").map(Number)
+                      const finStr = `${String((h + 8) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+                      setLocalHorarioFin(finStr)
+                      handleBlur("horarioFin", finStr)
+                    }
+                  }}
                   onBlur={() => handleBlur("horario", localHorario)}
-                  className="h-12 text-base"
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="horarioFin" className="flex items-center gap-2 text-base">
-                  <Clock className="h-5 w-5" />
-                  Hora Fin
+                <Label htmlFor="horarioFin" className="flex items-center gap-1.5 text-sm font-medium">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Hora fin
                 </Label>
                 <Input
                   id="horarioFin"
@@ -942,31 +1033,39 @@ function EventoPageContent() {
                   value={localHorarioFin}
                   onChange={(e) => setLocalHorarioFin(e.target.value)}
                   onBlur={() => handleBlur("horarioFin", localHorarioFin)}
-                  className="h-12 text-base"
+                  className="h-11 text-base"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-base">
-                  <Building2 className="h-5 w-5" />
-                  Salon
-                </Label>
-                <Select
-                  value={evento.salon || ""}
-                  onValueChange={(v) => updateEventoActual({ salon: v, paquetesSeleccionados: [], servicios: [] })}
-                >
-                  <SelectTrigger className="h-12 text-base">
-                    <SelectValue placeholder="Seleccionar salon..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SALONES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
-            {/* Precio de Venta from Calendario de Precios */}
+            {/* Fila 3: Salon (toggle buttons) */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5 text-sm font-medium">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                Salon
+              </Label>
+              <div className="flex gap-2">
+                {SALONES.map((s) => {
+                  const active = evento.salon === s
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => updateEventoActual({ salon: s, paquetesSeleccionados: [], servicios: [] })}
+                      className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        active
+                          ? "border-[#2d5a3d] bg-[#2d5a3d] text-white"
+                          : "border-[#2d5a3d] bg-white text-[#2d5a3d] hover:bg-emerald-50"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Precio de Venta */}
             {evento.fecha && evento.salon && (() => {
               const precioVenta = getPrecioVenta(preciosVenta, evento.salon, evento.fecha)
               return precioVenta !== null ? (
@@ -996,48 +1095,13 @@ function EventoPageContent() {
               )
             })()}
 
-            {/* Row 2: Event Type and Names */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="tipoEvento" className="text-base">Tipo de Evento</Label>
-                <Select
-                  value={evento.tipoEvento || ""}
-                  onValueChange={(value) => updateEventoActual({ tipoEvento: value as any })}
-                >
-                  <SelectTrigger id="tipoEvento" className="h-12 text-base">
-                    <SelectValue placeholder="Seleccionar tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Casamiento">Casamiento</SelectItem>
-                    <SelectItem value="Cumpleanos de 15">Cumpleanos de 15</SelectItem>
-                    <SelectItem value="Empresarial">Empresarial</SelectItem>
-                    <SelectItem value="Cumpleanos">Cumpleanos</SelectItem>
-                    <SelectItem value="Bautismo">Bautismo</SelectItem>
-                    <SelectItem value="Otro">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nombrePareja" className="text-base">Nombre de los Festejados</Label>
-                <Input
-                  id="nombrePareja"
-                  type="text"
-                  placeholder="Ej: Juan y Maria"
-                  value={localNombrePareja}
-                  onChange={(e) => setLocalNombrePareja(e.target.value)}
-                  onBlur={() => handleBlur("nombrePareja", localNombrePareja)}
-                  className="h-12 text-base"
-                />
-              </div>
-            </div>
-
-            {/* Row 3: Guest Counts */}
-            <div className="space-y-4 rounded-lg border p-4">
-              <h4 className="font-semibold text-lg">Comensales</h4>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-2">
-                  <Label htmlFor="adultos" className="flex items-center gap-2 text-base">
-                    <Users className="h-5 w-5" />
+            {/* Fila 4: Comensales — 4 columnas en una sola fila */}
+            <div className="space-y-3 rounded-lg border border-emerald-100 bg-white/70 p-4">
+              <h4 className="font-semibold text-base text-foreground">Comensales</h4>
+              <div className="grid grid-cols-4 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="adultos" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <Users className="h-3.5 w-3.5" />
                     Adultos
                   </Label>
                   <Input
@@ -1046,14 +1110,14 @@ function EventoPageContent() {
                     value={localAdultos}
                     onChange={(e) => setLocalAdultos(e.target.value)}
                     onBlur={() => handleBlur("adultos", Number.parseInt(localAdultos) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="adolescentes" className="flex items-center gap-2 text-base">
-                    <UserCheck className="h-5 w-5" />
+                <div className="space-y-1.5">
+                  <Label htmlFor="adolescentes" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <UserCheck className="h-3.5 w-3.5" />
                     Adolescentes
                   </Label>
                   <Input
@@ -1062,14 +1126,14 @@ function EventoPageContent() {
                     value={localAdolescentes}
                     onChange={(e) => setLocalAdolescentes(e.target.value)}
                     onBlur={() => handleBlur("adolescentes", Number.parseInt(localAdolescentes) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ninos" className="flex items-center gap-2 text-base">
-                    <Baby className="h-5 w-5" />
+                <div className="space-y-1.5">
+                  <Label htmlFor="ninos" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <Baby className="h-3.5 w-3.5" />
                     Ninos
                   </Label>
                   <Input
@@ -1078,15 +1142,15 @@ function EventoPageContent() {
                     value={localNinos}
                     onChange={(e) => setLocalNinos(e.target.value)}
                     onBlur={() => handleBlur("ninos", Number.parseInt(localNinos) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dietasEspeciales" className="flex items-center gap-2 text-base">
-                    <Heart className="h-5 w-5" />
-                    Dietas Especiales
+                <div className="space-y-1.5">
+                  <Label htmlFor="dietasEspeciales" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <Heart className="h-3.5 w-3.5" />
+                    Dietas Esp.
                   </Label>
                   <Input
                     id="dietasEspeciales"
@@ -1094,21 +1158,22 @@ function EventoPageContent() {
                     value={localDietasEspeciales}
                     onChange={(e) => setLocalDietasEspeciales(e.target.value)}
                     onBlur={() => handleBlur("personasDietasEspeciales", Number.parseInt(localDietasEspeciales) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
               </div>
 
-              <div className="rounded-lg bg-secondary p-4 mt-4">
+              <div className="rounded-lg bg-secondary p-3 mt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-lg">Total personas:</span>
+                  <span className="text-base">Total personas:</span>
                   <span className="text-2xl font-bold">{totalPersonas}</span>
                 </div>
               </div>
             </div>
           </div>
+
         </SectionCard>
 
         <SectionCard
@@ -1123,181 +1188,36 @@ function EventoPageContent() {
           }
           locked={esBloqueado}
         >
-          <Accordion type="single" collapsible className="space-y-3">
-            {/* Menu Adultos */}
-            <AccordionItem value="adultos" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">Adultos <span className="text-muted-foreground font-normal">({evento.adultos})</span></span>
-                  {recetasAdultosSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-base">{recetasAdultosSeleccionadas.length} platos</Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <div className="space-y-3">
-                  {recetasAdultosSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasAdultosSeleccionadas.map((receta) => (
-                        <DishCard
-                          key={receta.id}
-                          receta={receta}
-                          segment="adultos"
-                          multipliers={multipliersAdultos}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("adultos", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasAdultos.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Menu Adolescentes */}
-            <AccordionItem value="adolescentes" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <UserCheck className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">Adolescentes <span className="text-muted-foreground font-normal">({evento.adolescentes})</span></span>
-                  {recetasAdolescentesSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-base">{recetasAdolescentesSeleccionadas.length} platos</Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <div className="space-y-3">
-                  {recetasAdolescentesSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasAdolescentesSeleccionadas.map((receta) => (
-                        <DishCard
-                          key={receta.id}
-                          receta={receta}
-                          segment="adolescentes"
-                          multipliers={multipliersAdolescentes}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("adolescentes", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasAdolescentes.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Menu Ninos */}
-            <AccordionItem value="ninos" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <Baby className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">Ninos <span className="text-muted-foreground font-normal">({evento.ninos})</span></span>
-                  {recetasNinosSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-base">{recetasNinosSeleccionadas.length} platos</Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <div className="space-y-3">
-                  {recetasNinosSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasNinosSeleccionadas.map((receta) => (
-                        <DishCard key={receta.id} receta={receta} segment="ninos" multipliers={multipliersNinos} />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("ninos", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasNinos.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Platos Personalizados */}
-            <AccordionItem value="dietasEspeciales" className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-5 hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <Heart className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">
-                    Dietas Especiales <span className="text-muted-foreground font-normal">({evento.personasDietasEspeciales || 0})</span>
-                  </span>
-                  {recetasDietasEspecialesSeleccionadas.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      {recetasDietasEspecialesSeleccionadas.length} platos
-                    </Badge>
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <p className="text-xs text-muted-foreground mb-3">
-                  Celiacos, Veganos, Vegetarianos, Sin Sal, etc.
-                </p>
-                <div className="space-y-3">
-                  {recetasDietasEspecialesSeleccionadas.length > 0 && (
-                    <div className="space-y-2">
-                      {recetasDietasEspecialesSeleccionadas.map((receta) => (
-                        <DishCard
-                          key={receta.id}
-                          receta={receta}
-                          segment="dietasEspeciales"
-                          multipliers={multipliersDietasEspeciales}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <Select onValueChange={(value) => addRecetaToSegment("dietasEspeciales", value)}>
-                    <SelectTrigger className="h-11 text-sm">
-                      <SelectValue placeholder="+ Agregar plato especial..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {state.recetas
-                        .filter((r) => !recetasDietasEspeciales.includes(r.id))
-                        .map((receta) => (
-                          <SelectItem key={receta.id} value={receta.id}>
-                            {receta.categoria} - {receta.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+          <MenuTable
+            recetas={state.recetas}
+            recetasAdultos={recetasAdultos}
+            recetasAdolescentes={recetasAdolescentes}
+            recetasNinos={recetasNinos}
+            recetasDietasEspeciales={recetasDietasEspeciales}
+            multipliersAdultos={multipliersAdultos}
+            multipliersAdolescentes={multipliersAdolescentes}
+            multipliersNinos={multipliersNinos}
+            multipliersDietasEspeciales={multipliersDietasEspeciales}
+            adultos={evento.adultos}
+            adolescentes={evento.adolescentes}
+            ninos={evento.ninos}
+            personasDietasEspeciales={evento.personasDietasEspeciales || 0}
+            esBloqueado={esBloqueado}
+            onToggle={(recetaId, segment) => {
+              const isSelected = {
+                adultos: recetasAdultos,
+                adolescentes: recetasAdolescentes,
+                ninos: recetasNinos,
+                dietasEspeciales: recetasDietasEspeciales,
+              }[segment].includes(recetaId)
+              if (isSelected) {
+                removeRecetaFromSegment(segment, recetaId)
+              } else {
+                addRecetaToSegment(segment, recetaId)
+              }
+            }}
+            onMultiplierChange={(recetaId, segment, value) => updateMultiplier(segment, recetaId, value)}
+          />
         </SectionCard>
 
         {/* ==================== BAR SECTION ==================== */}
@@ -2144,6 +2064,31 @@ function EventoPageContent() {
                 className="h-12 text-base bg-emerald-600 hover:bg-emerald-700"
               >
                 Si, Cerrar Evento
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Draft Dialog — mostrado al salir sin guardar evento nuevo */}
+        <AlertDialog open={showDraftDialog} onOpenChange={setShowDraftDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Queres guardar este borrador?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Podes guardar el evento como borrador y continuar la carga en otro momento. Lo vas a ver en la lista de eventos con la etiqueta <strong>Borrador</strong>.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                variant="ghost"
+                className="sm:mr-auto text-destructive hover:text-destructive"
+                onClick={handleDescartarBorrador}
+              >
+                No, descartar
+              </Button>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleGuardarBorrador} className="bg-primary">
+                Si, guardar borrador
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

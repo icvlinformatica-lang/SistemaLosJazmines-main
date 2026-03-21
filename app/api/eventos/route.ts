@@ -102,14 +102,25 @@ function fromRow(r: Record<string, any>) {
   }
 }
 
+const SELECT_COLS = `
+  id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+  dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+  recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+  multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+  descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+  condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+  precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+  notas_internas, pagos, asignaciones, costos_calculados,
+  stock_descontado, fecha_impresion, created_at, updated_at
+`
+
 // GET — all active eventos (deleted_at IS NULL)
 export async function GET() {
   try {
-    const rows = await sql`
-      SELECT * FROM eventos
-      WHERE deleted_at IS NULL
-      ORDER BY fecha DESC NULLS LAST, created_at DESC
-    `
+    const rows = await sql(
+      `SELECT ${SELECT_COLS} FROM eventos WHERE deleted_at IS NULL ORDER BY fecha DESC NULLS LAST, created_at DESC`,
+      []
+    )
     return NextResponse.json(rows.map(fromRow))
   } catch (err) {
     console.error("[API] Error fetching eventos:", err)
@@ -141,7 +152,7 @@ export async function POST(req: Request) {
         ${r.tipo_evento}, ${r.nombre_pareja}, ${r.dni_novio1}, ${r.dni_novio2},
         ${r.adultos}, ${r.adolescentes}, ${r.ninos}, ${r.personas_dietas_especiales},
         ${r.recetas_adultos}, ${r.recetas_adolescentes}, ${r.recetas_ninos}, ${r.recetas_dietas_especiales},
-        ${r.multipliers_adultos}, ${r.multipliers_adultos}, ${r.multipliers_ninos}, ${r.multipliers_dietas_especiales},
+        ${r.multipliers_adultos}, ${r.multipliers_adolescentes}, ${r.multipliers_ninos}, ${r.multipliers_dietas_especiales},
         ${r.descripcion_personalizada}, ${r.barras}, ${r.servicios}, ${r.paquetes_seleccionados},
         ${r.condicion_iva}, ${r.contrato}, ${r.plan_de_cuotas}, ${r.estado}, ${r.color_tag},
         ${r.precio_venta}, ${r.costo_personal}, ${r.costo_insumos}, ${r.costo_servicios}, ${r.costo_operativo},
@@ -151,11 +162,11 @@ export async function POST(req: Request) {
       ON CONFLICT (id) DO UPDATE SET
         nombre = EXCLUDED.nombre, fecha = EXCLUDED.fecha, estado = EXCLUDED.estado,
         updated_at = NOW()
-      RETURNING *
     `
 
-    // Re-fetch to return clean object
-    const [created] = await sql`SELECT * FROM eventos WHERE id = ${r.id}`
+    // Re-fetch con columnas explícitas para evitar columna obsoleta "data"
+    const rows2 = await sql(`SELECT ${SELECT_COLS} FROM eventos WHERE id = $1`, [r.id])
+    const created = rows2[0]
     await logActivity("evento", "creado", nombre, `Fecha: ${r.fecha || "sin fecha"} | Salon: ${r.salon || "sin salon"}`)
     return NextResponse.json(fromRow(created), { status: 201 })
   } catch (err) {

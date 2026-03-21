@@ -84,6 +84,10 @@ import {
 } from "lucide-react"
 import { generateId } from "@/lib/store"
 const estadoConfig: Record<string, { label: string; className: string }> = {
+  borrador: {
+    label: "Borrador",
+    className: "bg-slate-100 text-slate-600 border-slate-300",
+  },
   pendiente: {
     label: "Pendiente",
     className: "bg-amber-100 text-amber-800 border-amber-300",
