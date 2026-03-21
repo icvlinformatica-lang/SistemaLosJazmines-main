@@ -92,6 +92,8 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { MenuTable } from "@/components/menu-table"
+
+function EventoPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editingEventoId = searchParams?.get("id")
