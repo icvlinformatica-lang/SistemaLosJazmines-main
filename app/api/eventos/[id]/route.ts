@@ -3,19 +3,6 @@ import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
-// Columnas explícitas para evitar columnas obsoletas como "data"
-const COLUMNS = sql`
-  id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
-  dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
-  recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
-  multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
-  descripcion_personalizada, barras, servicios, paquetes_seleccionados,
-  condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
-  precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
-  notas_internas, pagos, asignaciones, costos_calculados,
-  stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
-`
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: Record<string, any>) {
   return {
@@ -66,11 +53,31 @@ function fromRow(r: Record<string, any>) {
   }
 }
 
+const SELECT_COLS = `
+  id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+  dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+  recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+  multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+  descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+  condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+  precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+  notas_internas, pagos, asignaciones, costos_calculados,
+  stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
+`
+
+async function fetchEvento(id: string) {
+  const rows = await sql(
+    `SELECT ${SELECT_COLS} FROM eventos WHERE id = $1 AND deleted_at IS NULL`,
+    [id]
+  )
+  return rows[0] ?? null
+}
+
 // GET single evento
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const [row] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id} AND deleted_at IS NULL`
+    const row = await fetchEvento(id)
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json(fromRow(row))
   } catch (err) {
@@ -79,13 +86,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-// PATCH — partial update (preferred) 
+// PATCH — partial update
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const updates = await req.json()
 
-    // Build dynamic SET clause from camelCase → snake_case mapping
     const fieldMap: Record<string, string> = {
       nombre: "nombre", fecha: "fecha", horario: "horario", horarioFin: "horario_fin",
       salon: "salon", tipoEvento: "tipo_evento", nombrePareja: "nombre_pareja",
@@ -107,16 +113,39 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       stockDescontado: "stock_descontado", fechaImpresion: "fecha_impresion",
     }
 
-    // Apply only the fields present in updates
+    const jsonFields = new Set([
+      "barras","servicios","contrato","planDeCuotas","pagos","asignaciones",
+      "costosCalculados","multipliersAdultos","multipliersAdolescentes",
+      "multipliersNinos","multipliersDietasEspeciales",
+    ])
+
+    const setClauses: string[] = []
+    const values: unknown[] = []
+    let idx = 1
+
     for (const [camel, snake] of Object.entries(fieldMap)) {
       if (!(camel in updates)) continue
       const val = updates[camel]
-      const jsonFields = ["barras","servicios","contrato","planDeCuotas","pagos","asignaciones","costosCalculados","multipliersAdultos","multipliersAdolescentes","multipliersNinos","multipliersDietasEspeciales"]
-      const serialized = jsonFields.includes(camel) ? JSON.stringify(val) : val
-      await sql`UPDATE eventos SET ${sql(snake)} = ${serialized}, updated_at = NOW() WHERE id = ${id}`
+      setClauses.push(`${snake} = $${idx}`)
+      values.push(jsonFields.has(camel) ? JSON.stringify(val) : val)
+      idx++
     }
 
-    const [updated] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id}`
+    if (setClauses.length === 0) {
+      const row = await fetchEvento(id)
+      if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
+      return NextResponse.json(fromRow(row))
+    }
+
+    setClauses.push(`updated_at = NOW()`)
+    values.push(id)
+    await sql(
+      `UPDATE eventos SET ${setClauses.join(", ")} WHERE id = $${idx}`,
+      values
+    )
+
+    const updated = await fetchEvento(id)
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json(fromRow(updated))
   } catch (err) {
     console.error("[API] Error patching evento:", err)
@@ -124,63 +153,48 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-// PUT — full replace (for backwards compatibility)
+// PUT — full replace
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const body = await req.json()
-    const ev = { ...body, id }
+    const ev = await req.json()
     const nombre = ev.nombrePareja || ev.nombre || "Sin nombre"
 
-    await sql`
-      UPDATE eventos SET
-        nombre = ${nombre},
-        fecha = ${ev.fecha || null},
-        horario = ${ev.horario || null},
-        horario_fin = ${ev.horarioFin || null},
-        salon = ${ev.salon || null},
-        tipo_evento = ${ev.tipoEvento || null},
-        nombre_pareja = ${ev.nombrePareja || null},
-        dni_novio1 = ${ev.dniNovio1 || null},
-        dni_novio2 = ${ev.dniNovio2 || null},
-        adultos = ${ev.adultos || 0},
-        adolescentes = ${ev.adolescentes || 0},
-        ninos = ${ev.ninos || 0},
-        personas_dietas_especiales = ${ev.personasDietasEspeciales || 0},
-        recetas_adultos = ${ev.recetasAdultos || []},
-        recetas_adolescentes = ${ev.recetasAdolescentes || []},
-        recetas_ninos = ${ev.recetasNinos || []},
-        recetas_dietas_especiales = ${ev.recetasDietasEspeciales || []},
-        multipliers_adultos = ${JSON.stringify(ev.multipliersAdultos || {})},
-        multipliers_adolescentes = ${JSON.stringify(ev.multipliersAdolescentes || {})},
-        multipliers_ninos = ${JSON.stringify(ev.multipliersNinos || {})},
-        multipliers_dietas_especiales = ${JSON.stringify(ev.multipliersDietasEspeciales || {})},
-        descripcion_personalizada = ${ev.descripcionPersonalizada || ""},
-        barras = ${JSON.stringify(ev.barras || [])},
-        servicios = ${JSON.stringify(ev.servicios || [])},
-        paquetes_seleccionados = ${ev.paquetesSeleccionados || []},
-        condicion_iva = ${ev.condicionIva || null},
-        contrato = ${JSON.stringify(ev.contrato || null)},
-        plan_de_cuotas = ${JSON.stringify(ev.planDeCuotas || null)},
-        estado = ${ev.estado || "pendiente"},
-        color_tag = ${ev.colorTag || null},
-        precio_venta = ${ev.precioVenta || null},
-        costo_personal = ${ev.costoPersonal || null},
-        costo_insumos = ${ev.costoInsumos || null},
-        costo_servicios = ${ev.costoServicios || null},
-        costo_operativo = ${ev.costoOperativo || null},
-        notas_internas = ${ev.notasInternas || null},
-        pagos = ${JSON.stringify(ev.pagos || [])},
-        asignaciones = ${JSON.stringify(ev.asignaciones || [])},
-        costos_calculados = ${JSON.stringify(ev.costosCalculados || null)},
-        stock_descontado = ${ev.stockDescontado || false},
-        fecha_impresion = ${ev.fechaImpresion || null},
-        updated_at = NOW()
-      WHERE id = ${id}
-      RETURNING *
-    `
+    await sql(
+      `UPDATE eventos SET
+        nombre=$1, fecha=$2, horario=$3, horario_fin=$4, salon=$5,
+        tipo_evento=$6, nombre_pareja=$7, dni_novio1=$8, dni_novio2=$9,
+        adultos=$10, adolescentes=$11, ninos=$12, personas_dietas_especiales=$13,
+        recetas_adultos=$14, recetas_adolescentes=$15, recetas_ninos=$16, recetas_dietas_especiales=$17,
+        multipliers_adultos=$18, multipliers_adolescentes=$19, multipliers_ninos=$20, multipliers_dietas_especiales=$21,
+        descripcion_personalizada=$22, barras=$23, servicios=$24, paquetes_seleccionados=$25,
+        condicion_iva=$26, contrato=$27, plan_de_cuotas=$28, estado=$29, color_tag=$30,
+        precio_venta=$31, costo_personal=$32, costo_insumos=$33, costo_servicios=$34, costo_operativo=$35,
+        notas_internas=$36, pagos=$37, asignaciones=$38, costos_calculados=$39,
+        stock_descontado=$40, fecha_impresion=$41, updated_at=NOW()
+      WHERE id=$42`,
+      [
+        nombre, ev.fecha||null, ev.horario||null, ev.horarioFin||null, ev.salon||null,
+        ev.tipoEvento||null, ev.nombrePareja||null, ev.dniNovio1||null, ev.dniNovio2||null,
+        ev.adultos||0, ev.adolescentes||0, ev.ninos||0, ev.personasDietasEspeciales||0,
+        ev.recetasAdultos||[], ev.recetasAdolescentes||[], ev.recetasNinos||[], ev.recetasDietasEspeciales||[],
+        JSON.stringify(ev.multipliersAdultos||{}), JSON.stringify(ev.multipliersAdolescentes||{}),
+        JSON.stringify(ev.multipliersNinos||{}), JSON.stringify(ev.multipliersDietasEspeciales||{}),
+        ev.descripcionPersonalizada||"", JSON.stringify(ev.barras||[]), JSON.stringify(ev.servicios||[]),
+        ev.paquetesSeleccionados||[],
+        ev.condicionIva||null, JSON.stringify(ev.contrato||null), JSON.stringify(ev.planDeCuotas||null),
+        ev.estado||"pendiente", ev.colorTag||null,
+        ev.precioVenta||null, ev.costoPersonal||null, ev.costoInsumos||null,
+        ev.costoServicios||null, ev.costoOperativo||null,
+        ev.notasInternas||null, JSON.stringify(ev.pagos||[]),
+        JSON.stringify(ev.asignaciones||[]), JSON.stringify(ev.costosCalculados||null),
+        ev.stockDescontado||false, ev.fechaImpresion||null,
+        id,
+      ]
+    )
 
-    const [updated] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id}`
+    const updated = await fetchEvento(id)
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
     await logActivity("evento", "modificado", nombre, `Estado: ${ev.estado}`)
     return NextResponse.json(fromRow(updated))
   } catch (err) {
@@ -189,48 +203,38 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 
-// DELETE — soft delete (sets deleted_at)
+// DELETE — soft delete
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const [row] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id}`
+    const rows = await sql(`SELECT ${SELECT_COLS} FROM eventos WHERE id = $1`, [id])
+    const row = rows[0]
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const eventoData = fromRow(row)
 
-    // Intentar guardar en papelera — si la tabla no tiene las columnas nuevas, solo soft-delete
     try {
-      await sql`
-        INSERT INTO eventos_eliminados (id, nombre, fecha, estado, evento_json)
-        VALUES (
-          ${row.id}, ${row.nombre}, ${row.fecha}, ${row.estado},
-          ${JSON.stringify(eventoData)}
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          evento_json = EXCLUDED.evento_json,
-          eliminado_at = NOW()
-      `
-    } catch (papeleraErr) {
-      // Si eventos_eliminados tiene schema viejo, intentar con columna "data"
+      await sql(
+        `INSERT INTO eventos_eliminados (id, nombre, fecha, estado, evento_json)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET evento_json=EXCLUDED.evento_json, eliminado_at=NOW()`,
+        [row.id, row.nombre, row.fecha, row.estado, JSON.stringify(eventoData)]
+      )
+    } catch {
       try {
-        await sql`
-          INSERT INTO eventos_eliminados (id, nombre, fecha, estado, data)
-          VALUES (
-            ${row.id}, ${row.nombre}, ${row.fecha}, ${row.estado},
-            ${JSON.stringify(eventoData)}
-          )
-          ON CONFLICT (id) DO UPDATE SET
-            data = EXCLUDED.data,
-            eliminado_at = NOW()
-        `
-      } catch {
-        console.error("[API] No se pudo guardar en papelera, continuando con soft-delete:", papeleraErr)
+        await sql(
+          `INSERT INTO eventos_eliminados (id, nombre, fecha, estado, data)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, eliminado_at=NOW()`,
+          [row.id, row.nombre, row.fecha, row.estado, JSON.stringify(eventoData)]
+        )
+      } catch (e2) {
+        console.error("[API] No se pudo guardar en papelera:", e2)
       }
     }
 
-    await sql`UPDATE eventos SET deleted_at = NOW() WHERE id = ${id}`
+    await sql(`UPDATE eventos SET deleted_at=NOW() WHERE id=$1`, [id])
     await logActivity("evento", "eliminado", row.nombre || "Sin nombre")
-
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[API] Error deleting evento:", err)
