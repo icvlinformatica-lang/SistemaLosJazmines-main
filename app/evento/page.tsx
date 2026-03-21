@@ -896,16 +896,53 @@ function EventoPageContent() {
 
         <SectionCard
           sectionKey="detalles"
-          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><CalendarIcon className="h-5 w-5 text-primary" /></div>}
+          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600/10"><CalendarIcon className="h-5 w-5 text-emerald-700" /></div>}
           title="Detalles del Evento"
           subtitle={evento.tipoEvento ? `${evento.tipoEvento}${evento.nombrePareja ? ` - ${evento.nombrePareja}` : ""}` : "Configura la fecha, salon y comensales"}
+          className="bg-emerald-50/60 border-emerald-100"
         >
-          <div className="space-y-6">
-            {/* Row 1: Date, Time, Venue */}
-            <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-5">
+
+            {/* Fila 1: Tipo de Evento + Nombre Festejados */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="fecha" className="flex items-center gap-2 text-base">
-                  <CalendarIcon className="h-5 w-5" />
+                <Label htmlFor="tipoEvento" className="text-sm font-medium">Tipo de Evento</Label>
+                <Select
+                  value={evento.tipoEvento || ""}
+                  onValueChange={(value) => updateEventoActual({ tipoEvento: value as any })}
+                >
+                  <SelectTrigger id="tipoEvento" className="h-11 text-base">
+                    <SelectValue placeholder="Seleccionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Casamiento">Casamiento</SelectItem>
+                    <SelectItem value="Cumpleanos de 15">Cumpleanos de 15</SelectItem>
+                    <SelectItem value="Empresarial">Empresarial</SelectItem>
+                    <SelectItem value="Cumpleanos">Cumpleanos</SelectItem>
+                    <SelectItem value="Bautismo">Bautismo</SelectItem>
+                    <SelectItem value="Otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nombrePareja" className="text-sm font-medium">Nombre de los Festejados</Label>
+                <Input
+                  id="nombrePareja"
+                  type="text"
+                  placeholder="Ej: Juan y Maria"
+                  value={localNombrePareja}
+                  onChange={(e) => setLocalNombrePareja(e.target.value)}
+                  onBlur={() => handleBlur("nombrePareja", localNombrePareja)}
+                  className="h-11 text-base"
+                />
+              </div>
+            </div>
+
+            {/* Fila 2: Fecha + Horario + Hora Fin */}
+            <div className="grid gap-4 grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="fecha" className="flex items-center gap-1.5 text-sm font-medium">
+                  <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                   Fecha
                 </Label>
                 <Input
@@ -914,13 +951,13 @@ function EventoPageContent() {
                   value={localFecha}
                   onChange={(e) => setLocalFecha(e.target.value)}
                   onBlur={() => handleBlur("fecha", localFecha)}
-                  className="h-12 text-base"
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="horario" className="flex items-center gap-2 text-base">
-                  <Clock className="h-5 w-5" />
-                  Horario
+                <Label htmlFor="horario" className="flex items-center gap-1.5 text-sm font-medium">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Hora inicio
                 </Label>
                 <Input
                   id="horario"
@@ -928,13 +965,13 @@ function EventoPageContent() {
                   value={localHorario}
                   onChange={(e) => setLocalHorario(e.target.value)}
                   onBlur={() => handleBlur("horario", localHorario)}
-                  className="h-12 text-base"
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="horarioFin" className="flex items-center gap-2 text-base">
-                  <Clock className="h-5 w-5" />
-                  Hora Fin
+                <Label htmlFor="horarioFin" className="flex items-center gap-1.5 text-sm font-medium">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Hora fin
                 </Label>
                 <Input
                   id="horarioFin"
@@ -942,31 +979,39 @@ function EventoPageContent() {
                   value={localHorarioFin}
                   onChange={(e) => setLocalHorarioFin(e.target.value)}
                   onBlur={() => handleBlur("horarioFin", localHorarioFin)}
-                  className="h-12 text-base"
+                  className="h-11 text-base"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-base">
-                  <Building2 className="h-5 w-5" />
-                  Salon
-                </Label>
-                <Select
-                  value={evento.salon || ""}
-                  onValueChange={(v) => updateEventoActual({ salon: v, paquetesSeleccionados: [], servicios: [] })}
-                >
-                  <SelectTrigger className="h-12 text-base">
-                    <SelectValue placeholder="Seleccionar salon..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SALONES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
-            {/* Precio de Venta from Calendario de Precios */}
+            {/* Fila 3: Salon (toggle buttons) */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5 text-sm font-medium">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                Salon
+              </Label>
+              <div className="flex gap-2">
+                {SALONES.map((s) => {
+                  const active = evento.salon === s
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => updateEventoActual({ salon: s, paquetesSeleccionados: [], servicios: [] })}
+                      className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        active
+                          ? "border-[#2d5a3d] bg-[#2d5a3d] text-white"
+                          : "border-[#2d5a3d] bg-white text-[#2d5a3d] hover:bg-emerald-50"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Precio de Venta */}
             {evento.fecha && evento.salon && (() => {
               const precioVenta = getPrecioVenta(preciosVenta, evento.salon, evento.fecha)
               return precioVenta !== null ? (
@@ -996,48 +1041,13 @@ function EventoPageContent() {
               )
             })()}
 
-            {/* Row 2: Event Type and Names */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="tipoEvento" className="text-base">Tipo de Evento</Label>
-                <Select
-                  value={evento.tipoEvento || ""}
-                  onValueChange={(value) => updateEventoActual({ tipoEvento: value as any })}
-                >
-                  <SelectTrigger id="tipoEvento" className="h-12 text-base">
-                    <SelectValue placeholder="Seleccionar tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Casamiento">Casamiento</SelectItem>
-                    <SelectItem value="Cumpleanos de 15">Cumpleanos de 15</SelectItem>
-                    <SelectItem value="Empresarial">Empresarial</SelectItem>
-                    <SelectItem value="Cumpleanos">Cumpleanos</SelectItem>
-                    <SelectItem value="Bautismo">Bautismo</SelectItem>
-                    <SelectItem value="Otro">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nombrePareja" className="text-base">Nombre de los Festejados</Label>
-                <Input
-                  id="nombrePareja"
-                  type="text"
-                  placeholder="Ej: Juan y Maria"
-                  value={localNombrePareja}
-                  onChange={(e) => setLocalNombrePareja(e.target.value)}
-                  onBlur={() => handleBlur("nombrePareja", localNombrePareja)}
-                  className="h-12 text-base"
-                />
-              </div>
-            </div>
-
-            {/* Row 3: Guest Counts */}
-            <div className="space-y-4 rounded-lg border p-4">
-              <h4 className="font-semibold text-lg">Comensales</h4>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-2">
-                  <Label htmlFor="adultos" className="flex items-center gap-2 text-base">
-                    <Users className="h-5 w-5" />
+            {/* Fila 4: Comensales — 4 columnas en una sola fila */}
+            <div className="space-y-3 rounded-lg border border-emerald-100 bg-white/70 p-4">
+              <h4 className="font-semibold text-base text-foreground">Comensales</h4>
+              <div className="grid grid-cols-4 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="adultos" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <Users className="h-3.5 w-3.5" />
                     Adultos
                   </Label>
                   <Input
@@ -1046,14 +1056,14 @@ function EventoPageContent() {
                     value={localAdultos}
                     onChange={(e) => setLocalAdultos(e.target.value)}
                     onBlur={() => handleBlur("adultos", Number.parseInt(localAdultos) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="adolescentes" className="flex items-center gap-2 text-base">
-                    <UserCheck className="h-5 w-5" />
+                <div className="space-y-1.5">
+                  <Label htmlFor="adolescentes" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <UserCheck className="h-3.5 w-3.5" />
                     Adolescentes
                   </Label>
                   <Input
@@ -1062,14 +1072,14 @@ function EventoPageContent() {
                     value={localAdolescentes}
                     onChange={(e) => setLocalAdolescentes(e.target.value)}
                     onBlur={() => handleBlur("adolescentes", Number.parseInt(localAdolescentes) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ninos" className="flex items-center gap-2 text-base">
-                    <Baby className="h-5 w-5" />
+                <div className="space-y-1.5">
+                  <Label htmlFor="ninos" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <Baby className="h-3.5 w-3.5" />
                     Ninos
                   </Label>
                   <Input
@@ -1078,15 +1088,15 @@ function EventoPageContent() {
                     value={localNinos}
                     onChange={(e) => setLocalNinos(e.target.value)}
                     onBlur={() => handleBlur("ninos", Number.parseInt(localNinos) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dietasEspeciales" className="flex items-center gap-2 text-base">
-                    <Heart className="h-5 w-5" />
-                    Dietas Especiales
+                <div className="space-y-1.5">
+                  <Label htmlFor="dietasEspeciales" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <Heart className="h-3.5 w-3.5" />
+                    Dietas Esp.
                   </Label>
                   <Input
                     id="dietasEspeciales"
@@ -1094,21 +1104,22 @@ function EventoPageContent() {
                     value={localDietasEspeciales}
                     onChange={(e) => setLocalDietasEspeciales(e.target.value)}
                     onBlur={() => handleBlur("personasDietasEspeciales", Number.parseInt(localDietasEspeciales) || 0)}
-                    className="h-12 text-lg font-medium"
+                    className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
               </div>
 
-              <div className="rounded-lg bg-secondary p-4 mt-4">
+              <div className="rounded-lg bg-secondary p-3 mt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-lg">Total personas:</span>
+                  <span className="text-base">Total personas:</span>
                   <span className="text-2xl font-bold">{totalPersonas}</span>
                 </div>
               </div>
             </div>
           </div>
+
         </SectionCard>
 
         <SectionCard
