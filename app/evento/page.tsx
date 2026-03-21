@@ -963,7 +963,17 @@ function EventoPageContent() {
                   id="horario"
                   type="time"
                   value={localHorario}
-                  onChange={(e) => setLocalHorario(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setLocalHorario(val)
+                    // Auto-rellenar hora fin sumando 8 horas solo si fin esta vacio
+                    if (val && !localHorarioFin) {
+                      const [h, m] = val.split(":").map(Number)
+                      const finStr = `${String((h + 8) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+                      setLocalHorarioFin(finStr)
+                      handleBlur("horarioFin", finStr)
+                    }
+                  }}
                   onBlur={() => handleBlur("horario", localHorario)}
                   className="h-11 text-base"
                 />
