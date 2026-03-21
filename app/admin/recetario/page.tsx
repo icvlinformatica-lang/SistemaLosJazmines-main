@@ -773,7 +773,7 @@ export default function RecetarioPage() {
                       ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 gap-1.5 p-2">
+                  <div className="grid grid-cols-2 gap-1.5 p-2">
                     {state.recetas
                       .filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()))
                       .map((receta) => (

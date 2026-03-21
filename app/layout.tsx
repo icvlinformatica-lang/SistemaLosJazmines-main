@@ -13,7 +13,10 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Los Jazmines - Sistema de Catering",
   description: "Sistema de gestión de catering profesional para planificación de eventos",
-    generator: 'v0.app'
+  generator: 'v0.app',
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>",
+  },
 }
 
 export default function RootLayout({
