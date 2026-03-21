@@ -321,7 +321,7 @@ export default function EventosListaPage() {
     setRecuperarStockDialogOpen(true)
   }
 
-  const confirmRecuperarStock = () => {
+  const confirmRecuperarStock = async () => {
     if (!selectedEventoId) return
     const evento = eventos.find((e) => e.id === selectedEventoId)
     if (!evento) return
@@ -350,8 +350,12 @@ export default function EventosListaPage() {
       updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
     })
 
-    // Volver a pendiente via API
-    await updateEvento(selectedEventoId, { estado: "pendiente" })
+    // Volver a pendiente via API y resetear campos de stock
+    await updateEvento(selectedEventoId, {
+      estado: "pendiente",
+      stockDescontado: false,
+      fechaImpresion: null,
+    })
 
     // Registrar en historial
     const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
@@ -430,8 +434,8 @@ export default function EventosListaPage() {
       seccionesSeleccionadas
     )
 
-    // Solo descontar stock si el evento aun esta pendiente (no se desconto antes)
-    if (evento.estado === "pendiente") {
+    // Solo descontar stock si nunca fue descontado antes (campo stockDescontado)
+    if (!evento.stockDescontado) {
       const cantidadPorReceta: Record<string, number> = {}
       ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
       ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
@@ -467,8 +471,12 @@ export default function EventosListaPage() {
         }),
       }).catch(() => {})
 
-      // Cambiar estado a En Preparacion via API
-      await updateEvento(imprimirEventoId, { estado: "en_preparacion" })
+      // Cambiar estado a En Preparacion y marcar stock como descontado
+      await updateEvento(imprimirEventoId, {
+        estado: "en_preparacion",
+        stockDescontado: true,
+        fechaImpresion: new Date().toISOString(),
+      })
       toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
     } else {
       toast({ title: "Documento reimpreso", description: "El stock no fue modificado (ya se desconto anteriormente)." })

@@ -88,6 +88,7 @@ import {
   Banknote,
   Receipt,
   Info,
+  AlertTriangle,
 } from "lucide-react"
 
 function EventoPageContent() {
@@ -769,6 +770,14 @@ function EventoPageContent() {
   const barrasTemplates = state.barrasTemplates || []
   const existsInCalendar = (state.eventos || []).some((e) => e.id === evento.id)
 
+  // Bloqueo de campos criticos cuando el stock ya fue comprometido
+  const esBloqueado = !!(
+    evento.stockDescontado ||
+    evento.estado === "en_preparacion" ||
+    evento.estado === "completado"
+  )
+  const esSoloLectura = evento.estado === "completado"
+
   // Handlers that depend on derived values (must be after early return)
   const handleOpenAddBarra = () => {
     resetBarraForm()
@@ -852,6 +861,36 @@ function EventoPageContent() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+
+        {/* Banner de bloqueo por stock comprometido */}
+        {esSoloLectura && (
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3">
+            <Lock className="h-5 w-5 shrink-0 text-slate-600 mt-0.5" />
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">COMPLETADO — Solo lectura</p>
+              <p className="text-xs text-slate-600 mt-0.5">Este evento esta completado. Solo podés ver e imprimir el documento.</p>
+            </div>
+          </div>
+        )}
+        {!esSoloLectura && esBloqueado && (
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-800 text-sm">
+                Este evento tiene stock comprometido
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Para modificar recetas o personas, primero volve el evento a &quot;Pendiente&quot; desde la Lista de Eventos para recuperar el stock.
+                {evento.fechaImpresion && (
+                  <span className="block mt-1">
+                    Impreso el {new Date(evento.fechaImpresion).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} — la hoja impresa puede quedar desactualizada si editás este evento.
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Collapsible sections */}
         <div className="space-y-4 mb-8">
 
@@ -1009,6 +1048,7 @@ function EventoPageContent() {
                     onBlur={() => handleBlur("adultos", Number.parseInt(localAdultos) || 0)}
                     className="h-12 text-lg font-medium"
                     min={0}
+                    disabled={esBloqueado}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1024,6 +1064,7 @@ function EventoPageContent() {
                     onBlur={() => handleBlur("adolescentes", Number.parseInt(localAdolescentes) || 0)}
                     className="h-12 text-lg font-medium"
                     min={0}
+                    disabled={esBloqueado}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1039,6 +1080,7 @@ function EventoPageContent() {
                     onBlur={() => handleBlur("ninos", Number.parseInt(localNinos) || 0)}
                     className="h-12 text-lg font-medium"
                     min={0}
+                    disabled={esBloqueado}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1054,6 +1096,7 @@ function EventoPageContent() {
                     onBlur={() => handleBlur("personasDietasEspeciales", Number.parseInt(localDietasEspeciales) || 0)}
                     className="h-12 text-lg font-medium"
                     min={0}
+                    disabled={esBloqueado}
                   />
                 </div>
               </div>
@@ -1078,6 +1121,7 @@ function EventoPageContent() {
               <Badge variant="secondary" className="text-xs">{recetasAdultosSeleccionadas.length + recetasAdolescentesSeleccionadas.length + recetasNinosSeleccionadas.length + recetasDietasEspecialesSeleccionadas.length} platos</Badge>
             ) : undefined
           }
+          locked={esBloqueado}
         >
           <Accordion type="single" collapsible className="space-y-3">
             {/* Menu Adultos */}

@@ -283,6 +283,8 @@ export interface EventoGuardado extends Evento {
   pagos?: PagoEvento[]
   planCuotas?: number
   montoTotalPlan?: number
+  stockDescontado?: boolean       // true si el stock ya fue descontado al imprimir
+  fechaImpresion?: string | null  // ISO string de cuando se imprimio por primera vez
 
   // --- Extensiones para asignaciones y costos calculados ---
   /** Asignaciones de personal a los servicios de este evento */
