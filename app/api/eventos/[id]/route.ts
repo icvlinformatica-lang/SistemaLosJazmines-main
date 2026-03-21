@@ -3,6 +3,19 @@ import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
+// Columnas explícitas para evitar columnas obsoletas como "data"
+const COLUMNS = sql`
+  id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+  dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+  recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+  multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+  descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+  condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+  precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+  notas_internas, pagos, asignaciones, costos_calculados,
+  stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
+`
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: Record<string, any>) {
   return {
@@ -57,7 +70,7 @@ function fromRow(r: Record<string, any>) {
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const [row] = await sql`SELECT * FROM eventos WHERE id = ${id} AND deleted_at IS NULL`
+    const [row] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id} AND deleted_at IS NULL`
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json(fromRow(row))
   } catch (err) {
@@ -103,7 +116,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       await sql`UPDATE eventos SET ${sql(snake)} = ${serialized}, updated_at = NOW() WHERE id = ${id}`
     }
 
-    const [updated] = await sql`SELECT * FROM eventos WHERE id = ${id}`
+    const [updated] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id}`
     return NextResponse.json(fromRow(updated))
   } catch (err) {
     console.error("[API] Error patching evento:", err)
@@ -167,7 +180,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       RETURNING *
     `
 
-    const [updated] = await sql`SELECT * FROM eventos WHERE id = ${id}`
+    const [updated] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id}`
     await logActivity("evento", "modificado", nombre, `Estado: ${ev.estado}`)
     return NextResponse.json(fromRow(updated))
   } catch (err) {
@@ -180,7 +193,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const [row] = await sql`SELECT * FROM eventos WHERE id = ${id}`
+    const [row] = await sql`SELECT ${COLUMNS} FROM eventos WHERE id = ${id}`
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const eventoData = fromRow(row)
