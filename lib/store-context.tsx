@@ -30,6 +30,7 @@ import {
 
 interface StoreContextType {
   state: AppState
+  loading: boolean
   insumos: Insumo[]
   insumosBarra: InsumoBarra[]
   recetas: Receta[]
@@ -659,7 +660,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error("[v0] Error adding evento:", err)
-      // Fallback: save locally
       setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
     }
   }
@@ -671,12 +671,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updates } : e)),
     }))
     try {
-      const current = (await fetch(`/api/eventos/${id}`).then((r) => r.json())) as EventoGuardado
-      const updated = { ...current, ...updates }
       await fetch(`/api/eventos/${id}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated),
+        body: JSON.stringify(updates),
       })
     } catch (err) {
       console.error("[v0] Error updating evento:", err)
@@ -760,6 +758,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider
       value={{
         state,
+        loading: !isHydrated,
         insumos: state.insumos,
         insumosBarra: state.insumosBarra,
         recetas: state.recetas,

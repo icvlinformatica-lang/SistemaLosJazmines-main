@@ -78,6 +78,54 @@ export default function ConfiguracionPage() {
   const [isRestoring, setIsRestoring] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
   const [restoreStatus, setRestoreStatus] = useState("")
+  const [isMigratingEventos, setIsMigratingEventos] = useState(false)
+
+  // Migrar eventos de localStorage a la nube
+  const handleMigrarEventos = async () => {
+    setIsMigratingEventos(true)
+    try {
+      const STORAGE_KEY = "los-jazmines-data"
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) {
+        toast({ title: "Sin datos locales", description: "No hay eventos en localStorage para migrar." })
+        return
+      }
+      const parsed = JSON.parse(raw)
+      const eventosLocal: Record<string, unknown>[] = Array.isArray(parsed.eventos) ? parsed.eventos : []
+      if (eventosLocal.length === 0) {
+        toast({ title: "Sin eventos", description: "No hay eventos en localStorage para migrar." })
+        return
+      }
+
+      let migrados = 0
+      let errores = 0
+      for (const ev of eventosLocal) {
+        const res = await fetch("/api/eventos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ev),
+        })
+        if (res.ok) migrados++
+        else errores++
+      }
+
+      // Limpiar eventos del localStorage
+      if (migrados > 0) {
+        const updatedState = { ...parsed, eventos: [] }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedState))
+      }
+
+      toast({
+        title: migrados > 0 ? "Migracion completada" : "Migracion con errores",
+        description: `${migrados} evento${migrados !== 1 ? "s" : ""} migrado${migrados !== 1 ? "s" : ""} a la nube${errores > 0 ? ` (${errores} con error)` : ""}.`,
+      })
+    } catch (err) {
+      console.error("[Configuracion] Error migrando eventos:", err)
+      toast({ title: "Error", description: "No se pudo completar la migracion.", variant: "destructive" })
+    } finally {
+      setIsMigratingEventos(false)
+    }
+  }
 
   // Activity log state
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([])
@@ -610,6 +658,41 @@ export default function ConfiguracionPage() {
                   <Check className="h-4 w-4 text-green-500 ml-auto" />
                 )}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Migracion de Eventos */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Cloud className="h-6 w-6" />
+              Migracion de Eventos
+            </CardTitle>
+            <CardDescription className="text-base mt-1">
+              Mover eventos guardados localmente al servidor. Solo necesitas hacerlo una vez.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between p-4 rounded-lg border border-amber-200 bg-amber-50">
+              <div>
+                <p className="font-medium text-amber-900 text-sm">Eventos en almacenamiento local</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Si tenes eventos guardados antes de esta actualizacion, hacé click para subirlos a la nube.
+                </p>
+              </div>
+              <Button
+                onClick={handleMigrarEventos}
+                disabled={isMigratingEventos}
+                className="shrink-0 ml-4 gap-2"
+              >
+                {isMigratingEventos ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                {isMigratingEventos ? "Migrando..." : "Migrar eventos a la nube"}
+              </Button>
             </div>
           </CardContent>
         </Card>
