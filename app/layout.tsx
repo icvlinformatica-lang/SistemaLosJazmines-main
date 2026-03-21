@@ -11,7 +11,7 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Los Jazmines - Sistema de Catering",
+  title: "Los Jazmines - Sistema",
   description: "Sistema de gestión de catering profesional para planificación de eventos",
   generator: 'v0.app',
   icons: {
