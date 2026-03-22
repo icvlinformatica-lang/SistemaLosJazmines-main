@@ -751,7 +751,17 @@ export default function RecetarioPage() {
                             </div>
                             <div className="flex-1 overflow-hidden">
                               <div className="flex flex-col gap-1">
-                                <p className="truncate font-medium">{receta.nombre}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="truncate font-medium">{receta.nombre}</p>
+                                  {receta.insumos.length === 0 && (
+                                    <Badge 
+                                      variant="destructive" 
+                                      className="text-[10px] px-1.5 py-0 h-4 shrink-0"
+                                    >
+                                      Sin insumos
+                                    </Badge>
+                                  )}
+                                </div>
                                 <Badge
                                   variant={selectedReceta?.id === receta.id ? "secondary" : "outline"}
                                   className="text-xs w-fit"
@@ -799,10 +809,15 @@ export default function RecetarioPage() {
                             ) : null}
                             <ChefHat className={cn("h-5 w-5 text-primary/30", receta.imagen ? "hidden" : "")} />
                           </div>
-                          <div className="px-1.5 py-1">
-                            <p className="text-[10px] font-semibold truncate leading-tight">{receta.nombre}</p>
-                            <p className="text-[9px] text-muted-foreground truncate">{receta.categoria}</p>
-                          </div>
+<div className="px-1.5 py-1">
+                                            <div className="flex items-center gap-1">
+                                              <p className="text-[10px] font-semibold truncate leading-tight">{receta.nombre}</p>
+                                              {receta.insumos.length === 0 && (
+                                                <span className="w-2 h-2 rounded-full bg-destructive shrink-0" title="Sin insumos" />
+                                              )}
+                                            </div>
+                                            <p className="text-[9px] text-muted-foreground truncate">{receta.categoria}</p>
+                                          </div>
                         </button>
                       ))}
                   </div>
@@ -857,6 +872,16 @@ export default function RecetarioPage() {
                 </div>
 
                 <h3 className="mb-4 text-lg font-semibold">ADN del Plato</h3>
+                {selectedReceta.insumos.length === 0 ? (
+                  <div className="rounded-lg border-2 border-dashed border-destructive/50 bg-destructive/5 p-6 text-center">
+                    <FlaskConical className="mx-auto h-8 w-8 text-destructive/50 mb-2" />
+                    <p className="font-medium text-destructive">Esta receta no tiene insumos</p>
+                    <p className="text-sm text-muted-foreground mt-1">Agrega los ingredientes para completar la receta</p>
+                    <Button variant="outline" className="mt-4" onClick={handleEditReceta}>
+                      Agregar Insumos
+                    </Button>
+                  </div>
+                ) : (
                 <div className="space-y-3">
                   {selectedReceta.insumos.map((item, index) => {
                     const insumo = getInsumoById(item.insumoId)
@@ -895,6 +920,7 @@ export default function RecetarioPage() {
                     )
                   })}
                 </div>
+                )}
               </CardContent>
             </Card>
           ) : (
