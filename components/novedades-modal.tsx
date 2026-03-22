@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Zap, Cloud, Database, Sparkles, Star, Bell, Package, ChefHat, Settings } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { X, Zap, Cloud, Database, Sparkles, Star, Bell, Package, ChefHat, Settings, Calculator, List, ShoppingCart, TableProperties } from "lucide-react"
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Zap,
@@ -14,6 +13,10 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Package,
   ChefHat,
   Settings,
+  Calculator,
+  List,
+  ShoppingCart,
+  TableProperties,
 }
 
 interface Novedad {
@@ -126,11 +129,11 @@ export function NovedadesModal({ open, onOpenChange }: NovedadesModalProps) {
                     >
                       <Icon className="h-5 w-5 text-[#f5f0e8]" />
                     </div>
-                    <div className="flex-1 w-0 min-w-0 overflow-hidden">
-                      <h3 className="text-base font-bold text-[#1a1a1a] leading-tight break-all">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold text-[#1a1a1a] leading-tight">
                         {novedad.titulo}
                       </h3>
-                      <p className="text-sm text-[#4a4a4a] mt-1 leading-relaxed break-all whitespace-normal">
+                      <p className="text-sm text-[#4a4a4a] mt-1 leading-relaxed">
                         {novedad.contenido}
                       </p>
                     </div>
