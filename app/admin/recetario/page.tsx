@@ -7,6 +7,7 @@ import {
   type Receta,
   type InsumoReceta,
   type RecetaCategoria,
+  type RecetaEstado,
   type UnidadReceta,
   formatCurrency,
   calcularCostoReceta,
@@ -206,6 +207,7 @@ export default function RecetarioPage() {
     categoria: "Plato Principal" as RecetaCategoria,
     insumos: [] as InsumoReceta[],
     factorRendimiento: 1,
+    estado: undefined as RecetaEstado | undefined,
   })
 
   const [newIngredient, setNewIngredient] = useState({
@@ -224,6 +226,7 @@ export default function RecetarioPage() {
       categoria: "Plato Principal" as RecetaCategoria,
       insumos: [],
       factorRendimiento: 1,
+      estado: undefined,
     })
     setNewIngredient({
       insumoId: "",
@@ -288,6 +291,7 @@ export default function RecetarioPage() {
       categoria: selectedReceta.categoria,
       insumos: [...selectedReceta.insumos],
       factorRendimiento: selectedReceta.factorRendimiento || 1,
+      estado: selectedReceta.estado,
     })
     setEditingRecetaId(selectedReceta.id)
     setIsAddDialogOpen(true)
@@ -389,6 +393,36 @@ export default function RecetarioPage() {
                           <SelectItem value="Sin Sal">Sin Sal</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    {/* Estado de la receta */}
+                    <div>
+                      <Label>Estado de la Receta</Label>
+                      <Select
+                        value={formData.estado || "pendiente"}
+                        onValueChange={(v) => setFormData({ ...formData, estado: v as RecetaEstado })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pendiente">
+                            <span className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-amber-500" />
+                              Falta completar
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="completa">
+                            <span className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                              Completa
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Marca como "Completa" cuando la receta tenga todos sus ingredientes cargados
+                      </p>
                     </div>
 
                     {/* Factor de Rendimiento */}
@@ -755,10 +789,18 @@ export default function RecetarioPage() {
                                   <p className="truncate font-medium">{receta.nombre}</p>
                                   {receta.insumos.length === 0 && (
                                     <Badge 
-                                      variant="destructive" 
-                                      className="text-[10px] px-1.5 py-0 h-4 shrink-0"
+                                      variant="outline" 
+                                      className="text-[10px] px-1.5 py-0 h-4 shrink-0 border-amber-500 bg-amber-500/10 text-amber-600"
                                     >
-                                      Sin insumos
+                                      Falta completar
+                                    </Badge>
+                                  )}
+                                  {receta.insumos.length > 0 && receta.estado === "completa" && (
+                                    <Badge 
+                                      variant="outline" 
+                                      className="text-[10px] px-1.5 py-0 h-4 shrink-0 border-emerald-500 bg-emerald-500/10 text-emerald-600"
+                                    >
+                                      Completa
                                     </Badge>
                                   )}
                                 </div>
@@ -813,7 +855,10 @@ export default function RecetarioPage() {
                                             <div className="flex items-center gap-1">
                                               <p className="text-[10px] font-semibold truncate leading-tight">{receta.nombre}</p>
                                               {receta.insumos.length === 0 && (
-                                                <span className="w-2 h-2 rounded-full bg-destructive shrink-0" title="Sin insumos" />
+                                                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Falta completar" />
+                                              )}
+                                              {receta.insumos.length > 0 && receta.estado === "completa" && (
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Completa" />
                                               )}
                                             </div>
                                             <p className="text-[9px] text-muted-foreground truncate">{receta.categoria}</p>
@@ -838,6 +883,16 @@ export default function RecetarioPage() {
                         <Badge variant="outline" className="flex items-center gap-1">
                           <Utensils className="h-3 w-3" />
                           Receta para {selectedReceta.factorRendimiento} porciones
+                        </Badge>
+                      )}
+                      {selectedReceta.insumos.length === 0 && (
+                        <Badge variant="outline" className="border-amber-500 bg-amber-500/10 text-amber-600">
+                          Falta completar
+                        </Badge>
+                      )}
+                      {selectedReceta.insumos.length > 0 && selectedReceta.estado === "completa" && (
+                        <Badge variant="outline" className="border-emerald-500 bg-emerald-500/10 text-emerald-600">
+                          Completa
                         </Badge>
                       )}
                       <CardTitle className="text-2xl">{selectedReceta.nombre}</CardTitle>
@@ -873,9 +928,9 @@ export default function RecetarioPage() {
 
                 <h3 className="mb-4 text-lg font-semibold">ADN del Plato</h3>
                 {selectedReceta.insumos.length === 0 ? (
-                  <div className="rounded-lg border-2 border-dashed border-destructive/50 bg-destructive/5 p-6 text-center">
-                    <FlaskConical className="mx-auto h-8 w-8 text-destructive/50 mb-2" />
-                    <p className="font-medium text-destructive">Esta receta no tiene insumos</p>
+                  <div className="rounded-lg border-2 border-dashed border-amber-500/50 bg-amber-500/5 p-6 text-center">
+                    <FlaskConical className="mx-auto h-8 w-8 text-amber-500/50 mb-2" />
+                    <p className="font-medium text-amber-600">Falta completar esta receta</p>
                     <p className="text-sm text-muted-foreground mt-1">Agrega los ingredientes para completar la receta</p>
                     <Button variant="outline" className="mt-4" onClick={handleEditReceta}>
                       Agregar Insumos
