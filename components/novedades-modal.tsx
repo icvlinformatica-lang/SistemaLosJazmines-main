@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Zap, Cloud, Database, Sparkles, Star, Bell, Package, ChefHat, Settings } from "lucide-react"
+import { X, Zap, Cloud, Database, Sparkles, Star, Bell, Package, ChefHat, Settings, Calculator, List, ShoppingCart, TableProperties } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -14,6 +14,10 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Package,
   ChefHat,
   Settings,
+  Calculator,
+  List,
+  ShoppingCart,
+  TableProperties,
 }
 
 interface Novedad {
@@ -115,9 +119,9 @@ export function NovedadesModal({ open, onOpenChange }: NovedadesModalProps) {
               return (
                 <div
                   key={novedad.id}
-                  className="rounded-xl bg-[#f5f0e8] shadow-2xl overflow-hidden"
+                  className="rounded-xl bg-[#f5f0e8] shadow-2xl"
                 >
-                  <div className="flex items-start gap-4 p-5">
+                  <div className="flex gap-4 p-5">
                     <div
                       className={cn(
                         "flex items-center justify-center w-11 h-11 rounded-lg shrink-0",
@@ -126,11 +130,11 @@ export function NovedadesModal({ open, onOpenChange }: NovedadesModalProps) {
                     >
                       <Icon className="h-5 w-5 text-[#f5f0e8]" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-bold text-[#1a1a1a] leading-tight">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", lineHeight: 1.3, wordWrap: "break-word", overflowWrap: "break-word", whiteSpace: "normal" }}>
                         {novedad.titulo}
                       </h3>
-                      <p className="text-sm text-[#4a4a4a] mt-1 leading-relaxed">
+                      <p style={{ fontSize: 13, color: "#4a4a4a", marginTop: 4, lineHeight: 1.5, wordWrap: "break-word", overflowWrap: "break-word", whiteSpace: "normal" }}>
                         {novedad.contenido}
                       </p>
                     </div>
