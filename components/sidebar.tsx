@@ -116,11 +116,8 @@ export function Sidebar() {
       if (prev.includes(label)) {
         return prev.filter((s) => s !== label)
       }
-      const next = [...prev, label]
-      if (next.length > 2) {
-        return next.slice(next.length - 2)
-      }
-      return next
+      // Solo permitir una sección abierta a la vez
+      return [label]
     })
   }
 
