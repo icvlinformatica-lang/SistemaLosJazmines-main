@@ -87,6 +87,8 @@ export interface InsumoReceta {
   unidadReceta?: UnidadReceta
 }
 
+export type RecetaEstado = "pendiente" | "completa"
+
 export interface Receta {
   id: string
   codigo: string
@@ -96,6 +98,7 @@ export interface Receta {
   categoria: RecetaCategoria
   insumos: InsumoReceta[]
   factorRendimiento: number // Default 1 — divide ingredient quantities per person
+  estado?: RecetaEstado // undefined or "pendiente" = falta completar, "completa" = completa
 }
 
 export interface DishSelection {
