@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { X, Zap, Cloud, Database, Sparkles, Star, Bell, Package, ChefHat, Settings, Calculator, List, ShoppingCart, TableProperties } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Zap,
