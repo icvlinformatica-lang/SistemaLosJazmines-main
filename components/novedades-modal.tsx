@@ -126,11 +126,11 @@ export function NovedadesModal({ open, onOpenChange }: NovedadesModalProps) {
                     >
                       <Icon className="h-5 w-5 text-[#f5f0e8]" />
                     </div>
-                    <div className="flex-1 min-w-0 overflow-hidden">
-                      <h3 className="text-base font-bold text-[#1a1a1a] leading-tight break-words">
+                    <div className="flex-1 w-0 min-w-0 overflow-hidden">
+                      <h3 className="text-base font-bold text-[#1a1a1a] leading-tight break-all">
                         {novedad.titulo}
                       </h3>
-                      <p className="text-sm text-[#4a4a4a] mt-1 leading-relaxed break-words whitespace-pre-wrap">
+                      <p className="text-sm text-[#4a4a4a] mt-1 leading-relaxed break-all whitespace-normal">
                         {novedad.contenido}
                       </p>
                     </div>
