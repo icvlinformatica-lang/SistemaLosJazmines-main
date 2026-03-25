@@ -83,6 +83,15 @@ function MultiplierPopover({
     setOpen(false)
   }
 
+  const OPCIONES: { value: number; label: string }[] = [
+    { value: 0.25, label: "¼" },
+    { value: 0.5,  label: "½" },
+    { value: 1,    label: "1" },
+    { value: 2,    label: "2" },
+  ]
+
+  const labelActual = OPCIONES.find((o) => o.value === current)?.label ?? `${current}x`
+
   return (
     <div className="relative flex items-center justify-center">
       <button
@@ -95,22 +104,22 @@ function MultiplierPopover({
         title={disabled ? undefined : "Ajustar multiplicador o quitar"}
       >
         <span className="text-base">✓</span>
-        {current > 1 && <span className="text-xs">({current}x)</span>}
+        {current !== 1 && <span className="text-xs">({labelActual})</span>}
       </button>
       {open && (
         <div
           className="absolute z-50 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-white border border-border rounded-lg shadow-lg p-1 flex gap-1"
           onClick={(e) => e.stopPropagation()}
         >
-          {[1, 2, 3, 4].map((v) => (
+          {OPCIONES.map(({ value, label }) => (
             <button
-              key={v}
+              key={value}
               type="button"
-              onClick={(e) => handleSelect(e, v)}
+              onClick={(e) => handleSelect(e, value)}
               className={`w-8 h-8 rounded text-sm font-semibold transition-colors
-                ${current === v ? "bg-[#2d5a3d] text-white" : "hover:bg-emerald-50 text-foreground"}`}
+                ${current === value ? "bg-[#2d5a3d] text-white" : "hover:bg-emerald-50 text-foreground"}`}
             >
-              {v}x
+              {label}
             </button>
           ))}
           <button
