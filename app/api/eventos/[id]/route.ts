@@ -67,7 +67,17 @@ const SELECT_COLS = `
 
 async function fetchEvento(id: string) {
   const rows = await sql`
-    SELECT ${sql.unsafe(SELECT_COLS)} FROM eventos WHERE id = ${id} AND deleted_at IS NULL
+    SELECT
+      id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+      dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+      recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+      multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+      descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+      condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+      precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+      notas_internas, pagos, asignaciones, costos_calculados,
+      stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
+    FROM eventos WHERE id = ${id} AND deleted_at IS NULL
   `
   return rows[0] ?? null
 }
@@ -207,7 +217,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const rows = await sql`SELECT ${sql.unsafe(SELECT_COLS)} FROM eventos WHERE id = ${id}`
+    const rows = await sql`
+      SELECT
+        id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+        dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+        recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+        multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+        descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+        condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+        precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+        notas_internas, pagos, asignaciones, costos_calculados,
+        stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
+      FROM eventos WHERE id = ${id}
+    `
     const row = rows[0]
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
