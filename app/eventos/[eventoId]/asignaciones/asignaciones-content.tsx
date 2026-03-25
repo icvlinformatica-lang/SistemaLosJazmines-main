@@ -90,18 +90,9 @@ export function AsignacionesContent({ evento }: { evento: EventoGuardado }) {
   }, [asignaciones])
 
   const handleAsignar = (asignacionId: string, personalId: string) => {
-    // Obtener el evento actual del contexto (que viene de la DB)
-    if (!evento) {
-      toast({
-        title: "Error",
-        description: "No se cargó el evento correctamente.",
-        variant: "destructive",
-      })
-      return
-    }
-
+    const currentState = loadState()
     const ok = asignarPersonalAEvento(
-      { ...state, eventoActual: evento },
+      currentState,
       evento.id,
       asignacionId,
       personalId
@@ -126,18 +117,9 @@ export function AsignacionesContent({ evento }: { evento: EventoGuardado }) {
   }
 
   const handleDesasignar = (asignacionId: string) => {
-    // Obtener el evento actual del contexto (que viene de la DB)
-    if (!evento) {
-      toast({
-        title: "Error",
-        description: "No se cargó el evento correctamente.",
-        variant: "destructive",
-      })
-      return
-    }
-
+    const currentState = loadState()
     const ok = desasignarPersonalDeEvento(
-      { ...state, eventoActual: evento },
+      currentState,
       evento.id,
       asignacionId
     )
