@@ -33,10 +33,17 @@ export async function DELETE(req: Request) {
     const url = new URL(req.url)
     const id = url.searchParams.get("id")
     if (id) {
+      // Obtener datos del evento antes de borrar para el log
+      const rows = await sql`SELECT nombre FROM eventos_eliminados WHERE id = ${id}`
+      const row = rows[0]
       await sql`DELETE FROM eventos_eliminados WHERE id = ${id}`
+      if (row) {
+        await logActivity("evento", "eliminado", row.nombre || "Sin nombre", "Eliminado permanentemente de la papelera")
+      }
     } else {
       // Vaciar toda la papelera
       await sql`DELETE FROM eventos_eliminados`
+      await logActivity("sistema", "papelera_vaciada", "Papelera de eventos", "Se eliminaron permanentemente todos los eventos de la papelera")
     }
     return NextResponse.json({ success: true })
   } catch (err) {
