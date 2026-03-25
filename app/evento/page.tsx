@@ -638,34 +638,25 @@ function EventoPageContent() {
         return (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 transition-colors hover:bg-muted/40">
             <span className="truncate font-medium text-sm">{receta.nombre}</span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 bg-transparent"
-                onClick={() => updateMultiplier(segment, receta.id, currentMultiplier - 0.5)}
-                disabled={currentMultiplier <= 0.5}
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </Button>
-              <span className="w-8 text-center text-sm font-bold">
-                {currentMultiplier % 1 === 0 ? currentMultiplier : currentMultiplier.toFixed(1)}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 bg-transparent"
-                onClick={() => updateMultiplier(segment, receta.id, currentMultiplier + 0.5)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-xs text-muted-foreground">u/p</span>
+            <div className="flex items-center gap-1 shrink-0">
+              {([0.25, 0.5, 1, 2] as const).map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => updateMultiplier(segment, receta.id, val)}
+                  className={`h-7 min-w-[2rem] rounded px-1.5 text-xs font-semibold border transition-colors
+                    ${currentMultiplier === val
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-transparent text-muted-foreground border-border hover:border-primary hover:text-primary"
+                    }`}
+                >
+                  {val === 0.25 ? "¼" : val === 0.5 ? "½" : `×${val}`}
+                </button>
+              ))}
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-8 w-8 ml-1 text-muted-foreground hover:text-destructive"
+                className="h-7 w-7 ml-1 text-muted-foreground hover:text-destructive"
                 onClick={() => removeRecetaFromSegment(segment, receta.id)}
               >
                 <X className="h-3.5 w-3.5" />
