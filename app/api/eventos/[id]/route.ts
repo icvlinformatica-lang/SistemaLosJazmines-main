@@ -66,10 +66,9 @@ const SELECT_COLS = `
 `
 
 async function fetchEvento(id: string) {
-  const rows = await sql(
-    `SELECT ${SELECT_COLS} FROM eventos WHERE id = $1 AND deleted_at IS NULL`,
-    [id]
-  )
+  const rows = await sql`
+    SELECT ${sql.unsafe(SELECT_COLS)} FROM eventos WHERE id = ${id} AND deleted_at IS NULL
+  `
   return rows[0] ?? null
 }
 
@@ -139,9 +138,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     setClauses.push(`updated_at = NOW()`)
     values.push(id)
-    await sql(
-      `UPDATE eventos SET ${setClauses.join(", ")} WHERE id = $${idx}`,
-      values
+    const setClausesStr = setClauses.join(", ")
+    await sql.unsafe(
+      `UPDATE eventos SET ${setClausesStr} WHERE id = $${idx}`,
+      values as string[]
     )
 
     const updated = await fetchEvento(id)
@@ -160,7 +160,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const ev = await req.json()
     const nombre = ev.nombrePareja || ev.nombre || "Sin nombre"
 
-    await sql(
+    await sql.unsafe(
       `UPDATE eventos SET
         nombre=$1, fecha=$2, horario=$3, horario_fin=$4, salon=$5,
         tipo_evento=$6, nombre_pareja=$7, dni_novio1=$8, dni_novio2=$9,
@@ -207,33 +207,31 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const rows = await sql(`SELECT ${SELECT_COLS} FROM eventos WHERE id = $1`, [id])
+    const rows = await sql`SELECT ${sql.unsafe(SELECT_COLS)} FROM eventos WHERE id = ${id}`
     const row = rows[0]
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const eventoData = fromRow(row)
 
     try {
-      await sql(
-        `INSERT INTO eventos_eliminados (id, nombre, fecha, estado, evento_json)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (id) DO UPDATE SET evento_json=EXCLUDED.evento_json, eliminado_at=NOW()`,
-        [row.id, row.nombre, row.fecha, row.estado, JSON.stringify(eventoData)]
-      )
+      await sql`
+        INSERT INTO eventos_eliminados (id, nombre, fecha, estado, evento_json)
+        VALUES (${row.id}, ${row.nombre}, ${row.fecha}, ${row.estado}, ${JSON.stringify(eventoData)})
+        ON CONFLICT (id) DO UPDATE SET evento_json=EXCLUDED.evento_json, eliminado_at=NOW()
+      `
     } catch {
       try {
-        await sql(
-          `INSERT INTO eventos_eliminados (id, nombre, fecha, estado, data)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, eliminado_at=NOW()`,
-          [row.id, row.nombre, row.fecha, row.estado, JSON.stringify(eventoData)]
-        )
+        await sql`
+          INSERT INTO eventos_eliminados (id, nombre, fecha, estado, data)
+          VALUES (${row.id}, ${row.nombre}, ${row.fecha}, ${row.estado}, ${JSON.stringify(eventoData)})
+          ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, eliminado_at=NOW()
+        `
       } catch (e2) {
         console.error("[API] No se pudo guardar en papelera:", e2)
       }
     }
 
-    await sql(`UPDATE eventos SET deleted_at=NOW() WHERE id=$1`, [id])
+    await sql`UPDATE eventos SET deleted_at=NOW() WHERE id=${id}`
     await logActivity("evento", "eliminado", row.nombre || "Sin nombre")
     return NextResponse.json({ success: true })
   } catch (err) {
