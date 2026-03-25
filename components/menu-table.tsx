@@ -102,7 +102,7 @@ function MultiplierPopover({
           className="absolute z-50 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-white border border-border rounded-lg shadow-lg p-1 flex gap-1"
           onClick={(e) => e.stopPropagation()}
         >
-          {[1, 2, 3, 4].map((v) => (
+          {[0.25, 0.5, 1, 2].map((v) => (
             <button
               key={v}
               type="button"
@@ -110,7 +110,7 @@ function MultiplierPopover({
               className={`w-8 h-8 rounded text-sm font-semibold transition-colors
                 ${current === v ? "bg-[#2d5a3d] text-white" : "hover:bg-emerald-50 text-foreground"}`}
             >
-              {v}x
+              {v === 0.25 ? "¼" : v === 0.5 ? "½" : `${v}x`}
             </button>
           ))}
           <button
