@@ -407,24 +407,6 @@ export default function EventosListaPage() {
     }
 
     const motivo = recuperarStockAlEliminar ? "Stock recuperado al eliminar" : undefined
-    
-    // Registrar en historial ANTES de eliminar
-    const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
-    const detallesEliminacion = recuperarStockAlEliminar 
-      ? `Movido a papelera con recuperación de stock (${Object.keys(stockDelta || {}).length} insumos restituidos)`
-      : "Movido a la papelera"
-    
-    await fetch("/api/activity-log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tipo: "evento",
-        accion: "eliminado",
-        nombre: nombreEvento,
-        detalle: detallesEliminacion,
-      }),
-    }).catch(() => {})
-    
     await eliminarEventoDB(selectedEventoId, motivo)
     toast({
       title: "Evento eliminado",

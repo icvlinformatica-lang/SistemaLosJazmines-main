@@ -234,17 +234,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     }
 
     await sql(`UPDATE eventos SET deleted_at=NOW() WHERE id=$1`, [id])
-    
-    // Registrar eliminación con detalles
-    const detalles = [
-      `Fecha: ${row.fecha || "N/A"}`,
-      `Tipo: ${row.tipo_evento || "N/A"}`,
-      `Adultos: ${row.adultos || 0}`,
-      `Adolescentes: ${row.adolescentes || 0}`,
-      `Niños: ${row.ninos || 0}`,
-    ].filter(Boolean).join(" | ")
-    
-    await logActivity("evento", "eliminado", row.nombre || "Sin nombre", detalles)
+    await logActivity("evento", "eliminado", row.nombre || "Sin nombre")
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[API] Error deleting evento:", err)
