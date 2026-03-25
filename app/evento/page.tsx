@@ -5,24 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import {
-  formatCurrency,
-  calcularComprasSegmentadas,
-  calcularComprasBarras,
-  calcularCostoServicios,
-  calcularCostosOperativos,
-  calcularFechaCuota,
-  calcularTotalesPaquete,
-  getPrecioVenta,
+  type Evento,
+  type EventoGuardado,
   generateId,
-  type EventoHistorial,
-  type BarraEvento,
-  type ServicioEvento,
-  type Servicio,
-  type PaqueteSalon,
-  type EstadoEvento,
-  SALONES,
-  loadState,
-  getEventoById,
+  getCompatibleRecipeUnits,
+  getDefaultRecipeUnit,
+  normalizeToStockUnit,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -129,15 +117,15 @@ function EventoPageContent() {
   // Load event data if editing
   useEffect(() => {
     if (editingEventoId && !state.eventoActual) {
-      const fullState = loadState()
-      const eventoToEdit = getEventoById(fullState, editingEventoId)
+      // Buscar el evento en la lista de eventos del contexto (que viene de la DB)
+      const eventoToEdit = eventos.find((e) => e.id === editingEventoId)
       if (eventoToEdit) {
         setEventoActual(eventoToEdit)
       } else {
         router.push("/eventos/lista")
       }
     }
-  }, [editingEventoId, state.eventoActual, setEventoActual, router])
+  }, [editingEventoId, state.eventoActual, setEventoActual, router, eventos])
 
   const evento = state.eventoActual
 
