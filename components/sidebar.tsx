@@ -32,7 +32,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
 import { useUI } from "@/lib/ui-context"
-import { generateId } from "@/lib/db"
+import { generateId } from "@/lib/utils-client"
 
 interface MenuItem {
   href: string

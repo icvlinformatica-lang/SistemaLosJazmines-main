@@ -83,7 +83,7 @@ import {
   X,
   Archive,
 } from "lucide-react"
-import { generateId } from "@/lib/db"
+import { generateId } from "@/lib/utils-client"
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
     label: "Borrador",
