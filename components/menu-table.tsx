@@ -255,7 +255,7 @@ export function MenuTable({
                     <td className="py-2.5 px-3 font-medium text-foreground">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span>{receta.nombre}</span>
-                        {receta.insumos.length === 0 && (
+                        {(!receta.insumos || receta.insumos.length === 0) && (
                           <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none border border-amber-400 bg-amber-50 text-amber-600">
                             falta completar
                           </span>
