@@ -546,19 +546,17 @@ function EventoPageContent() {
     }
     
     if (isEditing && editingEventoId) {
-      // Actualizar evento existente via context (auto-persists to localStorage)
-      updateEvento(editingEventoId, eventData)
+      // Actualizar evento existente — await para garantizar persistencia antes de navegar
+      await updateEvento(editingEventoId, eventData)
       toast({
         title: "Evento actualizado",
         description: "Los cambios se guardaron correctamente",
       })
-      setTimeout(() => {
-        setIsSaving(false)
-        router.push("/eventos/lista")
-      }, 500)
+      setIsSaving(false)
+      router.push("/eventos/lista")
     } else {
-      // Crear nuevo evento via context (auto-persists to localStorage)
-      addEvento({
+      // Crear nuevo evento — await para garantizar que se guarda en DB antes de navegar
+      await addEvento({
         ...eventData,
         estado: "pendiente",
       } as any)
@@ -572,11 +570,9 @@ function EventoPageContent() {
         title: "Evento guardado",
         description: "El evento se guardo correctamente",
       })
-      setTimeout(() => {
-        setEventoActual(null)
-        setIsSaving(false)
-        router.push("/eventos/lista")
-      }, 500)
+      setEventoActual(null)
+      setIsSaving(false)
+      router.push("/eventos/lista")
     }
   }
 
