@@ -751,7 +751,14 @@ export default function RecetarioPage() {
                             </div>
                             <div className="flex-1 overflow-hidden">
                               <div className="flex flex-col gap-1">
-                                <p className="truncate font-medium">{receta.nombre}</p>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="truncate font-medium">{receta.nombre}</p>
+                                  {(!receta.insumos || receta.insumos.length === 0) && (
+                                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none border border-amber-400 bg-amber-50 text-amber-600 shrink-0">
+                                      falta completar
+                                    </span>
+                                  )}
+                                </div>
                                 <Badge
                                   variant={selectedReceta?.id === receta.id ? "secondary" : "outline"}
                                   className="text-xs w-fit"
@@ -765,7 +772,7 @@ export default function RecetarioPage() {
                                   selectedReceta?.id === receta.id ? "text-primary-foreground/70" : "text-muted-foreground",
                                 )}
                               >
-                                {receta.codigo} · {receta.insumos.length} insumos
+                                {receta.codigo} · {receta.insumos?.length ?? 0} insumos
                               </p>
                             </div>
                           </div>

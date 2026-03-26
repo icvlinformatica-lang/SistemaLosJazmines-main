@@ -33,10 +33,25 @@ export async function DELETE(req: Request) {
     const url = new URL(req.url)
     const id = url.searchParams.get("id")
     if (id) {
+      const rows = await sql`SELECT nombre FROM eventos_eliminados WHERE id = ${id}`
+      const row = rows[0]
       await sql`DELETE FROM eventos_eliminados WHERE id = ${id}`
+      await logActivity(
+        "evento",
+        "eliminado",
+        row?.nombre || "Sin nombre",
+        "Eliminado permanentemente desde la papelera"
+      )
     } else {
-      // Vaciar toda la papelera
+      const rows = await sql`SELECT COUNT(*) as total FROM eventos_eliminados`
+      const total = rows[0]?.total || 0
       await sql`DELETE FROM eventos_eliminados`
+      await logActivity(
+        "evento",
+        "eliminado",
+        "Papelera vaciada",
+        `Se eliminaron permanentemente ${total} evento(s) de la papelera`
+      )
     }
     return NextResponse.json({ success: true })
   } catch (err) {

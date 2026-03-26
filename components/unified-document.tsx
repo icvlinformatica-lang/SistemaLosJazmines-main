@@ -280,9 +280,10 @@ export function UnifiedDocument({ snapshot, onClose, sections }: UnifiedDocument
       html += `<div style="margin-top:28px;">`
       html += `<h2 style="${S.sectionTitle}">LISTA DE COMPRAS - BARRA</h2>`
 
-      if (evento.barras && evento.barras.length > 0) {
+      const barrasArr = Array.isArray(evento.barras) ? evento.barras : (typeof evento.barras === "string" ? (() => { try { return JSON.parse(evento.barras) } catch { return [] } })() : [])
+      if (barrasArr && barrasArr.length > 0) {
         html += `<div style="${S.barInfoBox}">`
-        evento.barras.forEach((barra) => {
+        barrasArr.forEach((barra: { barraTemplateId: string; tragosPorPersona: number }) => {
           const template = (state.barrasTemplates || []).find((t) => t.id === barra.barraTemplateId)
           const personas = evento.adultos + evento.adolescentes
           html += `<div style="display:flex;justify-content:space-between;"><span style="font-weight:600">${template?.nombre || "Barra"}</span><span>${personas} personas x ${barra.tragosPorPersona} tragos = ${personas * barra.tragosPorPersona} tragos</span></div>`
@@ -525,9 +526,9 @@ export function UnifiedDocument({ snapshot, onClose, sections }: UnifiedDocument
               LISTA DE COMPRAS - BARRA
             </h2>
 
-            {evento.barras && evento.barras.length > 0 && (
+            {Array.isArray(evento.barras) && evento.barras.length > 0 && (
               <div className="mb-4 text-sm border border-black p-3">
-                {evento.barras.map((barra) => {
+                {(evento.barras as Array<{ id: string; barraTemplateId: string; tragosPorPersona: number }>).map((barra) => {
                   const template = (state.barrasTemplates || []).find((t) => t.id === barra.barraTemplateId)
                   const personas = evento.adultos + evento.adolescentes
                   return (

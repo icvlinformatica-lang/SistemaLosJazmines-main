@@ -407,6 +407,22 @@ export default function EventosListaPage() {
     }
 
     const motivo = recuperarStockAlEliminar ? "Stock recuperado al eliminar" : undefined
+
+    // Log antes de eliminar con detalle de stock
+    const nombreEvento = evento?.nombrePareja || evento?.nombre || "Evento sin nombre"
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "evento",
+        accion: "eliminado",
+        nombre: nombreEvento,
+        detalle: recuperarStockAlEliminar
+          ? `Movido a papelera con recuperación de stock | Fecha: ${evento?.fecha || "sin fecha"} | Salon: ${evento?.salon || "-"}`
+          : `Movido a papelera | Fecha: ${evento?.fecha || "sin fecha"} | Salon: ${evento?.salon || "-"}`,
+      }),
+    }).catch(() => {})
+
     await eliminarEventoDB(selectedEventoId, motivo)
     toast({
       title: "Evento eliminado",
@@ -483,6 +499,18 @@ export default function EventosListaPage() {
       })
       toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
     } else {
+      // Log reimpresión sin descuento de stock
+      const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
+      fetch("/api/activity-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "evento",
+          accion: "modificado",
+          nombre: nombreEvento,
+          detalle: "Documento reimpreso (stock ya estaba descontado, no se modificó)",
+        }),
+      }).catch(() => {})
       toast({ title: "Documento reimpreso", description: "El stock no fue modificado (ya se desconto anteriormente)." })
     }
 

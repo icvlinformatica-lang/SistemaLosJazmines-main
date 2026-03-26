@@ -53,6 +53,15 @@ function toRow(ev: Record<string, unknown>) {
 
 // DB row → camelCase for app
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Helper to safely parse JSON fields that might come as strings from PostgreSQL
+function parseJsonField<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === "string") {
+    try { return JSON.parse(value) } catch { return fallback }
+  }
+  return value as T
+}
+
 function fromRow(r: Record<string, any>) {
   return {
     id: r.id,
@@ -69,17 +78,17 @@ function fromRow(r: Record<string, any>) {
     adolescentes: r.adolescentes ?? 0,
     ninos: r.ninos ?? 0,
     personasDietasEspeciales: r.personas_dietas_especiales ?? 0,
-    recetasAdultos: r.recetas_adultos ?? [],
-    recetasAdolescentes: r.recetas_adolescentes ?? [],
-    recetasNinos: r.recetas_ninos ?? [],
-    recetasDietasEspeciales: r.recetas_dietas_especiales ?? [],
-    multipliersAdultos: r.multipliers_adultos ?? {},
-    multipliersAdolescentes: r.multipliers_adolescentes ?? {},
-    multipliersNinos: r.multipliers_ninos ?? {},
-    multipliersDietasEspeciales: r.multipliers_dietas_especiales ?? {},
+    recetasAdultos: parseJsonField(r.recetas_adultos, []),
+    recetasAdolescentes: parseJsonField(r.recetas_adolescentes, []),
+    recetasNinos: parseJsonField(r.recetas_ninos, []),
+    recetasDietasEspeciales: parseJsonField(r.recetas_dietas_especiales, []),
+    multipliersAdultos: parseJsonField(r.multipliers_adultos, {}),
+    multipliersAdolescentes: parseJsonField(r.multipliers_adolescentes, {}),
+    multipliersNinos: parseJsonField(r.multipliers_ninos, {}),
+    multipliersDietasEspeciales: parseJsonField(r.multipliers_dietas_especiales, {}),
     descripcionPersonalizada: r.descripcion_personalizada ?? "",
-    barras: r.barras ?? [],
-    servicios: r.servicios ?? [],
+    barras: parseJsonField(r.barras, []),
+    servicios: parseJsonField(r.servicios, []),
     paquetesSeleccionados: r.paquetes_seleccionados ?? [],
     condicionIva: r.condicion_iva,
     contrato: r.contrato,
@@ -117,10 +126,21 @@ const SELECT_COLS = `
 // GET — all active eventos (deleted_at IS NULL)
 export async function GET() {
   try {
-    const rows = await sql(
-      `SELECT ${SELECT_COLS} FROM eventos WHERE deleted_at IS NULL ORDER BY fecha DESC NULLS LAST, created_at DESC`,
-      []
-    )
+    const rows = await sql`
+      SELECT
+        id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+        dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+        recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+        multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+        descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+        condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+        precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+        notas_internas, pagos, asignaciones, costos_calculados,
+        stock_descontado, fecha_impresion, created_at, updated_at
+      FROM eventos
+      WHERE deleted_at IS NULL
+      ORDER BY fecha DESC NULLS LAST, created_at DESC
+    `
     return NextResponse.json(rows.map(fromRow))
   } catch (err) {
     console.error("[API] Error fetching eventos:", err)
@@ -164,8 +184,20 @@ export async function POST(req: Request) {
         updated_at = NOW()
     `
 
-    // Re-fetch con columnas explícitas para evitar columna obsoleta "data"
-    const rows2 = await sql(`SELECT ${SELECT_COLS} FROM eventos WHERE id = $1`, [r.id])
+    // Re-fetch con columnas explícitas
+    const rows2 = await sql`
+      SELECT
+        id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
+        dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
+        recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
+        multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
+        descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+        condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
+        precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+        notas_internas, pagos, asignaciones, costos_calculados,
+        stock_descontado, fecha_impresion, created_at, updated_at
+      FROM eventos WHERE id = ${r.id}
+    `
     const created = rows2[0]
     await logActivity("evento", "creado", nombre, `Fecha: ${r.fecha || "sin fecha"} | Salon: ${r.salon || "sin salon"}`)
     return NextResponse.json(fromRow(created), { status: 201 })
