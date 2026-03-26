@@ -12,15 +12,34 @@ export async function GET() {
       FROM eventos_eliminados
       ORDER BY eliminado_at DESC
     `
-    return NextResponse.json(rows.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      fecha: r.fecha,
-      estado: r.estado,
-      motivo: r.motivo,
-      eliminadoAt: r.eliminado_at,
-      ...(r.evento_data || {}),
-    })))
+    return NextResponse.json(rows.map((r) => {
+      // evento_data can be either a JSONB object or a JSON string
+      let eventoData: Record<string, unknown> = {}
+      if (r.evento_data) {
+        if (typeof r.evento_data === "string") {
+          try { eventoData = JSON.parse(r.evento_data) } catch { eventoData = {} }
+        } else {
+          eventoData = r.evento_data
+        }
+      }
+      return {
+        id: r.id,
+        nombre: r.nombre,
+        fecha: r.fecha,
+        estado: r.estado,
+        motivo: r.motivo,
+        eliminado_at: r.eliminado_at,
+        data: {
+          adultos: eventoData.adultos,
+          adolescentes: eventoData.adolescentes,
+          ninos: eventoData.ninos,
+          personasDietasEspeciales: eventoData.personasDietasEspeciales,
+          salon: eventoData.salon,
+          tipoEvento: eventoData.tipoEvento,
+          nombrePareja: eventoData.nombrePareja,
+        },
+      }
+    }))
   } catch (err) {
     console.error("[API] Error fetching papelera:", err)
     return NextResponse.json([])

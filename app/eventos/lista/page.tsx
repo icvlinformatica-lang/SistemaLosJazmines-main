@@ -82,8 +82,41 @@ import {
   ShoppingCart,
   X,
   Archive,
+  AlertTriangle,
+  PackageMinus,
 } from "lucide-react"
 import { generateId } from "@/lib/utils-client"
+
+// Compute the list of insumos that would be discounted from stock when printing
+function calcularInsumosADescontar(
+  evento: EventoGuardado,
+  recetas: import("@/lib/store").Receta[],
+  insumos: import("@/lib/store").Insumo[]
+): Array<{ descripcion: string; cantidad: number; unidad: string }> {
+  const cantidadPorReceta: Record<string, number> = {}
+  ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
+  ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
+  ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
+  ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
+
+  const stockDelta: Record<string, number> = {}
+  Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
+    const receta = recetas.find((r) => r.id === recetaId)
+    if (!receta) return
+    receta.insumos.forEach((ri) => {
+      const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
+      stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
+    })
+  })
+
+  return Object.entries(stockDelta)
+    .map(([insumoId, cantidad]) => {
+      const insumo = insumos.find((i) => i.id === insumoId)
+      if (!insumo) return null
+      return { descripcion: insumo.descripcion, cantidad, unidad: insumo.unidad }
+    })
+    .filter(Boolean) as Array<{ descripcion: string; cantidad: number; unidad: string }>
+}
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
     label: "Borrador",
@@ -846,34 +879,15 @@ export default function EventosListaPage() {
         )}
       </main>
 
-      {/* Delete Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta accion eliminara el evento permanentemente.
-              No se puede deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmEliminar}
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-            >
-              Si, Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Print Sections Dialog */}
       <Dialog open={imprimirDialogOpen} onOpenChange={setImprimirDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
           {(() => {
             const eventoImprimir = imprimirEventoId ? eventos.find((e) => e.id === imprimirEventoId) : null
-            const yaDescontado = eventoImprimir?.estado !== "pendiente"
+            const yaDescontado = eventoImprimir?.stockDescontado === true
+            const insumosADescontar = (!yaDescontado && eventoImprimir)
+              ? calcularInsumosADescontar(eventoImprimir, recetas, insumos)
+              : []
             return (
               <>
                 <DialogHeader>
@@ -882,75 +896,117 @@ export default function EventosListaPage() {
                     {eventoImprimir?.nombrePareja || eventoImprimir?.nombre || "Evento"}
                   </DialogDescription>
                 </DialogHeader>
-                {yaDescontado && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
-                    <Printer className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>El stock de este evento ya fue descontado. Reimprimir <strong>no modificara</strong> el inventario.</span>
+                <div className="flex-1 overflow-y-auto space-y-4 py-2 pr-1">
+                  {yaDescontado ? (
+                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
+                      <Printer className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>El stock de este evento ya fue descontado. Reimprimir <strong>no modificara</strong> el inventario.</span>
+                    </div>
+                  ) : insumosADescontar.length > 0 ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-200">
+                        <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0" />
+                        <span className="text-sm font-semibold text-amber-900">Al imprimir se descontara del stock:</span>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-amber-100">
+                              <th className="text-left px-4 py-1.5 font-medium text-amber-800">Insumo</th>
+                              <th className="text-right px-4 py-1.5 font-medium text-amber-800 w-28">Cantidad</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {insumosADescontar.map((item, i) => (
+                              <tr key={i} className={i % 2 === 0 ? "bg-amber-50" : "bg-white"}>
+                                <td className="px-4 py-1.5 text-amber-900 font-medium flex items-center gap-1.5">
+                                  <PackageMinus className="h-3 w-3 text-amber-600 shrink-0" />
+                                  {item.descripcion}
+                                </td>
+                                <td className="px-4 py-1.5 text-right font-mono text-amber-900">
+                                  -{item.cantidad.toFixed(2)} {item.unidad}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="px-4 py-2.5 bg-amber-100 text-xs text-amber-800 border-t border-amber-200">
+                        El evento pasara automaticamente a estado <strong>En Preparacion</strong> y el stock quedara reservado.
+                        Podras recuperarlo desde el menu de acciones si el evento se cancela.
+                      </div>
+                    </div>
+                  ) : !yaDescontado && eventoImprimir ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>Este evento no tiene recetas asignadas. No se descontara stock del inventario al imprimir.</span>
+                    </div>
+                  ) : null}
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-foreground">Secciones a incluir:</p>
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        id="sec-listaCompras"
+                        checked={seccionesSeleccionadas.listaCompras}
+                        onCheckedChange={(checked) =>
+                          setSeccionesSeleccionadas((prev) => ({ ...prev, listaCompras: !!checked }))
+                        }
+                      />
+                      <Label htmlFor="sec-listaCompras" className="cursor-pointer text-sm font-medium leading-none">
+                        Lista de Compras - Cocina
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        id="sec-barraCocteles"
+                        checked={seccionesSeleccionadas.barraCocteles}
+                        onCheckedChange={(checked) =>
+                          setSeccionesSeleccionadas((prev) => ({ ...prev, barraCocteles: !!checked }))
+                        }
+                      />
+                      <Label htmlFor="sec-barraCocteles" className="cursor-pointer text-sm font-medium leading-none">
+                        Lista de Compras - Barra
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        id="sec-guiaProduccion"
+                        checked={seccionesSeleccionadas.guiaProduccion}
+                        onCheckedChange={(checked) =>
+                          setSeccionesSeleccionadas((prev) => ({ ...prev, guiaProduccion: !!checked }))
+                        }
+                      />
+                      <Label htmlFor="sec-guiaProduccion" className="cursor-pointer text-sm font-medium leading-none">
+                        Guia de Produccion (Mise en Place)
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        id="sec-hojaGastos"
+                        checked={seccionesSeleccionadas.hojaGastos}
+                        onCheckedChange={(checked) =>
+                          setSeccionesSeleccionadas((prev) => ({ ...prev, hojaGastos: !!checked }))
+                        }
+                      />
+                      <Label htmlFor="sec-hojaGastos" className="cursor-pointer text-sm font-medium leading-none">
+                        Hoja de Gastos (Resumen Financiero)
+                      </Label>
+                    </div>
                   </div>
-                )}
-          <div className="space-y-4 py-4">
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="sec-listaCompras"
-                checked={seccionesSeleccionadas.listaCompras}
-                onCheckedChange={(checked) =>
-                  setSeccionesSeleccionadas((prev) => ({ ...prev, listaCompras: !!checked }))
-                }
-              />
-              <Label htmlFor="sec-listaCompras" className="cursor-pointer text-sm font-medium leading-none">
-                Lista de Compras - Cocina
-              </Label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="sec-barraCocteles"
-                checked={seccionesSeleccionadas.barraCocteles}
-                onCheckedChange={(checked) =>
-                  setSeccionesSeleccionadas((prev) => ({ ...prev, barraCocteles: !!checked }))
-                }
-              />
-              <Label htmlFor="sec-barraCocteles" className="cursor-pointer text-sm font-medium leading-none">
-                Lista de Compras - Barra
-              </Label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="sec-guiaProduccion"
-                checked={seccionesSeleccionadas.guiaProduccion}
-                onCheckedChange={(checked) =>
-                  setSeccionesSeleccionadas((prev) => ({ ...prev, guiaProduccion: !!checked }))
-                }
-              />
-              <Label htmlFor="sec-guiaProduccion" className="cursor-pointer text-sm font-medium leading-none">
-                Guia de Produccion (Mise en Place)
-              </Label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="sec-hojaGastos"
-                checked={seccionesSeleccionadas.hojaGastos}
-                onCheckedChange={(checked) =>
-                  setSeccionesSeleccionadas((prev) => ({ ...prev, hojaGastos: !!checked }))
-                }
-              />
-              <Label htmlFor="sec-hojaGastos" className="cursor-pointer text-sm font-medium leading-none">
-                Hoja de Gastos (Resumen Financiero)
-              </Label>
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setImprimirDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleConfirmarImpresion}
-              disabled={ningunaSeccionSeleccionada}
-              className="gap-2"
-            >
-              <Printer className="h-4 w-4" />
-              Imprimir
-            </Button>
-          </DialogFooter>
+                </div>
+                <DialogFooter className="gap-2 sm:gap-0 border-t pt-4">
+                  <Button variant="outline" onClick={() => setImprimirDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleConfirmarImpresion}
+                    disabled={ningunaSeccionSeleccionada}
+                    className="gap-2"
+                  >
+                    <Printer className="h-4 w-4" />
+                    {yaDescontado ? "Reimprimir" : "Imprimir y Descontar Stock"}
+                  </Button>
+                </DialogFooter>
               </>
             )
           })()}
@@ -1012,9 +1068,9 @@ export default function EventosListaPage() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
+            <AlertDialogTitle>Mover a Papelera</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion no se puede deshacer. El evento sera eliminado permanentemente.
+              El evento sera movido a la papelera. Podras restaurarlo desde la seccion Papelera de Eventos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {(() => {
@@ -1048,7 +1104,7 @@ export default function EventosListaPage() {
               onClick={confirmEliminar}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
-              Si, Eliminar
+              Si, Mover a Papelera
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Suspense } from "react"
+import { useState, Suspense, useEffect } from "react"
 
 import { useInsumos } from "@/lib/hooks/use-almacen"
 import { type Insumo, type Unidad, formatCurrency } from "@/lib/store"
@@ -19,12 +19,153 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Plus, Search, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Plus, Search, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, History, RefreshCw, Trash } from "lucide-react"
+
+interface ActivityEntry {
+  id: string
+  tipo: string
+  accion: string
+  nombre: string
+  detalle?: string
+  created_at: string
+}
+
+const accionConfig: Record<string, { label: string; className: string }> = {
+  creado: { label: "Creado", className: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  eliminado: { label: "Eliminado", className: "bg-red-100 text-red-800 border-red-300" },
+  modificado: { label: "Modificado", className: "bg-sky-100 text-sky-800 border-sky-300" },
+  planificado: { label: "Planificado", className: "bg-amber-100 text-amber-800 border-amber-300" },
+}
+
+const tipoLabel: Record<string, string> = {
+  insumo: "Insumo Cocina",
+  insumo_barra: "Insumo Barra",
+  receta: "Receta",
+  coctel: "Coctel",
+  evento: "Evento",
+}
+
+function formatFechaHora(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("es-AR", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    })
+  } catch {
+    return iso
+  }
+}
 
 const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR"]
 
 type SortField = "codigo" | "descripcion" | "stockActual"
 type SortDir = "asc" | "desc"
+
+function ActivityLog() {
+  const [activities, setActivities] = useState<ActivityEntry[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchActivities = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/activity-log")
+      if (res.ok) {
+        const data = await res.json()
+        setActivities(Array.isArray(data) ? data : [])
+      }
+    } catch {
+      setActivities([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchActivities()
+  }, [])
+
+  const handleLimpiar = async () => {
+    if (!confirm("Borrar todo el historial de actividad? Esta accion no se puede deshacer.")) return
+    await fetch("/api/activity-log", { method: "DELETE" })
+    setActivities([])
+  }
+
+  return (
+    <Card className="mt-8">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <History className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <CardTitle className="text-base">Historial de Actividades</CardTitle>
+              <CardDescription>Ultimas 100 acciones registradas en el sistema</CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={fetchActivities} disabled={loading} className="gap-2">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Actualizar
+            </Button>
+            {activities.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={handleLimpiar} className="gap-2 text-muted-foreground hover:text-destructive">
+                <Trash className="h-3.5 w-3.5" />
+                Limpiar
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="py-10 text-center text-muted-foreground text-sm">Cargando historial...</div>
+        ) : activities.length === 0 ? (
+          <div className="py-10 text-center text-muted-foreground text-sm">
+            No hay actividad registrada todavia.
+          </div>
+        ) : (
+          <div className="rounded-lg border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[140px]">Fecha y Hora</TableHead>
+                  <TableHead className="w-[110px]">Tipo</TableHead>
+                  <TableHead className="w-[100px]">Accion</TableHead>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Detalle</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activities.map((act) => {
+                  const accion = accionConfig[act.accion] ?? { label: act.accion, className: "bg-muted text-muted-foreground border-muted-foreground" }
+                  return (
+                    <TableRow key={act.id}>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatFechaHora(act.created_at)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {tipoLabel[act.tipo] ?? act.tipo}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`text-xs ${accion.className}`}>
+                          {accion.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm font-medium">{act.nombre}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[300px] truncate">
+                        {act.detalle || "-"}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 function AlmacenContent() {
   const { insumos, isLoading, addInsumo, updateInsumo, deleteInsumo } = useInsumos()
@@ -305,6 +446,7 @@ function AlmacenContent() {
           </div>
         </CardContent>
       </Card>
+      <ActivityLog />
     </main>
   )
 }
