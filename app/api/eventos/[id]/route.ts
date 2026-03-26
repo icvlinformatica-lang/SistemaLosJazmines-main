@@ -3,6 +3,15 @@ import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 
+// Helper to safely parse JSON fields that might come as strings from PostgreSQL
+function parseJsonField<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === "string") {
+    try { return JSON.parse(value) } catch { return fallback }
+  }
+  return value as T
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: Record<string, any>) {
   return {
@@ -20,21 +29,21 @@ function fromRow(r: Record<string, any>) {
     adolescentes: r.adolescentes ?? 0,
     ninos: r.ninos ?? 0,
     personasDietasEspeciales: r.personas_dietas_especiales ?? 0,
-    recetasAdultos: r.recetas_adultos ?? [],
-    recetasAdolescentes: r.recetas_adolescentes ?? [],
-    recetasNinos: r.recetas_ninos ?? [],
-    recetasDietasEspeciales: r.recetas_dietas_especiales ?? [],
-    multipliersAdultos: r.multipliers_adultos ?? {},
-    multipliersAdolescentes: r.multipliers_adolescentes ?? {},
-    multipliersNinos: r.multipliers_ninos ?? {},
-    multipliersDietasEspeciales: r.multipliers_dietas_especiales ?? {},
+    recetasAdultos: parseJsonField(r.recetas_adultos, []),
+    recetasAdolescentes: parseJsonField(r.recetas_adolescentes, []),
+    recetasNinos: parseJsonField(r.recetas_ninos, []),
+    recetasDietasEspeciales: parseJsonField(r.recetas_dietas_especiales, []),
+    multipliersAdultos: parseJsonField(r.multipliers_adultos, {}),
+    multipliersAdolescentes: parseJsonField(r.multipliers_adolescentes, {}),
+    multipliersNinos: parseJsonField(r.multipliers_ninos, {}),
+    multipliersDietasEspeciales: parseJsonField(r.multipliers_dietas_especiales, {}),
     descripcionPersonalizada: r.descripcion_personalizada ?? "",
-    barras: r.barras ?? [],
-    servicios: r.servicios ?? [],
-    paquetesSeleccionados: r.paquetes_seleccionados ?? [],
+    barras: parseJsonField(r.barras, []),
+    servicios: parseJsonField(r.servicios, []),
+    paquetesSeleccionados: parseJsonField(r.paquetes_seleccionados, []),
     condicionIva: r.condicion_iva,
-    contrato: r.contrato,
-    planDeCuotas: r.plan_de_cuotas,
+    contrato: parseJsonField(r.contrato, null),
+    planDeCuotas: parseJsonField(r.plan_de_cuotas, null),
     estado: r.estado ?? "pendiente",
     colorTag: r.color_tag,
     precioVenta: r.precio_venta != null ? Number(r.precio_venta) : undefined,
@@ -43,9 +52,9 @@ function fromRow(r: Record<string, any>) {
     costoServicios: r.costo_servicios != null ? Number(r.costo_servicios) : undefined,
     costoOperativo: r.costo_operativo != null ? Number(r.costo_operativo) : undefined,
     notasInternas: r.notas_internas,
-    pagos: r.pagos ?? [],
-    asignaciones: r.asignaciones ?? [],
-    costosCalculados: r.costos_calculados,
+    pagos: parseJsonField(r.pagos, []),
+    asignaciones: parseJsonField(r.asignaciones, []),
+    costosCalculados: parseJsonField(r.costos_calculados, null),
     stockDescontado: r.stock_descontado ?? false,
     fechaImpresion: r.fecha_impresion,
     createdAt: r.created_at,

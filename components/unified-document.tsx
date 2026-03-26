@@ -526,9 +526,9 @@ export function UnifiedDocument({ snapshot, onClose, sections }: UnifiedDocument
               LISTA DE COMPRAS - BARRA
             </h2>
 
-            {evento.barras && evento.barras.length > 0 && (
+            {Array.isArray(evento.barras) && evento.barras.length > 0 && (
               <div className="mb-4 text-sm border border-black p-3">
-                {evento.barras.map((barra) => {
+                {(evento.barras as Array<{ id: string; barraTemplateId: string; tragosPorPersona: number }>).map((barra) => {
                   const template = (state.barrasTemplates || []).find((t) => t.id === barra.barraTemplateId)
                   const personas = evento.adultos + evento.adolescentes
                   return (

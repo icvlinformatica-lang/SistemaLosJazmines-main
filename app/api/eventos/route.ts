@@ -53,6 +53,15 @@ function toRow(ev: Record<string, unknown>) {
 
 // DB row → camelCase for app
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Helper to safely parse JSON fields that might come as strings from PostgreSQL
+function parseJsonField<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === "string") {
+    try { return JSON.parse(value) } catch { return fallback }
+  }
+  return value as T
+}
+
 function fromRow(r: Record<string, any>) {
   return {
     id: r.id,
@@ -69,17 +78,17 @@ function fromRow(r: Record<string, any>) {
     adolescentes: r.adolescentes ?? 0,
     ninos: r.ninos ?? 0,
     personasDietasEspeciales: r.personas_dietas_especiales ?? 0,
-    recetasAdultos: r.recetas_adultos ?? [],
-    recetasAdolescentes: r.recetas_adolescentes ?? [],
-    recetasNinos: r.recetas_ninos ?? [],
-    recetasDietasEspeciales: r.recetas_dietas_especiales ?? [],
-    multipliersAdultos: r.multipliers_adultos ?? {},
-    multipliersAdolescentes: r.multipliers_adolescentes ?? {},
-    multipliersNinos: r.multipliers_ninos ?? {},
-    multipliersDietasEspeciales: r.multipliers_dietas_especiales ?? {},
+    recetasAdultos: parseJsonField(r.recetas_adultos, []),
+    recetasAdolescentes: parseJsonField(r.recetas_adolescentes, []),
+    recetasNinos: parseJsonField(r.recetas_ninos, []),
+    recetasDietasEspeciales: parseJsonField(r.recetas_dietas_especiales, []),
+    multipliersAdultos: parseJsonField(r.multipliers_adultos, {}),
+    multipliersAdolescentes: parseJsonField(r.multipliers_adolescentes, {}),
+    multipliersNinos: parseJsonField(r.multipliers_ninos, {}),
+    multipliersDietasEspeciales: parseJsonField(r.multipliers_dietas_especiales, {}),
     descripcionPersonalizada: r.descripcion_personalizada ?? "",
-    barras: r.barras ?? [],
-    servicios: r.servicios ?? [],
+    barras: parseJsonField(r.barras, []),
+    servicios: parseJsonField(r.servicios, []),
     paquetesSeleccionados: r.paquetes_seleccionados ?? [],
     condicionIva: r.condicion_iva,
     contrato: r.contrato,
