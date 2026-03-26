@@ -1448,11 +1448,20 @@ export function calcularComprasBarras(
   cocteles: Coctel[],
   insumosBarra: InsumoBarra[],
 ): CalculoCompraBarra[] {
-  if (!evento.barras || evento.barras.length === 0) return []
+  // Parsear barras si viene como string JSON desde la DB
+  let barras = evento.barras
+  if (typeof barras === "string") {
+    try {
+      barras = JSON.parse(barras)
+    } catch {
+      barras = []
+    }
+  }
+  if (!barras || !Array.isArray(barras) || barras.length === 0) return []
 
   const comprasMap: Record<string, { cantidadNecesaria: number }> = {}
 
-  evento.barras.forEach((barra) => {
+  barras.forEach((barra) => {
     const personas = evento.adultos + evento.adolescentes
     const totalTragos = personas * barra.tragosPorPersona
     const coctelesCount = barra.coctelesIncluidos.length
