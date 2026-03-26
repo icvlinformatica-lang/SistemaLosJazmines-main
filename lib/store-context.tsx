@@ -72,6 +72,7 @@ interface StoreContextType {
   addEvento: (evento: EventoGuardado) => void
   updateEvento: (id: string, updates: Partial<EventoGuardado>) => void
   deleteEvento: (id: string) => void
+  setEventos: (eventos: EventoGuardado[]) => void
   // Servicios
   addServicio: (servicio: Omit<Servicio, "id">) => void
   updateServicio: (id: string, updates: Partial<Servicio>) => void
@@ -693,6 +694,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const setEventos = (nuevosEventos: EventoGuardado[]) => {
+    setState((prev) => ({ ...prev, eventos: nuevosEventos }))
+  }
+
   // === Evento ===
   const setEventoActual = (evento: Evento | null) => {
     setState((prev) => ({ ...prev, eventoActual: evento }))
@@ -793,6 +798,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         addEvento,
         updateEvento,
         deleteEvento,
+        setEventos,
         addServicio,
         updateServicio,
         deleteServicio,
