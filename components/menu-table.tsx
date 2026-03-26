@@ -252,7 +252,16 @@ export function MenuTable({
                     key={receta.id}
                     className={`border-b border-border/50 transition-colors hover:bg-muted/20 ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
                   >
-                    <td className="py-2.5 px-3 font-medium text-foreground">{receta.nombre}</td>
+                    <td className="py-2.5 px-3 font-medium text-foreground">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{receta.nombre}</span>
+                        {receta.insumos.length === 0 && (
+                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none border border-amber-400 bg-amber-50 text-amber-600">
+                            falta completar
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     {SEGMENTS.map((s) => {
                       const selected = segmentArrays[s.key].includes(receta.id)
                       const multiplier = segmentMultipliers[s.key][receta.id] || 1
