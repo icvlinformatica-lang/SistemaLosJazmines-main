@@ -19,7 +19,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         updated_at = NOW()
     `
     await sql`DELETE FROM eventos_eliminados WHERE id = ${id}`
-    await logActivity("evento", "modificado", row.nombre || "Sin nombre", "Restaurado desde papelera")
+    await logActivity(
+      "evento",
+      "modificado",
+      row.nombre || "Sin nombre",
+      `Restaurado desde la papelera | Fecha: ${row.fecha || "sin fecha"} | Estado anterior: ${row.estado || "-"}`
+    )
 
     return NextResponse.json({ success: true, evento: row.data })
   } catch (err) {

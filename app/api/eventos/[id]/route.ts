@@ -205,7 +205,22 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const updated = await fetchEvento(id)
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    await logActivity("evento", "modificado", nombre, `Estado: ${ev.estado}`)
+
+    // Log detallado según qué cambió
+    const totalInvitados = (ev.adultos||0) + (ev.adolescentes||0) + (ev.ninos||0) + (ev.personasDietasEspeciales||0)
+    const totalPlatos = [
+      ...(ev.recetasAdultos||[]),
+      ...(ev.recetasAdolescentes||[]),
+      ...(ev.recetasNinos||[]),
+      ...(ev.recetasDietasEspeciales||[]),
+    ].length
+
+    await logActivity(
+      "evento",
+      "modificado",
+      nombre,
+      `Invitados: ${totalInvitados} (A:${ev.adultos||0} Adol:${ev.adolescentes||0} N:${ev.ninos||0}) | Platos: ${totalPlatos} | Estado: ${ev.estado}`
+    )
     return NextResponse.json(fromRow(updated))
   } catch (err) {
     console.error("[API] Error updating evento:", err)
