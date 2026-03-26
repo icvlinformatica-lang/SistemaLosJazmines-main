@@ -1,3 +1,5 @@
+"use client"
+
 // Data Store for Los Jazmines Catering System
 // Uses localStorage for persistence
 

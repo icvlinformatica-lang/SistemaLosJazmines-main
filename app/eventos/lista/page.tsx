@@ -78,11 +78,12 @@ import {
   CheckCircle,
   RotateCcw,
   Sparkles,
+  RefreshCw,
   ShoppingCart,
   X,
   Archive,
 } from "lucide-react"
-import { generateId } from "@/lib/store"
+import { generateId } from "@/lib/utils-client"
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
     label: "Borrador",
@@ -150,6 +151,7 @@ export default function EventosListaPage() {
 
   // Consolidar compras
   const [modoConsolidar, setModoConsolidar] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [eventosSeleccionados, setEventosSeleccionados] = useState<Set<string>>(new Set())
   const [compraConsolidada, setCompraConsolidada] = useState<CalculoCompraSegmentado[] | null>(null)
   const [consolidadaDialogOpen, setConsolidadaDialogOpen] = useState(false)
@@ -540,6 +542,21 @@ export default function EventosListaPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-muted-foreground"
+              disabled={syncing}
+              onClick={async () => {
+                setSyncing(true)
+                await fetchEventos()
+                setSyncing(false)
+                toast({ title: "Lista actualizada", description: "Se sincronizaron los eventos desde la base de datos." })
+              }}
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{syncing ? "Sincronizando..." : "Actualizar"}</span>
+            </Button>
             <Link href="/eventos/papelera">
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
                 <Archive className="h-4 w-4" />
