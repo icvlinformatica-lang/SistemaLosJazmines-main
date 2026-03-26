@@ -125,17 +125,40 @@ function EventoPageContent() {
 
 
   // Load event data if editing - use eventos from context (synced with DB)
+  // Also try to fetch directly from API if not found in context
   useEffect(() => {
-    if (editingEventoId && !state.eventoActual) {
-      // Search in the eventos array from context (comes from DB)
-      const eventoToEdit = eventos.find((e) => e.id === editingEventoId)
-      if (eventoToEdit) {
-        setEventoActual(eventoToEdit)
-      } else if (!loading) {
-        // Only redirect if we're done loading and the event wasn't found
-        router.push("/eventos/lista")
-      }
+    if (!editingEventoId) return
+    if (state.eventoActual?.id === editingEventoId) return // Already loaded
+    
+    // First try to find in context
+    const eventoFromContext = eventos.find((e) => e.id === editingEventoId)
+    if (eventoFromContext) {
+      setEventoActual(eventoFromContext)
+      return
     }
+    
+    // If still loading, wait
+    if (loading) return
+    
+    // If not found in context after loading, try direct API fetch
+    const fetchEvento = async () => {
+      try {
+        const res = await fetch(`/api/eventos/${editingEventoId}`)
+        if (res.ok) {
+          const evento = await res.json()
+          if (evento) {
+            setEventoActual(evento)
+            return
+          }
+        }
+      } catch (err) {
+        console.error("[v0] Error fetching evento:", err)
+      }
+      // Only redirect if truly not found
+      router.push("/eventos/lista")
+    }
+    
+    fetchEvento()
   }, [editingEventoId, state.eventoActual, setEventoActual, router, eventos, loading])
 
   const evento = state.eventoActual
