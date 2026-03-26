@@ -21,8 +21,6 @@ import {
   type PaqueteSalon,
   type EstadoEvento,
   SALONES,
-  loadState,
-  getEventoById,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -100,7 +98,7 @@ function EventoPageContent() {
   const isEditing = !!editingEventoId
   const { toast } = useToast()
   
-  const { state, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones } = useStore()
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
@@ -126,18 +124,19 @@ function EventoPageContent() {
   // Package selection state (no more individual service dialog)
 
 
-  // Load event data if editing
+  // Load event data if editing - use eventos from context (synced with DB)
   useEffect(() => {
     if (editingEventoId && !state.eventoActual) {
-      const fullState = loadState()
-      const eventoToEdit = getEventoById(fullState, editingEventoId)
+      // Search in the eventos array from context (comes from DB)
+      const eventoToEdit = eventos.find((e) => e.id === editingEventoId)
       if (eventoToEdit) {
         setEventoActual(eventoToEdit)
-      } else {
+      } else if (!loading) {
+        // Only redirect if we're done loading and the event wasn't found
         router.push("/eventos/lista")
       }
     }
-  }, [editingEventoId, state.eventoActual, setEventoActual, router])
+  }, [editingEventoId, state.eventoActual, setEventoActual, router, eventos, loading])
 
   const evento = state.eventoActual
 
