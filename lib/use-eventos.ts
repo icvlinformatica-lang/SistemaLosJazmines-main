@@ -4,36 +4,31 @@ import { useCallback } from "react"
 import { useStore } from "@/lib/store-context"
 import type { EventoGuardado } from "@/lib/store"
 
-/**
- * useEventos — thin wrapper over StoreContext.
- * Reads from the global store (already synced with /api/eventos on mount)
- * and delegates mutations back to store actions.
- */
 export function useEventos() {
-  const { eventos, loading, addEvento, updateEvento: storeUpdate, deleteEvento: storeDelete } = useStore()
+  const { eventos, loading, addEvento, updateEvento: storeUpdate, deleteEvento: storeDelete, setEventos } = useStore()
 
+  // Fetch desde la API y actualiza el store con los datos frescos
   const fetchEventos = useCallback(async () => {
-    // Re-fetch is handled by the store on mount; expose a manual trigger for pull-to-refresh
-    const res = await fetch("/api/eventos")
-    if (res.ok) {
-      // The store will update on next render cycle — nothing else needed
+    try {
+      const res = await fetch("/api/eventos")
+      if (res.ok) {
+        const data: EventoGuardado[] = await res.json()
+        setEventos(data)
+      }
+    } catch (err) {
+      console.error("[useEventos] Error fetching:", err)
     }
-  }, [])
+  }, [setEventos])
 
+  // Delega a addEvento del store, que hace el POST y actualiza el store en memoria
   const crearEvento = useCallback(async (evento: Omit<EventoGuardado, "id"> & { id?: string }): Promise<EventoGuardado | null> => {
     try {
-      const res = await fetch("/api/eventos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(evento),
-      })
-      if (!res.ok) return null
-      const created: EventoGuardado = await res.json()
-      return created
+      await addEvento(evento as EventoGuardado)
+      return null
     } catch {
       return null
     }
-  }, [])
+  }, [addEvento])
 
   const actualizarEvento = useCallback(async (id: string, cambios: Partial<EventoGuardado>): Promise<boolean> => {
     try {
