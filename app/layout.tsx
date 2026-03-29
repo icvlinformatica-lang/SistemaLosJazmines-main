@@ -5,6 +5,7 @@ import { StoreProvider } from "@/lib/store-context"
 import { UIProvider } from "@/lib/ui-context"
 import { Sidebar } from "@/components/sidebar"
 import { Toaster } from "@/components/ui/toaster"
+import { WelcomeModal } from "@/components/welcome-modal"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -36,6 +37,7 @@ export default function RootLayout({
               </main>
             </div>
             <Toaster />
+            <WelcomeModal />
           </UIProvider>
         </StoreProvider>
       </body>
