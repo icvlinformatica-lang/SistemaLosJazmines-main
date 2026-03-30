@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react"
 
-import { useInsumos } from "@/lib/hooks/use-almacen"
+import { useStore } from "@/lib/store-context"
 import { type Insumo, type Unidad, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,7 +27,7 @@ type SortField = "codigo" | "descripcion" | "stockActual"
 type SortDir = "asc" | "desc"
 
 function AlmacenContent() {
-  const { insumos, isLoading, addInsumo, updateInsumo, deleteInsumo } = useInsumos()
+  const { insumos, loading: isLoading, addInsumo, updateInsumo, deleteInsumo } = useStore()
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<SortField>("codigo")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
