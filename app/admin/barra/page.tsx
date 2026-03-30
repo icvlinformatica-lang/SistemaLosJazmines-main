@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react"
 
-import { useInsumosBarra } from "@/lib/hooks/use-almacen"
+import { useStore } from "@/lib/store-context"
 import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,7 +25,7 @@ const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR", "GRS", "L"]
 const categorias: CategoriaInsumoBarra[] = ["Alcoholes", "Licores", "Mixers", "Jugos", "Garnish", "Otros"]
 
 function BarraAlmacenContent() {
-  const { insumosBarra, isLoading, addInsumoBarra, updateInsumoBarra, deleteInsumoBarra } = useInsumosBarra()
+  const { insumosBarra, loading: isLoading, addInsumoBarra, updateInsumoBarra, deleteInsumoBarra } = useStore()
   const [searchTerm, setSearchTerm] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaInsumoBarra | "Todos">("Todos")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
