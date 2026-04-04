@@ -32,7 +32,7 @@ export default function RootLayout({
           <UIProvider>
             <div className="flex h-screen overflow-hidden">
               <Sidebar />
-              <main className="relative flex-1 overflow-y-auto">
+              <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
                 {children}
               </main>
             </div>

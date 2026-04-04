@@ -109,7 +109,7 @@ function BarraAlmacenContent() {
 
   if (isLoading) {
     return (
-      <main className="mx-auto max-w-4xl px-6 py-8">
+      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex items-center justify-center h-64">
           <div className="text-muted-foreground">Cargando insumos de barra...</div>
         </div>
@@ -118,7 +118,7 @@ function BarraAlmacenContent() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-8">
+    <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight">Almacen de Insumos de Barra</h1>
         <p className="mt-1 text-base text-muted-foreground">Gestiona insumos de cocteleria y bebidas</p>
@@ -283,6 +283,7 @@ function BarraAlmacenContent() {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <div className="rounded-lg border">
             <Table>
               <TableHeader>
@@ -327,6 +328,7 @@ function BarraAlmacenContent() {
                 )}
               </TableBody>
             </Table>
+          </div>
           </div>
         </CardContent>
       </Card>

@@ -768,7 +768,7 @@ function EventoPageContent() {
   if (!evento) {
     return (
       <div className="min-h-screen bg-background">
-        <header className="border-b border-border bg-background px-6 py-4">
+        <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
           <div className="mx-auto max-w-4xl flex items-center gap-4">
             <Link href="/" className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-6 w-6" />
@@ -776,7 +776,7 @@ function EventoPageContent() {
             <h1 className="text-xl font-semibold">Planificador de Evento</h1>
           </div>
         </header>
-        <main className="mx-auto max-w-4xl px-6 py-12">
+        <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <ChefHat className="mb-4 h-16 w-16 text-muted-foreground" />
             <h1 className="mb-2 text-2xl font-bold">No hay evento activo</h1>
@@ -893,7 +893,7 @@ function EventoPageContent() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card px-6 py-3 sticky top-0 z-40">
+      <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
           {isEditing ? (
             <Link href="/eventos/lista" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">

@@ -305,7 +305,7 @@ export default function RecetarioPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="mx-auto max-w-4xl px-6 py-8">
+      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Laboratorio de Sabores</h1>
@@ -666,7 +666,7 @@ export default function RecetarioPage() {
         )}
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
-          <Card className="flex flex-col lg:sticky lg:top-6" style={{ height: "calc(100vh - 200px)" }}>
+          <Card className="flex flex-col lg:sticky lg:top-6 lg:h-[calc(100vh-200px)] min-h-[320px]">
             <CardHeader className="pb-3 shrink-0">
               <div className="flex items-center justify-between">
                 <div>
