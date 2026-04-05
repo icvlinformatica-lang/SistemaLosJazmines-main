@@ -128,6 +128,7 @@ export default function ComprasPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <div className="rounded-lg border">
               <Table>
                 <TableHeader>
@@ -185,6 +186,7 @@ export default function ComprasPage() {
                   </TableRow>
                 </TableFooter>
               </Table>
+            </div>
             </div>
           </CardContent>
         </Card>

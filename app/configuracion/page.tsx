@@ -504,7 +504,7 @@ export default function ConfiguracionPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
+      <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-4xl flex items-center gap-4">
           <Link href="/" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
@@ -513,7 +513,7 @@ export default function ConfiguracionPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-8 space-y-8">
+      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-8">
         {/* Section 0: Estado de Guardado */}
         <Card>
           <CardHeader>
