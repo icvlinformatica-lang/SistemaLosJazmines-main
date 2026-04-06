@@ -1881,92 +1881,148 @@ function EventoPageContent() {
           setDialogBarraOpen(open)
           if (!open) resetBarraForm()
         }}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingBarraIndex !== null ? "Editar Barra" : "Configurar Nueva Barra"}</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-lg font-semibold">
+                {editingBarraIndex !== null ? "Editar Barra" : "Configurar Nueva Barra"}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
                 {editingBarraIndex !== null ? "Modifica la configuración de la barra para este evento" : "Selecciona una barra y personaliza los cocteles incluidos"}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4">
-              {/* Seleccionar barra template */}
-              <div>
-                <Label className="text-base">Seleccionar Barra</Label>
+            <div className="space-y-6 py-2">
+              {/* Seleccionar barra template — lista de filas con checkbox */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">Seleccionar Barra</p>
                 {barrasTemplates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground mt-2 py-4 text-center border rounded-lg">
+                  <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
                     No hay barras creadas. Ve a Gestion de Cocteles para crear una.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {barrasTemplates.map((template) => (
-                      <Button
-                        key={template.id}
-                        variant={barraForm.barraTemplateId === template.id ? "default" : "outline"}
-                        onClick={() => handleSelectBarraTemplate(template.id)}
-                        className={barraForm.barraTemplateId !== template.id ? "justify-start bg-transparent" : "justify-start"}
-                      >
-                        {template.nombre}
-                      </Button>
-                    ))}
+                  <div className="space-y-1 rounded-lg border overflow-hidden">
+                    {barrasTemplates.map((template) => {
+                      const selected = barraForm.barraTemplateId === template.id
+                      return (
+                        <label
+                          key={template.id}
+                          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                            selected ? "bg-primary/8 border-l-2 border-l-primary" : "hover:bg-muted/50"
+                          }`}
+                          onClick={() => handleSelectBarraTemplate(template.id)}
+                        >
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={() => handleSelectBarraTemplate(template.id)}
+                            className="rounded-sm"
+                          />
+                          <span className={`text-sm ${selected ? "font-semibold text-foreground" : "text-foreground"}`}>
+                            {template.nombre}
+                          </span>
+                        </label>
+                      )
+                    })}
                   </div>
                 )}
               </div>
 
               {/* Cocteles (pre-loaded from template, editable) */}
               {barraForm.barraTemplateId && (
-                <div>
-                  <Label className="text-base">Cocteles ({barraForm.coctelesIncluidos.length} seleccionados)</Label>
-                  <div className="grid grid-cols-1 gap-1 mt-2 max-h-60 overflow-y-auto border rounded-lg p-3">
-                    {state.cocteles.map((coctel) => (
-                      <label
-                        key={coctel.id}
-                        className="flex items-center gap-3 p-2 hover:bg-muted rounded cursor-pointer"
-                      >
-                        <Checkbox
-                          checked={barraForm.coctelesIncluidos.includes(coctel.id)}
-                          onCheckedChange={() => toggleCoctelInBarra(coctel.id)}
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{coctel.nombre}</p>
-                          <p className="text-xs text-muted-foreground">{coctel.insumos.length} insumos</p>
-                        </div>
-                      </label>
-                    ))}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">
+                    Cocteles
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      ({barraForm.coctelesIncluidos.length} seleccionados)
+                    </span>
+                  </p>
+                  <div className="space-y-1 rounded-lg border overflow-hidden max-h-52 overflow-y-auto">
+                    {state.cocteles.map((coctel) => {
+                      const checked = barraForm.coctelesIncluidos.includes(coctel.id)
+                      return (
+                        <label
+                          key={coctel.id}
+                          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                            checked ? "bg-primary/8" : "hover:bg-muted/50"
+                          }`}
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={() => toggleCoctelInBarra(coctel.id)}
+                            className="rounded-sm"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm truncate ${checked ? "font-semibold" : "font-medium"}`}>{coctel.nombre}</p>
+                            <p className="text-xs text-muted-foreground">{coctel.insumos.length} insumos</p>
+                          </div>
+                        </label>
+                      )
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Tragos por persona */}
-              <div>
-                <Label>Tragos por persona</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  value={barraForm.tragosPorPersona}
-                  onChange={(e) =>
-                    setBarraForm({ ...barraForm, tragosPorPersona: Number.parseFloat(e.target.value) || 2 })
-                  }
-                />
+              {/* Tragos por persona — con botones +/- */}
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-foreground">Tragos por persona</Label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => setBarraForm({
+                      ...barraForm,
+                      tragosPorPersona: Math.max(1, barraForm.tragosPorPersona - 0.5)
+                    })}
+                  >
+                    <span className="text-lg leading-none">−</span>
+                  </Button>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    value={barraForm.tragosPorPersona}
+                    onChange={(e) =>
+                      setBarraForm({ ...barraForm, tragosPorPersona: Number.parseFloat(e.target.value) || 2 })
+                    }
+                    className="text-center h-9 w-24"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => setBarraForm({
+                      ...barraForm,
+                      tragosPorPersona: barraForm.tragosPorPersona + 0.5
+                    })}
+                  >
+                    <span className="text-lg leading-none">+</span>
+                  </Button>
+                </div>
               </div>
 
-              {/* Estimacion */}
-              <div className="bg-muted p-4 rounded-lg">
-                <p className="text-sm font-medium">
-                  Total estimado: {calcularTotalTragos()} tragos
+              {/* Total estimado — resumen con fondo suave */}
+              <div className="rounded-lg bg-muted/60 border border-border px-5 py-4 space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total estimado</p>
+                <p className="text-3xl font-bold text-foreground leading-none">
+                  {calcularTotalTragos()} <span className="text-base font-normal text-muted-foreground">tragos</span>
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {evento.adultos + evento.adolescentes} personas x {barraForm.tragosPorPersona} tragos
+                <p className="text-xs text-muted-foreground pt-1">
+                  {evento.adultos + evento.adolescentes} personas × {barraForm.tragosPorPersona} tragos por persona
                 </p>
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="gap-2 pt-2">
               <Button variant="outline" className="bg-transparent" onClick={() => setDialogBarraOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleGuardarBarra} disabled={!barraForm.barraTemplateId || barraForm.coctelesIncluidos.length === 0}>
+              <Button
+                onClick={handleGuardarBarra}
+                disabled={!barraForm.barraTemplateId || barraForm.coctelesIncluidos.length === 0}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
                 {editingBarraIndex !== null ? "Guardar" : "Agregar Barra"}
               </Button>
             </DialogFooter>
