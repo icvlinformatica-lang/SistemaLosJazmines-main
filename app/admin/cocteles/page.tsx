@@ -122,14 +122,13 @@ export default function CoctelesPage() {
     })
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (isEditMode && selectedCoctel) {
-      updateCoctel(selectedCoctel.id, formData)
+      await updateCoctel(selectedCoctel.id, formData)
       setSelectedCoctel({ ...selectedCoctel, ...formData })
     } else {
-      const newCoctel = { ...formData, id: generateId() }
-      addCoctel(formData)
-      setSelectedCoctel(newCoctel as Coctel)
+      const newCoctel = await addCoctel(formData)
+      if (newCoctel) setSelectedCoctel(newCoctel)
     }
     resetForm()
     setIsAddDialogOpen(false)

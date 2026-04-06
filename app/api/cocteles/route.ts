@@ -19,8 +19,8 @@ export async function GET() {
         .filter((i) => i.coctel_id === coctel.id)
         .map((i) => ({
           insumoBarraId: i.insumo_barra_id,
-          cantidadPorCoctel: Number(i.cantidad),
-          unidadCoctel: i.unidad,
+          cantidadPorCoctel: Number(i.cantidad_por_coctel),
+          unidadCoctel: i.unidad_coctel,
         }))
 
       return {
@@ -46,12 +46,12 @@ export async function POST(request: Request) {
     const id = generateId()
 
     const [coctelData] = await sql`
-      INSERT INTO cocteles (id, nombre, categoria, instrucciones)
+      INSERT INTO cocteles (id, codigo, nombre, categoria)
       VALUES (
         ${id},
+        ${"COC-" + id.slice(0, 8).toUpperCase()},
         ${body.nombre},
-        ${body.categoria || "Con Alcohol"},
-        ${body.instrucciones || null}
+        ${body.categoria || "Con Alcohol"}
       )
       RETURNING *
     `
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     if (body.insumos && body.insumos.length > 0) {
       for (const insumo of body.insumos) {
         await sql`
-          INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad, unidad)
+          INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad_por_coctel, unidad_coctel)
           VALUES (
             ${generateId()},
             ${id},

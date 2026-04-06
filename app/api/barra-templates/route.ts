@@ -13,7 +13,7 @@ export async function GET() {
     const templates = data.map((template) => ({
       id: template.id,
       nombre: template.nombre,
-      coctelesIncluidos: template.cocteles || [],
+      coctelesIncluidos: template.cocteles_incluidos || [],
     }))
 
     return NextResponse.json(templates)
@@ -30,12 +30,11 @@ export async function POST(request: Request) {
     const id = generateId()
 
     const [data] = await sql`
-      INSERT INTO barra_templates (id, nombre, descripcion, cocteles)
+      INSERT INTO barra_templates (id, nombre, cocteles_incluidos)
       VALUES (
         ${id},
         ${body.nombre},
-        ${body.descripcion || null},
-        ${JSON.stringify(body.coctelesIncluidos || [])}
+        ${body.coctelesIncluidos || []}
       )
       RETURNING *
     `
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
     const template = {
       id: data.id,
       nombre: data.nombre,
-      coctelesIncluidos: data.cocteles || [],
+      coctelesIncluidos: data.cocteles_incluidos || [],
     }
 
     return NextResponse.json(template, { status: 201 })

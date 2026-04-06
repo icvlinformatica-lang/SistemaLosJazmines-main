@@ -25,8 +25,8 @@ export async function GET(
 
     const insumos = insumosData.map((i) => ({
       insumoBarraId: i.insumo_barra_id,
-      cantidadPorCoctel: Number(i.cantidad),
-      unidadCoctel: i.unidad,
+      cantidadPorCoctel: Number(i.cantidad_por_coctel),
+      unidadCoctel: i.unidad_coctel,
     }))
 
     const coctel = {
@@ -62,7 +62,6 @@ export async function PUT(
       UPDATE cocteles SET
         nombre = COALESCE(${nombre}, nombre),
         categoria = COALESCE(${categoria}, categoria),
-        instrucciones = COALESCE(${instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -80,7 +79,7 @@ export async function PUT(
 
       for (const insumo of insumosList) {
         await sql`
-          INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad, unidad)
+          INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad_por_coctel, unidad_coctel)
           VALUES (
             ${generateId()},
             ${id},
