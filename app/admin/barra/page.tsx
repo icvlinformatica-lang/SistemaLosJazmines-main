@@ -24,6 +24,13 @@ import { Plus, Search, Pencil, Trash2 } from "lucide-react"
 const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR", "GRS", "L"]
 const categorias: CategoriaInsumoBarra[] = ["Alcoholes", "Licores", "Mixers", "Jugos", "Garnish", "Otros"]
 
+const NUEVOS_INSUMOS = new Set([
+  "BAR101","BAR102","BAR103","BAR104","BAR105","BAR106","BAR107","BAR108","BAR109","BAR110",
+  "BAR111","BAR112","BAR208","BAR209","BAR210","BAR211","BAR212","BAR213","BAR301","BAR302",
+  "BAR303","BAR304","BAR401","BAR402","BAR403","BAR404","BAR405","BAR406","BAR407","BAR408",
+  "BAR409","BAR410","BAR411",
+])
+
 function BarraAlmacenContent() {
   const { insumosBarra, loading: isLoading, addInsumoBarra, updateInsumoBarra, deleteInsumoBarra } = useStore()
   const [searchTerm, setSearchTerm] = useState("")
@@ -306,7 +313,7 @@ function BarraAlmacenContent() {
                   </TableRow>
                 ) : (
                   filteredInsumos.map((insumo) => (
-                    <TableRow key={insumo.id}>
+                    <TableRow key={insumo.id} className={NUEVOS_INSUMOS.has(insumo.codigo) ? "bg-gray-100" : ""}>
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
                       <TableCell className="font-medium">{insumo.descripcion}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{insumo.categoria}</TableCell>
