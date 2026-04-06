@@ -46,9 +46,10 @@ export async function POST(request: Request) {
     const id = generateId()
 
     const [coctelData] = await sql`
-      INSERT INTO cocteles (id, nombre, categoria)
+      INSERT INTO cocteles (id, codigo, nombre, categoria)
       VALUES (
         ${id},
+        ${"COC-" + id.slice(0, 8).toUpperCase()},
         ${body.nombre},
         ${body.categoria || "Con Alcohol"}
       )
