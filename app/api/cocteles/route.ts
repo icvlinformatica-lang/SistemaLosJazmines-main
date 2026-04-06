@@ -46,12 +46,11 @@ export async function POST(request: Request) {
     const id = generateId()
 
     const [coctelData] = await sql`
-      INSERT INTO cocteles (id, nombre, categoria, instrucciones)
+      INSERT INTO cocteles (id, nombre, categoria)
       VALUES (
         ${id},
         ${body.nombre},
-        ${body.categoria || "Con Alcohol"},
-        ${body.instrucciones || null}
+        ${body.categoria || "Con Alcohol"}
       )
       RETURNING *
     `

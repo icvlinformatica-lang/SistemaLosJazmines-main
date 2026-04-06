@@ -62,7 +62,6 @@ export async function PUT(
       UPDATE cocteles SET
         nombre = COALESCE(${nombre}, nombre),
         categoria = COALESCE(${categoria}, categoria),
-        instrucciones = COALESCE(${instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
