@@ -1892,7 +1892,7 @@ function EventoPageContent() {
             </DialogHeader>
 
             <div className="space-y-6 py-2">
-              {/* Seleccionar barra template — lista de filas con checkbox */}
+              {/* Seleccionar barra template — grilla de cards con checkbox */}
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-foreground">Seleccionar Barra</p>
                 {barrasTemplates.length === 0 ? (
@@ -1900,23 +1900,25 @@ function EventoPageContent() {
                     No hay barras creadas. Ve a Gestion de Cocteles para crear una.
                   </p>
                 ) : (
-                  <div className="space-y-1 rounded-lg border overflow-hidden">
+                  <div className={`grid gap-2 ${barrasTemplates.length <= 2 ? "grid-cols-2" : "grid-cols-3"}`}>
                     {barrasTemplates.map((template) => {
                       const selected = barraForm.barraTemplateId === template.id
                       return (
                         <label
                           key={template.id}
-                          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                            selected ? "bg-primary/8 border-l-2 border-l-primary" : "hover:bg-muted/50"
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors select-none ${
+                            selected
+                              ? "border-primary bg-primary/8 text-foreground"
+                              : "border-border hover:bg-muted/50 text-foreground"
                           }`}
                           onClick={() => handleSelectBarraTemplate(template.id)}
                         >
                           <Checkbox
                             checked={selected}
                             onCheckedChange={() => handleSelectBarraTemplate(template.id)}
-                            className="rounded-sm"
+                            className="rounded-sm shrink-0"
                           />
-                          <span className={`text-sm ${selected ? "font-semibold text-foreground" : "text-foreground"}`}>
+                          <span className={`text-sm leading-tight ${selected ? "font-semibold" : "font-medium"}`}>
                             {template.nombre}
                           </span>
                         </label>
@@ -1926,7 +1928,7 @@ function EventoPageContent() {
                 )}
               </div>
 
-              {/* Cocteles (pre-loaded from template, editable) */}
+              {/* Cocteles (pre-loaded from template, editable) — chips con wrap */}
               {barraForm.barraTemplateId && (
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-foreground">
@@ -1935,26 +1937,27 @@ function EventoPageContent() {
                       ({barraForm.coctelesIncluidos.length} seleccionados)
                     </span>
                   </p>
-                  <div className="space-y-1 rounded-lg border overflow-hidden max-h-52 overflow-y-auto">
+                  <div className="flex flex-wrap gap-2">
                     {state.cocteles.map((coctel) => {
                       const checked = barraForm.coctelesIncluidos.includes(coctel.id)
                       return (
-                        <label
+                        <button
                           key={coctel.id}
-                          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                            checked ? "bg-primary/8" : "hover:bg-muted/50"
+                          type="button"
+                          onClick={() => toggleCoctelInBarra(coctel.id)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors cursor-pointer ${
+                            checked
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-background text-muted-foreground hover:bg-muted"
                           }`}
                         >
                           <Checkbox
                             checked={checked}
                             onCheckedChange={() => toggleCoctelInBarra(coctel.id)}
-                            className="rounded-sm"
+                            className="rounded-sm h-3 w-3 shrink-0 pointer-events-none"
                           />
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm truncate ${checked ? "font-semibold" : "font-medium"}`}>{coctel.nombre}</p>
-                            <p className="text-xs text-muted-foreground">{coctel.insumos.length} insumos</p>
-                          </div>
-                        </label>
+                          {coctel.nombre}
+                        </button>
                       )
                     })}
                   </div>
