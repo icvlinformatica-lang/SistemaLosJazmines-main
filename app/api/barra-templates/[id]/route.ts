@@ -21,7 +21,7 @@ export async function GET(
     const template = {
       id: data.id,
       nombre: data.nombre,
-      coctelesIncluidos: data.cocteles || [],
+      coctelesIncluidos: data.cocteles_incluidos || [],
     }
 
     return NextResponse.json(template)
@@ -43,8 +43,7 @@ export async function PUT(
     const [data] = await sql`
       UPDATE barra_templates SET
         nombre = ${body.nombre},
-        descripcion = ${body.descripcion || null},
-        cocteles = ${JSON.stringify(body.coctelesIncluidos || [])},
+        cocteles_incluidos = ${JSON.stringify(body.coctelesIncluidos || [])},
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -57,7 +56,7 @@ export async function PUT(
     const template = {
       id: data.id,
       nombre: data.nombre,
-      coctelesIncluidos: data.cocteles || [],
+      coctelesIncluidos: data.cocteles_incluidos || [],
     }
 
     return NextResponse.json(template)
