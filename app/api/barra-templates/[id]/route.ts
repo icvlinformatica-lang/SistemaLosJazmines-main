@@ -43,7 +43,7 @@ export async function PUT(
     const [data] = await sql`
       UPDATE barra_templates SET
         nombre = ${body.nombre},
-        cocteles_incluidos = ${JSON.stringify(body.coctelesIncluidos || [])},
+        cocteles_incluidos = ${body.coctelesIncluidos || []},
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *

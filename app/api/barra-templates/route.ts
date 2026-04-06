@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       VALUES (
         ${id},
         ${body.nombre},
-        ${JSON.stringify(body.coctelesIncluidos || [])}
+        ${body.coctelesIncluidos || []}
       )
       RETURNING *
     `
