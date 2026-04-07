@@ -22,6 +22,13 @@ export default function HomePage() {
           backgroundImage: 'url("/background.jpg")',
         }}
       />
+      {/* Mobile background — portrait image for narrow screens */}
+      <div
+        className="absolute inset-0 bg-cover bg-top bg-no-repeat md:hidden"
+        style={{
+          backgroundImage: 'url("/background-mobile.jpg")',
+        }}
+      />
       {/* Dark overlay for depth - also handles click to toggle sidebar */}
       <div
         onClick={handleBackgroundClick}
