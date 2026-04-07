@@ -381,6 +381,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<h3 style="font-size:11pt;font-weight:bold;margin:16px 0 8px;">Detalle Cocina</h3>`
       html += `<table style="${S.table}margin-bottom:20px;"><thead><tr>`
       html += `<th style="${S.thGray}text-align:left;">INSUMO</th>`
+      html += `<th style="${S.thGray}text-align:left;width:90px;">PROVEEDOR</th>`
       html += `<th style="${S.thGray}text-align:right;width:90px;">CANTIDAD</th>`
       html += `<th style="${S.thGray}text-align:right;width:80px;">P. UNIT.</th>`
       html += `<th style="${S.thGray}text-align:right;width:90px;">COSTO TOTAL</th>`
@@ -397,6 +398,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
         const td = i % 2 === 0 ? S.tdEven : S.tdOdd
         html += `<tr>`
         html += `<td style="${td}">${d.descripcion}</td>`
+        html += `<td style="${td}font-size:8pt;">${d.proveedor || "-"}</td>`
         html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(item.cantidadNecesaria, d.unidad)}</td>`
         html += `<td style="${td}text-align:right;font-family:monospace;">${formatCurrency(d.precioUnitario)}</td>`
         html += `<td style="${td}text-align:right;font-family:monospace;font-weight:bold;">${formatCurrency(item.costoMateriaPrima || 0)}</td>`
@@ -404,7 +406,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
         html += `</tr>`
       })
       html += `</tbody><tfoot><tr>`
-      html += `<td colspan="3" style="${S.tfootTd}text-align:right;">SUBTOTAL COCINA:</td>`
+      html += `<td colspan="4" style="${S.tfootTd}text-align:right;">SUBTOTAL COCINA:</td>`
       html += `<td style="${S.tfootTd}text-align:right;">${formatCurrency(costoCocinaTotalMP)}</td>`
       html += `<td style="${S.tfootTd}text-align:right;">${totalPersonas > 0 ? formatCurrency(costoCocinaTotalMP / totalPersonas) : "-"}</td>`
       html += `</tr></tfoot></table>`
@@ -415,6 +417,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<h3 style="font-size:11pt;font-weight:bold;margin:16px 0 8px;">Detalle Barra</h3>`
       html += `<table style="${S.table}margin-bottom:20px;"><thead><tr>`
       html += `<th style="${S.thGray}text-align:left;">INSUMO</th>`
+      html += `<th style="${S.thGray}text-align:left;width:90px;">PROVEEDOR</th>`
       html += `<th style="${S.thGray}text-align:right;width:90px;">CANTIDAD</th>`
       html += `<th style="${S.thGray}text-align:right;width:80px;">P. UNIT.</th>`
       html += `<th style="${S.thGray}text-align:right;width:90px;">COSTO TOTAL</th>`
@@ -430,6 +433,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
         const td = i % 2 === 0 ? S.tdEven : S.tdOdd
         html += `<tr>`
         html += `<td style="${td}">${item.insumoBarra.descripcion}</td>`
+        html += `<td style="${td}font-size:8pt;">${item.insumoBarra.proveedor || "-"}</td>`
         html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(item.cantidadNecesaria, item.insumoBarra.unidad)}</td>`
         html += `<td style="${td}text-align:right;font-family:monospace;">${formatCurrency(item.insumoBarra.precioUnitario)}</td>`
         html += `<td style="${td}text-align:right;font-family:monospace;font-weight:bold;">${formatCurrency(item.costoMateriaPrima || 0)}</td>`
@@ -437,7 +441,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
         html += `</tr>`
       })
       html += `</tbody><tfoot><tr>`
-      html += `<td colspan="3" style="${S.tfootTd}text-align:right;">SUBTOTAL BARRA:</td>`
+      html += `<td colspan="4" style="${S.tfootTd}text-align:right;">SUBTOTAL BARRA:</td>`
       html += `<td style="${S.tfootTd}text-align:right;">${formatCurrency(costoBarraTotalMP)}</td>`
       html += `<td style="${S.tfootTd}text-align:right;">${totalPersonas > 0 ? formatCurrency(costoBarraTotalMP / totalPersonas) : "-"}</td>`
       html += `</tr></tfoot></table>`
