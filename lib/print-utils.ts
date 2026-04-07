@@ -207,7 +207,12 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     html += `<th style="${S.thBlack}text-align:right;width:80px;">COSTO TOTAL</th>`
     html += `<th style="${S.thBlack}text-align:right;width:80px;">PRECIO STOCK</th>`
     html += `</tr></thead><tbody>`
-    compras.forEach((item, i) => {
+    const comprasOrdenadas = [...compras].sort((a, b) => {
+      const pa = a.insumo?.proveedor || ''
+      const pb = b.insumo?.proveedor || ''
+      return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+    })
+    comprasOrdenadas.forEach((item, i) => {
       const d = item.insumo
       if (!d) return
       const buy = item.cantidadAComprar > 0
@@ -254,7 +259,12 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     html += `<th style="${S.thBlack}text-align:right;width:80px;">COSTO TOTAL</th>`
     html += `<th style="${S.thBlack}text-align:right;width:80px;">PRECIO STOCK</th>`
     html += `</tr></thead><tbody>`
-    comprasBarras.forEach((item, i) => {
+    const comprasBarrasOrdenadas = [...comprasBarras].sort((a, b) => {
+      const pa = a.insumoBarra?.proveedor || ''
+      const pb = b.insumoBarra?.proveedor || ''
+      return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+    })
+    comprasBarrasOrdenadas.forEach((item, i) => {
       const buy = item.cantidadAComprar > 0
       const td = i % 2 === 0 ? S.tdEven : S.tdOdd
       html += `<tr>`
@@ -376,7 +386,12 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<th style="${S.thGray}text-align:right;width:90px;">COSTO TOTAL</th>`
       html += `<th style="${S.thGray}text-align:right;width:80px;">X PERSONA</th>`
       html += `</tr></thead><tbody>`
-      compras.forEach((item, i) => {
+      const comprasOrdenadas = [...compras].sort((a, b) => {
+        const pa = a.insumo?.proveedor || ''
+        const pb = b.insumo?.proveedor || ''
+        return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+      })
+      comprasOrdenadas.forEach((item, i) => {
         const d = item.insumo
         if (!d || (item.costoMateriaPrima || 0) === 0) return
         const td = i % 2 === 0 ? S.tdEven : S.tdOdd
@@ -405,7 +420,12 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<th style="${S.thGray}text-align:right;width:90px;">COSTO TOTAL</th>`
       html += `<th style="${S.thGray}text-align:right;width:80px;">X PERSONA</th>`
       html += `</tr></thead><tbody>`
-      comprasBarras.forEach((item, i) => {
+      const comprasBarrasOrdenadas = [...comprasBarras].sort((a, b) => {
+        const pa = a.insumoBarra?.proveedor || ''
+        const pb = b.insumoBarra?.proveedor || ''
+        return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+      })
+      comprasBarrasOrdenadas.forEach((item, i) => {
         if ((item.costoMateriaPrima || 0) === 0) return
         const td = i % 2 === 0 ? S.tdEven : S.tdOdd
         html += `<tr>`
