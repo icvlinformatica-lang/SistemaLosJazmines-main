@@ -977,6 +977,7 @@ export default function EventosListaPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Insumo</TableHead>
+                  <TableHead>Proveedor</TableHead>
                   <TableHead className="text-right w-36">Cantidad</TableHead>
                   <TableHead className="text-right w-28">Costo</TableHead>
                 </TableRow>
@@ -985,6 +986,7 @@ export default function EventosListaPage() {
                 {(compraConsolidada || []).map((c) => (
                   <TableRow key={c.insumoId}>
                     <TableCell className="font-medium text-sm">{c.insumo.descripcion}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{c.insumo.proveedor || "-"}</TableCell>
                     <TableCell className="text-right text-sm font-mono">
                       {c.cantidadNecesaria.toFixed(2)} {c.insumo.unidad}
                     </TableCell>
