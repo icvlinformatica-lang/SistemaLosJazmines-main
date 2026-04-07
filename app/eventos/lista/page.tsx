@@ -3,6 +3,16 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+
+function smartUnitsForShopping(amount: number, unit: string): string {
+  const u = unit.toUpperCase()
+  if ((u === "GR" || u === "GRS") && amount >= 1000) return `${(amount / 1000).toFixed(2)} KG`
+  if (u === "GR" || u === "GRS") return `${(amount / 1000).toFixed(3)} KG`
+  if ((u === "CC" || u === "ML") && amount >= 1000) return `${(amount / 1000).toFixed(2)} L`
+  if (u === "CC" || u === "ML") return `${(amount / 1000).toFixed(3)} L`
+  if (u === "KG" || u === "L") return `${amount.toFixed(2)} ${u}`
+  return `${amount.toFixed(1)} ${unit}`
+}
 import { useStore } from "@/lib/store-context"
 import {
   formatCurrency,
@@ -989,7 +999,7 @@ export default function EventosListaPage() {
                     <TableCell className="font-medium text-sm">{c.insumo.descripcion}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.insumo.proveedor || "-"}</TableCell>
                     <TableCell className="text-right text-sm font-mono">
-                      {c.cantidadNecesaria.toFixed(2)} {c.insumo.unidad}
+                      {smartUnitsForShopping(c.cantidadNecesaria, c.insumo.unidad)}
                     </TableCell>
                     <TableCell className="text-right text-sm font-mono">
                       {formatCurrency(c.costoMateriaPrima)}
