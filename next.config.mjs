@@ -1,16 +1,14 @@
 /** @type {import('next').NextConfig} */
-import withPWA from 'next-pwa'
+import withPWA from '@ducanh2912/next-pwa'
 
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   images: {
     unoptimized: true,
   },
+  turbopack: {},
 }
 
 export default withPWA({
