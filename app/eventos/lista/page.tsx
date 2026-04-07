@@ -238,6 +238,7 @@ export default function EventosListaPage() {
       .map((c, i) => `
         <tr style="background:${i % 2 === 0 ? "#f9fafb" : "#fff"}">
           <td style="padding:6px 10px;font-size:9pt;">${c.insumo.descripcion}</td>
+          <td style="padding:6px 10px;font-size:9pt;color:#555;">${c.insumo.proveedor || "-"}</td>
           <td style="padding:6px 10px;font-size:9pt;text-align:right;font-family:monospace;">${c.cantidadNecesaria.toFixed(2)} ${c.insumo.unidad}</td>
           <td style="padding:6px 10px;font-size:9pt;text-align:right;font-family:monospace;">${formatCurrency(c.costoMateriaPrima)}</td>
         </tr>`)
@@ -258,10 +259,10 @@ export default function EventosListaPage() {
       <p style="margin:0 0 2px;font-size:9pt;color:#555;">${nombres}</p>
       <p style="margin:0 0 12px;font-size:9pt;color:#555;">${fechas} · ${seleccionados.length} eventos · ${totalPersonas} personas · ${formatCurrency(costoTotal)} costo estimado</p>
       <table><thead><tr>
-        <th>INSUMO</th><th style="text-align:right;width:130px;">CANTIDAD</th><th style="text-align:right;width:110px;">COSTO</th>
+        <th>INSUMO</th><th>PROVEEDOR</th><th style="text-align:right;width:130px;">CANTIDAD</th><th style="text-align:right;width:110px;">COSTO</th>
       </tr></thead><tbody>${filas}</tbody>
       <tfoot><tr>
-        <td colspan="2" style="text-align:right;">TOTAL:</td>
+        <td colspan="3" style="text-align:right;">TOTAL:</td>
         <td style="text-align:right;">${formatCurrency(costoTotal)}</td>
       </tr></tfoot></table>
       </body></html>`
