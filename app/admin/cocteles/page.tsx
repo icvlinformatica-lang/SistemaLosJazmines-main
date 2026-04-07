@@ -437,7 +437,7 @@ export default function CoctelesPage() {
         {/* Two column: List + Detail */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
           {/* Cocktail List */}
-          <div className="md:col-span-1 space-y-2 overflow-y-auto max-h-[calc(100vh-220px)] pr-1 scrollbar-thin">
+          <div className="md:col-span-1 space-y-2 overflow-y-auto max-h-[520px] pr-1">
             {filteredCocteles.map((coctel) => (
               <button
                 key={coctel.id}
