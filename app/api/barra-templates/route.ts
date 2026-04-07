@@ -29,13 +29,14 @@ export async function POST(request: Request) {
     const body = await request.json()
     const id = generateId()
 
-    const cocteles = body.coctelesIncluidos || []
+    const cocteles: string[] = body.coctelesIncluidos || []
+    const coctelesLiteral = `{${cocteles.join(",")}}`
     const [data] = await sql`
       INSERT INTO barra_templates (id, nombre, cocteles_incluidos)
       VALUES (
         ${id},
         ${body.nombre},
-        ${sql.array(cocteles)}::text[]
+        ${coctelesLiteral}::text[]
       )
       RETURNING *
     `

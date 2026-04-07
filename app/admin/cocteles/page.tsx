@@ -185,12 +185,12 @@ export default function CoctelesPage() {
     }
   }
 
-  const handleSubmitBarra = () => {
+  const handleSubmitBarra = async () => {
     if (!barraFormData.nombre) return
     if (editingBarra) {
-      updateBarraTemplate(editingBarra.id, barraFormData)
+      await updateBarraTemplate(editingBarra.id, barraFormData)
     } else {
-      addBarraTemplate(barraFormData)
+      await addBarraTemplate(barraFormData)
     }
     resetBarraForm()
     setIsBarraDialogOpen(false)

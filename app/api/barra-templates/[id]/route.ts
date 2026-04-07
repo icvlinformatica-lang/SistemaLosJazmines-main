@@ -40,11 +40,12 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    const cocteles = body.coctelesIncluidos || []
+    const cocteles: string[] = body.coctelesIncluidos || []
+    const coctelesLiteral = `{${cocteles.join(",")}}`
     const [data] = await sql`
       UPDATE barra_templates SET
         nombre = ${body.nombre},
-        cocteles_incluidos = ${sql.array(cocteles)}::text[],
+        cocteles_incluidos = ${coctelesLiteral}::text[],
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
