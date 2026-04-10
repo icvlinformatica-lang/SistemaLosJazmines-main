@@ -1,11 +1,9 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { StoreProvider } from "@/lib/store-context"
 import { UIProvider } from "@/lib/ui-context"
-import { Sidebar } from "@/components/sidebar"
-import { Toaster } from "@/components/ui/toaster"
-import { WelcomeModal } from "@/components/welcome-modal"
+import { ProfileProvider } from "@/lib/profile-context"
+import { AppShell } from "@/components/app-shell"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -36,18 +34,13 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/pwa-icon-512.jpg" />
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
-        <StoreProvider>
+        <ProfileProvider>
           <UIProvider>
-            <div className="flex h-screen overflow-hidden">
-              <Sidebar />
-              <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
-                {children}
-              </main>
-            </div>
-            <Toaster />
-            <WelcomeModal />
+            <AppShell>
+              {children}
+            </AppShell>
           </UIProvider>
-        </StoreProvider>
+        </ProfileProvider>
       </body>
     </html>
   )

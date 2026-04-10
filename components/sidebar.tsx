@@ -28,10 +28,12 @@ import {
   Users,
   Bell,
   Lock,
+  ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
 import { useUI } from "@/lib/ui-context"
+import { useProfile } from "@/lib/profile-context"
 import { generateId } from "@/lib/utils-client"
 
 interface MenuItem {
@@ -71,6 +73,7 @@ const menuItems: MenuItem[] = [
     children: [
       { href: "/admin/recetario", label: "Recetas", icon: ChefHat },
       { href: "/admin/cocteles", label: "Cocteles", icon: Wine },
+      { href: "/eventos/produccion", label: "Guias Produccion", icon: ClipboardList },
     ],
   },
   {
@@ -96,7 +99,34 @@ export function Sidebar() {
   const router = useRouter()
   const { setEventoActual } = useStore()
   const { sidebarOpen, setSidebarOpen } = useUI()
+  const { perfilActivo, cerrarSesion } = useProfile()
   const [expandedSections, setExpandedSections] = useState<string[]>([])
+
+  // Filtra los items del menú según rutas del perfil activo
+  const rutasPermitidas = perfilActivo?.rutas ?? ["*"]
+  const accesoTotal = rutasPermitidas.includes("*") || rutasPermitidas.length === 0
+
+  const rutaPermitida = (href: string) => {
+    if (accesoTotal) return true
+    return rutasPermitidas.some((r) => href === r || href.startsWith(r + "/") || r.startsWith(href))
+  }
+
+  const filteredMenuItems = menuItems
+    .map((item) => {
+      if (item.children) {
+        const hijosPermitidos = item.children.filter((c) => rutaPermitida(c.href))
+        if (hijosPermitidos.length === 0) return null
+        return { ...item, children: hijosPermitidos }
+      }
+      if (!rutaPermitida(item.href)) return null
+      return item
+    })
+    .filter(Boolean) as MenuItem[]
+
+  const handleCambiarPerfil = () => {
+    cerrarSesion()
+    router.push("/login")
+  }
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/"
@@ -178,7 +208,7 @@ export function Sidebar() {
 
         {/* Navigation Items */}
         <nav className="flex-1 px-3 py-2 flex flex-col gap-0.5 overflow-y-auto">
-          {menuItems.map((item) => {
+          {filteredMenuItems.map((item) => {
             const Icon = item.icon
             const active = isSectionActive(item)
             const hasChildren = item.children && item.children.length > 0
@@ -271,16 +301,35 @@ export function Sidebar() {
         </nav>
 
         {/* Planificar Fiesta Button - Active */}
-        <div className="px-3 pb-3 -mt-[10px]">
-          <button
-            type="button"
-            onClick={handlePlanificarFiesta}
-            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533] hover:bg-[#e0b040] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
-          >
-            <Sparkles className="h-5 w-5 shrink-0" />
-            <span className="flex-1 text-left">Planificar Fiesta</span>
-          </button>
-        </div>
+        {!["cocina", "barra"].includes(perfilActivo?.id ?? "") && (
+          <div className="px-3 pb-3 -mt-[10px]">
+            <button
+              type="button"
+              onClick={handlePlanificarFiesta}
+              className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533] hover:bg-[#e0b040] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
+            >
+              <Sparkles className="h-5 w-5 shrink-0" />
+              <span className="flex-1 text-left">Planificar Fiesta</span>
+            </button>
+          </div>
+        )}
+
+        {/* Perfil activo + cambiar perfil */}
+        {perfilActivo && (
+          <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3 space-y-1.5">
+            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2">
+              <span className="text-base leading-none">{perfilActivo.emoji}</span>
+              <span className="text-sm text-black font-semibold flex-1">{perfilActivo.nombre}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleCambiarPerfil}
+              className="w-full text-left text-xs text-[#f5f0e8]/50 hover:text-[#f5f0e8]/80 transition-colors px-1"
+            >
+              Cambiar perfil
+            </button>
+          </div>
+        )}
 
         {/* Collapse toggle */}
         <button
