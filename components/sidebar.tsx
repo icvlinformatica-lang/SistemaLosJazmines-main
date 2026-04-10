@@ -331,12 +331,12 @@ export function Sidebar() {
                 {perfilActivo.emoji}
               </div>
               {/* Nombre + acción */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[#f5f0e8] text-xs font-semibold leading-tight truncate">{perfilActivo.nombre}</p>
+              <div className="flex-1 min-w-0 flex flex-col">
+                <p className="text-[#f5f0e8] text-xs font-semibold leading-none truncate">{perfilActivo.nombre}</p>
                 <button
                   type="button"
                   onClick={handleCambiarPerfil}
-                  className="text-[10px] text-[#f5f0e8]/50 hover:text-[#f5f0e8]/90 transition-colors leading-tight"
+                  className="text-[10px] text-[#f5f0e8]/50 hover:text-[#f5f0e8]/90 transition-colors leading-none mt-[3px] text-left"
                 >
                   Cambiar perfil
                 </button>
