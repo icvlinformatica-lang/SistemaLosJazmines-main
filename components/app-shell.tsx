@@ -22,6 +22,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return
     }
     const rutas = perfilActivo.rutas
+    const excluidas = perfilActivo.rutasExcluidas ?? []
+    const estaExcluida = excluidas.some((r) => pathname === r || pathname.startsWith(r + "/"))
+    if (estaExcluida) {
+      router.replace("/")
+      return
+    }
     if (rutas.includes("*") || rutas.length === 0) return
     const permitida = rutas.some(
       (r) => pathname === r || pathname.startsWith(r + "/")
