@@ -68,7 +68,7 @@ export default function LoginPage() {
       {/* Header */}
       <div className="mb-10 text-center">
         <h1 className="text-4xl font-bold text-[#1a3a2a] tracking-tight">Los Jazmines</h1>
-        <p className="text-gray-400 text-sm mt-1 tracking-widest uppercase">Sistema</p>
+        <p className="text-black text-sm mt-1 tracking-widest uppercase">Sistema</p>
         <div className="mt-5 h-px w-24 mx-auto bg-[#1a3a2a]/15 rounded-full" />
       </div>
 
@@ -143,16 +143,18 @@ export default function LoginPage() {
         })}
       </div>
 
-      {/* Pie */}
-      <div className="mt-12">
-        <button
-          type="button"
-          onClick={handleOlvidarPins}
-          className="text-gray-300 text-xs hover:text-gray-500 transition-colors"
-        >
-          Olvidar todos los PINs
-        </button>
-      </div>
+      {/* Pie - solo si hay al menos un PIN guardado */}
+      {Object.values(pinsGuardados).some(Boolean) && (
+        <div className="mt-12">
+          <button
+            type="button"
+            onClick={handleOlvidarPins}
+            className="text-gray-300 text-xs hover:text-gray-500 transition-colors"
+          >
+            Olvidar todos los PINs
+          </button>
+        </div>
+      )}
     </div>
   )
 }
