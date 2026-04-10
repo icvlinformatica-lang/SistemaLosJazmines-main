@@ -63,54 +63,58 @@ export default function LoginPage() {
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
-      style={{ backgroundColor: "#0f1923" }}
-    >
-      {/* Logo */}
-      <div className="mb-12 text-center">
-        <h1 className="text-4xl font-bold text-white tracking-tight">Los Jazmines</h1>
-        <p className="text-white/50 text-sm mt-1 tracking-widest uppercase">Sistema</p>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 bg-[#f5f0eb]">
+
+      {/* Header */}
+      <div className="mb-10 text-center">
+        <h1 className="text-4xl font-bold text-[#1a3a2a] tracking-tight">Los Jazmines</h1>
+        <p className="text-gray-400 text-sm mt-1 tracking-widest uppercase">Sistema</p>
+        <div className="mt-5 h-px w-24 mx-auto bg-[#1a3a2a]/15 rounded-full" />
       </div>
 
       {/* Grid de perfiles */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-2xl">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 w-full max-w-2xl">
         {PERFILES.map((perfil) => {
           const pinGuardado = pinsGuardados[perfil.id]
           const esSeleccionado = perfilSeleccionado === perfil.id && !pinGuardado
 
           return (
-            <div key={perfil.id} className="flex flex-col items-center gap-3">
+            <div
+              key={perfil.id}
+              className={`flex flex-col items-center bg-white rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 px-4 pt-6 pb-5 gap-3 ${esSeleccionado ? "ring-2 ring-[#1a3a2a]" : ""}`}
+            >
+              {/* Circulo con emoji */}
               <button
                 type="button"
                 onClick={() => handleCardClick(perfil.id)}
                 className="group relative flex flex-col items-center gap-3 w-full focus:outline-none"
               >
-                {/* Circulo con emoji */}
                 <div
-                  className="relative w-24 h-24 rounded-2xl flex items-center justify-center text-4xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow-lg"
+                  className="relative w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow"
                   style={{ backgroundColor: perfil.color }}
                 >
                   <span role="img" aria-label={perfil.nombre}>{perfil.emoji}</span>
-                  {/* Check verde si PIN guardado */}
                   {pinGuardado && (
-                    <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center shadow-md">
-                      <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shadow">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     </div>
                   )}
-                  {/* Borde resaltado si seleccionado */}
-                  {esSeleccionado && (
-                    <div className="absolute inset-0 rounded-2xl ring-2 ring-white/80" />
-                  )}
                 </div>
-                <span className="text-white/90 text-sm font-medium">{perfil.nombre}</span>
+
+                <span className="text-[#1a3a2a] text-sm font-bold text-center leading-tight">{perfil.nombre}</span>
+
+                {pinGuardado && (
+                  <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 -mt-1">
+                    Acceso rapido
+                  </span>
+                )}
               </button>
 
               {/* Input PIN inline si seleccionado */}
               {esSeleccionado && (
-                <div className="w-full flex flex-col items-center gap-2 mt-1">
+                <div className="w-full flex flex-col items-center gap-2 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
                   <input
                     type="password"
                     maxLength={6}
@@ -122,14 +126,13 @@ export default function LoginPage() {
                     onKeyDown={(e) => e.key === "Enter" && handleIngresar()}
                     placeholder="PIN"
                     autoFocus
-                    className="w-full text-center rounded-lg px-3 py-2 text-sm bg-white/10 text-white placeholder-white/30 border border-white/20 focus:outline-none focus:border-white/50 tracking-widest"
+                    className="w-full text-center rounded-lg px-3 py-2 text-sm border border-gray-200 focus:outline-none focus:border-[#1a3a2a] focus:ring-1 focus:ring-[#1a3a2a] tracking-widest text-[#1a3a2a] placeholder-gray-300 transition-colors"
                   />
-                  {error && <p className="text-red-400 text-xs">{error}</p>}
+                  {error && <p className="text-red-500 text-xs">{error}</p>}
                   <button
                     type="button"
                     onClick={handleIngresar}
-                    className="w-full rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors"
-                    style={{ backgroundColor: perfilActual?.color }}
+                    className="w-full rounded-lg px-3 py-2 text-sm font-semibold text-white bg-[#1a3a2a] hover:bg-[#25503c] transition-colors"
                   >
                     Ingresar
                   </button>
@@ -141,11 +144,11 @@ export default function LoginPage() {
       </div>
 
       {/* Pie */}
-      <div className="mt-16">
+      <div className="mt-12">
         <button
           type="button"
           onClick={handleOlvidarPins}
-          className="text-white/30 text-xs hover:text-white/60 transition-colors underline underline-offset-2"
+          className="text-gray-300 text-xs hover:text-gray-500 transition-colors"
         >
           Olvidar todos los PINs
         </button>
