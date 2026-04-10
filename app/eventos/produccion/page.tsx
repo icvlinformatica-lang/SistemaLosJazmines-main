@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { useStore } from "@/lib/store-context"
 import { useEventos } from "@/lib/use-eventos"
+import { useRecetas } from "@/lib/use-recetas"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -58,6 +59,7 @@ const estadoConfig: Record<string, { label: string; className: string }> = {
 export default function ProduccionPage() {
   const { state } = useStore()
   const { eventos, loading } = useEventos()
+  const { recetas } = useRecetas()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedEvento, setSelectedEvento] = useState<EventoGuardado | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -103,12 +105,12 @@ export default function ProduccionPage() {
     setDialogOpen(true)
   }
 
-  // Construir allDishes igual que print-utils para el mise en place
+  // Construir allDishes usando recetas frescas del hook (tiempo real)
   const getAllDishes = (evento: EventoGuardado) => {
-    const recetasAdultosSeleccionadas = state.recetas.filter((r) => (evento.recetasAdultos || []).includes(r.id))
-    const recetasAdolescentesSeleccionadas = state.recetas.filter((r) => (evento.recetasAdolescentes || []).includes(r.id))
-    const recetasNinosSeleccionadas = state.recetas.filter((r) => (evento.recetasNinos || []).includes(r.id))
-    const recetasDietasEspecialesSeleccionadas = state.recetas.filter((r) => (evento.recetasDietasEspeciales || []).includes(r.id))
+    const recetasAdultosSeleccionadas = recetas.filter((r: any) => (evento.recetasAdultos || []).includes(r.id))
+    const recetasAdolescentesSeleccionadas = recetas.filter((r: any) => (evento.recetasAdolescentes || []).includes(r.id))
+    const recetasNinosSeleccionadas = recetas.filter((r: any) => (evento.recetasNinos || []).includes(r.id))
+    const recetasDietasEspecialesSeleccionadas = recetas.filter((r: any) => (evento.recetasDietasEspeciales || []).includes(r.id))
     return [
       ...recetasAdultosSeleccionadas.map((r) => ({
         receta: r,
@@ -287,80 +289,121 @@ export default function ProduccionPage() {
             const totalPersonas = getTotalInvitados(selectedEvento)
             return (
               <div className="space-y-0 font-sans text-black">
-                {/* Encabezado estilo imprimible */}
-                <div className="text-right text-xs text-gray-500 mb-2">
-                  Total: {totalPersonas} personas
-                </div>
-                <div className="border-2 border-black text-center py-2 mb-3">
-                  <p className="font-bold text-sm tracking-wide">GUIA DE PRODUCCION - MISE EN PLACE</p>
-                  <p className="text-xs mt-0.5">
-                    {selectedEvento.nombrePareja || selectedEvento.nombre}
-                    {selectedEvento.fecha ? ` | ${new Date(selectedEvento.fecha + "T12:00:00").toLocaleDateString("es-AR")}` : ""}
-                    {" | "}{totalPersonas} personas
+                {/* Contenido imprimible con ID para captura */}
+                <div id="mise-en-place-print-content">
+                  <p className="total-line" style={{ textAlign: "right", fontSize: "9pt", color: "#555", marginBottom: "6px" }}>
+                    Total: {totalPersonas} personas
                   </p>
-                </div>
-
-                {dishes.length === 0 ? (
-                  <div className="text-center text-sm text-gray-500 py-10">
-                    Este evento no tiene recetas asignadas.
+                  <div className="header-box" style={{ border: "2px solid #000", textAlign: "center", padding: "6px", marginBottom: "10px" }}>
+                    <p style={{ fontWeight: "bold", fontSize: "11pt", letterSpacing: "1px" }}>GUIA DE PRODUCCION - MISE EN PLACE</p>
+                    <p style={{ fontSize: "9pt", marginTop: "2px" }}>
+                      {selectedEvento.nombrePareja || selectedEvento.nombre}
+                      {selectedEvento.fecha ? ` | ${new Date(selectedEvento.fecha + "T12:00:00").toLocaleDateString("es-AR")}` : ""}
+                      {" | "}{totalPersonas} personas
+                    </p>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {dishes.map((dish, di) => (
-                      <div key={di} className="border border-gray-300">
-                        {/* Header de la receta - fondo oscuro */}
-                        <div className="bg-[#3a3a3a] text-white px-3 py-2 flex justify-between items-center">
-                          <span className="font-bold text-sm">
-                            {dish.receta.nombre}
-                            {dish.multiplier !== 1 && (
-                              <span className="ml-2 font-normal text-xs opacity-80">
-                                (x{dish.multiplier % 1 === 0 ? dish.multiplier : dish.multiplier.toFixed(1)} un/persona)
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-xs opacity-80">{dish.segment} - {dish.pax} pax</span>
+
+                  {dishes.length === 0 ? (
+                    <div className="text-center text-sm text-gray-500 py-10">
+                      Este evento no tiene recetas asignadas.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {dishes.map((dish, di) => (
+                        <div key={di} className="receta-block" style={{ border: "1px solid #ccc", marginBottom: "12px" }}>
+                          <div className="receta-header" style={{ background: "#3a3a3a", color: "#fff", padding: "6px 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontWeight: "bold", fontSize: "10pt" }}>
+                              {dish.receta.nombre}
+                              {dish.multiplier !== 1 && (
+                                <span style={{ marginLeft: "8px", fontWeight: "normal", fontSize: "8pt", opacity: 0.85 }}>
+                                  (x{dish.multiplier % 1 === 0 ? dish.multiplier : dish.multiplier.toFixed(1)} un/persona)
+                                </span>
+                              )}
+                            </span>
+                            <span style={{ fontSize: "8pt", opacity: 0.85 }}>{dish.segment} - {dish.pax} pax</span>
+                          </div>
+
+                          {(!dish.receta.insumos || dish.receta.insumos.length === 0) ? (
+                            <div style={{ padding: "6px 8px", fontSize: "9pt", color: "#888", fontStyle: "italic" }}>Sin ingredientes cargados</div>
+                          ) : (
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt" }}>
+                              <thead>
+                                <tr style={{ background: "#f0f0f0" }}>
+                                  <th style={{ textAlign: "left", padding: "4px 6px", border: "1px solid #ccc", fontSize: "8pt", textTransform: "uppercase" }}>Ingrediente</th>
+                                  <th style={{ textAlign: "right", padding: "4px 6px", border: "1px solid #ccc", fontSize: "8pt", textTransform: "uppercase", width: "90px" }}>Por Plato</th>
+                                  <th style={{ textAlign: "right", padding: "4px 6px", border: "1px solid #ccc", fontSize: "8pt", textTransform: "uppercase", width: "110px" }}>Cantidad Total</th>
+                                  <th style={{ textAlign: "left", padding: "4px 6px", border: "1px solid #ccc", fontSize: "8pt", textTransform: "uppercase" }}>Mise en Place</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {dish.receta.insumos.map((ing: any, idx: number) => {
+                                  const insumo = state.insumos.find((i) => i.id === ing.insumoId)
+                                  if (!insumo) return null
+                                  const inputUnit = ing.unidadReceta || insumo.unidad
+                                  const cantidadPorPlato = ing.cantidadBasePorPersona
+                                  const cantidadTotal = cantidadPorPlato * dish.pax * dish.multiplier
+                                  return (
+                                    <tr key={idx} style={{ background: idx % 2 === 0 ? "#fff" : "#f9f9f9" }}>
+                                      <td style={{ padding: "4px 6px", border: "1px solid #ddd", fontWeight: "500" }}>{insumo.descripcion}</td>
+                                      <td style={{ padding: "4px 6px", border: "1px solid #ddd", textAlign: "right", fontFamily: "monospace" }}>{cantidadPorPlato} {inputUnit}</td>
+                                      <td style={{ padding: "4px 6px", border: "1px solid #ddd", textAlign: "right", fontFamily: "monospace", fontWeight: "bold" }}>{smartUnits(cantidadTotal, inputUnit)}</td>
+                                      <td style={{ padding: "4px 6px", border: "1px solid #ddd", color: "#333" }}>{ing.detalleCorte || "-"}</td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          )}
                         </div>
-
-                        {/* Tabla de ingredientes */}
-                        {(!dish.receta.insumos || dish.receta.insumos.length === 0) ? (
-                          <div className="px-3 py-2 text-xs text-gray-500 italic">Sin ingredientes cargados</div>
-                        ) : (
-                          <table className="w-full text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-gray-100">
-                                <th className="text-left px-2 py-1.5 border border-gray-300 font-semibold uppercase text-[10px]">Ingrediente</th>
-                                <th className="text-right px-2 py-1.5 border border-gray-300 font-semibold uppercase text-[10px] w-24">Por Plato</th>
-                                <th className="text-right px-2 py-1.5 border border-gray-300 font-semibold uppercase text-[10px] w-28">Cantidad Total</th>
-                                <th className="text-left px-2 py-1.5 border border-gray-300 font-semibold uppercase text-[10px]">Mise en Place</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {dish.receta.insumos.map((ing: any, idx: number) => {
-                                const insumo = state.insumos.find((i) => i.id === ing.insumoId)
-                                if (!insumo) return null
-                                const inputUnit = ing.unidadReceta || insumo.unidad
-                                const cantidadPorPlato = ing.cantidadBasePorPersona
-                                const cantidadTotal = cantidadPorPlato * dish.pax * dish.multiplier
-                                return (
-                                  <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                    <td className="px-2 py-1.5 border border-gray-200 font-medium">{insumo.descripcion}</td>
-                                    <td className="px-2 py-1.5 border border-gray-200 text-right font-mono">{cantidadPorPlato} {inputUnit}</td>
-                                    <td className="px-2 py-1.5 border border-gray-200 text-right font-mono font-bold">{smartUnits(cantidadTotal, inputUnit)}</td>
-                                    <td className="px-2 py-1.5 border border-gray-200 text-gray-700">{ing.detalleCorte || "-"}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {/* Botón imprimir */}
                 <div className="flex justify-end pt-4 border-t mt-4">
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      const printWindow = window.open("", "_blank", "width=900,height=700")
+                      if (!printWindow) return
+                      const content = document.getElementById("mise-en-place-print-content")?.innerHTML || ""
+                      printWindow.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Guia de Produccion - ${selectedEvento?.nombrePareja || selectedEvento?.nombre || ""}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; background: #fff; padding: 20px; }
+    .header-box { border: 2px solid #000; text-align: center; padding: 6px; margin-bottom: 10px; }
+    .header-box p:first-child { font-weight: bold; font-size: 11pt; letter-spacing: 1px; }
+    .header-box p:last-child { font-size: 9pt; margin-top: 2px; }
+    .total-line { text-align: right; font-size: 9pt; color: #555; margin-bottom: 6px; }
+    .receta-block { border: 1px solid #ccc; margin-bottom: 12px; page-break-inside: avoid; }
+    .receta-header { background: #3a3a3a; color: #fff; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; }
+    .receta-header .nombre { font-weight: bold; font-size: 10pt; }
+    .receta-header .pax { font-size: 8pt; opacity: 0.85; }
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+    th { background: #f0f0f0; text-align: left; padding: 4px 6px; border: 1px solid #ccc; font-size: 8pt; text-transform: uppercase; }
+    th.right { text-align: right; }
+    td { padding: 4px 6px; border: 1px solid #ddd; vertical-align: top; }
+    td.right { text-align: right; font-family: monospace; }
+    tr:nth-child(even) td { background: #f9f9f9; }
+    .no-data { padding: 6px 8px; font-size: 9pt; color: #888; font-style: italic; }
+    @media print { body { padding: 10px; } }
+  </style>
+</head>
+<body>
+  ${content}
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`)
+                      printWindow.document.close()
+                    }}
+                  >
                     <Printer className="h-4 w-4" />
                     Imprimir
                   </Button>
