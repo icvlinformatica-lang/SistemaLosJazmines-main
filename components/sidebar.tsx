@@ -104,9 +104,14 @@ export function Sidebar() {
 
   // Filtra los items del menú según rutas del perfil activo
   const rutasPermitidas = perfilActivo?.rutas ?? ["*"]
+  const rutasExcluidas = perfilActivo?.rutasExcluidas ?? []
   const accesoTotal = rutasPermitidas.includes("*") || rutasPermitidas.length === 0
 
+  const rutaExcluida = (href: string) =>
+    rutasExcluidas.some((r) => href === r || href.startsWith(r + "/"))
+
   const rutaPermitida = (href: string) => {
+    if (rutaExcluida(href)) return false
     if (accesoTotal) return true
     return rutasPermitidas.some((r) => href === r || href.startsWith(r + "/") || r.startsWith(href))
   }

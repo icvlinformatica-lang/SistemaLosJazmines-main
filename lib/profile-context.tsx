@@ -9,6 +9,7 @@ export interface Perfil {
   color: string
   emoji: string
   rutas: string[]
+  rutasExcluidas?: string[]
 }
 
 export const PERFILES: Perfil[] = [
@@ -34,19 +35,8 @@ export const PERFILES: Perfil[] = [
     pin: "112233",
     color: "#8e44ad",
     emoji: "📊",
-    rutas: [
-      "/evento",
-      "/eventos",
-      "/admin/barra",
-      "/admin/cocteles",
-      "/admin/servicios",
-      "/admin/personal",
-      "/admin/pagos-pendientes",
-      "/admin/gastos-fijos",
-      "/admin/precios",
-      "/admin/calendario-pagos",
-      "/admin/vencimientos",
-    ],
+    rutas: ["*"],
+    rutasExcluidas: ["/eventos/produccion"],
   },
   {
     id: "soporte",
