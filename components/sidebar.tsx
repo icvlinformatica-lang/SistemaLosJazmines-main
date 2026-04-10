@@ -324,7 +324,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={handleCambiarPerfil}
-              className="w-full text-left text-xs text-[#f5f0e8]/50 hover:text-[#f5f0e8]/80 transition-colors px-1"
+              className="w-full text-left text-xs text-black hover:text-black/70 transition-colors px-1"
             >
               Cambiar perfil
             </button>
