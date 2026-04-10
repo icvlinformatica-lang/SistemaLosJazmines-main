@@ -48,6 +48,7 @@ export const PERFILES: Perfil[] = [
 
 interface ProfileContextType {
   perfilActivo: Perfil | null
+  hydrated: boolean
   seleccionarPerfil: (id: string, pin: string) => boolean
   cerrarSesion: () => void
 }
@@ -88,10 +89,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }
 
-  if (!hydrated) return null
-
   return (
-    <ProfileContext.Provider value={{ perfilActivo, seleccionarPerfil, cerrarSesion }}>
+    <ProfileContext.Provider value={{ perfilActivo, hydrated, seleccionarPerfil, cerrarSesion }}>
       {children}
     </ProfileContext.Provider>
   )
