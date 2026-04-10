@@ -321,18 +321,29 @@ export function Sidebar() {
 
         {/* Perfil activo + cambiar perfil */}
         {perfilActivo && (
-          <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3 space-y-1.5">
-            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2">
-              <span className="text-base leading-none">{perfilActivo.emoji}</span>
-              <span className="text-sm text-black font-semibold flex-1">{perfilActivo.nombre}</span>
+          <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3">
+            <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[#f5f0e8]/8 hover:bg-[#f5f0e8]/12 transition-colors group">
+              {/* Avatar circular con color del perfil */}
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 shadow-sm"
+                style={{ backgroundColor: perfilActivo.color }}
+              >
+                {perfilActivo.emoji}
+              </div>
+              {/* Nombre + acción */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[#f5f0e8] text-xs font-semibold leading-tight truncate">{perfilActivo.nombre}</p>
+                <button
+                  type="button"
+                  onClick={handleCambiarPerfil}
+                  className="text-[10px] text-[#f5f0e8]/50 hover:text-[#f5f0e8]/90 transition-colors leading-tight"
+                >
+                  Cambiar perfil
+                </button>
+              </div>
+              {/* Icono de cambio */}
+              <ChevronLeft className="h-3.5 w-3.5 text-[#f5f0e8]/30 group-hover:text-[#f5f0e8]/70 rotate-180 transition-colors shrink-0" />
             </div>
-            <button
-              type="button"
-              onClick={handleCambiarPerfil}
-              className="w-full text-left text-xs text-black hover:text-black/70 transition-colors px-1"
-            >
-              Cambiar perfil
-            </button>
           </div>
         )}
 
