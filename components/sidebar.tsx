@@ -299,16 +299,18 @@ export function Sidebar() {
         </nav>
 
         {/* Planificar Fiesta Button - Active */}
-        <div className="px-3 pb-3 -mt-[10px]">
-          <button
-            type="button"
-            onClick={handlePlanificarFiesta}
-            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533] hover:bg-[#e0b040] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
-          >
-            <Sparkles className="h-5 w-5 shrink-0" />
-            <span className="flex-1 text-left">Planificar Fiesta</span>
-          </button>
-        </div>
+        {!["cocina", "barra"].includes(perfilActivo?.id ?? "") && (
+          <div className="px-3 pb-3 -mt-[10px]">
+            <button
+              type="button"
+              onClick={handlePlanificarFiesta}
+              className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533] hover:bg-[#e0b040] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
+            >
+              <Sparkles className="h-5 w-5 shrink-0" />
+              <span className="flex-1 text-left">Planificar Fiesta</span>
+            </button>
+          </div>
+        )}
 
         {/* Perfil activo + cambiar perfil */}
         {perfilActivo && (
