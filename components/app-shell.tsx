@@ -30,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [perfilActivo, hydrated, pathname, esLogin, router])
 
+  // Login siempre se muestra, independientemente del estado de hidratación
   if (esLogin) {
     return (
       <>
@@ -39,14 +40,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // Mientras hidrata, mostrar layout sin contenido para evitar flash de redirección
+  // Mientras hidrata el perfil, mostrar esqueleto para evitar flash de redirección
   if (!hydrated) {
     return (
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-screen overflow-hidden bg-[#f5f0eb]">
         <div className="w-64 shrink-0 bg-[#1a3a2a]" />
-        <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden" />
+        <main className="relative flex-1 min-w-0" />
       </div>
     )
+  }
+
+  // Sin perfil activo — redirige (el useEffect lo maneja), mostrar blanco mientras tanto
+  if (!perfilActivo) {
+    return null
   }
 
   return (
