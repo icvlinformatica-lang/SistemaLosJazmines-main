@@ -143,16 +143,18 @@ export default function LoginPage() {
         })}
       </div>
 
-      {/* Pie */}
-      <div className="mt-12">
-        <button
-          type="button"
-          onClick={handleOlvidarPins}
-          className="text-gray-300 text-xs hover:text-gray-500 transition-colors"
-        >
-          Olvidar todos los PINs
-        </button>
-      </div>
+      {/* Pie - solo si hay al menos un PIN guardado */}
+      {Object.values(pinsGuardados).some(Boolean) && (
+        <div className="mt-12">
+          <button
+            type="button"
+            onClick={handleOlvidarPins}
+            className="text-gray-300 text-xs hover:text-gray-500 transition-colors"
+          >
+            Olvidar todos los PINs
+          </button>
+        </div>
+      )}
     </div>
   )
 }
