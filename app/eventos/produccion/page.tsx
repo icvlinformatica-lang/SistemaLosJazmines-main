@@ -335,7 +335,7 @@ export default function ProduccionPage() {
               {/* Lista de compras cocina */}
               {(() => {
                 const compras = getComprasEvento()
-                if (!compras || compras.compras.length === 0) return null
+                if (!compras || compras.length === 0) return null
                 return (
                   <div>
                     <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
@@ -350,7 +350,7 @@ export default function ProduccionPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {compras.compras.map((item) => (
+                        {compras.map((item) => (
                           <TableRow key={item.insumoId}>
                             <TableCell>{item.insumo?.descripcion}</TableCell>
                             <TableCell className="text-right font-mono">
