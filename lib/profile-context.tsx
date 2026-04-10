@@ -18,7 +18,7 @@ export const PERFILES: Perfil[] = [
     pin: "1234",
     color: "#e67e22",
     emoji: "👨‍🍳",
-    rutas: ["/admin/almacen", "/admin/recetario"],
+    rutas: ["/admin/almacen", "/admin/recetario", "/eventos/produccion"],
   },
   {
     id: "barra",

@@ -28,6 +28,7 @@ import {
   Users,
   Bell,
   Lock,
+  ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -72,6 +73,7 @@ const menuItems: MenuItem[] = [
     children: [
       { href: "/admin/recetario", label: "Recetas", icon: ChefHat },
       { href: "/admin/cocteles", label: "Cocteles", icon: Wine },
+      { href: "/eventos/produccion", label: "Guias Produccion", icon: ClipboardList },
     ],
   },
   {
