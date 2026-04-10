@@ -68,7 +68,7 @@ export default function LoginPage() {
       {/* Header */}
       <div className="mb-10 text-center">
         <h1 className="text-4xl font-bold text-[#1a3a2a] tracking-tight">Los Jazmines</h1>
-        <p className="text-gray-400 text-sm mt-1 tracking-widest uppercase">Sistema</p>
+        <p className="text-black text-sm mt-1 tracking-widest uppercase">Sistema</p>
         <div className="mt-5 h-px w-24 mx-auto bg-[#1a3a2a]/15 rounded-full" />
       </div>
 
