@@ -314,15 +314,15 @@ export function Sidebar() {
 
         {/* Perfil activo + cambiar perfil */}
         {perfilActivo && (
-          <div className="px-3 pb-2 border-t border-[#f5f0e8]/10 pt-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg leading-none">{perfilActivo.emoji}</span>
-              <span className="text-sm text-[#f5f0e8]/80 font-medium flex-1">{perfilActivo.nombre}</span>
+          <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3 space-y-1.5">
+            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2">
+              <span className="text-base leading-none">{perfilActivo.emoji}</span>
+              <span className="text-sm text-black font-semibold flex-1">{perfilActivo.nombre}</span>
             </div>
             <button
               type="button"
               onClick={handleCambiarPerfil}
-              className="w-full text-left text-xs text-[#f5f0e8]/50 hover:text-[#f5f0e8]/80 transition-colors py-1"
+              className="w-full text-left text-xs text-[#f5f0e8]/50 hover:text-[#f5f0e8]/80 transition-colors px-1"
             >
               Cambiar perfil
             </button>
