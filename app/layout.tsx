@@ -1,7 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { StoreProvider } from "@/lib/store-context"
 import { UIProvider } from "@/lib/ui-context"
 import { ProfileProvider } from "@/lib/profile-context"
 import { AppShell } from "@/components/app-shell"
@@ -36,13 +35,11 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
         <ProfileProvider>
-          <StoreProvider>
-            <UIProvider>
-              <AppShell>
-                {children}
-              </AppShell>
-            </UIProvider>
-          </StoreProvider>
+          <UIProvider>
+            <AppShell>
+              {children}
+            </AppShell>
+          </UIProvider>
         </ProfileProvider>
       </body>
     </html>

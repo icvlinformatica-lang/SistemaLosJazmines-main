@@ -2,7 +2,8 @@
 
 import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useProfile, PERFILES } from "@/lib/profile-context"
+import { useProfile } from "@/lib/profile-context"
+import { StoreProvider } from "@/lib/store-context"
 import { Sidebar } from "@/components/sidebar"
 import { Toaster } from "@/components/ui/toaster"
 import { WelcomeModal } from "@/components/welcome-modal"
@@ -56,13 +57,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
-        {children}
-      </main>
-      <Toaster />
-      <WelcomeModal />
-    </div>
+    <StoreProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+          {children}
+        </main>
+        <Toaster />
+        <WelcomeModal />
+      </div>
+    </StoreProvider>
   )
 }
