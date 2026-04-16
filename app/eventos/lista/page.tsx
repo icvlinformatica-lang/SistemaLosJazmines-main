@@ -159,6 +159,22 @@ export default function EventosListaPage() {
     hojaGastos: true,
   })
 
+  const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false)
+  const [finalizarEventoId, setFinalizarEventoId] = useState<string | null>(null)
+
+  const handleFinalizarEvento = (id: string) => {
+    setFinalizarEventoId(id)
+    setFinalizarDialogOpen(true)
+  }
+
+  const confirmFinalizarEvento = async () => {
+    if (!finalizarEventoId) return
+    await updateEvento(finalizarEventoId, { estado: "finalizado" })
+    toast({ title: "Evento finalizado", description: "El evento fue archivado como finalizado." })
+    setFinalizarDialogOpen(false)
+    setFinalizarEventoId(null)
+  }
+
   // Consolidar compras
   const [modoConsolidar, setModoConsolidar] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -169,6 +185,7 @@ export default function EventosListaPage() {
   // Filter events
   const eventosFiltrados = (eventos || [])
     .filter((e) => {
+      if (e.estado === "finalizado") return false // Los finalizados van al Archivo
       const matchesSearch =
         !searchQuery ||
         (e.nombre || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -835,6 +852,18 @@ export default function EventosListaPage() {
                                   </DropdownMenuItem>
                                 </>
                               )}
+                              {evento.estado !== "finalizado" && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleFinalizarEvento(evento.id)}
+                                    className="text-emerald-700 focus:text-emerald-700"
+                                  >
+                                    <Archive className="h-4 w-4 mr-2" />
+                                    Marcar como Finalizado
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleEliminar(evento.id)}
@@ -874,6 +903,26 @@ export default function EventosListaPage() {
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               Si, Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+      </AlertDialog>
+
+      {/* Finalizar Dialog */}
+      <AlertDialog open={finalizarDialogOpen} onOpenChange={setFinalizarDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Marcar como Finalizado</AlertDialogTitle>
+            <AlertDialogDescription>
+              El evento pasara al Archivo de eventos finalizados. Podras consultarlo desde la seccion Archivo en el menu de Eventos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmFinalizarEvento}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white"
+            >
+              Si, Finalizar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

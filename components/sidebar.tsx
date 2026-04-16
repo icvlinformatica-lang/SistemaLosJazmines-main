@@ -29,6 +29,7 @@ import {
   Bell,
   Lock,
   ClipboardList,
+  Archive,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -55,6 +56,7 @@ const menuItems: MenuItem[] = [
       { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: true },
       { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: true },
       { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: true },
+      { href: "/eventos/archivo", label: "Archivo", icon: Archive },
     ],
   },
   {
