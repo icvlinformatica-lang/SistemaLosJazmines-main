@@ -617,7 +617,7 @@ export default function EventosListaPage() {
             {showDashboard ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
           {showDashboard && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center gap-3">
@@ -657,34 +657,22 @@ export default function EventosListaPage() {
                   </div>
                 </CardContent>
               </Card>
-              {eventosFinalizados > 0 && (
-                <Card className="border-emerald-200 bg-emerald-50 sm:col-span-3">
-                  <CardContent className="py-3 px-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-200">
-                          <CheckCircle className="h-4 w-4 text-emerald-800" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-emerald-900">
-                            {eventosFinalizados} evento{eventosFinalizados !== 1 ? "s" : ""} finalizado{eventosFinalizados !== 1 ? "s" : ""}
-                          </p>
-                          <p className="text-xs text-emerald-700">Stock descontado — ocultos de la lista principal</p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setMostrarFinalizados(!mostrarFinalizados)}
-                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 shrink-0"
-                      >
-                        {mostrarFinalizados ? <X className="h-3.5 w-3.5 mr-1.5" /> : <Eye className="h-3.5 w-3.5 mr-1.5" />}
-                        {mostrarFinalizados ? "Ocultar" : "Mostrar"}
-                      </Button>
+              <Card
+                className={`border-emerald-200 bg-emerald-50 cursor-pointer transition-all ${mostrarFinalizados ? "ring-2 ring-emerald-400" : ""}`}
+                onClick={() => setMostrarFinalizados(!mostrarFinalizados)}
+              >
+                <CardContent className="py-4 px-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-200">
+                      <CheckCircle className="h-5 w-5 text-emerald-800" />
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <div>
+                      <p className="text-2xl font-bold text-emerald-900">{eventosFinalizados}</p>
+                      <p className="text-xs text-emerald-700 font-medium">Finalizados</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
         </div>
