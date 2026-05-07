@@ -617,6 +617,7 @@ export default function EventosListaPage() {
             {showDashboard ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
           {showDashboard && (
+            <>
             {/* Total — contador minimalista */}
             <div className="flex items-center gap-1.5 mb-3">
               <span className="text-xs text-muted-foreground font-medium">Total</span>
@@ -667,6 +668,7 @@ export default function EventosListaPage() {
                 </CardContent>
               </Card>
             </div>
+            </>
           )}
         </div>
 
