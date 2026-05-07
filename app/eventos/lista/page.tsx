@@ -159,6 +159,13 @@ export default function EventosListaPage() {
     hojaGastos: true,
   })
 
+  const [mostrarFinalizados, setMostrarFinalizados] = useState(false)
+
+  const handleFinalizar = async (eventoId: string) => {
+    await updateEvento(eventoId, { estado: "completado" })
+    toast({ title: "Evento finalizado", description: "El evento fue marcado como completado y se ocultara de la lista principal." })
+  }
+
   // Consolidar compras
   const [modoConsolidar, setModoConsolidar] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -175,7 +182,10 @@ export default function EventosListaPage() {
         (e.nombrePareja || "").toLowerCase().includes(searchQuery.toLowerCase())
       const matchesEstado = filtroEstado === "todos" || e.estado === filtroEstado
       const matchesSalon = filtroSalon === "todos" || e.salon === filtroSalon
-      return matchesSearch && matchesEstado && matchesSalon
+      // Ocultar completados a menos que el toggle o el filtro lo incluya explicitamente
+      const ocultarCompletado =
+        !mostrarFinalizados && e.estado === "completado" && filtroEstado !== "completado"
+      return matchesSearch && matchesEstado && matchesSalon && !ocultarCompletado
     })
     .sort((a, b) => {
       // Sort by date, most recent first
@@ -537,6 +547,7 @@ export default function EventosListaPage() {
   const totalEventos = eventos?.length || 0
   const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
   const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
+  const eventosFinalizados = (eventos || []).filter((e) => e.estado === "completado").length
 
   return (
     <div className="min-h-screen bg-background">
@@ -646,6 +657,34 @@ export default function EventosListaPage() {
                   </div>
                 </CardContent>
               </Card>
+              {eventosFinalizados > 0 && (
+                <Card className="border-emerald-200 bg-emerald-50 sm:col-span-3">
+                  <CardContent className="py-3 px-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-200">
+                          <CheckCircle className="h-4 w-4 text-emerald-800" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-900">
+                            {eventosFinalizados} evento{eventosFinalizados !== 1 ? "s" : ""} finalizado{eventosFinalizados !== 1 ? "s" : ""}
+                          </p>
+                          <p className="text-xs text-emerald-700">Stock descontado — ocultos de la lista principal</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMostrarFinalizados(!mostrarFinalizados)}
+                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 shrink-0"
+                      >
+                        {mostrarFinalizados ? <X className="h-3.5 w-3.5 mr-1.5" /> : <Eye className="h-3.5 w-3.5 mr-1.5" />}
+                        {mostrarFinalizados ? "Ocultar" : "Mostrar"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </div>
@@ -666,10 +705,10 @@ export default function EventosListaPage() {
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="en_preparacion">En Preparacion</SelectItem>
-                  <SelectItem value="completado">Completado</SelectItem>
+              <SelectItem value="todos">Todos los activos</SelectItem>
+              <SelectItem value="pendiente">Pendiente</SelectItem>
+              <SelectItem value="en_preparacion">En Preparacion</SelectItem>
+              <SelectItem value="completado">Finalizados</SelectItem>
               <SelectItem value="cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
@@ -749,7 +788,7 @@ export default function EventosListaPage() {
                     return (
                       <TableRow
                         key={evento.id}
-                        className={`group ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""}`}
+                        className={`group ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""}`}
                       >
                         {modoConsolidar && (
                           <TableCell className="w-10">
@@ -827,11 +866,32 @@ export default function EventosListaPage() {
                                 <>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
+                                    onClick={() => handleFinalizar(evento.id)}
+                                    className="text-emerald-600 focus:text-emerald-600"
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Marcar como Finalizado
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
                                     onClick={() => handleRecuperarStock(evento.id)}
                                     className="text-amber-600 focus:text-amber-600"
                                   >
                                     <RotateCcw className="h-4 w-4 mr-2" />
                                     Recuperar Stock
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              {evento.estado === "completado" && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => updateEvento(evento.id, { estado: "en_preparacion" }).then(() =>
+                                      toast({ title: "Evento reactivado", description: "El evento volvio a En Preparacion." })
+                                    )}
+                                    className="text-sky-600 focus:text-sky-600"
+                                  >
+                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                    Reactivar Evento
                                   </DropdownMenuItem>
                                 </>
                               )}

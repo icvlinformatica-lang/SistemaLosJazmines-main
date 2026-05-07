@@ -14,6 +14,7 @@ import {
   calcularTotalesPaquete,
   getPrecioVenta,
   generateId,
+  obtenerPreciosServicio,
   type EventoHistorial,
   type BarraEvento,
   type ServicioEvento,
@@ -1437,130 +1438,170 @@ function EventoPageContent() {
           )}
 
           {/* ---- PANEL SEÑAS A PROVEEDORES ---- */}
-          {serviciosEvento.length > 0 && (
-            <div className="mt-5 space-y-3">
-              <div className="flex items-center gap-2 pb-1 border-b border-border">
-                <Banknote className="h-4 w-4 text-muted-foreground" />
-                <h4 className="text-sm font-semibold">Pagos a Proveedores</h4>
-              </div>
+          {serviciosEvento.length > 0 && (() => {
+            const getEstadoPagoBadge = (estadoPago?: string): JSX.Element => {
+              const configs: Record<string, { label: string; variant: string; className: string }> = {
+                sin_seña:        { label: "Sin seña",        variant: "secondary", className: "bg-muted text-muted-foreground" },
+                señado:          { label: "Señado",          variant: "outline",   className: "bg-yellow-100 text-yellow-700 border-yellow-300" },
+                saldo_pendiente: { label: "Saldo pendiente", variant: "outline",   className: "bg-orange-100 text-orange-700 border-orange-300" },
+                pagado_total:    { label: "Pagado total",    variant: "outline",   className: "bg-green-100 text-green-700 border-green-300" },
+              }
+              const cfg = configs[estadoPago ?? "sin_seña"] ?? configs.sin_seña
+              return (
+                <Badge variant="outline" className={`shrink-0 rounded-full text-xs font-medium ${cfg.className}`}>
+                  {cfg.label}
+                </Badge>
+              )
+            }
 
-              {serviciosEvento.map((srv) => {
-                const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
-                const badgeConfig: Record<string, { label: string; className: string }> = {
-                  sin_seña:        { label: "Sin seña",       className: "bg-muted text-muted-foreground" },
-                  señado:          { label: "Señado",         className: "bg-amber-100 text-amber-700 border border-amber-200" },
-                  saldo_pendiente: { label: "Saldo pendiente",className: "bg-orange-100 text-orange-700 border border-orange-200" },
-                  pagado_total:    { label: "Pagado total",   className: "bg-emerald-100 text-emerald-700 border border-emerald-200" },
-                }
-                const badge = badgeConfig[estadoPago] ?? badgeConfig.sin_seña
+            return (
+              <div className="mt-5 space-y-3">
+                <div className="flex items-center gap-2 pb-1 border-b border-border">
+                  <Banknote className="h-4 w-4 text-muted-foreground" />
+                  <h4 className="text-sm font-semibold">Pagos a Proveedores</h4>
+                </div>
 
-                return (
-                  <div key={srv.servicioId} className="rounded-xl border border-border bg-card p-4 space-y-3">
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold leading-tight truncate">{srv.nombre}</p>
-                        {srv.proveedor && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{srv.proveedor}</p>
-                        )}
+                {serviciosEvento.map((srv) => {
+                  const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
+
+                  // Precio del servicio desde catálogo para calcular saldo pendiente
+                  const srvCatalogo = catalogoServicios.find((s) => s.id === srv.servicioId)
+                  const precioBase = srvCatalogo
+                    ? obtenerPreciosServicio(srvCatalogo, state).precioOficial
+                    : 0
+                  const totalServicio = precioBase * srv.cantidad
+                  const saldoPendienteCalculado = Math.max(0, totalServicio - (srv.montoSeña ?? 0))
+
+                  const estadoLabels: Record<string, string> = {
+                    sin_seña: "Sin seña",
+                    señado: "Señado",
+                    saldo_pendiente: "Saldo pendiente",
+                    pagado_total: "Pagado total",
+                  }
+
+                  return (
+                    <div key={srv.servicioId} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold leading-tight truncate">{srv.nombre}</p>
+                          {srv.proveedor && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{srv.proveedor}</p>
+                          )}
+                        </div>
+                        {getEstadoPagoBadge(estadoPago)}
                       </div>
-                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>
-                        {badge.label}
-                      </span>
-                    </div>
 
-                    {/* Estado selector */}
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {(["sin_seña", "señado", "saldo_pendiente", "pagado_total"] as const).map((estado) => (
-                        <button
-                          key={estado}
-                          type="button"
-                          onClick={() => {
-                            handleUpdateServicioSeña(srv.servicioId, "estadoPago", estado)
-                            if (estado === "pagado_total") {
-                              handleUpdateServicioSeña(srv.servicioId, "pagado", true)
-                            } else {
-                              handleUpdateServicioSeña(srv.servicioId, "pagado", false)
+                      {/* Estado selector */}
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {(["sin_seña", "señado", "saldo_pendiente", "pagado_total"] as const).map((estado) => (
+                          <button
+                            key={estado}
+                            type="button"
+                            onClick={() => {
+                              handleUpdateServicioSeña(srv.servicioId, "estadoPago", estado)
+                              handleUpdateServicioSeña(srv.servicioId, "pagado", estado === "pagado_total")
+                            }}
+                            className={`rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                              estadoPago === estado
+                                ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                                : "border-border bg-background text-muted-foreground hover:bg-muted"
+                            }`}
+                          >
+                            {estadoLabels[estado]}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Monto seña + Fecha seña */}
+                      {(estadoPago === "señado" || estadoPago === "saldo_pendiente") && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Monto seña ($)</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={srv.montoSeña ?? ""}
+                              onChange={(e) =>
+                                handleUpdateServicioSeña(srv.servicioId, "montoSeña", e.target.value ? Number(e.target.value) : undefined)
+                              }
+                              placeholder="$ 0"
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Fecha de seña</Label>
+                            <Input
+                              type="date"
+                              value={srv.fechaSeña ?? ""}
+                              onChange={(e) =>
+                                handleUpdateServicioSeña(srv.servicioId, "fechaSeña", e.target.value || undefined)
+                              }
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Saldo pendiente (solo lectura, calculado) + Fecha pago saldo */}
+                      {estadoPago === "saldo_pendiente" && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Saldo pendiente</Label>
+                            <div className="flex h-8 items-center rounded-md border border-border bg-muted px-3 text-sm font-medium text-foreground">
+                              {formatCurrency(saldoPendienteCalculado)}
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Fecha pago saldo</Label>
+                            <Input
+                              type="date"
+                              value={srv.fechaPagoSaldo ?? ""}
+                              onChange={(e) =>
+                                handleUpdateServicioSeña(srv.servicioId, "fechaPagoSaldo", e.target.value || undefined)
+                              }
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Fecha de pago total */}
+                      {estadoPago === "pagado_total" && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Fecha de pago total</Label>
+                          <Input
+                            type="date"
+                            value={srv.fechaPagoSaldo ?? ""}
+                            onChange={(e) =>
+                              handleUpdateServicioSeña(srv.servicioId, "fechaPagoSaldo", e.target.value || undefined)
                             }
+                            className="h-8 text-sm w-full sm:w-1/2"
+                          />
+                        </div>
+                      )}
+
+                      {/* Botón marcar pagado total */}
+                      {estadoPago !== "pagado_total" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="w-full border-green-300 text-green-700 hover:bg-green-50"
+                          onClick={() => {
+                            handleUpdateServicioSeña(srv.servicioId, "estadoPago", "pagado_total")
+                            handleUpdateServicioSeña(srv.servicioId, "pagado", true)
                           }}
-                          className={`rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
-                            estadoPago === estado
-                              ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                              : "border-border bg-background text-muted-foreground hover:bg-muted"
-                          }`}
                         >
-                          {badgeConfig[estado].label}
-                        </button>
-                      ))}
+                          Marcar pagado total
+                        </Button>
+                      )}
                     </div>
-
-                    {/* Campos adicionales según estado */}
-                    {(estadoPago === "señado" || estadoPago === "saldo_pendiente") && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Monto seña</Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            value={srv.montoSeña ?? ""}
-                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "montoSeña", e.target.value ? Number(e.target.value) : undefined)}
-                            placeholder="$ 0"
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Fecha seña</Label>
-                          <Input
-                            type="date"
-                            value={srv.fechaSeña ?? ""}
-                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "fechaSeña", e.target.value || undefined)}
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {estadoPago === "saldo_pendiente" && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Saldo pendiente</Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            value={srv.saldoPendiente ?? ""}
-                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "saldoPendiente", e.target.value ? Number(e.target.value) : undefined)}
-                            placeholder="$ 0"
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Fecha venc. saldo</Label>
-                          <Input
-                            type="date"
-                            value={srv.fechaLimitePago ?? ""}
-                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "fechaLimitePago", e.target.value || undefined)}
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {estadoPago === "pagado_total" && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Fecha de pago total</Label>
-                        <Input
-                          type="date"
-                          value={srv.fechaPagoSaldo ?? ""}
-                          onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "fechaPagoSaldo", e.target.value || undefined)}
-                          className="h-8 text-sm w-full sm:w-1/2"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )
+          })()}
         </SectionCard>
 
         {/* ==================== CONTRATO SECTION ==================== */}
