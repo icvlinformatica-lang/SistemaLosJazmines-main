@@ -873,6 +873,18 @@ function EventoPageContent() {
     setDialogBarraOpen(false)
   }
 
+  const handleUpdateServicioSeña = useCallback((
+    servicioId: string,
+    campo: keyof ServicioEvento,
+    valor: string | number | boolean | undefined,
+  ) => {
+    if (!evento) return
+    const serviciosActualizados = (evento.servicios || []).map((s) =>
+      s.servicioId === servicioId ? { ...s, [campo]: valor } : s
+    )
+    updateEventoActual({ servicios: serviciosActualizados })
+  }, [evento, updateEventoActual])
+
   const handleSelectBarraTemplate = (templateId: string) => {
     const template = barrasTemplates.find((t) => t.id === templateId)
     if (!template) return
@@ -1421,6 +1433,132 @@ function EventoPageContent() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ---- PANEL SEÑAS A PROVEEDORES ---- */}
+          {serviciosEvento.length > 0 && (
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center gap-2 pb-1 border-b border-border">
+                <Banknote className="h-4 w-4 text-muted-foreground" />
+                <h4 className="text-sm font-semibold">Pagos a Proveedores</h4>
+              </div>
+
+              {serviciosEvento.map((srv) => {
+                const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
+                const badgeConfig: Record<string, { label: string; className: string }> = {
+                  sin_seña:        { label: "Sin seña",       className: "bg-muted text-muted-foreground" },
+                  señado:          { label: "Señado",         className: "bg-amber-100 text-amber-700 border border-amber-200" },
+                  saldo_pendiente: { label: "Saldo pendiente",className: "bg-orange-100 text-orange-700 border border-orange-200" },
+                  pagado_total:    { label: "Pagado total",   className: "bg-emerald-100 text-emerald-700 border border-emerald-200" },
+                }
+                const badge = badgeConfig[estadoPago] ?? badgeConfig.sin_seña
+
+                return (
+                  <div key={srv.servicioId} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-tight truncate">{srv.nombre}</p>
+                        {srv.proveedor && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{srv.proveedor}</p>
+                        )}
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+
+                    {/* Estado selector */}
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {(["sin_seña", "señado", "saldo_pendiente", "pagado_total"] as const).map((estado) => (
+                        <button
+                          key={estado}
+                          type="button"
+                          onClick={() => {
+                            handleUpdateServicioSeña(srv.servicioId, "estadoPago", estado)
+                            if (estado === "pagado_total") {
+                              handleUpdateServicioSeña(srv.servicioId, "pagado", true)
+                            } else {
+                              handleUpdateServicioSeña(srv.servicioId, "pagado", false)
+                            }
+                          }}
+                          className={`rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                            estadoPago === estado
+                              ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                              : "border-border bg-background text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {badgeConfig[estado].label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Campos adicionales según estado */}
+                    {(estadoPago === "señado" || estadoPago === "saldo_pendiente") && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Monto seña</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={srv.montoSeña ?? ""}
+                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "montoSeña", e.target.value ? Number(e.target.value) : undefined)}
+                            placeholder="$ 0"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Fecha seña</Label>
+                          <Input
+                            type="date"
+                            value={srv.fechaSeña ?? ""}
+                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "fechaSeña", e.target.value || undefined)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {estadoPago === "saldo_pendiente" && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Saldo pendiente</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={srv.saldoPendiente ?? ""}
+                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "saldoPendiente", e.target.value ? Number(e.target.value) : undefined)}
+                            placeholder="$ 0"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Fecha venc. saldo</Label>
+                          <Input
+                            type="date"
+                            value={srv.fechaLimitePago ?? ""}
+                            onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "fechaLimitePago", e.target.value || undefined)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {estadoPago === "pagado_total" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Fecha de pago total</Label>
+                        <Input
+                          type="date"
+                          value={srv.fechaPagoSaldo ?? ""}
+                          onChange={(e) => handleUpdateServicioSeña(srv.servicioId, "fechaPagoSaldo", e.target.value || undefined)}
+                          className="h-8 text-sm w-full sm:w-1/2"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </SectionCard>
