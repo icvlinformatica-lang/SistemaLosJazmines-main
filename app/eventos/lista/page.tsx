@@ -617,7 +617,13 @@ export default function EventosListaPage() {
             {showDashboard ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
           {showDashboard && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {/* Total — contador minimalista */}
+            <div className="flex items-center gap-1.5 mb-3">
+              <span className="text-xs text-muted-foreground font-medium">Total</span>
+              <span className="text-xs font-bold text-foreground bg-muted rounded-full px-2 py-0.5">{totalEventos}</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center gap-3">
@@ -644,21 +650,8 @@ export default function EventosListaPage() {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="border-border">
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                      <Users className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-foreground">{totalEventos}</p>
-                      <p className="text-xs text-muted-foreground font-medium">Total</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
               <Card
-                className={`border-emerald-200 bg-emerald-50 cursor-pointer transition-all ${mostrarFinalizados ? "ring-2 ring-emerald-400" : ""}`}
+                className={`border-emerald-200 bg-emerald-50 cursor-pointer transition-all col-span-2 sm:col-span-1 ${mostrarFinalizados ? "ring-2 ring-emerald-400" : ""}`}
                 onClick={() => setMostrarFinalizados(!mostrarFinalizados)}
               >
                 <CardContent className="py-4 px-5">
