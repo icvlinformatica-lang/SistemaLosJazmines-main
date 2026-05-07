@@ -45,6 +45,7 @@ export const PERFILES: Perfil[] = [
     color: "#1a3a2a",
     emoji: "🛠️",
     rutas: ["*"],
+    rutasExcluidas: ["/eventos/produccion"],
   },
 ]
 

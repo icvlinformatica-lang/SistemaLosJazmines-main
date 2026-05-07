@@ -44,55 +44,62 @@ interface MenuItem {
   locked?: boolean
 }
 
-const menuItems: MenuItem[] = [
-  { href: "/", label: "Inicio", icon: Home },
-  {
-    href: "/eventos",
-    label: "Eventos",
-    icon: Calendar,
-    children: [
-      { href: "/eventos/lista", label: "Lista", icon: List },
-      { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: true },
-      { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: true },
-      { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: true },
-    ],
-  },
-  {
-    href: "/admin/almacen",
-    label: "Almacen",
-    icon: Package,
-    children: [
-      { href: "/admin/almacen", label: "Insumos Cocina", icon: Warehouse },
-      { href: "/admin/barra", label: "Insumos Bebidas", icon: GlassWater },
-    ],
-  },
-  {
-    href: "/admin/recetario",
-    label: "Produccion",
-    icon: FlaskConical,
-    children: [
-      { href: "/admin/recetario", label: "Recetas", icon: ChefHat },
-      { href: "/admin/cocteles", label: "Cocteles", icon: Wine },
-      { href: "/eventos/produccion", label: "Guias Produccion", icon: ClipboardList },
-    ],
-  },
-  {
-    href: "/admin/servicios",
-    label: "Finanzas",
-    icon: Briefcase,
-    locked: true,
-    children: [
-      { href: "/admin/servicios", label: "Servicios", icon: Briefcase },
-      { href: "/admin/personal", label: "Personal", icon: Users },
-      { href: "/admin/pagos-pendientes", label: "Pagos Personal", icon: Bell },
-      { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
-      { href: "/admin/precios", label: "Promos Salón", icon: DollarSign },
-      { href: "/admin/calendario-pagos", label: "Calendario Ingresos", icon: CreditCard },
-      { href: "/admin/vencimientos", label: "Vencimientos", icon: CalendarClock },
-    ],
-  },
-  { href: "/configuracion", label: "Configuracion", icon: Settings },
-]
+// IDs de perfiles que tienen acceso completo (incluyendo secciones financieras)
+const PERFILES_ACCESO_TOTAL = ["administracion", "soporte"]
+
+const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
+  const tieneAccesoTotal = PERFILES_ACCESO_TOTAL.includes(perfilId ?? "")
+
+  return [
+    { href: "/", label: "Inicio", icon: Home },
+    {
+      href: "/eventos",
+      label: "Eventos",
+      icon: Calendar,
+      children: [
+        { href: "/eventos/lista", label: "Lista", icon: List },
+        { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: !tieneAccesoTotal },
+        { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: !tieneAccesoTotal },
+        { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
+      ],
+    },
+    {
+      href: "/admin/almacen",
+      label: "Almacen",
+      icon: Package,
+      children: [
+        { href: "/admin/almacen", label: "Insumos Cocina", icon: Warehouse },
+        { href: "/admin/barra", label: "Insumos Bebidas", icon: GlassWater },
+      ],
+    },
+    {
+      href: "/admin/recetario",
+      label: "Produccion",
+      icon: FlaskConical,
+      children: [
+        { href: "/admin/recetario", label: "Recetas", icon: ChefHat },
+        { href: "/admin/cocteles", label: "Cocteles", icon: Wine },
+        { href: "/eventos/produccion", label: "Guias Produccion", icon: ClipboardList },
+      ],
+    },
+    {
+      href: "/admin/servicios",
+      label: "Finanzas",
+      icon: Briefcase,
+      locked: !tieneAccesoTotal,
+      children: [
+        { href: "/admin/servicios", label: "Servicios", icon: Briefcase },
+        { href: "/admin/personal", label: "Personal", icon: Users },
+        { href: "/admin/pagos-pendientes", label: "Pagos Personal", icon: Bell },
+        { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
+        { href: "/admin/precios", label: "Promos Salón", icon: DollarSign },
+        { href: "/admin/calendario-pagos", label: "Calendario Ingresos", icon: CreditCard },
+        { href: "/admin/vencimientos", label: "Vencimientos", icon: CalendarClock },
+      ],
+    },
+    { href: "/configuracion", label: "Configuracion", icon: Settings },
+  ]
+}
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -101,6 +108,9 @@ export function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useUI()
   const { perfilActivo, cerrarSesion } = useProfile()
   const [expandedSections, setExpandedSections] = useState<string[]>([])
+
+  // Construir items del menú según perfil activo
+  const menuItems = buildMenuItems(perfilActivo?.id)
 
   // Filtra los items del menú según rutas del perfil activo
   const rutasPermitidas = perfilActivo?.rutas ?? ["*"]
