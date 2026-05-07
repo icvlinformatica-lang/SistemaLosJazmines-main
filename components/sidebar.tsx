@@ -28,6 +28,7 @@ import {
   Bell,
   Lock,
   ClipboardList,
+  BarChart2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -91,6 +92,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
         { href: "/admin/personal", label: "Personal", icon: Users },
         { href: "/admin/pagos-pendientes", label: "Pagos Personal", icon: Bell },
         { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
+        { href: "/finanzas/balance-mensual", label: "Balance Mensual", icon: BarChart2 },
         { href: "/admin/calendario-pagos", label: "Calendario Ingresos", icon: CreditCard },
         { href: "/admin/vencimientos", label: "Vencimientos", icon: CalendarClock },
       ],
