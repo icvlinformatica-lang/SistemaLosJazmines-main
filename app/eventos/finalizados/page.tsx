@@ -70,8 +70,20 @@ export default function EventosFinalizadosPage() {
     })
 
   const handleReactivar = async (eventoId: string) => {
-    await updateEvento(eventoId, { estado: "en_preparacion" })
-    toast({ title: "Evento reactivado", description: "El evento volvió a En Preparación." })
+    try {
+      await updateEvento(eventoId, { estado: "en_preparacion" })
+      toast({ 
+        title: "Evento reactivado", 
+        description: "El evento volvió a En Preparación y ahora aparece en la lista activa." 
+      })
+      router.push("/eventos/lista")
+    } catch (error) {
+      toast({ 
+        title: "Error al reactivar", 
+        description: "No se pudo reactivar el evento. Intenta nuevamente.",
+        variant: "destructive" 
+      })
+    }
   }
 
   const handleEliminar = async (eventoId: string) => {
