@@ -162,7 +162,7 @@ export default function EventosListaPage() {
   })
 
   const [mostrarFinalizados, setMostrarFinalizados] = useState(false)
-  const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("asc")
+  const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
 
   const handleFinalizar = async (eventoId: string) => {
     await updateEvento(eventoId, { estado: "completado" })
