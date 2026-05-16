@@ -780,7 +780,7 @@ export default function EventosListaPage() {
                 </TableHeader>
                 <TableBody>
                   {eventosFiltrados.map((evento) => {
-                    const config = estadoConfig[evento.estado]
+                    const config = estadoConfig[evento.estado] ?? { label: evento.estado ?? "Sin estado", className: "bg-muted text-muted-foreground border-border" }
                     const totalInvitados = getTotalInvitados(evento)
                     const displayName = evento.nombrePareja || evento.nombre || "Sin nombre"
                     return (
