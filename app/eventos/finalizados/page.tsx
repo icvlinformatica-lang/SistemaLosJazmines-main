@@ -45,7 +45,7 @@ import {
 export default function EventosFinalizadosPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { eventos, updateEvento, deleteEvento } = useEventos()
+  const { eventos, actualizarEvento, eliminarEvento } = useEventos()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
@@ -71,7 +71,7 @@ export default function EventosFinalizadosPage() {
 
   const handleReactivar = async (eventoId: string) => {
     try {
-      await updateEvento(eventoId, { estado: "en_preparacion" })
+      await actualizarEvento(eventoId, { estado: "en_preparacion" })
       toast({ 
         title: "Evento reactivado", 
         description: "El evento volvió a En Preparación y ahora aparece en la lista activa." 
@@ -88,7 +88,7 @@ export default function EventosFinalizadosPage() {
 
   const handleEliminar = async (eventoId: string) => {
     if (confirm("¿Eliminar este evento? Esta acción no se puede deshacer.")) {
-      await deleteEvento(eventoId)
+      await eliminarEvento(eventoId)
       toast({ title: "Evento eliminado", variant: "destructive" })
     }
   }
