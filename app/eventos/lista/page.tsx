@@ -92,6 +92,8 @@ import {
   ShoppingCart,
   X,
   Archive,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react"
 import { generateId } from "@/lib/utils-client"
 const estadoConfig: Record<string, { label: string; className: string }> = {
@@ -159,6 +161,14 @@ export default function EventosListaPage() {
     hojaGastos: true,
   })
 
+  const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
+
+  const handleFinalizar = async (eventoId: string) => {
+    await updateEvento(eventoId, { estado: "completado" })
+    toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
+    router.push("/eventos/finalizados")
+  }
+
   // Consolidar compras
   const [modoConsolidar, setModoConsolidar] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -166,7 +176,7 @@ export default function EventosListaPage() {
   const [compraConsolidada, setCompraConsolidada] = useState<CalculoCompraSegmentado[] | null>(null)
   const [consolidadaDialogOpen, setConsolidadaDialogOpen] = useState(false)
 
-  // Filter events
+  // Filter events - excluye completados siempre
   const eventosFiltrados = (eventos || [])
     .filter((e) => {
       const matchesSearch =
@@ -175,13 +185,15 @@ export default function EventosListaPage() {
         (e.nombrePareja || "").toLowerCase().includes(searchQuery.toLowerCase())
       const matchesEstado = filtroEstado === "todos" || e.estado === filtroEstado
       const matchesSalon = filtroSalon === "todos" || e.salon === filtroSalon
-      return matchesSearch && matchesEstado && matchesSalon
+      // Excluir completados completamente de esta vista
+      const esCompletado = e.estado === "completado"
+      return matchesSearch && matchesEstado && matchesSalon && !esCompletado
     })
     .sort((a, b) => {
-      // Sort by date, most recent first
       if (!a.fecha) return 1
       if (!b.fecha) return -1
-      return a.fecha.localeCompare(b.fecha)
+      const cmp = a.fecha.localeCompare(b.fecha)
+      return ordenFecha === "asc" ? cmp : -cmp
     })
 
   const toggleEventoSeleccionado = (id: string) => {
@@ -533,8 +545,8 @@ export default function EventosListaPage() {
 
   const ningunaSeccionSeleccionada = !seccionesSeleccionadas.listaCompras && !seccionesSeleccionadas.barraCocteles && !seccionesSeleccionadas.guiaProduccion && !seccionesSeleccionadas.hojaGastos
 
-  // Summary stats
-  const totalEventos = eventos?.length || 0
+  // Summary stats (sin incluir finalizados, que tienen su propia página)
+  const totalEventos = (eventos || []).filter((e) => e.estado !== "completado").length
   const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
   const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
 
@@ -606,7 +618,14 @@ export default function EventosListaPage() {
             {showDashboard ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
           {showDashboard && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <>
+            {/* Total — contador minimalista */}
+            <div className="flex items-center gap-1.5 mb-3">
+              <span className="text-xs text-muted-foreground font-medium">Total</span>
+              <span className="text-xs font-bold text-foreground bg-muted rounded-full px-2 py-0.5">{totalEventos}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center gap-3">
@@ -633,20 +652,8 @@ export default function EventosListaPage() {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="border-border">
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                      <Users className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-foreground">{totalEventos}</p>
-                      <p className="text-xs text-muted-foreground font-medium">Total</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
+            </>
           )}
         </div>
 
@@ -666,10 +673,9 @@ export default function EventosListaPage() {
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="en_preparacion">En Preparacion</SelectItem>
-                  <SelectItem value="completado">Completado</SelectItem>
+              <SelectItem value="todos">Todos los activos</SelectItem>
+              <SelectItem value="pendiente">Pendiente</SelectItem>
+              <SelectItem value="en_preparacion">En Preparacion</SelectItem>
               <SelectItem value="cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
@@ -703,7 +709,7 @@ export default function EventosListaPage() {
                 {!searchQuery && filtroEstado === "todos" && filtroSalon === "todos" && (
                   <Button onClick={handleNuevoEvento} className="gap-2">
                     <Sparkles className="h-4 w-4" />
-                    Planificar Fiesta
+                    Generar Contrato
                   </Button>
                 )}
               </div>
@@ -734,7 +740,19 @@ export default function EventosListaPage() {
                   <TableRow>
                     {modoConsolidar && <TableHead className="w-10" />}
                     <TableHead className="min-w-[180px]">Nombre</TableHead>
-                    <TableHead className="min-w-[100px]">Fecha</TableHead>
+                    <TableHead className="min-w-[100px]">
+                    <button
+                      type="button"
+                      onClick={() => setOrdenFecha((o) => o === "asc" ? "desc" : "asc")}
+                      className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Fecha
+                      {ordenFecha === "asc"
+                        ? <ArrowUp className="h-3 w-3" />
+                        : <ArrowDown className="h-3 w-3" />
+                      }
+                    </button>
+                  </TableHead>
                     <TableHead className="min-w-[90px]">Salon</TableHead>
                     <TableHead className="min-w-[80px] text-center">Invitados</TableHead>
                     <TableHead className="min-w-[110px]">Estado</TableHead>
@@ -743,13 +761,13 @@ export default function EventosListaPage() {
                 </TableHeader>
                 <TableBody>
                   {eventosFiltrados.map((evento) => {
-                    const config = estadoConfig[evento.estado]
+                    const config = estadoConfig[evento.estado] ?? { label: evento.estado ?? "Sin estado", className: "bg-muted text-muted-foreground border-border" }
                     const totalInvitados = getTotalInvitados(evento)
                     const displayName = evento.nombrePareja || evento.nombre || "Sin nombre"
                     return (
                       <TableRow
                         key={evento.id}
-                        className={`group ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""}`}
+                        className={`group ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""}`}
                       >
                         {modoConsolidar && (
                           <TableCell className="w-10">
@@ -826,6 +844,13 @@ export default function EventosListaPage() {
                               {evento.estado === "en_preparacion" && (
                                 <>
                                   <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleFinalizar(evento.id)}
+                                    className="text-emerald-600 focus:text-emerald-600"
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Marcar como Finalizado
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() => handleRecuperarStock(evento.id)}
                                     className="text-amber-600 focus:text-amber-600"

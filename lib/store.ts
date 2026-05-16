@@ -153,9 +153,16 @@ export interface Evento {
     diaVencimiento: number
     fechaInicioPlan: string
     cuotasPagadas?: number[]
-    modalidadPago?: "completo" | "sena" | "cuotas"
+    modalidadPago?: "completo" | "sena" | "cuotas" | "fija" | "ipc" | "sena_fija" | "sena_ipc"
     montoSena?: number
     porcentajeRecargo?: number
+    porcentajeIPC?: number
+    cuotas?: Array<{
+      numero: number
+      montoCuota: number
+      fechaVencimiento?: string
+      pagada?: boolean
+    }>
   }
 }
 
@@ -241,6 +248,11 @@ export interface ServicioEvento {
   proveedor?: string
   pagado?: boolean
   fechaLimitePago?: string // YYYY-MM-DD - auto-calculated or manually set
+  montoSeña?: number
+  fechaSeña?: string
+  saldoPendiente?: number
+  estadoPago?: 'sin_seña' | 'señado' | 'saldo_pendiente' | 'pagado_total'
+  fechaPagoSaldo?: string
 }
 
 // --- Costos Operativos ---
@@ -262,7 +274,7 @@ export interface CostoOperativo {
   frecuencia: "Por Evento" | "Mensual" | "Anual"
   esPorPersona: boolean
   montoPorPersona?: number
-  salon?: string
+  salon?: string | null
   activo: boolean
   notas?: string
   fechaVencimiento?: string // YYYY-MM-DD
@@ -456,6 +468,26 @@ export interface AppState {
   pagosPersonal: PagoPersonal[]
   // Asignaciones globales de personal a eventos
   asignaciones: AsignacionPersonal[]
+}
+
+export function actualizarCuotasIPC(
+  eventos: Evento[],
+  porcentajeDelMes: number
+): Evento[] {
+  return eventos.map(evento => {
+    if (!evento.planDeCuotas || evento.planDeCuotas.modalidadPago !== 'ipc') return evento
+    const cuotasActualizadas = (evento.planDeCuotas.cuotas ?? []).map(cuota => ({
+      ...cuota,
+      montoCuota: cuota.montoCuota * (1 + porcentajeDelMes / 100)
+    }))
+    return {
+      ...evento,
+      planDeCuotas: {
+        ...evento.planDeCuotas,
+        cuotas: cuotasActualizadas
+      }
+    }
+  })
 }
 
 export interface CalculoCompra {
