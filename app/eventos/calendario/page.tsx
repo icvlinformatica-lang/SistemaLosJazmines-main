@@ -219,7 +219,7 @@ export default function CalendarioPage() {
 
   // Search
   const [searchTerm, setSearchTerm] = useState("")
-  const [showDashboard, setShowDashboard] = useState(true)
+  const [showDashboard, setShowDashboard] = useState(false)
 
   // Dialog states
   const [showDetailDialog, setShowDetailDialog] = useState(false)
