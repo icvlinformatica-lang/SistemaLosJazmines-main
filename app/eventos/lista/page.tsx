@@ -92,6 +92,8 @@ import {
   ShoppingCart,
   X,
   Archive,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react"
 import { generateId } from "@/lib/utils-client"
 const estadoConfig: Record<string, { label: string; className: string }> = {
@@ -160,6 +162,7 @@ export default function EventosListaPage() {
   })
 
   const [mostrarFinalizados, setMostrarFinalizados] = useState(false)
+  const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("asc")
 
   const handleFinalizar = async (eventoId: string) => {
     await updateEvento(eventoId, { estado: "completado" })
@@ -188,10 +191,10 @@ export default function EventosListaPage() {
       return matchesSearch && matchesEstado && matchesSalon && !ocultarCompletado
     })
     .sort((a, b) => {
-      // Sort by date, most recent first
       if (!a.fecha) return 1
       if (!b.fecha) return -1
-      return a.fecha.localeCompare(b.fecha)
+      const cmp = a.fecha.localeCompare(b.fecha)
+      return ordenFecha === "asc" ? cmp : -cmp
     })
 
   const toggleEventoSeleccionado = (id: string) => {
@@ -756,7 +759,19 @@ export default function EventosListaPage() {
                   <TableRow>
                     {modoConsolidar && <TableHead className="w-10" />}
                     <TableHead className="min-w-[180px]">Nombre</TableHead>
-                    <TableHead className="min-w-[100px]">Fecha</TableHead>
+                    <TableHead className="min-w-[100px]">
+                    <button
+                      type="button"
+                      onClick={() => setOrdenFecha((o) => o === "asc" ? "desc" : "asc")}
+                      className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Fecha
+                      {ordenFecha === "asc"
+                        ? <ArrowUp className="h-3 w-3" />
+                        : <ArrowDown className="h-3 w-3" />
+                      }
+                    </button>
+                  </TableHead>
                     <TableHead className="min-w-[90px]">Salon</TableHead>
                     <TableHead className="min-w-[80px] text-center">Invitados</TableHead>
                     <TableHead className="min-w-[110px]">Estado</TableHead>
