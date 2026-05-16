@@ -709,7 +709,7 @@ export default function EventosListaPage() {
                 {!searchQuery && filtroEstado === "todos" && filtroSalon === "todos" && (
                   <Button onClick={handleNuevoEvento} className="gap-2">
                     <Sparkles className="h-4 w-4" />
-                    Planificar Fiesta
+                    Generar Contrato
                   </Button>
                 )}
               </div>
