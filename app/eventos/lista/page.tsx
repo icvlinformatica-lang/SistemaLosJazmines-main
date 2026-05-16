@@ -161,12 +161,12 @@ export default function EventosListaPage() {
     hojaGastos: true,
   })
 
-  const [mostrarFinalizados, setMostrarFinalizados] = useState(false)
   const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
 
   const handleFinalizar = async (eventoId: string) => {
     await updateEvento(eventoId, { estado: "completado" })
-    toast({ title: "Evento finalizado", description: "El evento fue marcado como completado y se ocultara de la lista principal." })
+    toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
+    router.push("/eventos/finalizados")
   }
 
   // Consolidar compras
@@ -176,7 +176,7 @@ export default function EventosListaPage() {
   const [compraConsolidada, setCompraConsolidada] = useState<CalculoCompraSegmentado[] | null>(null)
   const [consolidadaDialogOpen, setConsolidadaDialogOpen] = useState(false)
 
-  // Filter events
+  // Filter events - excluye completados siempre
   const eventosFiltrados = (eventos || [])
     .filter((e) => {
       const matchesSearch =
@@ -185,10 +185,9 @@ export default function EventosListaPage() {
         (e.nombrePareja || "").toLowerCase().includes(searchQuery.toLowerCase())
       const matchesEstado = filtroEstado === "todos" || e.estado === filtroEstado
       const matchesSalon = filtroSalon === "todos" || e.salon === filtroSalon
-      // Ocultar completados a menos que el toggle o el filtro lo incluya explicitamente
-      const ocultarCompletado =
-        !mostrarFinalizados && e.estado === "completado" && filtroEstado !== "completado"
-      return matchesSearch && matchesEstado && matchesSalon && !ocultarCompletado
+      // Excluir completados completamente de esta vista
+      const esCompletado = e.estado === "completado"
+      return matchesSearch && matchesEstado && matchesSalon && !esCompletado
     })
     .sort((a, b) => {
       if (!a.fecha) return 1
@@ -546,11 +545,10 @@ export default function EventosListaPage() {
 
   const ningunaSeccionSeleccionada = !seccionesSeleccionadas.listaCompras && !seccionesSeleccionadas.barraCocteles && !seccionesSeleccionadas.guiaProduccion && !seccionesSeleccionadas.hojaGastos
 
-  // Summary stats
-  const totalEventos = eventos?.length || 0
+  // Summary stats (sin incluir finalizados, que tienen su propia página)
+  const totalEventos = (eventos || []).filter((e) => e.estado !== "completado").length
   const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
   const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
-  const eventosFinalizados = (eventos || []).filter((e) => e.estado === "completado").length
 
   return (
     <div className="min-h-screen bg-background">
@@ -627,7 +625,7 @@ export default function EventosListaPage() {
               <span className="text-xs font-bold text-foreground bg-muted rounded-full px-2 py-0.5">{totalEventos}</span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center gap-3">
@@ -650,22 +648,6 @@ export default function EventosListaPage() {
                     <div>
                       <p className="text-2xl font-bold text-sky-900">{eventosEnPreparacion}</p>
                       <p className="text-xs text-sky-700 font-medium">En Preparacion</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card
-                className={`border-emerald-200 bg-emerald-50 cursor-pointer transition-all col-span-2 sm:col-span-1 ${mostrarFinalizados ? "ring-2 ring-emerald-400" : ""}`}
-                onClick={() => setMostrarFinalizados(!mostrarFinalizados)}
-              >
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-200">
-                      <CheckCircle className="h-5 w-5 text-emerald-800" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-emerald-900">{eventosFinalizados}</p>
-                      <p className="text-xs text-emerald-700 font-medium">Finalizados</p>
                     </div>
                   </div>
                 </CardContent>
@@ -694,7 +676,6 @@ export default function EventosListaPage() {
               <SelectItem value="todos">Todos los activos</SelectItem>
               <SelectItem value="pendiente">Pendiente</SelectItem>
               <SelectItem value="en_preparacion">En Preparacion</SelectItem>
-              <SelectItem value="completado">Finalizados</SelectItem>
               <SelectItem value="cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
@@ -876,20 +857,6 @@ export default function EventosListaPage() {
                                   >
                                     <RotateCcw className="h-4 w-4 mr-2" />
                                     Recuperar Stock
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                              {evento.estado === "completado" && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => updateEvento(evento.id, { estado: "en_preparacion" }).then(() =>
-                                      toast({ title: "Evento reactivado", description: "El evento volvio a En Preparacion." })
-                                    )}
-                                    className="text-sky-600 focus:text-sky-600"
-                                  >
-                                    <RotateCcw className="h-4 w-4 mr-2" />
-                                    Reactivar Evento
                                   </DropdownMenuItem>
                                 </>
                               )}

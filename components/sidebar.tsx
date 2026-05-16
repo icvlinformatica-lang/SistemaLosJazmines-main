@@ -29,6 +29,7 @@ import {
   Lock,
   ClipboardList,
   BarChart2,
+  Archive,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -58,6 +59,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
       icon: Calendar,
       children: [
         { href: "/eventos/lista", label: "Lista", icon: List },
+        { href: "/eventos/finalizados", label: "Finalizados", icon: Archive },
         { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: !tieneAccesoTotal },
         { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: !tieneAccesoTotal },
         { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
