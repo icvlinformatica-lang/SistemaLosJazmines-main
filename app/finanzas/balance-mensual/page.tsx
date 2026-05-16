@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useStore } from "@/lib/store-context"
 import { formatCurrency } from "@/lib/utils-financieros"
 import type {
@@ -571,19 +571,30 @@ function ResultadoVisual({ resumen }: { resumen: ResumenBalance }) {
 
 export default function BalanceMensualPage() {
   const { eventos, costosOperativos } = useStore()
-  const hoy = new Date()
-  const [mesSeleccionado, setMesSeleccionado] = useState(hoy.getMonth())
-  const [anioSeleccionado, setAnioSeleccionado] = useState(hoy.getFullYear())
+
+  // Inicializar en null para evitar mismatch de hidratación servidor/cliente
+  const [mesSeleccionado, setMesSeleccionado] = useState<number | null>(null)
+  const [anioSeleccionado, setAnioSeleccionado] = useState<number | null>(null)
+
+  useEffect(() => {
+    const hoy = new Date()
+    setMesSeleccionado(hoy.getMonth())
+    setAnioSeleccionado(hoy.getFullYear())
+  }, [])
+
+  const mes = mesSeleccionado ?? 0
+  const anio = anioSeleccionado ?? new Date().getFullYear()
 
   const { filasIngresos, filasSeñas, filasCostos, resumen } = useDatosBalance(
-    mesSeleccionado,
-    anioSeleccionado,
+    mes,
+    anio,
     eventos,
     costosOperativos,
   )
 
   // Opciones de año: desde el año más antiguo de eventos hasta +1
   const anios = useMemo(() => {
+    const hoy = new Date()
     const years = new Set<number>()
     years.add(hoy.getFullYear())
     years.add(hoy.getFullYear() + 1)
@@ -591,7 +602,7 @@ export default function BalanceMensualPage() {
       try { years.add(parseLocalDate(e.fecha).getFullYear()) } catch { /* skip */ }
     })
     return Array.from(years).sort()
-  }, [eventos, hoy])
+  }, [eventos])
 
   const hayEventosSinPrecio = filasIngresos.some((f) => f.precioVenta === 0)
 
@@ -611,7 +622,7 @@ export default function BalanceMensualPage() {
           {/* Selector mes / año */}
           <div className="flex items-center gap-2 shrink-0">
             <Select
-              value={String(mesSeleccionado)}
+              value={String(mes)}
               onValueChange={(v) => setMesSeleccionado(Number(v))}
             >
               <SelectTrigger className="w-36 h-9 text-sm">
@@ -624,7 +635,7 @@ export default function BalanceMensualPage() {
               </SelectContent>
             </Select>
             <Select
-              value={String(anioSeleccionado)}
+              value={String(anio)}
               onValueChange={(v) => setAnioSeleccionado(Number(v))}
             >
               <SelectTrigger className="w-24 h-9 text-sm">
@@ -686,7 +697,7 @@ export default function BalanceMensualPage() {
 
         {/* Sección: Ingresos por eventos */}
         <SeccionColapsable
-          titulo={`Ingresos por eventos — ${mesAnioLabel(mesSeleccionado, anioSeleccionado)}`}
+          titulo={`Ingresos por eventos — ${mesAnioLabel(mes, anio)}`}
           icono={<CalendarDays className="h-4 w-4" />}
           badge={
             filasIngresos.length > 0
