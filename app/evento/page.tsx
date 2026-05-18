@@ -1438,8 +1438,6 @@ function EventoPageContent() {
               )}
             </div>
           )}
-        </SectionCard>
-        )}
 
           {/* ---- PANEL SEÑAS A PROVEEDORES ---- */}
           {serviciosEvento.length > 0 && (() => {
@@ -1607,6 +1605,7 @@ function EventoPageContent() {
             )
           })()}
         </SectionCard>
+        )}
 
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
