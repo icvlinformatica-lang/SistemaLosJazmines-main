@@ -1810,10 +1810,10 @@ function EventoPageContent() {
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
           sectionKey="contrato"
-          locked
+          locked={esBloqueado}
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><FileText className="h-5 w-5 text-sky-600" /></div>}
           title="Datos del Contrato"
-          subtitle="Proximamente"
+          subtitle="Datos del cliente y plan de cuotas"
         >
           <Tabs defaultValue="cliente">
             <TabsList className="grid w-full grid-cols-2">
