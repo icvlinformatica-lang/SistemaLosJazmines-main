@@ -271,6 +271,8 @@ export function AsignacionesContent({ evento }: { evento: EventoGuardado }) {
                       asignaciones={item.asignaciones}
                       personal={personal}
                       personalYaAsignado={personalYaAsignado}
+                      eventoId={evento.id}
+                      eventoFecha={evento.fecha}
                       onAsignar={handleAsignar}
                       onDesasignar={handleDesasignar}
                     />

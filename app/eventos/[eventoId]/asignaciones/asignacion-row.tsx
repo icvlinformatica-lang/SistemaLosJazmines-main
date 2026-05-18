@@ -1,14 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import {
   formatCurrency,
+  generateId,
   type AsignacionPersonal,
   type PersonalEvento,
+  type PagoPersonal,
 } from "@/lib/store"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -26,12 +30,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { UserPlus, UserMinus, ArrowRightLeft } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { UserPlus, UserMinus, ArrowRightLeft, DollarSign, Calendar, Banknote } from "lucide-react"
+import { useStore } from "@/lib/store-context"
 
 interface AsignacionRowProps {
   asignacion: AsignacionPersonal
   personal: PersonalEvento[]
   personalYaAsignado: Set<string>
+  eventoId: string
+  eventoFecha: string
+  servicioNombre: string
   onAsignar: (asignacionId: string, personalId: string) => void
   onDesasignar: (asignacionId: string) => void
 }
@@ -40,20 +56,32 @@ export function AsignacionRow({
   asignacion,
   personal,
   personalYaAsignado,
+  eventoId,
+  eventoFecha,
+  servicioNombre,
   onAsignar,
   onDesasignar,
 }: AsignacionRowProps) {
+  const { addPagoPersonal } = useStore()
+  
   const [showSelect, setShowSelect] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  
+  // Flujo de asignacion en dos pasos
+  const [dialogoAsignacionAbierto, setDialogoAsignacionAbierto] = useState(false)
+  const [personaSeleccionada, setPersonaSeleccionada] = useState<PersonalEvento | null>(null)
+  const [tarifaSeleccionadaId, setTarifaSeleccionadaId] = useState<string>("")
+  const [montoPersonalizado, setMontoPersonalizado] = useState<number>(0)
+  const [montoSeña, setMontoSeña] = useState<number>(0)
+  const [fechaSeña, setFechaSeña] = useState<string>("")
+  const [fechaLimitePago, setFechaLimitePago] = useState<string>("")
 
   const estaAsignado = asignacion.personalAsignadoId !== null
 
   // Filter personal by matching role
   const personalDisponible = personal.filter((p) => {
     if (!p.activo) return false
-    // Filter by function matching the required role
-    const rolMatch =
-      p.funcion.toLowerCase() === asignacion.rolRequerido.toLowerCase()
+    const rolMatch = p.funcion.toLowerCase() === asignacion.rolRequerido.toLowerCase()
     return rolMatch
   })
 
@@ -66,9 +94,66 @@ export function AsignacionRow({
     return a.apellido.localeCompare(b.apellido)
   })
 
-  const handleSelectChange = (personalId: string) => {
-    onAsignar(asignacion.id, personalId)
+  // Tarifas de la persona seleccionada
+  const tarifasPersona = useMemo(() => {
+    if (!personaSeleccionada) return []
+    return personaSeleccionada.tarifas || []
+  }, [personaSeleccionada])
+
+  // Calcular fecha limite default (7 dias antes del evento)
+  const calcularFechaLimiteDefault = () => {
+    const fechaEvento = new Date(eventoFecha)
+    fechaEvento.setDate(fechaEvento.getDate() - 7)
+    return fechaEvento.toISOString().split("T")[0]
+  }
+
+  const handleSeleccionarPersona = (personalId: string) => {
+    const persona = personal.find(p => p.id === personalId)
+    if (!persona) return
+
+    setPersonaSeleccionada(persona)
+    setTarifaSeleccionadaId("")
+    setMontoPersonalizado(persona.tarifaBase || 0)
+    setMontoSeña(0)
+    setFechaSeña("")
+    setFechaLimitePago(calcularFechaLimiteDefault())
+    setDialogoAsignacionAbierto(true)
     setShowSelect(false)
+  }
+
+  const handleSeleccionarTarifa = (tarifaId: string) => {
+    setTarifaSeleccionadaId(tarifaId)
+    const tarifa = tarifasPersona.find(t => t.id === tarifaId)
+    if (tarifa) {
+      setMontoPersonalizado(tarifa.monto)
+    }
+  }
+
+  const handleConfirmarAsignacion = () => {
+    if (!personaSeleccionada) return
+
+    // Primero hacer la asignacion
+    onAsignar(asignacion.id, personaSeleccionada.id)
+
+    // Luego crear el PagoPersonal con los datos completos
+    const nuevoPago: Omit<PagoPersonal, "id"> = {
+      personalId: personaSeleccionada.id,
+      eventoId,
+      nombrePersonal: `${personaSeleccionada.nombre} ${personaSeleccionada.apellido}`,
+      servicioNombre,
+      montoTotal: montoPersonalizado,
+      montoSeña: montoSeña || 0,
+      fechaSeña: fechaSeña || undefined,
+      fechaEvento: eventoFecha,
+      fechaLimitePago: fechaLimitePago || calcularFechaLimiteDefault(),
+      estado: "pendiente",
+      tarifaId: tarifaSeleccionadaId || undefined,
+      asignacionId: asignacion.id,
+    }
+
+    addPagoPersonal(nuevoPago)
+    setDialogoAsignacionAbierto(false)
+    setPersonaSeleccionada(null)
   }
 
   const handleConfirmRemove = () => {
@@ -178,7 +263,7 @@ export function AsignacionRow({
         <div className="flex items-center gap-2 shrink-0">
           {!estaAsignado || showSelect ? (
             <div className="w-48">
-              <Select onValueChange={handleSelectChange}>
+              <Select onValueChange={handleSeleccionarPersona}>
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue placeholder="Seleccionar persona..." />
                 </SelectTrigger>
@@ -191,6 +276,7 @@ export function AsignacionRow({
                   ) : (
                     personalOrdenado.map((p) => {
                       const yaAsignado = personalYaAsignado.has(p.id)
+                      const cantTarifas = (p.tarifas || []).length
                       return (
                         <SelectItem
                           key={p.id}
@@ -201,9 +287,11 @@ export function AsignacionRow({
                             <span>
                               {p.nombre} {p.apellido}
                             </span>
-                            <span className="text-muted-foreground">
-                              {formatCurrency(p.tarifaBase)}
-                            </span>
+                            {cantTarifas > 0 && (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                {cantTarifas} tarifas
+                              </Badge>
+                            )}
                             {yaAsignado && (
                               <Badge
                                 variant="secondary"
@@ -254,6 +342,136 @@ export function AsignacionRow({
           )}
         </div>
       </div>
+
+      {/* Dialog de asignacion con tarifa */}
+      <Dialog open={dialogoAsignacionAbierto} onOpenChange={setDialogoAsignacionAbierto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Asignar Personal
+            </DialogTitle>
+            <DialogDescription>
+              {personaSeleccionada && (
+                <>Asignando a <span className="font-medium text-foreground">{personaSeleccionada.nombre} {personaSeleccionada.apellido}</span> como {asignacion.rolRequerido}</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Selector de tarifa */}
+            {tarifasPersona.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-green-600" />
+                  Seleccionar Tarifa
+                </Label>
+                <Select value={tarifaSeleccionadaId} onValueChange={handleSeleccionarTarifa}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Elegir tarifa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tarifasPersona.map(tarifa => (
+                      <SelectItem key={tarifa.id} value={tarifa.id}>
+                        <div className="flex items-center justify-between gap-4 w-full">
+                          <span>{tarifa.descripcion}</span>
+                          <span className="font-mono text-green-600">{formatCurrency(tarifa.monto)}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Monto personalizado */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Banknote className="h-4 w-4 text-amber-600" />
+                Monto Total
+              </Label>
+              <Input
+                type="number"
+                value={montoPersonalizado}
+                onChange={(e) => setMontoPersonalizado(parseFloat(e.target.value) || 0)}
+                placeholder="Monto"
+              />
+              <p className="text-xs text-muted-foreground">
+                {tarifasPersona.length > 0 
+                  ? "Se completa automaticamente con la tarifa elegida, pero puedes ajustarlo"
+                  : `Tarifa base de la persona: ${formatCurrency(personaSeleccionada?.tarifaBase || 0)}`
+                }
+              </p>
+            </div>
+
+            {/* Seña */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Monto de Seña</Label>
+                <Input
+                  type="number"
+                  value={montoSeña}
+                  onChange={(e) => setMontoSeña(parseFloat(e.target.value) || 0)}
+                  placeholder="0 (opcional)"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Fecha de Seña</Label>
+                <Input
+                  type="date"
+                  value={fechaSeña}
+                  onChange={(e) => setFechaSeña(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Fecha limite */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-blue-600" />
+                Fecha Limite de Pago
+              </Label>
+              <Input
+                type="date"
+                value={fechaLimitePago}
+                onChange={(e) => setFechaLimitePago(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Por defecto: 7 dias antes del evento
+              </p>
+            </div>
+
+            {/* Resumen */}
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span>Monto total:</span>
+                <span className="font-semibold">{formatCurrency(montoPersonalizado)}</span>
+              </div>
+              {montoSeña > 0 && (
+                <>
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>Seña:</span>
+                    <span>- {formatCurrency(montoSeña)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-medium border-t pt-1 mt-1">
+                    <span>Saldo pendiente:</span>
+                    <span className="text-amber-600">{formatCurrency(montoPersonalizado - montoSeña)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogoAsignacionAbierto(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmarAsignacion} disabled={!montoPersonalizado}>
+              Confirmar Asignacion
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm removal dialog */}
       <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>

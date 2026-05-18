@@ -443,6 +443,11 @@ export interface PersonalEvento {
   funcion: string // "Fotógrafo", "DJ", "Decorador", etc.
   servicioVinculadoId: string // ID del servicio del catálogo
   tarifaBase: number
+  tarifas?: Array<{
+    id: string
+    descripcion: string
+    monto: number
+  }>
   cuentaBancaria?: {
     banco: string
     cbu: string
@@ -462,6 +467,8 @@ export interface PagoPersonal {
   nombrePersonal: string
   servicioNombre: string
   montoTotal: number
+  montoSeña?: number
+  fechaSeña?: string // YYYY-MM-DD
   fechaEvento: string // YYYY-MM-DD
   fechaLimitePago: string // YYYY-MM-DD (7 días antes del evento)
   estado: EstadoPago
@@ -471,6 +478,7 @@ export interface PagoPersonal {
   firmaEmpresa?: string // base64 de la firma
   comprobanteFirmado?: boolean
   notasPago?: string
+  tarifaId?: string // ID de la tarifa seleccionada
 
   // --- Extensión para vincular con asignación ---
   /** ID de la AsignacionPersonal relacionada (si existe) */
