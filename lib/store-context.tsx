@@ -18,6 +18,8 @@ import {
   type Servicio,
   type CostoOperativo,
   type PreciosVentaMap,
+  type ConfiguracionCajas,
+  type MovimientoCaja,
   loadState,
   saveState,
   generateId,
@@ -118,6 +120,13 @@ interface StoreContextType {
   getPagosPendientes: () => PagoPersonal[]
   generarPagosPendientes: () => void
   sincronizarPagos: () => { pagosCreados: number; pagosObsoletos: number }
+
+  // Cajas
+  configuracionCajas: ConfiguracionCajas
+  movimientosCaja: MovimientoCaja[]
+  updateConfiguracionCajas: (config: ConfiguracionCajas) => void
+  addMovimientoCaja: (movimiento: MovimientoCaja) => void
+  addMovimientosCaja: (movimientos: MovimientoCaja[]) => void
 }
 
 const StoreContext = createContext<StoreContextType | null>(null)
@@ -755,6 +764,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, preciosVenta }))
   }
 
+  // === Cajas ===
+  const updateConfiguracionCajas = (config: ConfiguracionCajas) => {
+    setState((prev) => ({ ...prev, configuracionCajas: config }))
+  }
+
+  const addMovimientoCaja = (movimiento: MovimientoCaja) => {
+    setState((prev) => ({
+      ...prev,
+      movimientosCaja: [...(prev.movimientosCaja || []), movimiento],
+    }))
+  }
+
+  const addMovimientosCaja = (movimientos: MovimientoCaja[]) => {
+    setState((prev) => ({
+      ...prev,
+      movimientosCaja: [...(prev.movimientosCaja || []), ...movimientos],
+    }))
+  }
+
   if (!isHydrated) {
     return null
   }
@@ -833,6 +861,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         getPagosPendientes,
         generarPagosPendientes,
         sincronizarPagos,
+        configuracionCajas: state.configuracionCajas || {
+          salones: {
+            Quinta: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            Casona: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            Salon: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            "Salon 4": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            "Salon 5": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+          },
+          admin: { saldoInicial: 0 },
+        },
+        movimientosCaja: state.movimientosCaja || [],
+        updateConfiguracionCajas,
+        addMovimientoCaja,
+        addMovimientosCaja,
       }}
     >
       {children}
