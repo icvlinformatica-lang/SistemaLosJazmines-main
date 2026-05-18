@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useStore } from "@/lib/store-context"
+import { generarMovimientoEgreso } from "@/lib/store"
 import {
   Dialog,
   DialogContent,
@@ -38,7 +39,15 @@ export default function RegistrarPagoDialog({
   onOpenChange,
   egreso,
 }: RegistrarPagoDialogProps) {
-  const { updateEvento, updatePagoPersonal, updateCostoOperativo } = useStore()
+  const { 
+    updateEvento, 
+    updatePagoPersonal, 
+    updateCostoOperativo, 
+    eventos,
+    configuracionCajas,
+    movimientosCaja,
+    addMovimientoCaja,
+  } = useStore()
   
   const [formData, setFormData] = useState({
     tipoPago: "" as "transferencia" | "efectivo" | "otro" | "",
@@ -65,10 +74,16 @@ export default function RegistrarPagoDialog({
     }
 
     try {
+      // Determinar el salón para el movimiento de caja
+      let salonDelEgreso = "admin" // default para egresos sin evento
+      if (egreso.eventoId) {
+        const evento = eventos.find(e => e.id === egreso.eventoId)
+        if (evento?.salon) salonDelEgreso = evento.salon
+      }
+
       // Registrar pago según el tipo
       if (egreso.tipo === "servicio-evento" && egreso.eventoId) {
         // Actualizar servicio en el evento
-        const { updateEvento, eventos } = useStore.getState()
         const evento = eventos.find(e => e.id === egreso.eventoId)
         
         if (evento && egreso.detalles.servicioIdx !== undefined) {
@@ -79,6 +94,17 @@ export default function RegistrarPagoDialog({
           }
           
           updateEvento(evento.id, { servicios })
+          
+          // Generar movimiento de egreso en la caja
+          const movEgreso = generarMovimientoEgreso(
+            salonDelEgreso,
+            egreso.monto,
+            `Pago servicio: ${egreso.concepto}`,
+            configuracionCajas,
+            movimientosCaja
+          )
+          addMovimientoCaja(movEgreso)
+          
           toast.success("Pago de servicio registrado correctamente")
         }
       } 
@@ -90,24 +116,31 @@ export default function RegistrarPagoDialog({
           fechaPago: formData.fechaPago,
           notasPago: formData.notas,
         })
+        
+        // Generar movimiento de egreso en la caja
+        const movEgreso = generarMovimientoEgreso(
+          salonDelEgreso,
+          egreso.monto,
+          `Pago personal: ${egreso.detalles.nombrePersonal || egreso.concepto}`,
+          configuracionCajas,
+          movimientosCaja
+        )
+        addMovimientoCaja(movEgreso)
+        
         toast.success("Pago a personal registrado correctamente")
       }
       else if (egreso.tipo === "gasto-fijo" && egreso.detalles.gastoFijoId) {
-        // Para gastos fijos, necesitarías extender el modelo CostoOperativo
-        // para incluir un array de pagos o un campo de último pago
-        // Por ahora, mostramos un toast de éxito
-        toast.success("Pago de gasto fijo registrado correctamente")
+        // Generar movimiento de egreso en la caja
+        const movEgreso = generarMovimientoEgreso(
+          "admin", // Gastos fijos van a caja admin
+          egreso.monto,
+          `Gasto fijo: ${egreso.concepto}`,
+          configuracionCajas,
+          movimientosCaja
+        )
+        addMovimientoCaja(movEgreso)
         
-        // Aquí deberías implementar la lógica para guardar el pago
-        // Ejemplo (requiere extensión del modelo):
-        // updateCostoOperativo(egreso.detalles.gastoFijoId, {
-        //   ultimoPago: {
-        //     fecha: formData.fechaPago,
-        //     monto: egreso.monto,
-        //     tipoPago: formData.tipoPago,
-        //     notas: formData.notas
-        //   }
-        // })
+        toast.success("Pago de gasto fijo registrado correctamente")
       }
 
       onOpenChange(false)

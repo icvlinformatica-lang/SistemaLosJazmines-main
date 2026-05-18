@@ -86,20 +86,67 @@ function useCashflowData(salon: string, horizonte: Horizonte) {
     // Cuotas pendientes
     const cuotasPendientes: CuotaPendiente[] = []
     for (const evento of eventosSalon) {
-      if (!evento.planDeCuotas?.cuotas) continue
-      const cuotasPagadas = evento.planDeCuotas.cuotasPagadas || []
+      const eventoNombre = evento.nombre || evento.nombrePareja || "Evento"
+      const cuotasPagadas = evento.planDeCuotas?.cuotasPagadas || []
 
-      for (const cuota of evento.planDeCuotas.cuotas) {
-        if (cuota.pagada || cuotasPagadas.includes(cuota.numero)) continue
-        const fechaCuota = parseLocalDate(cuota.fechaVencimiento)
-        if (!fechaCuota || fechaCuota < hoy || fechaCuota > fechaLimite) continue
+      // Caso 1: Tiene array de cuotas detallado
+      if (evento.planDeCuotas?.cuotas && evento.planDeCuotas.cuotas.length > 0) {
+        for (const cuota of evento.planDeCuotas.cuotas) {
+          if (cuota.pagada || cuotasPagadas.includes(cuota.numero)) continue
+          const fechaCuota = parseLocalDate(cuota.fechaVencimiento)
+          if (!fechaCuota || fechaCuota < hoy || fechaCuota > fechaLimite) continue
+
+          cuotasPendientes.push({
+            eventoId: evento.id,
+            eventoNombre,
+            numeroCuota: cuota.numero,
+            monto: cuota.montoCuota,
+            fechaVencimiento: cuota.fechaVencimiento || "",
+          })
+        }
+      }
+      // Caso 2: Tiene planDeCuotas con numeroCuotas y montoCuota pero sin array detallado
+      else if (evento.planDeCuotas?.numeroCuotas && evento.planDeCuotas?.montoCuota) {
+        const { numeroCuotas, montoCuota, fechaInicioPlan, diaVencimiento } = evento.planDeCuotas
+        const fechaInicio = parseLocalDate(fechaInicioPlan) || hoy
+
+        for (let i = 1; i <= numeroCuotas; i++) {
+          if (cuotasPagadas.includes(i)) continue
+
+          // Calcular fecha de vencimiento: avanzar i-1 meses desde fechaInicio
+          const fechaVenc = new Date(fechaInicio)
+          fechaVenc.setMonth(fechaVenc.getMonth() + (i - 1))
+          if (diaVencimiento) fechaVenc.setDate(diaVencimiento)
+
+          if (fechaVenc < hoy || fechaVenc > fechaLimite) continue
+
+          cuotasPendientes.push({
+            eventoId: evento.id,
+            eventoNombre,
+            numeroCuota: i,
+            monto: montoCuota,
+            fechaVencimiento: `${fechaVenc.getFullYear()}-${String(fechaVenc.getMonth() + 1).padStart(2, "0")}-${String(fechaVenc.getDate()).padStart(2, "0")}`,
+          })
+        }
+      }
+      // Caso 3: Sin plan de cuotas pero con precioVenta - mostrar saldo como cuota única
+      else if (evento.precioFinal || evento.precioVenta) {
+        const precioTotal = evento.precioFinal || evento.precioVenta || 0
+        const pagos = evento.pagos || []
+        const totalPagado = pagos.reduce((sum: number, p: any) => sum + (p.monto || 0), 0) + (evento.planDeCuotas?.montoSena || 0)
+        const saldoPendiente = precioTotal - totalPagado
+
+        if (saldoPendiente <= 0) continue
+
+        const fechaEvento = parseLocalDate(evento.fecha)
+        if (!fechaEvento || fechaEvento < hoy || fechaEvento > fechaLimite) continue
 
         cuotasPendientes.push({
           eventoId: evento.id,
-          eventoNombre: evento.nombre || evento.nombrePareja || "Evento",
-          numeroCuota: cuota.numero,
-          monto: cuota.montoCuota,
-          fechaVencimiento: cuota.fechaVencimiento || "",
+          eventoNombre,
+          numeroCuota: 1,
+          monto: saldoPendiente,
+          fechaVencimiento: evento.fecha,
         })
       }
     }
