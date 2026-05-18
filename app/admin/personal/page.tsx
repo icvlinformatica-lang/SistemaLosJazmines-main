@@ -147,8 +147,8 @@ export default function PersonalPage() {
   }
 
   const handleGuardar = () => {
-    if (!formData.nombre || !formData.apellido || !formData.dni || !formData.servicioVinculadoId) {
-      toast({ title: "Error", description: "Por favor completa todos los campos obligatorios", variant: "destructive" })
+    if (!formData.nombre || !formData.apellido || !formData.funcion) {
+      toast({ title: "Error", description: "Por favor completa nombre, apellido y funcion", variant: "destructive" })
       return
     }
 
@@ -552,7 +552,7 @@ export default function PersonalPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>DNI *</Label>
+                    <Label>DNI</Label>
                     <Input
                       value={formData.dni}
                       onChange={(e) => setFormData({ ...formData, dni: e.target.value })}
@@ -560,7 +560,7 @@ export default function PersonalPage() {
                     />
                   </div>
                   <div>
-                    <Label>Telefono *</Label>
+                    <Label>Telefono</Label>
                     <Input
                       value={formData.telefono}
                       onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
@@ -600,25 +600,6 @@ export default function PersonalPage() {
                       <option key={f} value={f} />
                     ))}
                   </datalist>
-                </div>
-
-                <div>
-                  <Label>Servicio Vinculado *</Label>
-                  <Select
-                    value={formData.servicioVinculadoId}
-                    onValueChange={(value) => setFormData({ ...formData, servicioVinculadoId: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un servicio" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {servicios.filter(s => s.activo).map((servicio) => (
-                        <SelectItem key={servicio.id} value={servicio.id}>
-                          {servicio.nombre} ({servicio.categoria})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 <div>
