@@ -10,10 +10,23 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { Building2, Percent, Wallet, Save, Building } from "lucide-react"
+import { Building2, Percent, Wallet, Save, Building, TrendingUp, Calendar } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+const MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+]
 
 export default function ConfiguracionCajasPage() {
-  const { configuracionCajas, updateConfiguracionCajas } = useStore()
+  const { configuracionCajas, updateConfiguracionCajas, historialIPC, abrirDialogIPC } = useStore()
   const { toast } = useToast()
 
   const [config, setConfig] = useState<ConfiguracionCajas>(configuracionCajas)
@@ -184,6 +197,75 @@ export default function ConfiguracionCajasPage() {
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Historial IPC */}
+      <Card className="border-border">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                Historial de Ajustes IPC
+              </CardTitle>
+              <CardDescription>
+                Registro de todas las actualizaciones de cuotas por inflacion
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={abrirDialogIPC} className="gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Aplicar IPC Manualmente
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {historialIPC.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Calendar className="h-10 w-10 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">No hay ajustes IPC registrados todavia</p>
+              <p className="text-xs mt-1">
+                Los ajustes se aplican automaticamente al detectar un cambio de mes en eventos con modalidad IPC
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mes / Ano</TableHead>
+                    <TableHead className="text-right">Porcentaje</TableHead>
+                    <TableHead className="text-right">Eventos</TableHead>
+                    <TableHead>Fecha Aplicacion</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...historialIPC].reverse().map((entry, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">
+                        {MESES[entry.mes]} {entry.anio}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {entry.porcentaje.toFixed(1)}%
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {entry.eventosActualizados}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {new Date(entry.fechaAplicacion).toLocaleDateString("es-AR", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

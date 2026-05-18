@@ -500,6 +500,21 @@ export interface AppState {
   // CAJAS
   configuracionCajas: ConfiguracionCajas
   movimientosCaja: MovimientoCaja[]
+  // IPC
+  historialIPC: HistorialIPCEntry[]
+  ultimoMesIPC: { mes: number; anio: number } | null
+}
+
+// ==========================================
+// IPC - HISTORIAL DE ACTUALIZACIONES
+// ==========================================
+
+export interface HistorialIPCEntry {
+  mes: number
+  anio: number
+  porcentaje: number
+  fechaAplicacion: string // ISO string
+  eventosActualizados: number
 }
 
 export function actualizarCuotasIPC(
@@ -1190,6 +1205,8 @@ export function loadState(): AppState {
       admin: { saldoInicial: 0 },
     },
     movimientosCaja: [],
+    historialIPC: [],
+    ultimoMesIPC: null,
   }
 
   if (typeof window === "undefined") {
@@ -1226,6 +1243,8 @@ export function loadState(): AppState {
           admin: { saldoInicial: 0 },
         },
         movimientosCaja: parsed.movimientosCaja || [],
+        historialIPC: parsed.historialIPC || [],
+        ultimoMesIPC: parsed.ultimoMesIPC || null,
       }
     } catch {
       return defaultState
