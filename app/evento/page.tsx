@@ -1310,10 +1310,10 @@ function EventoPageContent() {
         {/* ==================== PAQUETES DE SERVICIOS ==================== */}
         <SectionCard
           sectionKey="servicios"
-          locked
+          locked={esBloqueado}
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Package className="h-5 w-5 text-emerald-600" /></div>}
           title="Paquetes de Servicios"
-          subtitle="Proximamente"
+          subtitle={paquetesSeleccionados.length > 0 ? `${paquetesSeleccionados.length} paquete${paquetesSeleccionados.length > 1 ? "s" : ""} seleccionado${paquetesSeleccionados.length > 1 ? "s" : ""}` : "Selecciona paquetes para el evento"}
         >
           {/* No salon selected warning */}
           {!evento.salon && (
