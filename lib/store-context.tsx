@@ -852,16 +852,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteEvento = async (id: string) => {
+    // Remove from local state immediately (optimistic)
     setState((prev) => ({
       ...prev,
       eventos: (prev.eventos || []).filter((e) => e.id !== id),
     }))
-    // Sync to Supabase
+    // Use API to soft delete (moves to papelera)
     try {
-      const { deleteEvento: deleteEv } = await import("./supabase/data-service")
-      await deleteEv(id)
+      await fetch(`/api/eventos/${id}`, { method: "DELETE" })
     } catch (err) {
-      console.error("[v0] Error deleting evento from Supabase:", err)
+      console.error("[v0] Error deleting evento:", err)
     }
   }
 
