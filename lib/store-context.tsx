@@ -182,6 +182,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Load localStorage for non-DB modules only (servicios, personal, etc.)
       const localState = loadState()
 
+      // Fetch from Supabase for servicios, personal, eventos, pagos, costos
+      let supabaseData: any = {}
+      try {
+        const db = await import("./supabase/data-service")
+        const [serviciosDB, personalDB, eventosDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB] = await Promise.all([
+          db.fetchServicios(),
+          db.fetchPersonal(),
+          db.fetchEventos(),
+          db.fetchPagosPersonal(),
+          db.fetchCostosOperativos(),
+          db.fetchAsignaciones(),
+          db.fetchMovimientosCaja(),
+          db.fetchConfiguracionCajas(),
+        ])
+        supabaseData = {
+          servicios: serviciosDB.length > 0 ? serviciosDB : localState.servicios,
+          personal: personalDB.length > 0 ? personalDB : localState.personal,
+          eventos: eventosDB.length > 0 ? eventosDB : (eventosRes ?? localState.eventos),
+          pagosPersonal: pagosDB.length > 0 ? pagosDB : localState.pagosPersonal,
+          costosOperativos: costosDB.length > 0 ? costosDB : localState.costosOperativos,
+          asignaciones: asignacionesDB.length > 0 ? asignacionesDB : localState.asignaciones,
+          movimientosCaja: movimientosDB.length > 0 ? movimientosDB : localState.movimientosCaja,
+          configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
+        }
+        console.log("[v0] Supabase data loaded successfully")
+      } catch (error) {
+        console.error("[v0] Error loading from Supabase, using localStorage:", error)
+        supabaseData = {
+          servicios: localState.servicios,
+          personal: localState.personal,
+          eventos: eventosRes ?? localState.eventos,
+          pagosPersonal: localState.pagosPersonal,
+          costosOperativos: localState.costosOperativos,
+          asignaciones: localState.asignaciones,
+          movimientosCaja: localState.movimientosCaja,
+          configuracionCajas: localState.configuracionCajas,
+        }
+      }
+
       // Merge: DB data takes absolute priority over localStorage for migrated modules
       setState({
         ...localState,
@@ -190,7 +229,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         recetas: recetasRes ?? localState.recetas,
         cocteles: coctelesRes ?? localState.cocteles,
         barrasTemplates: barraTemplatesRes ?? localState.barrasTemplates,
-        eventos: eventosRes ?? localState.eventos,
+        // Supabase data
+        servicios: supabaseData.servicios,
+        personal: supabaseData.personal,
+        eventos: supabaseData.eventos,
+        pagosPersonal: supabaseData.pagosPersonal,
+        costosOperativos: supabaseData.costosOperativos,
+        asignaciones: supabaseData.asignaciones,
+        movimientosCaja: supabaseData.movimientosCaja,
+        configuracionCajas: supabaseData.configuracionCajas,
       })
 
       setIsHydrated(true)
@@ -490,52 +537,102 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // === Servicios ===
-  const addServicio = (servicio: Omit<Servicio, "id">) => {
+  // === Servicios - Synced with Supabase ===
+  const addServicio = async (servicio: Omit<Servicio, "id">) => {
+    const newServicio = { ...servicio, id: generateId() }
     setState((prev) => ({
       ...prev,
-      servicios: [...(prev.servicios || []), { ...servicio, id: generateId() }],
+      servicios: [...(prev.servicios || []), newServicio],
     }))
+    // Sync to Supabase
+    try {
+      const { upsertServicio } = await import("./supabase/data-service")
+      await upsertServicio(newServicio)
+    } catch (error) {
+      console.error("[v0] Error syncing servicio to Supabase:", error)
+    }
   }
 
-  const updateServicio = (id: string, updates: Partial<Servicio>) => {
+  const updateServicio = async (id: string, updates: Partial<Servicio>) => {
     setState((prev) => ({
       ...prev,
       servicios: (prev.servicios || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
     }))
+    // Sync to Supabase
+    try {
+      const existing = state.servicios?.find(s => s.id === id)
+      if (existing) {
+        const { upsertServicio } = await import("./supabase/data-service")
+        await upsertServicio({ ...existing, ...updates })
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing servicio update to Supabase:", error)
+    }
   }
 
-  const deleteServicio = (id: string) => {
+  const deleteServicio = async (id: string) => {
     setState((prev) => ({
       ...prev,
       servicios: (prev.servicios || []).filter((s) => s.id !== id),
     }))
+    // Sync to Supabase
+    try {
+      const { deleteServicio: deleteServ } = await import("./supabase/data-service")
+      await deleteServ(id)
+    } catch (error) {
+      console.error("[v0] Error deleting servicio from Supabase:", error)
+    }
   }
 
   const setServicios = (servicios: Servicio[]) => {
     setState((prev) => ({ ...prev, servicios }))
   }
 
-  // === Costos Operativos ===
-  const addCostoOperativo = (costo: Omit<CostoOperativo, "id">) => {
+  // === Costos Operativos - Synced with Supabase ===
+  const addCostoOperativo = async (costo: Omit<CostoOperativo, "id">) => {
+    const newCosto = { ...costo, id: generateId() }
     setState((prev) => ({
       ...prev,
-      costosOperativos: [...(prev.costosOperativos || []), { ...costo, id: generateId() }],
+      costosOperativos: [...(prev.costosOperativos || []), newCosto],
     }))
+    // Sync to Supabase
+    try {
+      const { upsertCostoOperativo } = await import("./supabase/data-service")
+      await upsertCostoOperativo(newCosto)
+    } catch (error) {
+      console.error("[v0] Error syncing costo operativo to Supabase:", error)
+    }
   }
 
-  const updateCostoOperativo = (id: string, updates: Partial<CostoOperativo>) => {
+  const updateCostoOperativo = async (id: string, updates: Partial<CostoOperativo>) => {
     setState((prev) => ({
       ...prev,
       costosOperativos: (prev.costosOperativos || []).map((c) => (c.id === id ? { ...c, ...updates } : c)),
     }))
+    // Sync to Supabase
+    try {
+      const existing = state.costosOperativos?.find(c => c.id === id)
+      if (existing) {
+        const { upsertCostoOperativo } = await import("./supabase/data-service")
+        await upsertCostoOperativo({ ...existing, ...updates })
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing costo operativo update to Supabase:", error)
+    }
   }
 
-  const deleteCostoOperativo = (id: string) => {
+  const deleteCostoOperativo = async (id: string) => {
     setState((prev) => ({
       ...prev,
       costosOperativos: (prev.costosOperativos || []).filter((c) => c.id !== id),
     }))
+    // Sync to Supabase
+    try {
+      const { deleteCostoOperativo: deleteCosto } = await import("./supabase/data-service")
+      await deleteCosto(id)
+    } catch (error) {
+      console.error("[v0] Error deleting costo operativo from Supabase:", error)
+    }
   }
 
   // === Paquetes de Salones ===
@@ -586,52 +683,102 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }))
   }
 
-  // === Personal ===
-  const addPersonal = (personal: Omit<PersonalEvento, "id">) => {
+  // === Personal - Synced with Supabase ===
+  const addPersonal = async (personal: Omit<PersonalEvento, "id">) => {
+    const newPersonal = { ...personal, id: generateId() }
     setState((prev) => ({
       ...prev,
-      personal: [...(prev.personal || []), { ...personal, id: generateId() }],
+      personal: [...(prev.personal || []), newPersonal],
     }))
+    // Sync to Supabase
+    try {
+      const { upsertPersonal } = await import("./supabase/data-service")
+      await upsertPersonal(newPersonal)
+    } catch (error) {
+      console.error("[v0] Error syncing personal to Supabase:", error)
+    }
   }
 
-  const updatePersonal = (id: string, updates: Partial<PersonalEvento>) => {
+  const updatePersonal = async (id: string, updates: Partial<PersonalEvento>) => {
     setState((prev) => ({
       ...prev,
       personal: (prev.personal || []).map((p) => (p.id === id ? { ...p, ...updates } : p)),
     }))
+    // Sync to Supabase
+    try {
+      const existing = state.personal?.find(p => p.id === id)
+      if (existing) {
+        const { upsertPersonal } = await import("./supabase/data-service")
+        await upsertPersonal({ ...existing, ...updates })
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing personal update to Supabase:", error)
+    }
   }
 
-  const deletePersonal = (id: string) => {
+  const deletePersonal = async (id: string) => {
     setState((prev) => ({
       ...prev,
       personal: (prev.personal || []).filter((p) => p.id !== id),
     }))
+    // Sync to Supabase
+    try {
+      const { deletePersonal: deletePers } = await import("./supabase/data-service")
+      await deletePers(id)
+    } catch (error) {
+      console.error("[v0] Error deleting personal from Supabase:", error)
+    }
   }
 
   const getPersonalByServicio = (servicioId: string): PersonalEvento[] => {
     return (state.personal || []).filter((p) => p.servicioVinculadoId === servicioId && p.activo)
   }
 
-  // === Pagos Personal ===
-  const addPagoPersonal = (pago: Omit<PagoPersonal, "id">) => {
+  // === Pagos Personal - Synced with Supabase ===
+  const addPagoPersonal = async (pago: Omit<PagoPersonal, "id">) => {
+    const newPago = { ...pago, id: generateId() }
     setState((prev) => ({
       ...prev,
-      pagosPersonal: [...(prev.pagosPersonal || []), { ...pago, id: generateId() }],
+      pagosPersonal: [...(prev.pagosPersonal || []), newPago],
     }))
+    // Sync to Supabase
+    try {
+      const { upsertPagoPersonal } = await import("./supabase/data-service")
+      await upsertPagoPersonal(newPago)
+    } catch (error) {
+      console.error("[v0] Error syncing pago personal to Supabase:", error)
+    }
   }
 
-  const updatePagoPersonal = (id: string, updates: Partial<PagoPersonal>) => {
+  const updatePagoPersonal = async (id: string, updates: Partial<PagoPersonal>) => {
     setState((prev) => ({
       ...prev,
       pagosPersonal: (prev.pagosPersonal || []).map((p) => (p.id === id ? { ...p, ...updates } : p)),
     }))
+    // Sync to Supabase
+    try {
+      const existing = state.pagosPersonal?.find(p => p.id === id)
+      if (existing) {
+        const { upsertPagoPersonal } = await import("./supabase/data-service")
+        await upsertPagoPersonal({ ...existing, ...updates })
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing pago personal update to Supabase:", error)
+    }
   }
 
-  const deletePagoPersonal = (id: string) => {
+  const deletePagoPersonal = async (id: string) => {
     setState((prev) => ({
       ...prev,
       pagosPersonal: (prev.pagosPersonal || []).filter((p) => p.id !== id),
     }))
+    // Sync to Supabase
+    try {
+      const { deletePagoPersonal: deletePago } = await import("./supabase/data-service")
+      await deletePago(id)
+    } catch (error) {
+      console.error("[v0] Error deleting pago personal from Supabase:", error)
+    }
   }
 
   const getPagosPorEvento = (eventoId: string): PagoPersonal[] => {
@@ -674,24 +821,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
   }, [isHydrated])
 
-  // === Eventos (Calendario) — Synced with API ===
+  // === Eventos (Calendario) — Synced with Supabase ===
   const addEvento = async (evento: EventoGuardado) => {
+    setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
+    // Sync to Supabase
     try {
-      const res = await fetch("/api/eventos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(evento),
-      })
-      if (res.ok) {
-        const created = await res.json()
-        setState((prev) => ({
-          ...prev,
-          eventos: [...(prev.eventos || []), created],
-        }))
-      }
+      const { upsertEvento } = await import("./supabase/data-service")
+      await upsertEvento(evento as any)
     } catch (err) {
-      console.error("[v0] Error adding evento:", err)
-      setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
+      console.error("[v0] Error syncing evento to Supabase:", err)
     }
   }
 
@@ -701,14 +839,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...prev,
       eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updates } : e)),
     }))
+    // Sync to Supabase
     try {
-      await fetch(`/api/eventos/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      })
+      const existing = state.eventos?.find(e => e.id === id)
+      if (existing) {
+        const { upsertEvento } = await import("./supabase/data-service")
+        await upsertEvento({ ...existing, ...updates } as any)
+      }
     } catch (err) {
-      console.error("[v0] Error updating evento:", err)
+      console.error("[v0] Error syncing evento update to Supabase:", err)
     }
   }
 
@@ -717,10 +856,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...prev,
       eventos: (prev.eventos || []).filter((e) => e.id !== id),
     }))
+    // Sync to Supabase
     try {
-      await fetch(`/api/eventos/${id}`, { method: "DELETE" })
+      const { deleteEvento: deleteEv } = await import("./supabase/data-service")
+      await deleteEv(id)
     } catch (err) {
-      console.error("[v0] Error deleting evento:", err)
+      console.error("[v0] Error deleting evento from Supabase:", err)
     }
   }
 
@@ -786,22 +927,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // === Cajas ===
-  const updateConfiguracionCajas = (config: ConfiguracionCajas) => {
+  const updateConfiguracionCajas = async (config: ConfiguracionCajas) => {
     setState((prev) => ({ ...prev, configuracionCajas: config }))
+    // Sync to Supabase
+    try {
+      const { upsertConfiguracionCajas } = await import("./supabase/data-service")
+      await upsertConfiguracionCajas(config)
+    } catch (error) {
+      console.error("[v0] Error syncing configuracion cajas to Supabase:", error)
+    }
   }
 
-  const addMovimientoCaja = (movimiento: MovimientoCaja) => {
+  const addMovimientoCaja = async (movimiento: MovimientoCaja) => {
     setState((prev) => ({
       ...prev,
       movimientosCaja: [...(prev.movimientosCaja || []), movimiento],
     }))
+    // Sync to Supabase
+    try {
+      const { insertMovimientoCaja } = await import("./supabase/data-service")
+      await insertMovimientoCaja(movimiento)
+    } catch (error) {
+      console.error("[v0] Error syncing movimiento caja to Supabase:", error)
+    }
   }
 
-  const addMovimientosCaja = (movimientos: MovimientoCaja[]) => {
+  const addMovimientosCaja = async (movimientos: MovimientoCaja[]) => {
     setState((prev) => ({
       ...prev,
       movimientosCaja: [...(prev.movimientosCaja || []), ...movimientos],
     }))
+    // Sync to Supabase
+    try {
+      const { insertMovimientoCaja } = await import("./supabase/data-service")
+      for (const mov of movimientos) {
+        await insertMovimientoCaja(mov)
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing movimientos caja to Supabase:", error)
+    }
   }
 
   // === IPC ===
