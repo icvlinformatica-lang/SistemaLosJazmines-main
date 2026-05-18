@@ -366,6 +366,7 @@ export default function PersonalPage() {
         {personalFiltrado.map((persona) => {
           const compromisos = getCompromisosPersona(persona.id)
           const tarifas = persona.tarifas || []
+          const servicioVinculado = servicios.find(s => s.id === persona.servicioVinculadoId)
 
           return (
             <Card key={persona.id} className="border-l-4 border-l-blue-500">
@@ -382,6 +383,11 @@ export default function PersonalPage() {
                       <CardDescription className="flex items-center gap-2">
                         <Briefcase className="h-3 w-3" />
                         {persona.funcion}
+                        {servicioVinculado && (
+                          <Badge variant="outline" className="text-[10px] ml-1">
+                            {servicioVinculado.nombre}
+                          </Badge>
+                        )}
                       </CardDescription>
                     </div>
                   </div>
@@ -600,6 +606,29 @@ export default function PersonalPage() {
                       <option key={f} value={f} />
                     ))}
                   </datalist>
+                </div>
+
+                <div>
+                  <Label>Servicio Vinculado</Label>
+                  <Select
+                    value={formData.servicioVinculadoId || "ninguno"}
+                    onValueChange={(v) => setFormData({ ...formData, servicioVinculadoId: v === "ninguno" ? "" : v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un servicio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ninguno">Sin servicio vinculado</SelectItem>
+                      {servicios.filter(s => s.activo).map((servicio) => (
+                        <SelectItem key={servicio.id} value={servicio.id}>
+                          {servicio.nombre} ({servicio.categoria})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Vincula esta persona a un servicio del catalogo para asignarla a eventos
+                  </p>
                 </div>
 
                 <div>

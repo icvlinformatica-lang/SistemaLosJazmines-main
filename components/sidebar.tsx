@@ -92,6 +92,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
       icon: Briefcase,
       locked: !tieneAccesoTotal,
       children: [
+        { href: "/admin/catalogo-servicios", label: "Catalogo Servicios", icon: Briefcase },
         // { href: "/admin/servicios", label: "Servicios", icon: Briefcase }, // Oculto temporalmente
         { href: "/admin/personal", label: "Personal", icon: Users },
         { href: "/admin/pagos-pendientes", label: "Pagos Personal", icon: Bell },

@@ -89,6 +89,7 @@ import {
   Receipt,
   Info,
   AlertTriangle,
+  ClipboardList,
 } from "lucide-react"
 import { MenuTable } from "@/components/menu-table"
 
@@ -1606,6 +1607,205 @@ function EventoPageContent() {
           })()}
         </SectionCard>
         )}
+
+        {/* ==================== SERVICIOS DEL EVENTO ==================== */}
+        <SectionCard
+          sectionKey="servicios-evento"
+          locked={esBloqueado}
+          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
+          title="Servicios del Evento"
+          subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
+        >
+          {/* Agregar nuevo servicio */}
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {catalogoServicios.filter(s => s.activo).map((servicio) => {
+                const yaAgregado = serviciosEvento.some(se => se.servicioId === servicio.id)
+                return (
+                  <Button
+                    key={servicio.id}
+                    variant={yaAgregado ? "secondary" : "outline"}
+                    size="sm"
+                    disabled={yaAgregado}
+                    onClick={() => {
+                      const nuevoServicio: ServicioEvento = {
+                        servicioId: servicio.id,
+                        nombre: servicio.nombre,
+                        cantidad: 1,
+                        unidad: servicio.unidad || "Fijo",
+                        estadoPago: "sin_seña",
+                      }
+                      setEvento({
+                        ...evento,
+                        servicios: [...serviciosEvento, nuevoServicio],
+                      })
+                    }}
+                    className="text-xs"
+                  >
+                    {yaAgregado ? (
+                      <CheckCircle className="h-3 w-3 mr-1 text-green-600" />
+                    ) : (
+                      <Plus className="h-3 w-3 mr-1" />
+                    )}
+                    {servicio.nombre}
+                  </Button>
+                )
+              })}
+            </div>
+
+            {catalogoServicios.filter(s => s.activo).length === 0 && (
+              <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed rounded-lg">
+                <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No hay servicios en el catalogo</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ve a Finanzas {"->"} Catalogo Servicios para agregar servicios
+                </p>
+              </div>
+            )}
+
+            {/* Lista de servicios agregados */}
+            {serviciosEvento.length > 0 && (
+              <div className="space-y-2 mt-4 pt-4 border-t">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                  Servicios agregados
+                </h4>
+                {serviciosEvento.map((srv, idx) => {
+                  const servicioCatalogo = catalogoServicios.find(s => s.id === srv.servicioId)
+                  return (
+                    <div key={srv.servicioId} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {servicioCatalogo?.categoria || "Servicio"}
+                        </Badge>
+                        <span className="text-sm font-medium">{srv.nombre}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={srv.estadoPago === "pagado_total" ? "default" : "secondary"} className="text-xs">
+                          {srv.estadoPago === "sin_seña" ? "Sin seña" : 
+                           srv.estadoPago === "señado" ? "Señado" :
+                           srv.estadoPago === "saldo_pendiente" ? "Saldo pend." : "Pagado"}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            const nuevosServicios = serviciosEvento.filter((_, i) => i !== idx)
+                            setEvento({
+                              ...evento,
+                              servicios: nuevosServicios,
+                            })
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Panel de Pagos a Proveedores (solo si hay servicios) */}
+            {serviciosEvento.length > 0 && (() => {
+              const getEstadoPagoBadge = (estadoPago?: string): JSX.Element => {
+                const configs: Record<string, { label: string; variant: string; className: string }> = {
+                  sin_seña:        { label: "Sin seña",        variant: "secondary", className: "bg-muted text-muted-foreground" },
+                  señado:          { label: "Señado",          variant: "outline",   className: "bg-yellow-100 text-yellow-700 border-yellow-300" },
+                  saldo_pendiente: { label: "Saldo pendiente", variant: "outline",   className: "bg-orange-100 text-orange-700 border-orange-300" },
+                  pagado_total:    { label: "Pagado total",    variant: "outline",   className: "bg-green-100 text-green-700 border-green-300" },
+                }
+                const cfg = configs[estadoPago ?? "sin_seña"] ?? configs.sin_seña
+                return (
+                  <Badge variant="outline" className={`shrink-0 rounded-full text-xs font-medium ${cfg.className}`}>
+                    {cfg.label}
+                  </Badge>
+                )
+              }
+
+              return (
+                <div className="mt-5 space-y-3 pt-4 border-t">
+                  <div className="flex items-center gap-2 pb-1">
+                    <Banknote className="h-4 w-4 text-muted-foreground" />
+                    <h4 className="text-sm font-semibold">Gestionar Pagos a Proveedores</h4>
+                  </div>
+
+                  {serviciosEvento.map((srv) => {
+                    const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
+
+                    return (
+                      <div key={srv.servicioId} className="rounded-lg border bg-card p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">{srv.nombre}</span>
+                          {getEstadoPagoBadge(estadoPago)}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">Monto Seña</Label>
+                            <Input
+                              type="number"
+                              value={srv.montoSeña || ""}
+                              onChange={(e) => {
+                                const montoSeña = parseFloat(e.target.value) || 0
+                                const nuevosServicios = serviciosEvento.map(s =>
+                                  s.servicioId === srv.servicioId
+                                    ? { ...s, montoSeña, estadoPago: montoSeña > 0 ? "señado" as const : "sin_seña" as const }
+                                    : s
+                                )
+                                setEvento({ ...evento, servicios: nuevosServicios })
+                              }}
+                              placeholder="0"
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Fecha Seña</Label>
+                            <Input
+                              type="date"
+                              value={srv.fechaSeña || ""}
+                              onChange={(e) => {
+                                const nuevosServicios = serviciosEvento.map(s =>
+                                  s.servicioId === srv.servicioId
+                                    ? { ...s, fechaSeña: e.target.value }
+                                    : s
+                                )
+                                setEvento({ ...evento, servicios: nuevosServicios })
+                              }}
+                              className="h-9"
+                            />
+                          </div>
+                        </div>
+
+                        {srv.montoSeña && srv.montoSeña > 0 && (
+                          <div className="mt-2 pt-2 border-t">
+                            <Button
+                              variant={srv.estadoPago === "pagado_total" ? "secondary" : "default"}
+                              size="sm"
+                              className="w-full"
+                              onClick={() => {
+                                const nuevoEstado = srv.estadoPago === "pagado_total" ? "señado" : "pagado_total"
+                                const nuevosServicios = serviciosEvento.map(s =>
+                                  s.servicioId === srv.servicioId
+                                    ? { ...s, estadoPago: nuevoEstado as any }
+                                    : s
+                                )
+                                setEvento({ ...evento, servicios: nuevosServicios })
+                              }}
+                            >
+                              {srv.estadoPago === "pagado_total" ? "Desmarcar como pagado" : "Marcar como pagado total"}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
+        </SectionCard>
 
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
