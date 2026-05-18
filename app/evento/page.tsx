@@ -1307,7 +1307,9 @@ function EventoPageContent() {
           </Button>
         </SectionCard>
 
-        {/* ==================== PAQUETES DE SERVICIOS ==================== */}
+        {/* ==================== PAQUETES DE SERVICIOS (OCULTO TEMPORALMENTE) ==================== */}
+        {/* La sección de paquetes está comentada pero el código subyacente permanece intacto */}
+        {false && (
         <SectionCard
           sectionKey="servicios"
           locked={esBloqueado}
@@ -1436,6 +1438,8 @@ function EventoPageContent() {
               )}
             </div>
           )}
+        </SectionCard>
+        )}
 
           {/* ---- PANEL SEÑAS A PROVEEDORES ---- */}
           {serviciosEvento.length > 0 && (() => {
