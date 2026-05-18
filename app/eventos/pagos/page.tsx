@@ -8,6 +8,7 @@ import {
   generateId,
   formatCurrency,
   generarCalendarioCuotas,
+  generarMovimientoIngreso,
   type EventoGuardado,
   type PagoEvento,
 } from "@/lib/store"
@@ -172,7 +173,7 @@ function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEv
 function PagosPageContent() {
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get("evento") || ""
-  const { eventos, updateEvento } = useStore()
+  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja } = useStore()
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const [selectedEvento, setSelectedEvento] = useState<EventoGuardado | null>(() => {
@@ -370,12 +371,27 @@ function PagosPageContent() {
     const cuotasPagadas = evento.planDeCuotas.cuotasPagadas || []
     if (cuotasPagadas.includes(numeroCuota)) return
 
+    // Actualizar evento con cuota marcada
     updateEvento(eventoId, {
       planDeCuotas: {
         ...evento.planDeCuotas,
         cuotasPagadas: [...cuotasPagadas, numeroCuota],
       },
     })
+
+    // Generar movimiento de caja si el evento tiene salón
+    if (evento.salon) {
+      const montoCuota = evento.planDeCuotas.montoCuota || 0
+      const movimientos = generarMovimientoIngreso(
+        evento.salon,
+        montoCuota,
+        `Cuota ${numeroCuota} - ${evento.nombre || evento.nombrePareja || "Evento"}`,
+        configuracionCajas,
+        movimientosCaja,
+        eventoId
+      )
+      addMovimientosCaja(movimientos)
+    }
   }
 
   return (

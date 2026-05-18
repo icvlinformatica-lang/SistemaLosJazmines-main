@@ -49,6 +49,8 @@ const SALON_COLORS: Record<string, { bg: string; border: string; text: string; a
   Quinta: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", activeBg: "bg-emerald-500" },
   Casona: { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", activeBg: "bg-sky-500" },
   Salon: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", activeBg: "bg-amber-500" },
+  "Salon 4": { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-700", activeBg: "bg-violet-500" },
+  "Salon 5": { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700", activeBg: "bg-rose-500" },
 }
 
 const DAY_NAMES_SHORT = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"]

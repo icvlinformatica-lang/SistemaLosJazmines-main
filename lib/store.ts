@@ -280,8 +280,37 @@ export interface CostoOperativo {
   fechaVencimiento?: string // YYYY-MM-DD
 }
 
-export const SALONES = ["Quinta", "Casona", "Salon"] as const
+export const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
 export type SalonNombre = (typeof SALONES)[number]
+
+// ==========================================
+// CAJAS - CONFIGURACIÓN Y MOVIMIENTOS
+// ==========================================
+
+export interface ConfiguracionCaja {
+  saldoInicial: number
+  porcentajeAporteAdmin: number
+}
+
+export interface ConfiguracionCajas {
+  salones: Record<string, ConfiguracionCaja>
+  admin: { saldoInicial: number }
+}
+
+export type TipoMovimientoCaja = "ingreso" | "egreso" | "aporte_admin"
+
+export interface MovimientoCaja {
+  id: string
+  fecha: string // ISO string
+  tipo: TipoMovimientoCaja
+  concepto: string
+  monto: number
+  salon: string // nombre del salón o "admin"
+  eventoId?: string
+  costoOperativoId?: string
+  origenAporte?: string // el salón que generó el aporte (solo para tipo aporte_admin)
+  saldoResultante: number
+}
 
 export type EstadoEvento = "borrador" | "pendiente" | "en_preparacion" | "completado" | "cancelado"
 
@@ -414,6 +443,11 @@ export interface PersonalEvento {
   funcion: string // "Fotógrafo", "DJ", "Decorador", etc.
   servicioVinculadoId: string // ID del servicio del catálogo
   tarifaBase: number
+  tarifas?: Array<{
+    id: string
+    descripcion: string
+    monto: number
+  }>
   cuentaBancaria?: {
     banco: string
     cbu: string
@@ -433,6 +467,8 @@ export interface PagoPersonal {
   nombrePersonal: string
   servicioNombre: string
   montoTotal: number
+  montoSeña?: number
+  fechaSeña?: string // YYYY-MM-DD
   fechaEvento: string // YYYY-MM-DD
   fechaLimitePago: string // YYYY-MM-DD (7 días antes del evento)
   estado: EstadoPago
@@ -442,6 +478,7 @@ export interface PagoPersonal {
   firmaEmpresa?: string // base64 de la firma
   comprobanteFirmado?: boolean
   notasPago?: string
+  tarifaId?: string // ID de la tarifa seleccionada
 
   // --- Extensión para vincular con asignación ---
   /** ID de la AsignacionPersonal relacionada (si existe) */
@@ -468,6 +505,24 @@ export interface AppState {
   pagosPersonal: PagoPersonal[]
   // Asignaciones globales de personal a eventos
   asignaciones: AsignacionPersonal[]
+  // CAJAS
+  configuracionCajas: ConfiguracionCajas
+  movimientosCaja: MovimientoCaja[]
+  // IPC
+  historialIPC: HistorialIPCEntry[]
+  ultimoMesIPC: { mes: number; anio: number } | null
+}
+
+// ==========================================
+// IPC - HISTORIAL DE ACTUALIZACIONES
+// ==========================================
+
+export interface HistorialIPCEntry {
+  mes: number
+  anio: number
+  porcentaje: number
+  fechaAplicacion: string // ISO string
+  eventosActualizados: number
 }
 
 export function actualizarCuotasIPC(
@@ -1147,6 +1202,19 @@ export function loadState(): AppState {
     personal: [],
     pagosPersonal: [],
     asignaciones: [],
+    configuracionCajas: {
+      salones: {
+        Quinta: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+        Casona: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+        Salon: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+        "Salon 4": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+        "Salon 5": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+      },
+      admin: { saldoInicial: 0 },
+    },
+    movimientosCaja: [],
+    historialIPC: [],
+    ultimoMesIPC: null,
   }
 
   if (typeof window === "undefined") {
@@ -1172,6 +1240,19 @@ export function loadState(): AppState {
         personal: parsed.personal || [],
         pagosPersonal: parsed.pagosPersonal || [],
         asignaciones: parsed.asignaciones || [],
+        configuracionCajas: parsed.configuracionCajas || {
+          salones: {
+            Quinta: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            Casona: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            Salon: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            "Salon 4": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            "Salon 5": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+          },
+          admin: { saldoInicial: 0 },
+        },
+        movimientosCaja: parsed.movimientosCaja || [],
+        historialIPC: parsed.historialIPC || [],
+        ultimoMesIPC: parsed.ultimoMesIPC || null,
       }
     } catch {
       return defaultState
@@ -1203,6 +1284,126 @@ export function formatCurrency(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(value)
+}
+
+// ==========================================
+// HELPERS PARA CAJAS
+// ==========================================
+
+export function calcularSaldoCaja(
+  salon: string,
+  configuracionCajas: ConfiguracionCajas,
+  movimientosCaja: MovimientoCaja[]
+): { saldoInicial: number; ingresos: number; egresos: number; aportesAdmin: number; saldoActual: number } {
+  const config = salon === "admin"
+    ? { saldoInicial: configuracionCajas.admin.saldoInicial }
+    : configuracionCajas.salones[salon] || { saldoInicial: 0 }
+  
+  const movimientos = movimientosCaja.filter((m) => m.salon === salon)
+  
+  const ingresos = movimientos
+    .filter((m) => m.tipo === "ingreso" || (salon === "admin" && m.tipo === "aporte_admin"))
+    .reduce((sum, m) => sum + m.monto, 0)
+  
+  const egresos = movimientos
+    .filter((m) => m.tipo === "egreso")
+    .reduce((sum, m) => sum + m.monto, 0)
+  
+  const aportesAdmin = salon !== "admin"
+    ? movimientos.filter((m) => m.tipo === "aporte_admin").reduce((sum, m) => sum + m.monto, 0)
+    : 0
+  
+  const saldoActual = config.saldoInicial + ingresos - egresos - aportesAdmin
+  
+  return { saldoInicial: config.saldoInicial, ingresos, egresos, aportesAdmin, saldoActual }
+}
+
+export function generarMovimientoIngreso(
+  salon: string,
+  monto: number,
+  concepto: string,
+  configuracionCajas: ConfiguracionCajas,
+  movimientosCaja: MovimientoCaja[],
+  eventoId?: string
+): MovimientoCaja[] {
+  const nuevosMovimientos: MovimientoCaja[] = []
+  const fecha = new Date().toISOString()
+  
+  // Calcular saldo actual antes del movimiento
+  const { saldoActual } = calcularSaldoCaja(salon, configuracionCajas, movimientosCaja)
+  
+  // Movimiento de ingreso en la caja del salón
+  const movimientoIngreso: MovimientoCaja = {
+    id: generateId(),
+    fecha,
+    tipo: "ingreso",
+    concepto,
+    monto,
+    salon,
+    eventoId,
+    saldoResultante: saldoActual + monto,
+  }
+  nuevosMovimientos.push(movimientoIngreso)
+  
+  // Calcular y generar aporte a admin si hay porcentaje configurado
+  const config = configuracionCajas.salones[salon]
+  if (config && config.porcentajeAporteAdmin > 0) {
+    const montoAporte = monto * (config.porcentajeAporteAdmin / 100)
+    
+    // Calcular saldo actual de admin antes del aporte
+    const { saldoActual: saldoAdmin } = calcularSaldoCaja("admin", configuracionCajas, [...movimientosCaja, movimientoIngreso])
+    
+    const movimientoAporteSalon: MovimientoCaja = {
+      id: generateId(),
+      fecha,
+      tipo: "aporte_admin",
+      concepto: `Aporte a Admin (${config.porcentajeAporteAdmin}% de ${concepto})`,
+      monto: montoAporte,
+      salon,
+      eventoId,
+      origenAporte: salon,
+      saldoResultante: saldoActual + monto - montoAporte,
+    }
+    nuevosMovimientos.push(movimientoAporteSalon)
+    
+    // Movimiento de ingreso en la caja de admin
+    const movimientoIngresoAdmin: MovimientoCaja = {
+      id: generateId(),
+      fecha,
+      tipo: "aporte_admin",
+      concepto: `Aporte de ${salon} (${config.porcentajeAporteAdmin}%)`,
+      monto: montoAporte,
+      salon: "admin",
+      eventoId,
+      origenAporte: salon,
+      saldoResultante: saldoAdmin + montoAporte,
+    }
+    nuevosMovimientos.push(movimientoIngresoAdmin)
+  }
+  
+  return nuevosMovimientos
+}
+
+export function generarMovimientoEgreso(
+  salon: string,
+  monto: number,
+  concepto: string,
+  configuracionCajas: ConfiguracionCajas,
+  movimientosCaja: MovimientoCaja[],
+  costoOperativoId?: string
+): MovimientoCaja {
+  const { saldoActual } = calcularSaldoCaja(salon, configuracionCajas, movimientosCaja)
+  
+  return {
+    id: generateId(),
+    fecha: new Date().toISOString(),
+    tipo: "egreso",
+    concepto,
+    monto,
+    salon,
+    costoOperativoId,
+    saldoResultante: saldoActual - monto,
+  }
 }
 
 export function calcularCostoServicios(servicios: ServicioEvento[], state?: AppState): number {

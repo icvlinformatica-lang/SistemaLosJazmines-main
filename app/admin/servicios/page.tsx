@@ -39,7 +39,7 @@ export default function ServiciosPage() {
     deleteServicio,
   } = useStore()
 
-  const [tabActual, setTabActual] = useState<"quinta" | "casona" | "salon" | "catalogo">("quinta")
+  const [tabActual, setTabActual] = useState<"quinta" | "casona" | "salon" | "salon4" | "salon5" | "catalogo">("quinta")
   const [dialogoPaqueteAbierto, setDialogoPaqueteAbierto] = useState(false)
   const [dialogoCatalogoAbierto, setDialogoCatalogoAbierto] = useState(false)
   const [paqueteEditando, setPaqueteEditando] = useState<any>(null)
@@ -49,6 +49,8 @@ export default function ServiciosPage() {
   const paquetesQuinta = paquetesSalones.filter(p => p.salon === "Quinta" && p.activo)
   const paquetesCasona = paquetesSalones.filter(p => p.salon === "Casona" && p.activo)
   const paquetesSalon = paquetesSalones.filter(p => p.salon === "Salon" && p.activo)
+  const paquetesSalon4 = paquetesSalones.filter(p => p.salon === "Salon 4" && p.activo)
+  const paquetesSalon5 = paquetesSalones.filter(p => p.salon === "Salon 5" && p.activo)
 
   // Función para obtener color del border según salón
   const getBorderColor = (salon: string) => {
@@ -56,6 +58,8 @@ export default function ServiciosPage() {
       case "Quinta": return "border-l-emerald-500"
       case "Casona": return "border-l-sky-500"
       case "Salon": return "border-l-amber-500"
+      case "Salon 4": return "border-l-violet-500"
+      case "Salon 5": return "border-l-rose-500"
       default: return "border-l-gray-500"
     }
   }
@@ -103,7 +107,7 @@ export default function ServiciosPage() {
       </div>
 
       <Tabs value={tabActual} onValueChange={(v: any) => setTabActual(v)}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="quinta" className="gap-2">
             <Package className="h-4 w-4" />
             Quinta ({paquetesQuinta.length})
@@ -115,6 +119,14 @@ export default function ServiciosPage() {
           <TabsTrigger value="salon" className="gap-2">
             <Package className="h-4 w-4" />
             Salón ({paquetesSalon.length})
+          </TabsTrigger>
+          <TabsTrigger value="salon4" className="gap-2">
+            <Package className="h-4 w-4" />
+            Salón 4 ({paquetesSalon4.length})
+          </TabsTrigger>
+          <TabsTrigger value="salon5" className="gap-2">
+            <Package className="h-4 w-4" />
+            Salón 5 ({paquetesSalon5.length})
           </TabsTrigger>
           <TabsTrigger value="catalogo" className="gap-2">
             <Package className="h-4 w-4" />
@@ -283,6 +295,120 @@ export default function ServiciosPage() {
                 <p className="text-muted-foreground mb-4">No hay paquetes creados para Salón</p>
                 <Button onClick={() => {
                   setPaqueteEditando({ salon: "Salon" })
+                  setDialogoPaqueteAbierto(true)
+                }}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear Primer Paquete
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Tab Salón 4 */}
+        <TabsContent value="salon4" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-semibold">Paquetes - Salón 4</h2>
+            <Button onClick={() => {
+              setPaqueteEditando({ salon: "Salon 4" })
+              setDialogoPaqueteAbierto(true)
+            }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Crear Paquete
+            </Button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {paquetesSalon4.map((paquete) => {
+              const totales = calcularTotalesPaquete(paquete, servicios)
+              return (
+                <PaqueteCard
+                  key={paquete.id}
+                  paquete={paquete}
+                  totales={totales}
+                  onEditar={() => {
+                    setPaqueteEditando(paquete)
+                    setDialogoPaqueteAbierto(true)
+                  }}
+                  onDuplicar={() => {
+                    const duplicado = { ...paquete, nombre: `${paquete.nombre} (Copia)` }
+                    delete duplicado.id
+                    addPaqueteSalon(duplicado)
+                  }}
+                  onEliminar={() => deletePaqueteSalon(paquete.id)}
+                  getBorderColor={getBorderColor}
+                  getMargenColor={getMargenColor}
+                  formatearPrecio={formatearPrecio}
+                  servicios={servicios}
+                />
+              )
+            })}
+          </div>
+
+          {paquetesSalon4.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Package className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-4">No hay paquetes creados para Salón 4</p>
+                <Button onClick={() => {
+                  setPaqueteEditando({ salon: "Salon 4" })
+                  setDialogoPaqueteAbierto(true)
+                }}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear Primer Paquete
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Tab Salón 5 */}
+        <TabsContent value="salon5" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-semibold">Paquetes - Salón 5</h2>
+            <Button onClick={() => {
+              setPaqueteEditando({ salon: "Salon 5" })
+              setDialogoPaqueteAbierto(true)
+            }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Crear Paquete
+            </Button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {paquetesSalon5.map((paquete) => {
+              const totales = calcularTotalesPaquete(paquete, servicios)
+              return (
+                <PaqueteCard
+                  key={paquete.id}
+                  paquete={paquete}
+                  totales={totales}
+                  onEditar={() => {
+                    setPaqueteEditando(paquete)
+                    setDialogoPaqueteAbierto(true)
+                  }}
+                  onDuplicar={() => {
+                    const duplicado = { ...paquete, nombre: `${paquete.nombre} (Copia)` }
+                    delete duplicado.id
+                    addPaqueteSalon(duplicado)
+                  }}
+                  onEliminar={() => deletePaqueteSalon(paquete.id)}
+                  getBorderColor={getBorderColor}
+                  getMargenColor={getMargenColor}
+                  formatearPrecio={formatearPrecio}
+                  servicios={servicios}
+                />
+              )
+            })}
+          </div>
+
+          {paquetesSalon5.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Package className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-4">No hay paquetes creados para Salón 5</p>
+                <Button onClick={() => {
+                  setPaqueteEditando({ salon: "Salon 5" })
                   setDialogoPaqueteAbierto(true)
                 }}>
                   <Plus className="h-4 w-4 mr-2" />

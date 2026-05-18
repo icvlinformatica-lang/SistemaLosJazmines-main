@@ -18,6 +18,8 @@ interface ServicioAsignacionCardProps {
   asignaciones: AsignacionPersonal[]
   personal: PersonalEvento[]
   personalYaAsignado: Set<string>
+  eventoId: string
+  eventoFecha: string
   onAsignar: (asignacionId: string, personalId: string) => void
   onDesasignar: (asignacionId: string) => void
 }
@@ -28,6 +30,8 @@ export function ServicioAsignacionCard({
   asignaciones,
   personal,
   personalYaAsignado,
+  eventoId,
+  eventoFecha,
   onAsignar,
   onDesasignar,
 }: ServicioAsignacionCardProps) {
@@ -81,6 +85,9 @@ export function ServicioAsignacionCard({
             asignacion={asignacion}
             personal={personal}
             personalYaAsignado={personalYaAsignado}
+            eventoId={eventoId}
+            eventoFecha={eventoFecha}
+            servicioNombre={servicioEvento.nombre}
             onAsignar={onAsignar}
             onDesasignar={onDesasignar}
           />

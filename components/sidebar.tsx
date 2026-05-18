@@ -30,6 +30,8 @@ import {
   ClipboardList,
   BarChart2,
   Archive,
+  Wallet,
+  TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -90,11 +92,15 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
       icon: Briefcase,
       locked: !tieneAccesoTotal,
       children: [
-        { href: "/admin/servicios", label: "Servicios", icon: Briefcase },
+        { href: "/admin/catalogo-servicios", label: "Catalogo Servicios", icon: Briefcase },
+        // { href: "/admin/servicios", label: "Servicios", icon: Briefcase }, // Oculto temporalmente
         { href: "/admin/personal", label: "Personal", icon: Users },
         { href: "/admin/pagos-pendientes", label: "Pagos Personal", icon: Bell },
         { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
+        { href: "/finanzas/cajas", label: "Cajas", icon: Wallet },
+        { href: "/finanzas/cashflow", label: "Cashflow", icon: TrendingUp },
         { href: "/finanzas/balance-mensual", label: "Balance Mensual", icon: BarChart2 },
+        { href: "/finanzas/configuracion", label: "Config. Cajas", icon: Settings },
         { href: "/admin/calendario-pagos", label: "Calendario Ingresos", icon: CreditCard },
         { href: "/admin/vencimientos", label: "Vencimientos", icon: CalendarClock },
       ],

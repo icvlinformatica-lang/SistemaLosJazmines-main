@@ -18,6 +18,9 @@ import {
   type Servicio,
   type CostoOperativo,
   type PreciosVentaMap,
+  type ConfiguracionCajas,
+  type MovimientoCaja,
+  type HistorialIPCEntry,
   loadState,
   saveState,
   generateId,
@@ -26,7 +29,19 @@ import {
   sincronizarPagosConAsignaciones,
   migrarServiciosAPreciosDinamicos,
   obtenerPreciosServicio,
+  actualizarCuotasIPC,
 } from "./store"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface StoreContextType {
   state: AppState
@@ -118,6 +133,19 @@ interface StoreContextType {
   getPagosPendientes: () => PagoPersonal[]
   generarPagosPendientes: () => void
   sincronizarPagos: () => { pagosCreados: number; pagosObsoletos: number }
+
+  // Cajas
+  configuracionCajas: ConfiguracionCajas
+  movimientosCaja: MovimientoCaja[]
+  updateConfiguracionCajas: (config: ConfiguracionCajas) => void
+  addMovimientoCaja: (movimiento: MovimientoCaja) => void
+  addMovimientosCaja: (movimientos: MovimientoCaja[]) => void
+
+  // IPC
+  historialIPC: HistorialIPCEntry[]
+  ultimoMesIPC: { mes: number; anio: number } | null
+  aplicarIPC: (porcentaje: number) => number
+  abrirDialogIPC: () => void
 }
 
 const StoreContext = createContext<StoreContextType | null>(null)
@@ -125,6 +153,8 @@ const StoreContext = createContext<StoreContextType | null>(null)
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState())
   const [isHydrated, setIsHydrated] = useState(false)
+  const [showIPCDialog, setShowIPCDialog] = useState(false)
+  const [porcentajeIPC, setPorcentajeIPC] = useState("")
 
   useEffect(() => {
     const initializeData = async () => {
@@ -755,6 +785,88 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, preciosVenta }))
   }
 
+  // === Cajas ===
+  const updateConfiguracionCajas = (config: ConfiguracionCajas) => {
+    setState((prev) => ({ ...prev, configuracionCajas: config }))
+  }
+
+  const addMovimientoCaja = (movimiento: MovimientoCaja) => {
+    setState((prev) => ({
+      ...prev,
+      movimientosCaja: [...(prev.movimientosCaja || []), movimiento],
+    }))
+  }
+
+  const addMovimientosCaja = (movimientos: MovimientoCaja[]) => {
+    setState((prev) => ({
+      ...prev,
+      movimientosCaja: [...(prev.movimientosCaja || []), ...movimientos],
+    }))
+  }
+
+  // === IPC ===
+  const aplicarIPC = (porcentaje: number): number => {
+    const eventosActualizados = actualizarCuotasIPC(state.eventos || [], porcentaje)
+    const eventosConIPC = eventosActualizados.filter(
+      (e, i) => e !== (state.eventos || [])[i]
+    ).length
+
+    const hoy = new Date()
+    const nuevaEntrada: HistorialIPCEntry = {
+      mes: hoy.getMonth(),
+      anio: hoy.getFullYear(),
+      porcentaje,
+      fechaAplicacion: hoy.toISOString(),
+      eventosActualizados: eventosConIPC,
+    }
+
+    setState((prev) => ({
+      ...prev,
+      eventos: eventosActualizados,
+      historialIPC: [...(prev.historialIPC || []), nuevaEntrada],
+      ultimoMesIPC: { mes: hoy.getMonth(), anio: hoy.getFullYear() },
+    }))
+
+    return eventosConIPC
+  }
+
+  const abrirDialogIPC = () => {
+    setPorcentajeIPC("")
+    setShowIPCDialog(true)
+  }
+
+  // Detectar cambio de mes para IPC
+  useEffect(() => {
+    if (!isHydrated) return
+
+    const hoy = new Date()
+    const mesActual = hoy.getMonth()
+    const anioActual = hoy.getFullYear()
+    const ultimo = state.ultimoMesIPC
+
+    // Verificar si hay eventos con modalidad IPC
+    const tieneEventosIPC = (state.eventos || []).some(
+      (e) => e.planDeCuotas?.modalidadPago === "ipc"
+    )
+
+    if (!tieneEventosIPC) return
+
+    // Si nunca se aplicó o si cambió el mes/año
+    if (!ultimo || ultimo.mes !== mesActual || ultimo.anio !== anioActual) {
+      setShowIPCDialog(true)
+    }
+  }, [isHydrated, state.ultimoMesIPC, state.eventos])
+
+  const handleAplicarIPC = () => {
+    const porcentaje = parseFloat(porcentajeIPC.replace(",", "."))
+    if (isNaN(porcentaje)) return
+
+    const cantidad = aplicarIPC(porcentaje)
+    setShowIPCDialog(false)
+    setPorcentajeIPC("")
+    // El toast se puede agregar aquí si se quiere
+  }
+
   if (!isHydrated) {
     return null
   }
@@ -833,9 +945,73 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         getPagosPendientes,
         generarPagosPendientes,
         sincronizarPagos,
+        configuracionCajas: state.configuracionCajas || {
+          salones: {
+            Quinta: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            Casona: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            Salon: { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            "Salon 4": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+            "Salon 5": { saldoInicial: 0, porcentajeAporteAdmin: 0 },
+          },
+          admin: { saldoInicial: 0 },
+        },
+        movimientosCaja: state.movimientosCaja || [],
+        updateConfiguracionCajas,
+        addMovimientoCaja,
+        addMovimientosCaja,
+        historialIPC: state.historialIPC || [],
+        ultimoMesIPC: state.ultimoMesIPC || null,
+        aplicarIPC,
+        abrirDialogIPC,
       }}
     >
       {children}
+
+      {/* Dialog IPC */}
+      <Dialog open={showIPCDialog} onOpenChange={setShowIPCDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cambio de mes detectado</DialogTitle>
+            <DialogDescription>
+              Hay cuotas con modalidad IPC que necesitan actualizarse. Ingresa el porcentaje de inflacion del mes para aplicar el ajuste.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="porcentaje-ipc">Porcentaje IPC del mes</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="porcentaje-ipc"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej: 3.2"
+                  value={porcentajeIPC}
+                  onChange={(e) => setPorcentajeIPC(e.target.value)}
+                  className="flex-1"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Ingresa el porcentaje como numero decimal (ej: 3.2 para 3,2%)
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button
+              variant="outline"
+              onClick={() => setShowIPCDialog(false)}
+            >
+              Recordar despues
+            </Button>
+            <Button
+              onClick={handleAplicarIPC}
+              disabled={!porcentajeIPC || isNaN(parseFloat(porcentajeIPC.replace(",", ".")))}
+            >
+              Aplicar ahora
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </StoreContext.Provider>
   )
 }
