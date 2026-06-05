@@ -2525,30 +2525,7 @@ function EventoPageContent() {
                 )}
               </Button>
 
-              {/* Botones adicionales en modo edición */}
-              <div className="pt-2 space-y-3">
-                <Button
-                  onClick={handlePrintDraft}
-                  className="w-full h-12 text-base"
-                  variant="outline"
-                  disabled={compras.length === 0 && comprasBarras.length === 0}
-                >
-                  <FileText className="h-5 w-5 mr-2" />
-                  Gastos Operativos
-                </Button>
 
-                <Button
-                  onClick={() => setShowCloseDialog(true)}
-                  className="w-full h-14 text-base bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={compras.length === 0 && comprasBarras.length === 0}
-                >
-                  <CheckCircle className="h-6 w-6 mr-2" />
-                  Cerrar Evento
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Finaliza el evento y descuenta del stock
-                </p>
-              </div>
             </>
           )}
 
