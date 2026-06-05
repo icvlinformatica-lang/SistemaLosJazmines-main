@@ -558,6 +558,37 @@ export default function EventosListaPage() {
 
   return (
     <div className="min-h-screen bg-background">
+
+      {/* Overlay animación al finalizar evento */}
+      {finalizadoAnimacion && (
+        <div
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center pointer-events-none"
+          style={{ animation: "fadeInOut 2.5s ease forwards" }}
+        >
+          <div
+            className="flex flex-col items-center gap-4"
+            style={{ animation: "scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
+          >
+            <div className="rounded-full bg-emerald-500 p-6 shadow-2xl shadow-emerald-200">
+              <CheckCircle2 className="h-16 w-16 text-white" strokeWidth={1.5} />
+            </div>
+            <p className="text-2xl font-semibold text-emerald-700 drop-shadow-sm">Evento finalizado</p>
+          </div>
+          <style>{`
+            @keyframes fadeInOut {
+              0%   { opacity: 0; background: rgba(236,253,245,0); }
+              15%  { opacity: 1; background: rgba(236,253,245,0.6); }
+              70%  { opacity: 1; background: rgba(236,253,245,0.6); }
+              100% { opacity: 0; background: rgba(236,253,245,0); }
+            }
+            @keyframes scaleIn {
+              0%   { transform: scale(0.5); opacity: 0; }
+              100% { transform: scale(1);   opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-4 sm:px-6 sticky top-0 z-30">
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-2">
