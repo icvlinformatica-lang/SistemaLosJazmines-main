@@ -569,12 +569,13 @@ function EventoPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo: "evento", accion: "planificado", nombre: eventData.nombrePareja || eventData.nombre || "Evento sin nombre" }),
       }).catch(() => {})
-      setEventoActual(null)
       setIsSaving(false)
       // Mostrar animación de éxito y navegar luego de 3s
+      // IMPORTANTE: no llamar setEventoActual(null) antes de navegar — causa error boundary
       setShowSaveSuccess(true)
       setTimeout(() => {
         setShowSaveSuccess(false)
+        setEventoActual(null)
         router.push("/eventos/lista")
       }, 3000)
     }
