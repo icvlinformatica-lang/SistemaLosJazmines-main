@@ -106,6 +106,7 @@ function EventoPageContent() {
   const [showCloseDialog, setShowCloseDialog] = useState(false)
   const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false)
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
     barraCocteles: true,
@@ -568,13 +569,14 @@ function EventoPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo: "evento", accion: "planificado", nombre: eventData.nombrePareja || eventData.nombre || "Evento sin nombre" }),
       }).catch(() => {})
-      toast({
-        title: "Evento guardado",
-        description: "El evento se guardo correctamente",
-      })
       setEventoActual(null)
       setIsSaving(false)
-      router.push("/eventos/lista")
+      // Mostrar animación de éxito y navegar luego de 3s
+      setShowSaveSuccess(true)
+      setTimeout(() => {
+        setShowSaveSuccess(false)
+        router.push("/eventos/lista")
+      }, 3000)
     }
   }
 
@@ -924,6 +926,40 @@ function EventoPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
+
+      {/* Overlay animación guardado exitoso */}
+      {showSaveSuccess && (
+        <div
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center pointer-events-none"
+          style={{ animation: "fadeInOutEvento 3s ease forwards" }}
+        >
+          <div
+            className="flex flex-col items-center gap-4"
+            style={{ animation: "scaleInEvento 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
+          >
+            <div className="rounded-full bg-emerald-500 p-6 shadow-2xl shadow-emerald-200">
+              <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            </div>
+            <p className="text-2xl font-semibold text-emerald-700 drop-shadow-sm">Evento guardado</p>
+            <p className="text-sm text-emerald-600/80">Redirigiendo a lista de eventos...</p>
+          </div>
+          <style>{`
+            @keyframes fadeInOutEvento {
+              0%   { opacity: 0; background: rgba(236,253,245,0); }
+              15%  { opacity: 1; background: rgba(236,253,245,0.75); }
+              80%  { opacity: 1; background: rgba(236,253,245,0.75); }
+              100% { opacity: 0; background: rgba(236,253,245,0); }
+            }
+            @keyframes scaleInEvento {
+              0%   { transform: scale(0.5); opacity: 0; }
+              100% { transform: scale(1);   opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
