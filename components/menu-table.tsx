@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import type { Receta } from "@/lib/store"
 
 const CATEGORIAS_ORDEN = [
@@ -48,6 +49,13 @@ interface Props {
   onMultiplierChange: (recetaId: string, segment: Segment, value: number) => void
 }
 
+const OPCIONES: { value: number; label: string }[] = [
+  { value: 0.25, label: "¼" },
+  { value: 0.5,  label: "½" },
+  { value: 1,    label: "1" },
+  { value: 2,    label: "2" },
+]
+
 function MultiplierPopover({
   recetaId,
   segment,
@@ -64,10 +72,45 @@ function MultiplierPopover({
   disabled: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({})
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  const labelActual = OPCIONES.find((o) => o.value === current)?.label ?? `${current}x`
+
+  // Cierra al hacer click fuera
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
 
   const handleClick = (e: React.MouseEvent) => {
     if (disabled) return
     e.stopPropagation()
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const popoverH = 44
+      const spaceBelow = window.innerHeight - rect.bottom
+      const top = spaceBelow >= popoverH + 8
+        ? rect.bottom + 4
+        : rect.top - popoverH - 4
+      setPopoverStyle({
+        position: "fixed",
+        top,
+        left: rect.left + rect.width / 2,
+        transform: "translateX(-50%)",
+        zIndex: 9999,
+      })
+    }
     setOpen((v) => !v)
   }
 
@@ -83,57 +126,55 @@ function MultiplierPopover({
     setOpen(false)
   }
 
-  const OPCIONES: { value: number; label: string }[] = [
-    { value: 0.25, label: "¼" },
-    { value: 0.5,  label: "½" },
-    { value: 1,    label: "1" },
-    { value: 2,    label: "2" },
-  ]
-
-  const labelActual = OPCIONES.find((o) => o.value === current)?.label ?? `${current}x`
+  const popoverContent = open ? (
+    <div
+      ref={popoverRef}
+      style={popoverStyle}
+      className="bg-white border border-border rounded-lg shadow-xl p-1 flex gap-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {OPCIONES.map(({ value, label }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={(e) => handleSelect(e, value)}
+          className={`w-8 h-8 rounded text-sm font-semibold transition-colors
+            ${current === value ? "bg-[#2d5a3d] text-white" : "hover:bg-emerald-50 text-foreground"}`}
+        >
+          {label}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={handleRemove}
+        className="w-8 h-8 rounded text-sm font-semibold transition-colors text-red-500 hover:bg-red-50 hover:text-red-600 flex items-center justify-center"
+        title="Quitar plato"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+        </svg>
+      </button>
+    </div>
+  ) : null
 
   return (
     <div className="relative flex items-center justify-center">
       <button
+        ref={btnRef}
         type="button"
         onClick={handleClick}
         disabled={disabled}
         className={`flex items-center gap-1 rounded px-2 py-1 text-sm font-medium transition-colors select-none
           ${disabled ? "cursor-default opacity-60" : "hover:bg-emerald-100 cursor-pointer"}
           text-[#2d5a3d]`}
-        title={disabled ? undefined : "Ajustar multiplicador o quitar"}
+        title={disabled ? undefined : "Ajustar porciones o quitar"}
       >
         <span className="text-base">✓</span>
         {current !== 1 && <span className="text-xs">({labelActual})</span>}
       </button>
-      {open && (
-        <div
-          className="absolute z-50 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-white border border-border rounded-lg shadow-lg p-1 flex gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {OPCIONES.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={(e) => handleSelect(e, value)}
-              className={`w-8 h-8 rounded text-sm font-semibold transition-colors
-                ${current === value ? "bg-[#2d5a3d] text-white" : "hover:bg-emerald-50 text-foreground"}`}
-            >
-              {label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={handleRemove}
-            className="w-8 h-8 rounded text-sm font-semibold transition-colors text-red-500 hover:bg-red-50 hover:text-red-600 flex items-center justify-center"
-            title="Quitar plato"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-            </svg>
-          </button>
-        </div>
-      )}
+      {typeof window !== "undefined" && popoverContent
+        ? createPortal(popoverContent, document.body)
+        : null}
     </div>
   )
 }

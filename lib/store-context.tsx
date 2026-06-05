@@ -821,13 +821,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // === Eventos (Calendario) — Synced with Postgres API (soft delete / papelera) ===
   const addEvento = async (evento: EventoGuardado) => {
+    // Optimistic: add locally first so UI responds immediately
     setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
     try {
-      await fetch("/api/eventos", {
+      const res = await fetch("/api/eventos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(evento),
       })
+      if (res.ok) {
+        const created = await res.json()
+        // Replace optimistic entry with the confirmed server record
+        setState((prev) => ({
+          ...prev,
+          eventos: prev.eventos.map((e) => (e.id === evento.id ? { ...e, ...created } : e)),
+        }))
+      }
     } catch (err) {
       console.error("[v0] Error adding evento:", err)
     }

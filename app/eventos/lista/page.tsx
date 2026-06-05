@@ -86,6 +86,7 @@ import {
   ChevronUp,
   LayoutDashboard,
   CheckCircle,
+  CheckCircle2,
   RotateCcw,
   Sparkles,
   RefreshCw,
@@ -162,11 +163,16 @@ export default function EventosListaPage() {
   })
 
   const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
+  const [finalizandoId, setFinalizandoId] = useState<string | null>(null)
+  const [finalizadoAnimacion, setFinalizadoAnimacion] = useState<string | null>(null)
 
   const handleFinalizar = async (eventoId: string) => {
+    setFinalizandoId(eventoId)
     await updateEvento(eventoId, { estado: "completado" })
-    toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
-    router.push("/eventos/finalizados")
+    setFinalizandoId(null)
+    setFinalizadoAnimacion(eventoId)
+    // Mostrar animacion 2.5s luego ocultar la fila
+    setTimeout(() => setFinalizadoAnimacion(null), 2500)
   }
 
   // Consolidar compras
@@ -549,9 +555,41 @@ export default function EventosListaPage() {
   const totalEventos = (eventos || []).filter((e) => e.estado !== "completado").length
   const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
   const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
+  const eventosFinalizados = (eventos || []).filter((e) => e.estado === "completado").length
 
   return (
     <div className="min-h-screen bg-background">
+
+      {/* Overlay animación al finalizar evento */}
+      {finalizadoAnimacion && (
+        <div
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center pointer-events-none"
+          style={{ animation: "fadeInOut 2.5s ease forwards" }}
+        >
+          <div
+            className="flex flex-col items-center gap-4"
+            style={{ animation: "scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
+          >
+            <div className="rounded-full bg-emerald-500 p-6 shadow-2xl shadow-emerald-200">
+              <CheckCircle2 className="h-16 w-16 text-white" strokeWidth={1.5} />
+            </div>
+            <p className="text-2xl font-semibold text-emerald-700 drop-shadow-sm">Evento finalizado</p>
+          </div>
+          <style>{`
+            @keyframes fadeInOut {
+              0%   { opacity: 0; background: rgba(236,253,245,0); }
+              15%  { opacity: 1; background: rgba(236,253,245,0.6); }
+              70%  { opacity: 1; background: rgba(236,253,245,0.6); }
+              100% { opacity: 0; background: rgba(236,253,245,0); }
+            }
+            @keyframes scaleIn {
+              0%   { transform: scale(0.5); opacity: 0; }
+              100% { transform: scale(1);   opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-4 sm:px-6 sticky top-0 z-30">
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-2">
@@ -625,7 +663,7 @@ export default function EventosListaPage() {
               <span className="text-xs font-bold text-foreground bg-muted rounded-full px-2 py-0.5">{totalEventos}</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center gap-3">
@@ -648,6 +686,19 @@ export default function EventosListaPage() {
                     <div>
                       <p className="text-2xl font-bold text-sky-900">{eventosEnPreparacion}</p>
                       <p className="text-xs text-sky-700 font-medium">En Preparacion</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-emerald-200 bg-emerald-50">
+                <CardContent className="py-4 px-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-200">
+                      <CheckCircle2 className="h-5 w-5 text-emerald-800" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-emerald-900">{eventosFinalizados}</p>
+                      <p className="text-xs text-emerald-700 font-medium">Finalizados</p>
                     </div>
                   </div>
                 </CardContent>
@@ -764,10 +815,12 @@ export default function EventosListaPage() {
                     const config = estadoConfig[evento.estado] ?? { label: evento.estado ?? "Sin estado", className: "bg-muted text-muted-foreground border-border" }
                     const totalInvitados = getTotalInvitados(evento)
                     const displayName = evento.nombrePareja || evento.nombre || "Sin nombre"
+                    const estaFinalizando = finalizandoId === evento.id
+                    const estaAnimando = finalizadoAnimacion === evento.id
                     return (
                       <TableRow
                         key={evento.id}
-                        className={`group ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""}`}
+                        className={`group transition-all duration-500 ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""} ${estaAnimando ? "bg-emerald-50 scale-[0.99]" : ""}`}
                       >
                         {modoConsolidar && (
                           <TableCell className="w-10">
@@ -812,6 +865,22 @@ export default function EventosListaPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {evento.estado !== "completado" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-500 scale-110" : "text-emerald-500/40 hover:text-emerald-500 hover:bg-emerald-50"}`}
+                                title="Marcar como finalizado"
+                                disabled={estaFinalizando}
+                                onClick={() => handleFinalizar(evento.id)}
+                              >
+                                {estaAnimando ? (
+                                  <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
+                                ) : (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"

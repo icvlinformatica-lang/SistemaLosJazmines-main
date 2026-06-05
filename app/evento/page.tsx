@@ -106,6 +106,7 @@ function EventoPageContent() {
   const [showCloseDialog, setShowCloseDialog] = useState(false)
   const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false)
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
     barraCocteles: true,
@@ -401,7 +402,18 @@ function EventoPageContent() {
     }, 0)
   }, [paquetesSeleccionados, paquetesSalones, catalogoServicios])
 
-
+  // MUST be before early return — useCallback is a hook
+  const handleUpdateServicioSeña = useCallback((
+    servicioId: string,
+    campo: keyof ServicioEvento,
+    valor: string | number | boolean | undefined,
+  ) => {
+    if (!evento) return
+    const serviciosActualizados = (evento.servicios || []).map((s) =>
+      s.servicioId === servicioId ? { ...s, [campo]: valor } : s
+    )
+    updateEventoActual({ servicios: serviciosActualizados })
+  }, [evento, updateEventoActual])
 
   // BUTTON 1: Print Draft (READ ONLY - does NOT deduct stock)
   const handlePrintDraft = () => {
@@ -568,13 +580,17 @@ function EventoPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo: "evento", accion: "planificado", nombre: eventData.nombrePareja || eventData.nombre || "Evento sin nombre" }),
       }).catch(() => {})
-      toast({
-        title: "Evento guardado",
-        description: "El evento se guardo correctamente",
-      })
-      setEventoActual(null)
       setIsSaving(false)
-      router.push("/eventos/lista")
+      // Mostrar animación de éxito durante 3s y luego navegar
+      setShowSaveSuccess(true)
+      setTimeout(() => {
+        // Navegar primero, limpiar estado después para evitar re-render con evento=null
+        router.push("/eventos/lista")
+        setTimeout(() => {
+          setShowSaveSuccess(false)
+          setEventoActual(null)
+        }, 300)
+      }, 3000)
     }
   }
 
@@ -707,6 +723,7 @@ function EventoPageContent() {
         badge,
         children,
         locked,
+        proximamente,
       }: {
         sectionKey: string
         icon: React.ReactNode
@@ -715,8 +732,25 @@ function EventoPageContent() {
         badge?: React.ReactNode
         children: React.ReactNode
         locked?: boolean
+        proximamente?: boolean
       }) => {
         const isOpen = openSections[sectionKey] ?? false
+        if (proximamente) {
+          return (
+            <div className="rounded-xl border border-border/40 bg-muted/60 overflow-hidden opacity-75">
+              <div className="flex w-full items-center gap-4 px-5 py-4 cursor-not-allowed">
+                <div className="shrink-0 opacity-50">{icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-semibold text-muted-foreground truncate">{title}</h2>
+                    <span className="text-[11px] font-medium text-emerald-600/80 tracking-wide">proximamente</span>
+                  </div>
+                </div>
+                <Lock className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+              </div>
+            </div>
+          )
+        }
         if (locked) {
           return (
             <div className="rounded-xl border border-border bg-card overflow-hidden opacity-60">
@@ -875,18 +909,6 @@ function EventoPageContent() {
     setDialogBarraOpen(false)
   }
 
-  const handleUpdateServicioSeña = useCallback((
-    servicioId: string,
-    campo: keyof ServicioEvento,
-    valor: string | number | boolean | undefined,
-  ) => {
-    if (!evento) return
-    const serviciosActualizados = (evento.servicios || []).map((s) =>
-      s.servicioId === servicioId ? { ...s, [campo]: valor } : s
-    )
-    updateEventoActual({ servicios: serviciosActualizados })
-  }, [evento, updateEventoActual])
-
   const handleSelectBarraTemplate = (templateId: string) => {
     const template = barrasTemplates.find((t) => t.id === templateId)
     if (!template) return
@@ -906,6 +928,40 @@ function EventoPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
+
+      {/* Overlay animación guardado exitoso */}
+      {showSaveSuccess && (
+        <div
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center pointer-events-none"
+          style={{ animation: "fadeInOutEvento 3s ease forwards" }}
+        >
+          <div
+            className="flex flex-col items-center gap-4"
+            style={{ animation: "scaleInEvento 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
+          >
+            <div className="rounded-full bg-emerald-500 p-6 shadow-2xl shadow-emerald-200">
+              <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            </div>
+            <p className="text-2xl font-semibold text-emerald-700 drop-shadow-sm">Evento guardado</p>
+            <p className="text-sm text-emerald-600/80">Redirigiendo a lista de eventos...</p>
+          </div>
+          <style>{`
+            @keyframes fadeInOutEvento {
+              0%   { opacity: 0; background: rgba(236,253,245,0); }
+              15%  { opacity: 1; background: rgba(236,253,245,0.75); }
+              80%  { opacity: 1; background: rgba(236,253,245,0.75); }
+              100% { opacity: 0; background: rgba(236,253,245,0); }
+            }
+            @keyframes scaleInEvento {
+              0%   { transform: scale(0.5); opacity: 0; }
+              100% { transform: scale(1);   opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
@@ -1257,6 +1313,7 @@ function EventoPageContent() {
         {/* ==================== BAR SECTION ==================== */}
         <SectionCard
           sectionKey="barras"
+          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10"><Wine className="h-5 w-5 text-violet-600" /></div>}
           title="Barras del Evento"
           subtitle={barras.length > 0 ? `${barras.length} barra${barras.length > 1 ? "s" : ""} configurada${barras.length > 1 ? "s" : ""}` : "Agrega barras de tragos y cocteles"}
@@ -1611,7 +1668,7 @@ function EventoPageContent() {
         {/* ==================== SERVICIOS DEL EVENTO ==================== */}
         <SectionCard
           sectionKey="servicios-evento"
-          locked={esBloqueado}
+          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
           title="Servicios del Evento"
           subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
@@ -1810,7 +1867,7 @@ function EventoPageContent() {
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
           sectionKey="contrato"
-          locked={esBloqueado}
+          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><FileText className="h-5 w-5 text-sky-600" /></div>}
           title="Datos del Contrato"
           subtitle="Datos del cliente y plan de cuotas"
@@ -2468,30 +2525,7 @@ function EventoPageContent() {
                 )}
               </Button>
 
-              {/* Botones adicionales en modo edición */}
-              <div className="pt-2 space-y-3">
-                <Button
-                  onClick={handlePrintDraft}
-                  className="w-full h-12 text-base"
-                  variant="outline"
-                  disabled={compras.length === 0 && comprasBarras.length === 0}
-                >
-                  <FileText className="h-5 w-5 mr-2" />
-                  Gastos Operativos
-                </Button>
 
-                <Button
-                  onClick={() => setShowCloseDialog(true)}
-                  className="w-full h-14 text-base bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={compras.length === 0 && comprasBarras.length === 0}
-                >
-                  <CheckCircle className="h-6 w-6 mr-2" />
-                  Cerrar Evento
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Finaliza el evento y descuenta del stock
-                </p>
-              </div>
             </>
           )}
 
