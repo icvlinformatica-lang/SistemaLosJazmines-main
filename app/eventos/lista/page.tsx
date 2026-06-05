@@ -555,6 +555,7 @@ export default function EventosListaPage() {
   const totalEventos = (eventos || []).filter((e) => e.estado !== "completado").length
   const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
   const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
+  const eventosFinalizados = (eventos || []).filter((e) => e.estado === "completado").length
 
   return (
     <div className="min-h-screen bg-background">
@@ -662,7 +663,7 @@ export default function EventosListaPage() {
               <span className="text-xs font-bold text-foreground bg-muted rounded-full px-2 py-0.5">{totalEventos}</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center gap-3">
@@ -685,6 +686,19 @@ export default function EventosListaPage() {
                     <div>
                       <p className="text-2xl font-bold text-sky-900">{eventosEnPreparacion}</p>
                       <p className="text-xs text-sky-700 font-medium">En Preparacion</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-emerald-200 bg-emerald-50">
+                <CardContent className="py-4 px-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-200">
+                      <CheckCircle2 className="h-5 w-5 text-emerald-800" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-emerald-900">{eventosFinalizados}</p>
+                      <p className="text-xs text-emerald-700 font-medium">Finalizados</p>
                     </div>
                   </div>
                 </CardContent>
