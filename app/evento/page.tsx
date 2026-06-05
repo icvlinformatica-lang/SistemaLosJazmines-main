@@ -707,6 +707,7 @@ function EventoPageContent() {
         badge,
         children,
         locked,
+        proximamente,
       }: {
         sectionKey: string
         icon: React.ReactNode
@@ -715,8 +716,25 @@ function EventoPageContent() {
         badge?: React.ReactNode
         children: React.ReactNode
         locked?: boolean
+        proximamente?: boolean
       }) => {
         const isOpen = openSections[sectionKey] ?? false
+        if (proximamente) {
+          return (
+            <div className="rounded-xl border border-border/40 bg-muted/60 overflow-hidden opacity-75">
+              <div className="flex w-full items-center gap-4 px-5 py-4 cursor-not-allowed">
+                <div className="shrink-0 opacity-50">{icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-semibold text-muted-foreground truncate">{title}</h2>
+                    <span className="text-[11px] font-medium text-emerald-600/80 tracking-wide">proximamente</span>
+                  </div>
+                </div>
+                <Lock className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+              </div>
+            </div>
+          )
+        }
         if (locked) {
           return (
             <div className="rounded-xl border border-border bg-card overflow-hidden opacity-60">
@@ -1257,6 +1275,7 @@ function EventoPageContent() {
         {/* ==================== BAR SECTION ==================== */}
         <SectionCard
           sectionKey="barras"
+          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10"><Wine className="h-5 w-5 text-violet-600" /></div>}
           title="Barras del Evento"
           subtitle={barras.length > 0 ? `${barras.length} barra${barras.length > 1 ? "s" : ""} configurada${barras.length > 1 ? "s" : ""}` : "Agrega barras de tragos y cocteles"}
@@ -1611,7 +1630,7 @@ function EventoPageContent() {
         {/* ==================== SERVICIOS DEL EVENTO ==================== */}
         <SectionCard
           sectionKey="servicios-evento"
-          locked={esBloqueado}
+          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
           title="Servicios del Evento"
           subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
@@ -1810,7 +1829,7 @@ function EventoPageContent() {
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
           sectionKey="contrato"
-          locked={esBloqueado}
+          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><FileText className="h-5 w-5 text-sky-600" /></div>}
           title="Datos del Contrato"
           subtitle="Datos del cliente y plan de cuotas"
