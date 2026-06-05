@@ -402,7 +402,18 @@ function EventoPageContent() {
     }, 0)
   }, [paquetesSeleccionados, paquetesSalones, catalogoServicios])
 
-
+  // MUST be before early return — useCallback is a hook
+  const handleUpdateServicioSeña = useCallback((
+    servicioId: string,
+    campo: keyof ServicioEvento,
+    valor: string | number | boolean | undefined,
+  ) => {
+    if (!evento) return
+    const serviciosActualizados = (evento.servicios || []).map((s) =>
+      s.servicioId === servicioId ? { ...s, [campo]: valor } : s
+    )
+    updateEventoActual({ servicios: serviciosActualizados })
+  }, [evento, updateEventoActual])
 
   // BUTTON 1: Print Draft (READ ONLY - does NOT deduct stock)
   const handlePrintDraft = () => {
@@ -897,18 +908,6 @@ function EventoPageContent() {
     resetBarraForm()
     setDialogBarraOpen(false)
   }
-
-  const handleUpdateServicioSeña = useCallback((
-    servicioId: string,
-    campo: keyof ServicioEvento,
-    valor: string | number | boolean | undefined,
-  ) => {
-    if (!evento) return
-    const serviciosActualizados = (evento.servicios || []).map((s) =>
-      s.servicioId === servicioId ? { ...s, [campo]: valor } : s
-    )
-    updateEventoActual({ servicios: serviciosActualizados })
-  }, [evento, updateEventoActual])
 
   const handleSelectBarraTemplate = (templateId: string) => {
     const template = barrasTemplates.find((t) => t.id === templateId)
