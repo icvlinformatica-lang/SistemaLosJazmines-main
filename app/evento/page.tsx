@@ -570,13 +570,15 @@ function EventoPageContent() {
         body: JSON.stringify({ tipo: "evento", accion: "planificado", nombre: eventData.nombrePareja || eventData.nombre || "Evento sin nombre" }),
       }).catch(() => {})
       setIsSaving(false)
-      // Mostrar animación de éxito y navegar luego de 3s
-      // IMPORTANTE: no llamar setEventoActual(null) antes de navegar — causa error boundary
+      // Mostrar animación de éxito durante 3s y luego navegar
       setShowSaveSuccess(true)
       setTimeout(() => {
-        setShowSaveSuccess(false)
-        setEventoActual(null)
+        // Navegar primero, limpiar estado después para evitar re-render con evento=null
         router.push("/eventos/lista")
+        setTimeout(() => {
+          setShowSaveSuccess(false)
+          setEventoActual(null)
+        }, 300)
       }, 3000)
     }
   }
