@@ -86,6 +86,7 @@ import {
   ChevronUp,
   LayoutDashboard,
   CheckCircle,
+  CheckCircle2,
   RotateCcw,
   Sparkles,
   RefreshCw,
@@ -162,11 +163,16 @@ export default function EventosListaPage() {
   })
 
   const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
+  const [finalizandoId, setFinalizandoId] = useState<string | null>(null)
+  const [finalizadoAnimacion, setFinalizadoAnimacion] = useState<string | null>(null)
 
   const handleFinalizar = async (eventoId: string) => {
+    setFinalizandoId(eventoId)
     await updateEvento(eventoId, { estado: "completado" })
-    toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
-    router.push("/eventos/finalizados")
+    setFinalizandoId(null)
+    setFinalizadoAnimacion(eventoId)
+    // Mostrar animacion 2.5s luego ocultar la fila
+    setTimeout(() => setFinalizadoAnimacion(null), 2500)
   }
 
   // Consolidar compras
@@ -764,10 +770,12 @@ export default function EventosListaPage() {
                     const config = estadoConfig[evento.estado] ?? { label: evento.estado ?? "Sin estado", className: "bg-muted text-muted-foreground border-border" }
                     const totalInvitados = getTotalInvitados(evento)
                     const displayName = evento.nombrePareja || evento.nombre || "Sin nombre"
+                    const estaFinalizando = finalizandoId === evento.id
+                    const estaAnimando = finalizadoAnimacion === evento.id
                     return (
                       <TableRow
                         key={evento.id}
-                        className={`group ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""}`}
+                        className={`group transition-all duration-500 ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""} ${estaAnimando ? "bg-emerald-50 scale-[0.99]" : ""}`}
                       >
                         {modoConsolidar && (
                           <TableCell className="w-10">
@@ -812,6 +820,22 @@ export default function EventosListaPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {evento.estado !== "completado" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-500 scale-110" : "text-emerald-500/40 hover:text-emerald-500 hover:bg-emerald-50"}`}
+                                title="Marcar como finalizado"
+                                disabled={estaFinalizando}
+                                onClick={() => handleFinalizar(evento.id)}
+                              >
+                                {estaAnimando ? (
+                                  <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
+                                ) : (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
