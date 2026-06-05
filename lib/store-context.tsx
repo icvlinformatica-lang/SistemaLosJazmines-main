@@ -186,10 +186,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       let supabaseData: any = {}
       try {
         const db = await import("./supabase/data-service")
-        const [serviciosDB, personalDB, eventosDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB] = await Promise.all([
+        // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
+        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB] = await Promise.all([
           db.fetchServicios(),
           db.fetchPersonal(),
-          db.fetchEventos(),
           db.fetchPagosPersonal(),
           db.fetchCostosOperativos(),
           db.fetchAsignaciones(),
@@ -199,20 +199,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         supabaseData = {
           servicios: serviciosDB.length > 0 ? serviciosDB : localState.servicios,
           personal: personalDB.length > 0 ? personalDB : localState.personal,
-          eventos: eventosDB.length > 0 ? eventosDB : (eventosRes ?? localState.eventos),
           pagosPersonal: pagosDB.length > 0 ? pagosDB : localState.pagosPersonal,
           costosOperativos: costosDB.length > 0 ? costosDB : localState.costosOperativos,
           asignaciones: asignacionesDB.length > 0 ? asignacionesDB : localState.asignaciones,
           movimientosCaja: movimientosDB.length > 0 ? movimientosDB : localState.movimientosCaja,
           configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
         }
-        console.log("[v0] Supabase data loaded successfully")
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
         supabaseData = {
           servicios: localState.servicios,
           personal: localState.personal,
-          eventos: eventosRes ?? localState.eventos,
           pagosPersonal: localState.pagosPersonal,
           costosOperativos: localState.costosOperativos,
           asignaciones: localState.asignaciones,
@@ -229,10 +226,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         recetas: recetasRes ?? localState.recetas,
         cocteles: coctelesRes ?? localState.cocteles,
         barrasTemplates: barraTemplatesRes ?? localState.barrasTemplates,
-        // Supabase data
+        // Eventos — solo desde la API de Postgres (tiene soft delete y papelera)
+        eventos: eventosRes ?? localState.eventos,
+        // Supabase data (servicios, personal, pagos, costos)
         servicios: supabaseData.servicios,
         personal: supabaseData.personal,
-        eventos: supabaseData.eventos,
         pagosPersonal: supabaseData.pagosPersonal,
         costosOperativos: supabaseData.costosOperativos,
         asignaciones: supabaseData.asignaciones,
@@ -821,15 +819,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
   }, [isHydrated])
 
-  // === Eventos (Calendario) — Synced with Supabase ===
+  // === Eventos (Calendario) — Synced with Postgres API (soft delete / papelera) ===
   const addEvento = async (evento: EventoGuardado) => {
     setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
-    // Sync to Supabase
     try {
-      const { upsertEvento } = await import("./supabase/data-service")
-      await upsertEvento(evento as any)
+      await fetch("/api/eventos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(evento),
+      })
     } catch (err) {
-      console.error("[v0] Error syncing evento to Supabase:", err)
+      console.error("[v0] Error adding evento:", err)
     }
   }
 
@@ -839,25 +839,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...prev,
       eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updates } : e)),
     }))
-    // Sync to Supabase
     try {
-      const existing = state.eventos?.find(e => e.id === id)
-      if (existing) {
-        const { upsertEvento } = await import("./supabase/data-service")
-        await upsertEvento({ ...existing, ...updates } as any)
-      }
+      await fetch(`/api/eventos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
     } catch (err) {
-      console.error("[v0] Error syncing evento update to Supabase:", err)
+      console.error("[v0] Error updating evento:", err)
     }
   }
 
   const deleteEvento = async (id: string) => {
-    // Remove from local state immediately (optimistic)
+    // Optimistic: remove from local state immediately
     setState((prev) => ({
       ...prev,
       eventos: (prev.eventos || []).filter((e) => e.id !== id),
     }))
-    // Use API to soft delete (moves to papelera)
+    // API soft-deletes and moves to papelera
     try {
       await fetch(`/api/eventos/${id}`, { method: "DELETE" })
     } catch (err) {
