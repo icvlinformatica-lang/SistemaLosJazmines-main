@@ -1313,7 +1313,6 @@ function EventoPageContent() {
         {/* ==================== BAR SECTION ==================== */}
         <SectionCard
           sectionKey="barras"
-          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10"><Wine className="h-5 w-5 text-violet-600" /></div>}
           title="Barras del Evento"
           subtitle={barras.length > 0 ? `${barras.length} barra${barras.length > 1 ? "s" : ""} configurada${barras.length > 1 ? "s" : ""}` : "Agrega barras de tragos y cocteles"}
@@ -1668,7 +1667,6 @@ function EventoPageContent() {
         {/* ==================== SERVICIOS DEL EVENTO ==================== */}
         <SectionCard
           sectionKey="servicios-evento"
-          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
           title="Servicios del Evento"
           subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
@@ -1867,7 +1865,6 @@ function EventoPageContent() {
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
           sectionKey="contrato"
-          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><FileText className="h-5 w-5 text-sky-600" /></div>}
           title="Datos del Contrato"
           subtitle="Datos del cliente y plan de cuotas"
