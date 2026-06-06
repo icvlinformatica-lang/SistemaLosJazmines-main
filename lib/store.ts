@@ -227,16 +227,23 @@ export interface Servicio {
   descripcion: string
   categoria: CategoriaServicio
 
-  /** Porcentaje de margen de ganancia sobre el costo base (ej: 30 para 30%).
-   *  precioInterno se calcula sumando tarifaBase del personal vinculado.
-   *  precioOficial = precioInterno * (1 + margenGanancia / 100). */
+  /** Porcentaje de margen de ganancia sobre el costo base (legado — ya no se usa en el nuevo flujo). */
   margenGanancia: number
 
-  /** Precio de venta que figura en el contrato (ARS). */
-  precioVenta?: number
+  /** Precio de venta que figura en el contrato del evento (ARS). */
+  precioVenta: number
 
-  /** Costo que impacta en Caja Eventos al registrar este servicio en un evento (ARS). */
-  costoParaCajaEventos?: number
+  /** Costo real para el salón, impacta en Caja Eventos (ARS). */
+  costoParaCajaEventos: number
+
+  /** Porcentaje del precioVenta que se paga como seña al proveedor (ej: 30 = 30%). */
+  porcentajeSeña: number
+
+  /** Días antes del evento en que vence el pago de la seña (ej: 30). */
+  diasAnticipacionSeña: number
+
+  /** Días antes del evento en que vence el pago del saldo final (ej: 7). */
+  diasAnticipacionSaldo: number
 
   unidad: "Fijo" | "Por Persona" | "Por Hora"
   proveedor?: string

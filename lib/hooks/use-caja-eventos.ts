@@ -38,6 +38,18 @@ export interface ProyeccionCajaEventos {
   proximos90Dias: number
 }
 
+export interface EgresoPendienteServicio {
+  id: string
+  eventoId: string
+  eventoNombre: string
+  servicioNombre: string
+  tipo: "seña" | "saldo"
+  monto: number
+  fechaVencimiento: string // YYYY-MM-DD
+  diasRestantes: number
+  estadoPago: "sin_seña" | "señado" | "saldo_pendiente" | "pagado_total"
+}
+
 export interface CajaEventosData {
   saldoActual: number
   proyeccion: ProyeccionCajaEventos
@@ -46,6 +58,9 @@ export interface CajaEventosData {
   ingresosPorSalon: IngresosPorSalon
   totalIngresosSalonMes: number
   mesActual: string
+  egresosPendientesServicios: EgresoPendienteServicio[]
+  totalEgresosPendientes: number
+  balanceProyectado: number
 }
 
 // ============================================================
@@ -138,7 +153,6 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       }
     }
 
-    // Ordenar por fecha de vencimiento ascendente
     proximosACobrar.sort((a, b) =>
       a.fechaVencimiento.localeCompare(b.fechaVencimiento)
     )
@@ -155,7 +169,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
         eventoId: m.eventoId,
         concepto: m.concepto,
         monto: m.monto,
-        fecha: m.fecha.slice(0, 10), // solo YYYY-MM-DD
+        fecha: m.fecha.slice(0, 10),
         salon: m.salon,
       }))
 
@@ -189,6 +203,82 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       year: "numeric",
     })
 
+    // ----------------------------------------------------------
+    // 5. EGRESOS PENDIENTES DE SERVICIOS
+    // ----------------------------------------------------------
+    const egresosPendientesServicios: EgresoPendienteServicio[] = []
+
+    for (const evento of eventos) {
+      if (evento.estado === "cancelado" || evento.estado === "completado") continue
+      const serviciosEvento = evento.servicios ?? []
+      const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
+
+      for (const srv of serviciosEvento) {
+        const estadoPago = srv.estadoPago ?? "sin_seña"
+
+        // Egreso de seña: aplica si todavía no se pagó la seña
+        if (
+          (estadoPago === "sin_seña" || estadoPago === "señado") &&
+          srv.montoSeña &&
+          srv.montoSeña > 0 &&
+          srv.fechaSeña
+        ) {
+          const fechaVenc = parseLocalDate(srv.fechaSeña)
+          if (fechaVenc <= en90Dias) {
+            egresosPendientesServicios.push({
+              id: `${evento.id}-${srv.servicioId}-seña`,
+              eventoId: evento.id,
+              eventoNombre,
+              servicioNombre: srv.nombre,
+              tipo: "seña",
+              monto: srv.montoSeña,
+              fechaVencimiento: srv.fechaSeña,
+              diasRestantes: Math.ceil(
+                (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
+              ),
+              estadoPago,
+            })
+          }
+        }
+
+        // Egreso de saldo: aplica si todavía no se pagó el total
+        if (
+          estadoPago !== "pagado_total" &&
+          srv.saldoPendiente &&
+          srv.saldoPendiente > 0 &&
+          srv.fechaLimitePago
+        ) {
+          const fechaVenc = parseLocalDate(srv.fechaLimitePago)
+          if (fechaVenc <= en90Dias) {
+            egresosPendientesServicios.push({
+              id: `${evento.id}-${srv.servicioId}-saldo`,
+              eventoId: evento.id,
+              eventoNombre,
+              servicioNombre: srv.nombre,
+              tipo: "saldo",
+              monto: srv.saldoPendiente,
+              fechaVencimiento: srv.fechaLimitePago,
+              diasRestantes: Math.ceil(
+                (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
+              ),
+              estadoPago,
+            })
+          }
+        }
+      }
+    }
+
+    egresosPendientesServicios.sort((a, b) =>
+      a.fechaVencimiento.localeCompare(b.fechaVencimiento)
+    )
+
+    const totalEgresosPendientes = egresosPendientesServicios.reduce(
+      (sum, e) => sum + e.monto,
+      0
+    )
+
+    const balanceProyectado = saldoActual + prox90 - totalEgresosPendientes
+
     return {
       saldoActual,
       proyeccion: {
@@ -201,6 +291,9 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       ingresosPorSalon,
       totalIngresosSalonMes,
       mesActual,
+      egresosPendientesServicios,
+      totalEgresosPendientes,
+      balanceProyectado,
     }
   }, [state.movimientosCaja, state.eventos])
 }
