@@ -338,6 +338,12 @@ export interface EventoGuardado extends Evento {
   stockDescontado?: boolean       // true si el stock ya fue descontado al imprimir
   fechaImpresion?: string | null  // ISO string de cuando se imprimio por primera vez
 
+  // --- Servicios seleccionados para el contrato ---
+  /** IDs de servicios del catálogo (/finanzas/servicios) a incluir en el contrato */
+  serviciosContrato?: string[]
+  /** Líneas de texto libre adicionales a incluir en el contrato */
+  serviciosLibresContrato?: string[]
+
   // --- Extensiones para asignaciones y costos calculados ---
   /** Asignaciones de personal a los servicios de este evento */
   asignaciones?: AsignacionPersonal[]
