@@ -443,6 +443,16 @@ function VersionHistoryPanel({
                   >
                     <Printer className="h-4 w-4" />
                   </Button>
+                  <Link href={`/evento?id=${evento.id}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Editar en el planificador"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </Link>
                   <button
                     className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setExpandedIdx(isExpanded ? null : idx)}
@@ -754,20 +764,6 @@ export default function ContratosPage() {
         {/* EDITABLE PANELS */}
         {selectedEvento && (
           <>
-            {/* Edit in planificador button */}
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-5 py-3.5">
-              <Pencil className="h-4 w-4 text-muted-foreground shrink-0" />
-              <p className="text-sm text-muted-foreground flex-1">
-                Para modificar servicios, financiacion o datos del evento, edita directamente desde el planificador.
-              </p>
-              <Link href={`/evento?id=${selectedEvento.id}`}>
-                <Button variant="outline" size="sm" className="gap-2 shrink-0">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Editar evento
-                </Button>
-              </Link>
-            </div>
-
             {/* Change impact warning */}
             {ultimaVersion && hayCambios && !impactosDetectados.includes("sin_cambios") && (
               <div className={`rounded-xl border px-5 py-4 flex gap-3 ${hayImpactoFinanciero ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
