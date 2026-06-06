@@ -350,6 +350,8 @@ export interface EventoGuardado extends Evento {
   serviciosContrato?: string[]
   /** Líneas de texto libre adicionales a incluir en el contrato */
   serviciosLibresContrato?: string[]
+  /** Historial de versiones del contrato — se agrega una entrada cada vez que se guarda */
+  versionesContrato?: VersionContrato[]
 
   // --- Extensiones para asignaciones y costos calculados ---
   /** Asignaciones de personal a los servicios de este evento */
@@ -363,6 +365,33 @@ export interface EventoGuardado extends Evento {
     /** Diferencia entre planeado y real (positivo = ahorro, negativo = exceso) */
     diferencia: number
   }
+}
+
+export type ImpactoContrato = "financiero" | "servicios" | "datos_cliente" | "sin_cambios"
+
+export interface VersionContrato {
+  /** Numero de version incremental */
+  version: number
+  /** ISO timestamp de cuando se guardo esta version */
+  fechaGuardado: string
+  /** Motivo o nota del operador al guardar */
+  motivo?: string
+  /** Snapshot completo de los datos del contrato en ese momento */
+  snapshotContrato: {
+    nombreCompleto?: string
+    dni?: string
+    telefono?: string
+    direccion?: string
+    email?: string
+    condicionIVA?: string
+  }
+  /** Snapshot de servicios seleccionados */
+  snapshotServicios: string[]
+  snapshotServiciosLibres: string[]
+  /** Snapshot del plan de cuotas (si existia) */
+  snapshotPlanCuotas?: EventoGuardado["planDeCuotas"]
+  /** Tipos de cambios detectados respecto a la version anterior */
+  impactos: ImpactoContrato[]
 }
 
 export interface EventoHistorial {
