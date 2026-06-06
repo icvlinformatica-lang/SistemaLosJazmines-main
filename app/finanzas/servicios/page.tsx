@@ -1,0 +1,513 @@
+"use client"
+
+import { useState, useRef, useCallback } from "react"
+import { useStore } from "@/lib/store-context"
+import { generateId, type Servicio, type CategoriaServicio } from "@/lib/store"
+import { useToast } from "@/hooks/use-toast"
+import {
+  Plus,
+  Trash2,
+  Search,
+  ChevronDown,
+  Check,
+  X,
+  Tag,
+  DollarSign,
+  ShoppingBag,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { cn } from "@/lib/utils"
+
+// ─── Constantes ──────────────────────────────────────────────────────────────
+
+const CATEGORIAS: CategoriaServicio[] = [
+  "Salon y Espacio",
+  "Fotografia y Video",
+  "Decoracion",
+  "Entretenimiento",
+  "Pasteleria",
+  "Transporte",
+  "Papeleria",
+  "Otros",
+]
+
+const UNIDADES = ["Fijo", "Por Persona", "Por Hora"] as const
+
+const CATEGORIA_COLORS: Record<CategoriaServicio, string> = {
+  "Salon y Espacio":    "bg-blue-50 text-blue-700 border-blue-200",
+  "Fotografia y Video": "bg-violet-50 text-violet-700 border-violet-200",
+  "Decoracion":         "bg-pink-50 text-pink-700 border-pink-200",
+  "Entretenimiento":    "bg-amber-50 text-amber-700 border-amber-200",
+  "Pasteleria":         "bg-rose-50 text-rose-700 border-rose-200",
+  "Transporte":         "bg-cyan-50 text-cyan-700 border-cyan-200",
+  "Papeleria":          "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "Otros":              "bg-gray-50 text-gray-700 border-gray-200",
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatARS(value: number | undefined): string {
+  if (!value && value !== 0) return ""
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function parseARS(raw: string): number {
+  const clean = raw.replace(/[^0-9.,]/g, "").replace(",", ".")
+  const n = parseFloat(clean)
+  return isNaN(n) ? 0 : n
+}
+
+function margenColor(margen: number): string {
+  if (margen >= 30) return "text-emerald-600"
+  if (margen >= 10) return "text-amber-600"
+  return "text-red-500"
+}
+
+// ─── Celda editable inline ────────────────────────────────────────────────────
+
+interface EditableCellProps {
+  value: string
+  onCommit: (val: string) => void
+  placeholder?: string
+  numeric?: boolean
+  className?: string
+}
+
+function EditableCell({ value, onCommit, placeholder = "—", numeric = false, className }: EditableCellProps) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const startEdit = () => {
+    setDraft(value)
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  const commit = () => {
+    setEditing(false)
+    onCommit(draft)
+  }
+
+  const cancel = () => {
+    setEditing(false)
+    setDraft(value)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit()
+          if (e.key === "Escape") cancel()
+        }}
+        className={cn(
+          "w-full h-8 px-2 text-sm border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white",
+          numeric && "text-right tabular-nums",
+          className
+        )}
+        autoFocus
+      />
+    )
+  }
+
+  return (
+    <div
+      onClick={startEdit}
+      className={cn(
+        "group relative h-8 flex items-center px-2 rounded cursor-pointer hover:bg-muted/70 transition-colors text-sm",
+        !value && "text-muted-foreground/50 italic",
+        numeric && "justify-end tabular-nums",
+        className
+      )}
+      title="Clic para editar"
+    >
+      {value || placeholder}
+      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px] text-muted-foreground">
+        ✎
+      </span>
+    </div>
+  )
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
+export default function FinanzasServiciosPage() {
+  const { servicios, addServicio, updateServicio, deleteServicio } = useStore()
+  const { toast } = useToast()
+
+  const [busqueda, setBusqueda] = useState("")
+  const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaServicio | "todas">("todas")
+  const [idEliminar, setIdEliminar] = useState<string | null>(null)
+
+  // ── Servicios filtrados ────────────────────────────────────────────────────
+  const serviciosFiltrados = servicios.filter((s) => {
+    if (!s.activo) return false
+    if (categoriaFiltro !== "todas" && s.categoria !== categoriaFiltro) return false
+    if (busqueda) {
+      const q = busqueda.toLowerCase()
+      return (
+        s.nombre.toLowerCase().includes(q) ||
+        s.descripcion?.toLowerCase().includes(q) ||
+        s.categoria.toLowerCase().includes(q) ||
+        s.codigo?.toLowerCase().includes(q)
+      )
+    }
+    return true
+  })
+
+  // ── Totales pie de tabla ───────────────────────────────────────────────────
+  const totalVenta = serviciosFiltrados.reduce((sum, s) => sum + (s.precioVenta ?? 0), 0)
+  const totalCosto = serviciosFiltrados.reduce((sum, s) => sum + (s.costoParaCajaEventos ?? 0), 0)
+
+  // ── Agregar fila nueva ─────────────────────────────────────────────────────
+  const handleAgregarFila = () => {
+    const nuevo: Servicio = {
+      id: generateId(),
+      codigo: `SRV-${Date.now().toString(36).toUpperCase()}`,
+      nombre: "Nuevo servicio",
+      descripcion: "",
+      categoria: "Otros",
+      margenGanancia: 0,
+      unidad: "Fijo",
+      precioVenta: 0,
+      costoParaCajaEventos: 0,
+      activo: true,
+    }
+    addServicio(nuevo)
+    toast({ title: "Servicio agregado", description: "Editá las celdas directamente." })
+  }
+
+  // ── Handlers de actualización inline ─────────────────────────────────────
+  const update = useCallback(
+    (id: string, patch: Partial<Servicio>) => {
+      updateServicio(id, patch)
+    },
+    [updateServicio]
+  )
+
+  const handleEliminarConfirm = () => {
+    if (!idEliminar) return
+    deleteServicio(idEliminar)
+    setIdEliminar(null)
+    toast({ title: "Servicio eliminado" })
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-full min-h-0 p-6 gap-4">
+
+      {/* Header */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between shrink-0">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Servicios</h1>
+          <p className="text-sm text-muted-foreground">
+            Configurá el precio de venta (contrato) y el costo que impacta en Caja Eventos.
+          </p>
+        </div>
+        <Button onClick={handleAgregarFila} className="gap-2 self-start sm:self-auto">
+          <Plus className="h-4 w-4" />
+          Agregar servicio
+        </Button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar servicio..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="pl-9 h-9"
+          />
+        </div>
+        <Select
+          value={categoriaFiltro}
+          onValueChange={(v) => setCategoriaFiltro(v as CategoriaServicio | "todas")}
+        >
+          <SelectTrigger className="w-[200px] h-9">
+            <SelectValue placeholder="Todas las categorias" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas las categorias</SelectItem>
+            {CATEGORIAS.map((cat) => (
+              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-sm text-muted-foreground ml-auto hidden sm:block">
+          {serviciosFiltrados.length} servicio{serviciosFiltrados.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {/* Tabla estilo spreadsheet */}
+      <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-card shadow-sm">
+        <table className="w-full text-sm border-collapse min-w-[860px]">
+          <thead>
+            <tr className="bg-muted/80 border-b border-border sticky top-0 z-10">
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground w-[52px] text-xs uppercase tracking-wide">#</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Nombre</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[160px]">Categoria</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[120px]">Unidad</th>
+              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[160px]">
+                <span className="flex items-center justify-end gap-1 text-emerald-700">
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  Precio Venta
+                </span>
+              </th>
+              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[160px]">
+                <span className="flex items-center justify-end gap-1 text-rose-600">
+                  <DollarSign className="h-3.5 w-3.5" />
+                  Costo Caja Eventos
+                </span>
+              </th>
+              <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[90px]">Margen</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Descripcion</th>
+              <th className="px-2 py-2.5 w-10" />
+            </tr>
+          </thead>
+
+          <tbody>
+            {serviciosFiltrados.length === 0 && (
+              <tr>
+                <td colSpan={9} className="text-center py-16 text-muted-foreground">
+                  {busqueda || categoriaFiltro !== "todas"
+                    ? "No se encontraron servicios con esos filtros."
+                    : "No hay servicios. Hacé clic en \"Agregar servicio\" para empezar."}
+                </td>
+              </tr>
+            )}
+
+            {serviciosFiltrados.map((s, idx) => {
+              const venta = s.precioVenta ?? 0
+              const costo = s.costoParaCajaEventos ?? 0
+              const ganancia = venta - costo
+              const margen = costo > 0 ? (ganancia / costo) * 100 : 0
+
+              return (
+                <tr
+                  key={s.id}
+                  className={cn(
+                    "border-b border-border/60 hover:bg-muted/30 transition-colors group",
+                    idx % 2 === 0 ? "bg-card" : "bg-muted/10"
+                  )}
+                >
+                  {/* Nro fila */}
+                  <td className="px-3 py-1 text-muted-foreground/50 text-xs tabular-nums select-none">
+                    {idx + 1}
+                  </td>
+
+                  {/* Nombre */}
+                  <td className="px-1 py-1 min-w-[180px]">
+                    <EditableCell
+                      value={s.nombre}
+                      placeholder="Nombre del servicio"
+                      onCommit={(v) => update(s.id, { nombre: v.trim() || s.nombre })}
+                    />
+                  </td>
+
+                  {/* Categoria */}
+                  <td className="px-2 py-1">
+                    <Select
+                      value={s.categoria}
+                      onValueChange={(v) => update(s.id, { categoria: v as CategoriaServicio })}
+                    >
+                      <SelectTrigger className="h-8 border-0 bg-transparent shadow-none px-1 hover:bg-muted/70 focus:ring-0 gap-1 text-sm">
+                        <Badge
+                          variant="outline"
+                          className={cn("text-[11px] font-medium px-1.5 py-0 border", CATEGORIA_COLORS[s.categoria])}
+                        >
+                          {s.categoria}
+                        </Badge>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIAS.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            <Badge variant="outline" className={cn("text-[11px] font-medium", CATEGORIA_COLORS[cat])}>
+                              {cat}
+                            </Badge>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+
+                  {/* Unidad */}
+                  <td className="px-2 py-1">
+                    <Select
+                      value={s.unidad}
+                      onValueChange={(v) => update(s.id, { unidad: v as Servicio["unidad"] })}
+                    >
+                      <SelectTrigger className="h-8 border-0 bg-transparent shadow-none px-1 hover:bg-muted/70 focus:ring-0 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UNIDADES.map((u) => (
+                          <SelectItem key={u} value={u}>{u}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+
+                  {/* Precio Venta */}
+                  <td className="px-1 py-1">
+                    <EditableCell
+                      value={venta > 0 ? venta.toString() : ""}
+                      placeholder="0"
+                      numeric
+                      onCommit={(v) => update(s.id, { precioVenta: parseARS(v) })}
+                    />
+                    {venta > 0 && (
+                      <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
+                        {formatARS(venta)}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Costo Caja Eventos */}
+                  <td className="px-1 py-1">
+                    <EditableCell
+                      value={costo > 0 ? costo.toString() : ""}
+                      placeholder="0"
+                      numeric
+                      onCommit={(v) => update(s.id, { costoParaCajaEventos: parseARS(v) })}
+                    />
+                    {costo > 0 && (
+                      <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
+                        {formatARS(costo)}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Margen */}
+                  <td className="px-3 py-1 text-right tabular-nums">
+                    {venta > 0 && costo > 0 ? (
+                      <span className={cn("font-semibold text-sm", margenColor(margen))}>
+                        {margen.toFixed(0)}%
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
+                  </td>
+
+                  {/* Descripcion */}
+                  <td className="px-1 py-1 max-w-[220px]">
+                    <EditableCell
+                      value={s.descripcion ?? ""}
+                      placeholder="Descripcion opcional"
+                      onCommit={(v) => update(s.id, { descripcion: v })}
+                    />
+                  </td>
+
+                  {/* Eliminar */}
+                  <td className="px-2 py-1">
+                    <button
+                      type="button"
+                      onClick={() => setIdEliminar(s.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      title="Eliminar servicio"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+
+          {/* Footer totales */}
+          {serviciosFiltrados.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-border bg-muted/60 font-semibold">
+                <td colSpan={4} className="px-3 py-2.5 text-sm text-muted-foreground">
+                  Total ({serviciosFiltrados.length} servicio{serviciosFiltrados.length !== 1 ? "s" : ""})
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
+                  {formatARS(totalVenta)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-rose-600">
+                  {formatARS(totalCosto)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {totalCosto > 0 ? (
+                    <span className={cn("font-semibold", margenColor(((totalVenta - totalCosto) / totalCosto) * 100))}>
+                      {(((totalVenta - totalCosto) / totalCosto) * 100).toFixed(0)}%
+                    </span>
+                  ) : "—"}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+
+      {/* Leyenda */}
+      <div className="flex items-center gap-4 text-[12px] text-muted-foreground shrink-0 flex-wrap">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-300" />
+          Precio Venta = precio que figura en el contrato
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-rose-100 border border-rose-300" />
+          Costo Caja Eventos = egreso que impacta en Caja Eventos al registrar el servicio
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="font-semibold text-emerald-600">Verde</span> ≥ 30% &nbsp;
+          <span className="font-semibold text-amber-600">Naranja</span> 10-30% &nbsp;
+          <span className="font-semibold text-red-500">Rojo</span> {`< 10%`}
+        </span>
+      </div>
+
+      {/* Confirm delete */}
+      <AlertDialog open={!!idEliminar} onOpenChange={(o) => !o && setIdEliminar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar servicio</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion es permanente y no se puede deshacer. El servicio sera eliminado del catalogo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleEliminarConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}

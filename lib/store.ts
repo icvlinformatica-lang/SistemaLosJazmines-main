@@ -232,6 +232,12 @@ export interface Servicio {
    *  precioOficial = precioInterno * (1 + margenGanancia / 100). */
   margenGanancia: number
 
+  /** Precio de venta que figura en el contrato (ARS). */
+  precioVenta?: number
+
+  /** Costo que impacta en Caja Eventos al registrar este servicio en un evento (ARS). */
+  costoParaCajaEventos?: number
+
   unidad: "Fijo" | "Por Persona" | "Por Hora"
   proveedor?: string
   notas?: string
