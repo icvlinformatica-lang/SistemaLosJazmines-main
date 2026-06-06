@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import type { AppState, MovimientoCaja } from "../store"
+import { calcularComprasBarras, type AppState, type MovimientoCaja } from "../store"
 
 // ============================================================
 // Tipos de salida
@@ -35,7 +35,7 @@ export interface EgresoPendienteServicio {
   eventoId: string
   eventoNombre: string
   servicioNombre: string
-  tipo: "seña" | "saldo" | "menu"
+  tipo: "seña" | "saldo" | "menu" | "barra"
   monto: number
   fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
@@ -205,6 +205,36 @@ export function useCajaEventos(state: AppState): CajaEventosData {
         }
       }
 
+      // --- Costo de la BARRA del evento ---
+      // Insumos de bebidas (cocteles) calculados según comensales y precio de insumos.
+      // Se paga 2 semanas (14 días) antes de la fecha del evento, igual que el menú.
+      const comprasBarra = calcularComprasBarras(evento, state.cocteles || [], state.insumosBarra || [])
+      const costoBarra = comprasBarra.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
+      if (costoBarra > 0 && evento.fecha) {
+        const fechaEvento = parseLocalDate(evento.fecha)
+        const fechaPagoBarra = new Date(fechaEvento)
+        fechaPagoBarra.setDate(fechaEvento.getDate() - 14)
+        const fechaPagoBarraStr = `${fechaPagoBarra.getFullYear()}-${String(fechaPagoBarra.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoBarra.getDate()).padStart(2, "0")}`
+
+        const barraPagada = movimientos.some(
+          (m) => m.eventoId === evento.id && m.cajaDestino === "caja_eventos" && m.tipo === "egreso" && (m.concepto || "").startsWith("Pago barra"),
+        )
+
+        if (!barraPagada) {
+          egresosPendientes.push({
+            id: `${evento.id}-barra`,
+            eventoId: evento.id,
+            eventoNombre,
+            servicioNombre: "Barra del evento",
+            tipo: "barra",
+            monto: costoBarra,
+            fechaVencimiento: fechaPagoBarraStr,
+            diasRestantes: Math.ceil((fechaPagoBarra.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+            estadoPago: "saldo_pendiente",
+          })
+        }
+      }
+
       for (const srv of serviciosEvento) {
         const estadoPago = srv.estadoPago ?? "sin_seña"
 
@@ -307,5 +337,5 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       totalPorPagar,
       mesActualLabel,
     }
-  }, [state.movimientosCaja, state.eventos])
+  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra])
 }

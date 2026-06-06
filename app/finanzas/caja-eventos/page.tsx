@@ -101,9 +101,9 @@ export default function CajaEventosPage() {
     const hoyISO = new Date().toISOString()
     const fechaPago = hoyISO.split("T")[0]
 
-    // El menú no es un servicio: su estado se deriva del movimiento de egreso,
-    // así que solo registramos el egreso real (sin tocar evento.servicios).
-    if (egreso.tipo !== "menu") {
+    // El menú y la barra no son servicios: su estado se deriva del movimiento de
+    // egreso, así que solo registramos el egreso real (sin tocar evento.servicios).
+    if (egreso.tipo !== "menu" && egreso.tipo !== "barra") {
       const nuevosServicios = (evento.servicios ?? []).map((srv) => {
         if (!egreso.id.includes(srv.servicioId)) return srv
         if (egreso.tipo === "seña") {
@@ -122,7 +122,9 @@ export default function CajaEventosPage() {
     const conceptoEgreso =
       egreso.tipo === "menu"
         ? `Pago menú - ${egreso.eventoNombre}`
-        : `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`
+        : egreso.tipo === "barra"
+          ? `Pago barra - ${egreso.eventoNombre}`
+          : `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`
 
     const movimiento: MovimientoCaja = {
       id: generateId(),
@@ -483,10 +485,12 @@ export default function CajaEventosPage() {
                                 ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
                                 : eg.tipo === "menu"
                                   ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
-                                  : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+                                  : eg.tipo === "barra"
+                                    ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
+                                    : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : "Saldo"}
+                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>
