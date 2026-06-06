@@ -95,6 +95,7 @@ import {
   ClipboardList,
 } from "lucide-react"
 import { MenuTable } from "@/components/menu-table"
+import { CoctelTable } from "@/components/coctel-table"
 
 function EventoPageContent() {
   const router = useRouter()
@@ -116,17 +117,6 @@ function EventoPageContent() {
     listaCompras: true,
     barraCocteles: true,
     guiaProduccion: true,
-  })
-  const [dialogBarraOpen, setDialogBarraOpen] = useState(false)
-  const [editingBarraIndex, setEditingBarraIndex] = useState<number | null>(null)
-  const [barraForm, setBarraForm] = useState<{
-    barraTemplateId: string
-    coctelesIncluidos: string[]
-    tragosPorPersona: number
-  }>({
-    barraTemplateId: "",
-    coctelesIncluidos: [],
-    tragosPorPersona: 3,
   })
 
   // Package selection state (no more individual service dialog)
@@ -331,24 +321,6 @@ function EventoPageContent() {
   }, [evento, updateEventoActual])
 
   // === Bar Handlers ===
-  const resetBarraForm = () => {
-    setBarraForm({
-      barraTemplateId: "",
-      coctelesIncluidos: [],
-      tragosPorPersona: 3,
-    })
-    setEditingBarraIndex(null)
-  }
-
-  const toggleCoctelInBarra = (coctelId: string) => {
-    const current = barraForm.coctelesIncluidos
-    if (current.includes(coctelId)) {
-      setBarraForm({ ...barraForm, coctelesIncluidos: current.filter((id) => id !== coctelId) })
-    } else {
-      setBarraForm({ ...barraForm, coctelesIncluidos: [...current, coctelId] })
-    }
-  }
-
   // === Package Handlers (replace old service handlers) ===
   const paquetesDelSalon = useMemo(() => {
     if (!evento?.salon) return []
@@ -999,7 +971,6 @@ function EventoPageContent() {
   const costoOperativo = calcularCostosOperativos(evento, costosOperativos || [])
 
   const barras = evento.barras || []
-  const barrasTemplates = state.barrasTemplates || []
   const existsInCalendar = (state.eventos || []).some((e) => e.id === evento.id)
 
   // Bloqueo de campos criticos cuando el stock ya fue comprometido
@@ -1011,63 +982,34 @@ function EventoPageContent() {
   const esSoloLectura = evento.estado === "completado"
 
   // Handlers that depend on derived values (must be after early return)
-  const handleOpenAddBarra = () => {
-    resetBarraForm()
-    setDialogBarraOpen(true)
-  }
+  // Selección de cocteles por click (estilo tabla de menú).
+  // Se mantiene una única "barra" implícita para conservar la compatibilidad
+  // con calcularComprasBarras (que necesita tragosPorPersona).
+  const coctelesEventoSeleccionados = barras[0]?.coctelesIncluidos || []
 
-  const handleEditBarra = (index: number) => {
-    const barra = barras[index]
-    setBarraForm({
-      barraTemplateId: barra.barraTemplateId || "",
-      coctelesIncluidos: [...barra.coctelesIncluidos],
-      tragosPorPersona: barra.tragosPorPersona,
-    })
-    setEditingBarraIndex(index)
-    setDialogBarraOpen(true)
-  }
+  const toggleCoctelEvento = (coctelId: string) => {
+    const barraActual = barras[0]
+    const seleccionados = barraActual?.coctelesIncluidos || []
+    const nuevos = seleccionados.includes(coctelId)
+      ? seleccionados.filter((id) => id !== coctelId)
+      : [...seleccionados, coctelId]
 
-  const handleDeleteBarra = (index: number) => {
-    const updatedBarras = barras.filter((_, i) => i !== index)
-    updateEventoActual({ barras: updatedBarras })
-  }
-
-  const handleGuardarBarra = () => {
-    const newBarra: BarraEvento = {
-      id: editingBarraIndex !== null ? barras[editingBarraIndex].id : generateId(),
-      barraTemplateId: barraForm.barraTemplateId,
-      coctelesIncluidos: barraForm.coctelesIncluidos,
-      tragosPorPersona: barraForm.tragosPorPersona,
+    if (nuevos.length === 0) {
+      // Sin cocteles: limpiar las barras del evento
+      updateEventoActual({ barras: [] })
+      return
     }
 
-    let updatedBarras: BarraEvento[]
-    if (editingBarraIndex !== null) {
-      updatedBarras = barras.map((b, i) => (i === editingBarraIndex ? newBarra : b))
-    } else {
-      updatedBarras = [...barras, newBarra]
+    const barraActualizada: BarraEvento = {
+      id: barraActual?.id || generateId(),
+      barraTemplateId: barraActual?.barraTemplateId || "",
+      coctelesIncluidos: nuevos,
+      tragosPorPersona: barraActual?.tragosPorPersona ?? 2,
     }
-
-    updateEventoActual({ barras: updatedBarras })
-    resetBarraForm()
-    setDialogBarraOpen(false)
-  }
-
-  const handleSelectBarraTemplate = (templateId: string) => {
-    const template = barrasTemplates.find((t) => t.id === templateId)
-    if (!template) return
-    setBarraForm({
-      ...barraForm,
-      barraTemplateId: templateId,
-      coctelesIncluidos: [...template.coctelesIncluidos],
-    })
+    updateEventoActual({ barras: [barraActualizada] })
   }
 
   // Service handlers removed - now using package selection
-
-  const calcularTotalTragos = () => {
-    const personas = evento.adultos + evento.adolescentes
-    return personas * barraForm.tragosPorPersona
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -1457,54 +1399,17 @@ function EventoPageContent() {
         <SectionCard
           sectionKey="barras"
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10"><Wine className="h-5 w-5 text-violet-600" /></div>}
-          title="Barras del Evento"
-          subtitle={barras.length > 0 ? `${barras.length} barra${barras.length > 1 ? "s" : ""} configurada${barras.length > 1 ? "s" : ""}` : "Agrega barras de tragos y cocteles"}
-          badge={barras.length > 0 ? <Badge variant="secondary" className="text-xs">{barras.length} barra{barras.length > 1 ? "s" : ""}</Badge> : undefined}
+          title="Barra del Evento"
+          subtitle={coctelesEventoSeleccionados.length > 0 ? `${coctelesEventoSeleccionados.length} coctel${coctelesEventoSeleccionados.length > 1 ? "es" : ""} seleccionado${coctelesEventoSeleccionados.length > 1 ? "s" : ""}` : "Selecciona los cocteles para este evento"}
+          badge={coctelesEventoSeleccionados.length > 0 ? <Badge variant="secondary" className="text-xs">{coctelesEventoSeleccionados.length} coctel{coctelesEventoSeleccionados.length > 1 ? "es" : ""}</Badge> : undefined}
+          locked={esBloqueado}
         >
-
-          {barras.length > 0 && (
-            <div className="space-y-3">
-              {barras.map((barra, index) => {
-                const coctelesNames = barra.coctelesIncluidos
-                  .map((id) => state.cocteles.find((c) => c.id === id)?.nombre)
-                  .filter(Boolean)
-                const template = barrasTemplates.find((t) => t.id === barra.barraTemplateId)
-                const personas = evento.adultos + evento.adolescentes
-                return (
-                  <div key={barra.id} className="rounded-lg border border-border/60 bg-muted/20 p-4 transition-colors hover:bg-muted/40">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm">{template?.nombre || "Barra"}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {personas} personas &middot; {barra.tragosPorPersona} tragos/persona &middot; {personas * barra.tragosPorPersona} total
-                        </p>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditBarra(index)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteBarra(index)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                    {coctelesNames.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {coctelesNames.map((name) => (
-                          <Badge key={name} variant="secondary" className="text-xs font-normal">{name}</Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          <Button variant="outline" className="w-full h-11 text-sm bg-transparent border-dashed" onClick={handleOpenAddBarra}>
-            <Plus className="mr-2 h-4 w-4" />
-            Agregar Barra
-          </Button>
+          <CoctelTable
+            cocteles={state.cocteles}
+            coctelesSeleccionados={coctelesEventoSeleccionados}
+            esBloqueado={esBloqueado}
+            onToggle={toggleCoctelEvento}
+          />
         </SectionCard>
 
         {/* ==================== PAQUETES DE SERVICIOS (OCULTO TEMPORALMENTE) ==================== */}
@@ -2469,164 +2374,6 @@ function EventoPageContent() {
         </div>{/* End of collapsible sections container */}
 
         {/* Service Dialog removed - now using package selection */}
-
-        {/* Bar Dialog */}
-        <Dialog open={dialogBarraOpen} onOpenChange={(open) => {
-          setDialogBarraOpen(open)
-          if (!open) resetBarraForm()
-        }}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-semibold">
-                {editingBarraIndex !== null ? "Editar Barra" : "Configurar Nueva Barra"}
-              </DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                {editingBarraIndex !== null ? "Modifica la configuración de la barra para este evento" : "Selecciona una barra y personaliza los cocteles incluidos"}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-6 py-2">
-              {/* Seleccionar barra template — grilla de cards con checkbox */}
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-foreground">Seleccionar Barra</p>
-                {barrasTemplates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
-                    No hay barras creadas. Ve a Gestion de Cocteles para crear una.
-                  </p>
-                ) : (
-                  <div className={`grid gap-2 ${barrasTemplates.length <= 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-                    {barrasTemplates.map((template) => {
-                      const selected = barraForm.barraTemplateId === template.id
-                      return (
-                        <label
-                          key={template.id}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors select-none ${
-                            selected
-                              ? "border-primary bg-primary/8 text-foreground"
-                              : "border-border hover:bg-muted/50 text-foreground"
-                          }`}
-                          onClick={() => handleSelectBarraTemplate(template.id)}
-                        >
-                          <Checkbox
-                            checked={selected}
-                            onCheckedChange={() => handleSelectBarraTemplate(template.id)}
-                            className="rounded-sm shrink-0"
-                          />
-                          <span className={`text-sm leading-tight ${selected ? "font-semibold" : "font-medium"}`}>
-                            {template.nombre}
-                          </span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Cocteles (pre-loaded from template, editable) — chips con wrap */}
-              {barraForm.barraTemplateId && (
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-foreground">
-                    Cocteles
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      ({barraForm.coctelesIncluidos.length} seleccionados)
-                    </span>
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {state.cocteles.map((coctel) => {
-                      const checked = barraForm.coctelesIncluidos.includes(coctel.id)
-                      return (
-                        <button
-                          key={coctel.id}
-                          type="button"
-                          onClick={() => toggleCoctelInBarra(coctel.id)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors cursor-pointer ${
-                            checked
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border bg-background text-muted-foreground hover:bg-muted"
-                          }`}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={() => toggleCoctelInBarra(coctel.id)}
-                            className="rounded-sm h-3 w-3 shrink-0 pointer-events-none"
-                          />
-                          {coctel.nombre}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Tragos por persona — con botones +/- */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold text-foreground">Tragos por persona</Label>
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => setBarraForm({
-                      ...barraForm,
-                      tragosPorPersona: Math.max(1, barraForm.tragosPorPersona - 0.5)
-                    })}
-                  >
-                    <span className="text-lg leading-none">−</span>
-                  </Button>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min="1"
-                    value={barraForm.tragosPorPersona}
-                    onChange={(e) =>
-                      setBarraForm({ ...barraForm, tragosPorPersona: Number.parseFloat(e.target.value) || 2 })
-                    }
-                    className="text-center h-9 w-24"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => setBarraForm({
-                      ...barraForm,
-                      tragosPorPersona: barraForm.tragosPorPersona + 0.5
-                    })}
-                  >
-                    <span className="text-lg leading-none">+</span>
-                  </Button>
-                </div>
-              </div>
-
-              {/* Total estimado — resumen con fondo suave */}
-              <div className="rounded-lg bg-muted/60 border border-border px-5 py-4 space-y-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total estimado</p>
-                <p className="text-3xl font-bold text-foreground leading-none">
-                  {calcularTotalTragos()} <span className="text-base font-normal text-muted-foreground">tragos</span>
-                </p>
-                <p className="text-xs text-muted-foreground pt-1">
-                  {evento.adultos + evento.adolescentes} personas × {barraForm.tragosPorPersona} tragos por persona
-                </p>
-              </div>
-            </div>
-
-            <DialogFooter className="gap-2 pt-2">
-              <Button variant="outline" className="bg-transparent" onClick={() => setDialogBarraOpen(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleGuardarBarra}
-                disabled={!barraForm.barraTemplateId || barraForm.coctelesIncluidos.length === 0}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                {editingBarraIndex !== null ? "Guardar" : "Agregar Barra"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-
 
         {/* ==================== NUEVO FLUJO DE GUARDADO ==================== */}
         <div className="space-y-4 pb-8">
