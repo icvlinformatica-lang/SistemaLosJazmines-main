@@ -860,14 +860,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteEvento = async (id: string) => {
-    // Optimistic: remove from local state immediately
+    // Optimistic: remove evento AND its caja movements from local state immediately
     setState((prev) => ({
       ...prev,
       eventos: (prev.eventos || []).filter((e) => e.id !== id),
+      movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.eventoId !== id),
     }))
-    // API soft-deletes and moves to papelera
+    // API soft-deletes evento and moves to papelera; also purge its caja movements
     try {
       await fetch(`/api/eventos/${id}`, { method: "DELETE" })
+      const { deleteMovimientosByEvento } = await import("./supabase/data-service")
+      await deleteMovimientosByEvento(id)
     } catch (err) {
       console.error("[v0] Error deleting evento:", err)
     }
