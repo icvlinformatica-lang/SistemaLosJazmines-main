@@ -200,6 +200,9 @@ export default function FinanzasServiciosPage() {
       unidad: "Fijo",
       precioVenta: 0,
       costoParaCajaEventos: 0,
+      porcentajeSeña: 30,
+      diasAnticipacionSeña: 30,
+      diasAnticipacionSaldo: 7,
       activo: true,
     }
     addServicio(nuevo)
@@ -290,6 +293,12 @@ export default function FinanzasServiciosPage() {
                   Costo Caja Eventos
                 </span>
               </th>
+              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[140px]">
+                <span className="flex items-center justify-end gap-1 text-amber-600">
+                  <Tag className="h-3.5 w-3.5" />
+                  Seña por evento
+                </span>
+              </th>
               <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[90px]">Margen</th>
               <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Descripcion</th>
               <th className="px-2 py-2.5 w-10" />
@@ -299,7 +308,7 @@ export default function FinanzasServiciosPage() {
           <tbody>
             {serviciosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={9} className="text-center py-16 text-muted-foreground">
+                <td colSpan={10} className="text-center py-16 text-muted-foreground">
                   {busqueda || categoriaFiltro !== "todas"
                     ? "No se encontraron servicios con esos filtros."
                     : "No hay servicios. Hacé clic en \"Agregar servicio\" para empezar."}
@@ -408,6 +417,28 @@ export default function FinanzasServiciosPage() {
                     )}
                   </td>
 
+                  {/* Seña por evento */}
+                  <td className="px-1 py-1">
+                    <EditableCell
+                      value={s.costoParaCajaEventos && s.porcentajeSeña
+                        ? Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100).toString()
+                        : ""}
+                      placeholder="0"
+                      numeric
+                      onCommit={(v) => {
+                        const montoSeña = parseARS(v)
+                        const base = s.costoParaCajaEventos ?? 0
+                        const pct = base > 0 ? Math.round((montoSeña / base) * 100) : 30
+                        update(s.id, { porcentajeSeña: pct })
+                      }}
+                    />
+                    {s.costoParaCajaEventos && s.costoParaCajaEventos > 0 && (
+                      <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
+                        {formatARS(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))}
+                      </div>
+                    )}
+                  </td>
+
                   {/* Margen */}
                   <td className="px-3 py-1 text-right tabular-nums">
                     {venta > 0 && costo > 0 ? (
@@ -456,6 +487,10 @@ export default function FinanzasServiciosPage() {
                 </td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-rose-600">
                   {formatARS(totalCosto)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-amber-700 font-semibold">
+                  {formatARS(serviciosFiltrados.reduce((sum, s) =>
+                    sum + Math.round((s.costoParaCajaEventos ?? 0) * (s.porcentajeSeña ?? 30) / 100), 0))}
                 </td>
                 <td className="px-3 py-2.5 text-right tabular-nums">
                   {totalCosto > 0 ? (

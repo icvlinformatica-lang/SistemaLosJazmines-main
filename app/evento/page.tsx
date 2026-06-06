@@ -1671,151 +1671,146 @@ function EventoPageContent() {
           title="Servicios del Evento"
           subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
         >
-          {/* Agregar nuevo servicio */}
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {catalogoServicios.filter(s => s.activo).map((servicio) => {
-                const yaAgregado = serviciosEvento.some(se => se.servicioId === servicio.id)
-                return (
-                  <Button
-                    key={servicio.id}
-                    variant={yaAgregado ? "secondary" : "outline"}
-                    size="sm"
-                    disabled={yaAgregado}
-                    onClick={() => {
-                      const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
-                      const pSeña = servicio.porcentajeSeña ?? 30
-                      const diasSeña = servicio.diasAnticipacionSeña ?? 30
-                      const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
-                      const precioVenta = servicio.precioVenta ?? 0
-                      const montoSeña = Math.round(precioVenta * pSeña / 100)
-                      const saldoPendiente = precioVenta - montoSeña
-
-                      const fechaSeñaDate = new Date(fechaEvento)
-                      fechaSeñaDate.setDate(fechaEvento.getDate() - diasSeña)
-                      const fechaSaldoDate = new Date(fechaEvento)
-                      fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
-
-                      const nuevoServicio: ServicioEvento = {
-                        servicioId: servicio.id,
-                        nombre: servicio.nombre,
-                        cantidad: 1,
-                        unidad: servicio.unidad || "Fijo",
-                        estadoPago: "sin_seña",
-                        montoSeña,
-                        saldoPendiente,
-                        fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
-                        fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
-                      }
-                      updateEventoActual({ servicios: [...serviciosEvento, nuevoServicio] })
-                    }}
-                    className="text-xs"
-                  >
-                    {yaAgregado ? (
-                      <CheckCircle className="h-3 w-3 mr-1 text-green-600" />
-                    ) : (
-                      <Plus className="h-3 w-3 mr-1" />
-                    )}
-                    {servicio.nombre}
-                  </Button>
-                )
-              })}
+          {/* Tabla multiplechoice de servicios */}
+          {catalogoServicios.filter(s => s.activo).length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
+              <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No hay servicios en el catalogo</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ve a Finanzas → Servicios para agregar servicios
+              </p>
             </div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/70 border-b border-border">
+                    <th className="w-10 px-3 py-2" />
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Servicio</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Categoria</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700 uppercase tracking-wide">Precio</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-amber-600 uppercase tracking-wide">Seña</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalogoServicios.filter(s => s.activo).map((servicio, idx) => {
+                    const seleccionado = serviciosEvento.some(se => se.servicioId === servicio.id)
+                    const precioVenta = servicio.precioVenta ?? 0
+                    const costoSeña = Math.round((servicio.costoParaCajaEventos ?? 0) * (servicio.porcentajeSeña ?? 30) / 100)
 
-            {catalogoServicios.filter(s => s.activo).length === 0 && (
-              <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed rounded-lg">
-                <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No hay servicios en el catalogo</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ve a Finanzas {"->"} Catalogo Servicios para agregar servicios
-                </p>
-              </div>
-            )}
+                    const fmt = (n: number) =>
+                      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
 
-            {/* Servicios agregados — vista de solo lectura */}
-            {serviciosEvento.length > 0 && (
-              <div className="space-y-2 mt-4 pt-4 border-t">
-                <h4 className="text-sm font-medium flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                  Servicios agregados
-                </h4>
-                {serviciosEvento.map((srv, idx) => {
-                  const servicioCatalogo = catalogoServicios.find(s => s.id === srv.servicioId)
-                  const estadoPago = srv.estadoPago ?? "sin_seña"
-                  const estadoConfig: Record<string, { label: string; className: string }> = {
-                    sin_seña:        { label: "Sin seña",        className: "bg-muted text-muted-foreground" },
-                    señado:          { label: "Señado",          className: "bg-yellow-100 text-yellow-700 border-yellow-300" },
-                    saldo_pendiente: { label: "Saldo pendiente", className: "bg-orange-100 text-orange-700 border-orange-300" },
-                    pagado_total:    { label: "Pagado total",    className: "bg-green-100 text-green-700 border-green-300" },
-                  }
-                  const { label, className: estadoClass } = estadoConfig[estadoPago] ?? estadoConfig.sin_seña
+                    const toggleServicio = () => {
+                      if (seleccionado) {
+                        updateEventoActual({ servicios: serviciosEvento.filter(se => se.servicioId !== servicio.id) })
+                      } else {
+                        const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
+                        const diasSeña = servicio.diasAnticipacionSeña ?? 30
+                        const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
+                        const montoSeña = Math.round(precioVenta * (servicio.porcentajeSeña ?? 30) / 100)
+                        const saldoPendiente = precioVenta - montoSeña
 
-                  const fmt = (n?: number) =>
-                    n != null && n > 0
-                      ? new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
-                      : "—"
+                        const fechaSeñaDate = new Date(fechaEvento)
+                        fechaSeñaDate.setDate(fechaEvento.getDate() - diasSeña)
+                        const fechaSaldoDate = new Date(fechaEvento)
+                        fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
 
-                  const fmtFecha = (d?: string) => {
-                    if (!d) return "—"
-                    const [y, m, day] = d.split("-").map(Number)
-                    return new Date(y, m - 1, day).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })
-                  }
+                        const nuevoServicio: ServicioEvento = {
+                          servicioId: servicio.id,
+                          nombre: servicio.nombre,
+                          cantidad: 1,
+                          unidad: servicio.unidad || "Fijo",
+                          estadoPago: "sin_seña",
+                          montoSeña,
+                          saldoPendiente,
+                          fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
+                          fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                        }
+                        updateEventoActual({ servicios: [...serviciosEvento, nuevoServicio] })
+                      }
+                    }
 
-                  return (
-                    <div key={srv.servicioId} className="rounded-lg border bg-card px-3 py-2.5 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs shrink-0">
-                            {servicioCatalogo?.categoria || "Servicio"}
-                          </Badge>
-                          <span className="text-sm font-semibold">{srv.nombre}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={`shrink-0 rounded-full text-xs font-medium ${estadoClass}`}>
-                            {label}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => {
-                              const nuevosServicios = serviciosEvento.filter((_, i) => i !== idx)
-                              updateEventoActual({ servicios: nuevosServicios })
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground pl-0.5">
-                        {srv.montoSeña != null && srv.montoSeña > 0 && (
-                          <span>
-                            Seña:{" "}
-                            <span className="font-medium text-amber-700">{fmt(srv.montoSeña)}</span>
-                            {srv.fechaSeña && (
-                              <span className="ml-1 text-muted-foreground">→ vence {fmtFecha(srv.fechaSeña)}</span>
+                    return (
+                      <tr
+                        key={servicio.id}
+                        onClick={toggleServicio}
+                        className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
+                          seleccionado
+                            ? "bg-emerald-50/70 hover:bg-emerald-50"
+                            : idx % 2 === 0
+                            ? "hover:bg-muted/40"
+                            : "bg-muted/10 hover:bg-muted/40"
+                        }`}
+                      >
+                        {/* Checkbox visual */}
+                        <td className="w-10 px-3 py-2.5">
+                          <div className={`w-4.5 h-4.5 w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
+                            seleccionado
+                              ? "bg-emerald-600 border-emerald-600"
+                              : "border-muted-foreground/30 bg-background"
+                          }`}>
+                            {seleccionado && (
+                              <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />
                             )}
+                          </div>
+                        </td>
+
+                        {/* Nombre */}
+                        <td className="px-3 py-2.5">
+                          <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>
+                            {servicio.nombre}
                           </span>
+                          {servicio.descripcion && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{servicio.descripcion}</p>
+                          )}
+                        </td>
+
+                        {/* Categoria */}
+                        <td className="px-3 py-2.5 hidden sm:table-cell">
+                          <Badge variant="outline" className="text-[11px]">{servicio.categoria}</Badge>
+                        </td>
+
+                        {/* Precio venta */}
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                          {precioVenta > 0 ? fmt(precioVenta) : <span className="text-muted-foreground font-normal">—</span>}
+                        </td>
+
+                        {/* Seña al proveedor */}
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-amber-700">
+                          {costoSeña > 0 ? fmt(costoSeña) : <span className="text-muted-foreground font-normal">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+
+                {/* Footer: resumen seleccionados */}
+                {serviciosEvento.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-muted/60 border-t-2 border-border">
+                      <td colSpan={3} className="px-3 py-2 text-xs font-semibold text-muted-foreground">
+                        {serviciosEvento.length} servicio{serviciosEvento.length !== 1 ? "s" : ""} seleccionado{serviciosEvento.length !== 1 ? "s" : ""}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-emerald-700">
+                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
+                          serviciosEvento.reduce((sum, se) => {
+                            const cat = catalogoServicios.find(s => s.id === se.servicioId)
+                            return sum + (cat?.precioVenta ?? 0)
+                          }, 0)
                         )}
-                        {srv.saldoPendiente != null && srv.saldoPendiente > 0 && (
-                          <span>
-                            Saldo:{" "}
-                            <span className="font-medium text-orange-700">{fmt(srv.saldoPendiente)}</span>
-                            {srv.fechaLimitePago && (
-                              <span className="ml-1 text-muted-foreground">→ vence {fmtFecha(srv.fechaLimitePago)}</span>
-                            )}
-                          </span>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-amber-700">
+                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
+                          serviciosEvento.reduce((sum, se) => sum + (se.montoSeña ?? 0), 0)
                         )}
-                        <span className="text-muted-foreground/60 italic text-[11px]">
-                          El estado de pago se gestiona desde Finanzas → Caja Eventos
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
         </SectionCard>
 
         {/* ==================== CONTRATO SECTION ==================== */}
