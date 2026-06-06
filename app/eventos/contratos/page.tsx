@@ -402,8 +402,9 @@ function VersionHistoryPanel({ versiones }: { versiones: VersionContrato[] }) {
 // MAIN PAGE
 // =====================================================================
 export default function ContratosPage() {
-  const { state, updateEvento, catalogoServicios } = useStore()
+  const { state, updateEvento } = useStore()
   const { eventos, paquetesSalones, recetas } = state
+  const catalogoServicios = state.servicios || []
 
   const [selectedEventoId, setSelectedEventoId] = useState<string>("")
   const [showPreview, setShowPreview] = useState(false)
@@ -777,35 +778,91 @@ export default function ContratosPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {catalogoServicios && catalogoServicios.length > 0 ? (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Del catalogo</p>
-                      <div className="max-h-52 overflow-y-auto rounded-md border border-border divide-y divide-border">
-                        {catalogoServicios.filter((s) => s.activo !== false).map((s) => (
-                          <label
-                            key={s.id}
-                            className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/40 transition-colors"
-                          >
-                            <Checkbox
-                              checked={checkedIds.includes(s.id)}
-                              onCheckedChange={() => toggleChecked(s.id)}
-                            />
-                            <span className="flex-1 text-sm text-card-foreground">{s.nombre}</span>
-                            {s.precioVenta != null && (
-                              <span className="text-xs text-muted-foreground tabular-nums">{formatCurrency(s.precioVenta)}</span>
-                            )}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-md border border-dashed border-border p-4 text-center">
-                      <p className="text-sm text-muted-foreground">No hay servicios en el catalogo.</p>
-                      <Link href="/finanzas/servicios" className="text-xs text-primary underline hover:no-underline">
-                        Ir a Finanzas &rsaquo; Servicios
-                      </Link>
-                    </div>
-                  )}
+                  {/* Servicios del evento (agregados desde el planificador) */}
+                  {(() => {
+                    const serviciosEvento = selectedEvento?.servicios || []
+                    const serviciosEnEvento = serviciosEvento.map((se) => {
+                      const cat = catalogoServicios.find((s) => s.id === se.servicioId)
+                      return { id: se.servicioId, nombre: se.nombre || cat?.nombre || se.servicioId, precio: cat?.precioVenta, cantidad: se.cantidad, unidad: se.unidad }
+                    })
+
+                    // Servicios del catalogo no incluidos en el evento
+                    const idsEnEvento = serviciosEvento.map((se) => se.servicioId)
+                    const catalogoExtras = catalogoServicios.filter((s) => s.activo !== false && !idsEnEvento.includes(s.id))
+
+                    return (
+                      <>
+                        {/* Sección principal: los del evento */}
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Contratados en este evento
+                          </p>
+                          {serviciosEnEvento.length > 0 ? (
+                            <div className="rounded-md border border-border divide-y divide-border">
+                              {serviciosEnEvento.map((s) => (
+                                <label
+                                  key={s.id}
+                                  className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors"
+                                >
+                                  <Checkbox
+                                    checked={checkedIds.includes(s.id)}
+                                    onCheckedChange={() => toggleChecked(s.id)}
+                                  />
+                                  <span className="flex-1 text-sm font-medium text-card-foreground">{s.nombre}</span>
+                                  {s.unidad === "Por Hora" && s.cantidad && s.cantidad > 1 && (
+                                    <span className="text-xs text-muted-foreground">{s.cantidad}h</span>
+                                  )}
+                                  {s.precio != null && (
+                                    <span className="text-xs text-muted-foreground tabular-nums">
+                                      {formatCurrency(s.unidad === "Por Hora" && s.cantidad ? s.precio * s.cantidad : s.precio)}
+                                    </span>
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="rounded-md border border-dashed border-border px-3 py-4 text-center">
+                              <p className="text-sm text-muted-foreground">
+                                No hay servicios agregados en el planificador de este evento.
+                              </p>
+                              <Link
+                                href={selectedEvento?.id ? `/evento?id=${selectedEvento.id}` : "/evento"}
+                                className="text-xs text-primary underline hover:no-underline"
+                              >
+                                Ir al planificador del evento
+                              </Link>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Sección secundaria: otros del catálogo no incluidos en el evento */}
+                        {catalogoExtras.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Agregar del catalogo
+                            </p>
+                            <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                              {catalogoExtras.map((s) => (
+                                <label
+                                  key={s.id}
+                                  className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/40 transition-colors"
+                                >
+                                  <Checkbox
+                                    checked={checkedIds.includes(s.id)}
+                                    onCheckedChange={() => toggleChecked(s.id)}
+                                  />
+                                  <span className="flex-1 text-sm text-card-foreground">{s.nombre}</span>
+                                  {s.precioVenta != null && (
+                                    <span className="text-xs text-muted-foreground tabular-nums">{formatCurrency(s.precioVenta)}</span>
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
 
                   {/* Texto libre */}
                   <div className="space-y-2">
