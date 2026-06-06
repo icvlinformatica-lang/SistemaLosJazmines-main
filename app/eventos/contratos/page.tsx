@@ -751,14 +751,51 @@ export default function ContratosPage() {
           </CardContent>
         </Card>
 
-        {/* VERSION HISTORY — shown first when event has saved versions */}
-        {selectedEvento && selectedEvento.versionesContrato && selectedEvento.versionesContrato.length > 0 && (
-          <VersionHistoryPanel
-            versiones={selectedEvento.versionesContrato}
-            evento={selectedEvento}
-            recetas={recetas}
-            catalogoServicios={catalogoServicios}
-          />
+        {/* VERSION HISTORY + observacion + save — shown first */}
+        {selectedEvento && (
+          <>
+            {selectedEvento.versionesContrato && selectedEvento.versionesContrato.length > 0 && (
+              <VersionHistoryPanel
+                versiones={selectedEvento.versionesContrato}
+                evento={selectedEvento}
+                recetas={recetas}
+                catalogoServicios={catalogoServicios}
+              />
+            )}
+
+            {/* Observacion + Guardar version — always visible right after history */}
+            <Card>
+              <CardContent className="p-5 space-y-3">
+                <Label className="flex items-center gap-2 text-sm font-medium">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Observacion
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    (opcional — razon por la cual se actualiza el contrato)
+                  </span>
+                </Label>
+                <Textarea
+                  value={motivoCambio}
+                  onChange={(e) => setMotivoCambio(e.target.value)}
+                  placeholder="Ej: Cliente solicito agregar servicio de DJ, se modifico el precio acordado..."
+                  rows={2}
+                  className="resize-none"
+                />
+                <Button onClick={handleSave} className="gap-2 w-full sm:w-auto">
+                  {savedOk ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      Guardado — version {selectedEvento.versionesContrato?.length ?? 1}
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      {ultimaVersion ? `Guardar version ${ultimaVersion.version + 1}` : "Guardar version 1"}
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </>
         )}
 
         {/* EDITABLE PANELS */}
@@ -1061,44 +1098,8 @@ export default function ContratosPage() {
               </Card>
             )}
 
-            {/* Observacion — siempre visible, se guarda como motivo en la nueva version */}
-            <Card>
-              <CardContent className="p-5 space-y-2">
-                <Label className="flex items-center gap-2 text-sm font-medium">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  Observacion
-                  <span className="text-xs font-normal text-muted-foreground ml-1">(opcional — razon por la cual se actualiza el contrato)</span>
-                </Label>
-                <Textarea
-                  value={motivoCambio}
-                  onChange={(e) => setMotivoCambio(e.target.value)}
-                  placeholder="Ej: Cliente solicito agregar servicio de DJ, se modifico el precio acordado..."
-                  rows={2}
-                  className="resize-none"
-                />
-              </CardContent>
-            </Card>
-
-            {/* Action buttons */}
+            {/* Print / preview actions */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button
-                onClick={handleSave}
-                className="gap-2 h-12 sm:w-56"
-              >
-                {savedOk ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    Guardado — version {(selectedEvento.versionesContrato?.length ?? 0)}
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    {ultimaVersion
-                      ? `Guardar version ${(ultimaVersion.version + 1)}`
-                      : "Guardar version 1"}
-                  </>
-                )}
-              </Button>
               <Button
                 variant="outline"
                 onClick={() => setShowPreview(true)}
