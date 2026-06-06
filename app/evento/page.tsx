@@ -21,6 +21,8 @@ import {
   type Servicio,
   type PaqueteSalon,
   type EstadoEvento,
+  type EventoGuardado,
+  type VersionContrato,
   SALONES,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -540,16 +542,54 @@ function EventoPageContent() {
         const montoConRecargo = montoFinanciado * (1 + localPorcentajeRecargo / 100)
         const cuotasEfectivas = modalidad === "completo" ? 1 : localNumeroCuotas
         const montoCuotaCalc = cuotasEfectivas > 0 ? Math.round((montoConRecargo / cuotasEfectivas) * 100) / 100 : 0
+        const cuotasPagadasPrev = evento.planDeCuotas?.cuotasPagadas || []
+
+        // Generar el detalle de cuotas con fechas de vencimiento.
+        // Esto es lo que consumen las cajas (caja_eventos / caja_jazmines) para
+        // proyectar ingresos: cada cuota se divide 50/50 entre ambas cajas.
+        const fechaBase = localFechaInicioPlan
+          ? new Date(localFechaInicioPlan + "T12:00:00")
+          : new Date()
+        const diaVenc = localDiaVencimiento || 10
+        const cuotasDetalle: NonNullable<EventoGuardado["planDeCuotas"]>["cuotas"] = []
+        let numeroCuota = 1
+
+        // La seña cuenta como primer ingreso (vence en la fecha de inicio del plan / hoy)
+        if (modalidad === "sena" && localMontoSena > 0) {
+          cuotasDetalle.push({
+            numero: numeroCuota,
+            montoCuota: localMontoSena,
+            fechaVencimiento: fechaBase.toISOString().split("T")[0],
+            pagada: cuotasPagadasPrev.includes(numeroCuota),
+          })
+          numeroCuota++
+        }
+
+        // Cuotas financiadas: una por mes a partir del mes siguiente, en el día de vencimiento.
+        for (let i = 0; i < cuotasEfectivas; i++) {
+          const fechaCuota = new Date(fechaBase)
+          fechaCuota.setMonth(fechaCuota.getMonth() + i + (modalidad === "sena" ? 1 : 0))
+          fechaCuota.setDate(diaVenc)
+          cuotasDetalle.push({
+            numero: numeroCuota,
+            montoCuota: montoCuotaCalc,
+            fechaVencimiento: fechaCuota.toISOString().split("T")[0],
+            pagada: cuotasPagadasPrev.includes(numeroCuota),
+          })
+          numeroCuota++
+        }
+
         return {
           numeroCuotas: cuotasEfectivas,
           montoCuota: montoCuotaCalc,
           montoTotal: localMontoTotal,
-          diaVencimiento: localDiaVencimiento || 10,
+          diaVencimiento: diaVenc,
           fechaInicioPlan: localFechaInicioPlan || "",
-          cuotasPagadas: evento.planDeCuotas?.cuotasPagadas || [],
+          cuotasPagadas: cuotasPagadasPrev,
           modalidadPago: modalidad,
           montoSena: modalidad === "sena" ? localMontoSena : undefined,
           porcentajeRecargo: localPorcentajeRecargo > 0 ? localPorcentajeRecargo : undefined,
+          cuotas: cuotasDetalle,
         }
       })() : undefined,
       // Legacy fields for backwards compatibility with calendario-pagos
