@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
+import { generateId, type MovimientoCaja } from "@/lib/store"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import type {
   EgresoPendienteServicio,
@@ -69,7 +70,7 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
-  const { state, updateEvento } = useStore()
+  const { state, updateEvento, addMovimientosCaja } = useStore()
   const data = useCajaEventos(state)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [mesCalendario, setMesCalendario] = useState(() => {
@@ -91,16 +92,41 @@ export default function CajaEventosPage() {
     mesActualLabel,
   } = data
 
-  // Marcar egreso de proveedor como pagado
+  // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
+  // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
+  // (así el dashboard "por pagar" del mes se actualiza al instante).
   const handleMarcarPagado = (egreso: EgresoPendienteServicio) => {
     const evento = state.eventos.find((e) => e.id === egreso.eventoId)
     if (!evento) return
+    const hoyISO = new Date().toISOString()
+    const fechaPago = hoyISO.split("T")[0]
+
     const nuevosServicios = (evento.servicios ?? []).map((srv) => {
       if (!egreso.id.includes(srv.servicioId)) return srv
-      if (egreso.tipo === "seña") return { ...srv, estadoPago: "señado" as const }
-      return { ...srv, estadoPago: "pagado_total" as const }
+      if (egreso.tipo === "seña") {
+        return { ...srv, estadoPago: "señado" as const, fechaPagoSeña: fechaPago }
+      }
+      return { ...srv, estadoPago: "pagado_total" as const, fechaPagoSaldo: fechaPago }
     })
     updateEvento(egreso.eventoId, { servicios: nuevosServicios })
+
+    // Registrar el egreso real que sale de Caja Eventos
+    const saldoPrev = (state.movimientosCaja ?? [])
+      .filter((m) => m.cajaDestino === "caja_eventos")
+      .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+
+    const movimiento: MovimientoCaja = {
+      id: generateId(),
+      fecha: hoyISO,
+      tipo: "egreso",
+      concepto: `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`,
+      monto: egreso.monto,
+      salon: evento.salon || "",
+      eventoId: egreso.eventoId,
+      cajaDestino: "caja_eventos",
+      saldoResultante: saldoPrev - egreso.monto,
+    }
+    addMovimientosCaja([movimiento])
   }
 
   // Datos del calendario del mes seleccionado

@@ -1848,15 +1848,16 @@ function EventoPageContent() {
                         updateEventoActual({ servicios: serviciosEvento.filter(se => se.servicioId !== servicio.id) })
                       } else {
                         const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
-                        const diasSeña = servicio.diasAnticipacionSeña ?? 30
                         const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
                         const costoBase = servicio.costoParaCajaEventos ?? 0
                         const pct = servicio.porcentajeSeña ?? 30
                         const montoSeña = Math.round(costoBase * pct / 100)
                         const saldoPendiente = costoBase - montoSeña
 
-                        const fechaSeñaDate = new Date(fechaEvento)
-                        fechaSeñaDate.setDate(fechaEvento.getDate() - diasSeña)
+                        // La seña al proveedor se paga ANTES de fin del mes en que se
+                        // contrata el evento (hoy). Vence el último día de ese mes.
+                        const hoyContrato = new Date()
+                        const fechaSeñaDate = new Date(hoyContrato.getFullYear(), hoyContrato.getMonth() + 1, 0)
                         const fechaSaldoDate = new Date(fechaEvento)
                         fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
 
@@ -1891,10 +1892,10 @@ function EventoPageContent() {
                       const nuevaSeñaCosto = Math.round(nuevoCosto * pct / 100)
 
                       const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
-                      const diasSeña = servicio.diasAnticipacionSeña ?? 30
                       const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
-                      const fechaSeñaDate = new Date(fechaEvento)
-                      fechaSeñaDate.setDate(fechaEvento.getDate() - diasSeña)
+                      // La seña al proveedor vence a fin del mes en que se contrata (hoy)
+                      const hoyContrato = new Date()
+                      const fechaSeñaDate = new Date(hoyContrato.getFullYear(), hoyContrato.getMonth() + 1, 0)
                       const fechaSaldoDate = new Date(fechaEvento)
                       fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
 

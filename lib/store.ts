@@ -265,6 +265,7 @@ export interface ServicioEvento {
   fechaSeña?: string
   saldoPendiente?: number
   estadoPago?: 'sin_seña' | 'señado' | 'saldo_pendiente' | 'pagado_total'
+  fechaPagoSeña?: string
   fechaPagoSaldo?: string
 }
 
