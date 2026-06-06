@@ -40,6 +40,8 @@ import {
   DollarSign,
   Package,
   Info,
+  Pencil,
+  ExternalLink,
 } from "lucide-react"
 
 // =====================================================================
@@ -303,11 +305,67 @@ function ContractPreview({
 // =====================================================================
 // VERSION HISTORY PANEL
 // =====================================================================
-function VersionHistoryPanel({ versiones }: { versiones: VersionContrato[] }) {
+function VersionHistoryPanel({
+  versiones,
+  evento,
+  recetas,
+  catalogoServicios,
+}: {
+  versiones: VersionContrato[]
+  evento: EventoGuardado
+  recetas: Receta[]
+  catalogoServicios: { id: string; nombre: string }[]
+}) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
   const sorted = [...versiones].sort((a, b) => b.version - a.version)
 
   if (sorted.length === 0) return null
+
+  const handlePreview = (v: VersionContrato) => {
+    const serviciosNombres = v.snapshotServicios
+      .map((id) => catalogoServicios.find((s) => s.id === id)?.nombre || id)
+      .concat(v.snapshotServiciosLibres)
+    // Build a modified evento snapshot for this version
+    const eventoSnapshot: EventoGuardado = {
+      ...evento,
+      contrato: {
+        nombreCompleto: v.snapshotContrato.nombreCompleto,
+        dni: v.snapshotContrato.dni,
+        telefono: v.snapshotContrato.telefono,
+        direccion: v.snapshotContrato.direccion,
+        email: v.snapshotContrato.email,
+      },
+      planDeCuotas: v.snapshotPlanCuotas || evento.planDeCuotas,
+    }
+    const html = generateContractHTML(eventoSnapshot, recetas, serviciosNombres, 0)
+    const win = window.open("", "_blank")
+    if (win) { win.document.write(html); win.document.close() }
+  }
+
+  const handlePrint = (v: VersionContrato) => {
+    const serviciosNombres = v.snapshotServicios
+      .map((id) => catalogoServicios.find((s) => s.id === id)?.nombre || id)
+      .concat(v.snapshotServiciosLibres)
+    const eventoSnapshot: EventoGuardado = {
+      ...evento,
+      contrato: {
+        nombreCompleto: v.snapshotContrato.nombreCompleto,
+        dni: v.snapshotContrato.dni,
+        telefono: v.snapshotContrato.telefono,
+        direccion: v.snapshotContrato.direccion,
+        email: v.snapshotContrato.email,
+      },
+      planDeCuotas: v.snapshotPlanCuotas || evento.planDeCuotas,
+    }
+    const html = generateContractHTML(eventoSnapshot, recetas, serviciosNombres, 0)
+    const win = window.open("", "_blank")
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      win.focus()
+      setTimeout(() => { win.print() }, 600)
+    }
+  }
 
   return (
     <Card>
@@ -327,14 +385,18 @@ function VersionHistoryPanel({ versiones }: { versiones: VersionContrato[] }) {
               key={v.version}
               className={`rounded-lg border transition-colors ${isFirst ? "border-primary/30 bg-primary/5" : "border-border"}`}
             >
-              <button
-                className="flex w-full items-center gap-3 px-4 py-3 text-left"
-                onClick={() => setExpandedIdx(isExpanded ? null : idx)}
-              >
+              {/* Row header */}
+              <div className="flex w-full items-center gap-3 px-4 py-3">
+                {/* Version badge */}
                 <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${isFirst ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                   v{v.version}
                 </div>
-                <div className="flex-1 min-w-0">
+
+                {/* Date + impactos — clickable to expand */}
+                <button
+                  className="flex-1 min-w-0 text-left"
+                  onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+                >
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium">
                       {new Date(v.fechaGuardado).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}
@@ -355,19 +417,45 @@ function VersionHistoryPanel({ versiones }: { versiones: VersionContrato[] }) {
                         {IMPACTO_CONFIG[imp].label}
                       </span>
                     ))}
+                    {v.motivo && (
+                      <span className="text-[11px] text-muted-foreground italic truncate max-w-[280px]">"{v.motivo}"</span>
+                    )}
                   </div>
-                </div>
-                {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
-              </button>
+                </button>
 
+                {/* Action buttons */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Vista previa"
+                    onClick={() => handlePreview(v)}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Imprimir"
+                    onClick={() => handlePrint(v)}
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                  <button
+                    className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+                    title="Ver detalle"
+                  >
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Expandable detail */}
               {isExpanded && (
                 <div className="border-t border-border px-4 pb-4 pt-3 space-y-3 text-sm">
-                  {v.motivo && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Motivo del cambio</p>
-                      <p className="text-card-foreground">{v.motivo}</p>
-                    </div>
-                  )}
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Cliente</p>
                     <p>{v.snapshotContrato.nombreCompleto || "—"} {v.snapshotContrato.dni ? `· DNI ${v.snapshotContrato.dni}` : ""}</p>
@@ -377,8 +465,13 @@ function VersionHistoryPanel({ versiones }: { versiones: VersionContrato[] }) {
                     <div>
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Servicios</p>
                       <ul className="space-y-0.5">
-                        {v.snapshotServicios.map((s, i) => <li key={i} className="text-muted-foreground">{s}</li>)}
-                        {v.snapshotServiciosLibres.map((s, i) => <li key={i} className="text-muted-foreground">{s} (manual)</li>)}
+                        {v.snapshotServicios.map((id, i) => {
+                          const nombre = catalogoServicios.find((s) => s.id === id)?.nombre || id
+                          return <li key={i} className="text-muted-foreground">{nombre}</li>
+                        })}
+                        {v.snapshotServiciosLibres.map((s, i) => (
+                          <li key={i} className="text-muted-foreground">{s} <span className="text-[10px]">(manual)</span></li>
+                        ))}
                       </ul>
                     </div>
                   )}
@@ -410,7 +503,6 @@ export default function ContratosPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [savedOk, setSavedOk] = useState(false)
   const [motivoCambio, setMotivoCambio] = useState("")
-  const [showMotivo, setShowMotivo] = useState(false)
 
   // Local editable state
   const [contratoLocal, setContratoLocal] = useState({
@@ -649,9 +741,33 @@ export default function ContratosPage() {
           </CardContent>
         </Card>
 
+        {/* VERSION HISTORY — shown first when event has saved versions */}
+        {selectedEvento && selectedEvento.versionesContrato && selectedEvento.versionesContrato.length > 0 && (
+          <VersionHistoryPanel
+            versiones={selectedEvento.versionesContrato}
+            evento={selectedEvento}
+            recetas={recetas}
+            catalogoServicios={catalogoServicios}
+          />
+        )}
+
         {/* EDITABLE PANELS */}
         {selectedEvento && (
           <>
+            {/* Edit in planificador button */}
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-5 py-3.5">
+              <Pencil className="h-4 w-4 text-muted-foreground shrink-0" />
+              <p className="text-sm text-muted-foreground flex-1">
+                Para modificar servicios, financiacion o datos del evento, edita directamente desde el planificador.
+              </p>
+              <Link href={`/evento?id=${selectedEvento.id}`}>
+                <Button variant="outline" size="sm" className="gap-2 shrink-0">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Editar evento
+                </Button>
+              </Link>
+            </div>
+
             {/* Change impact warning */}
             {ultimaVersion && hayCambios && !impactosDetectados.includes("sin_cambios") && (
               <div className={`rounded-xl border px-5 py-4 flex gap-3 ${hayImpactoFinanciero ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
@@ -949,24 +1065,23 @@ export default function ContratosPage() {
               </Card>
             )}
 
-            {/* Motivo del cambio (optional) */}
-            {showMotivo && (
-              <Card>
-                <CardContent className="p-5 space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    Motivo del cambio (opcional)
-                  </Label>
-                  <Textarea
-                    value={motivoCambio}
-                    onChange={(e) => setMotivoCambio(e.target.value)}
-                    placeholder="Ej: Cliente solicito cambio de servicio de DJ, se modifico el precio acordado"
-                    rows={2}
-                    className="resize-none"
-                  />
-                </CardContent>
-              </Card>
-            )}
+            {/* Observacion — siempre visible, se guarda como motivo en la nueva version */}
+            <Card>
+              <CardContent className="p-5 space-y-2">
+                <Label className="flex items-center gap-2 text-sm font-medium">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Observacion
+                  <span className="text-xs font-normal text-muted-foreground ml-1">(opcional — razon por la cual se actualiza el contrato)</span>
+                </Label>
+                <Textarea
+                  value={motivoCambio}
+                  onChange={(e) => setMotivoCambio(e.target.value)}
+                  placeholder="Ej: Cliente solicito agregar servicio de DJ, se modifico el precio acordado..."
+                  rows={2}
+                  className="resize-none"
+                />
+              </CardContent>
+            </Card>
 
             {/* Action buttons */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -987,15 +1102,6 @@ export default function ContratosPage() {
                       : "Guardar version 1"}
                   </>
                 )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowMotivo((p) => !p)}
-                className="gap-1.5 bg-transparent h-12 sm:w-44"
-              >
-                <Clock className="h-4 w-4" />
-                {showMotivo ? "Ocultar motivo" : "Agregar motivo"}
               </Button>
               <Button
                 variant="outline"
@@ -1023,10 +1129,6 @@ export default function ContratosPage() {
               </Button>
             </div>
 
-            {/* Version history */}
-            {selectedEvento.versionesContrato && selectedEvento.versionesContrato.length > 0 && (
-              <VersionHistoryPanel versiones={selectedEvento.versionesContrato} />
-            )}
           </>
         )}
       </main>
