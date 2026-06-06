@@ -219,6 +219,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
 
       // Merge: DB data takes absolute priority over localStorage for migrated modules
+      const eventosVigentes = eventosRes ?? localState.eventos ?? []
+      const idsEventosVigentes = new Set(eventosVigentes.map((e: EventoGuardado) => e.id))
+      // Auto-sanear: descartar movimientos de caja cuyo evento asociado ya no existe
+      // (evita ingresos/egresos fantasma de eventos eliminados que quedaron en localStorage)
+      const movimientosSaneados = (supabaseData.movimientosCaja || []).filter(
+        (m: MovimientoCaja) => !m.eventoId || idsEventosVigentes.has(m.eventoId)
+      )
+
       setState({
         ...localState,
         insumos: insumosRes ?? localState.insumos,
@@ -234,7 +242,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pagosPersonal: supabaseData.pagosPersonal,
         costosOperativos: supabaseData.costosOperativos,
         asignaciones: supabaseData.asignaciones,
-        movimientosCaja: supabaseData.movimientosCaja,
+        movimientosCaja: movimientosSaneados,
         configuracionCajas: supabaseData.configuracionCajas,
       })
 
