@@ -64,7 +64,6 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
       children: [
         { href: "/eventos/lista", label: "Lista", icon: List },
         { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: !tieneAccesoTotal },
-        { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: !tieneAccesoTotal },
         { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
         { href: "/eventos/finalizados", label: "Finalizados", icon: Archive },
       ],
@@ -102,6 +101,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
         // { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
         // { href: "/finanzas/cajas", label: "Cajas", icon: Wallet },
         { href: "/finanzas/servicios", label: "Servicios", icon: Briefcase },
+        { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: !tieneAccesoTotal },
         { href: "/finanzas/caja-eventos", label: "Caja Eventos", icon: Wallet },
         { href: "/finanzas/caja-jazmines", label: "Caja Jazmines", icon: Building2 },
         // { href: "/finanzas/cashflow", label: "Cashflow", icon: TrendingUp },
