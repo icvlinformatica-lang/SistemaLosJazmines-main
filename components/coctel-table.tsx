@@ -3,14 +3,8 @@
 import { useState } from "react"
 import type { Coctel } from "@/lib/store"
 
-const CATEGORIAS_ORDEN = [
-  "Clásicos",
-  "Tropicales",
-  "Sin Alcohol",
-  "Jugos",
-  "Garnish",
-  "Otros",
-]
+const CATEGORIAS_ORDEN = ["Con Alcohol", "Sin Alcohol"]
+const CATEGORIA_DEFAULT = "Con Alcohol"
 
 interface Props {
   cocteles: Coctel[]
@@ -24,7 +18,7 @@ export function CoctelTable({ cocteles, coctelesSeleccionados, esBloqueado, onTo
 
   // Categorias presentes en los cocteles (para los filtros)
   const categoriasPresentes = CATEGORIAS_ORDEN.filter((cat) =>
-    cocteles.some((c) => (c.categoria || "Otros") === cat),
+    cocteles.some((c) => (c.categoria || CATEGORIA_DEFAULT) === cat),
   )
 
   const filtros: { label: string; value: string | null }[] = [
@@ -33,13 +27,13 @@ export function CoctelTable({ cocteles, coctelesSeleccionados, esBloqueado, onTo
   ]
 
   const coctelesFiltrados = filtroActivo
-    ? cocteles.filter((c) => (c.categoria || "Otros") === filtroActivo)
+    ? cocteles.filter((c) => (c.categoria || CATEGORIA_DEFAULT) === filtroActivo)
     : cocteles
 
   // Agrupar por categoria respetando el orden
   const grupos = CATEGORIAS_ORDEN.map((cat) => ({
     categoria: cat,
-    cocteles: coctelesFiltrados.filter((c) => (c.categoria || "Otros") === cat),
+    cocteles: coctelesFiltrados.filter((c) => (c.categoria || CATEGORIA_DEFAULT) === cat),
   })).filter((g) => g.cocteles.length > 0)
 
   return (
