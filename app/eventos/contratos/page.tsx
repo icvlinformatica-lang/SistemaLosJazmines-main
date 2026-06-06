@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   ArrowLeft,
   FileText,
@@ -506,6 +507,117 @@ function VersionHistoryPanel({
 }
 
 // =====================================================================
+// EVENTS TABLE GROUPED BY MONTH + SALON
+// =====================================================================
+const MESES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+function EventosPorMesSalon({
+  eventos,
+  selectedEventoId,
+  onSelect,
+}: {
+  eventos: EventoGuardado[]
+  selectedEventoId: string
+  onSelect: (id: string) => void
+}) {
+  // Group by month (YYYY-MM), then sort rows inside each month by salon, then date
+  const grupos = useMemo(() => {
+    const map = new Map<string, { label: string; eventos: EventoGuardado[] }>()
+    for (const ev of eventos) {
+      const d = new Date(ev.fecha + "T12:00:00")
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      const label = `${MESES_ES[d.getMonth()]} ${d.getFullYear()}`
+      if (!map.has(key)) map.set(key, { label, eventos: [] })
+      map.get(key)!.eventos.push(ev)
+    }
+    // Sort months chronologically (ascending), and rows by salon then date
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, grupo]) => ({
+        key,
+        label: grupo.label,
+        eventos: [...grupo.eventos].sort((a, b) => {
+          const salonCmp = (a.salon || "zzz").localeCompare(b.salon || "zzz")
+          if (salonCmp !== 0) return salonCmp
+          return new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+        }),
+      }))
+  }, [eventos])
+
+  if (grupos.length === 0) return null
+
+  return (
+    <div className="space-y-6">
+      {grupos.map((grupo) => (
+        <div key={grupo.key} className="overflow-hidden rounded-xl border border-border">
+          <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+            <Calendar className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold capitalize">{grupo.label}</h3>
+            <Badge variant="secondary" className="ml-auto text-xs">
+              {grupo.eventos.length} evento{grupo.eventos.length !== 1 ? "s" : ""}
+            </Badge>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[100px]">Fecha</TableHead>
+                <TableHead className="w-[120px]">Salon</TableHead>
+                <TableHead>Evento</TableHead>
+                <TableHead className="w-[90px] text-center">Invitados</TableHead>
+                <TableHead className="w-[130px] text-right">Precio</TableHead>
+                <TableHead className="w-[110px] text-center">Contrato</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {grupo.eventos.map((ev) => {
+                const totalPersonas =
+                  ev.adultos + ev.adolescentes + ev.ninos + (ev.personasDietasEspeciales || 0)
+                const versiones = ev.versionesContrato?.length || 0
+                const isSelected = ev.id === selectedEventoId
+                return (
+                  <TableRow
+                    key={ev.id}
+                    onClick={() => onSelect(ev.id)}
+                    className={`cursor-pointer ${isSelected ? "bg-primary/5 hover:bg-primary/10" : ""}`}
+                  >
+                    <TableCell className="font-medium tabular-nums">
+                      {new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      })}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">{ev.salon || "Sin salon"}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{ev.nombrePareja || ev.nombre}</TableCell>
+                    <TableCell className="text-center tabular-nums">{totalPersonas}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {ev.precioVenta ? formatCurrency(ev.precioVenta) : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {versiones > 0 ? (
+                        <Badge variant="secondary" className="gap-1 text-xs">
+                          <History className="h-3 w-3" />v{Math.max(...ev.versionesContrato!.map((v) => v.version))}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Sin generar</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// =====================================================================
 // MAIN PAGE
 // =====================================================================
 function ContratosPageContent() {
@@ -702,31 +814,12 @@ function ContratosPageContent() {
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>Evento</Label>
-                <Select value={selectedEventoId} onValueChange={setSelectedEventoId}>
-                  <SelectTrigger className="h-12">
-                    <SelectValue placeholder="Selecciona un evento..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {eventosDisponibles.map((ev) => (
-                      <SelectItem key={ev.id} value={ev.id}>
-                        <span className="flex items-center gap-2">
-                          <span className="font-medium">{ev.nombrePareja || ev.nombre}</span>
-                          <span className="text-muted-foreground text-xs">
-                            {new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR")}
-                          </span>
-                          <Badge variant="outline" className="text-xs ml-1">{ev.salon || "Sin salon"}</Badge>
-                          {ev.versionesContrato?.length ? (
-                            <Badge variant="secondary" className="text-xs gap-1">
-                              <History className="h-3 w-3" />
-                              v{Math.max(...ev.versionesContrato.map((v) => v.version))}
-                            </Badge>
-                          ) : null}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Eventos por mes y salon</Label>
+                <EventosPorMesSalon
+                  eventos={eventosDisponibles}
+                  selectedEventoId={selectedEventoId}
+                  onSelect={setSelectedEventoId}
+                />
               </div>
             )}
 
