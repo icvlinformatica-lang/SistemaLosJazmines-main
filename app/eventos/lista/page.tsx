@@ -24,6 +24,7 @@ import {
 } from "@/lib/store"
 import { useEventos } from "@/lib/use-eventos"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
+import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -75,6 +76,7 @@ import {
   Plus,
   Eye,
   Printer,
+  FileText,
   Trash2,
   Calendar as CalendarIcon,
   Users,
@@ -137,7 +139,7 @@ function formatFecha(fecha: string) {
 export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual } = useStore()
+  const { recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual, servicios: catalogoServicios } = useStore()
   const { eventos, loading: loadingEventos, fetchEventos, actualizarEvento: actualizarEventoDB, eliminarEvento: eliminarEventoDB } = useEventos()
 
   // Wrapper para actualizar evento en DB + sync local
@@ -472,6 +474,20 @@ export default function EventosListaPage() {
     setImprimirEventoId(eventoId)
     setSeccionesSeleccionadas({ listaCompras: true, barraCocteles: true, guiaProduccion: true, hojaGastos: true })
     setImprimirDialogOpen(true)
+  }
+
+  const handleImprimirContrato = (eventoId: string) => {
+    const evento = eventos.find((e) => e.id === eventoId)
+    if (!evento) return
+    if (!evento.contrato && !(evento.versionesContrato?.length)) {
+      toast({
+        title: "Sin contrato",
+        description: "Este evento todavía no tiene datos de contrato cargados.",
+        variant: "destructive",
+      })
+      return
+    }
+    imprimirUltimaVersionContrato(evento, recetas, catalogoServicios || [])
   }
 
   const handleConfirmarImpresion = async () => {
@@ -881,15 +897,29 @@ export default function EventosListaPage() {
                                 )}
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              title="Imprimir hoja de gastos"
-                              onClick={() => handleImprimirDocumento(evento.id)}
-                            >
-                              <Printer className="h-4 w-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  title="Imprimir"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                  <span className="sr-only">Imprimir</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
+                                  <Printer className="h-4 w-4 mr-2" />
+                                  Imprimir documento
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleImprimirContrato(evento.id)}>
+                                  <FileText className="h-4 w-4 mr-2" />
+                                  Imprimir última versión del contrato
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -909,6 +939,10 @@ export default function EventosListaPage() {
                               <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
                                 <Printer className="h-4 w-4 mr-2" />
                                 Imprimir Documento
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleImprimirContrato(evento.id)}>
+                                <FileText className="h-4 w-4 mr-2" />
+                                Imprimir última versión del contrato
                               </DropdownMenuItem>
                               {evento.estado === "en_preparacion" && (
                                 <>
