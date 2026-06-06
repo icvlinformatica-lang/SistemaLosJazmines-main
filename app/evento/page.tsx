@@ -1690,10 +1690,7 @@ function EventoPageContent() {
                         unidad: servicio.unidad || "Fijo",
                         estadoPago: "sin_seña",
                       }
-                      setEvento({
-                        ...evento,
-                        servicios: [...serviciosEvento, nuevoServicio],
-                      })
+                      updateEventoActual({ servicios: [...serviciosEvento, nuevoServicio] })
                     }}
                     className="text-xs"
                   >
@@ -1747,10 +1744,7 @@ function EventoPageContent() {
                           className="h-7 w-7"
                           onClick={() => {
                             const nuevosServicios = serviciosEvento.filter((_, i) => i !== idx)
-                            setEvento({
-                              ...evento,
-                              servicios: nuevosServicios,
-                            })
+                            updateEventoActual({ servicios: nuevosServicios })
                           }}
                         >
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -1809,7 +1803,7 @@ function EventoPageContent() {
                                     ? { ...s, montoSeña, estadoPago: montoSeña > 0 ? "señado" as const : "sin_seña" as const }
                                     : s
                                 )
-                                setEvento({ ...evento, servicios: nuevosServicios })
+                                updateEventoActual({ servicios: nuevosServicios })
                               }}
                               placeholder="0"
                               className="h-9"
@@ -1826,7 +1820,7 @@ function EventoPageContent() {
                                     ? { ...s, fechaSeña: e.target.value }
                                     : s
                                 )
-                                setEvento({ ...evento, servicios: nuevosServicios })
+                                updateEventoActual({ servicios: nuevosServicios })
                               }}
                               className="h-9"
                             />
@@ -1846,7 +1840,7 @@ function EventoPageContent() {
                                     ? { ...s, estadoPago: nuevoEstado as any }
                                     : s
                                 )
-                                setEvento({ ...evento, servicios: nuevosServicios })
+                                updateEventoActual({ servicios: nuevosServicios })
                               }}
                             >
                               {srv.estadoPago === "pagado_total" ? "Desmarcar como pagado" : "Marcar como pagado total"}
