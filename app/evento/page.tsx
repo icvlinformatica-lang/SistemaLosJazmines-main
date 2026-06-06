@@ -14,6 +14,7 @@ import {
   calcularTotalesPaquete,
   getPrecioVenta,
   generateId,
+  generarMovimientoIngreso,
   obtenerPreciosServicio,
   type EventoHistorial,
   type BarraEvento,
@@ -103,7 +104,7 @@ function EventoPageContent() {
   const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
-  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja } = useStore()
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
@@ -554,13 +555,14 @@ function EventoPageContent() {
         const cuotasDetalle: NonNullable<EventoGuardado["planDeCuotas"]>["cuotas"] = []
         let numeroCuota = 1
 
-        // La seña cuenta como primer ingreso (vence en la fecha de inicio del plan / hoy)
+        // La seña se cobra al firmar el contrato, por lo que se marca como PAGADA
+        // y se registra como movimiento real en las cajas (no queda como "proximo a cobrar").
         if (modalidad === "sena" && localMontoSena > 0) {
           cuotasDetalle.push({
             numero: numeroCuota,
             montoCuota: localMontoSena,
             fechaVencimiento: fechaBase.toISOString().split("T")[0],
-            pagada: cuotasPagadasPrev.includes(numeroCuota),
+            pagada: true,
           })
           numeroCuota++
         }
@@ -585,7 +587,9 @@ function EventoPageContent() {
           montoTotal: localMontoTotal,
           diaVencimiento: diaVenc,
           fechaInicioPlan: localFechaInicioPlan || "",
-          cuotasPagadas: cuotasPagadasPrev,
+          cuotasPagadas: modalidad === "sena" && localMontoSena > 0
+            ? Array.from(new Set([...cuotasPagadasPrev, 1]))
+            : cuotasPagadasPrev,
           modalidadPago: modalidad,
           montoSena: modalidad === "sena" ? localMontoSena : undefined,
           porcentajeRecargo: localPorcentajeRecargo > 0 ? localPorcentajeRecargo : undefined,
@@ -643,11 +647,85 @@ function EventoPageContent() {
         router.push("/eventos/lista")
       }
     } else {
-      // Crear nuevo evento — await para garantizar que se guarda en DB antes de navegar
+      // Crear nuevo evento — garantizar un id estable para asociar contrato y movimientos
+      const nuevoEventoId = eventData.id || generateId()
+
+      // 1) Generar automaticamente la PRIMERA version del contrato
+      const serviciosIds = (eventData.servicios || []).map((se: any) => se.servicioId).filter(Boolean) as string[]
+      const primeraVersion: VersionContrato = {
+        version: 1,
+        fechaGuardado: new Date().toISOString(),
+        motivo: "Contrato inicial generado desde el planificador",
+        snapshotContrato: {
+          nombreCompleto: eventData.contrato?.nombreCompleto,
+          dni: eventData.contrato?.dni,
+          telefono: eventData.contrato?.telefono,
+          direccion: eventData.contrato?.direccion,
+          email: eventData.contrato?.email,
+        },
+        snapshotServicios: serviciosIds,
+        snapshotServiciosLibres: eventData.serviciosLibresContrato || [],
+        snapshotPlanCuotas: eventData.planDeCuotas,
+        impactos: ["sin_cambios"],
+      }
+
       await addEvento({
         ...eventData,
+        id: nuevoEventoId,
         estado: "pendiente",
+        versionesContrato: [primeraVersion],
       } as any)
+
+      // 2) Registrar automaticamente la seña en las cajas (50/50 entre Caja Eventos y Caja Jazmines)
+      if (localModalidadPago === "sena" && localMontoSena > 0 && eventData.salon) {
+        const nombreEvento = eventData.nombrePareja || eventData.nombre || "Evento"
+
+        // Aporte a admin / saldo de la caja del salon (segun configuracion)
+        const movimientosSalon = generarMovimientoIngreso(
+          eventData.salon,
+          localMontoSena,
+          `Seña - ${nombreEvento}`,
+          configuracionCajas,
+          movimientosCaja,
+          nuevoEventoId,
+        )
+
+        const mitad = Math.round((localMontoSena / 2) * 100) / 100
+        const fecha = new Date().toISOString()
+
+        const saldoPrevEventos = (movimientosCaja || [])
+          .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === eventData.salon)
+          .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+        const saldoPrevJazmines = (movimientosCaja || [])
+          .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
+          .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+
+        const movEventos: MovimientoCaja = {
+          id: generateId(),
+          fecha,
+          tipo: "ingreso",
+          concepto: `Seña - ${nombreEvento} (Caja Eventos)`,
+          monto: mitad,
+          salon: eventData.salon,
+          eventoId: nuevoEventoId,
+          cajaDestino: "caja_eventos",
+          saldoResultante: saldoPrevEventos + mitad,
+        }
+        const movJazmines: MovimientoCaja = {
+          id: generateId(),
+          fecha,
+          tipo: "ingreso",
+          concepto: `Seña - ${nombreEvento} (Caja Jazmines)`,
+          monto: mitad,
+          salon: eventData.salon,
+          eventoId: nuevoEventoId,
+          cajaDestino: "caja_jazmines",
+          saldoResultante: saldoPrevJazmines + mitad,
+        }
+
+        await addMovimientosCaja([...movimientosSalon, movEventos, movJazmines])
+      }
+
       // Log activity
       fetch("/api/activity-log", {
         method: "POST",
