@@ -7,35 +7,27 @@ import type { AppState, MovimientoCaja } from "../store"
 // Tipos de salida
 // ============================================================
 
-export interface UltimoIngresoCajaEventos {
-  id: string
-  eventoId: string | undefined
-  concepto: string
-  monto: number
-  fecha: string
-  salon: string
+export interface ClienteContacto {
+  nombre: string
+  telefono?: string
+  email?: string
+  direccion?: string
+  dni?: string
 }
 
-export interface ProximoACobrar {
+export interface IngresoPendiente {
   id: string
   eventoId: string
   eventoNombre: string
+  salon: string
   numeroCuota: number
   totalCuotas: number
-  salon: string
-  fechaVencimiento: string
+  fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
-  monto: number
-}
-
-export interface IngresosPorSalon {
-  [salon: string]: number
-}
-
-export interface ProyeccionCajaEventos {
-  estaSemana: number
-  esteMes: number
-  proximos90Dias: number
+  monto: number // 50% que va a Caja Eventos
+  montoTotal: number // cuota completa
+  contacto: ClienteContacto
+  esEstaSemana: boolean
 }
 
 export interface EgresoPendienteServicio {
@@ -50,24 +42,42 @@ export interface EgresoPendienteServicio {
   estadoPago: "sin_seña" | "señado" | "saldo_pendiente" | "pagado_total"
 }
 
+export interface MesProyeccion {
+  key: string // YYYY-MM
+  label: string // "junio 2026"
+  aCobrar: number
+  aPagar: number
+  balance: number
+  esActual: boolean
+}
+
 export interface CajaEventosData {
   saldoActual: number
-  proyeccion: ProyeccionCajaEventos
-  ultimosIngresos: UltimoIngresoCajaEventos[]
-  proximosACobrar: ProximoACobrar[]
-  ingresosPorSalon: IngresosPorSalon
-  totalIngresosSalonMes: number
-  mesActual: string
-  egresosPendientesServicios: EgresoPendienteServicio[]
-  totalEgresosPendientes: number
-  balanceProyectado: number
+  porCobrarEsteMes: number
+  porPagarEsteMes: number
+  saldoFinMes: number
+  proyeccionMensual: MesProyeccion[]
+  ingresosPendientes: IngresoPendiente[]
+  egresosPendientes: EgresoPendienteServicio[]
+  vienenEstaSemana: IngresoPendiente[]
+  totalPorCobrar: number
+  totalPorPagar: number
+  mesActualLabel: string
 }
 
 // ============================================================
-// Helper: parse de fecha evitando problemas de timezone
+// Helpers
 // ============================================================
 function parseLocalDate(dateStr: string): Date {
   return new Date(dateStr + "T12:00:00")
+}
+
+function mesKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+}
+
+function mesLabel(d: Date): string {
+  return d.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
 }
 
 // ============================================================
@@ -78,14 +88,16 @@ export function useCajaEventos(state: AppState): CajaEventosData {
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
 
-    const en7Dias = new Date(hoy)
-    en7Dias.setDate(en7Dias.getDate() + 7)
+    // Lunes -> Viernes de la semana actual (trabajamos L-V 09-20hs)
+    const diaSemana = hoy.getDay() // 0=domingo, 1=lunes...
+    const offsetLunes = diaSemana === 0 ? -6 : 1 - diaSemana
+    const lunes = new Date(hoy)
+    lunes.setDate(hoy.getDate() + offsetLunes)
+    const viernes = new Date(lunes)
+    viernes.setDate(lunes.getDate() + 4)
 
-    const en30Dias = new Date(hoy)
-    en30Dias.setDate(en30Dias.getDate() + 30)
-
-    const en90Dias = new Date(hoy)
-    en90Dias.setDate(en90Dias.getDate() + 90)
+    const mesActualKey = mesKey(hoy)
+    const mesActualLabel = mesLabel(hoy)
 
     const movimientos: MovimientoCaja[] = state.movimientosCaja || []
     const eventos = state.eventos || []
@@ -102,13 +114,9 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       }, 0)
 
     // ----------------------------------------------------------
-    // 2. PROYECCIÓN: cuotas pendientes (monto/2)
+    // 2. INGRESOS PENDIENTES (cuotas por cobrar) + proyección mensual
     // ----------------------------------------------------------
-    let proyEstaSemana = 0
-    let proyEsteMes = 0
-    let prox90 = 0
-
-    const proximosACobrar: ProximoACobrar[] = []
+    const ingresosPendientes: IngresoPendiente[] = []
 
     for (const evento of eventos) {
       if (evento.estado === "cancelado" || evento.estado === "completado") continue
@@ -117,6 +125,13 @@ export function useCajaEventos(state: AppState): CajaEventosData {
 
       const cuotas = plan.cuotas ?? []
       const cuotasPagadasArr = plan.cuotasPagadas ?? []
+      const contacto: ClienteContacto = {
+        nombre: evento.contrato?.nombreCompleto || evento.nombrePareja || evento.nombre || "Sin nombre",
+        telefono: evento.contrato?.telefono,
+        email: evento.contrato?.email,
+        direccion: evento.contrato?.direccion,
+        dni: evento.contrato?.dni,
+      }
 
       for (const cuota of cuotas) {
         if (cuota.pagada) continue
@@ -127,86 +142,33 @@ export function useCajaEventos(state: AppState): CajaEventosData {
         const diasRestantes = Math.ceil(
           (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
         )
+        const fechaVencDia = new Date(fechaVenc)
+        fechaVencDia.setHours(0, 0, 0, 0)
+        const esEstaSemana = fechaVencDia >= lunes && fechaVencDia <= viernes
 
-        const montoCajaEventos = cuota.montoCuota / 2
-
-        if (fechaVenc >= hoy && fechaVenc <= en7Dias) {
-          proyEstaSemana += montoCajaEventos
-        }
-        if (fechaVenc >= hoy && fechaVenc <= en30Dias) {
-          proyEsteMes += montoCajaEventos
-          proximosACobrar.push({
-            id: `${evento.id}-cuota-${cuota.numero}`,
-            eventoId: evento.id,
-            eventoNombre: evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento",
-            numeroCuota: cuota.numero,
-            totalCuotas: plan.numeroCuotas,
-            salon: evento.salon || "",
-            fechaVencimiento: cuota.fechaVencimiento,
-            diasRestantes,
-            monto: montoCajaEventos,
-          })
-        }
-        if (fechaVenc >= hoy && fechaVenc <= en90Dias) {
-          prox90 += montoCajaEventos
-        }
+        ingresosPendientes.push({
+          id: `${evento.id}-cuota-${cuota.numero}`,
+          eventoId: evento.id,
+          eventoNombre: evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento",
+          salon: evento.salon || "",
+          numeroCuota: cuota.numero,
+          totalCuotas: plan.numeroCuotas,
+          fechaVencimiento: cuota.fechaVencimiento,
+          diasRestantes,
+          monto: cuota.montoCuota / 2,
+          montoTotal: cuota.montoCuota,
+          contacto,
+          esEstaSemana,
+        })
       }
     }
 
-    proximosACobrar.sort((a, b) =>
-      a.fechaVencimiento.localeCompare(b.fechaVencimiento)
-    )
+    ingresosPendientes.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))
 
     // ----------------------------------------------------------
-    // 3. ÚLTIMOS INGRESOS (10 más recientes de caja_eventos)
+    // 3. EGRESOS PENDIENTES DE SERVICIOS (pagos a proveedores)
     // ----------------------------------------------------------
-    const ultimosIngresos: UltimoIngresoCajaEventos[] = movimientos
-      .filter((m) => m.cajaDestino === "caja_eventos" && m.tipo === "ingreso")
-      .sort((a, b) => b.fecha.localeCompare(a.fecha))
-      .slice(0, 10)
-      .map((m) => ({
-        id: m.id,
-        eventoId: m.eventoId,
-        concepto: m.concepto,
-        monto: m.monto,
-        fecha: m.fecha.slice(0, 10),
-        salon: m.salon,
-      }))
-
-    // ----------------------------------------------------------
-    // 4. INGRESOS POR SALÓN del mes actual
-    // ----------------------------------------------------------
-    const mesActualNum = hoy.getMonth()
-    const anioActualNum = hoy.getFullYear()
-
-    const ingresosPorSalon: IngresosPorSalon = {}
-    movimientos
-      .filter((m) => {
-        if (m.cajaDestino !== "caja_eventos" || m.tipo !== "ingreso") return false
-        const fechaMov = new Date(m.fecha)
-        return (
-          fechaMov.getMonth() === mesActualNum &&
-          fechaMov.getFullYear() === anioActualNum
-        )
-      })
-      .forEach((m) => {
-        ingresosPorSalon[m.salon] = (ingresosPorSalon[m.salon] || 0) + m.monto
-      })
-
-    const totalIngresosSalonMes = Object.values(ingresosPorSalon).reduce(
-      (s, v) => s + v,
-      0
-    )
-
-    const mesActual = hoy.toLocaleDateString("es-AR", {
-      month: "long",
-      year: "numeric",
-    })
-
-    // ----------------------------------------------------------
-    // 5. EGRESOS PENDIENTES DE SERVICIOS
-    // ----------------------------------------------------------
-    const egresosPendientesServicios: EgresoPendienteServicio[] = []
+    const egresosPendientes: EgresoPendienteServicio[] = []
 
     for (const evento of eventos) {
       if (evento.estado === "cancelado" || evento.estado === "completado") continue
@@ -216,7 +178,6 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       for (const srv of serviciosEvento) {
         const estadoPago = srv.estadoPago ?? "sin_seña"
 
-        // Egreso de seña: aplica si todavía no se pagó la seña
         if (
           (estadoPago === "sin_seña" || estadoPago === "señado") &&
           srv.montoSeña &&
@@ -224,26 +185,19 @@ export function useCajaEventos(state: AppState): CajaEventosData {
           srv.fechaSeña
         ) {
           const fechaVenc = parseLocalDate(srv.fechaSeña)
-          // Mostrar SIEMPRE la seña pendiente del servicio, sin importar cuán lejos
-          // esté la fecha de vencimiento (debe figurar apenas se crea el evento).
-          {
-            egresosPendientesServicios.push({
-              id: `${evento.id}-${srv.servicioId}-seña`,
-              eventoId: evento.id,
-              eventoNombre,
-              servicioNombre: srv.nombre,
-              tipo: "seña",
-              monto: srv.montoSeña,
-              fechaVencimiento: srv.fechaSeña,
-              diasRestantes: Math.ceil(
-                (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
-              ),
-              estadoPago,
-            })
-          }
+          egresosPendientes.push({
+            id: `${evento.id}-${srv.servicioId}-seña`,
+            eventoId: evento.id,
+            eventoNombre,
+            servicioNombre: srv.nombre,
+            tipo: "seña",
+            monto: srv.montoSeña,
+            fechaVencimiento: srv.fechaSeña,
+            diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+            estadoPago,
+          })
         }
 
-        // Egreso de saldo: aplica si todavía no se pagó el total
         if (
           estadoPago !== "pagado_total" &&
           srv.saldoPendiente &&
@@ -251,52 +205,77 @@ export function useCajaEventos(state: AppState): CajaEventosData {
           srv.fechaLimitePago
         ) {
           const fechaVenc = parseLocalDate(srv.fechaLimitePago)
-          // Mostrar SIEMPRE el saldo pendiente del servicio, sin tope de días.
-          {
-            egresosPendientesServicios.push({
-              id: `${evento.id}-${srv.servicioId}-saldo`,
-              eventoId: evento.id,
-              eventoNombre,
-              servicioNombre: srv.nombre,
-              tipo: "saldo",
-              monto: srv.saldoPendiente,
-              fechaVencimiento: srv.fechaLimitePago,
-              diasRestantes: Math.ceil(
-                (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
-              ),
-              estadoPago,
-            })
-          }
+          egresosPendientes.push({
+            id: `${evento.id}-${srv.servicioId}-saldo`,
+            eventoId: evento.id,
+            eventoNombre,
+            servicioNombre: srv.nombre,
+            tipo: "saldo",
+            monto: srv.saldoPendiente,
+            fechaVencimiento: srv.fechaLimitePago,
+            diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+            estadoPago,
+          })
         }
       }
     }
 
-    egresosPendientesServicios.sort((a, b) =>
-      a.fechaVencimiento.localeCompare(b.fechaVencimiento)
-    )
+    egresosPendientes.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))
 
-    const totalEgresosPendientes = egresosPendientesServicios.reduce(
-      (sum, e) => sum + e.monto,
-      0
-    )
+    // ----------------------------------------------------------
+    // 4. PROYECCIÓN MENSUAL (próximos 6 meses incluyendo el actual)
+    // ----------------------------------------------------------
+    const meses: MesProyeccion[] = []
+    const indexPorKey: Record<string, number> = {}
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1)
+      const key = mesKey(d)
+      indexPorKey[key] = meses.length
+      meses.push({
+        key,
+        label: mesLabel(d),
+        aCobrar: 0,
+        aPagar: 0,
+        balance: 0,
+        esActual: key === mesActualKey,
+      })
+    }
 
-    const balanceProyectado = saldoActual + prox90 - totalEgresosPendientes
+    for (const ing of ingresosPendientes) {
+      const key = ing.fechaVencimiento.slice(0, 7)
+      const idx = indexPorKey[key]
+      if (idx !== undefined) meses[idx].aCobrar += ing.monto
+    }
+    for (const eg of egresosPendientes) {
+      const key = eg.fechaVencimiento.slice(0, 7)
+      const idx = indexPorKey[key]
+      if (idx !== undefined) meses[idx].aPagar += eg.monto
+    }
+    meses.forEach((m) => {
+      m.balance = m.aCobrar - m.aPagar
+    })
+
+    const porCobrarEsteMes = meses[0]?.aCobrar ?? 0
+    const porPagarEsteMes = meses[0]?.aPagar ?? 0
+    const saldoFinMes = saldoActual + porCobrarEsteMes - porPagarEsteMes
+
+    const totalPorCobrar = ingresosPendientes.reduce((s, i) => s + i.monto, 0)
+    const totalPorPagar = egresosPendientes.reduce((s, e) => s + e.monto, 0)
+
+    const vienenEstaSemana = ingresosPendientes.filter((i) => i.esEstaSemana)
 
     return {
       saldoActual,
-      proyeccion: {
-        estaSemana: proyEstaSemana,
-        esteMes: proyEsteMes,
-        proximos90Dias: prox90,
-      },
-      ultimosIngresos,
-      proximosACobrar,
-      ingresosPorSalon,
-      totalIngresosSalonMes,
-      mesActual,
-      egresosPendientesServicios,
-      totalEgresosPendientes,
-      balanceProyectado,
+      porCobrarEsteMes,
+      porPagarEsteMes,
+      saldoFinMes,
+      proyeccionMensual: meses,
+      ingresosPendientes,
+      egresosPendientes,
+      vienenEstaSemana,
+      totalPorCobrar,
+      totalPorPagar,
+      mesActualLabel,
     }
   }, [state.movimientosCaja, state.eventos])
 }
