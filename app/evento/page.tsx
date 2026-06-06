@@ -1689,7 +1689,6 @@ function EventoPageContent() {
                     <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Servicio</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Categoria</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700 uppercase tracking-wide">Precio</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-amber-600 uppercase tracking-wide">Seña</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1775,11 +1774,6 @@ function EventoPageContent() {
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
                           {precioVenta > 0 ? fmt(precioVenta) : <span className="text-muted-foreground font-normal">—</span>}
                         </td>
-
-                        {/* Seña al proveedor */}
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-amber-700">
-                          {costoSeña > 0 ? fmt(costoSeña) : <span className="text-muted-foreground font-normal">—</span>}
-                        </td>
                       </tr>
                     )
                   })}
@@ -1798,11 +1792,6 @@ function EventoPageContent() {
                             const cat = catalogoServicios.find(s => s.id === se.servicioId)
                             return sum + (cat?.precioVenta ?? 0)
                           }, 0)
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-amber-700">
-                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
-                          serviciosEvento.reduce((sum, se) => sum + (se.montoSeña ?? 0), 0)
                         )}
                       </td>
                     </tr>
