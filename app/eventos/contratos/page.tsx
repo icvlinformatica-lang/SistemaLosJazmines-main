@@ -449,20 +449,25 @@ export default function ContratosPage() {
       email: c.email || "",
       condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
     })
-    // Restore services from event — prefer versionesContrato's latest snapshot if no explicit selection
+    // Restore services: if the contract was explicitly saved before, honour that.
+    // Use length > 0 check so an empty array doesn't mask services added in the planificador.
     const savedIds = selectedEvento.serviciosContrato
     const savedLibres = selectedEvento.serviciosLibresContrato
 
-    if (savedIds) {
+    if (savedIds && savedIds.length > 0) {
       setCheckedIds(savedIds)
       setServiciosLibres(savedLibres || [])
     } else {
-      // Auto-suggest: pre-check services already added in the planificador
-      const fromPlanificador = (selectedEvento.servicios || []).map((se) => se.servicioId).filter(Boolean) as string[]
+      // Auto-populate from the planificador: use every servicioId attached to this event.
+      const fromPlanificador = (selectedEvento.servicios || [])
+        .map((se) => se.servicioId)
+        .filter((id): id is string => Boolean(id))
       setCheckedIds(fromPlanificador)
-      setServiciosLibres([])
+      setServiciosLibres(savedLibres || [])
     }
-  }, [selectedEventoId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Re-run when the event changes OR when its services list changes (planificador edits).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventoId, selectedEvento?.servicios?.length, selectedEvento?.serviciosContrato?.join(",")])
 
   // Package price
   const paquetePrecio = useMemo(() => {
