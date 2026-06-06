@@ -98,6 +98,7 @@ function EventoPageContent() {
   const searchParams = useSearchParams()
   const editingEventoId = searchParams?.get("id")
   const isEditing = !!editingEventoId
+  const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
   const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones } = useStore()
@@ -107,6 +108,7 @@ function EventoPageContent() {
   const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showSaveSuccess, setShowSaveSuccess] = useState(false)
+  const [observacionContrato, setObservacionContrato] = useState("")
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
     barraCocteles: true,
@@ -560,14 +562,46 @@ function EventoPageContent() {
     }
     
     if (isEditing && editingEventoId) {
+      // When coming from contratos: auto-create a new VersionContrato snapshot
+      let versionesContrato = evento?.versionesContrato || []
+      if (fromContratos) {
+        const serviciosIds = (evento?.servicios || []).map((se) => se.servicioId).filter(Boolean) as string[]
+        const nuevaVersion: VersionContrato = {
+          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
+          fechaGuardado: new Date().toISOString(),
+          motivo: observacionContrato.trim() || undefined,
+          snapshotContrato: {
+            nombreCompleto: eventData.contrato?.nombreCompleto,
+            dni: eventData.contrato?.dni,
+            telefono: eventData.contrato?.telefono,
+            direccion: eventData.contrato?.direccion,
+            email: eventData.contrato?.email,
+          },
+          snapshotServicios: serviciosIds,
+          snapshotServiciosLibres: evento?.serviciosLibresContrato || [],
+          snapshotPlanCuotas: eventData.planDeCuotas,
+          impactos: ["sin_cambios"],
+        }
+        versionesContrato = [...versionesContrato, nuevaVersion]
+      }
+
       // Actualizar evento existente — await para garantizar persistencia antes de navegar
-      await updateEvento(editingEventoId, eventData)
+      await updateEvento(editingEventoId, {
+        ...eventData,
+        ...(fromContratos ? { versionesContrato } : {}),
+      })
       toast({
-        title: "Evento actualizado",
-        description: "Los cambios se guardaron correctamente",
+        title: fromContratos ? "Contrato actualizado" : "Evento actualizado",
+        description: fromContratos
+          ? `Version ${versionesContrato.length} guardada correctamente`
+          : "Los cambios se guardaron correctamente",
       })
       setIsSaving(false)
-      router.push("/eventos/lista")
+      if (fromContratos) {
+        router.push(`/eventos/contratos?eventoId=${editingEventoId}`)
+      } else {
+        router.push("/eventos/lista")
+      }
     } else {
       // Crear nuevo evento — await para garantizar que se guarda en DB antes de navegar
       await addEvento({
@@ -2519,6 +2553,24 @@ function EventoPageContent() {
             </Button>
           ) : (
             <>
+              {/* Observacion field — only when coming from contratos */}
+              {fromContratos && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                    <FileText className="h-4 w-4" />
+                    Observacion del contrato
+                    <span className="font-normal text-amber-700 ml-1">(opcional)</span>
+                  </label>
+                  <textarea
+                    value={observacionContrato}
+                    onChange={(e) => setObservacionContrato(e.target.value)}
+                    placeholder="Ej: Cliente solicito agregar servicio de DJ, se modifico el precio acordado..."
+                    rows={2}
+                    className="w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              )}
+
               <Button
                 onClick={handleSaveEvento}
                 className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
@@ -2526,12 +2578,12 @@ function EventoPageContent() {
               >
                 {isSaving ? (
                   <>
-                    <span className="mr-2">Actualizando...</span>
+                    <span className="mr-2">{fromContratos ? "Guardando contrato..." : "Actualizando..."}</span>
                   </>
                 ) : (
                   <>
                     <Save className="h-6 w-6 mr-2" />
-                    Actualizar Evento
+                    {fromContratos ? "Actualizar contrato" : "Actualizar Evento"}
                   </>
                 )}
               </Button>
