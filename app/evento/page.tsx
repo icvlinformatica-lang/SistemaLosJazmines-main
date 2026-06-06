@@ -548,20 +548,24 @@ function EventoPageContent() {
         // Generar el detalle de cuotas con fechas de vencimiento.
         // Esto es lo que consumen las cajas (caja_eventos / caja_jazmines) para
         // proyectar ingresos: cada cuota se divide 50/50 entre ambas cajas.
-        const fechaBase = localFechaInicioPlan
-          ? new Date(localFechaInicioPlan + "T12:00:00")
-          : new Date()
+        const [planYear, planMonth, planDay] = (localFechaInicioPlan || new Date().toISOString().split("T")[0])
+          .split("-")
+          .map(Number)
         const diaVenc = localDiaVencimiento || 10
         const cuotasDetalle: NonNullable<EventoGuardado["planDeCuotas"]>["cuotas"] = []
 
         // La seña NO es una cuota: se cobra al firmar el contrato y se registra
-        // como movimiento real en las cajas. Las cuotas financiadas arrancan en 1
-        // y vencen una por mes a partir del mes siguiente, en el día de vencimiento.
+        // como movimiento real en las cajas. La "Fecha Primera Cuota" indica el mes
+        // de la cuota 1 (cuota 1 = mes de la fecha de inicio), igual que en la
+        // previsualizacion del contrato. Cada cuota suma (numero - 1) meses.
         for (let i = 0; i < cuotasEfectivas; i++) {
-          const fechaCuota = new Date(fechaBase)
-          fechaCuota.setMonth(fechaCuota.getMonth() + i + 1)
-          fechaCuota.setDate(diaVenc)
           const numeroCuota = i + 1
+          const mesVenc = (planMonth - 1) + (numeroCuota - 1)
+          const añoVenc = planYear + Math.floor(mesVenc / 12)
+          const mesAjustado = ((mesVenc % 12) + 12) % 12
+          const ultimoDia = new Date(añoVenc, mesAjustado + 1, 0).getDate()
+          const diaAjustado = Math.min(diaVenc, ultimoDia)
+          const fechaCuota = new Date(añoVenc, mesAjustado, diaAjustado)
           cuotasDetalle.push({
             numero: numeroCuota,
             montoCuota: montoCuotaCalc,
