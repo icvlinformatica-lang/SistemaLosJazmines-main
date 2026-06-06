@@ -553,32 +553,21 @@ function EventoPageContent() {
           : new Date()
         const diaVenc = localDiaVencimiento || 10
         const cuotasDetalle: NonNullable<EventoGuardado["planDeCuotas"]>["cuotas"] = []
-        let numeroCuota = 1
 
-        // La seña se cobra al firmar el contrato, por lo que se marca como PAGADA
-        // y se registra como movimiento real en las cajas (no queda como "proximo a cobrar").
-        if (modalidad === "sena" && localMontoSena > 0) {
-          cuotasDetalle.push({
-            numero: numeroCuota,
-            montoCuota: localMontoSena,
-            fechaVencimiento: fechaBase.toISOString().split("T")[0],
-            pagada: true,
-          })
-          numeroCuota++
-        }
-
-        // Cuotas financiadas: una por mes a partir del mes siguiente, en el día de vencimiento.
+        // La seña NO es una cuota: se cobra al firmar el contrato y se registra
+        // como movimiento real en las cajas. Las cuotas financiadas arrancan en 1
+        // y vencen una por mes a partir del mes siguiente, en el día de vencimiento.
         for (let i = 0; i < cuotasEfectivas; i++) {
           const fechaCuota = new Date(fechaBase)
-          fechaCuota.setMonth(fechaCuota.getMonth() + i + (modalidad === "sena" ? 1 : 0))
+          fechaCuota.setMonth(fechaCuota.getMonth() + i + 1)
           fechaCuota.setDate(diaVenc)
+          const numeroCuota = i + 1
           cuotasDetalle.push({
             numero: numeroCuota,
             montoCuota: montoCuotaCalc,
             fechaVencimiento: fechaCuota.toISOString().split("T")[0],
             pagada: cuotasPagadasPrev.includes(numeroCuota),
           })
-          numeroCuota++
         }
 
         return {
@@ -587,9 +576,7 @@ function EventoPageContent() {
           montoTotal: localMontoTotal,
           diaVencimiento: diaVenc,
           fechaInicioPlan: localFechaInicioPlan || "",
-          cuotasPagadas: modalidad === "sena" && localMontoSena > 0
-            ? Array.from(new Set([...cuotasPagadasPrev, 1]))
-            : cuotasPagadasPrev,
+          cuotasPagadas: cuotasPagadasPrev,
           modalidadPago: modalidad,
           montoSena: modalidad === "sena" ? localMontoSena : undefined,
           porcentajeRecargo: localPorcentajeRecargo > 0 ? localPorcentajeRecargo : undefined,
