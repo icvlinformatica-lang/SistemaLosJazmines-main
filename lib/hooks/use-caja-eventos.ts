@@ -35,7 +35,7 @@ export interface EgresoPendienteServicio {
   eventoId: string
   eventoNombre: string
   servicioNombre: string
-  tipo: "seña" | "saldo"
+  tipo: "seña" | "saldo" | "menu"
   monto: number
   fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
@@ -174,6 +174,36 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       if (evento.estado === "cancelado" || evento.estado === "completado") continue
       const serviciosEvento = evento.servicios ?? []
       const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
+
+      // --- Costo del MENÚ del evento ---
+      // Se paga 2 semanas (14 días) antes de la fecha del evento.
+      // El estado "pagado" se deriva de la existencia de un movimiento de egreso
+      // de menú asociado a este evento en Caja Eventos.
+      const costoMenu = evento.costoInsumos ?? 0
+      if (costoMenu > 0 && evento.fecha) {
+        const fechaEvento = parseLocalDate(evento.fecha)
+        const fechaPagoMenu = new Date(fechaEvento)
+        fechaPagoMenu.setDate(fechaEvento.getDate() - 14)
+        const fechaPagoMenuStr = `${fechaPagoMenu.getFullYear()}-${String(fechaPagoMenu.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoMenu.getDate()).padStart(2, "0")}`
+
+        const menuPagado = movimientos.some(
+          (m) => m.eventoId === evento.id && m.cajaDestino === "caja_eventos" && m.tipo === "egreso" && (m.concepto || "").startsWith("Pago menú")
+        )
+
+        if (!menuPagado) {
+          egresosPendientes.push({
+            id: `${evento.id}-menu`,
+            eventoId: evento.id,
+            eventoNombre,
+            servicioNombre: "Menú del evento",
+            tipo: "menu",
+            monto: costoMenu,
+            fechaVencimiento: fechaPagoMenuStr,
+            diasRestantes: Math.ceil((fechaPagoMenu.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+            estadoPago: "saldo_pendiente",
+          })
+        }
+      }
 
       for (const srv of serviciosEvento) {
         const estadoPago = srv.estadoPago ?? "sin_seña"

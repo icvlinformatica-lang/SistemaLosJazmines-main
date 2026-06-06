@@ -101,25 +101,34 @@ export default function CajaEventosPage() {
     const hoyISO = new Date().toISOString()
     const fechaPago = hoyISO.split("T")[0]
 
-    const nuevosServicios = (evento.servicios ?? []).map((srv) => {
-      if (!egreso.id.includes(srv.servicioId)) return srv
-      if (egreso.tipo === "seña") {
-        return { ...srv, estadoPago: "señado" as const, fechaPagoSeña: fechaPago }
-      }
-      return { ...srv, estadoPago: "pagado_total" as const, fechaPagoSaldo: fechaPago }
-    })
-    updateEvento(egreso.eventoId, { servicios: nuevosServicios })
+    // El menú no es un servicio: su estado se deriva del movimiento de egreso,
+    // así que solo registramos el egreso real (sin tocar evento.servicios).
+    if (egreso.tipo !== "menu") {
+      const nuevosServicios = (evento.servicios ?? []).map((srv) => {
+        if (!egreso.id.includes(srv.servicioId)) return srv
+        if (egreso.tipo === "seña") {
+          return { ...srv, estadoPago: "señado" as const, fechaPagoSeña: fechaPago }
+        }
+        return { ...srv, estadoPago: "pagado_total" as const, fechaPagoSaldo: fechaPago }
+      })
+      updateEvento(egreso.eventoId, { servicios: nuevosServicios })
+    }
 
     // Registrar el egreso real que sale de Caja Eventos
     const saldoPrev = (state.movimientosCaja ?? [])
       .filter((m) => m.cajaDestino === "caja_eventos")
       .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
 
+    const conceptoEgreso =
+      egreso.tipo === "menu"
+        ? `Pago menú - ${egreso.eventoNombre}`
+        : `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`
+
     const movimiento: MovimientoCaja = {
       id: generateId(),
       fecha: hoyISO,
       tipo: "egreso",
-      concepto: `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`,
+      concepto: conceptoEgreso,
       monto: egreso.monto,
       salon: evento.salon || "",
       eventoId: egreso.eventoId,
@@ -469,11 +478,15 @@ export default function CajaEventosPage() {
                         <TableCell>
                           <Badge
                             variant="outline"
-                            className={eg.tipo === "seña"
-                              ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
-                              : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"}
+                            className={
+                              eg.tipo === "seña"
+                                ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
+                                : eg.tipo === "menu"
+                                  ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
+                                  : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+                            }
                           >
-                            {eg.tipo === "seña" ? "Seña" : "Saldo"}
+                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>
