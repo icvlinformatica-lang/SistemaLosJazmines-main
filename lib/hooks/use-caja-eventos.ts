@@ -224,7 +224,9 @@ export function useCajaEventos(state: AppState): CajaEventosData {
           srv.fechaSeña
         ) {
           const fechaVenc = parseLocalDate(srv.fechaSeña)
-          if (fechaVenc <= en90Dias) {
+          // Mostrar SIEMPRE la seña pendiente del servicio, sin importar cuán lejos
+          // esté la fecha de vencimiento (debe figurar apenas se crea el evento).
+          {
             egresosPendientesServicios.push({
               id: `${evento.id}-${srv.servicioId}-seña`,
               eventoId: evento.id,
@@ -249,7 +251,8 @@ export function useCajaEventos(state: AppState): CajaEventosData {
           srv.fechaLimitePago
         ) {
           const fechaVenc = parseLocalDate(srv.fechaLimitePago)
-          if (fechaVenc <= en90Dias) {
+          // Mostrar SIEMPRE el saldo pendiente del servicio, sin tope de días.
+          {
             egresosPendientesServicios.push({
               id: `${evento.id}-${srv.servicioId}-saldo`,
               eventoId: evento.id,
