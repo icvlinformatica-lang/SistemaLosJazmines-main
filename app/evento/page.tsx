@@ -1707,8 +1707,10 @@ function EventoPageContent() {
                         const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
                         const diasSeña = servicio.diasAnticipacionSeña ?? 30
                         const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
-                        const montoSeña = Math.round(precioVenta * (servicio.porcentajeSeña ?? 30) / 100)
-                        const saldoPendiente = precioVenta - montoSeña
+                        const costoBase = servicio.costoParaCajaEventos ?? 0
+                        const pct = servicio.porcentajeSeña ?? 30
+                        const montoSeña = Math.round(costoBase * pct / 100)
+                        const saldoPendiente = costoBase - montoSeña
 
                         const fechaSeñaDate = new Date(fechaEvento)
                         fechaSeñaDate.setDate(fechaEvento.getDate() - diasSeña)
@@ -1730,6 +1732,45 @@ function EventoPageContent() {
                       }
                     }
 
+                    const esPorHora = servicio.unidad === "Por Hora"
+                    const servicioEnEvento = serviciosEvento.find(se => se.servicioId === servicio.id)
+                    const horas = servicioEnEvento?.cantidad ?? 1
+                    const precioTotal = esPorHora ? precioVenta * horas : precioVenta
+
+                    const handleHoras = (e: React.ChangeEvent<HTMLInputElement>) => {
+                      e.stopPropagation()
+                      const nuevasHoras = Math.max(1, parseInt(e.target.value) || 1)
+                      const nuevoPrecioVenta = precioVenta * nuevasHoras
+                      const pct = servicio.porcentajeSeña ?? 30
+                      const nuevaSeña = Math.round(nuevoPrecioVenta * pct / 100)
+                      const nuevoSaldo = nuevoPrecioVenta - nuevaSeña
+                      const nuevoCosto = (servicio.costoParaCajaEventos ?? 0) * nuevasHoras
+                      const nuevaSeñaCosto = Math.round(nuevoCosto * pct / 100)
+
+                      const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
+                      const diasSeña = servicio.diasAnticipacionSeña ?? 30
+                      const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
+                      const fechaSeñaDate = new Date(fechaEvento)
+                      fechaSeñaDate.setDate(fechaEvento.getDate() - diasSeña)
+                      const fechaSaldoDate = new Date(fechaEvento)
+                      fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
+
+                      updateEventoActual({
+                        servicios: serviciosEvento.map(se =>
+                          se.servicioId === servicio.id
+                            ? {
+                                ...se,
+                                cantidad: nuevasHoras,
+                                montoSeña: nuevaSeñaCosto,
+                                saldoPendiente: (nuevoCosto - nuevaSeñaCosto),
+                                fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
+                                fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                              }
+                            : se
+                        ),
+                      })
+                    }
+
                     return (
                       <tr
                         key={servicio.id}
@@ -1744,7 +1785,7 @@ function EventoPageContent() {
                       >
                         {/* Checkbox visual */}
                         <td className="w-10 px-3 py-2.5">
-                          <div className={`w-4.5 h-4.5 w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
+                          <div className={`w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
                             seleccionado
                               ? "bg-emerald-600 border-emerald-600"
                               : "border-muted-foreground/30 bg-background"
@@ -1755,13 +1796,32 @@ function EventoPageContent() {
                           </div>
                         </td>
 
-                        {/* Nombre */}
+                        {/* Nombre + input horas si aplica */}
                         <td className="px-3 py-2.5">
                           <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>
                             {servicio.nombre}
                           </span>
                           {servicio.descripcion && (
                             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{servicio.descripcion}</p>
+                          )}
+                          {esPorHora && seleccionado && (
+                            <div
+                              className="flex items-center gap-1.5 mt-1.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <label className="text-xs text-muted-foreground whitespace-nowrap">Horas:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                value={horas}
+                                onChange={handleHoras}
+                                className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
+                              />
+                              <span className="text-xs text-muted-foreground">h</span>
+                            </div>
+                          )}
+                          {esPorHora && !seleccionado && (
+                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">Por hora</p>
                           )}
                         </td>
 
@@ -1770,9 +1830,21 @@ function EventoPageContent() {
                           <Badge variant="outline" className="text-[11px]">{servicio.categoria}</Badge>
                         </td>
 
-                        {/* Precio venta */}
+                        {/* Precio venta (× horas si aplica) */}
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
-                          {precioVenta > 0 ? fmt(precioVenta) : <span className="text-muted-foreground font-normal">—</span>}
+                          {precioTotal > 0
+                            ? (
+                              <span>
+                                {fmt(precioTotal)}
+                                {esPorHora && seleccionado && horas > 1 && (
+                                  <span className="block text-[11px] font-normal text-muted-foreground">
+                                    {fmt(precioVenta)}/h × {horas}
+                                  </span>
+                                )}
+                              </span>
+                            )
+                            : <span className="text-muted-foreground font-normal">—</span>
+                          }
                         </td>
                       </tr>
                     )
@@ -1790,7 +1862,9 @@ function EventoPageContent() {
                         {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
                           serviciosEvento.reduce((sum, se) => {
                             const cat = catalogoServicios.find(s => s.id === se.servicioId)
-                            return sum + (cat?.precioVenta ?? 0)
+                            const precio = cat?.precioVenta ?? 0
+                            const horas = (cat?.unidad === "Por Hora") ? (se.cantidad ?? 1) : 1
+                            return sum + precio * horas
                           }, 0)
                         )}
                       </td>
