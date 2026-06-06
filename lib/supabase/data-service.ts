@@ -28,55 +28,70 @@ export async function fetchServicios(): Promise<Servicio[]> {
   
   return (data || []).map(s => ({
     id: s.id,
+    codigo: s.codigo || "",
     nombre: s.nombre,
     descripcion: s.descripcion || "",
     categoria: s.categoria,
     unidad: s.unidad || "Fijo",
-    requierePersonal: s.requiere_personal ?? true,
     activo: s.activo ?? true,
-    // Campos legacy que el store espera
-    precioBase: 0,
-    precioOficial: 0,
-    precioProveedor: 0,
-    margenGanancia: 0,
+    margenGanancia: Number(s.margen_ganancia) || 0,
+    precioVenta: Number(s.precio_venta) || 0,
+    costoParaCajaEventos: Number(s.costo_para_caja_eventos) || 0,
+    porcentajeSeña: Number(s.porcentaje_sena) || 30,
+    diasAnticipacionSeña: Number(s.dias_anticipacion_sena) || 30,
+    diasAnticipacionSaldo: Number(s.dias_anticipacion_saldo) || 7,
+    proveedor: s.proveedor || undefined,
+    notas: s.notas || undefined,
   }))
 }
 
 export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servicio | null> {
   const record = {
     id: servicio.id,
+    codigo: servicio.codigo || null,
     nombre: servicio.nombre,
-    descripcion: servicio.descripcion,
+    descripcion: servicio.descripcion || null,
     categoria: servicio.categoria,
     unidad: servicio.unidad,
-    requiere_personal: servicio.requierePersonal,
-    activo: servicio.activo,
+    activo: servicio.activo ?? true,
+    margen_ganancia: servicio.margenGanancia ?? 0,
+    precio_venta: servicio.precioVenta ?? 0,
+    costo_para_caja_eventos: servicio.costoParaCajaEventos ?? 0,
+    porcentaje_sena: servicio.porcentajeSeña ?? 30,
+    dias_anticipacion_sena: servicio.diasAnticipacionSeña ?? 30,
+    dias_anticipacion_saldo: servicio.diasAnticipacionSaldo ?? 7,
+    proveedor: servicio.proveedor || null,
+    notas: servicio.notas || null,
     updated_at: new Date().toISOString(),
   }
-  
+
   const { data, error } = await supabase
     .from("servicios")
     .upsert(record)
     .select()
     .single()
-  
+
   if (error) {
     console.error("Error upserting servicio:", error)
     return null
   }
-  
+
   return data ? {
     id: data.id,
+    codigo: data.codigo || "",
     nombre: data.nombre,
     descripcion: data.descripcion || "",
     categoria: data.categoria,
     unidad: data.unidad || "Fijo",
-    requierePersonal: data.requiere_personal ?? true,
     activo: data.activo ?? true,
-    precioBase: 0,
-    precioOficial: 0,
-    precioProveedor: 0,
-    margenGanancia: 0,
+    margenGanancia: Number(data.margen_ganancia) || 0,
+    precioVenta: Number(data.precio_venta) || 0,
+    costoParaCajaEventos: Number(data.costo_para_caja_eventos) || 0,
+    porcentajeSeña: Number(data.porcentaje_sena) || 30,
+    diasAnticipacionSeña: Number(data.dias_anticipacion_sena) || 30,
+    diasAnticipacionSaldo: Number(data.dias_anticipacion_saldo) || 7,
+    proveedor: data.proveedor || undefined,
+    notas: data.notas || undefined,
   } : null
 }
 
