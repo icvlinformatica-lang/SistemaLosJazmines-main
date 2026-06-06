@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils-financieros"
+import { useStore } from "@/lib/store-context"
+import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import {
   Wallet,
   TrendingUp,
@@ -12,128 +13,6 @@ import {
   CalendarClock,
   Building2,
 } from "lucide-react"
-
-// ---------------------------------------------------------------------------
-// DATOS HARDCODEADOS – Fase 1 (solo diseño)
-// En el Prompt 2 se conectará al store real.
-// ---------------------------------------------------------------------------
-
-const SALDO_ACTUAL = 1_280_000
-const PROYECCION_30_DIAS = 2_450_000
-const CUOTAS_PENDIENTES_MONTO = 3_850_000
-
-const PROYECCIONES = {
-  semana: 620_000,
-  mes: 2_450_000,
-  noventa: 5_980_000,
-}
-
-const ULTIMOS_INGRESOS = [
-  {
-    id: "1",
-    evento: "Martinez & Rodriguez",
-    cuota: 2,
-    totalCuotas: 4,
-    salon: "Quinta",
-    fecha: "2025-06-02",
-    monto: 325_000,
-  },
-  {
-    id: "2",
-    evento: "Cumpleaños Fernández",
-    cuota: 1,
-    totalCuotas: 2,
-    salon: "Casona",
-    fecha: "2025-05-30",
-    monto: 187_500,
-  },
-  {
-    id: "3",
-    evento: "Evento Empresarial TechCorp",
-    cuota: 3,
-    totalCuotas: 3,
-    salon: "Salón",
-    fecha: "2025-05-28",
-    monto: 412_500,
-  },
-  {
-    id: "4",
-    evento: "Lopez & Gomez",
-    cuota: 1,
-    totalCuotas: 3,
-    salon: "Quinta",
-    fecha: "2025-05-25",
-    monto: 266_667,
-  },
-  {
-    id: "5",
-    evento: "Cumpleaños Pérez",
-    cuota: 2,
-    totalCuotas: 2,
-    salon: "Salón",
-    fecha: "2025-05-22",
-    monto: 155_000,
-  },
-]
-
-const PROXIMOS_A_COBRAR = [
-  {
-    id: "a",
-    evento: "Sánchez & Villanueva",
-    cuota: 2,
-    totalCuotas: 4,
-    salon: "Quinta",
-    fechaVencimiento: "2025-06-08",
-    diasRestantes: 3,
-    monto: 287_500,
-  },
-  {
-    id: "b",
-    evento: "Evento Aniversario Banco X",
-    cuota: 1,
-    totalCuotas: 2,
-    salon: "Casona",
-    fechaVencimiento: "2025-06-12",
-    diasRestantes: 7,
-    monto: 350_000,
-  },
-  {
-    id: "c",
-    evento: "Díaz & Morales",
-    cuota: 3,
-    totalCuotas: 4,
-    salon: "Quinta",
-    fechaVencimiento: "2025-06-18",
-    diasRestantes: 13,
-    monto: 225_000,
-  },
-  {
-    id: "d",
-    evento: "Cumpleaños Torres",
-    cuota: 1,
-    totalCuotas: 1,
-    salon: "Salón",
-    fechaVencimiento: "2025-06-22",
-    diasRestantes: 17,
-    monto: 180_000,
-  },
-  {
-    id: "e",
-    evento: "Herrera & Castillo",
-    cuota: 2,
-    totalCuotas: 3,
-    salon: "Casona",
-    fechaVencimiento: "2025-06-28",
-    diasRestantes: 23,
-    monto: 310_000,
-  },
-]
-
-const INGRESOS_POR_SALON = [
-  { salon: "Quinta", monto: 598_334 },
-  { salon: "Casona", monto: 375_000 },
-  { salon: "Salón", monto: 306_666 },
-]
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -172,13 +51,29 @@ function diasRestantesBadge(dias: number) {
 // ---------------------------------------------------------------------------
 
 export default function CajaEventosPage() {
+  const { state } = useStore()
+  const data = useCajaEventos(state)
+
+  const {
+    saldoActual,
+    proyeccion,
+    ultimosIngresos,
+    proximosACobrar,
+    ingresosPorSalon,
+    totalIngresosSalonMes,
+    mesActual,
+  } = data
+
   const maxProyeccion = Math.max(
-    PROYECCIONES.semana,
-    PROYECCIONES.mes,
-    PROYECCIONES.noventa
+    proyeccion.estaSemana,
+    proyeccion.esteMes,
+    proyeccion.proximos90Dias,
+    1 // evitar división por cero
   )
 
-  const totalIngresosSalon = INGRESOS_POR_SALON.reduce((s, i) => s + i.monto, 0)
+  const salonesConIngreso = Object.entries(ingresosPorSalon).filter(
+    ([, monto]) => monto > 0
+  )
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
@@ -208,7 +103,7 @@ export default function CajaEventosPage() {
               <Wallet className="h-4 w-4 text-teal-600" />
             </div>
             <p className="text-3xl font-bold text-teal-800">
-              {formatCurrency(SALDO_ACTUAL)}
+              {formatCurrency(saldoActual)}
             </p>
             <p className="text-xs text-teal-600 mt-1">
               Cobros acumulados × 50%
@@ -225,7 +120,7 @@ export default function CajaEventosPage() {
               <TrendingUp className="h-4 w-4 text-teal-600" />
             </div>
             <p className="text-3xl font-bold text-foreground">
-              {formatCurrency(PROYECCION_30_DIAS)}
+              {formatCurrency(proyeccion.esteMes)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               Cuotas pendientes × 50%
@@ -237,15 +132,15 @@ export default function CajaEventosPage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Cuotas Pendientes
+                Próximos 90 días
               </p>
               <Clock className="h-4 w-4 text-amber-500" />
             </div>
             <p className="text-3xl font-bold text-foreground">
-              {formatCurrency(CUOTAS_PENDIENTES_MONTO)}
+              {formatCurrency(proyeccion.proximos90Dias)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Monto total sin cobrar
+              Cuotas pendientes a cobrar
             </p>
           </CardContent>
         </Card>
@@ -261,9 +156,9 @@ export default function CajaEventosPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {[
-            { label: "Esta semana", value: PROYECCIONES.semana },
-            { label: "Este mes", value: PROYECCIONES.mes },
-            { label: "Próximos 90 días", value: PROYECCIONES.noventa },
+            { label: "Esta semana", value: proyeccion.estaSemana },
+            { label: "Este mes (30 días)", value: proyeccion.esteMes },
+            { label: "Próximos 90 días", value: proyeccion.proximos90Dias },
           ].map(({ label, value }) => {
             const pct = Math.round((value / maxProyeccion) * 100)
             return (
@@ -297,28 +192,33 @@ export default function CajaEventosPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {ULTIMOS_INGRESOS.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{item.evento}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Cuota {item.cuota}/{item.totalCuotas} · {item.salon} ·{" "}
-                    {formatFecha(item.fecha)}
-                  </p>
+            {ultimosIngresos.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Aún no hay ingresos registrados en esta caja.
+              </p>
+            ) : (
+              ultimosIngresos.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.concepto}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {item.salon} · {formatFecha(item.fecha)}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className="text-sm font-bold text-teal-700">
+                      +{formatCurrency(item.monto)}
+                    </span>
+                    <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">
+                      cobrado
+                    </Badge>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-sm font-bold text-teal-700">
-                    +{formatCurrency(item.monto)}
-                  </span>
-                  <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">
-                    cobrado
-                  </Badge>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -331,26 +231,32 @@ export default function CajaEventosPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {PROXIMOS_A_COBRAR.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{item.evento}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Cuota {item.cuota}/{item.totalCuotas} · {item.salon} ·{" "}
-                    {formatFecha(item.fechaVencimiento)}
-                  </p>
+            {proximosACobrar.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No hay cuotas pendientes en los próximos 30 días.
+              </p>
+            ) : (
+              proximosACobrar.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.eventoNombre}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Cuota {item.numeroCuota}/{item.totalCuotas} · {item.salon} ·{" "}
+                      {formatFecha(item.fechaVencimiento)}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className="text-sm font-bold text-amber-600">
+                      {formatCurrency(item.monto)}
+                    </span>
+                    {diasRestantesBadge(item.diasRestantes)}
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-sm font-bold text-amber-600">
-                    {formatCurrency(item.monto)}
-                  </span>
-                  {diasRestantesBadge(item.diasRestantes)}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
@@ -360,44 +266,51 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Building2 className="h-4 w-4 text-teal-600" />
-            Ingresos por salón — Junio 2025
+            <span className="capitalize">Ingresos por salón — {mesActual}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {INGRESOS_POR_SALON.map(({ salon, monto }) => {
-              const pct = Math.round((monto / totalIngresosSalon) * 100)
-              return (
-                <div key={salon}>
-                  <div className="flex items-center justify-between text-sm mb-1.5">
-                    <span className="font-medium text-foreground">{salon}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground text-xs">
-                        {pct}%
-                      </span>
-                      <span className="font-semibold text-teal-700">
-                        {formatCurrency(monto)}
-                      </span>
+          {salonesConIngreso.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Aún no hay ingresos registrados este mes.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {salonesConIngreso.map(([salon, monto]) => {
+                const pct =
+                  totalIngresosSalonMes > 0
+                    ? Math.round((monto / totalIngresosSalonMes) * 100)
+                    : 0
+                return (
+                  <div key={salon}>
+                    <div className="flex items-center justify-between text-sm mb-1.5">
+                      <span className="font-medium text-foreground">{salon}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs">{pct}%</span>
+                        <span className="font-semibold text-teal-700">
+                          {formatCurrency(monto)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-teal-500"
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-teal-500"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-            <div className="pt-2 border-t border-border flex items-center justify-between">
-              <span className="text-sm font-medium text-muted-foreground">
-                Total del mes
-              </span>
-              <span className="text-base font-bold text-foreground">
-                {formatCurrency(totalIngresosSalon)}
-              </span>
+                )
+              })}
+              <div className="pt-2 border-t border-border flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Total del mes
+                </span>
+                <span className="text-base font-bold text-foreground">
+                  {formatCurrency(totalIngresosSalonMes)}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

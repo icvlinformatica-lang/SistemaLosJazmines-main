@@ -33,6 +33,7 @@ import {
   Wallet,
   TrendingUp,
   Building,
+  Building2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -100,7 +101,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
         { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
         { href: "/finanzas/cajas", label: "Cajas", icon: Wallet },
         { href: "/finanzas/caja-eventos", label: "Caja Eventos", icon: Wallet },
-        { href: "/finanzas/caja-jazmines", label: "Caja Jazmines", icon: Building },
+        { href: "/finanzas/caja-jazmines", label: "Caja Jazmines", icon: Building2 },
         { href: "/finanzas/cashflow", label: "Cashflow", icon: TrendingUp },
         { href: "/finanzas/balance-mensual", label: "Balance Mensual", icon: BarChart2 },
         { href: "/finanzas/configuracion", label: "Config. Cajas", icon: Settings },

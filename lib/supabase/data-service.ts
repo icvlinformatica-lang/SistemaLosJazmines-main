@@ -570,6 +570,9 @@ export async function fetchMovimientosCaja(): Promise<MovimientoCaja[]> {
     monto: Number(m.monto) || 0,
     concepto: m.concepto,
     fecha: m.fecha,
+    eventoId: m.evento_id ?? undefined,
+    saldoResultante: m.saldo_resultante ? Number(m.saldo_resultante) : 0,
+    cajaDestino: m.caja_destino ?? undefined,
     saldoAnterior: m.saldo_anterior ? Number(m.saldo_anterior) : undefined,
     saldoPosterior: m.saldo_posterior ? Number(m.saldo_posterior) : undefined,
   }))
@@ -583,8 +586,11 @@ export async function insertMovimientoCaja(mov: Partial<MovimientoCaja>): Promis
     monto: mov.monto,
     concepto: mov.concepto,
     fecha: mov.fecha,
-    saldo_anterior: mov.saldoAnterior,
-    saldo_posterior: mov.saldoPosterior,
+    evento_id: mov.eventoId ?? null,
+    saldo_resultante: mov.saldoResultante ?? null,
+    caja_destino: mov.cajaDestino ?? null,
+    saldo_anterior: (mov as Record<string, unknown>).saldoAnterior ?? null,
+    saldo_posterior: (mov as Record<string, unknown>).saldoPosterior ?? null,
   }
   
   const { data, error } = await supabase
@@ -605,8 +611,9 @@ export async function insertMovimientoCaja(mov: Partial<MovimientoCaja>): Promis
     monto: Number(data.monto) || 0,
     concepto: data.concepto,
     fecha: data.fecha,
-    saldoAnterior: data.saldo_anterior ? Number(data.saldo_anterior) : undefined,
-    saldoPosterior: data.saldo_posterior ? Number(data.saldo_posterior) : undefined,
+    eventoId: data.evento_id ?? undefined,
+    saldoResultante: data.saldo_resultante ? Number(data.saldo_resultante) : 0,
+    cajaDestino: data.caja_destino ?? undefined,
   } : null
 }
 

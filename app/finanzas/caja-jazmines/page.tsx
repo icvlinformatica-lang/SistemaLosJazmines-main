@@ -21,6 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency } from "@/lib/utils-financieros"
+import { useStore } from "@/lib/store-context"
+import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
+import type { EstadoAlerta } from "@/lib/hooks/use-caja-jazmines"
 import {
   Building,
   TrendingDown,
@@ -29,164 +32,6 @@ import {
   AlertCircle,
   Plus,
 } from "lucide-react"
-
-// ---------------------------------------------------------------------------
-// DATOS HARDCODEADOS – Fase 1 (solo diseño)
-// ---------------------------------------------------------------------------
-
-const SALDO_ACTUAL = 975_000
-const GASTOS_PROXIMOS_30 = 648_000
-const SALDO_PROYECTADO_30 = 975_000 + 1_225_000 - 648_000
-
-const ALERTAS_VENCIMIENTO = [
-  {
-    id: "a1",
-    nombre: "Alquiler del predio",
-    descripcion: "vence mañana",
-    diasRestantes: 1,
-    monto: 185_000,
-  },
-  {
-    id: "a2",
-    nombre: "Seguro del local",
-    descripcion: "vence en 3 días",
-    diasRestantes: 3,
-    monto: 42_500,
-  },
-  {
-    id: "a3",
-    nombre: "Servicio de electricidad",
-    descripcion: "vence en 5 días",
-    diasRestantes: 5,
-    monto: 28_300,
-  },
-  {
-    id: "a4",
-    nombre: "Internet y telefonía",
-    descripcion: "vence en 12 días",
-    diasRestantes: 12,
-    monto: 8_900,
-  },
-  {
-    id: "a5",
-    nombre: "Servicio de agua",
-    descripcion: "vence en 18 días",
-    diasRestantes: 18,
-    monto: 6_200,
-  },
-]
-
-const GASTOS_FIJOS = [
-  {
-    id: "gf1",
-    nombre: "Alquiler del predio",
-    categoria: "Mensual",
-    monto: 185_000,
-    estado: "vence mañana" as const,
-  },
-  {
-    id: "gf2",
-    nombre: "Seguro del local",
-    categoria: "Mensual",
-    monto: 42_500,
-    estado: "pendiente" as const,
-  },
-  {
-    id: "gf3",
-    nombre: "Electricidad",
-    categoria: "Mensual",
-    monto: 28_300,
-    estado: "pendiente" as const,
-  },
-  {
-    id: "gf4",
-    nombre: "Internet y telefonía",
-    categoria: "Mensual",
-    monto: 8_900,
-    estado: "pendiente" as const,
-  },
-  {
-    id: "gf5",
-    nombre: "Agua",
-    categoria: "Mensual",
-    monto: 6_200,
-    estado: "pendiente" as const,
-  },
-  {
-    id: "gf6",
-    nombre: "Honorarios contador",
-    categoria: "Mensual",
-    monto: 55_000,
-    estado: "pagado" as const,
-  },
-  {
-    id: "gf7",
-    nombre: "Sueldo administrativo",
-    categoria: "Mensual",
-    monto: 180_000,
-    estado: "pagado" as const,
-  },
-  {
-    id: "gf8",
-    nombre: "Mantenimiento jardín",
-    categoria: "Quincenal",
-    monto: 24_000,
-    estado: "pagado" as const,
-  },
-]
-
-type EstadoGastoVar = "pendiente" | "pagado" | "vencido"
-
-interface GastoVariable {
-  id: string
-  nombre: string
-  salon: string
-  fecha: string
-  monto: number
-  estado: EstadoGastoVar
-}
-
-const GASTOS_VARIABLES_INICIALES: GastoVariable[] = [
-  {
-    id: "gv1",
-    nombre: "Reparación cocina industrial",
-    salon: "Quinta",
-    fecha: "2025-06-05",
-    monto: 95_000,
-    estado: "pagado",
-  },
-  {
-    id: "gv2",
-    nombre: "Compra vajilla nueva",
-    salon: "Casona",
-    fecha: "2025-06-10",
-    monto: 67_000,
-    estado: "pendiente",
-  },
-  {
-    id: "gv3",
-    nombre: "Pintura sala principal",
-    salon: "Salón",
-    fecha: "2025-06-15",
-    monto: 48_000,
-    estado: "pendiente",
-  },
-  {
-    id: "gv4",
-    nombre: "Sistema de sonido",
-    salon: "Quinta",
-    fecha: "2025-05-20",
-    monto: 120_000,
-    estado: "vencido",
-  },
-]
-
-// Proyección saldo a 30 días
-const PROYECCION_BARRAS = {
-  saldoActual: 975_000,
-  gastosProyectados: 648_000,
-  ingresosProyectados: 1_225_000,
-}
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -198,17 +43,24 @@ function formatFecha(dateStr: string): string {
   return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short" })
 }
 
-function puntoPrioridad(diasRestantes: number) {
-  if (diasRestantes <= 1) {
+function puntoPrioridad(estado: EstadoAlerta) {
+  if (estado === "vencido" || estado === "urgente") {
     return <span className="h-2.5 w-2.5 rounded-full bg-red-500 shrink-0 mt-0.5" />
   }
-  if (diasRestantes <= 7) {
+  if (estado === "proximo") {
     return <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0 mt-0.5" />
   }
   return <span className="h-2.5 w-2.5 rounded-full bg-teal-500 shrink-0 mt-0.5" />
 }
 
-function badgeEstadoFijo(estado: "pagado" | "pendiente" | "vence mañana") {
+function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
+  if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
+  if (diasRestantes === 0) return "vence hoy"
+  if (diasRestantes === 1) return "vence mañana"
+  return `vence en ${diasRestantes} días`
+}
+
+function badgeEstadoFijo(estado: EstadoAlerta | "pagado") {
   if (estado === "pagado") {
     return (
       <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">
@@ -216,40 +68,46 @@ function badgeEstadoFijo(estado: "pagado" | "pendiente" | "vence mañana") {
       </Badge>
     )
   }
-  if (estado === "vence mañana") {
+  if (estado === "vencido" || estado === "urgente") {
     return (
       <Badge className="bg-red-100 text-red-700 border-red-200 text-[11px]">
-        vence mañana
+        {estado === "vencido" ? "vencido" : "urgente"}
+      </Badge>
+    )
+  }
+  if (estado === "proximo") {
+    return (
+      <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+        próximo
       </Badge>
     )
   }
   return (
-    <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+    <Badge className="bg-sky-100 text-sky-700 border-sky-200 text-[11px]">
       pendiente
     </Badge>
   )
 }
 
+type EstadoGastoVar = "pendiente" | "pagado" | "vencido"
+
+interface NuevoGastoVariableLocal {
+  id: string
+  nombre: string
+  salon: string
+  fecha: string
+  monto: number
+  estado: EstadoGastoVar
+}
+
 function badgeEstadoVar(estado: EstadoGastoVar) {
   if (estado === "pagado") {
-    return (
-      <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">
-        pagado
-      </Badge>
-    )
+    return <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">pagado</Badge>
   }
   if (estado === "vencido") {
-    return (
-      <Badge className="bg-red-100 text-red-700 border-red-200 text-[11px]">
-        vencido
-      </Badge>
-    )
+    return <Badge className="bg-red-100 text-red-700 border-red-200 text-[11px]">vencido</Badge>
   }
-  return (
-    <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
-      pendiente
-    </Badge>
-  )
+  return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">pendiente</Badge>
 }
 
 // ---------------------------------------------------------------------------
@@ -257,9 +115,21 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 // ---------------------------------------------------------------------------
 
 export default function CajaJazminePage() {
-  const [gastosVariables, setGastosVariables] = useState<GastoVariable[]>(
-    GASTOS_VARIABLES_INICIALES
-  )
+  const { state } = useStore()
+  const data = useCajaJazmines(state)
+
+  const {
+    saldoActual,
+    gastosPróximos30Dias,
+    saldoProyectado30Dias,
+    alertasVencimiento,
+    gastosFijosMes,
+    gastosVariables: gastosVariablesStore,
+    ingresosProyectados30Dias,
+  } = data
+
+  // Estado local para gastos variables nuevos (hasta que exista GastoVariable en el store)
+  const [gastosVariablesLocal, setGastosVariablesLocal] = useState<NuevoGastoVariableLocal[]>([])
   const [modalAbierto, setModalAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
@@ -268,28 +138,35 @@ export default function CajaJazminePage() {
     fecha: "",
   })
 
-  const saldoProyectado =
-    PROYECCION_BARRAS.saldoActual +
-    PROYECCION_BARRAS.ingresosProyectados -
-    PROYECCION_BARRAS.gastosProyectados
+  const gastosVariablesCombinados = [
+    ...gastosVariablesStore.map((g) => ({
+      id: g.id,
+      nombre: g.nombre,
+      salon: g.salon,
+      fecha: g.fecha,
+      monto: g.monto,
+      estado: g.estado,
+    })),
+    ...gastosVariablesLocal,
+  ]
 
-  const barMax = Math.max(
-    PROYECCION_BARRAS.saldoActual,
-    PROYECCION_BARRAS.ingresosProyectados,
-    PROYECCION_BARRAS.gastosProyectados
-  )
+  const totalGastosFijos = gastosFijosMes.reduce((s, g) => s + g.monto, 0)
+
+  const barMax = Math.max(saldoActual, ingresosProyectados30Dias, gastosPróximos30Dias, 1)
 
   const handleAgregarGasto = () => {
     if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon) return
-    const nuevo: GastoVariable = {
-      id: `gv-${Date.now()}`,
+    const nuevo: NuevoGastoVariableLocal = {
+      id: `gv-local-${Date.now()}`,
       nombre: nuevoGasto.nombre,
       salon: nuevoGasto.salon,
       fecha: nuevoGasto.fecha || new Date().toISOString().split("T")[0],
       monto: Number(nuevoGasto.monto),
       estado: "pendiente",
     }
-    setGastosVariables((prev) => [nuevo, ...prev])
+    // Log para debug hasta que se conecte al store
+    console.log("[v0] Nuevo gasto variable (pendiente integración al store):", nuevo)
+    setGastosVariablesLocal((prev) => [nuevo, ...prev])
     setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "" })
     setModalAbierto(false)
   }
@@ -322,7 +199,7 @@ export default function CajaJazminePage() {
               <Wallet className="h-4 w-4 text-purple-600" />
             </div>
             <p className="text-3xl font-bold text-purple-800">
-              {formatCurrency(SALDO_ACTUAL)}
+              {formatCurrency(saldoActual)}
             </p>
             <p className="text-xs text-purple-600 mt-1">
               Cobros acumulados × 50% − gastos
@@ -339,17 +216,17 @@ export default function CajaJazminePage() {
               <TrendingDown className="h-4 w-4 text-red-500" />
             </div>
             <p className="text-3xl font-bold text-red-600">
-              {formatCurrency(GASTOS_PROXIMOS_30)}
+              {formatCurrency(gastosPróximos30Dias)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Gastos fijos pendientes del período
+              Costos operativos pendientes del período
             </p>
           </CardContent>
         </Card>
 
         <Card
           className={
-            SALDO_PROYECTADO_30 >= 0
+            saldoProyectado30Dias >= 0
               ? "border-teal-200 bg-teal-50"
               : "border-red-200 bg-red-50"
           }
@@ -358,27 +235,27 @@ export default function CajaJazminePage() {
             <div className="flex items-center justify-between mb-2">
               <p
                 className={`text-xs font-medium uppercase tracking-wide ${
-                  SALDO_PROYECTADO_30 >= 0 ? "text-teal-700" : "text-red-700"
+                  saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"
                 }`}
               >
                 Saldo proyectado a 30 días
               </p>
               <TrendingUp
                 className={`h-4 w-4 ${
-                  SALDO_PROYECTADO_30 >= 0 ? "text-teal-600" : "text-red-600"
+                  saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"
                 }`}
               />
             </div>
             <p
               className={`text-3xl font-bold ${
-                SALDO_PROYECTADO_30 >= 0 ? "text-teal-800" : "text-red-700"
+                saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"
               }`}
             >
-              {formatCurrency(SALDO_PROYECTADO_30)}
+              {formatCurrency(saldoProyectado30Dias)}
             </p>
             <p
               className={`text-xs mt-1 ${
-                SALDO_PROYECTADO_30 >= 0 ? "text-teal-600" : "text-red-600"
+                saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"
               }`}
             >
               Saldo + ingresos − gastos estimados
@@ -396,39 +273,47 @@ export default function CajaJazminePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {ALERTAS_VENCIMIENTO.map((alerta) => (
-            <div
-              key={alerta.id}
-              className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
-            >
-              {puntoPrioridad(alerta.diasRestantes)}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">
-                  {alerta.nombre}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5 capitalize">
-                  {alerta.descripcion}
-                </p>
+          {alertasVencimiento.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              No hay vencimientos en los próximos 30 días.
+            </p>
+          ) : (
+            <>
+              {alertasVencimiento.map((alerta) => (
+                <div
+                  key={alerta.id}
+                  className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+                >
+                  {puntoPrioridad(alerta.estado)}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {alerta.concepto}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5 capitalize">
+                      {descripcionAlerta(alerta.diasRestantes, alerta.estado)}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-red-600 shrink-0">
+                    {formatCurrency(alerta.monto)}
+                  </span>
+                </div>
+              ))}
+              <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
+                  Urgente / vencido
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-400 inline-block" />
+                  Menos de 7 días
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-teal-500 inline-block" />
+                  Más de 7 días
+                </span>
               </div>
-              <span className="text-sm font-bold text-red-600 shrink-0">
-                {formatCurrency(alerta.monto)}
-              </span>
-            </div>
-          ))}
-          <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
-              Urgente / vencido
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-amber-400 inline-block" />
-              Menos de 7 días
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-teal-500 inline-block" />
-              Más de 7 días
-            </span>
-          </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -443,33 +328,40 @@ export default function CajaJazminePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {GASTOS_FIJOS.map((gasto) => (
-              <div
-                key={gasto.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{gasto.nombre}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {gasto.categoria}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-sm font-bold text-foreground">
-                    {formatCurrency(gasto.monto)}
+            {gastosFijosMes.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No hay gastos fijos configurados.
+              </p>
+            ) : (
+              <>
+                {gastosFijosMes.map((gasto) => (
+                  <div
+                    key={gasto.id}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{gasto.concepto}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {gasto.frecuencia}
+                        {gasto.salon ? ` · ${gasto.salon}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-sm font-bold text-foreground">
+                        {formatCurrency(gasto.monto)}
+                      </span>
+                      {badgeEstadoFijo(gasto.estado)}
+                    </div>
+                  </div>
+                ))}
+                <div className="pt-2 border-t border-border flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total</span>
+                  <span className="text-base font-bold text-foreground">
+                    {formatCurrency(totalGastosFijos)}
                   </span>
-                  {badgeEstadoFijo(gasto.estado)}
                 </div>
-              </div>
-            ))}
-            <div className="pt-2 border-t border-border flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total</span>
-              <span className="text-base font-bold text-foreground">
-                {formatCurrency(
-                  GASTOS_FIJOS.reduce((s, g) => s + g.monto, 0)
-                )}
-              </span>
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -484,25 +376,31 @@ export default function CajaJazminePage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            {gastosVariables.map((gasto) => (
-              <div
-                key={gasto.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{gasto.nombre}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {gasto.salon} · {formatFecha(gasto.fecha)}
-                  </p>
+            {gastosVariablesCombinados.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-3 text-center">
+                Sin gastos variables registrados.
+              </p>
+            ) : (
+              gastosVariablesCombinados.map((gasto) => (
+                <div
+                  key={gasto.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{gasto.nombre}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {gasto.salon} · {formatFecha(gasto.fecha)}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className="text-sm font-bold text-foreground">
+                      {formatCurrency(gasto.monto)}
+                    </span>
+                    {badgeEstadoVar(gasto.estado)}
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-sm font-bold text-foreground">
-                    {formatCurrency(gasto.monto)}
-                  </span>
-                  {badgeEstadoVar(gasto.estado)}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -528,20 +426,20 @@ export default function CajaJazminePage() {
           {[
             {
               label: "Saldo actual",
-              value: PROYECCION_BARRAS.saldoActual,
+              value: saldoActual,
               color: "bg-purple-500",
               textColor: "text-purple-700",
             },
             {
               label: "Gastos proyectados",
-              value: PROYECCION_BARRAS.gastosProyectados,
+              value: gastosPróximos30Dias,
               color: "bg-red-400",
               textColor: "text-red-600",
               signo: "−",
             },
             {
               label: "Ingresos proyectados (50%)",
-              value: PROYECCION_BARRAS.ingresosProyectados,
+              value: ingresosProyectados30Dias,
               color: "bg-purple-300",
               textColor: "text-purple-600",
               signo: "+",
@@ -575,10 +473,10 @@ export default function CajaJazminePage() {
               </span>
               <span
                 className={`text-xl font-bold ${
-                  saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"
+                  saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"
                 }`}
               >
-                {formatCurrency(saldoProyectado)}
+                {formatCurrency(saldoProyectado30Dias)}
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -632,13 +530,13 @@ export default function CajaJazminePage() {
                 <SelectContent>
                   <SelectItem value="Quinta">Quinta</SelectItem>
                   <SelectItem value="Casona">Casona</SelectItem>
-                  <SelectItem value="Salón">Salón</SelectItem>
+                  <SelectItem value="Salon">Salón</SelectItem>
                   <SelectItem value="General">General</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="fecha">Fecha de vencimiento</Label>
+              <Label htmlFor="fecha">Fecha</Label>
               <Input
                 id="fecha"
                 type="date"
@@ -658,9 +556,7 @@ export default function CajaJazminePage() {
             </Button>
             <Button
               onClick={handleAgregarGasto}
-              disabled={
-                !nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon
-              }
+              disabled={!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
               Agregar

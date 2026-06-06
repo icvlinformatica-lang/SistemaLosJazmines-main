@@ -299,6 +299,8 @@ export interface ConfiguracionCajas {
 
 export type TipoMovimientoCaja = "ingreso" | "egreso" | "aporte_admin"
 
+export type CajaDestino = "caja_eventos" | "caja_jazmines"
+
 export interface MovimientoCaja {
   id: string
   fecha: string // ISO string
@@ -310,6 +312,7 @@ export interface MovimientoCaja {
   costoOperativoId?: string
   origenAporte?: string // el salón que generó el aporte (solo para tipo aporte_admin)
   saldoResultante: number
+  cajaDestino?: CajaDestino // opcional — ausente en movimientos históricos previos a esta extensión
 }
 
 export type EstadoEvento = "borrador" | "pendiente" | "en_preparacion" | "completado" | "cancelado"
