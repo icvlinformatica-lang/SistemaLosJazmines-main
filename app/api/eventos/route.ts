@@ -91,8 +91,8 @@ function fromRow(r: Record<string, any>) {
     servicios: parseJsonField(r.servicios, []),
     paquetesSeleccionados: r.paquetes_seleccionados ?? [],
     condicionIva: r.condicion_iva,
-    contrato: r.contrato,
-    planDeCuotas: r.plan_de_cuotas,
+    contrato: parseJsonField(r.contrato, null),
+    planDeCuotas: parseJsonField(r.plan_de_cuotas, null),
     estado: r.estado ?? "pendiente",
     colorTag: r.color_tag,
     precioVenta: r.precio_venta != null ? Number(r.precio_venta) : undefined,
@@ -101,11 +101,13 @@ function fromRow(r: Record<string, any>) {
     costoServicios: r.costo_servicios != null ? Number(r.costo_servicios) : undefined,
     costoOperativo: r.costo_operativo != null ? Number(r.costo_operativo) : undefined,
     notasInternas: r.notas_internas,
-    pagos: r.pagos ?? [],
-    asignaciones: r.asignaciones ?? [],
-    costosCalculados: r.costos_calculados,
+    pagos: parseJsonField(r.pagos, []),
+    asignaciones: parseJsonField(r.asignaciones, []),
+    costosCalculados: parseJsonField(r.costos_calculados, null),
     stockDescontado: r.stock_descontado ?? false,
     fechaImpresion: r.fecha_impresion,
+    cocinaPagada: r.cocina_pagada ?? false,
+    barraPagada: r.barra_pagada ?? false,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -136,7 +138,7 @@ export async function GET() {
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, created_at, updated_at
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at
       FROM eventos
       WHERE deleted_at IS NULL
       ORDER BY fecha DESC NULLS LAST, created_at DESC

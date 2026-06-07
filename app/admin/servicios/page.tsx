@@ -16,7 +16,7 @@ import {
   TrendingUp,
   Package
 } from "lucide-react"
-import { calcularTotalesPaquete, obtenerPreciosServicio } from "@/lib/store"
+import { calcularTotalesPaquete } from "@/lib/store"
 import { useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -441,20 +441,16 @@ export default function ServiciosPage() {
                       <th className="px-4 py-3 text-left text-sm font-semibold">Código</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold">Nombre</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold">Categoría</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold">Precio Interno</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold">Precio Oficial</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold">Ganancia</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-rose-600">Costo</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-emerald-600">Precio</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold">% Seña</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold">Seña $</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold">Días seña</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {servicios.filter(s => s.activo).map((servicio) => {
-                      const { precioInterno, precioOficial } = obtenerPreciosServicio(servicio, state)
-                      const ganancia = precioOficial - precioInterno
-                      const margen = precioInterno > 0
-                        ? ((ganancia / precioInterno) * 100)
-                        : 0
-
                       return (
                         <tr key={servicio.id} className="hover:bg-muted/50">
                           <td className="px-4 py-3 text-sm font-mono">{servicio.codigo}</td>
@@ -467,24 +463,22 @@ export default function ServiciosPage() {
                           <td className="px-4 py-3">
                             <Badge variant="outline">{servicio.categoria}</Badge>
                           </td>
-                          <td className="px-4 py-3 text-right text-red-600 font-semibold">
-                            {formatearPrecio(precioInterno)}
-                            <span className="text-xs text-muted-foreground ml-1">
-                              /{servicio.unidad === "Fijo" ? "fijo" : servicio.unidad === "Por Persona" ? "pers" : "hora"}
-                            </span>
+                          <td className="px-4 py-3 text-right text-rose-600 font-semibold">
+                            {formatearPrecio(servicio.costoParaCajaEventos ?? 0)}
                           </td>
-                          <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                            {formatearPrecio(precioOficial)}
+                          <td className="px-4 py-3 text-right text-emerald-600 font-semibold">
+                            {formatearPrecio(servicio.precioVenta ?? 0)}
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <span className="font-semibold text-blue-600">
-                                {formatearPrecio(ganancia)}
-                              </span>
-                              <Badge className={getMargenColor(margen)}>
-                                {margen.toFixed(1)}%
-                              </Badge>
-                            </div>
+                          <td className="px-4 py-3 text-center">
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                              {servicio.porcentajeSeña ?? 30}%
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-amber-700">
+                            {formatearPrecio((servicio.precioVenta ?? 0) * (servicio.porcentajeSeña ?? 30) / 100)}
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm text-muted-foreground">
+                            {servicio.diasAnticipacionSeña ?? 30}d
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex justify-center gap-1">
@@ -670,13 +664,17 @@ function DialogoServicio({
     servicio: any
     onGuardar: (data: any) => void
   }) {
-    const { state } = useStore()
     const [formData, setFormData] = useState({
       codigo: servicio?.codigo || "",
       nombre: servicio?.nombre || "",
       descripcion: servicio?.descripcion || "",
       categoria: servicio?.categoria || "Salon y Espacio",
-      margenGanancia: servicio?.margenGanancia ?? 30,
+      margenGanancia: servicio?.margenGanancia ?? 0,
+      costoParaCajaEventos: servicio?.costoParaCajaEventos ?? 0,
+      precioVenta: servicio?.precioVenta ?? 0,
+      porcentajeSeña: servicio?.porcentajeSeña ?? 30,
+      diasAnticipacionSeña: servicio?.diasAnticipacionSeña ?? 30,
+      diasAnticipacionSaldo: servicio?.diasAnticipacionSaldo ?? 7,
       unidad: servicio?.unidad || "Fijo",
       proveedor: servicio?.proveedor || "",
       notas: servicio?.notas || "",
@@ -690,7 +688,12 @@ function DialogoServicio({
           nombre: servicio.nombre || "",
           descripcion: servicio.descripcion || "",
           categoria: servicio.categoria || "Salon y Espacio",
-          margenGanancia: servicio.margenGanancia ?? 30,
+          margenGanancia: servicio.margenGanancia ?? 0,
+          costoParaCajaEventos: servicio.costoParaCajaEventos ?? 0,
+          precioVenta: servicio.precioVenta ?? 0,
+          porcentajeSeña: servicio.porcentajeSeña ?? 30,
+          diasAnticipacionSeña: servicio.diasAnticipacionSeña ?? 30,
+          diasAnticipacionSaldo: servicio.diasAnticipacionSaldo ?? 7,
           unidad: servicio.unidad || "Fijo",
           proveedor: servicio.proveedor || "",
           notas: servicio.notas || "",
@@ -702,7 +705,12 @@ function DialogoServicio({
           nombre: "",
           descripcion: "",
           categoria: "Salon y Espacio",
-          margenGanancia: 30,
+          margenGanancia: 0,
+          costoParaCajaEventos: 0,
+          precioVenta: 0,
+          porcentajeSeña: 30,
+          diasAnticipacionSeña: 30,
+          diasAnticipacionSaldo: 7,
           unidad: "Fijo",
           proveedor: "",
           notas: "",
@@ -716,15 +724,9 @@ function DialogoServicio({
       onCerrar()
     }
 
-    // Calcular precios dinámicamente si estamos editando un servicio existente
-    const precioInternoCalc = servicio?.id
-      ? state.personal
-          .filter((p: any) => p.activo && p.servicioVinculadoId === servicio.id)
-          .reduce((sum: number, p: any) => sum + p.tarifaBase, 0)
-      : 0
-    const precioOficialCalc = precioInternoCalc * (1 + formData.margenGanancia / 100)
-    const ganancia = precioOficialCalc - precioInternoCalc
-    const margen = formData.margenGanancia
+    // Cálculos derivados
+    const montoSeña = formData.precioVenta * formData.porcentajeSeña / 100
+    const montoSaldo = formData.precioVenta - montoSeña
 
     return (
       <Dialog open={abierto} onOpenChange={onCerrar}>
@@ -811,64 +813,89 @@ function DialogoServicio({
               </div>
             </div>
 
-            {/* Margen de Ganancia */}
-            <div>
-              <Label>Margen de Ganancia (%)</Label>
-              <Input
-                type="number"
-                value={formData.margenGanancia}
-                onChange={(e) => setFormData({ ...formData, margenGanancia: parseFloat(e.target.value) || 0 })}
-                placeholder="30"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Se aplica sobre el costo del personal vinculado
-              </p>
+            {/* Costo y Precio */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Costo para el salón ($)</Label>
+                <Input
+                  type="number"
+                  value={formData.costoParaCajaEventos || ""}
+                  onChange={(e) => setFormData({ ...formData, costoParaCajaEventos: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Impacta como egreso en Caja Eventos</p>
+              </div>
+              <div>
+                <Label>Precio al cliente ($)</Label>
+                <Input
+                  type="number"
+                  value={formData.precioVenta || ""}
+                  onChange={(e) => setFormData({ ...formData, precioVenta: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Figura en el contrato del evento</p>
+              </div>
             </div>
 
-            {/* Cálculo de Precios Dinámicos */}
-            <Card className="bg-muted/50">
-              <CardContent className="pt-4">
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Costo (Personal)</p>
-                    <p className="text-lg font-bold text-red-600">
-                      {new Intl.NumberFormat('es-AR', {
-                        style: 'currency',
-                        currency: 'ARS',
-                        minimumFractionDigits: 0
-                      }).format(precioInternoCalc)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Precio Venta</p>
-                    <p className="text-lg font-bold text-green-600">
-                      {new Intl.NumberFormat('es-AR', {
-                        style: 'currency',
-                        currency: 'ARS',
-                        minimumFractionDigits: 0
-                      }).format(precioOficialCalc)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Ganancia</p>
-                    <p className="text-lg font-bold">
-                      <Badge className={
-                        margen >= 15 ? "bg-green-500" :
-                          margen >= 10 ? "bg-yellow-500" :
-                            "bg-red-500"
-                      }>
-                        {margen}%
-                      </Badge>
-                    </p>
-                  </div>
+            {/* % Seña con preview */}
+            <div>
+              <Label>% de seña al proveedor</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={5}
+                value={formData.porcentajeSeña}
+                onChange={(e) => setFormData({ ...formData, porcentajeSeña: parseFloat(e.target.value) || 0 })}
+                placeholder="30"
+              />
+              {formData.precioVenta > 0 && (
+                <div className="flex gap-4 mt-1.5 text-xs text-muted-foreground">
+                  <span>
+                    Seña:{" "}
+                    <span className="font-semibold text-amber-600">
+                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(montoSeña)}
+                    </span>
+                  </span>
+                  <span>
+                    Saldo:{" "}
+                    <span className="font-semibold text-orange-600">
+                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(montoSaldo)}
+                    </span>
+                  </span>
                 </div>
-                {precioInternoCalc === 0 && servicio?.id && (
-                  <p className="text-xs text-amber-600 text-center mt-2">
-                    No hay personal vinculado. Vincula personal desde la seccion Personal.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+              )}
+            </div>
+
+            {/* Días anticipación */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Días para pagar la seña (antes del evento)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={formData.diasAnticipacionSeña}
+                  onChange={(e) => setFormData({ ...formData, diasAnticipacionSeña: parseInt(e.target.value) || 0 })}
+                  placeholder="30"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ej: 30 → la seña vence 30 días antes del evento
+                </p>
+              </div>
+              <div>
+                <Label>Días para pagar el saldo (antes del evento)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={formData.diasAnticipacionSaldo}
+                  onChange={(e) => setFormData({ ...formData, diasAnticipacionSaldo: parseInt(e.target.value) || 0 })}
+                  placeholder="7"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ej: 7 → el saldo vence 7 días antes del evento
+                </p>
+              </div>
+            </div>
 
             {/* Proveedor y Notas */}
             <div>

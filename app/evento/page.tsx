@@ -14,6 +14,7 @@ import {
   calcularTotalesPaquete,
   getPrecioVenta,
   generateId,
+  generarMovimientoIngreso,
   obtenerPreciosServicio,
   type EventoHistorial,
   type BarraEvento,
@@ -21,6 +22,8 @@ import {
   type Servicio,
   type PaqueteSalon,
   type EstadoEvento,
+  type EventoGuardado,
+  type VersionContrato,
   SALONES,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -92,36 +95,28 @@ import {
   ClipboardList,
 } from "lucide-react"
 import { MenuTable } from "@/components/menu-table"
+import { CoctelTable } from "@/components/coctel-table"
 
 function EventoPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editingEventoId = searchParams?.get("id")
   const isEditing = !!editingEventoId
+  const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
-  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja } = useStore()
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
   const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showSaveSuccess, setShowSaveSuccess] = useState(false)
+  const [observacionContrato, setObservacionContrato] = useState("")
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
     barraCocteles: true,
     guiaProduccion: true,
-  })
-  const [dialogBarraOpen, setDialogBarraOpen] = useState(false)
-  const [editingBarraIndex, setEditingBarraIndex] = useState<number | null>(null)
-  const [barraForm, setBarraForm] = useState<{
-    barraTemplateId: string
-    coctelesIncluidos: string[]
-    tragosPorPersona: number
-  }>({
-    barraTemplateId: "",
-    coctelesIncluidos: [],
-    tragosPorPersona: 3,
   })
 
   // Package selection state (no more individual service dialog)
@@ -326,24 +321,6 @@ function EventoPageContent() {
   }, [evento, updateEventoActual])
 
   // === Bar Handlers ===
-  const resetBarraForm = () => {
-    setBarraForm({
-      barraTemplateId: "",
-      coctelesIncluidos: [],
-      tragosPorPersona: 3,
-    })
-    setEditingBarraIndex(null)
-  }
-
-  const toggleCoctelInBarra = (coctelId: string) => {
-    const current = barraForm.coctelesIncluidos
-    if (current.includes(coctelId)) {
-      setBarraForm({ ...barraForm, coctelesIncluidos: current.filter((id) => id !== coctelId) })
-    } else {
-      setBarraForm({ ...barraForm, coctelesIncluidos: [...current, coctelId] })
-    }
-  }
-
   // === Package Handlers (replace old service handlers) ===
   const paquetesDelSalon = useMemo(() => {
     if (!evento?.salon) return []
@@ -538,16 +515,48 @@ function EventoPageContent() {
         const montoConRecargo = montoFinanciado * (1 + localPorcentajeRecargo / 100)
         const cuotasEfectivas = modalidad === "completo" ? 1 : localNumeroCuotas
         const montoCuotaCalc = cuotasEfectivas > 0 ? Math.round((montoConRecargo / cuotasEfectivas) * 100) / 100 : 0
+        const cuotasPagadasPrev = evento.planDeCuotas?.cuotasPagadas || []
+
+        // Generar el detalle de cuotas con fechas de vencimiento.
+        // Esto es lo que consumen las cajas (caja_eventos / caja_jazmines) para
+        // proyectar ingresos: cada cuota se divide 50/50 entre ambas cajas.
+        const [planYear, planMonth, planDay] = (localFechaInicioPlan || new Date().toISOString().split("T")[0])
+          .split("-")
+          .map(Number)
+        const diaVenc = localDiaVencimiento || 10
+        const cuotasDetalle: NonNullable<EventoGuardado["planDeCuotas"]>["cuotas"] = []
+
+        // La seña NO es una cuota: se cobra al firmar el contrato y se registra
+        // como movimiento real en las cajas. La "Fecha Primera Cuota" indica el mes
+        // de la cuota 1 (cuota 1 = mes de la fecha de inicio), igual que en la
+        // previsualizacion del contrato. Cada cuota suma (numero - 1) meses.
+        for (let i = 0; i < cuotasEfectivas; i++) {
+          const numeroCuota = i + 1
+          const mesVenc = (planMonth - 1) + (numeroCuota - 1)
+          const añoVenc = planYear + Math.floor(mesVenc / 12)
+          const mesAjustado = ((mesVenc % 12) + 12) % 12
+          const ultimoDia = new Date(añoVenc, mesAjustado + 1, 0).getDate()
+          const diaAjustado = Math.min(diaVenc, ultimoDia)
+          const fechaCuota = new Date(añoVenc, mesAjustado, diaAjustado)
+          cuotasDetalle.push({
+            numero: numeroCuota,
+            montoCuota: montoCuotaCalc,
+            fechaVencimiento: fechaCuota.toISOString().split("T")[0],
+            pagada: cuotasPagadasPrev.includes(numeroCuota),
+          })
+        }
+
         return {
           numeroCuotas: cuotasEfectivas,
           montoCuota: montoCuotaCalc,
           montoTotal: localMontoTotal,
-          diaVencimiento: localDiaVencimiento || 10,
+          diaVencimiento: diaVenc,
           fechaInicioPlan: localFechaInicioPlan || "",
-          cuotasPagadas: evento.planDeCuotas?.cuotasPagadas || [],
+          cuotasPagadas: cuotasPagadasPrev,
           modalidadPago: modalidad,
           montoSena: modalidad === "sena" ? localMontoSena : undefined,
           porcentajeRecargo: localPorcentajeRecargo > 0 ? localPorcentajeRecargo : undefined,
+          cuotas: cuotasDetalle,
         }
       })() : undefined,
       // Legacy fields for backwards compatibility with calendario-pagos
@@ -560,20 +569,126 @@ function EventoPageContent() {
     }
     
     if (isEditing && editingEventoId) {
+      // When coming from contratos: auto-create a new VersionContrato snapshot
+      let versionesContrato = evento?.versionesContrato || []
+      if (fromContratos) {
+        const serviciosIds = (evento?.servicios || []).map((se) => se.servicioId).filter(Boolean) as string[]
+        const nuevaVersion: VersionContrato = {
+          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
+          fechaGuardado: new Date().toISOString(),
+          motivo: observacionContrato.trim() || undefined,
+          snapshotContrato: {
+            nombreCompleto: eventData.contrato?.nombreCompleto,
+            dni: eventData.contrato?.dni,
+            telefono: eventData.contrato?.telefono,
+            direccion: eventData.contrato?.direccion,
+            email: eventData.contrato?.email,
+          },
+          snapshotServicios: serviciosIds,
+          snapshotServiciosLibres: evento?.serviciosLibresContrato || [],
+          snapshotPlanCuotas: eventData.planDeCuotas,
+          impactos: ["sin_cambios"],
+        }
+        versionesContrato = [...versionesContrato, nuevaVersion]
+      }
+
       // Actualizar evento existente — await para garantizar persistencia antes de navegar
-      await updateEvento(editingEventoId, eventData)
+      await updateEvento(editingEventoId, {
+        ...eventData,
+        ...(fromContratos ? { versionesContrato } : {}),
+      })
       toast({
-        title: "Evento actualizado",
-        description: "Los cambios se guardaron correctamente",
+        title: fromContratos ? "Contrato actualizado" : "Evento actualizado",
+        description: fromContratos
+          ? `Version ${versionesContrato.length} guardada correctamente`
+          : "Los cambios se guardaron correctamente",
       })
       setIsSaving(false)
-      router.push("/eventos/lista")
+      if (fromContratos) {
+        router.push(`/eventos/contratos?eventoId=${editingEventoId}`)
+      } else {
+        router.push("/eventos/lista")
+      }
     } else {
-      // Crear nuevo evento — await para garantizar que se guarda en DB antes de navegar
+      // Crear nuevo evento — garantizar un id estable para asociar contrato y movimientos
+      const nuevoEventoId = eventData.id || generateId()
+
+      // 1) Generar automaticamente la PRIMERA version del contrato
+      const serviciosIds = (eventData.servicios || []).map((se: any) => se.servicioId).filter(Boolean) as string[]
+      const primeraVersion: VersionContrato = {
+        version: 1,
+        fechaGuardado: new Date().toISOString(),
+        motivo: "Contrato inicial generado desde el planificador",
+        snapshotContrato: {
+          nombreCompleto: eventData.contrato?.nombreCompleto,
+          dni: eventData.contrato?.dni,
+          telefono: eventData.contrato?.telefono,
+          direccion: eventData.contrato?.direccion,
+          email: eventData.contrato?.email,
+        },
+        snapshotServicios: serviciosIds,
+        snapshotServiciosLibres: eventData.serviciosLibresContrato || [],
+        snapshotPlanCuotas: eventData.planDeCuotas,
+        impactos: ["sin_cambios"],
+      }
+
       await addEvento({
         ...eventData,
+        id: nuevoEventoId,
         estado: "pendiente",
+        versionesContrato: [primeraVersion],
       } as any)
+
+      // 2) Registrar automaticamente la seña en las cajas (50/50 entre Caja Eventos y Caja Jazmines)
+      if (localModalidadPago === "sena" && localMontoSena > 0 && eventData.salon) {
+        const nombreEvento = eventData.nombrePareja || eventData.nombre || "Evento"
+
+        // Aporte a admin / saldo de la caja del salon (segun configuracion)
+        const movimientosSalon = generarMovimientoIngreso(
+          eventData.salon,
+          localMontoSena,
+          `Seña - ${nombreEvento}`,
+          configuracionCajas,
+          movimientosCaja,
+          nuevoEventoId,
+        )
+
+        const mitad = Math.round((localMontoSena / 2) * 100) / 100
+        const fecha = new Date().toISOString()
+
+        const saldoPrevEventos = (movimientosCaja || [])
+          .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === eventData.salon)
+          .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+        const saldoPrevJazmines = (movimientosCaja || [])
+          .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
+          .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+
+        const movEventos: MovimientoCaja = {
+          id: generateId(),
+          fecha,
+          tipo: "ingreso",
+          concepto: `Seña - ${nombreEvento} (Caja Eventos)`,
+          monto: mitad,
+          salon: eventData.salon,
+          eventoId: nuevoEventoId,
+          cajaDestino: "caja_eventos",
+          saldoResultante: saldoPrevEventos + mitad,
+        }
+        const movJazmines: MovimientoCaja = {
+          id: generateId(),
+          fecha,
+          tipo: "ingreso",
+          concepto: `Seña - ${nombreEvento} (Caja Jazmines)`,
+          monto: mitad,
+          salon: eventData.salon,
+          eventoId: nuevoEventoId,
+          cajaDestino: "caja_jazmines",
+          saldoResultante: saldoPrevJazmines + mitad,
+        }
+
+        await addMovimientosCaja([...movimientosSalon, movEventos, movJazmines])
+      }
+
       // Log activity
       fetch("/api/activity-log", {
         method: "POST",
@@ -856,7 +971,6 @@ function EventoPageContent() {
   const costoOperativo = calcularCostosOperativos(evento, costosOperativos || [])
 
   const barras = evento.barras || []
-  const barrasTemplates = state.barrasTemplates || []
   const existsInCalendar = (state.eventos || []).some((e) => e.id === evento.id)
 
   // Bloqueo de campos criticos cuando el stock ya fue comprometido
@@ -868,63 +982,34 @@ function EventoPageContent() {
   const esSoloLectura = evento.estado === "completado"
 
   // Handlers that depend on derived values (must be after early return)
-  const handleOpenAddBarra = () => {
-    resetBarraForm()
-    setDialogBarraOpen(true)
-  }
+  // Selección de cocteles por click (estilo tabla de menú).
+  // Se mantiene una única "barra" implícita para conservar la compatibilidad
+  // con calcularComprasBarras (que necesita tragosPorPersona).
+  const coctelesEventoSeleccionados = barras[0]?.coctelesIncluidos || []
 
-  const handleEditBarra = (index: number) => {
-    const barra = barras[index]
-    setBarraForm({
-      barraTemplateId: barra.barraTemplateId || "",
-      coctelesIncluidos: [...barra.coctelesIncluidos],
-      tragosPorPersona: barra.tragosPorPersona,
-    })
-    setEditingBarraIndex(index)
-    setDialogBarraOpen(true)
-  }
+  const toggleCoctelEvento = (coctelId: string) => {
+    const barraActual = barras[0]
+    const seleccionados = barraActual?.coctelesIncluidos || []
+    const nuevos = seleccionados.includes(coctelId)
+      ? seleccionados.filter((id) => id !== coctelId)
+      : [...seleccionados, coctelId]
 
-  const handleDeleteBarra = (index: number) => {
-    const updatedBarras = barras.filter((_, i) => i !== index)
-    updateEventoActual({ barras: updatedBarras })
-  }
-
-  const handleGuardarBarra = () => {
-    const newBarra: BarraEvento = {
-      id: editingBarraIndex !== null ? barras[editingBarraIndex].id : generateId(),
-      barraTemplateId: barraForm.barraTemplateId,
-      coctelesIncluidos: barraForm.coctelesIncluidos,
-      tragosPorPersona: barraForm.tragosPorPersona,
+    if (nuevos.length === 0) {
+      // Sin cocteles: limpiar las barras del evento
+      updateEventoActual({ barras: [] })
+      return
     }
 
-    let updatedBarras: BarraEvento[]
-    if (editingBarraIndex !== null) {
-      updatedBarras = barras.map((b, i) => (i === editingBarraIndex ? newBarra : b))
-    } else {
-      updatedBarras = [...barras, newBarra]
+    const barraActualizada: BarraEvento = {
+      id: barraActual?.id || generateId(),
+      barraTemplateId: barraActual?.barraTemplateId || "",
+      coctelesIncluidos: nuevos,
+      tragosPorPersona: barraActual?.tragosPorPersona ?? 2,
     }
-
-    updateEventoActual({ barras: updatedBarras })
-    resetBarraForm()
-    setDialogBarraOpen(false)
-  }
-
-  const handleSelectBarraTemplate = (templateId: string) => {
-    const template = barrasTemplates.find((t) => t.id === templateId)
-    if (!template) return
-    setBarraForm({
-      ...barraForm,
-      barraTemplateId: templateId,
-      coctelesIncluidos: [...template.coctelesIncluidos],
-    })
+    updateEventoActual({ barras: [barraActualizada] })
   }
 
   // Service handlers removed - now using package selection
-
-  const calcularTotalTragos = () => {
-    const personas = evento.adultos + evento.adolescentes
-    return personas * barraForm.tragosPorPersona
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -1313,56 +1398,18 @@ function EventoPageContent() {
         {/* ==================== BAR SECTION ==================== */}
         <SectionCard
           sectionKey="barras"
-          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10"><Wine className="h-5 w-5 text-violet-600" /></div>}
-          title="Barras del Evento"
-          subtitle={barras.length > 0 ? `${barras.length} barra${barras.length > 1 ? "s" : ""} configurada${barras.length > 1 ? "s" : ""}` : "Agrega barras de tragos y cocteles"}
-          badge={barras.length > 0 ? <Badge variant="secondary" className="text-xs">{barras.length} barra{barras.length > 1 ? "s" : ""}</Badge> : undefined}
+          title="Barra del Evento"
+          subtitle={coctelesEventoSeleccionados.length > 0 ? `${coctelesEventoSeleccionados.length} coctel${coctelesEventoSeleccionados.length > 1 ? "es" : ""} seleccionado${coctelesEventoSeleccionados.length > 1 ? "s" : ""}` : "Selecciona los cocteles para este evento"}
+          badge={coctelesEventoSeleccionados.length > 0 ? <Badge variant="secondary" className="text-xs">{coctelesEventoSeleccionados.length} coctel{coctelesEventoSeleccionados.length > 1 ? "es" : ""}</Badge> : undefined}
+          locked={esBloqueado}
         >
-
-          {barras.length > 0 && (
-            <div className="space-y-3">
-              {barras.map((barra, index) => {
-                const coctelesNames = barra.coctelesIncluidos
-                  .map((id) => state.cocteles.find((c) => c.id === id)?.nombre)
-                  .filter(Boolean)
-                const template = barrasTemplates.find((t) => t.id === barra.barraTemplateId)
-                const personas = evento.adultos + evento.adolescentes
-                return (
-                  <div key={barra.id} className="rounded-lg border border-border/60 bg-muted/20 p-4 transition-colors hover:bg-muted/40">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm">{template?.nombre || "Barra"}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {personas} personas &middot; {barra.tragosPorPersona} tragos/persona &middot; {personas * barra.tragosPorPersona} total
-                        </p>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditBarra(index)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteBarra(index)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                    {coctelesNames.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {coctelesNames.map((name) => (
-                          <Badge key={name} variant="secondary" className="text-xs font-normal">{name}</Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          <Button variant="outline" className="w-full h-11 text-sm bg-transparent border-dashed" onClick={handleOpenAddBarra}>
-            <Plus className="mr-2 h-4 w-4" />
-            Agregar Barra
-          </Button>
+          <CoctelTable
+            cocteles={state.cocteles}
+            coctelesSeleccionados={coctelesEventoSeleccionados}
+            esBloqueado={esBloqueado}
+            onToggle={toggleCoctelEvento}
+          />
         </SectionCard>
 
         {/* ==================== PAQUETES DE SERVICIOS (OCULTO TEMPORALMENTE) ==================== */}
@@ -1668,206 +1715,219 @@ function EventoPageContent() {
         {/* ==================== SERVICIOS DEL EVENTO ==================== */}
         <SectionCard
           sectionKey="servicios-evento"
-          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
           title="Servicios del Evento"
           subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
         >
-          {/* Agregar nuevo servicio */}
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {catalogoServicios.filter(s => s.activo).map((servicio) => {
-                const yaAgregado = serviciosEvento.some(se => se.servicioId === servicio.id)
-                return (
-                  <Button
-                    key={servicio.id}
-                    variant={yaAgregado ? "secondary" : "outline"}
-                    size="sm"
-                    disabled={yaAgregado}
-                    onClick={() => {
-                      const nuevoServicio: ServicioEvento = {
-                        servicioId: servicio.id,
-                        nombre: servicio.nombre,
-                        cantidad: 1,
-                        unidad: servicio.unidad || "Fijo",
-                        estadoPago: "sin_seña",
-                      }
-                      setEvento({
-                        ...evento,
-                        servicios: [...serviciosEvento, nuevoServicio],
-                      })
-                    }}
-                    className="text-xs"
-                  >
-                    {yaAgregado ? (
-                      <CheckCircle className="h-3 w-3 mr-1 text-green-600" />
-                    ) : (
-                      <Plus className="h-3 w-3 mr-1" />
-                    )}
-                    {servicio.nombre}
-                  </Button>
-                )
-              })}
+          {/* Tabla multiplechoice de servicios */}
+          {catalogoServicios.filter(s => s.activo).length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
+              <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No hay servicios en el catalogo</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ve a Finanzas → Servicios para agregar servicios
+              </p>
             </div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/70 border-b border-border">
+                    <th className="w-10 px-3 py-2" />
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Servicio</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Categoria</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700 uppercase tracking-wide">Precio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalogoServicios.filter(s => s.activo).map((servicio, idx) => {
+                    const seleccionado = serviciosEvento.some(se => se.servicioId === servicio.id)
+                    const precioVenta = servicio.precioVenta ?? 0
+                    const costoSeña = Math.round((servicio.costoParaCajaEventos ?? 0) * (servicio.porcentajeSeña ?? 30) / 100)
 
-            {catalogoServicios.filter(s => s.activo).length === 0 && (
-              <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed rounded-lg">
-                <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No hay servicios en el catalogo</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ve a Finanzas {"->"} Catalogo Servicios para agregar servicios
-                </p>
-              </div>
-            )}
+                    const fmt = (n: number) =>
+                      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
 
-            {/* Lista de servicios agregados */}
-            {serviciosEvento.length > 0 && (
-              <div className="space-y-2 mt-4 pt-4 border-t">
-                <h4 className="text-sm font-medium flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                  Servicios agregados
-                </h4>
-                {serviciosEvento.map((srv, idx) => {
-                  const servicioCatalogo = catalogoServicios.find(s => s.id === srv.servicioId)
-                  return (
-                    <div key={srv.servicioId} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {servicioCatalogo?.categoria || "Servicio"}
-                        </Badge>
-                        <span className="text-sm font-medium">{srv.nombre}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={srv.estadoPago === "pagado_total" ? "default" : "secondary"} className="text-xs">
-                          {srv.estadoPago === "sin_seña" ? "Sin seña" : 
-                           srv.estadoPago === "señado" ? "Señado" :
-                           srv.estadoPago === "saldo_pendiente" ? "Saldo pend." : "Pagado"}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => {
-                            const nuevosServicios = serviciosEvento.filter((_, i) => i !== idx)
-                            setEvento({
-                              ...evento,
-                              servicios: nuevosServicios,
-                            })
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    const toggleServicio = () => {
+                      if (seleccionado) {
+                        updateEventoActual({ servicios: serviciosEvento.filter(se => se.servicioId !== servicio.id) })
+                      } else {
+                        const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
+                        const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
+                        const costoBase = servicio.costoParaCajaEventos ?? 0
+                        const pct = servicio.porcentajeSeña ?? 30
+                        const montoSeña = Math.round(costoBase * pct / 100)
+                        const saldoPendiente = costoBase - montoSeña
 
-            {/* Panel de Pagos a Proveedores (solo si hay servicios) */}
-            {serviciosEvento.length > 0 && (() => {
-              const getEstadoPagoBadge = (estadoPago?: string): JSX.Element => {
-                const configs: Record<string, { label: string; variant: string; className: string }> = {
-                  sin_seña:        { label: "Sin seña",        variant: "secondary", className: "bg-muted text-muted-foreground" },
-                  señado:          { label: "Señado",          variant: "outline",   className: "bg-yellow-100 text-yellow-700 border-yellow-300" },
-                  saldo_pendiente: { label: "Saldo pendiente", variant: "outline",   className: "bg-orange-100 text-orange-700 border-orange-300" },
-                  pagado_total:    { label: "Pagado total",    variant: "outline",   className: "bg-green-100 text-green-700 border-green-300" },
-                }
-                const cfg = configs[estadoPago ?? "sin_seña"] ?? configs.sin_seña
-                return (
-                  <Badge variant="outline" className={`shrink-0 rounded-full text-xs font-medium ${cfg.className}`}>
-                    {cfg.label}
-                  </Badge>
-                )
-              }
+                        // La seña al proveedor se paga ANTES de fin del mes en que se
+                        // contrata el evento (hoy). Vence el último día de ese mes.
+                        const hoyContrato = new Date()
+                        const fechaSeñaDate = new Date(hoyContrato.getFullYear(), hoyContrato.getMonth() + 1, 0)
+                        const fechaSaldoDate = new Date(fechaEvento)
+                        fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
 
-              return (
-                <div className="mt-5 space-y-3 pt-4 border-t">
-                  <div className="flex items-center gap-2 pb-1">
-                    <Banknote className="h-4 w-4 text-muted-foreground" />
-                    <h4 className="text-sm font-semibold">Gestionar Pagos a Proveedores</h4>
-                  </div>
+                        const nuevoServicio: ServicioEvento = {
+                          servicioId: servicio.id,
+                          nombre: servicio.nombre,
+                          cantidad: 1,
+                          unidad: servicio.unidad || "Fijo",
+                          estadoPago: "sin_seña",
+                          montoSeña,
+                          saldoPendiente,
+                          fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
+                          fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                        }
+                        updateEventoActual({ servicios: [...serviciosEvento, nuevoServicio] })
+                      }
+                    }
 
-                  {serviciosEvento.map((srv) => {
-                    const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
+                    const esPorHora = servicio.unidad === "Por Hora"
+                    const servicioEnEvento = serviciosEvento.find(se => se.servicioId === servicio.id)
+                    const horas = servicioEnEvento?.cantidad ?? 1
+                    const precioTotal = esPorHora ? precioVenta * horas : precioVenta
+
+                    const handleHoras = (e: React.ChangeEvent<HTMLInputElement>) => {
+                      e.stopPropagation()
+                      const nuevasHoras = Math.max(1, parseInt(e.target.value) || 1)
+                      const nuevoPrecioVenta = precioVenta * nuevasHoras
+                      const pct = servicio.porcentajeSeña ?? 30
+                      const nuevaSeña = Math.round(nuevoPrecioVenta * pct / 100)
+                      const nuevoSaldo = nuevoPrecioVenta - nuevaSeña
+                      const nuevoCosto = (servicio.costoParaCajaEventos ?? 0) * nuevasHoras
+                      const nuevaSeñaCosto = Math.round(nuevoCosto * pct / 100)
+
+                      const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
+                      const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
+                      // La seña al proveedor vence a fin del mes en que se contrata (hoy)
+                      const hoyContrato = new Date()
+                      const fechaSeñaDate = new Date(hoyContrato.getFullYear(), hoyContrato.getMonth() + 1, 0)
+                      const fechaSaldoDate = new Date(fechaEvento)
+                      fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
+
+                      updateEventoActual({
+                        servicios: serviciosEvento.map(se =>
+                          se.servicioId === servicio.id
+                            ? {
+                                ...se,
+                                cantidad: nuevasHoras,
+                                montoSeña: nuevaSeñaCosto,
+                                saldoPendiente: (nuevoCosto - nuevaSeñaCosto),
+                                fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
+                                fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                              }
+                            : se
+                        ),
+                      })
+                    }
 
                     return (
-                      <div key={srv.servicioId} className="rounded-lg border bg-card p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">{srv.nombre}</span>
-                          {getEstadoPagoBadge(estadoPago)}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label className="text-xs">Monto Seña</Label>
-                            <Input
-                              type="number"
-                              value={srv.montoSeña || ""}
-                              onChange={(e) => {
-                                const montoSeña = parseFloat(e.target.value) || 0
-                                const nuevosServicios = serviciosEvento.map(s =>
-                                  s.servicioId === srv.servicioId
-                                    ? { ...s, montoSeña, estadoPago: montoSeña > 0 ? "señado" as const : "sin_seña" as const }
-                                    : s
-                                )
-                                setEvento({ ...evento, servicios: nuevosServicios })
-                              }}
-                              placeholder="0"
-                              className="h-9"
-                            />
+                      <tr
+                        key={servicio.id}
+                        onClick={toggleServicio}
+                        className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
+                          seleccionado
+                            ? "bg-emerald-50/70 hover:bg-emerald-50"
+                            : idx % 2 === 0
+                            ? "hover:bg-muted/40"
+                            : "bg-muted/10 hover:bg-muted/40"
+                        }`}
+                      >
+                        {/* Checkbox visual */}
+                        <td className="w-10 px-3 py-2.5">
+                          <div className={`w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
+                            seleccionado
+                              ? "bg-emerald-600 border-emerald-600"
+                              : "border-muted-foreground/30 bg-background"
+                          }`}>
+                            {seleccionado && (
+                              <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+                            )}
                           </div>
-                          <div>
-                            <Label className="text-xs">Fecha Seña</Label>
-                            <Input
-                              type="date"
-                              value={srv.fechaSeña || ""}
-                              onChange={(e) => {
-                                const nuevosServicios = serviciosEvento.map(s =>
-                                  s.servicioId === srv.servicioId
-                                    ? { ...s, fechaSeña: e.target.value }
-                                    : s
-                                )
-                                setEvento({ ...evento, servicios: nuevosServicios })
-                              }}
-                              className="h-9"
-                            />
-                          </div>
-                        </div>
+                        </td>
 
-                        {srv.montoSeña && srv.montoSeña > 0 && (
-                          <div className="mt-2 pt-2 border-t">
-                            <Button
-                              variant={srv.estadoPago === "pagado_total" ? "secondary" : "default"}
-                              size="sm"
-                              className="w-full"
-                              onClick={() => {
-                                const nuevoEstado = srv.estadoPago === "pagado_total" ? "señado" : "pagado_total"
-                                const nuevosServicios = serviciosEvento.map(s =>
-                                  s.servicioId === srv.servicioId
-                                    ? { ...s, estadoPago: nuevoEstado as any }
-                                    : s
-                                )
-                                setEvento({ ...evento, servicios: nuevosServicios })
-                              }}
+                        {/* Nombre + input horas si aplica */}
+                        <td className="px-3 py-2.5">
+                          <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>
+                            {servicio.nombre}
+                          </span>
+                          {servicio.descripcion && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{servicio.descripcion}</p>
+                          )}
+                          {esPorHora && seleccionado && (
+                            <div
+                              className="flex items-center gap-1.5 mt-1.5"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              {srv.estadoPago === "pagado_total" ? "Desmarcar como pagado" : "Marcar como pagado total"}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
+                              <label className="text-xs text-muted-foreground whitespace-nowrap">Horas:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                value={horas}
+                                onChange={handleHoras}
+                                className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
+                              />
+                              <span className="text-xs text-muted-foreground">h</span>
+                            </div>
+                          )}
+                          {esPorHora && !seleccionado && (
+                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">Por hora</p>
+                          )}
+                        </td>
+
+                        {/* Categoria */}
+                        <td className="px-3 py-2.5 hidden sm:table-cell">
+                          <Badge variant="outline" className="text-[11px]">{servicio.categoria}</Badge>
+                        </td>
+
+                        {/* Precio venta (× horas si aplica) */}
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                          {precioTotal > 0
+                            ? (
+                              <span>
+                                {fmt(precioTotal)}
+                                {esPorHora && seleccionado && horas > 1 && (
+                                  <span className="block text-[11px] font-normal text-muted-foreground">
+                                    {fmt(precioVenta)}/h × {horas}
+                                  </span>
+                                )}
+                              </span>
+                            )
+                            : <span className="text-muted-foreground font-normal">—</span>
+                          }
+                        </td>
+                      </tr>
                     )
                   })}
-                </div>
-              )
-            })()}
-          </div>
+                </tbody>
+
+                {/* Footer: resumen seleccionados */}
+                {serviciosEvento.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-muted/60 border-t-2 border-border">
+                      <td colSpan={3} className="px-3 py-2 text-xs font-semibold text-muted-foreground">
+                        {serviciosEvento.length} servicio{serviciosEvento.length !== 1 ? "s" : ""} seleccionado{serviciosEvento.length !== 1 ? "s" : ""}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-emerald-700">
+                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
+                          serviciosEvento.reduce((sum, se) => {
+                            const cat = catalogoServicios.find(s => s.id === se.servicioId)
+                            const precio = cat?.precioVenta ?? 0
+                            const horas = (cat?.unidad === "Por Hora") ? (se.cantidad ?? 1) : 1
+                            return sum + precio * horas
+                          }, 0)
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
         </SectionCard>
 
         {/* ==================== CONTRATO SECTION ==================== */}
         <SectionCard
           sectionKey="contrato"
-          proximamente
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><FileText className="h-5 w-5 text-sky-600" /></div>}
           title="Datos del Contrato"
           subtitle="Datos del cliente y plan de cuotas"
@@ -2315,164 +2375,6 @@ function EventoPageContent() {
 
         {/* Service Dialog removed - now using package selection */}
 
-        {/* Bar Dialog */}
-        <Dialog open={dialogBarraOpen} onOpenChange={(open) => {
-          setDialogBarraOpen(open)
-          if (!open) resetBarraForm()
-        }}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-semibold">
-                {editingBarraIndex !== null ? "Editar Barra" : "Configurar Nueva Barra"}
-              </DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                {editingBarraIndex !== null ? "Modifica la configuración de la barra para este evento" : "Selecciona una barra y personaliza los cocteles incluidos"}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-6 py-2">
-              {/* Seleccionar barra template — grilla de cards con checkbox */}
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-foreground">Seleccionar Barra</p>
-                {barrasTemplates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
-                    No hay barras creadas. Ve a Gestion de Cocteles para crear una.
-                  </p>
-                ) : (
-                  <div className={`grid gap-2 ${barrasTemplates.length <= 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-                    {barrasTemplates.map((template) => {
-                      const selected = barraForm.barraTemplateId === template.id
-                      return (
-                        <label
-                          key={template.id}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors select-none ${
-                            selected
-                              ? "border-primary bg-primary/8 text-foreground"
-                              : "border-border hover:bg-muted/50 text-foreground"
-                          }`}
-                          onClick={() => handleSelectBarraTemplate(template.id)}
-                        >
-                          <Checkbox
-                            checked={selected}
-                            onCheckedChange={() => handleSelectBarraTemplate(template.id)}
-                            className="rounded-sm shrink-0"
-                          />
-                          <span className={`text-sm leading-tight ${selected ? "font-semibold" : "font-medium"}`}>
-                            {template.nombre}
-                          </span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Cocteles (pre-loaded from template, editable) — chips con wrap */}
-              {barraForm.barraTemplateId && (
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-foreground">
-                    Cocteles
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      ({barraForm.coctelesIncluidos.length} seleccionados)
-                    </span>
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {state.cocteles.map((coctel) => {
-                      const checked = barraForm.coctelesIncluidos.includes(coctel.id)
-                      return (
-                        <button
-                          key={coctel.id}
-                          type="button"
-                          onClick={() => toggleCoctelInBarra(coctel.id)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors cursor-pointer ${
-                            checked
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border bg-background text-muted-foreground hover:bg-muted"
-                          }`}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={() => toggleCoctelInBarra(coctel.id)}
-                            className="rounded-sm h-3 w-3 shrink-0 pointer-events-none"
-                          />
-                          {coctel.nombre}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Tragos por persona — con botones +/- */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold text-foreground">Tragos por persona</Label>
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => setBarraForm({
-                      ...barraForm,
-                      tragosPorPersona: Math.max(1, barraForm.tragosPorPersona - 0.5)
-                    })}
-                  >
-                    <span className="text-lg leading-none">−</span>
-                  </Button>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min="1"
-                    value={barraForm.tragosPorPersona}
-                    onChange={(e) =>
-                      setBarraForm({ ...barraForm, tragosPorPersona: Number.parseFloat(e.target.value) || 2 })
-                    }
-                    className="text-center h-9 w-24"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => setBarraForm({
-                      ...barraForm,
-                      tragosPorPersona: barraForm.tragosPorPersona + 0.5
-                    })}
-                  >
-                    <span className="text-lg leading-none">+</span>
-                  </Button>
-                </div>
-              </div>
-
-              {/* Total estimado — resumen con fondo suave */}
-              <div className="rounded-lg bg-muted/60 border border-border px-5 py-4 space-y-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total estimado</p>
-                <p className="text-3xl font-bold text-foreground leading-none">
-                  {calcularTotalTragos()} <span className="text-base font-normal text-muted-foreground">tragos</span>
-                </p>
-                <p className="text-xs text-muted-foreground pt-1">
-                  {evento.adultos + evento.adolescentes} personas × {barraForm.tragosPorPersona} tragos por persona
-                </p>
-              </div>
-            </div>
-
-            <DialogFooter className="gap-2 pt-2">
-              <Button variant="outline" className="bg-transparent" onClick={() => setDialogBarraOpen(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleGuardarBarra}
-                disabled={!barraForm.barraTemplateId || barraForm.coctelesIncluidos.length === 0}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                {editingBarraIndex !== null ? "Guardar" : "Agregar Barra"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-
-
         {/* ==================== NUEVO FLUJO DE GUARDADO ==================== */}
         <div className="space-y-4 pb-8">
           {/* Validation errors */}
@@ -2508,6 +2410,24 @@ function EventoPageContent() {
             </Button>
           ) : (
             <>
+              {/* Observacion field — only when coming from contratos */}
+              {fromContratos && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                    <FileText className="h-4 w-4" />
+                    Observacion del contrato
+                    <span className="font-normal text-amber-700 ml-1">(opcional)</span>
+                  </label>
+                  <textarea
+                    value={observacionContrato}
+                    onChange={(e) => setObservacionContrato(e.target.value)}
+                    placeholder="Ej: Cliente solicito agregar servicio de DJ, se modifico el precio acordado..."
+                    rows={2}
+                    className="w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              )}
+
               <Button
                 onClick={handleSaveEvento}
                 className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
@@ -2515,12 +2435,12 @@ function EventoPageContent() {
               >
                 {isSaving ? (
                   <>
-                    <span className="mr-2">Actualizando...</span>
+                    <span className="mr-2">{fromContratos ? "Guardando contrato..." : "Actualizando..."}</span>
                   </>
                 ) : (
                   <>
                     <Save className="h-6 w-6 mr-2" />
-                    Actualizar Evento
+                    {fromContratos ? "Actualizar contrato" : "Actualizar Evento"}
                   </>
                 )}
               </Button>

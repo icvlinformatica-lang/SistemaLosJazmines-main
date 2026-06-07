@@ -57,6 +57,8 @@ function fromRow(r: Record<string, any>) {
     costosCalculados: parseJsonField(r.costos_calculados, null),
     stockDescontado: r.stock_descontado ?? false,
     fechaImpresion: r.fecha_impresion,
+    cocinaPagada: r.cocina_pagada ?? false,
+    barraPagada: r.barra_pagada ?? false,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -71,7 +73,7 @@ const SELECT_COLS = `
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
   precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
   notas_internas, pagos, asignaciones, costos_calculados,
-  stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
+  stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at
 `
 
 async function fetchEvento(id: string) {
@@ -85,7 +87,7 @@ async function fetchEvento(id: string) {
       condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
       precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
       notas_internas, pagos, asignaciones, costos_calculados,
-      stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
+      stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at
     FROM eventos WHERE id = ${id} AND deleted_at IS NULL
   `
   return rows[0] ?? null
@@ -129,6 +131,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       notasInternas: "notas_internas", pagos: "pagos", asignaciones: "asignaciones",
       costosCalculados: "costos_calculados",
       stockDescontado: "stock_descontado", fechaImpresion: "fecha_impresion",
+      cocinaPagada: "cocina_pagada", barraPagada: "barra_pagada",
     }
 
     const jsonFields = new Set([
@@ -251,7 +254,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, created_at, updated_at, deleted_at
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at
       FROM eventos WHERE id = ${id}
     `
     const row = rows[0]

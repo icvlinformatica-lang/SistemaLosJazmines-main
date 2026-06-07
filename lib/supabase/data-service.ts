@@ -28,55 +28,70 @@ export async function fetchServicios(): Promise<Servicio[]> {
   
   return (data || []).map(s => ({
     id: s.id,
+    codigo: s.codigo || "",
     nombre: s.nombre,
     descripcion: s.descripcion || "",
     categoria: s.categoria,
     unidad: s.unidad || "Fijo",
-    requierePersonal: s.requiere_personal ?? true,
     activo: s.activo ?? true,
-    // Campos legacy que el store espera
-    precioBase: 0,
-    precioOficial: 0,
-    precioProveedor: 0,
-    margenGanancia: 0,
+    margenGanancia: Number(s.margen_ganancia) || 0,
+    precioVenta: Number(s.precio_venta) || 0,
+    costoParaCajaEventos: Number(s.costo_para_caja_eventos) || 0,
+    porcentajeSeña: Number(s.porcentaje_sena) || 30,
+    diasAnticipacionSeña: Number(s.dias_anticipacion_sena) || 30,
+    diasAnticipacionSaldo: Number(s.dias_anticipacion_saldo) || 7,
+    proveedor: s.proveedor || undefined,
+    notas: s.notas || undefined,
   }))
 }
 
 export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servicio | null> {
   const record = {
     id: servicio.id,
+    codigo: servicio.codigo || null,
     nombre: servicio.nombre,
-    descripcion: servicio.descripcion,
+    descripcion: servicio.descripcion || null,
     categoria: servicio.categoria,
     unidad: servicio.unidad,
-    requiere_personal: servicio.requierePersonal,
-    activo: servicio.activo,
+    activo: servicio.activo ?? true,
+    margen_ganancia: servicio.margenGanancia ?? 0,
+    precio_venta: servicio.precioVenta ?? 0,
+    costo_para_caja_eventos: servicio.costoParaCajaEventos ?? 0,
+    porcentaje_sena: servicio.porcentajeSeña ?? 30,
+    dias_anticipacion_sena: servicio.diasAnticipacionSeña ?? 30,
+    dias_anticipacion_saldo: servicio.diasAnticipacionSaldo ?? 7,
+    proveedor: servicio.proveedor || null,
+    notas: servicio.notas || null,
     updated_at: new Date().toISOString(),
   }
-  
+
   const { data, error } = await supabase
     .from("servicios")
     .upsert(record)
     .select()
     .single()
-  
+
   if (error) {
     console.error("Error upserting servicio:", error)
     return null
   }
-  
+
   return data ? {
     id: data.id,
+    codigo: data.codigo || "",
     nombre: data.nombre,
     descripcion: data.descripcion || "",
     categoria: data.categoria,
     unidad: data.unidad || "Fijo",
-    requierePersonal: data.requiere_personal ?? true,
     activo: data.activo ?? true,
-    precioBase: 0,
-    precioOficial: 0,
-    precioProveedor: 0,
-    margenGanancia: 0,
+    margenGanancia: Number(data.margen_ganancia) || 0,
+    precioVenta: Number(data.precio_venta) || 0,
+    costoParaCajaEventos: Number(data.costo_para_caja_eventos) || 0,
+    porcentajeSeña: Number(data.porcentaje_sena) || 30,
+    diasAnticipacionSeña: Number(data.dias_anticipacion_sena) || 30,
+    diasAnticipacionSaldo: Number(data.dias_anticipacion_saldo) || 7,
+    proveedor: data.proveedor || undefined,
+    notas: data.notas || undefined,
   } : null
 }
 
@@ -503,6 +518,10 @@ export async function fetchCostosOperativos(): Promise<CostoOperativo[]> {
     activo: c.activo ?? true,
     categoria: c.categoria,
     notas: c.notas,
+    salon: c.salon ?? null,
+    fechaVencimiento: c.fecha_vencimiento ?? undefined,
+    esVariable: c.es_variable ?? false,
+    pagado: c.pagado ?? false,
   }))
 }
 
@@ -516,6 +535,10 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     activo: costo.activo,
     categoria: costo.categoria,
     notas: costo.notas,
+    salon: costo.salon,
+    fecha_vencimiento: costo.fechaVencimiento || null,
+    es_variable: costo.esVariable ?? false,
+    pagado: costo.pagado ?? false,
     updated_at: new Date().toISOString(),
   }
   
@@ -539,6 +562,10 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     activo: data.activo ?? true,
     categoria: data.categoria,
     notas: data.notas,
+    salon: data.salon,
+    fechaVencimiento: data.fecha_vencimiento,
+    esVariable: data.es_variable ?? false,
+    pagado: data.pagado ?? false,
   } : null
 }
 
@@ -570,6 +597,9 @@ export async function fetchMovimientosCaja(): Promise<MovimientoCaja[]> {
     monto: Number(m.monto) || 0,
     concepto: m.concepto,
     fecha: m.fecha,
+    eventoId: m.evento_id ?? undefined,
+    saldoResultante: m.saldo_resultante ? Number(m.saldo_resultante) : 0,
+    cajaDestino: m.caja_destino ?? undefined,
     saldoAnterior: m.saldo_anterior ? Number(m.saldo_anterior) : undefined,
     saldoPosterior: m.saldo_posterior ? Number(m.saldo_posterior) : undefined,
   }))
@@ -583,8 +613,11 @@ export async function insertMovimientoCaja(mov: Partial<MovimientoCaja>): Promis
     monto: mov.monto,
     concepto: mov.concepto,
     fecha: mov.fecha,
-    saldo_anterior: mov.saldoAnterior,
-    saldo_posterior: mov.saldoPosterior,
+    evento_id: mov.eventoId ?? null,
+    saldo_resultante: mov.saldoResultante ?? null,
+    caja_destino: mov.cajaDestino ?? null,
+    saldo_anterior: (mov as Record<string, unknown>).saldoAnterior ?? null,
+    saldo_posterior: (mov as Record<string, unknown>).saldoPosterior ?? null,
   }
   
   const { data, error } = await supabase
@@ -605,9 +638,36 @@ export async function insertMovimientoCaja(mov: Partial<MovimientoCaja>): Promis
     monto: Number(data.monto) || 0,
     concepto: data.concepto,
     fecha: data.fecha,
-    saldoAnterior: data.saldo_anterior ? Number(data.saldo_anterior) : undefined,
-    saldoPosterior: data.saldo_posterior ? Number(data.saldo_posterior) : undefined,
+    eventoId: data.evento_id ?? undefined,
+    saldoResultante: data.saldo_resultante ? Number(data.saldo_resultante) : 0,
+    cajaDestino: data.caja_destino ?? undefined,
   } : null
+}
+
+export async function deleteMovimientosByEvento(eventoId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("movimientos_caja")
+    .delete()
+    .eq("evento_id", eventoId)
+
+  if (error) {
+    console.error("Error deleting movimientos_caja for evento:", error)
+    return false
+  }
+  return true
+}
+
+export async function deleteMovimientoCaja(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("movimientos_caja")
+    .delete()
+    .eq("id", id)
+
+  if (error) {
+    console.error("Error deleting movimiento_caja:", error)
+    return false
+  }
+  return true
 }
 
 // ============ CONFIGURACION CAJAS ============

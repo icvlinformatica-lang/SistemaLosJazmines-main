@@ -32,6 +32,8 @@ import {
   Archive,
   Wallet,
   TrendingUp,
+  Building,
+  Building2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -61,10 +63,9 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
       icon: Calendar,
       children: [
         { href: "/eventos/lista", label: "Lista", icon: List },
-        { href: "/eventos/finalizados", label: "Finalizados", icon: Archive },
         { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: !tieneAccesoTotal },
-        { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: !tieneAccesoTotal },
         { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
+        { href: "/eventos/finalizados", label: "Finalizados", icon: Archive },
       ],
     },
     {
@@ -92,17 +93,22 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
       icon: Briefcase,
       locked: !tieneAccesoTotal,
       children: [
-        { href: "/admin/catalogo-servicios", label: "Catalogo Servicios", icon: Briefcase },
-        // { href: "/admin/servicios", label: "Servicios", icon: Briefcase }, // Oculto temporalmente
-        { href: "/admin/personal", label: "Personal", icon: Users },
-        { href: "/admin/pagos-pendientes", label: "Pagos Personal", icon: Bell },
-        { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
-        { href: "/finanzas/cajas", label: "Cajas", icon: Wallet },
-        { href: "/finanzas/cashflow", label: "Cashflow", icon: TrendingUp },
-        { href: "/finanzas/balance-mensual", label: "Balance Mensual", icon: BarChart2 },
-        { href: "/finanzas/configuracion", label: "Config. Cajas", icon: Settings },
-        { href: "/admin/calendario-pagos", label: "Calendario Ingresos", icon: CreditCard },
-        { href: "/admin/vencimientos", label: "Vencimientos", icon: CalendarClock },
+        // TEMP: ocultos mientras se trabaja en Caja Eventos / Caja Jazmines
+        // { href: "/admin/catalogo-servicios", label: "Catalogo Servicios", icon: Briefcase },
+        // { href: "/admin/servicios", label: "Servicios", icon: Briefcase },
+        // { href: "/admin/personal", label: "Personal", icon: Users },
+        // { href: "/admin/pagos-pendientes", label: "Pagos Personal", icon: Bell },
+        // { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
+        // { href: "/finanzas/cajas", label: "Cajas", icon: Wallet },
+        { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: !tieneAccesoTotal },
+        { href: "/finanzas/caja-eventos", label: "Caja Eventos", icon: Wallet },
+        { href: "/finanzas/caja-jazmines", label: "Caja Jazmines", icon: Building2 },
+        { href: "/finanzas/servicios", label: "Servicios", icon: Briefcase },
+        // { href: "/finanzas/cashflow", label: "Cashflow", icon: TrendingUp },
+        // { href: "/finanzas/balance-mensual", label: "Balance Mensual", icon: BarChart2 },
+        // { href: "/finanzas/configuracion", label: "Config. Cajas", icon: Settings },
+        // { href: "/admin/calendario-pagos", label: "Calendario Ingresos", icon: CreditCard },
+        // { href: "/admin/vencimientos", label: "Vencimientos", icon: CalendarClock },
       ],
     },
     { href: "/configuracion", label: "Configuracion", icon: Settings },

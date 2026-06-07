@@ -10,6 +10,7 @@ import {
   generarCalendarioCuotas,
   generarMovimientoIngreso,
   type EventoGuardado,
+  type MovimientoCaja,
   type PagoEvento,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -382,15 +383,55 @@ function PagosPageContent() {
     // Generar movimiento de caja si el evento tiene salón
     if (evento.salon) {
       const montoCuota = evento.planDeCuotas.montoCuota || 0
+      const nombreEvento = evento.nombre || evento.nombrePareja || "Evento"
       const movimientos = generarMovimientoIngreso(
         evento.salon,
         montoCuota,
-        `Cuota ${numeroCuota} - ${evento.nombre || evento.nombrePareja || "Evento"}`,
+        `Cuota ${numeroCuota} - ${nombreEvento}`,
         configuracionCajas,
         movimientosCaja,
         eventoId
       )
       addMovimientosCaja(movimientos)
+
+      // Generar dos movimientos adicionales: 50% para cada caja específica
+      const mitad = montoCuota / 2
+      const fecha = new Date().toISOString()
+
+      // Calcular saldo resultante de caja_eventos (suma de ingresos previos con ese destino)
+      const saldoPrevEventos = movimientosCaja
+        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === evento.salon)
+        .reduce((sum: number, m: MovimientoCaja) => m.tipo === "ingreso" ? sum + m.monto : sum - m.monto, 0)
+
+      const saldoPrevJazmines = movimientosCaja
+        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
+        .reduce((sum: number, m: MovimientoCaja) => m.tipo === "ingreso" ? sum + m.monto : sum - m.monto, 0)
+
+      const movEventos: MovimientoCaja = {
+        id: generateId(),
+        fecha,
+        tipo: "ingreso",
+        concepto: `Cuota ${numeroCuota} - ${nombreEvento} (Caja Eventos)`,
+        monto: mitad,
+        salon: evento.salon,
+        eventoId,
+        cajaDestino: "caja_eventos",
+        saldoResultante: saldoPrevEventos + mitad,
+      }
+
+      const movJazmines: MovimientoCaja = {
+        id: generateId(),
+        fecha,
+        tipo: "ingreso",
+        concepto: `Cuota ${numeroCuota} - ${nombreEvento} (Caja Jazmines)`,
+        monto: mitad,
+        salon: evento.salon,
+        eventoId,
+        cajaDestino: "caja_jazmines",
+        saldoResultante: saldoPrevJazmines + mitad,
+      }
+
+      addMovimientosCaja([movEventos, movJazmines])
     }
   }
 

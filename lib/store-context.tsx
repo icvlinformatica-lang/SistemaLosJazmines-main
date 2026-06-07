@@ -140,6 +140,7 @@ interface StoreContextType {
   updateConfiguracionCajas: (config: ConfiguracionCajas) => void
   addMovimientoCaja: (movimiento: MovimientoCaja) => void
   addMovimientosCaja: (movimientos: MovimientoCaja[]) => void
+  deleteMovimientoCaja: (id: string) => void
 
   // IPC
   historialIPC: HistorialIPCEntry[]
@@ -219,6 +220,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
 
       // Merge: DB data takes absolute priority over localStorage for migrated modules
+      const eventosVigentes = eventosRes ?? localState.eventos ?? []
+      const idsEventosVigentes = new Set(eventosVigentes.map((e: EventoGuardado) => e.id))
+      // Auto-sanear: descartar movimientos de caja cuyo evento asociado ya no existe
+      // (evita ingresos/egresos fantasma de eventos eliminados que quedaron en localStorage)
+      const movimientosSaneados = (supabaseData.movimientosCaja || []).filter(
+        (m: MovimientoCaja) => !m.eventoId || idsEventosVigentes.has(m.eventoId)
+      )
+
       setState({
         ...localState,
         insumos: insumosRes ?? localState.insumos,
@@ -234,7 +243,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pagosPersonal: supabaseData.pagosPersonal,
         costosOperativos: supabaseData.costosOperativos,
         asignaciones: supabaseData.asignaciones,
-        movimientosCaja: supabaseData.movimientosCaja,
+        movimientosCaja: movimientosSaneados,
         configuracionCajas: supabaseData.configuracionCajas,
       })
 
@@ -860,14 +869,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteEvento = async (id: string) => {
-    // Optimistic: remove from local state immediately
+    // Optimistic: remove evento AND its caja movements from local state immediately
     setState((prev) => ({
       ...prev,
       eventos: (prev.eventos || []).filter((e) => e.id !== id),
+      movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.eventoId !== id),
     }))
-    // API soft-deletes and moves to papelera
+    // API soft-deletes evento and moves to papelera; also purge its caja movements
     try {
       await fetch(`/api/eventos/${id}`, { method: "DELETE" })
+      const { deleteMovimientosByEvento } = await import("./supabase/data-service")
+      await deleteMovimientosByEvento(id)
     } catch (err) {
       console.error("[v0] Error deleting evento:", err)
     }
@@ -973,6 +985,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing movimientos caja to Supabase:", error)
+    }
+  }
+
+  const deleteMovimientoCaja = async (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.id !== id),
+    }))
+    // Sync to Supabase
+    try {
+      const { deleteMovimientoCaja: deleteMov } = await import("./supabase/data-service")
+      await deleteMov(id)
+    } catch (error) {
+      console.error("[v0] Error deleting movimiento caja from Supabase:", error)
     }
   }
 
@@ -1131,6 +1157,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateConfiguracionCajas,
         addMovimientoCaja,
         addMovimientosCaja,
+        deleteMovimientoCaja,
         historialIPC: state.historialIPC || [],
         ultimoMesIPC: state.ultimoMesIPC || null,
         aplicarIPC,

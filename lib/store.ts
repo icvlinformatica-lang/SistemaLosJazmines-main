@@ -227,10 +227,23 @@ export interface Servicio {
   descripcion: string
   categoria: CategoriaServicio
 
-  /** Porcentaje de margen de ganancia sobre el costo base (ej: 30 para 30%).
-   *  precioInterno se calcula sumando tarifaBase del personal vinculado.
-   *  precioOficial = precioInterno * (1 + margenGanancia / 100). */
+  /** Porcentaje de margen de ganancia sobre el costo base (legado — ya no se usa en el nuevo flujo). */
   margenGanancia: number
+
+  /** Precio de venta que figura en el contrato del evento (ARS). */
+  precioVenta: number
+
+  /** Costo real para el salón, impacta en Caja Eventos (ARS). */
+  costoParaCajaEventos: number
+
+  /** Porcentaje del precioVenta que se paga como seña al proveedor (ej: 30 = 30%). */
+  porcentajeSeña: number
+
+  /** Días antes del evento en que vence el pago de la seña (ej: 30). */
+  diasAnticipacionSeña: number
+
+  /** Días antes del evento en que vence el pago del saldo final (ej: 7). */
+  diasAnticipacionSaldo: number
 
   unidad: "Fijo" | "Por Persona" | "Por Hora"
   proveedor?: string
@@ -252,6 +265,7 @@ export interface ServicioEvento {
   fechaSeña?: string
   saldoPendiente?: number
   estadoPago?: 'sin_seña' | 'señado' | 'saldo_pendiente' | 'pagado_total'
+  fechaPagoSeña?: string
   fechaPagoSaldo?: string
 }
 
@@ -278,6 +292,10 @@ export interface CostoOperativo {
   activo: boolean
   notas?: string
   fechaVencimiento?: string // YYYY-MM-DD
+  /** true para gastos variables agendados desde caja-jazmines */
+  esVariable?: boolean
+  /** true si el gasto ya fue pagado */
+  pagado?: boolean
 }
 
 export const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
@@ -299,6 +317,8 @@ export interface ConfiguracionCajas {
 
 export type TipoMovimientoCaja = "ingreso" | "egreso" | "aporte_admin"
 
+export type CajaDestino = "caja_eventos" | "caja_jazmines"
+
 export interface MovimientoCaja {
   id: string
   fecha: string // ISO string
@@ -310,6 +330,7 @@ export interface MovimientoCaja {
   costoOperativoId?: string
   origenAporte?: string // el salón que generó el aporte (solo para tipo aporte_admin)
   saldoResultante: number
+  cajaDestino?: CajaDestino // opcional — ausente en movimientos históricos previos a esta extensión
 }
 
 export type EstadoEvento = "borrador" | "pendiente" | "en_preparacion" | "completado" | "cancelado"
@@ -329,6 +350,20 @@ export interface EventoGuardado extends Evento {
   stockDescontado?: boolean       // true si el stock ya fue descontado al imprimir
   fechaImpresion?: string | null  // ISO string de cuando se imprimio por primera vez
 
+  // --- Cobertura de costos (pagado al proveedor) ---
+  /** true si ya se pagó el costo de cocina (insumos/recetas) */
+  cocinaPagada?: boolean
+  /** true si ya se pagó el costo de la barra */
+  barraPagada?: boolean
+
+  // --- Servicios seleccionados para el contrato ---
+  /** IDs de servicios del catálogo (/finanzas/servicios) a incluir en el contrato */
+  serviciosContrato?: string[]
+  /** Líneas de texto libre adicionales a incluir en el contrato */
+  serviciosLibresContrato?: string[]
+  /** Historial de versiones del contrato — se agrega una entrada cada vez que se guarda */
+  versionesContrato?: VersionContrato[]
+
   // --- Extensiones para asignaciones y costos calculados ---
   /** Asignaciones de personal a los servicios de este evento */
   asignaciones?: AsignacionPersonal[]
@@ -341,6 +376,33 @@ export interface EventoGuardado extends Evento {
     /** Diferencia entre planeado y real (positivo = ahorro, negativo = exceso) */
     diferencia: number
   }
+}
+
+export type ImpactoContrato = "financiero" | "servicios" | "datos_cliente" | "sin_cambios"
+
+export interface VersionContrato {
+  /** Numero de version incremental */
+  version: number
+  /** ISO timestamp de cuando se guardo esta version */
+  fechaGuardado: string
+  /** Motivo o nota del operador al guardar */
+  motivo?: string
+  /** Snapshot completo de los datos del contrato en ese momento */
+  snapshotContrato: {
+    nombreCompleto?: string
+    dni?: string
+    telefono?: string
+    direccion?: string
+    email?: string
+    condicionIVA?: string
+  }
+  /** Snapshot de servicios seleccionados */
+  snapshotServicios: string[]
+  snapshotServiciosLibres: string[]
+  /** Snapshot del plan de cuotas (si existia) */
+  snapshotPlanCuotas?: EventoGuardado["planDeCuotas"]
+  /** Tipos de cambios detectados respecto a la version anterior */
+  impactos: ImpactoContrato[]
 }
 
 export interface EventoHistorial {

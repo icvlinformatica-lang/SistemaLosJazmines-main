@@ -1,20 +1,54 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, Suspense } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store-context"
 import {
   formatCurrency,
-  calcularFechaCuota,
   calcularTotalesPaquete,
+  SALONES,
   type EventoGuardado,
   type Receta,
+  type VersionContrato,
+  type ImpactoContrato,
 } from "@/lib/store"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, FileText, Printer, Calendar, Users, Eye } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  ArrowLeft,
+  FileText,
+  Printer,
+  Calendar,
+  Users,
+  Eye,
+  Save,
+  Plus,
+  X,
+  CheckCircle2,
+  User,
+  ListChecks,
+  History,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  DollarSign,
+  Package,
+  Info,
+  Pencil,
+  ExternalLink,
+  Hourglass,
+  CheckCheck,
+} from "lucide-react"
 
 // =====================================================================
 // SALON ADDRESS MAP
@@ -28,23 +62,10 @@ const SALON_DIRECCIONES: Record<string, string> = {
 // =====================================================================
 // HELPER: Build menu details from event recipes
 // =====================================================================
-function buildMenuDetails(
-  evento: EventoGuardado,
-  recetas: Receta[]
-): {
-  recepcion: string[]
-  entradaAdultos: string[]
-  entradaAdolescentes: string[]
-  menuInfantil: string[]
-  platoPrincipalAdultos: string[]
-  platoPrincipalAdolescentes: string[]
-  guarniciones: string[]
-  postre: string[]
-} {
+function buildMenuDetails(evento: EventoGuardado, recetas: Receta[]) {
   const recetasAdultos = (evento.recetasAdultos || []).map((id) => recetas.find((r) => r.id === id)).filter(Boolean) as Receta[]
   const recetasAdolescentes = (evento.recetasAdolescentes || []).map((id) => recetas.find((r) => r.id === id)).filter(Boolean) as Receta[]
   const recetasNinos = (evento.recetasNinos || []).map((id) => recetas.find((r) => r.id === id)).filter(Boolean) as Receta[]
-
   return {
     recepcion: recetasAdultos.filter((r) => r.categoria === "Recepcion" || r.categoria === "Recepción").map((r) => r.nombre),
     entradaAdultos: recetasAdultos.filter((r) => r.categoria === "Entrada").map((r) => r.nombre),
@@ -64,7 +85,7 @@ function buildMenuDetails(
 }
 
 // =====================================================================
-// MAIN: Contract Print HTML Generator
+// CONTRACT HTML GENERATOR
 // =====================================================================
 function generateContractHTML(
   evento: EventoGuardado,
@@ -84,11 +105,7 @@ function generateContractHTML(
   const horarioInicio = evento.horario || "___:___"
   const horarioFin = evento.horarioFin || "___:___"
   const condicionIVA = evento.condicionIVA || "Consumidor Final"
-
-  // Price
   const precioEvento = evento.precioVenta || paquetePrecio || 0
-
-  // Plan de cuotas info
   const modalidadPago = planCuotas?.modalidadPago || "cuotas"
   const montoSena = planCuotas?.montoSena || 0
   const porcentajeRecargo = planCuotas?.porcentajeRecargo || 0
@@ -104,510 +121,618 @@ function generateContractHTML(
       cuotasInfo = `Se abona el monto total de (PESOS ${formatCurrency(planCuotas.montoTotal)}) en un unico pago al momento de la firma del presente contrato.`
     } else if (modalidadPago === "sena" && montoSena > 0) {
       cuotasInfo = `En este acto se abona la suma de (PESOS ${formatCurrency(montoSena)}) en concepto de sena y el saldo de PESOS ${formatCurrency(montoFinanciado)} a cancelar en ${planCuotas.numeroCuotas} cuotas.`
-      if (porcentajeRecargo > 0) {
-        cuotasInfo += ` Se aplica un recargo por financiacion del ${porcentajeRecargo}% sobre el saldo financiado, resultando un monto financiado con recargo de PESOS ${formatCurrency(montoConRecargo)}.`
-      }
-      cuotasInfo += ` El monto de cada cuota es de PESOS (${formatCurrency(montoCuotaCalc)}) + IPC acumulativo. Cuotas posteriores se deberan abonar de forma mensual y consecutiva (el ${planCuotas.diaVencimiento || 10} de cada mes). Las cuotas se ajustan mensualmente segun indice IPC Nacional.`
-    } else {
-      cuotasInfo = `En este acto se acuerda el pago total de (PESOS ${formatCurrency(planCuotas.montoTotal)}) a cancelar en ${planCuotas.numeroCuotas} cuotas.`
-      if (porcentajeRecargo > 0) {
-        cuotasInfo += ` Se aplica un recargo por financiacion del ${porcentajeRecargo}%, resultando un monto total financiado de PESOS ${formatCurrency(montoConRecargo)}.`
-      }
-      cuotasInfo += ` El monto de cada cuota es de PESOS (${formatCurrency(montoCuotaCalc)}) + IPC acumulativo. Cuotas posteriores se deberan abonar de forma mensual y consecutiva (el ${planCuotas.diaVencimiento || 10} de cada mes). Las cuotas se ajustan mensualmente segun indice IPC Nacional.`
+    } else if (planCuotas.numeroCuotas > 0) {
+      cuotasInfo = `El monto total de (PESOS ${formatCurrency(planCuotas.montoTotal)}) se abonara en ${planCuotas.numeroCuotas} cuotas${porcentajeRecargo > 0 ? ` con un recargo del ${porcentajeRecargo}%` : ""}.`
     }
   }
 
-  // Servicios list
-  const serviciosList = serviciosIncluidos.length > 0
-    ? serviciosIncluidos.map((s) => `<li style="margin-bottom:4px;">${s}</li>`).join("")
-    : `<li>Mesas y Sillas</li>
-       <li>Vajilla y cristaleria completa</li>
-       <li>Manteleria y fundas para sillas con lazos y caminos</li>
-       <li>Ambientacion led</li>
-       <li>Dj - Sonido Completo / Luces robotizadas / Maquina de humo / Laser</li>
-       <li>Personal en puerta / Encargado de Salon</li>
-       <li>Limpieza Posterior incluida</li>
-       <li>Estacionamiento privado</li>
-       <li>Servicio de Emergencias Medicas</li>`
+  const menuRows = [
+    menu.recepcion.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Recepcion</td><td style="padding:4px 8px;">${menu.recepcion.join(", ")}</td></tr>` : "",
+    menu.entradaAdultos.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Entrada (adultos)</td><td style="padding:4px 8px;">${menu.entradaAdultos.join(", ")}</td></tr>` : "",
+    menu.entradaAdolescentes.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Entrada (adolescentes)</td><td style="padding:4px 8px;">${menu.entradaAdolescentes.join(", ")}</td></tr>` : "",
+    menu.platoPrincipalAdultos.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Plato Principal (adultos)</td><td style="padding:4px 8px;">${menu.platoPrincipalAdultos.join(", ")}</td></tr>` : "",
+    menu.platoPrincipalAdolescentes.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Plato Principal (adolescentes)</td><td style="padding:4px 8px;">${menu.platoPrincipalAdolescentes.join(", ")}</td></tr>` : "",
+    menu.guarniciones.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Guarniciones</td><td style="padding:4px 8px;">${menu.guarniciones.join(", ")}</td></tr>` : "",
+    menu.menuInfantil.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Menu Infantil</td><td style="padding:4px 8px;">${menu.menuInfantil.join(", ")}</td></tr>` : "",
+    menu.postre.length > 0 ? `<tr><td style="font-weight:bold;padding:4px 8px;">Postre</td><td style="padding:4px 8px;">${menu.postre.join(", ")}</td></tr>` : "",
+  ].filter(Boolean).join("")
 
-  // Menu section
-  let menuHTML = ""
-  menuHTML += `<h3 style="text-align:center;font-weight:bold;font-size:11pt;margin-top:20px;text-decoration:underline;">Anexo I: Catering y bebidas</h3>`
-  menuHTML += `<div style="text-align:center;margin-top:8px;">`
-  menuHTML += `<p>Adultos: ${evento.adultos}</p>`
-  menuHTML += `<p>Adolescentes: ${evento.adolescentes}</p>`
-  menuHTML += `<p>Ninos: ${evento.ninos}</p>`
-  menuHTML += `</div>`
+  const serviciosRows = serviciosIncluidos.map((s) => `<li style="margin-bottom:4px;">${s}</li>`).join("")
 
-  if (menu.recepcion.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:16px;">Recepcion:</p>`
-    menuHTML += `<p style="text-align:center;">${menu.recepcion.join(", ")}</p>`
-  }
-
-  if (menu.entradaAdultos.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:12px;">Entrada adultos:</p>`
-    menuHTML += `<p style="text-align:center;">${menu.entradaAdultos.join(", ")}</p>`
-  }
-
-  if (menu.entradaAdolescentes.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:12px;">Entrada Adolescentes:</p>`
-    menuHTML += `<p style="text-align:center;">${menu.entradaAdolescentes.join(", ")}</p>`
-  }
-
-  if (menu.menuInfantil.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:12px;">Menu infantil:</p>`
-    menuHTML += `<p style="text-align:center;">${menu.menuInfantil.join(", ")}</p>`
-  }
-
-  if (menu.platoPrincipalAdultos.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:12px;">Plato principal Adultos:</p>`
-    menuHTML += `<p style="text-align:center;">${menu.platoPrincipalAdultos.join(", ")}</p>`
-  }
-
-  if (menu.platoPrincipalAdolescentes.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:12px;">Plato principal Adolescentes:</p>`
-    menuHTML += `<p style="text-align:center;">${menu.platoPrincipalAdolescentes.join(", ")}</p>`
-  }
-
-  if (menu.guarniciones.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:12px;">Guarniciones:</p>`
-    menuHTML += `<p style="text-align:center;">${[...new Set(menu.guarniciones)].join(", ")}</p>`
-  }
-
-  if (menu.postre.length > 0) {
-    menuHTML += `<p style="text-align:center;font-weight:bold;margin-top:12px;">Postre:</p>`
-    menuHTML += `<p style="text-align:center;">${[...new Set(menu.postre)].join(", ")}</p>`
-  }
-
-  // Observaciones
-  const observaciones = evento.descripcionPersonalizada || ""
-
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8"/>
 <title>Contrato - ${nombreEvento}</title>
 <style>
-  @page { margin: 2cm 2.5cm; size: A4; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Times New Roman', Times, serif;
-    color: #1a1a1a;
-    background: #fff;
-    font-size: 11pt;
-    line-height: 1.55;
-  }
-  .header {
-    text-align: center;
-    margin-bottom: 28px;
-    padding-bottom: 8px;
-  }
-  .logo-text {
-    font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
-    font-size: 32pt;
-    font-style: italic;
-    color: #1a1a1a;
-    margin-bottom: 0;
-  }
-  .logo-sub {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 14pt;
-    font-weight: bold;
-    letter-spacing: 6px;
-    text-transform: uppercase;
-    margin-top: -4px;
-  }
-  .titulo-convenio {
-    text-align: center;
-    font-size: 12pt;
-    margin-top: 20px;
-    margin-bottom: 4px;
-  }
-  .titulo-direccion {
-    text-align: center;
-    font-size: 11pt;
-    margin-bottom: 12px;
-  }
-  .titulo-evento {
-    text-align: center;
-    font-size: 12pt;
-    margin-bottom: 24px;
-  }
-  .section-title {
-    font-weight: bold;
-    text-decoration: underline;
-    margin-top: 18px;
-    margin-bottom: 8px;
-  }
-  .clause {
-    margin-bottom: 14px;
-    text-align: justify;
-  }
-  .clause-title {
-    font-weight: bold;
-    text-decoration: underline;
-  }
-  .personal-data {
-    margin-left: 20px;
-    margin-bottom: 14px;
-  }
-  .personal-data p {
-    margin-bottom: 2px;
-  }
-  .services-list {
-    margin-left: 40px;
-    margin-bottom: 14px;
-  }
-  .services-list li {
-    margin-bottom: 3px;
-  }
-  .firma-section {
-    margin-top: 60px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-  }
-  .firma-box {
-    text-align: center;
-    width: 30%;
-  }
-  .firma-line {
-    border-top: 1px solid #000;
-    margin-top: 60px;
-    padding-top: 4px;
-    font-size: 10pt;
-    font-weight: bold;
-  }
-  .page-break {
-    page-break-before: always;
-    break-before: page;
-  }
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 0; padding: 0; }
+  .page { max-width: 780px; margin: 0 auto; padding: 40px 48px; }
+  h1 { font-size: 20px; text-align: center; margin-bottom: 4px; }
+  h2 { font-size: 14px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 20px; margin-bottom: 8px; }
+  table.data td { padding: 3px 8px; vertical-align: top; }
+  table.data td:first-child { font-weight: bold; width: 180px; }
+  .firma { display: flex; gap: 60px; margin-top: 60px; }
+  .firma-box { flex: 1; text-align: center; }
+  .firma-line { border-top: 1px solid #111; margin-top: 48px; padding-top: 6px; font-size: 11px; }
+  @media print { body { -webkit-print-color-adjust: exact; } }
 </style>
 </head>
 <body>
+<div class="page">
+  <h1>LOS JAZMINES</h1>
+  <p style="text-align:center;font-size:11px;color:#555;">${direccion}</p>
+  <h1 style="font-size:16px;margin-top:16px;">CONTRATO DE SERVICIOS</h1>
+  <p style="text-align:center;color:#555;font-size:11px;">Fecha: ${fechaContrato}</p>
 
-<!-- ==================== PAGE 1: HEADER & PERSONAL DATA ==================== -->
-<div class="header">
-  <p class="logo-text">Los Jazmines</p>
-  <p class="logo-sub">EVENTOS</p>
-</div>
+  <h2>DATOS DEL CLIENTE</h2>
+  <table class="data">
+    <tr><td>Nombre completo</td><td>${contrato.nombreCompleto || "___________________________"}</td></tr>
+    <tr><td>DNI</td><td>${contrato.dni || "___________________________"}</td></tr>
+    <tr><td>Telefono</td><td>${contrato.telefono || "___________________________"}</td></tr>
+    <tr><td>Direccion</td><td>${contrato.direccion || "___________________________"}</td></tr>
+    <tr><td>Email</td><td>${contrato.email || "___________________________"}</td></tr>
+    <tr><td>Condicion IVA</td><td>${condicionIVA}</td></tr>
+  </table>
 
-<p class="titulo-convenio"><strong>Convenio de realizacion de eventos</strong></p>
-<p class="titulo-direccion">${direccion} &nbsp; Fecha ${fechaContrato}</p>
-<p class="titulo-evento">${nombreEvento}</p>
+  <h2>DATOS DEL EVENTO</h2>
+  <table class="data">
+    <tr><td>Evento</td><td>${nombreEvento}</td></tr>
+    <tr><td>Fecha</td><td>${fechaEvento}</td></tr>
+    <tr><td>Horario</td><td>${horarioInicio} a ${horarioFin} hs.</td></tr>
+    <tr><td>Salon</td><td>${salon} — ${direccion}</td></tr>
+    <tr><td>Invitados</td><td>${totalPersonas} personas (${evento.adultos} adultos, ${evento.adolescentes} adolescentes, ${evento.ninos} ninos)</td></tr>
+  </table>
 
-<!-- 1) DATOS PERSONALES -->
-<p><strong>1) <span class="section-title">Datos personales:</span></strong></p>
-<div class="personal-data">
-  <p>&bull;Nombre completo: ${contrato.nombreCompleto || "________________________"}</p>
-  <p>&bull;Dni: ${contrato.dni || "________________________"}</p>
-  <p>&bull;Telefono: ${contrato.telefono || "________________________"}</p>
-  <p>&bull;Direccion: ${contrato.direccion || "________________________"}</p>
-  <p>&bull;Correo electronico: ${contrato.email || "________________________"}</p>
-  <p>&bull;IVA: ${condicionIVA}</p>
-</div>
-
-<!-- 2) DATOS DEL EVENTO -->
-<p><strong>2) <span class="section-title">Datos del evento a contratar:</span></strong></p>
-<div class="clause" style="margin-left:20px;">
-  <p>Los Jazmines hace cesion precaria del inmueble y sus instalaciones para la realizacion de eventos privados segun las normas que aqui se detallan:</p>
-  <p style="margin-top:6px;"><span style="text-decoration:underline;">Fecha:</span> ${fechaEvento}</p>
-  <p><span style="text-decoration:underline;">Horario:</span> de las ${evento.fecha ? evento.fecha.split("-").reverse().join("/") : "___/___/___"} ${horarioInicio} &nbsp; a las ${horarioFin} &nbsp; (Sujeto a protocolo vigente)</p>
-  <p><span style="text-decoration:underline;">Cantidad de cubiertos/invitados:</span> ${totalPersonas}</p>
-  <p><span style="text-decoration:underline;">Precio:</span> El precio por el uso del salon y la prestacion detallada en el presente contrato y sus anexos es de (PESOS ${precioEvento > 0 ? formatCurrency(precioEvento) : "________________"}). tomandose como base un minimo de ${totalPersonas} invitados.</p>
-</div>
-
-<!-- 3) FORMA DE PAGO -->
-<p><strong>3) <span class="section-title">Forma de pago:</span></strong></p>
-<div class="clause" style="margin-left:20px;">
-  ${cuotasInfo || `<p>En este acto se abona la suma de (PESOS ________________) en concepto de sena y el saldo de PESOS ________________ a cancelar en _____ cuotas. Las cuotas se ajustan mensualmente segun indice IPC Nacional.</p>`}
-  ${modalidadPago !== "completo" && planCuotas && planCuotas.numeroCuotas > 0 && planCuotas.fechaInicioPlan ? `
-  <div style="margin-top:12px;">
-    <p style="font-weight:bold;margin-bottom:4px;">Calendario de pagos:</p>
-    <table style="width:100%;border-collapse:collapse;font-size:10pt;">
-      <thead>
-        <tr>
-          <th style="border:1px solid #999;padding:4px 8px;text-align:left;background:#f0f0f0;">Concepto</th>
-          <th style="border:1px solid #999;padding:4px 8px;text-align:left;background:#f0f0f0;">Fecha</th>
-          <th style="border:1px solid #999;padding:4px 8px;text-align:right;background:#f0f0f0;">Monto</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${modalidadPago === "sena" && montoSena > 0 ? `<tr style="background:#f8faf8;">
-            <td style="border:1px solid #999;padding:4px 8px;font-weight:bold;">Sena (al firmar contrato)</td>
-            <td style="border:1px solid #999;padding:4px 8px;">Al firmar</td>
-            <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-family:monospace;font-weight:bold;">${formatCurrency(montoSena)}</td>
-          </tr>` : ""}
-        ${Array.from({ length: planCuotas.numeroCuotas }).map((_, idx) => {
-          const cuotaNum = idx + 1
-          const fechaCuota = calcularFechaCuota(planCuotas.fechaInicioPlan, cuotaNum, planCuotas.diaVencimiento || 10)
-          return `<tr>
-            <td style="border:1px solid #999;padding:4px 8px;">Cuota ${cuotaNum}</td>
-            <td style="border:1px solid #999;padding:4px 8px;">${fechaCuota}</td>
-            <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-family:monospace;">${formatCurrency(montoCuotaCalc)}</td>
-          </tr>`
-        }).join("")}
-      </tbody>
-      <tfoot>
-        ${porcentajeRecargo > 0 ? `<tr>
-          <td colspan="2" style="border:1px solid #999;padding:4px 8px;text-align:right;font-size:9pt;color:#666;">Recargo por financiacion (${porcentajeRecargo}%):</td>
-          <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-family:monospace;font-size:9pt;color:#666;">${formatCurrency(importeRecargo)}</td>
-        </tr>` : ""}
-        <tr>
-          <td colspan="2" style="border:1px solid #999;padding:4px 8px;font-weight:bold;text-align:right;">Total:</td>
-          <td style="border:1px solid #999;padding:4px 8px;text-align:right;font-weight:bold;font-family:monospace;">${formatCurrency(totalFinalContrato)}</td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
+  ${serviciosIncluidos.length > 0 ? `
+  <h2>SERVICIOS CONTRATADOS</h2>
+  <ul style="margin:0;padding-left:20px;">${serviciosRows}</ul>
   ` : ""}
-</div>
 
-<!-- 4) INCUMPLIMIENTO -->
-<p class="clause"><strong>4) <span class="clause-title">Incumplimiento:</span></strong> En caso de incumplimiento por parte del cliente respecto al pago de las cuotas pactadas dentro de los terminos estipulados en el inciso 3 del presente contrato Los Jazmines Eventos operara la mora del cliente en forma automatica al vencimiento de la fecha de pago pactada, devengandose a partir de la misma una multa de 3000 pesos por cada dia de atraso en el cumplimiento de la obligacion respectiva.</p>
+  ${menuRows ? `
+  <h2>MENU</h2>
+  <table style="width:100%;border-collapse:collapse;">${menuRows}</table>
+  ` : ""}
 
-<!-- 5) DETALLE DEL SERVICIO -->
-<p><strong>5) <span class="section-title">Detalle del servicio a prestar por Los Jazmines:</span></strong></p>
-<ul class="services-list">
-  ${serviciosList}
-</ul>
+  ${planCuotas && planCuotas.montoTotal > 0 ? `
+  <h2>CONDICIONES ECONOMICAS</h2>
+  <table class="data">
+    <tr><td>Precio total</td><td>${formatCurrency(planCuotas.montoTotal)}</td></tr>
+    ${modalidadPago === "sena" ? `<tr><td>Sena abonada</td><td>${formatCurrency(montoSena)}</td></tr>` : ""}
+    ${planCuotas.numeroCuotas > 1 ? `
+      <tr><td>Cuotas</td><td>${planCuotas.numeroCuotas} cuotas de ${formatCurrency(montoCuotaCalc)}${porcentajeRecargo > 0 ? ` (con ${porcentajeRecargo}% de recargo)` : ""}</td></tr>
+      <tr><td>Total con recargo</td><td>${formatCurrency(totalFinalContrato)}</td></tr>
+    ` : ""}
+  </table>
+  <p style="margin-top:8px;font-size:11px;">${cuotasInfo}</p>
+  ` : ""}
 
-<!-- 6) SADAIC / AADICAPIF -->
-<p class="clause"><strong>6) <span class="clause-title">Compromiso de pago SADAIC / AADICAPIF:</span></strong> El precio convenido incluye los importes correspondientes a SADAIC y AADICAPIF.</p>
+  <h2>CLAUSULAS</h2>
+  <p style="line-height:1.6;">El presente contrato regula la prestacion de servicios de catering y salon para el evento indicado. El incumplimiento en los plazos de pago podra dar lugar a la rescision del contrato con perdida de la sena abonada. Los servicios seran prestados en el salon indicado en las condiciones y horarios especificados. Cualquier modificacion debera ser acordada por escrito entre ambas partes.</p>
 
-<!-- 7) NUMERO MAXIMO DE PARTICIPANTES -->
-<p class="clause"><strong>7) <span class="clause-title">Numero maximo de participantes:</span></strong> En aquellos eventos donde no se conoce el numero fijo de participantes (desfiles, recepciones, cocktails, congresos, seminarios, invitados despues del postre a una fiesta u otros) el cliente garantizara a Los Jazmines eventos la asistencia de una cantidad de personas acorde al tamano del salon. El Cliente se hara directamente responsable, en los terminos del articulo 1113, ante Los Jazmines eventos y ante los invitados que no puedan entrar por haberse excedido la capacidad del salon.</p>
-
-<!-- 8) POLITICA DE CANCELACION -->
-<p class="clause"><strong>8) <span class="clause-title">Politica de cancelacion:</span></strong> En caso de que el evento sea cancelado por exclusiva culpa de El Cliente, Los Jazmines Eventos se encontrara facultado a retener los importes que hubiese recibido a la fecha de la cancelacion, en concepto de indemnizacion pactada. En ningun caso se admitira el cambio de fecha para el evento, ni la invocacion por el Cliente de causal alguna, incluso caso fortuito o fuerza mayor. Tampoco se admitira la anulacion, reduccion y/o modificacion de la indemnizacion estipulada precedentemente. En caso que el evento se vea afectado por las restricciones sanitarias producto de la pandemia de COVID-19 que esta afectando al pais, el evento sera reprogramado sin sufrir ningun incremento en el costo del salon ni de los servicios contratados dentro del periodo de un ano desde la fecha de contratacion original.</p>
-
-<!-- 9) VOLUMEN DE SONIDO -->
-<p class="clause"><strong>9) <span class="clause-title">Volumen de sonido:</span></strong> El volumen del sonido en un evento con una presentacion, show o baile no debera exceder los 90 decibeles dentro del salon principal medidos frente a los parlantes. Por esta razon quedan expresamente prohibidas todas las presentaciones de comparsas, murgas y/o batucadas en vivo en cualquier area del predio, dia y horario. El Cliente se compromete a volver el sonido a este volumen a solicitud del coordinador del evento por parte de Los Jazmines Eventos. En caso contrario Los Jazmines eventos se reserva el derecho de hacer concluir el hecho generador del sonido inadecuado y aun el de dar por finalizado el evento, no haciendose responsable por eventuales danos y perjuicios ni teniendo el cliente derecho a reclamar suma alguna en concepto de reintegro o indemnizacion.</p>
-
-<!-- 10) ACTIVIDADES EN AREAS DESCUBIERTAS -->
-<p class="clause"><strong>10) <span class="clause-title">Actividades en areas descubiertas:</span></strong> Queda prohibido realizar shows musicales, tandas de baile y toda actividad que generen sonido en los jardines del predio, excepto musica funcional para recepciones a no mas de 45 decibeles.</p>
-
-<!-- 11) CONSUMO DE BEBIDAS ALCOHOLICAS -->
-<p class="clause"><strong>11) <span class="clause-title">Consumo de bebidas alcoholicas:</span></strong> Queda prohibido el expendio y consumo de bebidas alcoholicas por parte de menores de 18 anos. Ley 24.788.-</p>
-
-<!-- 12) RESPONSABILIDADES -->
-<p class="clause"><strong>12) <span class="clause-title">Responsabilidades:</span></strong> Los Jazmines Eventos no se responsabiliza por eventuales danos, robos, perdidas o extravios sufridos por el cliente y/o terceros cualquiera fuere la causa, producidos antes, durante o despues del evento. Quedara a cargo del cliente la seguridad de bienes o mercaderias, pudiendo contratar su propio servicio de seguridad. Los Jazmines Eventos podra brindar un servicio extra de seguridad a solicitud del Cliente, facturando el mismo de acuerdo a la cantidad de horas y de personal involucrado. Cualquier objeto deja en Los Jazmines Eventos, con o sin previo conocimiento del mismo sera considerado abandonado y Los Jazmines Eventos no se hara responsable de roturas, perdida, ningun otro tipo de reclamo. Los Jazmines Eventos no tendra responsabilidad sobre los compromisos adquiridos con terceros por el cliente o un organizador (proveedores, expositores, servicio de catering, clientes, etc.) En relacion al evento. El Cliente asume entera responsabilidad de la conducta de todas las personas, sean concurrentes o que cumplan algun servicio y por cualquier dano causado a Los Jazmines Eventos y/o cualquier persona en ocasion o como consecuencia del evento. El Cliente acuerda reembolsar a Los Jazmines Eventos por el valor justo, por cualquier dano o perdida causada a Los Jazmines Eventos o a un tercero, sea por el propio cliente, su personal, los terceros por el contratados o el publico asistente al evento. A tales fines, el Cliente entregara a Los Jazmines Eventos, si este asi lo considerase, en concepto de deposito de garantia, un cheque o su equivalente en pesos igual al 10% del valor del alquiler del salon. Que sera restituido dentro de las 72hs de finalizado el evento siempre que no se hubiese producido ninguno de los supuestos comprendidos en la presente clausula. Caso contrario el cheque podra ser depositado al cobro por parte de Los Jazmines Eventos en concepto de indemnizacion por los danos causados, sin prejuicios de mayores danos por los que el cliente debera responder.</p>
-
-<p class="clause">Los Jazmines Eventos en ningun supuesto y bajo ninguna circunstancia sera responsable por hechos ajenos, caso fortuito o fuerza mayor, como asi tampoco por cuestiones ajenas a su orbita de competencia, entendiendose como tales aquellas obligaciones y servicios no incorporados al presente y que dependan de la voluntad exclusiva del Cliente.</p>
-
-<p class="clause">Sin mengua de lo expuesto y en caso que el evento no pudiese realizarse por exclusiva responsabilidad de la firma Los Jazmines Eventos, esta respondera exclusivamente hasta el valor de la suma que hubiese recibido del cliente; por lo que este ultimo renuncia expresamente, en caso de corresponder, a reclamar cualquier suma adicional por cualquier concepto.</p>
-
-<!-- 13) DERECHO DE IMAGENES -->
-<p class="clause"><strong>13) <span class="clause-title">Derecho de imagenes:</span></strong> Los Jazmines Eventos se reserva el derecho sobre las imagenes y contenido multimedia que surja de la filmacion y fotografias del evento, pudiendo utilizar parcial o totalmente las imagenes para publicar en redes sociales o hacer marketing con las mismas.</p>
-
-<!-- 14) SEGURIDAD Y ORDEN PUBLICO -->
-<p class="clause"><strong>14) <span class="clause-title">Seguridad y Orden Publico:</span></strong> Las partes acuerdan que, durante la ejecucion del presente contrato, se mantendra el orden y la seguridad en el evento. En caso de que se produzcan disturbios, actos de violencia, vandalismo o cualquier otra situacion que ponga en riesgo la integridad de los asistentes, el organizador se reserva el derecho de suspender el evento sin previo aviso.</p>
-<p class="clause">Asimismo, cualquier dano causado a la propiedad, equipo o instalaciones debido a altercados sera responsabilidad de los involucrados, quienes deberan asumir los costos de reparacion o reposicion. La contratacion de personal de seguridad sera determinada por el organizador segun la naturaleza del evento y las condiciones del lugar.</p>
-
-<!-- 15) PROHIBICION DE ALCOHOL A MENORES -->
-<p class="clause"><strong>15) <span class="clause-title">Prohibicion de Suministro de Alcohol a Menores:</span></strong> El organizador del evento establece como norma estricta la prohibicion de suministro, de bebidas alcoholicas a menores de edad, conforme a la legislacion vigente. En caso de detectarse que cualquier adulto proporciona alcohol a menores dentro del evento, el organizador se reserva el derecho de suspender inmediatamente la celebracion, sin derecho a reembolso para los asistentes ni para la parte contratante.</p>
-
-<!-- CLAUSULA DE SEGURIDAD (repetida del original) -->
-<p style="margin-top:24px;font-weight:bold;">Clausula de Seguridad y Orden Publico</p>
-<p class="clause">Las partes acuerdan que, durante la ejecucion del presente contrato, se mantendra el orden y la seguridad en el evento. En caso de que se produzcan disturbios, actos de violencia, vandalismo o cualquier otra situacion que ponga en riesgo la integridad de los asistentes, el organizador se reserva el derecho de suspender el evento sin previo aviso. Asimismo, cualquier dano causado a la propiedad, equipo o instalaciones debido a altercados sera responsabilidad de los involucrados, quienes deberan asumir los costos de reparacion o reposicion. La contratacion de personal de seguridad sera determinada por el organizador segun la naturaleza del evento y las condiciones del lugar.</p>
-
-<!-- ==================== ANEXO I: CATERING Y BEBIDAS ==================== -->
-<div class="page-break"></div>
-${menuHTML}
-
-${observaciones ? `<p style="text-align:center;font-weight:bold;margin-top:20px;">Observaciones:</p><p style="text-align:center;">${observaciones}</p>` : ""}
-
-<!-- FIRMA -->
-<div class="firma-section">
-  <div class="firma-box">
-    <div class="firma-line">FIRMA</div>
-  </div>
-  <div class="firma-box">
-    <div class="firma-line">ACLARACION</div>
-  </div>
-  <div class="firma-box">
-    <div class="firma-line">DNI</div>
+  <div class="firma">
+    <div class="firma-box">
+      <div class="firma-line">Firma del Cliente<br/>${contrato.nombreCompleto || ""}</div>
+    </div>
+    <div class="firma-box">
+      <div class="firma-line">Firma Los Jazmines<br/>Representante Autorizado</div>
+    </div>
   </div>
 </div>
-
 </body>
 </html>`
-
-  return html
 }
 
 // =====================================================================
-// CONTRACT PREVIEW COMPONENT
+// CHANGE DETECTION
 // =====================================================================
-function ContractPreview({
-  evento,
-  recetas,
-  serviciosIncluidos,
-  paquetePrecio,
-  onClose,
-}: {
-  evento: EventoGuardado
-  recetas: Receta[]
-  serviciosIncluidos: string[]
-  paquetePrecio: number
-  onClose: () => void
-}) {
-  const handlePrint = () => {
-    const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio)
-    const printWindow = window.open("", "_blank", "width=900,height=700")
-    if (!printWindow) return
-    printWindow.document.write(html)
-    printWindow.document.close()
-    setTimeout(() => {
-      printWindow.print()
-    }, 300)
+function detectarImpactos(
+  prevVersion: VersionContrato | null,
+  contratoActual: {
+    nombreCompleto: string; dni: string; telefono: string; direccion: string; email: string; condicionIVA: string
+  },
+  serviciosActuales: string[],
+  serviciosLibresActuales: string[],
+  planCuotasActual: EventoGuardado["planDeCuotas"],
+): ImpactoContrato[] {
+  if (!prevVersion) return []
+  const impactos: ImpactoContrato[] = []
+
+  // Datos del cliente
+  const prev = prevVersion.snapshotContrato
+  if (
+    prev.nombreCompleto !== contratoActual.nombreCompleto ||
+    prev.dni !== contratoActual.dni ||
+    prev.telefono !== contratoActual.telefono ||
+    prev.direccion !== contratoActual.direccion ||
+    prev.email !== contratoActual.email ||
+    prev.condicionIVA !== contratoActual.condicionIVA
+  ) impactos.push("datos_cliente")
+
+  // Servicios
+  const prevServs = [...prevVersion.snapshotServicios].sort().join(",")
+  const currServs = [...serviciosActuales].sort().join(",")
+  const prevLibres = [...prevVersion.snapshotServiciosLibres].sort().join(",")
+  const currLibres = [...serviciosLibresActuales].sort().join(",")
+  if (prevServs !== currServs || prevLibres !== currLibres) impactos.push("servicios")
+
+  // Financiero — plan de cuotas
+  const prevPlan = prevVersion.snapshotPlanCuotas
+  const currPlan = planCuotasActual
+  if (prevPlan || currPlan) {
+    const montoChanged = (prevPlan?.montoTotal ?? 0) !== (currPlan?.montoTotal ?? 0)
+    const cuotasChanged = (prevPlan?.numeroCuotas ?? 0) !== (currPlan?.numeroCuotas ?? 0)
+    const modalidadChanged = (prevPlan?.modalidadPago ?? "") !== (currPlan?.modalidadPago ?? "")
+    const senaChanged = (prevPlan?.montoSena ?? 0) !== (currPlan?.montoSena ?? 0)
+    if (montoChanged || cuotasChanged || modalidadChanged || senaChanged) impactos.push("financiero")
   }
 
-  const contrato = evento.contrato || {}
-  const totalPersonas = evento.adultos + evento.adolescentes + evento.ninos + (evento.personasDietasEspeciales || 0)
-  const fechaEvento = evento.fecha ? new Date(evento.fecha + "T12:00:00").toLocaleDateString("es-AR") : "Sin fecha"
-  const precioEvento = evento.precioVenta || paquetePrecio || 0
+  return impactos.length > 0 ? impactos : ["sin_cambios"]
+}
+
+// =====================================================================
+// IMPACT BADGE
+// =====================================================================
+const IMPACTO_CONFIG: Record<ImpactoContrato, { label: string; className: string; icon: React.ReactNode }> = {
+  financiero: { label: "Impacto financiero", className: "bg-red-100 text-red-700 border-red-200", icon: <DollarSign className="h-3 w-3" /> },
+  servicios: { label: "Cambian servicios", className: "bg-amber-100 text-amber-700 border-amber-200", icon: <Package className="h-3 w-3" /> },
+  datos_cliente: { label: "Datos del cliente", className: "bg-sky-100 text-sky-700 border-sky-200", icon: <User className="h-3 w-3" /> },
+  sin_cambios: { label: "Sin cambios", className: "bg-muted text-muted-foreground", icon: <Info className="h-3 w-3" /> },
+}
+
+// =====================================================================
+// CONTRACT PREVIEW MODAL
+// =====================================================================
+function ContractPreview({
+  evento, recetas, serviciosIncluidos, paquetePrecio, onClose,
+}: {
+  evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onClose: () => void
+}) {
+  const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Eye className="h-5 w-5 text-primary" />
+            <span className="font-semibold">Vista Previa del Contrato</span>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button>
+        </div>
+        <iframe
+          srcDoc={html}
+          className="flex-1 w-full rounded-b-xl"
+          title="Vista previa del contrato"
+        />
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// VERSION HISTORY PANEL
+// =====================================================================
+function VersionHistoryPanel({
+  versiones,
+  evento,
+  recetas,
+  catalogoServicios,
+}: {
+  versiones: VersionContrato[]
+  evento: EventoGuardado
+  recetas: Receta[]
+  catalogoServicios: { id: string; nombre: string }[]
+}) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
+  const sorted = [...versiones].sort((a, b) => b.version - a.version)
+
+  if (sorted.length === 0) return null
+
+  const handlePreview = (v: VersionContrato) => {
+    const serviciosNombres = v.snapshotServicios
+      .map((id) => catalogoServicios.find((s) => s.id === id)?.nombre || id)
+      .concat(v.snapshotServiciosLibres)
+    // Build a modified evento snapshot for this version
+    const eventoSnapshot: EventoGuardado = {
+      ...evento,
+      contrato: {
+        nombreCompleto: v.snapshotContrato.nombreCompleto,
+        dni: v.snapshotContrato.dni,
+        telefono: v.snapshotContrato.telefono,
+        direccion: v.snapshotContrato.direccion,
+        email: v.snapshotContrato.email,
+      },
+      planDeCuotas: v.snapshotPlanCuotas || evento.planDeCuotas,
+    }
+    const html = generateContractHTML(eventoSnapshot, recetas, serviciosNombres, 0)
+    const win = window.open("", "_blank")
+    if (win) { win.document.write(html); win.document.close() }
+  }
+
+  const handlePrint = (v: VersionContrato) => {
+    const serviciosNombres = v.snapshotServicios
+      .map((id) => catalogoServicios.find((s) => s.id === id)?.nombre || id)
+      .concat(v.snapshotServiciosLibres)
+    const eventoSnapshot: EventoGuardado = {
+      ...evento,
+      contrato: {
+        nombreCompleto: v.snapshotContrato.nombreCompleto,
+        dni: v.snapshotContrato.dni,
+        telefono: v.snapshotContrato.telefono,
+        direccion: v.snapshotContrato.direccion,
+        email: v.snapshotContrato.email,
+      },
+      planDeCuotas: v.snapshotPlanCuotas || evento.planDeCuotas,
+    }
+    const html = generateContractHTML(eventoSnapshot, recetas, serviciosNombres, 0)
+    const win = window.open("", "_blank")
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      win.focus()
+      setTimeout(() => { win.print() }, 600)
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
-      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-card shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-card-foreground">Vista Previa del Contrato</h2>
-            <p className="text-sm text-muted-foreground">{evento.nombrePareja || evento.nombre}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} className="bg-transparent">
-              Cerrar
-            </Button>
-            <Button onClick={handlePrint} className="gap-2">
-              <Printer className="h-4 w-4" />
-              Imprimir / PDF
-            </Button>
-          </div>
-        </div>
-
-        {/* Preview content */}
-        <div className="flex-1 overflow-auto bg-muted/30 p-6">
-          <div className="mx-auto max-w-3xl space-y-6 rounded-lg border border-border bg-card p-8 font-serif text-card-foreground shadow-sm">
-            {/* Header */}
-            <div className="text-center">
-              <p className="text-3xl italic" style={{ fontFamily: "'Brush Script MT', cursive" }}>
-                Los Jazmines
-              </p>
-              <p className="text-sm font-bold tracking-[0.3em] uppercase">EVENTOS</p>
-            </div>
-
-            <div className="text-center">
-              <p className="font-bold">Convenio de realizacion de eventos</p>
-              <p className="text-sm">{SALON_DIRECCIONES[evento.salon || ""] || "Del Viso - Bs. As."} &mdash; Fecha {new Date().toLocaleDateString("es-AR")}</p>
-              <p className="mt-2 font-semibold">{evento.nombrePareja || evento.nombre}</p>
-            </div>
-
-            {/* Datos Personales */}
-            <div>
-              <p className="font-bold">1) <span className="underline">Datos personales:</span></p>
-              <div className="ml-5 mt-2 space-y-1 text-sm">
-                <p>Nombre completo: {contrato.nombreCompleto || "---"}</p>
-                <p>DNI: {contrato.dni || "---"}</p>
-                <p>Telefono: {contrato.telefono || "---"}</p>
-                <p>Direccion: {contrato.direccion || "---"}</p>
-                <p>Email: {contrato.email || "---"}</p>
-                <p>IVA: {evento.condicionIVA || "Consumidor Final"}</p>
-              </div>
-            </div>
-
-            {/* Datos del Evento */}
-            <div>
-              <p className="font-bold">2) <span className="underline">Datos del evento a contratar:</span></p>
-              <div className="ml-5 mt-2 space-y-1 text-sm">
-                <p>Fecha: {fechaEvento}</p>
-                <p>Horario: {evento.horario || "---"} a {evento.horarioFin || "---"}</p>
-                <p>Cantidad de cubiertos/invitados: {totalPersonas}</p>
-                <p>Precio: {precioEvento > 0 ? formatCurrency(precioEvento) : "---"}</p>
-              </div>
-            </div>
-
-            {/* Forma de Pago */}
-            {evento.planDeCuotas && evento.planDeCuotas.montoTotal > 0 && (() => {
-              const plan = evento.planDeCuotas
-              const mod = plan.modalidadPago || "cuotas"
-              const sena = plan.montoSena || 0
-              const recargo = plan.porcentajeRecargo || 0
-              const financiado = mod === "sena" ? Math.max(0, plan.montoTotal - sena) : plan.montoTotal
-              const recargoMonto = financiado * (recargo / 100)
-              const conRecargo = financiado + recargoMonto
-              const cuotasEf = mod === "completo" ? 1 : plan.numeroCuotas
-              const montoCuota = cuotasEf > 0 ? conRecargo / cuotasEf : 0
-              const totalFinal = (mod === "sena" ? sena : 0) + conRecargo
-
-              return (
-                <div>
-                  <p className="font-bold">3) <span className="underline">Forma de pago:</span></p>
-                  <div className="ml-5 mt-2 space-y-1 text-sm">
-                    <p>
-                      <span className="font-medium">Modalidad:</span>{" "}
-                      {mod === "completo" ? "Pago completo" : mod === "sena" ? "Sena + Cuotas" : "Financiado en cuotas"}
-                    </p>
-                    <p>Precio del evento: {formatCurrency(plan.montoTotal)}</p>
-                    {mod === "sena" && sena > 0 && (
-                      <p className="text-emerald-700">Sena al firmar: {formatCurrency(sena)}</p>
-                    )}
-                    {mod !== "completo" && (
-                      <>
-                        <p>Monto financiado: {formatCurrency(financiado)}</p>
-                        {recargo > 0 && (
-                          <p className="text-amber-700">Recargo por financiacion ({recargo}%): +{formatCurrency(recargoMonto)}</p>
-                        )}
-                        <p className="font-semibold">
-                          {cuotasEf} cuotas de {formatCurrency(montoCuota)} + IPC
-                        </p>
-                      </>
-                    )}
-                    <p className="font-bold border-t border-border pt-1">Total final: {formatCurrency(totalFinal)}</p>
-                  </div>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <History className="h-4 w-4 text-primary" />
+          Historial de versiones
+          <Badge variant="secondary" className="ml-auto">{sorted.length}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {sorted.map((v, idx) => {
+          const isExpanded = expandedIdx === idx
+          const isFirst = idx === 0
+          return (
+            <div
+              key={v.version}
+              className={`rounded-lg border transition-colors ${isFirst ? "border-primary/30 bg-primary/5" : "border-border"}`}
+            >
+              {/* Row header */}
+              <div className="flex w-full items-center gap-3 px-4 py-3">
+                {/* Version badge */}
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${isFirst ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  v{v.version}
                 </div>
-              )
-            })()}
 
-            {/* Servicios */}
-            {serviciosIncluidos.length > 0 && (
-              <div>
-                <p className="font-bold">5) <span className="underline">Detalle del servicio:</span></p>
-                <ul className="ml-10 mt-2 list-disc space-y-1 text-sm">
-                  {serviciosIncluidos.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
+                {/* Date + impactos — clickable to expand */}
+                <button
+                  className="flex-1 min-w-0 text-left"
+                  onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium">
+                      {new Date(v.fechaGuardado).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}
+                      {" "}
+                      <span className="text-muted-foreground font-normal text-xs">
+                        {new Date(v.fechaGuardado).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </span>
+                    {isFirst && <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">Actual</Badge>}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {v.impactos.map((imp) => (
+                      <span
+                        key={imp}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${IMPACTO_CONFIG[imp].className}`}
+                      >
+                        {IMPACTO_CONFIG[imp].icon}
+                        {IMPACTO_CONFIG[imp].label}
+                      </span>
+                    ))}
+                    {v.motivo && (
+                      <span className="text-[11px] text-muted-foreground italic truncate max-w-[280px]">"{v.motivo}"</span>
+                    )}
+                  </div>
+                </button>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Vista previa"
+                    onClick={() => handlePreview(v)}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Imprimir"
+                    onClick={() => handlePrint(v)}
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                  {/* Pencil only on latest version */}
+                  {isFirst && (
+                    <Link href={`/evento?id=${evento.id}&from=contratos`}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="Editar en el planificador"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
+                  <button
+                    className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+                    title="Ver detalle"
+                  >
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
+
+              {/* Expandable detail */}
+              {isExpanded && (
+                <div className="border-t border-border px-4 pb-4 pt-3 space-y-3 text-sm">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Cliente</p>
+                    <p>{v.snapshotContrato.nombreCompleto || "—"} {v.snapshotContrato.dni ? `· DNI ${v.snapshotContrato.dni}` : ""}</p>
+                    {v.snapshotContrato.telefono && <p className="text-muted-foreground">{v.snapshotContrato.telefono}</p>}
+                  </div>
+                  {(v.snapshotServicios.length > 0 || v.snapshotServiciosLibres.length > 0) && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Servicios</p>
+                      <ul className="space-y-0.5">
+                        {v.snapshotServicios.map((id, i) => {
+                          const nombre = catalogoServicios.find((s) => s.id === id)?.nombre || id
+                          return <li key={i} className="text-muted-foreground">{nombre}</li>
+                        })}
+                        {v.snapshotServiciosLibres.map((s, i) => (
+                          <li key={i} className="text-muted-foreground">{s} <span className="text-[10px]">(manual)</span></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {v.snapshotPlanCuotas && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Financiacion</p>
+                      <p>{formatCurrency(v.snapshotPlanCuotas.montoTotal)} · {v.snapshotPlanCuotas.numeroCuotas} cuotas</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
+// =====================================================================
+// SALON TABS WITH DASHBOARD + EVENT LIST
+// =====================================================================
+function SalonesTabs({
+  eventos,
+  selectedEventoId,
+  onSelect,
+}: {
+  eventos: EventoGuardado[]
+  selectedEventoId: string
+  onSelect: (id: string) => void
+}) {
+  // Group events by salon (ignoring cancelled, already filtered upstream)
+  const eventosPorSalon = useMemo(() => {
+    const map: Record<string, EventoGuardado[]> = {}
+    for (const salon of SALONES) map[salon] = []
+    for (const ev of eventos) {
+      const key = (SALONES as readonly string[]).includes(ev.salon || "") ? (ev.salon as string) : null
+      if (key) map[key].push(ev)
+    }
+    return map
+  }, [eventos])
+
+  return (
+    <Tabs defaultValue={SALONES[0]} className="w-full">
+      <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto gap-1">
+        {SALONES.map((salon) => (
+          <TabsTrigger key={salon} value={salon} className="text-xs sm:text-sm">
+            {salon}
+            <Badge variant="secondary" className="ml-1.5 px-1.5 text-[10px]">
+              {eventosPorSalon[salon].length}
+            </Badge>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+
+      {SALONES.map((salon) => {
+        const evs = eventosPorSalon[salon]
+        // Status buckets: pendientes (borrador/pendiente), en preparación, finalizados
+        const pendientes = evs.filter((e) => e.estado === "pendiente" || e.estado === "borrador")
+        const enPreparacion = evs.filter((e) => e.estado === "en_preparacion")
+        const finalizados = evs.filter((e) => e.estado === "completado")
+
+        return (
+          <TabsContent key={salon} value={salon} className="space-y-5 mt-5">
+            {/* Dashboard de estados */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <DashboardStat
+                label="Pendientes"
+                value={pendientes.length}
+                icon={<Clock className="h-5 w-5" />}
+                className="border-amber-200 bg-amber-50 text-amber-700"
+              />
+              <DashboardStat
+                label="En preparacion"
+                value={enPreparacion.length}
+                icon={<Hourglass className="h-5 w-5" />}
+                className="border-sky-200 bg-sky-50 text-sky-700"
+              />
+              <DashboardStat
+                label="Finalizados"
+                value={finalizados.length}
+                icon={<CheckCheck className="h-5 w-5" />}
+                className="border-emerald-200 bg-emerald-50 text-emerald-700"
+              />
+            </div>
+
+            {/* Lista de eventos del salón */}
+            {evs.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center">
+                <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No hay eventos para {salon}.</p>
+              </div>
+            ) : (
+              <EventosPorMesSalon
+                eventos={evs}
+                selectedEventoId={selectedEventoId}
+                onSelect={onSelect}
+                hideSalonColumn
+              />
             )}
+          </TabsContent>
+        )
+      })}
+    </Tabs>
+  )
+}
 
-            {/* Clausulas */}
-            <div className="border-t border-border pt-4">
-              <p className="text-center text-xs text-muted-foreground">
-                Clausulas 4 a 15: Incumplimiento, Servicios, SADAIC, Numero maximo de participantes, Cancelacion, Volumen de sonido, Areas descubiertas, Bebidas alcoholicas, Responsabilidades, Derecho de imagenes, Seguridad y Alcohol a menores.
-              </p>
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                (El documento completo se genera al imprimir)
-              </p>
-            </div>
-
-            {/* Firma */}
-            <div className="mt-8 flex justify-between pt-8">
-              <div className="w-1/3 text-center">
-                <div className="mt-12 border-t border-foreground pt-1 text-xs font-bold">FIRMA</div>
-              </div>
-              <div className="w-1/3 text-center">
-                <div className="mt-12 border-t border-foreground pt-1 text-xs font-bold">ACLARACION</div>
-              </div>
-              <div className="w-1/3 text-center">
-                <div className="mt-12 border-t border-foreground pt-1 text-xs font-bold">DNI</div>
-              </div>
-            </div>
-          </div>
-        </div>
+function DashboardStat({
+  label,
+  value,
+  icon,
+  className,
+}: {
+  label: string
+  value: number
+  icon: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`flex items-center gap-3 rounded-xl border p-4 ${className ?? ""}`}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background/60">
+        {icon}
       </div>
+      <div>
+        <p className="text-2xl font-bold tabular-nums leading-none">{value}</p>
+        <p className="text-xs font-medium mt-1">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// EVENTS TABLE GROUPED BY MONTH + SALON
+// =====================================================================
+const MESES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+function EventosPorMesSalon({
+  eventos,
+  selectedEventoId,
+  onSelect,
+  hideSalonColumn = false,
+}: {
+  eventos: EventoGuardado[]
+  selectedEventoId: string
+  onSelect: (id: string) => void
+  hideSalonColumn?: boolean
+}) {
+  // Group by month (YYYY-MM), then sort rows inside each month by salon, then date
+  const grupos = useMemo(() => {
+    const map = new Map<string, { label: string; eventos: EventoGuardado[] }>()
+    for (const ev of eventos) {
+      const d = new Date(ev.fecha + "T12:00:00")
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      const label = `${MESES_ES[d.getMonth()]} ${d.getFullYear()}`
+      if (!map.has(key)) map.set(key, { label, eventos: [] })
+      map.get(key)!.eventos.push(ev)
+    }
+    // Sort months chronologically (ascending), and rows by salon then date
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, grupo]) => ({
+        key,
+        label: grupo.label,
+        eventos: [...grupo.eventos].sort((a, b) => {
+          const salonCmp = (a.salon || "zzz").localeCompare(b.salon || "zzz")
+          if (salonCmp !== 0) return salonCmp
+          return new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+        }),
+      }))
+  }, [eventos])
+
+  if (grupos.length === 0) return null
+
+  return (
+    <div className="space-y-6">
+      {grupos.map((grupo) => (
+        <div key={grupo.key} className="overflow-hidden rounded-xl border border-border">
+          <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+            <Calendar className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold capitalize">{grupo.label}</h3>
+            <Badge variant="secondary" className="ml-auto text-xs">
+              {grupo.eventos.length} evento{grupo.eventos.length !== 1 ? "s" : ""}
+            </Badge>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[100px]">Fecha</TableHead>
+                {!hideSalonColumn && <TableHead className="w-[120px]">Salon</TableHead>}
+                <TableHead>Evento</TableHead>
+                <TableHead className="w-[90px] text-center">Invitados</TableHead>
+                <TableHead className="w-[130px] text-right">Precio</TableHead>
+                <TableHead className="w-[110px] text-center">Contrato</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {grupo.eventos.map((ev) => {
+                const totalPersonas =
+                  ev.adultos + ev.adolescentes + ev.ninos + (ev.personasDietasEspeciales || 0)
+                const versiones = ev.versionesContrato?.length || 0
+                const isSelected = ev.id === selectedEventoId
+                return (
+                  <TableRow
+                    key={ev.id}
+                    onClick={() => onSelect(ev.id)}
+                    className={`cursor-pointer ${isSelected ? "bg-primary/5 hover:bg-primary/10" : ""}`}
+                  >
+                    <TableCell className="font-medium tabular-nums">
+                      {new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      })}
+                    </TableCell>
+                    {!hideSalonColumn && (
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">{ev.salon || "Sin salon"}</Badge>
+                      </TableCell>
+                    )}
+                    <TableCell className="font-medium">{ev.nombrePareja || ev.nombre}</TableCell>
+                    <TableCell className="text-center tabular-nums">{totalPersonas}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {ev.precioVenta ? formatCurrency(ev.precioVenta) : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {versiones > 0 ? (
+                        <Badge variant="secondary" className="gap-1 text-xs">
+                          <History className="h-3 w-3" />v{Math.max(...ev.versionesContrato!.map((v) => v.version))}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Sin generar</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      ))}
     </div>
   )
 }
@@ -615,78 +740,168 @@ function ContractPreview({
 // =====================================================================
 // MAIN PAGE
 // =====================================================================
-export default function ContratosPage() {
-  const { state, eventos, recetas, servicios: catalogoServicios, paquetesSalones } = useStore()
+function ContratosPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { state, updateEvento } = useStore()
+  const { eventos, paquetesSalones, recetas } = state
+  const catalogoServicios = state.servicios || []
+
   const [selectedEventoId, setSelectedEventoId] = useState<string>("")
+
+  // Auto-select event when coming back from planificador (?eventoId=X)
+  useEffect(() => {
+    const eventoId = searchParams?.get("eventoId")
+    if (eventoId) setSelectedEventoId(eventoId)
+  }, [searchParams])
   const [showPreview, setShowPreview] = useState(false)
+  const [savedOk, setSavedOk] = useState(false)
+  const [motivoCambio, setMotivoCambio] = useState("")
 
-  // Filter events with useful data (at least name and date)
-  const eventosDisponibles = useMemo(() => {
-    return (eventos || [])
+  // Local editable state
+  const [contratoLocal, setContratoLocal] = useState({
+    nombreCompleto: "", dni: "", telefono: "", direccion: "", email: "", condicionIVA: "Consumidor Final",
+  })
+  const [checkedIds, setCheckedIds] = useState<string[]>([])
+  const [serviciosLibres, setServiciosLibres] = useState<string[]>([])
+  const [nuevoServicio, setNuevoServicio] = useState("")
+
+  // Available events
+  const eventosDisponibles = useMemo(() =>
+    (eventos || [])
       .filter((e) => e.estado !== "cancelado" && (e.nombre || e.nombrePareja) && e.fecha)
-      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-  }, [eventos])
+      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()),
+    [eventos]
+  )
 
-  const selectedEvento = useMemo(() => {
-    return eventosDisponibles.find((e) => e.id === selectedEventoId)
-  }, [eventosDisponibles, selectedEventoId])
+  const selectedEvento = useMemo(
+    () => eventosDisponibles.find((e) => e.id === selectedEventoId),
+    [eventosDisponibles, selectedEventoId]
+  )
 
-  // Get services list from packages
-  const serviciosIncluidos = useMemo(() => {
-    if (!selectedEvento) return []
-    const names: string[] = []
-    const paquetes = selectedEvento.paquetesSeleccionados || []
-    paquetes.forEach((pid) => {
-      const paq = (paquetesSalones || []).find((p) => p.id === pid)
-      if (!paq) return
-      paq.serviciosIncluidos.forEach((si) => {
-        const nombre = si.nombre || (catalogoServicios || []).find((s) => s.id === si.servicioId)?.nombre || "Servicio"
-        if (!names.includes(nombre)) names.push(nombre)
-      })
-    })
-    // Fallback to direct servicios
-    if (names.length === 0 && selectedEvento.servicios) {
-      selectedEvento.servicios.forEach((s) => {
-        if (!names.includes(s.nombre)) names.push(s.nombre)
-      })
+  // Auto-sync when event changes — pre-populate from planificador data
+  useEffect(() => {
+    if (!selectedEvento) {
+      setContratoLocal({ nombreCompleto: "", dni: "", telefono: "", direccion: "", email: "", condicionIVA: "Consumidor Final" })
+      setCheckedIds([])
+      setServiciosLibres([])
+      return
     }
-    return names
-  }, [selectedEvento, paquetesSalones, catalogoServicios])
+    const c = selectedEvento.contrato || {}
+    setContratoLocal({
+      nombreCompleto: c.nombreCompleto || selectedEvento.nombrePareja || selectedEvento.nombre || "",
+      dni: c.dni || selectedEvento.dniNovio1 || "",
+      telefono: c.telefono || "",
+      direccion: c.direccion || "",
+      email: c.email || "",
+      condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
+    })
+    // Restore services: if the contract was explicitly saved before, honour that.
+    // Use length > 0 check so an empty array doesn't mask services added in the planificador.
+    const savedIds = selectedEvento.serviciosContrato
+    const savedLibres = selectedEvento.serviciosLibresContrato
 
-  // Get package price
+    if (savedIds && savedIds.length > 0) {
+      setCheckedIds(savedIds)
+      setServiciosLibres(savedLibres || [])
+    } else {
+      // Auto-populate from the planificador: use every servicioId attached to this event.
+      const fromPlanificador = (selectedEvento.servicios || [])
+        .map((se) => se.servicioId)
+        .filter((id): id is string => Boolean(id))
+      setCheckedIds(fromPlanificador)
+      setServiciosLibres(savedLibres || [])
+    }
+  // Re-run when the event changes OR when its services list changes (planificador edits).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventoId, selectedEvento?.servicios?.length, selectedEvento?.serviciosContrato?.join(",")])
+
+  // Package price
   const paquetePrecio = useMemo(() => {
     if (!selectedEvento) return 0
-    const paquetes = selectedEvento.paquetesSeleccionados || []
-    return paquetes.reduce((total, pid) => {
+    return (selectedEvento.paquetesSeleccionados || []).reduce((total, pid) => {
       const paq = (paquetesSalones || []).find((p) => p.id === pid)
       if (!paq) return total
-      const totales = calcularTotalesPaquete(paq, catalogoServicios || [])
-      return total + totales.precioOficial
+      return total + calcularTotalesPaquete(paq, catalogoServicios || []).precioOficial
     }, 0)
   }, [selectedEvento, paquetesSalones, catalogoServicios])
 
-  const handleGenerateContract = () => {
+  // Services list for the contract
+  const serviciosIncluidos = useMemo(() => {
+    const fromCatalog = (catalogoServicios || [])
+      .filter((s) => checkedIds.includes(s.id) && s.activo !== false)
+      .map((s) => s.nombre)
+    return [...fromCatalog, ...serviciosLibres]
+  }, [checkedIds, serviciosLibres, catalogoServicios])
+
+  // Change detection vs last version
+  const ultimaVersion = useMemo(() =>
+    selectedEvento?.versionesContrato?.length
+      ? [...selectedEvento.versionesContrato].sort((a, b) => b.version - a.version)[0]
+      : null,
+    [selectedEvento]
+  )
+
+  const impactosDetectados = useMemo(() =>
+    detectarImpactos(ultimaVersion, contratoLocal, checkedIds, serviciosLibres, selectedEvento?.planDeCuotas),
+    [ultimaVersion, contratoLocal, checkedIds, serviciosLibres, selectedEvento]
+  )
+
+  const hayImpactoFinanciero = impactosDetectados.includes("financiero")
+  const hayCambios = !impactosDetectados.includes("sin_cambios") || ultimaVersion === null
+
+  const handleSave = async () => {
     if (!selectedEvento) return
-    setShowPreview(true)
+
+    const versionNueva: VersionContrato = {
+      version: (selectedEvento.versionesContrato?.length ?? 0) + 1,
+      fechaGuardado: new Date().toISOString(),
+      motivo: motivoCambio.trim() || undefined,
+      snapshotContrato: { ...contratoLocal },
+      snapshotServicios: checkedIds,
+      snapshotServiciosLibres: serviciosLibres,
+      snapshotPlanCuotas: selectedEvento.planDeCuotas,
+      impactos: hayCambios ? impactosDetectados : ["sin_cambios"],
+    }
+
+    await updateEvento(selectedEvento.id, {
+      contrato: {
+        nombreCompleto: contratoLocal.nombreCompleto,
+        dni: contratoLocal.dni,
+        telefono: contratoLocal.telefono,
+        direccion: contratoLocal.direccion,
+        email: contratoLocal.email,
+      },
+      condicionIVA: contratoLocal.condicionIVA as EventoGuardado["condicionIVA"],
+      serviciosContrato: checkedIds,
+      serviciosLibresContrato: serviciosLibres,
+      versionesContrato: [...(selectedEvento.versionesContrato || []), versionNueva],
+    })
+
+    setMotivoCambio("")
+    setShowMotivo(false)
+    setSavedOk(true)
+    setTimeout(() => setSavedOk(false), 2500)
   }
 
-  const handleDirectPrint = () => {
-    if (!selectedEvento) return
-    const html = generateContractHTML(selectedEvento, recetas, serviciosIncluidos, paquetePrecio)
-    const printWindow = window.open("", "_blank", "width=900,height=700")
-    if (!printWindow) return
-    printWindow.document.write(html)
-    printWindow.document.close()
-    setTimeout(() => {
-      printWindow.print()
-    }, 300)
+  const toggleChecked = (id: string) =>
+    setCheckedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+
+  const handleAddServicioLibre = () => {
+    const trimmed = nuevoServicio.trim()
+    if (!trimmed) return
+    setServiciosLibres((prev) => [...prev, trimmed])
+    setNuevoServicio("")
   }
+
+  const handleRemoveServicioLibre = (idx: number) =>
+    setServiciosLibres((prev) => prev.filter((_, i) => i !== idx))
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-4xl flex items-center gap-4">
-          <Link href="/eventos/calendario" className="text-muted-foreground hover:text-foreground">
+        <div className="mx-auto max-w-5xl flex items-center gap-4">
+          <Link href="/eventos/lista" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
           </Link>
           <FileText className="h-6 w-6 text-primary" />
@@ -694,14 +909,15 @@ export default function ContratosPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+
         {/* Event Selector */}
         <Card>
           <CardContent className="p-6 space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-card-foreground mb-1">Generar Contrato</h2>
               <p className="text-sm text-muted-foreground">
-                Selecciona un evento para generar el convenio de realizacion con todos los datos del planificador de fiesta.
+                Selecciona un evento para cargar automaticamente sus datos desde el planificador. Podes editar antes de generar.
               </p>
             </div>
 
@@ -712,139 +928,416 @@ export default function ContratosPage() {
                 </div>
                 <p className="text-lg font-semibold text-card-foreground mb-1">No hay eventos guardados</p>
                 <p className="text-sm text-muted-foreground max-w-md">
-                  Primero crea un evento desde el planificador de fiesta con los datos del cliente y el plan de cuotas.
+                  Primero crea un evento desde el planificador de fiesta.
                 </p>
-                <Link href="/evento">
-                  <Button className="mt-4">Crear Evento</Button>
-                </Link>
+                <Link href="/evento"><Button className="mt-4">Crear Evento</Button></Link>
               </div>
             ) : (
-              <>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-card-foreground">Evento</label>
-                  <Select value={selectedEventoId} onValueChange={setSelectedEventoId}>
-                    <SelectTrigger className="h-12">
-                      <SelectValue placeholder="Selecciona un evento..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {eventosDisponibles.map((ev) => (
-                        <SelectItem key={ev.id} value={ev.id}>
-                          <span className="flex items-center gap-2">
-                            <span className="font-medium">{ev.nombrePareja || ev.nombre}</span>
-                            <span className="text-muted-foreground text-xs">
-                              {new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR")}
-                            </span>
-                            <Badge variant="outline" className="text-xs ml-1">
-                              {ev.salon || "Sin salon"}
-                            </Badge>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Eventos por salon</Label>
+                <SalonesTabs
+                  eventos={eventosDisponibles}
+                  selectedEventoId={selectedEventoId}
+                  onSelect={setSelectedEventoId}
+                />
+              </div>
+            )}
 
-                {/* Event Summary */}
-                {selectedEvento && (
-                  <div className="rounded-xl border border-border bg-muted/30 p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-card-foreground">{selectedEvento.nombrePareja || selectedEvento.nombre}</h3>
-                      <Badge variant={selectedEvento.estado === "confirmado" ? "default" : "secondary"}>
-                        {selectedEvento.estado}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                      <div>
-                        <p className="text-muted-foreground">Fecha</p>
-                        <p className="font-medium">{new Date(selectedEvento.fecha + "T12:00:00").toLocaleDateString("es-AR")}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Salon</p>
-                        <p className="font-medium">{selectedEvento.salon || "---"}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Invitados</p>
-                        <p className="font-medium flex items-center gap-1">
-                          <Users className="h-3.5 w-3.5" />
-                          {selectedEvento.adultos + selectedEvento.adolescentes + selectedEvento.ninos + (selectedEvento.personasDietasEspeciales || 0)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Precio</p>
-                        <p className="font-medium">
-                          {selectedEvento.precioVenta
-                            ? formatCurrency(selectedEvento.precioVenta)
-                            : paquetePrecio > 0
-                              ? formatCurrency(paquetePrecio)
-                              : "Sin precio"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Contract data status */}
-                    <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
-                      <Badge variant={selectedEvento.contrato?.nombreCompleto ? "default" : "outline"} className="text-xs">
-                        {selectedEvento.contrato?.nombreCompleto ? "Cliente cargado" : "Sin datos cliente"}
-                      </Badge>
-                      <Badge variant={selectedEvento.planDeCuotas?.montoTotal ? "default" : "outline"} className="text-xs">
-                        {selectedEvento.planDeCuotas?.montoTotal
-                          ? selectedEvento.planDeCuotas.modalidadPago === "completo"
-                            ? "Pago completo"
-                            : selectedEvento.planDeCuotas.modalidadPago === "sena"
-                              ? `Sena + ${selectedEvento.planDeCuotas.numeroCuotas} cuotas`
-                              : `${selectedEvento.planDeCuotas.numeroCuotas} cuotas${selectedEvento.planDeCuotas.porcentajeRecargo ? ` (+${selectedEvento.planDeCuotas.porcentajeRecargo}%)` : ""}`
-                          : "Sin plan de pago"}
-                      </Badge>
-                      <Badge variant={serviciosIncluidos.length > 0 ? "default" : "outline"} className="text-xs">
-                        {serviciosIncluidos.length > 0 ? `${serviciosIncluidos.length} servicios` : "Sin servicios"}
-                      </Badge>
-                    </div>
+            {/* Event quick summary */}
+            {selectedEvento && (
+              <div className="rounded-xl border border-border bg-muted/30 p-4">
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                  <div>
+                    <p className="text-muted-foreground">Fecha</p>
+                    <p className="font-medium">{new Date(selectedEvento.fecha + "T12:00:00").toLocaleDateString("es-AR")}</p>
                   </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-2">
-                  <Button
-                    onClick={handleGenerateContract}
-                    disabled={!selectedEvento}
-                    className="flex-1 h-12 gap-2"
-                  >
-                    <Eye className="h-4 w-4" />
-                    Vista Previa del Contrato
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleDirectPrint}
-                    disabled={!selectedEvento}
-                    className="h-12 gap-2 bg-transparent"
-                  >
-                    <Printer className="h-4 w-4" />
-                    Imprimir Directo
-                  </Button>
+                  <div>
+                    <p className="text-muted-foreground">Salon</p>
+                    <p className="font-medium">{selectedEvento.salon || "---"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Invitados</p>
+                    <p className="font-medium flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5" />
+                      {selectedEvento.adultos + selectedEvento.adolescentes + selectedEvento.ninos + (selectedEvento.personasDietasEspeciales || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Precio</p>
+                    <p className="font-medium">
+                      {selectedEvento.precioVenta
+                        ? formatCurrency(selectedEvento.precioVenta)
+                        : paquetePrecio > 0 ? formatCurrency(paquetePrecio) : "Sin precio"}
+                    </p>
+                  </div>
                 </div>
-              </>
+              </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Info about missing data */}
-        {selectedEvento && (!selectedEvento.contrato?.nombreCompleto || !selectedEvento.planDeCuotas?.montoTotal) && (
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-sm text-muted-foreground">
-                <strong className="text-card-foreground">Datos faltantes:</strong> Para un contrato completo, edita el evento desde el{" "}
-                <Link href={`/evento?id=${selectedEvento.id}`} className="text-primary underline hover:no-underline">
-                  planificador de fiesta
-                </Link>{" "}
-                y completa la seccion &quot;Datos del Contrato&quot; con la informacion del cliente y el plan de cuotas.
-              </p>
-            </CardContent>
-          </Card>
+        {/* VERSION HISTORY + observacion + save — shown first */}
+        {selectedEvento && (
+          <>
+            {selectedEvento.versionesContrato && selectedEvento.versionesContrato.length > 0 && (
+              <VersionHistoryPanel
+                versiones={selectedEvento.versionesContrato}
+                evento={selectedEvento}
+                recetas={recetas}
+                catalogoServicios={catalogoServicios}
+              />
+            )}
+
+            {/* Tip: editing happens from the planificador via the pencil icon */}
+            {(!selectedEvento.versionesContrato || selectedEvento.versionesContrato.length === 0) && (
+              <div className="rounded-xl border border-dashed border-border px-5 py-4 text-sm text-muted-foreground flex items-center gap-3">
+                <History className="h-4 w-4 shrink-0" />
+                <span>
+                  Este contrato no tiene versiones guardadas aun. Guarda la primera version desde el planificador del evento.
+                </span>
+                <Link href={`/evento?id=${selectedEvento.id}&from=contratos`} className="ml-auto shrink-0">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Pencil className="h-3.5 w-3.5" />
+                    Ir al planificador
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* EDITABLE PANELS */}
+        {selectedEvento && (
+          <>
+            {/* Change impact warning */}
+            {ultimaVersion && hayCambios && !impactosDetectados.includes("sin_cambios") && (
+              <div className={`rounded-xl border px-5 py-4 flex gap-3 ${hayImpactoFinanciero ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
+                <AlertTriangle className={`h-5 w-5 shrink-0 mt-0.5 ${hayImpactoFinanciero ? "text-red-500" : "text-amber-500"}`} />
+                <div className="space-y-1.5">
+                  <p className={`text-sm font-semibold ${hayImpactoFinanciero ? "text-red-800" : "text-amber-800"}`}>
+                    {hayImpactoFinanciero
+                      ? "Cambio con impacto financiero — afecta el plan de cuotas y Caja Eventos"
+                      : "Hay cambios respecto a la ultima version guardada"}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {impactosDetectados.map((imp) => (
+                      <span
+                        key={imp}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${IMPACTO_CONFIG[imp].className}`}
+                      >
+                        {IMPACTO_CONFIG[imp].icon}
+                        {IMPACTO_CONFIG[imp].label}
+                      </span>
+                    ))}
+                  </div>
+                  <p className={`text-xs ${hayImpactoFinanciero ? "text-red-600" : "text-amber-600"}`}>
+                    Al guardar se creara la version {(ultimaVersion?.version ?? 0) + 1} del contrato y quedara registrado en el historial.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* First version info */}
+            {!ultimaVersion && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 flex gap-3">
+                <Info className="h-4 w-4 shrink-0 mt-0.5 text-sky-500" />
+                <p className="text-sm text-sky-700">
+                  Este evento no tiene contrato guardado todavia. Los datos se precargaron automaticamente desde el planificador. Revisalos y guarda para crear la version 1.
+                </p>
+              </div>
+            )}
+
+            <div className="grid gap-6 lg:grid-cols-2">
+
+              {/* PANEL 1: Datos del Contrato */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <User className="h-4 w-4 text-primary" />
+                    Datos del Contrato
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="nombreCompleto">Nombre completo</Label>
+                      <Input
+                        id="nombreCompleto"
+                        value={contratoLocal.nombreCompleto}
+                        onChange={(e) => setContratoLocal((p) => ({ ...p, nombreCompleto: e.target.value }))}
+                        placeholder="Nombre y apellido del cliente"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="dni">DNI</Label>
+                        <Input
+                          id="dni"
+                          value={contratoLocal.dni}
+                          onChange={(e) => setContratoLocal((p) => ({ ...p, dni: e.target.value }))}
+                          placeholder="12.345.678"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="telefono">Telefono</Label>
+                        <Input
+                          id="telefono"
+                          value={contratoLocal.telefono}
+                          onChange={(e) => setContratoLocal((p) => ({ ...p, telefono: e.target.value }))}
+                          placeholder="11 1234-5678"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="direccion">Direccion</Label>
+                      <Input
+                        id="direccion"
+                        value={contratoLocal.direccion}
+                        onChange={(e) => setContratoLocal((p) => ({ ...p, direccion: e.target.value }))}
+                        placeholder="Calle, numero, localidad"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={contratoLocal.email}
+                        onChange={(e) => setContratoLocal((p) => ({ ...p, email: e.target.value }))}
+                        placeholder="cliente@email.com"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Condicion IVA</Label>
+                      <Select
+                        value={contratoLocal.condicionIVA}
+                        onValueChange={(v) => setContratoLocal((p) => ({ ...p, condicionIVA: v }))}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Consumidor Final">Consumidor Final</SelectItem>
+                          <SelectItem value="Responsable Inscripto">Responsable Inscripto</SelectItem>
+                          <SelectItem value="Monotributista">Monotributista</SelectItem>
+                          <SelectItem value="Exento">Exento</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* PANEL 2: Servicios */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ListChecks className="h-4 w-4 text-primary" />
+                    Servicios del Contrato
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Servicios del evento (agregados desde el planificador) */}
+                  {(() => {
+                    const serviciosEvento = selectedEvento?.servicios || []
+                    const serviciosEnEvento = serviciosEvento.map((se) => {
+                      const cat = catalogoServicios.find((s) => s.id === se.servicioId)
+                      return { id: se.servicioId, nombre: se.nombre || cat?.nombre || se.servicioId, precio: cat?.precioVenta, cantidad: se.cantidad, unidad: se.unidad }
+                    })
+
+                    // Servicios del catalogo no incluidos en el evento
+                    const idsEnEvento = serviciosEvento.map((se) => se.servicioId)
+                    const catalogoExtras = catalogoServicios.filter((s) => s.activo !== false && !idsEnEvento.includes(s.id))
+
+                    return (
+                      <>
+                        {/* Sección principal: los del evento */}
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Contratados en este evento
+                          </p>
+                          {serviciosEnEvento.length > 0 ? (
+                            <div className="rounded-md border border-border divide-y divide-border">
+                              {serviciosEnEvento.map((s) => (
+                                <label
+                                  key={s.id}
+                                  className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors"
+                                >
+                                  <Checkbox
+                                    checked={checkedIds.includes(s.id)}
+                                    onCheckedChange={() => toggleChecked(s.id)}
+                                  />
+                                  <span className="flex-1 text-sm font-medium text-card-foreground">{s.nombre}</span>
+                                  {s.unidad === "Por Hora" && s.cantidad && s.cantidad > 1 && (
+                                    <span className="text-xs text-muted-foreground">{s.cantidad}h</span>
+                                  )}
+                                  {s.precio != null && (
+                                    <span className="text-xs text-muted-foreground tabular-nums">
+                                      {formatCurrency(s.unidad === "Por Hora" && s.cantidad ? s.precio * s.cantidad : s.precio)}
+                                    </span>
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="rounded-md border border-dashed border-border px-3 py-4 text-center">
+                              <p className="text-sm text-muted-foreground">
+                                No hay servicios agregados en el planificador de este evento.
+                              </p>
+                              <Link
+                                href={selectedEvento?.id ? `/evento?id=${selectedEvento.id}` : "/evento"}
+                                className="text-xs text-primary underline hover:no-underline"
+                              >
+                                Ir al planificador del evento
+                              </Link>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Sección secundaria: otros del catálogo no incluidos en el evento */}
+                        {catalogoExtras.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Agregar del catalogo
+                            </p>
+                            <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                              {catalogoExtras.map((s) => (
+                                <label
+                                  key={s.id}
+                                  className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/40 transition-colors"
+                                >
+                                  <Checkbox
+                                    checked={checkedIds.includes(s.id)}
+                                    onCheckedChange={() => toggleChecked(s.id)}
+                                  />
+                                  <span className="flex-1 text-sm text-card-foreground">{s.nombre}</span>
+                                  {s.precioVenta != null && (
+                                    <span className="text-xs text-muted-foreground tabular-nums">{formatCurrency(s.precioVenta)}</span>
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+
+                  {/* Texto libre */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Agregar servicio manual</p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={nuevoServicio}
+                        onChange={(e) => setNuevoServicio(e.target.value)}
+                        placeholder="Ej: Barra de tragos premium"
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddServicioLibre() } }}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={handleAddServicioLibre}
+                        disabled={!nuevoServicio.trim()}
+                        className="bg-transparent"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {serviciosLibres.length > 0 && (
+                      <div className="space-y-1">
+                        {serviciosLibres.map((s, i) => (
+                          <div key={i} className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-1.5">
+                            <span className="flex-1 text-sm">{s}</span>
+                            <button onClick={() => handleRemoveServicioLibre(i)} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {serviciosIncluidos.length > 0 && (
+                    <p className="text-xs text-muted-foreground border-t border-border pt-2">
+                      {serviciosIncluidos.length} servicio{serviciosIncluidos.length !== 1 ? "s" : ""} se incluiran en el contrato
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Plan de cuotas info */}
+            {selectedEvento.planDeCuotas && selectedEvento.planDeCuotas.montoTotal > 0 && (
+              <Card>
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <DollarSign className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-semibold">Plan de financiacion</p>
+                    <Badge variant="outline" className="ml-auto text-xs capitalize">
+                      {selectedEvento.planDeCuotas.modalidadPago || "cuotas"}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                    <div>
+                      <p className="text-muted-foreground">Total</p>
+                      <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoTotal)}</p>
+                    </div>
+                    {selectedEvento.planDeCuotas.montoSena && selectedEvento.planDeCuotas.montoSena > 0 && (
+                      <div>
+                        <p className="text-muted-foreground">Sena</p>
+                        <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoSena)}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-muted-foreground">Cuotas</p>
+                      <p className="font-semibold">{selectedEvento.planDeCuotas.numeroCuotas}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Por cuota</p>
+                      <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoCuota)}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Para modificar la financiacion, editá el plan de cuotas desde el{" "}
+                    <Link href={`/evento?id=${selectedEvento.id}`} className="text-primary underline hover:no-underline">planificador</Link>.
+                    Cualquier cambio de monto o modalidad se detectara automaticamente al volver a esta pantalla.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Print / preview actions */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Button
+                variant="outline"
+                onClick={() => setShowPreview(true)}
+                className="flex-1 h-12 gap-2 bg-transparent"
+              >
+                <Eye className="h-4 w-4" />
+                Vista Previa
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!selectedEvento) return
+                  const html = generateContractHTML(selectedEvento, recetas, serviciosIncluidos, paquetePrecio)
+                  const printWindow = window.open("", "_blank", "width=900,height=700")
+                  if (!printWindow) return
+                  printWindow.document.write(html)
+                  printWindow.document.close()
+                  setTimeout(() => { printWindow.print() }, 300)
+                }}
+                className="h-12 gap-2 bg-transparent sm:w-44"
+              >
+                <Printer className="h-4 w-4" />
+                Imprimir
+              </Button>
+            </div>
+
+          </>
         )}
       </main>
 
-      {/* Contract Preview Modal */}
       {showPreview && selectedEvento && (
         <ContractPreview
           evento={selectedEvento}
@@ -855,5 +1348,13 @@ export default function ContratosPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function ContratosPage() {
+  return (
+    <Suspense>
+      <ContratosPageContent />
+    </Suspense>
   )
 }

@@ -24,6 +24,7 @@ import {
 } from "@/lib/store"
 import { useEventos } from "@/lib/use-eventos"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
+import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -67,27 +68,31 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import {
   Plus,
   Eye,
   Printer,
+  FileText,
   Trash2,
   Calendar as CalendarIcon,
   Users,
   Building2,
   Search,
-  MoreHorizontal,
   ClipboardList,
   ChevronDown,
   ChevronUp,
   LayoutDashboard,
   CheckCircle,
   CheckCircle2,
-  RotateCcw,
   Sparkles,
   RefreshCw,
   ShoppingCart,
@@ -95,8 +100,86 @@ import {
   Archive,
   ArrowUp,
   ArrowDown,
+  ChefHat,
+  Wine,
+  ConciergeBell,
 } from "lucide-react"
 import { generateId } from "@/lib/utils-client"
+
+type CoberturaItem = {
+  icon: typeof ChefHat
+  label: string
+  cubierto: boolean
+  aplica: boolean
+  detalle: string
+}
+
+// Calcula el estado de cobertura (pagado al proveedor) de cocina, barra y servicios
+function calcularCobertura(evento: EventoGuardado): {
+  items: CoberturaItem[]
+  todoCubierto: boolean
+  algoAplica: boolean
+} {
+  // Cocina: aplica si hay recetas asignadas al evento
+  const tieneCocina =
+    (evento.recetasAdultos?.length || 0) +
+      (evento.recetasAdolescentes?.length || 0) +
+      (evento.recetasNinos?.length || 0) +
+      (evento.recetasDietasEspeciales?.length || 0) >
+    0
+
+  // Barra: aplica si hay barras contratadas
+  const tieneBarra = (evento.barras?.length || 0) > 0
+
+  // Servicios: aplica si hay servicios contratados
+  const servicios = evento.servicios || []
+  const tieneServicios = servicios.length > 0
+  const serviciosPagados = tieneServicios && servicios.every((s) => s.pagado === true)
+  const serviciosPagadosCount = servicios.filter((s) => s.pagado === true).length
+
+  const items: CoberturaItem[] = [
+    {
+      icon: ChefHat,
+      label: "Cocina",
+      aplica: tieneCocina,
+      cubierto: !!evento.cocinaPagada,
+      detalle: !tieneCocina
+        ? "Sin cocina contratada"
+        : evento.cocinaPagada
+          ? "Costo de cocina pagado"
+          : "Costo de cocina pendiente de pago",
+    },
+    {
+      icon: Wine,
+      label: "Barra",
+      aplica: tieneBarra,
+      cubierto: !!evento.barraPagada,
+      detalle: !tieneBarra
+        ? "Sin barra contratada"
+        : evento.barraPagada
+          ? "Costo de barra pagado"
+          : "Costo de barra pendiente de pago",
+    },
+    {
+      icon: ConciergeBell,
+      label: "Servicios",
+      aplica: tieneServicios,
+      cubierto: serviciosPagados,
+      detalle: !tieneServicios
+        ? "Sin servicios contratados"
+        : serviciosPagados
+          ? "Todos los servicios pagados"
+          : `${serviciosPagadosCount}/${servicios.length} servicios pagados`,
+    },
+  ]
+
+  const aplicables = items.filter((i) => i.aplica)
+  const algoAplica = aplicables.length > 0
+  const todoCubierto = algoAplica && aplicables.every((i) => i.cubierto)
+
+  return { items, todoCubierto, algoAplica }
+}
+
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
     label: "Borrador",
@@ -137,7 +220,7 @@ function formatFecha(fecha: string) {
 export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual } = useStore()
+  const { recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual, servicios: catalogoServicios } = useStore()
   const { eventos, loading: loadingEventos, fetchEventos, actualizarEvento: actualizarEventoDB, eliminarEvento: eliminarEventoDB } = useEventos()
 
   // Wrapper para actualizar evento en DB + sync local
@@ -474,6 +557,20 @@ export default function EventosListaPage() {
     setImprimirDialogOpen(true)
   }
 
+  const handleImprimirContrato = (eventoId: string) => {
+    const evento = eventos.find((e) => e.id === eventoId)
+    if (!evento) return
+    if (!evento.contrato && !(evento.versionesContrato?.length)) {
+      toast({
+        title: "Sin contrato",
+        description: "Este evento todavía no tiene datos de contrato cargados.",
+        variant: "destructive",
+      })
+      return
+    }
+    imprimirUltimaVersionContrato(evento, recetas, catalogoServicios || [])
+  }
+
   const handleConfirmarImpresion = async () => {
     if (!imprimirEventoId) return
     const evento = eventos.find((e) => e.id === imprimirEventoId)
@@ -807,6 +904,7 @@ export default function EventosListaPage() {
                     <TableHead className="min-w-[90px]">Salon</TableHead>
                     <TableHead className="min-w-[80px] text-center">Invitados</TableHead>
                     <TableHead className="min-w-[110px]">Estado</TableHead>
+                    <TableHead className="min-w-[120px] text-center">Costos cubiertos</TableHead>
                     <TableHead className="min-w-[80px] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -863,6 +961,50 @@ export default function EventosListaPage() {
                             {config.label}
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const { items, todoCubierto, algoAplica } = calcularCobertura(evento)
+                            return (
+                              <TooltipProvider delayDuration={150}>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {items.map((item) => {
+                                    const Icon = item.icon
+                                    return (
+                                      <Tooltip key={item.label}>
+                                        <TooltipTrigger asChild>
+                                          <span
+                                            className={`flex h-7 w-7 items-center justify-center rounded-md border ${
+                                              !item.aplica
+                                                ? "border-dashed border-border bg-transparent text-muted-foreground/30"
+                                                : item.cubierto
+                                                  ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                                                  : "border-rose-200 bg-rose-50 text-rose-500"
+                                            }`}
+                                            aria-label={`${item.label}: ${item.detalle}`}
+                                          >
+                                            <Icon className="h-3.5 w-3.5" />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="text-xs font-medium">{item.label}</p>
+                                          <p className="text-xs text-muted-foreground">{item.detalle}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )
+                                  })}
+                                  {algoAplica && (
+                                    <span
+                                      className={`ml-1 h-2 w-2 rounded-full ${
+                                        todoCubierto ? "bg-emerald-500" : "bg-rose-400"
+                                      }`}
+                                      title={todoCubierto ? "Todo cubierto" : "Pagos pendientes"}
+                                    />
+                                  )}
+                                </div>
+                              </TooltipProvider>
+                            )
+                          })()}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {evento.estado !== "completado" && (
@@ -881,64 +1023,49 @@ export default function EventosListaPage() {
                                 )}
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              title="Imprimir hoja de gastos"
-                              onClick={() => handleImprimirDocumento(evento.id)}
-                            >
-                              <Printer className="h-4 w-4" />
-                            </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Acciones</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-52">
-                              <DropdownMenuItem onClick={() => handleVerEditar(evento)}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                Ver / Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
-                                <Printer className="h-4 w-4 mr-2" />
-                                Imprimir Documento
-                              </DropdownMenuItem>
-                              {evento.estado === "en_preparacion" && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => handleFinalizar(evento.id)}
-                                    className="text-emerald-600 focus:text-emerald-600"
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-2" />
-                                    Marcar como Finalizado
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleRecuperarStock(evento.id)}
-                                    className="text-amber-600 focus:text-amber-600"
-                                  >
-                                    <RotateCcw className="h-4 w-4 mr-2" />
-                                    Recuperar Stock
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleEliminar(evento.id)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Eliminar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  title="Imprimir"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                  <span className="sr-only">Imprimir</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
+                                  <Printer className="h-4 w-4 mr-2" />
+                                  Imprimir documento
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleImprimirContrato(evento.id)}>
+                                  <FileText className="h-4 w-4 mr-2" />
+                                  Imprimir última versión del contrato
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            title="Ver / Editar"
+                            onClick={() => handleVerEditar(evento)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            <span className="sr-only">Ver / Editar</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            title="Eliminar"
+                            onClick={() => handleEliminar(evento.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Eliminar</span>
+                          </Button>
                           </div>
                         </TableCell>
                       </TableRow>

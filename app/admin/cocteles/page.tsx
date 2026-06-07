@@ -6,10 +6,8 @@ import { useStore } from "@/lib/store-context"
 import {
   type Coctel,
   type InsumoCoctel,
-  type BarraTemplate,
   type UnidadReceta,
   type CategoriaCoctel,
-  generateId,
   getCompatibleRecipeUnits,
   getDefaultRecipeUnit,
 } from "@/lib/store"
@@ -29,25 +27,16 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Separator } from "@/components/ui/separator"
-import { Plus, Trash2, Wine, Pencil, LayoutGrid } from "lucide-react"
+import { Plus, Trash2, Wine, Pencil } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export default function CoctelesPage() {
-  const { state, addCoctel, updateCoctel, deleteCoctel, addBarraTemplate, updateBarraTemplate, deleteBarraTemplate } = useStore()
+  const { state, addCoctel, updateCoctel, deleteCoctel } = useStore()
   const [selectedCoctel, setSelectedCoctel] = useState<Coctel | null>(state.cocteles[0] || null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
 
   // Bar template state
-  const [isBarraDialogOpen, setIsBarraDialogOpen] = useState(false)
-  const [editingBarra, setEditingBarra] = useState<BarraTemplate | null>(null)
-  const [barraFormData, setBarraFormData] = useState({
-    nombre: "",
-    coctelesIncluidos: [] as string[],
-  })
-
   const [filterCategoria, setFilterCategoria] = useState<string>("all")
 
   const [formData, setFormData] = useState({
@@ -159,52 +148,6 @@ export default function CoctelesPage() {
 
   const getInsumoBarraById = (id: string) => state.insumosBarra.find((i) => i.id === id)
 
-  // === Barra Template Handlers ===
-  const resetBarraForm = () => {
-    setBarraFormData({ nombre: "", coctelesIncluidos: [] })
-    setEditingBarra(null)
-  }
-
-  const handleOpenAddBarra = () => {
-    resetBarraForm()
-    setIsBarraDialogOpen(true)
-  }
-
-  const handleEditBarra = (template: BarraTemplate) => {
-    setBarraFormData({
-      nombre: template.nombre,
-      coctelesIncluidos: [...template.coctelesIncluidos],
-    })
-    setEditingBarra(template)
-    setIsBarraDialogOpen(true)
-  }
-
-  const handleDeleteBarra = (id: string) => {
-    if (confirm("Eliminar esta barra?")) {
-      deleteBarraTemplate(id)
-    }
-  }
-
-  const handleSubmitBarra = async () => {
-    if (!barraFormData.nombre) return
-    if (editingBarra) {
-      await updateBarraTemplate(editingBarra.id, barraFormData)
-    } else {
-      await addBarraTemplate(barraFormData)
-    }
-    resetBarraForm()
-    setIsBarraDialogOpen(false)
-  }
-
-  const toggleCoctelInBarraForm = (coctelId: string) => {
-    const current = barraFormData.coctelesIncluidos
-    if (current.includes(coctelId)) {
-      setBarraFormData({ ...barraFormData, coctelesIncluidos: current.filter((id) => id !== coctelId) })
-    } else {
-      setBarraFormData({ ...barraFormData, coctelesIncluidos: [...current, coctelId] })
-    }
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -214,10 +157,6 @@ export default function CoctelesPage() {
             <p className="mt-1 text-base text-muted-foreground">Crea y gestiona tus recetas de cocteles</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="bg-transparent" onClick={handleOpenAddBarra}>
-              <Plus className="mr-2 h-4 w-4" />
-              Crear Barra
-            </Button>
             <Dialog
               open={isAddDialogOpen}
               onOpenChange={(open) => {
@@ -529,135 +468,6 @@ export default function CoctelesPage() {
             )}
           </div>
         </div>
-
-        {/* ==================== BARRAS SECTION ==================== */}
-        <Separator className="my-10" />
-
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              <LayoutGrid className="h-6 w-6" />
-              Barras
-            </h2>
-            <p className="mt-1 text-base text-muted-foreground">
-              Barras personalizadas con cocteles seleccionados
-            </p>
-          </div>
-          <Button variant="outline" className="bg-transparent" onClick={handleOpenAddBarra}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nueva barra
-          </Button>
-        </div>
-
-        {(state.barrasTemplates || []).length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg">
-            <LayoutGrid className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">No hay barras creadas</p>
-            <Button variant="outline" className="mt-4 bg-transparent" onClick={handleOpenAddBarra}>
-              <Plus className="mr-2 h-4 w-4" />
-              Crear primera barra
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(state.barrasTemplates || []).map((template) => {
-              const coctelesNames = template.coctelesIncluidos
-                .map((id) => state.cocteles.find((c) => c.id === id)?.nombre)
-                .filter(Boolean)
-              return (
-                <Card key={template.id}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="text-lg">{template.nombre}</CardTitle>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditBarra(template)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteBarra(template.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <CardDescription>{template.coctelesIncluidos.length} cocteles</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-1.5">
-                      {coctelesNames.map((name) => (
-                        <Badge key={name} variant="secondary" className="text-xs">{name}</Badge>
-                      ))}
-                      {coctelesNames.length === 0 && (
-                        <span className="text-sm text-muted-foreground italic">Sin cocteles asignados</span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Barra Template Dialog */}
-        <Dialog
-          open={isBarraDialogOpen}
-          onOpenChange={(open) => {
-            setIsBarraDialogOpen(open)
-            if (!open) resetBarraForm()
-          }}
-        >
-          <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle>{editingBarra ? "Editar Barra" : "Nueva Barra"}</DialogTitle>
-              <DialogDescription>
-                {editingBarra ? "Modifica los cocteles de esta barra" : "Crea una barra personalizada seleccionando los cocteles"}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto space-y-4 py-4">
-              <div>
-                <Label htmlFor="barraName">Nombre de la barra</Label>
-                <Input
-                  id="barraName"
-                  value={barraFormData.nombre}
-                  onChange={(e) => setBarraFormData({ ...barraFormData, nombre: e.target.value })}
-                  placeholder="Ej: Barra Tropical, Barra Whisky..."
-                />
-              </div>
-
-              <div>
-                <Label className="text-base">Cocteles ({barraFormData.coctelesIncluidos.length} seleccionados)</Label>
-                <div className="grid grid-cols-1 gap-1 mt-2 max-h-72 overflow-y-auto border rounded-lg p-3">
-                  {state.cocteles.map((coctel) => (
-                    <label
-                      key={coctel.id}
-                      className="flex items-center gap-3 p-2.5 hover:bg-muted rounded cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={barraFormData.coctelesIncluidos.includes(coctel.id)}
-                        onCheckedChange={() => toggleCoctelInBarraForm(coctel.id)}
-                      />
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{coctel.nombre}</p>
-                        <p className="text-xs text-muted-foreground">{coctel.descripcion}</p>
-                      </div>
-                    </label>
-                  ))}
-                  {state.cocteles.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      Primero crea algunos cocteles
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" className="bg-transparent" onClick={() => setIsBarraDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSubmitBarra} disabled={!barraFormData.nombre || barraFormData.coctelesIncluidos.length === 0}>
-                {editingBarra ? "Guardar" : "Crear Barra"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </main>
     </div>
   )
