@@ -518,6 +518,10 @@ export async function fetchCostosOperativos(): Promise<CostoOperativo[]> {
     activo: c.activo ?? true,
     categoria: c.categoria,
     notas: c.notas,
+    salon: c.salon ?? null,
+    fechaVencimiento: c.fecha_vencimiento ?? undefined,
+    esVariable: c.es_variable ?? false,
+    pagado: c.pagado ?? false,
   }))
 }
 
