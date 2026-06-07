@@ -144,6 +144,32 @@ export default function CajaJazminePage() {
     setEditandoFijo(null)
   }
 
+  // ── Agregar gasto fijo ───────────────────────────────────────────────────
+  const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
+  const [nuevoFijo, setNuevoFijo] = useState({
+    concepto: "",
+    monto: "",
+    fechaVencimiento: "",
+    frecuencia: "Mensual" as "Mensual" | "Anual",
+  })
+
+  function handleAgregarFijo() {
+    if (!nuevoFijo.concepto || !nuevoFijo.monto) return
+    addCostoOperativo({
+      concepto: nuevoFijo.concepto,
+      tipo: "Gastos Generales" as any,
+      monto: Number(nuevoFijo.monto),
+      frecuencia: nuevoFijo.frecuencia,
+      esPorPersona: false,
+      activo: true,
+      fechaVencimiento: nuevoFijo.fechaVencimiento || undefined,
+      esVariable: false,
+      pagado: false,
+    })
+    setNuevoFijo({ concepto: "", monto: "", fechaVencimiento: "", frecuencia: "Mensual" })
+    setModalFijoAbierto(false)
+  }
+
   // ── Gastos variables ─────────────────────────────────────────────────────
   const [modalVariableAbierto, setModalVariableAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
@@ -290,10 +316,21 @@ export default function CajaJazminePage() {
         {/* ── Gastos fijos del mes ─────────────────────────────────────── */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingDown className="h-4 w-4 text-red-500" />
-              Gastos fijos del mes
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-red-500" />
+                Gastos fijos del mes
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                onClick={() => setModalFijoAbierto(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Agregar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-2">
             {gastosFijosMes.length === 0 ? (
@@ -374,7 +411,7 @@ export default function CajaJazminePage() {
           </CardContent>
         </Card>
 
-        {/* ── Gastos variables ────────────────────────────────────────── */}
+        {/* ── Gastos variables ────────────────────────────────��───────── */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -495,6 +532,72 @@ export default function CajaJazminePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Dialog: Agregar gasto fijo ────────────────────────────────────── */}
+      <Dialog open={modalFijoAbierto} onOpenChange={setModalFijoAbierto}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar gasto fijo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nf-concepto">Nombre</Label>
+              <Input
+                id="nf-concepto"
+                placeholder="Ej: Alquiler, Luz, Internet"
+                value={nuevoFijo.concepto}
+                onChange={(e) => setNuevoFijo((p) => ({ ...p, concepto: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nf-monto">Monto (ARS)</Label>
+              <Input
+                id="nf-monto"
+                type="number"
+                min="0"
+                placeholder="0"
+                value={nuevoFijo.monto}
+                onChange={(e) => setNuevoFijo((p) => ({ ...p, monto: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nf-fecha">Fecha de vencimiento</Label>
+              <Input
+                id="nf-fecha"
+                type="date"
+                value={nuevoFijo.fechaVencimiento}
+                onChange={(e) => setNuevoFijo((p) => ({ ...p, fechaVencimiento: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nf-frecuencia">Frecuencia</Label>
+              <select
+                id="nf-frecuencia"
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={nuevoFijo.frecuencia}
+                onChange={(e) =>
+                  setNuevoFijo((p) => ({ ...p, frecuencia: e.target.value as "Mensual" | "Anual" }))
+                }
+              >
+                <option value="Mensual">Mensual</option>
+                <option value="Anual">Anual</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalFijoAbierto(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleAgregarFijo}
+              disabled={!nuevoFijo.concepto || !nuevoFijo.monto}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Agregar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog: Editar gasto fijo ──────────────────────────────────────── */}
       <Dialog open={!!editandoFijo} onOpenChange={(open) => !open && setEditandoFijo(null)}>
