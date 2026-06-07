@@ -51,6 +51,8 @@ export interface PagoRealizado {
   eventoNombre: string
   salon: string
   monto: number
+  tipoPago: "menu" | "barra" | "seña" | "saldo" | "otro"
+  servicioNombre?: string // presente para pagos de servicios (seña/saldo)
 }
 
 export interface MesProyeccion {
@@ -347,15 +349,35 @@ export function useCajaEventos(state: AppState): CajaEventosData {
     }
     const pagosRealizados: PagoRealizado[] = movimientos
       .filter((m) => m.cajaDestino === "caja_eventos" && m.tipo === "egreso")
-      .map((m) => ({
-        id: m.id,
-        fecha: m.fecha,
-        concepto: m.concepto || "Pago",
-        eventoId: m.eventoId,
-        eventoNombre: m.eventoId ? eventoNombrePorId[m.eventoId] || "" : "",
-        salon: m.salon || "",
-        monto: m.monto,
-      }))
+      .map((m) => {
+        const concepto = m.concepto || "Pago"
+        // Derivar el tipo de pago y el servicio desde el concepto generado al pagar.
+        // Formatos: "Pago menú - X", "Pago barra - X", "Pago seña {servicio} - X", "Pago saldo {servicio} - X"
+        let tipoPago: PagoRealizado["tipoPago"] = "otro"
+        let servicioNombre: string | undefined
+        if (/^Pago menú/i.test(concepto)) {
+          tipoPago = "menu"
+        } else if (/^Pago barra/i.test(concepto)) {
+          tipoPago = "barra"
+        } else {
+          const matchServicio = concepto.match(/^Pago (seña|saldo) (.+?) - /i)
+          if (matchServicio) {
+            tipoPago = matchServicio[1].toLowerCase() === "seña" ? "seña" : "saldo"
+            servicioNombre = matchServicio[2]
+          }
+        }
+        return {
+          id: m.id,
+          fecha: m.fecha,
+          concepto,
+          eventoId: m.eventoId,
+          eventoNombre: m.eventoId ? eventoNombrePorId[m.eventoId] || "" : "",
+          salon: m.salon || "",
+          monto: m.monto,
+          tipoPago,
+          servicioNombre,
+        }
+      })
       .sort((a, b) => b.fecha.localeCompare(a.fecha))
 
     return {

@@ -27,6 +27,7 @@ import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import type {
   EgresoPendienteServicio,
   IngresoPendiente,
+  PagoRealizado,
 } from "@/lib/hooks/use-caja-eventos"
 import {
   Wallet,
@@ -42,6 +43,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   History,
+  RotateCcw,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -71,7 +73,7 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
-  const { state, updateEvento, addMovimientosCaja } = useStore()
+  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja } = useStore()
   const data = useCajaEventos(state)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [mesCalendario, setMesCalendario] = useState(() => {
@@ -152,6 +154,39 @@ export default function CajaEventosPage() {
       saldoResultante: saldoPrev - egreso.monto,
     }
     addMovimientosCaja([movimiento])
+  }
+
+  // Revertir un pago realizado: vuelve "no realizado", actualizando los
+  // indicadores de costos cubiertos en /eventos/lista y eliminando el egreso.
+  const handleRevertirPago = (pago: PagoRealizado) => {
+    if (pago.eventoId) {
+      const evento = state.eventos.find((e) => e.id === pago.eventoId)
+      if (evento) {
+        if (pago.tipoPago === "menu") {
+          updateEvento(pago.eventoId, { cocinaPagada: false })
+        } else if (pago.tipoPago === "barra") {
+          updateEvento(pago.eventoId, { barraPagada: false })
+        } else if (pago.tipoPago === "seña" || pago.tipoPago === "saldo") {
+          const nuevosServicios = (evento.servicios ?? []).map((srv) => {
+            if (srv.nombre !== pago.servicioNombre) return srv
+            if (pago.tipoPago === "seña") {
+              return { ...srv, estadoPago: "sin_seña" as const, fechaPagoSeña: undefined }
+            }
+            // Revertir saldo: vuelve a pendiente y restaura el saldo adeudado
+            return {
+              ...srv,
+              pagado: false,
+              estadoPago: "saldo_pendiente" as const,
+              saldoPendiente: pago.monto,
+              fechaPagoSaldo: undefined,
+            }
+          })
+          updateEvento(pago.eventoId, { servicios: nuevosServicios })
+        }
+      }
+    }
+    // Eliminar el movimiento de egreso para que el saldo y el historial se actualicen
+    deleteMovimientoCaja(pago.id)
   }
 
   // Datos del calendario del mes seleccionado
@@ -562,7 +597,8 @@ export default function CajaEventosPage() {
                       <TableHead className="pl-6">Concepto</TableHead>
                       <TableHead>Evento</TableHead>
                       <TableHead>Fecha de pago</TableHead>
-                      <TableHead className="text-right pr-6">Monto</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                      <TableHead className="text-right pr-6">Acción</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -585,8 +621,19 @@ export default function CajaEventosPage() {
                             year: "numeric",
                           })}
                         </TableCell>
-                        <TableCell className="text-right pr-6 font-bold text-red-600">
+                        <TableCell className="text-right font-bold text-red-600">
                           −{formatCurrency(pago.monto)}
+                        </TableCell>
+                        <TableCell className="text-right pr-6">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs bg-transparent"
+                            onClick={() => handleRevertirPago(pago)}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Revertir
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -140,6 +140,7 @@ interface StoreContextType {
   updateConfiguracionCajas: (config: ConfiguracionCajas) => void
   addMovimientoCaja: (movimiento: MovimientoCaja) => void
   addMovimientosCaja: (movimientos: MovimientoCaja[]) => void
+  deleteMovimientoCaja: (id: string) => void
 
   // IPC
   historialIPC: HistorialIPCEntry[]
@@ -987,6 +988,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const deleteMovimientoCaja = async (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.id !== id),
+    }))
+    // Sync to Supabase
+    try {
+      const { deleteMovimientoCaja: deleteMov } = await import("./supabase/data-service")
+      await deleteMov(id)
+    } catch (error) {
+      console.error("[v0] Error deleting movimiento caja from Supabase:", error)
+    }
+  }
+
   // === IPC ===
   const aplicarIPC = (porcentaje: number): number => {
     const eventosActualizados = actualizarCuotasIPC(state.eventos || [], porcentaje)
@@ -1142,6 +1157,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateConfiguracionCajas,
         addMovimientoCaja,
         addMovimientosCaja,
+        deleteMovimientoCaja,
         historialIPC: state.historialIPC || [],
         ultimoMesIPC: state.ultimoMesIPC || null,
         aplicarIPC,

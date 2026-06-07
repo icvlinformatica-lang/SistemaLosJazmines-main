@@ -645,6 +645,19 @@ export async function deleteMovimientosByEvento(eventoId: string): Promise<boole
   return true
 }
 
+export async function deleteMovimientoCaja(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("movimientos_caja")
+    .delete()
+    .eq("id", id)
+
+  if (error) {
+    console.error("Error deleting movimiento_caja:", error)
+    return false
+  }
+  return true
+}
+
 // ============ CONFIGURACION CAJAS ============
 export async function fetchConfiguracionCajas(): Promise<any> {
   const { data, error } = await supabase
