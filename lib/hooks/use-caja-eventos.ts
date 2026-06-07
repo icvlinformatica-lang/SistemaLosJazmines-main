@@ -35,11 +35,22 @@ export interface EgresoPendienteServicio {
   eventoId: string
   eventoNombre: string
   servicioNombre: string
+  servicioId?: string // presente para egresos de servicios (no menú/barra)
   tipo: "seña" | "saldo" | "menu" | "barra"
   monto: number
   fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
   estadoPago: "sin_seña" | "señado" | "saldo_pendiente" | "pagado_total"
+}
+
+export interface PagoRealizado {
+  id: string
+  fecha: string // ISO string
+  concepto: string
+  eventoId?: string
+  eventoNombre: string
+  salon: string
+  monto: number
 }
 
 export interface MesProyeccion {
@@ -59,6 +70,7 @@ export interface CajaEventosData {
   proyeccionMensual: MesProyeccion[]
   ingresosPendientes: IngresoPendiente[]
   egresosPendientes: EgresoPendienteServicio[]
+  pagosRealizados: PagoRealizado[]
   vienenEstaSemana: IngresoPendiente[]
   totalPorCobrar: number
   totalPorPagar: number
@@ -239,7 +251,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
         const estadoPago = srv.estadoPago ?? "sin_seña"
 
         if (
-          (estadoPago === "sin_seña" || estadoPago === "señado") &&
+          estadoPago === "sin_seña" &&
           srv.montoSeña &&
           srv.montoSeña > 0 &&
           srv.fechaSeña
@@ -250,6 +262,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
             eventoId: evento.id,
             eventoNombre,
             servicioNombre: srv.nombre,
+            servicioId: srv.servicioId,
             tipo: "seña",
             monto: srv.montoSeña,
             fechaVencimiento: srv.fechaSeña,
@@ -270,6 +283,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
             eventoId: evento.id,
             eventoNombre,
             servicioNombre: srv.nombre,
+            servicioId: srv.servicioId,
             tipo: "saldo",
             monto: srv.saldoPendiente,
             fechaVencimiento: srv.fechaLimitePago,
@@ -324,6 +338,26 @@ export function useCajaEventos(state: AppState): CajaEventosData {
 
     const vienenEstaSemana = ingresosPendientes.filter((i) => i.esEstaSemana)
 
+    // ----------------------------------------------------------
+    // 5. HISTORIAL DE PAGOS REALIZADOS (egresos a proveedores)
+    // ----------------------------------------------------------
+    const eventoNombrePorId: Record<string, string> = {}
+    for (const ev of eventos) {
+      eventoNombrePorId[ev.id] = ev.nombrePareja || ev.nombre || ev.tipoEvento || "Evento"
+    }
+    const pagosRealizados: PagoRealizado[] = movimientos
+      .filter((m) => m.cajaDestino === "caja_eventos" && m.tipo === "egreso")
+      .map((m) => ({
+        id: m.id,
+        fecha: m.fecha,
+        concepto: m.concepto || "Pago",
+        eventoId: m.eventoId,
+        eventoNombre: m.eventoId ? eventoNombrePorId[m.eventoId] || "" : "",
+        salon: m.salon || "",
+        monto: m.monto,
+      }))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+
     return {
       saldoActual,
       porCobrarEsteMes,
@@ -332,6 +366,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       proyeccionMensual: meses,
       ingresosPendientes,
       egresosPendientes,
+      pagosRealizados,
       vienenEstaSemana,
       totalPorCobrar,
       totalPorPagar,

@@ -41,6 +41,7 @@ import {
   CheckCircle2,
   ArrowDownToLine,
   ArrowUpFromLine,
+  History,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,7 @@ export default function CajaEventosPage() {
     proyeccionMensual,
     ingresosPendientes,
     egresosPendientes,
+    pagosRealizados,
     vienenEstaSemana,
     totalPorCobrar,
     totalPorPagar,
@@ -101,15 +103,27 @@ export default function CajaEventosPage() {
     const hoyISO = new Date().toISOString()
     const fechaPago = hoyISO.split("T")[0]
 
-    // El menú y la barra no son servicios: su estado se deriva del movimiento de
-    // egreso, así que solo registramos el egreso real (sin tocar evento.servicios).
-    if (egreso.tipo !== "menu" && egreso.tipo !== "barra") {
+    if (egreso.tipo === "menu") {
+      // El costo de cocina (menú) queda marcado como pagado en el evento,
+      // lo que actualiza el indicador de /eventos/lista.
+      updateEvento(egreso.eventoId, { cocinaPagada: true })
+    } else if (egreso.tipo === "barra") {
+      updateEvento(egreso.eventoId, { barraPagada: true })
+    } else {
+      // Servicio: matchear por servicioId exacto y marcar pagado + estadoPago,
+      // así el indicador de servicios en /eventos/lista (que lee srv.pagado) se sincroniza.
       const nuevosServicios = (evento.servicios ?? []).map((srv) => {
-        if (!egreso.id.includes(srv.servicioId)) return srv
+        if (srv.servicioId !== egreso.servicioId) return srv
         if (egreso.tipo === "seña") {
           return { ...srv, estadoPago: "señado" as const, fechaPagoSeña: fechaPago }
         }
-        return { ...srv, estadoPago: "pagado_total" as const, fechaPagoSaldo: fechaPago }
+        return {
+          ...srv,
+          pagado: true,
+          estadoPago: "pagado_total" as const,
+          saldoPendiente: 0,
+          fechaPagoSaldo: fechaPago,
+        }
       })
       updateEvento(egreso.eventoId, { servicios: nuevosServicios })
     }
@@ -384,7 +398,7 @@ export default function CajaEventosPage() {
 
       {/* TABS: Cobros / Pagos */}
       <Tabs defaultValue="cobrar" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="cobrar" className="gap-1.5">
             <ArrowDownToLine className="h-4 w-4" /> Por cobrar
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-1">
@@ -395,6 +409,12 @@ export default function CajaEventosPage() {
             <ArrowUpFromLine className="h-4 w-4" /> Por pagar
             <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] ml-1">
               {egresosPendientes.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="historial" className="gap-1.5">
+            <History className="h-4 w-4" /> Historial
+            <Badge className="bg-muted text-muted-foreground border-border text-[10px] ml-1">
+              {pagosRealizados.length}
             </Badge>
           </TabsTrigger>
         </TabsList>
@@ -521,6 +541,64 @@ export default function CajaEventosPage() {
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">Total por pagar</span>
                   <span className="text-base font-bold text-red-600">−{formatCurrency(totalPorPagar)}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* HISTORIAL DE PAGOS REALIZADOS */}
+        <TabsContent value="historial" className="mt-4">
+          <Card>
+            <CardContent className="px-0 py-2">
+              {pagosRealizados.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  Todavía no registraste pagos a proveedores.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-6">Concepto</TableHead>
+                      <TableHead>Evento</TableHead>
+                      <TableHead>Fecha de pago</TableHead>
+                      <TableHead className="text-right pr-6">Monto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagosRealizados.map((pago) => (
+                      <TableRow key={pago.id}>
+                        <TableCell className="pl-6">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                            <span className="font-medium text-sm">{pago.concepto}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {pago.eventoNombre || "—"}
+                          {pago.salon ? ` · ${pago.salon}` : ""}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {new Date(pago.fecha).toLocaleDateString("es-AR", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </TableCell>
+                        <TableCell className="text-right pr-6 font-bold text-red-600">
+                          −{formatCurrency(pago.monto)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {pagosRealizados.length > 0 && (
+                <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
+                  <span className="text-sm font-medium text-muted-foreground">Total pagado</span>
+                  <span className="text-base font-bold text-red-600">
+                    −{formatCurrency(pagosRealizados.reduce((s, p) => s + p.monto, 0))}
+                  </span>
                 </div>
               )}
             </CardContent>
