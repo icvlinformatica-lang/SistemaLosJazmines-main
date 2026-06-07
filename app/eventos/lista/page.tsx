@@ -68,7 +68,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -88,14 +87,12 @@ import {
   Users,
   Building2,
   Search,
-  MoreHorizontal,
   ClipboardList,
   ChevronDown,
   ChevronUp,
   LayoutDashboard,
   CheckCircle,
   CheckCircle2,
-  RotateCcw,
   Sparkles,
   RefreshCw,
   ShoppingCart,
@@ -1049,59 +1046,26 @@ export default function EventosListaPage() {
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Acciones</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-52">
-                              <DropdownMenuItem onClick={() => handleVerEditar(evento)}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                Ver / Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
-                                <Printer className="h-4 w-4 mr-2" />
-                                Imprimir Documento
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleImprimirContrato(evento.id)}>
-                                <FileText className="h-4 w-4 mr-2" />
-                                Imprimir última versión del contrato
-                              </DropdownMenuItem>
-                              {evento.estado === "en_preparacion" && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => handleFinalizar(evento.id)}
-                                    className="text-emerald-600 focus:text-emerald-600"
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-2" />
-                                    Marcar como Finalizado
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleRecuperarStock(evento.id)}
-                                    className="text-amber-600 focus:text-amber-600"
-                                  >
-                                    <RotateCcw className="h-4 w-4 mr-2" />
-                                    Recuperar Stock
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleEliminar(evento.id)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Eliminar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            title="Ver / Editar"
+                            onClick={() => handleVerEditar(evento)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            <span className="sr-only">Ver / Editar</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            title="Eliminar"
+                            onClick={() => handleEliminar(evento.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Eliminar</span>
+                          </Button>
                           </div>
                         </TableCell>
                       </TableRow>
