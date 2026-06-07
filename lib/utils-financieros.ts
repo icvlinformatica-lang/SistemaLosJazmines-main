@@ -99,7 +99,7 @@ export function generarEgresosUnificados(
   const hoy = new Date()
   hoy.setHours(0, 0, 0, 0)
 
-  // 1. Gastos fijos (costos operativos activos con fechaVencimiento)
+  // 1. Gastos fijos Y variables (costos operativos activos con fechaVencimiento)
   costosOperativos
     .filter((c) => c.activo)
     .forEach((costo) => {
@@ -112,7 +112,10 @@ export function generarEgresosUnificados(
         : undefined
 
       let estado: EgresoUnificado["estado"] = "pendiente"
-      if (diasRest !== undefined) {
+      // Si ya está pagado, marcarlo como tal independientemente de fechas
+      if (costo.pagado) {
+        estado = "pagado"
+      } else if (diasRest !== undefined) {
         if (diasRest < 0) estado = "vencido"
         else if (diasRest <= 3) estado = "urgente"
       }
@@ -120,7 +123,7 @@ export function generarEgresosUnificados(
       egresos.push({
         id: `gf-${costo.id}`,
         tipo: "gasto-fijo",
-        concepto: costo.concepto,
+        concepto: costo.esVariable ? `[Variable] ${costo.concepto}` : costo.concepto,
         descripcion: costo.notas,
         monto: costo.monto,
         estado,

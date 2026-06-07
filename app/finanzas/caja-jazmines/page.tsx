@@ -82,15 +82,6 @@ function badgeEstadoFijo(estado: EstadoAlerta | "pagado") {
 
 type EstadoGastoVar = "pendiente" | "pagado" | "vencido"
 
-interface GastoVariableLocal {
-  id: string
-  nombre: string
-  salon: string
-  fecha: string
-  monto: number
-  estado: EstadoGastoVar
-}
-
 function badgeEstadoVar(estado: EstadoGastoVar) {
   if (estado === "pagado") {
     return <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">pagado</Badge>
@@ -106,7 +97,7 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 // ---------------------------------------------------------------------------
 
 export default function CajaJazminePage() {
-  const { state, updateCostoOperativo } = useStore()
+  const { state, updateCostoOperativo, addCostoOperativo } = useStore()
   const data = useCajaJazmines(state)
 
   const {
@@ -154,8 +145,9 @@ export default function CajaJazminePage() {
     setEditandoFijo(null)
   }
 
-  // ── Gastos variables (locales, ordenados por fecha) ──────────────────────
-  const [gastosVariablesLocal, setGastosVariablesLocal] = useState<GastoVariableLocal[]>([])
+  // ── Gastos variables ─────────────────────────────────────────────────────
+  // Se persisten en costosOperativos con esVariable=true para que el dashboard
+  // los muestre automáticamente al leer costosOperativos del store.
   const [modalVariableAbierto, setModalVariableAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
@@ -164,32 +156,37 @@ export default function CajaJazminePage() {
     fecha: "",
   })
 
-  const gastosVariablesCombinados = [
-    ...gastosVariablesStore.map((g) => ({
-      id: g.id,
-      nombre: g.nombre,
-      salon: g.salon,
-      fecha: g.fecha,
-      monto: g.monto,
-      estado: g.estado,
-    })),
-    ...gastosVariablesLocal,
-  ].sort((a, b) => a.fecha.localeCompare(b.fecha)) // orden ascendente por fecha
+  // Combinar los del hook (store) con los locales — todos del store ahora.
+  // Ordenados por fecha ascendente.
+  const gastosVariablesCombinados = (state.costosOperativos ?? [])
+    .filter((c) => c.esVariable && c.activo)
+    .map((c) => ({
+      id: c.id,
+      nombre: c.concepto,
+      salon: c.salon ?? "",
+      fecha: c.fechaVencimiento ?? "",
+      monto: c.monto,
+      estado: (c.pagado ? "pagado" : "pendiente") as "pagado" | "pendiente" | "vencido",
+    }))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
   const totalGastosFijos = gastosFijosMes.reduce((s, g) => s + g.monto, 0)
   const barMax = Math.max(saldoActual, ingresosProyectados30Dias, gastosPróximos30Dias, 1)
 
   function handleAgregarGasto() {
     if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon || !nuevoGasto.fecha) return
-    const nuevo: GastoVariableLocal = {
-      id: `gv-local-${Date.now()}`,
-      nombre: nuevoGasto.nombre,
-      salon: nuevoGasto.salon,
-      fecha: nuevoGasto.fecha,
+    addCostoOperativo({
+      concepto: nuevoGasto.nombre,
+      tipo: "Gastos Generales" as any,
       monto: Number(nuevoGasto.monto),
-      estado: "pendiente",
-    }
-    setGastosVariablesLocal((prev) => [...prev, nuevo])
+      frecuencia: "Por Evento",
+      esPorPersona: false,
+      salon: nuevoGasto.salon,
+      activo: true,
+      fechaVencimiento: nuevoGasto.fecha,
+      esVariable: true,
+      pagado: false,
+    })
     setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "" })
     setModalVariableAbierto(false)
   }

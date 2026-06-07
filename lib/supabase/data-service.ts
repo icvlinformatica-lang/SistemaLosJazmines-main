@@ -531,6 +531,10 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     activo: costo.activo,
     categoria: costo.categoria,
     notas: costo.notas,
+    salon: costo.salon,
+    fecha_vencimiento: costo.fechaVencimiento || null,
+    es_variable: costo.esVariable ?? false,
+    pagado: costo.pagado ?? false,
     updated_at: new Date().toISOString(),
   }
   
@@ -554,6 +558,10 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     activo: data.activo ?? true,
     categoria: data.categoria,
     notas: data.notas,
+    salon: data.salon,
+    fechaVencimiento: data.fecha_vencimiento,
+    esVariable: data.es_variable ?? false,
+    pagado: data.pagado ?? false,
   } : null
 }
 

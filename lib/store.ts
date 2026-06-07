@@ -292,6 +292,10 @@ export interface CostoOperativo {
   activo: boolean
   notas?: string
   fechaVencimiento?: string // YYYY-MM-DD
+  /** true para gastos variables agendados desde caja-jazmines */
+  esVariable?: boolean
+  /** true si el gasto ya fue pagado */
+  pagado?: boolean
 }
 
 export const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
