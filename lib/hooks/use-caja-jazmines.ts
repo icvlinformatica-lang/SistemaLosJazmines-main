@@ -87,12 +87,13 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
     const alertasVencimiento: AlertaVencimiento[] = []
     const gastosFijosMes: GastoFijoMes[] = []
 
-    costosOperativos
-      .filter((c) => c.activo && c.frecuencia !== "Por Evento")
-      .forEach((costo) => {
+    // Separar fijos (Mensual/Anual) de variables (esVariable=true)
+    const costosFijos = costosOperativos.filter((c) => c.activo && !c.esVariable)
+    const costosVariablesStore = costosOperativos.filter((c) => c.activo && c.esVariable === true)
+
+    costosFijos.forEach((costo) => {
         const fechaVencStr = costo.fechaVencimiento
         if (!fechaVencStr) {
-          // Sin fecha de vencimiento — igual aparece en gastos fijos del mes
           gastosFijosMes.push({
             id: costo.id,
             concepto: costo.concepto,
@@ -100,7 +101,7 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
             frecuencia: costo.frecuencia,
             salon: costo.salon,
             monto: costo.monto,
-            estado: "ok",
+            estado: costo.pagado ? "pagado" : "ok",
           })
           return
         }
@@ -110,27 +111,25 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
           (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
         )
 
-        // Clasificar estado
-        let estado: EstadoAlerta
-        if (diasRestantes < 0) estado = "vencido"
+        let estado: EstadoAlerta | "pagado"
+        if (costo.pagado) estado = "pagado"
+        else if (diasRestantes < 0) estado = "vencido"
         else if (diasRestantes <= 3) estado = "urgente"
         else if (diasRestantes <= 7) estado = "proximo"
         else estado = "ok"
 
-        // Alertas: vencidos o que vencen en los próximos 30 días
-        if (diasRestantes <= 30) {
+        if (!costo.pagado && diasRestantes <= 30) {
           alertasVencimiento.push({
             id: costo.id,
             concepto: costo.concepto,
             monto: costo.monto,
             fechaVencimiento: fechaVencStr,
             diasRestantes,
-            estado,
+            estado: estado as EstadoAlerta,
           })
           gastosPróximos30Dias += costo.monto
         }
 
-        // Gastos fijos del mes: mensual o anual
         if (costo.frecuencia === "Mensual" || costo.frecuencia === "Anual") {
           gastosFijosMes.push({
             id: costo.id,
@@ -139,13 +138,29 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
             frecuencia: costo.frecuencia,
             salon: costo.salon,
             monto: costo.monto,
-            estado,
+            estado: estado as EstadoAlerta | "pagado",
           })
         }
       })
 
     // Ordenar alertas por diasRestantes ascendente
     alertasVencimiento.sort((a, b) => a.diasRestantes - b.diasRestantes)
+
+    // ----------------------------------------------------------
+    // Gastos variables agendados: sumar a gastosPróximos30Dias
+    // los que vencen en los próximos 30 días y no están pagados
+    // ----------------------------------------------------------
+    for (const costo of costosVariablesStore) {
+      if (costo.pagado) continue
+      if (!costo.fechaVencimiento) continue
+      const fechaVenc = parseLocalDate(costo.fechaVencimiento)
+      const diasRestantes = Math.ceil(
+        (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
+      )
+      if (diasRestantes <= 30) {
+        gastosPróximos30Dias += costo.monto
+      }
+    }
 
     // ----------------------------------------------------------
     // 3. INGRESOS PROYECTADOS a 30 días (50% de cuotas pendientes)
@@ -179,10 +194,32 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
       saldoActual + ingresosProyectados30Dias - gastosPróximos30Dias
 
     // ----------------------------------------------------------
-    // 5. GASTOS VARIABLES (vacío por ahora — se conectará cuando
-    //    exista GastoVariable en el store)
+    // 5. GASTOS VARIABLES desde costosOperativos (esVariable=true)
+    //    ordenados por fecha de vencimiento ascendente
     // ----------------------------------------------------------
-    const gastosVariables: GastoVariable[] = []
+    const gastosVariables: GastoVariable[] = costosVariablesStore
+      .map((c) => {
+        const fechaVenc = c.fechaVencimiento
+          ? parseLocalDate(c.fechaVencimiento)
+          : null
+        const diasRestantes = fechaVenc
+          ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+          : null
+
+        let estado: GastoVariable["estado"] = "pendiente"
+        if (c.pagado) estado = "pagado"
+        else if (diasRestantes !== null && diasRestantes < 0) estado = "vencido"
+
+        return {
+          id: c.id,
+          nombre: c.concepto,
+          salon: c.salon ?? "",
+          fecha: c.fechaVencimiento ?? "",
+          monto: c.monto,
+          estado,
+        }
+      })
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
     return {
       saldoActual,

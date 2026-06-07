@@ -106,7 +106,7 @@ export default function CajaJazminePage() {
     saldoProyectado30Dias,
     alertasVencimiento,
     gastosFijosMes,
-    gastosVariables: gastosVariablesStore,
+    gastosVariables: gastosVariablesCombinados,
     ingresosProyectados30Dias,
   } = data
 
@@ -132,22 +132,16 @@ export default function CajaJazminePage() {
 
   function guardarEditFijo() {
     if (!editandoFijo) return
-    const updates: Parameters<typeof updateCostoOperativo>[1] = {
+    updateCostoOperativo(editandoFijo.id, {
       concepto: editFijo.concepto,
       monto: Number(editFijo.monto),
       fechaVencimiento: editFijo.fechaVencimiento || undefined,
-    }
-    // "pagado" se maneja marcando la fecha de vencimiento en el pasado o
-    // almacenando en un campo extra; como no existe ese campo en CostoOperativo,
-    // lo guardamos como nota especial para que el hook lo pueda leer.
-    // Por ahora actualizamos lo disponible.
-    updateCostoOperativo(editandoFijo.id, updates)
+      pagado: editFijo.pagado,
+    })
     setEditandoFijo(null)
   }
 
   // ── Gastos variables ─────────────────────────────────────────────────────
-  // Se persisten en costosOperativos con esVariable=true para que el dashboard
-  // los muestre automáticamente al leer costosOperativos del store.
   const [modalVariableAbierto, setModalVariableAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
@@ -155,20 +149,6 @@ export default function CajaJazminePage() {
     salon: "",
     fecha: "",
   })
-
-  // Combinar los del hook (store) con los locales — todos del store ahora.
-  // Ordenados por fecha ascendente.
-  const gastosVariablesCombinados = (state.costosOperativos ?? [])
-    .filter((c) => c.esVariable && c.activo)
-    .map((c) => ({
-      id: c.id,
-      nombre: c.concepto,
-      salon: c.salon ?? "",
-      fecha: c.fechaVencimiento ?? "",
-      monto: c.monto,
-      estado: (c.pagado ? "pagado" : "pendiente") as "pagado" | "pendiente" | "vencido",
-    }))
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
   const totalGastosFijos = gastosFijosMes.reduce((s, g) => s + g.monto, 0)
   const barMax = Math.max(saldoActual, ingresosProyectados30Dias, gastosPróximos30Dias, 1)
