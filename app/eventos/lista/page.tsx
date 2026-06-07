@@ -430,28 +430,6 @@ export default function EventosListaPage() {
     setDeleteDialogOpen(true)
   }
 
-  // Alterna el estado de pago (cubierto) de cocina, barra o servicios
-  const toggleCobertura = (evento: EventoGuardado, tipo: "cocina" | "barra" | "servicios") => {
-    if (tipo === "cocina") {
-      const nuevo = !evento.cocinaPagada
-      updateEvento(evento.id, { cocinaPagada: nuevo })
-      toast({ title: nuevo ? "Cocina marcada como pagada" : "Cocina marcada como pendiente" })
-    } else if (tipo === "barra") {
-      const nuevo = !evento.barraPagada
-      updateEvento(evento.id, { barraPagada: nuevo })
-      toast({ title: nuevo ? "Barra marcada como pagada" : "Barra marcada como pendiente" })
-    } else {
-      const servicios = evento.servicios || []
-      if (servicios.length === 0) return
-      const todosPagados = servicios.every((s) => s.pagado === true)
-      const nuevos = servicios.map((s) => ({ ...s, pagado: !todosPagados }))
-      updateEvento(evento.id, { servicios: nuevos })
-      toast({
-        title: !todosPagados ? "Servicios marcados como pagados" : "Servicios marcados como pendientes",
-      })
-    }
-  }
-
   const confirmConfirmar = () => {
     if (!selectedEventoId) return
     updateEvento(selectedEventoId, { estado: "en_preparacion" })
@@ -994,41 +972,25 @@ export default function EventosListaPage() {
                                 <div className="flex items-center justify-center gap-1.5">
                                   {items.map((item) => {
                                     const Icon = item.icon
-                                    const tipo =
-                                      item.label === "Cocina"
-                                        ? "cocina"
-                                        : item.label === "Barra"
-                                          ? "barra"
-                                          : "servicios"
                                     return (
                                       <Tooltip key={item.label}>
                                         <TooltipTrigger asChild>
-                                          <button
-                                            type="button"
-                                            disabled={!item.aplica}
-                                            onClick={() =>
-                                              toggleCobertura(evento, tipo as "cocina" | "barra" | "servicios")
-                                            }
-                                            className={`flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                                          <span
+                                            className={`flex h-7 w-7 items-center justify-center rounded-md border ${
                                               !item.aplica
-                                                ? "border-dashed border-border bg-transparent text-muted-foreground/30 cursor-not-allowed"
+                                                ? "border-dashed border-border bg-transparent text-muted-foreground/30"
                                                 : item.cubierto
-                                                  ? "border-emerald-300 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                                                  : "border-rose-200 bg-rose-50 text-rose-500 hover:bg-rose-100"
+                                                  ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                                                  : "border-rose-200 bg-rose-50 text-rose-500"
                                             }`}
                                             aria-label={`${item.label}: ${item.detalle}`}
                                           >
                                             <Icon className="h-3.5 w-3.5" />
-                                          </button>
+                                          </span>
                                         </TooltipTrigger>
                                         <TooltipContent>
                                           <p className="text-xs font-medium">{item.label}</p>
                                           <p className="text-xs text-muted-foreground">{item.detalle}</p>
-                                          {item.aplica && (
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                                              Clic para marcar como {item.cubierto ? "pendiente" : "pagado"}
-                                            </p>
-                                          )}
                                         </TooltipContent>
                                       </Tooltip>
                                     )
