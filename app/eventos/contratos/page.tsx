@@ -7,6 +7,7 @@ import { useStore } from "@/lib/store-context"
 import {
   formatCurrency,
   calcularTotalesPaquete,
+  SALONES,
   type EventoGuardado,
   type Receta,
   type VersionContrato,
@@ -21,6 +22,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   ArrowLeft,
   FileText,
@@ -44,6 +46,8 @@ import {
   Info,
   Pencil,
   ExternalLink,
+  Hourglass,
+  CheckCheck,
 } from "lucide-react"
 
 // =====================================================================
@@ -507,6 +511,118 @@ function VersionHistoryPanel({
 }
 
 // =====================================================================
+// SALON TABS WITH DASHBOARD + EVENT LIST
+// =====================================================================
+function SalonesTabs({
+  eventos,
+  selectedEventoId,
+  onSelect,
+}: {
+  eventos: EventoGuardado[]
+  selectedEventoId: string
+  onSelect: (id: string) => void
+}) {
+  // Group events by salon (ignoring cancelled, already filtered upstream)
+  const eventosPorSalon = useMemo(() => {
+    const map: Record<string, EventoGuardado[]> = {}
+    for (const salon of SALONES) map[salon] = []
+    for (const ev of eventos) {
+      const key = (SALONES as readonly string[]).includes(ev.salon || "") ? (ev.salon as string) : null
+      if (key) map[key].push(ev)
+    }
+    return map
+  }, [eventos])
+
+  return (
+    <Tabs defaultValue={SALONES[0]} className="w-full">
+      <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto gap-1">
+        {SALONES.map((salon) => (
+          <TabsTrigger key={salon} value={salon} className="text-xs sm:text-sm">
+            {salon}
+            <Badge variant="secondary" className="ml-1.5 px-1.5 text-[10px]">
+              {eventosPorSalon[salon].length}
+            </Badge>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+
+      {SALONES.map((salon) => {
+        const evs = eventosPorSalon[salon]
+        // Status buckets: pendientes (borrador/pendiente), en preparación, finalizados
+        const pendientes = evs.filter((e) => e.estado === "pendiente" || e.estado === "borrador")
+        const enPreparacion = evs.filter((e) => e.estado === "en_preparacion")
+        const finalizados = evs.filter((e) => e.estado === "completado")
+
+        return (
+          <TabsContent key={salon} value={salon} className="space-y-5 mt-5">
+            {/* Dashboard de estados */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <DashboardStat
+                label="Pendientes"
+                value={pendientes.length}
+                icon={<Clock className="h-5 w-5" />}
+                className="border-amber-200 bg-amber-50 text-amber-700"
+              />
+              <DashboardStat
+                label="En preparacion"
+                value={enPreparacion.length}
+                icon={<Hourglass className="h-5 w-5" />}
+                className="border-sky-200 bg-sky-50 text-sky-700"
+              />
+              <DashboardStat
+                label="Finalizados"
+                value={finalizados.length}
+                icon={<CheckCheck className="h-5 w-5" />}
+                className="border-emerald-200 bg-emerald-50 text-emerald-700"
+              />
+            </div>
+
+            {/* Lista de eventos del salón */}
+            {evs.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center">
+                <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No hay eventos para {salon}.</p>
+              </div>
+            ) : (
+              <EventosPorMesSalon
+                eventos={evs}
+                selectedEventoId={selectedEventoId}
+                onSelect={onSelect}
+                hideSalonColumn
+              />
+            )}
+          </TabsContent>
+        )
+      })}
+    </Tabs>
+  )
+}
+
+function DashboardStat({
+  label,
+  value,
+  icon,
+  className,
+}: {
+  label: string
+  value: number
+  icon: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`flex items-center gap-3 rounded-xl border p-4 ${className ?? ""}`}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background/60">
+        {icon}
+      </div>
+      <div>
+        <p className="text-2xl font-bold tabular-nums leading-none">{value}</p>
+        <p className="text-xs font-medium mt-1">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
 // EVENTS TABLE GROUPED BY MONTH + SALON
 // =====================================================================
 const MESES_ES = [
@@ -518,10 +634,12 @@ function EventosPorMesSalon({
   eventos,
   selectedEventoId,
   onSelect,
+  hideSalonColumn = false,
 }: {
   eventos: EventoGuardado[]
   selectedEventoId: string
   onSelect: (id: string) => void
+  hideSalonColumn?: boolean
 }) {
   // Group by month (YYYY-MM), then sort rows inside each month by salon, then date
   const grupos = useMemo(() => {
@@ -564,7 +682,7 @@ function EventosPorMesSalon({
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[100px]">Fecha</TableHead>
-                <TableHead className="w-[120px]">Salon</TableHead>
+                {!hideSalonColumn && <TableHead className="w-[120px]">Salon</TableHead>}
                 <TableHead>Evento</TableHead>
                 <TableHead className="w-[90px] text-center">Invitados</TableHead>
                 <TableHead className="w-[130px] text-right">Precio</TableHead>
@@ -589,9 +707,11 @@ function EventosPorMesSalon({
                         month: "2-digit",
                       })}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">{ev.salon || "Sin salon"}</Badge>
-                    </TableCell>
+                    {!hideSalonColumn && (
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">{ev.salon || "Sin salon"}</Badge>
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium">{ev.nombrePareja || ev.nombre}</TableCell>
                     <TableCell className="text-center tabular-nums">{totalPersonas}</TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -814,8 +934,8 @@ function ContratosPageContent() {
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>Eventos por mes y salon</Label>
-                <EventosPorMesSalon
+                <Label>Eventos por salon</Label>
+                <SalonesTabs
                   eventos={eventosDisponibles}
                   selectedEventoId={selectedEventoId}
                   onSelect={setSelectedEventoId}
