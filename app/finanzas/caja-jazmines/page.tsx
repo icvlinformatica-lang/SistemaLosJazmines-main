@@ -34,6 +34,9 @@ import {
   Plus,
   Pencil,
   Calendar,
+  CheckCircle2,
+  Circle,
+  Trash2,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -97,7 +100,7 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 // ---------------------------------------------------------------------------
 
 export default function CajaJazminePage() {
-  const { state, updateCostoOperativo, addCostoOperativo } = useStore()
+  const { state, updateCostoOperativo, addCostoOperativo, deleteCostoOperativo } = useStore()
   const data = useCajaJazmines(state)
 
   const {
@@ -299,38 +302,67 @@ export default function CajaJazminePage() {
               </p>
             ) : (
               <>
-                {gastosFijosMes.map((gasto) => (
-                  <div
-                    key={gasto.id}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{gasto.concepto}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {gasto.frecuencia}
-                        {gasto.salon ? ` · ${gasto.salon}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-sm font-bold text-foreground">
-                          {formatCurrency(gasto.monto)}
-                        </span>
-                        {badgeEstadoFijo(gasto.estado)}
+                {gastosFijosMes.map((gasto) => {
+                  const esPagado = gasto.estado === "pagado"
+                  return (
+                    <div
+                      key={gasto.id}
+                      className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{gasto.concepto}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {gasto.frecuencia}
+                          {gasto.salon ? ` · ${gasto.salon}` : ""}
+                        </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        onClick={() => abrirEditFijo(gasto)}
-                        title="Editar"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        <span className="sr-only">Editar gasto fijo</span>
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex flex-col items-end gap-1 mr-1">
+                          <span className="text-sm font-bold text-foreground">
+                            {formatCurrency(gasto.monto)}
+                          </span>
+                          {badgeEstadoFijo(gasto.estado)}
+                        </div>
+                        {/* Toggle pagado */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                          title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
+                          onClick={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
+                        >
+                          {esPagado
+                            ? <CheckCircle2 className="h-4 w-4" />
+                            : <Circle className="h-4 w-4" />
+                          }
+                          <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                        </Button>
+                        {/* Editar */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => abrirEditFijo(gasto)}
+                          title="Editar"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span className="sr-only">Editar gasto fijo</span>
+                        </Button>
+                        {/* Eliminar */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          title="Eliminar"
+                          onClick={() => deleteCostoOperativo(gasto.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span className="sr-only">Eliminar gasto fijo</span>
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
                 <div className="pt-2 border-t border-border flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total</span>
                   <span className="text-base font-bold text-foreground">
@@ -367,25 +399,55 @@ export default function CajaJazminePage() {
                 Sin gastos variables registrados.
               </p>
             ) : (
-              gastosVariablesCombinados.map((gasto) => (
-                <div
-                  key={gasto.id}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{gasto.nombre}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {gasto.salon} · {formatFecha(gasto.fecha)}
-                    </p>
+              gastosVariablesCombinados.map((gasto) => {
+                const esPagado = gasto.estado === "pagado"
+                return (
+                  <div
+                    key={gasto.id}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{gasto.nombre}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {gasto.salon} · {formatFecha(gasto.fecha)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex flex-col items-end gap-1 mr-1">
+                        <span className="text-sm font-bold text-foreground">
+                          {formatCurrency(gasto.monto)}
+                        </span>
+                        {badgeEstadoVar(gasto.estado)}
+                      </div>
+                      {/* Toggle pagado */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                        title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
+                        onClick={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
+                      >
+                        {esPagado
+                          ? <CheckCircle2 className="h-4 w-4" />
+                          : <Circle className="h-4 w-4" />
+                        }
+                        <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                      </Button>
+                      {/* Eliminar */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        title="Eliminar"
+                        onClick={() => deleteCostoOperativo(gasto.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span className="sr-only">Eliminar gasto variable</span>
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="text-sm font-bold text-foreground">
-                      {formatCurrency(gasto.monto)}
-                    </span>
-                    {badgeEstadoVar(gasto.estado)}
-                  </div>
-                </div>
-              ))
+                )
+              })
             )}
           </CardContent>
         </Card>

@@ -143,12 +143,9 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
         }
       })
 
-    // Ordenar alertas por diasRestantes ascendente
-    alertasVencimiento.sort((a, b) => a.diasRestantes - b.diasRestantes)
-
     // ----------------------------------------------------------
     // Gastos variables agendados: sumar a gastosPróximos30Dias
-    // los que vencen en los próximos 30 días y no están pagados
+    // y emitir alerta si vencen dentro de 15 días (no pagados)
     // ----------------------------------------------------------
     for (const costo of costosVariablesStore) {
       if (costo.pagado) continue
@@ -160,7 +157,24 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
       if (diasRestantes <= 30) {
         gastosPróximos30Dias += costo.monto
       }
+      // Alerta si vence en 15 días o menos (o ya venció)
+      if (diasRestantes <= 15) {
+        let estado: EstadoAlerta
+        if (diasRestantes < 0) estado = "vencido"
+        else if (diasRestantes <= 3) estado = "urgente"
+        else if (diasRestantes <= 7) estado = "proximo"
+        else estado = "ok"
+        alertasVencimiento.push({
+          id: costo.id,
+          concepto: `[Variable] ${costo.concepto}`,
+          monto: costo.monto,
+          fechaVencimiento: costo.fechaVencimiento,
+          diasRestantes,
+          estado,
+        })
+      }
     }
+    alertasVencimiento.sort((a, b) => a.diasRestantes - b.diasRestantes)
 
     // ----------------------------------------------------------
     // 3. INGRESOS PROYECTADOS a 30 días (50% de cuotas pendientes)
