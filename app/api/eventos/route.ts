@@ -106,6 +106,8 @@ function fromRow(r: Record<string, any>) {
     costosCalculados: parseJsonField(r.costos_calculados, null),
     stockDescontado: r.stock_descontado ?? false,
     fechaImpresion: r.fecha_impresion,
+    cocinaPagada: r.cocina_pagada ?? false,
+    barraPagada: r.barra_pagada ?? false,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -136,7 +138,7 @@ export async function GET() {
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, created_at, updated_at
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at
       FROM eventos
       WHERE deleted_at IS NULL
       ORDER BY fecha DESC NULLS LAST, created_at DESC

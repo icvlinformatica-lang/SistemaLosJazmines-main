@@ -346,6 +346,12 @@ export interface EventoGuardado extends Evento {
   stockDescontado?: boolean       // true si el stock ya fue descontado al imprimir
   fechaImpresion?: string | null  // ISO string de cuando se imprimio por primera vez
 
+  // --- Cobertura de costos (pagado al proveedor) ---
+  /** true si ya se pagó el costo de cocina (insumos/recetas) */
+  cocinaPagada?: boolean
+  /** true si ya se pagó el costo de la barra */
+  barraPagada?: boolean
+
   // --- Servicios seleccionados para el contrato ---
   /** IDs de servicios del catálogo (/finanzas/servicios) a incluir en el contrato */
   serviciosContrato?: string[]

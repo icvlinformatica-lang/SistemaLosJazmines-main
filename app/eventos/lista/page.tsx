@@ -71,6 +71,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import {
   Plus,
@@ -97,8 +103,86 @@ import {
   Archive,
   ArrowUp,
   ArrowDown,
+  ChefHat,
+  Wine,
+  ConciergeBell,
 } from "lucide-react"
 import { generateId } from "@/lib/utils-client"
+
+type CoberturaItem = {
+  icon: typeof ChefHat
+  label: string
+  cubierto: boolean
+  aplica: boolean
+  detalle: string
+}
+
+// Calcula el estado de cobertura (pagado al proveedor) de cocina, barra y servicios
+function calcularCobertura(evento: EventoGuardado): {
+  items: CoberturaItem[]
+  todoCubierto: boolean
+  algoAplica: boolean
+} {
+  // Cocina: aplica si hay recetas asignadas al evento
+  const tieneCocina =
+    (evento.recetasAdultos?.length || 0) +
+      (evento.recetasAdolescentes?.length || 0) +
+      (evento.recetasNinos?.length || 0) +
+      (evento.recetasDietasEspeciales?.length || 0) >
+    0
+
+  // Barra: aplica si hay barras contratadas
+  const tieneBarra = (evento.barras?.length || 0) > 0
+
+  // Servicios: aplica si hay servicios contratados
+  const servicios = evento.servicios || []
+  const tieneServicios = servicios.length > 0
+  const serviciosPagados = tieneServicios && servicios.every((s) => s.pagado === true)
+  const serviciosPagadosCount = servicios.filter((s) => s.pagado === true).length
+
+  const items: CoberturaItem[] = [
+    {
+      icon: ChefHat,
+      label: "Cocina",
+      aplica: tieneCocina,
+      cubierto: !!evento.cocinaPagada,
+      detalle: !tieneCocina
+        ? "Sin cocina contratada"
+        : evento.cocinaPagada
+          ? "Costo de cocina pagado"
+          : "Costo de cocina pendiente de pago",
+    },
+    {
+      icon: Wine,
+      label: "Barra",
+      aplica: tieneBarra,
+      cubierto: !!evento.barraPagada,
+      detalle: !tieneBarra
+        ? "Sin barra contratada"
+        : evento.barraPagada
+          ? "Costo de barra pagado"
+          : "Costo de barra pendiente de pago",
+    },
+    {
+      icon: ConciergeBell,
+      label: "Servicios",
+      aplica: tieneServicios,
+      cubierto: serviciosPagados,
+      detalle: !tieneServicios
+        ? "Sin servicios contratados"
+        : serviciosPagados
+          ? "Todos los servicios pagados"
+          : `${serviciosPagadosCount}/${servicios.length} servicios pagados`,
+    },
+  ]
+
+  const aplicables = items.filter((i) => i.aplica)
+  const algoAplica = aplicables.length > 0
+  const todoCubierto = algoAplica && aplicables.every((i) => i.cubierto)
+
+  return { items, todoCubierto, algoAplica }
+}
+
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
     label: "Borrador",
@@ -344,6 +428,28 @@ export default function EventosListaPage() {
     setSelectedEventoId(eventoId)
     setRecuperarStockAlEliminar(false)
     setDeleteDialogOpen(true)
+  }
+
+  // Alterna el estado de pago (cubierto) de cocina, barra o servicios
+  const toggleCobertura = (evento: EventoGuardado, tipo: "cocina" | "barra" | "servicios") => {
+    if (tipo === "cocina") {
+      const nuevo = !evento.cocinaPagada
+      updateEvento(evento.id, { cocinaPagada: nuevo })
+      toast({ title: nuevo ? "Cocina marcada como pagada" : "Cocina marcada como pendiente" })
+    } else if (tipo === "barra") {
+      const nuevo = !evento.barraPagada
+      updateEvento(evento.id, { barraPagada: nuevo })
+      toast({ title: nuevo ? "Barra marcada como pagada" : "Barra marcada como pendiente" })
+    } else {
+      const servicios = evento.servicios || []
+      if (servicios.length === 0) return
+      const todosPagados = servicios.every((s) => s.pagado === true)
+      const nuevos = servicios.map((s) => ({ ...s, pagado: !todosPagados }))
+      updateEvento(evento.id, { servicios: nuevos })
+      toast({
+        title: !todosPagados ? "Servicios marcados como pagados" : "Servicios marcados como pendientes",
+      })
+    }
   }
 
   const confirmConfirmar = () => {
@@ -823,6 +929,7 @@ export default function EventosListaPage() {
                     <TableHead className="min-w-[90px]">Salon</TableHead>
                     <TableHead className="min-w-[80px] text-center">Invitados</TableHead>
                     <TableHead className="min-w-[110px]">Estado</TableHead>
+                    <TableHead className="min-w-[120px] text-center">Costos cubiertos</TableHead>
                     <TableHead className="min-w-[80px] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -878,6 +985,66 @@ export default function EventosListaPage() {
                           >
                             {config.label}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const { items, todoCubierto, algoAplica } = calcularCobertura(evento)
+                            return (
+                              <TooltipProvider delayDuration={150}>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {items.map((item) => {
+                                    const Icon = item.icon
+                                    const tipo =
+                                      item.label === "Cocina"
+                                        ? "cocina"
+                                        : item.label === "Barra"
+                                          ? "barra"
+                                          : "servicios"
+                                    return (
+                                      <Tooltip key={item.label}>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            disabled={!item.aplica}
+                                            onClick={() =>
+                                              toggleCobertura(evento, tipo as "cocina" | "barra" | "servicios")
+                                            }
+                                            className={`flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                                              !item.aplica
+                                                ? "border-dashed border-border bg-transparent text-muted-foreground/30 cursor-not-allowed"
+                                                : item.cubierto
+                                                  ? "border-emerald-300 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                                                  : "border-rose-200 bg-rose-50 text-rose-500 hover:bg-rose-100"
+                                            }`}
+                                            aria-label={`${item.label}: ${item.detalle}`}
+                                          >
+                                            <Icon className="h-3.5 w-3.5" />
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="text-xs font-medium">{item.label}</p>
+                                          <p className="text-xs text-muted-foreground">{item.detalle}</p>
+                                          {item.aplica && (
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                              Clic para marcar como {item.cubierto ? "pendiente" : "pagado"}
+                                            </p>
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )
+                                  })}
+                                  {algoAplica && (
+                                    <span
+                                      className={`ml-1 h-2 w-2 rounded-full ${
+                                        todoCubierto ? "bg-emerald-500" : "bg-rose-400"
+                                      }`}
+                                      title={todoCubierto ? "Todo cubierto" : "Pagos pendientes"}
+                                    />
+                                  )}
+                                </div>
+                              </TooltipProvider>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
