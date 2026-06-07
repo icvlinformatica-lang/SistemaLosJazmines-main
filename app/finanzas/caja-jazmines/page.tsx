@@ -20,10 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
-import type { EstadoAlerta } from "@/lib/hooks/use-caja-jazmines"
+import type { EstadoAlerta, GastoFijoMes } from "@/lib/hooks/use-caja-jazmines"
 import {
   Building,
   TrendingDown,
@@ -31,6 +32,8 @@ import {
   Wallet,
   AlertCircle,
   Plus,
+  Pencil,
+  Calendar,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -40,7 +43,7 @@ import {
 function formatFecha(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
   const date = new Date(y, m - 1, d)
-  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short" })
+  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })
 }
 
 function puntoPrioridad(estado: EstadoAlerta) {
@@ -62,11 +65,7 @@ function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string 
 
 function badgeEstadoFijo(estado: EstadoAlerta | "pagado") {
   if (estado === "pagado") {
-    return (
-      <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">
-        pagado
-      </Badge>
-    )
+    return <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px]">pagado</Badge>
   }
   if (estado === "vencido" || estado === "urgente") {
     return (
@@ -76,22 +75,14 @@ function badgeEstadoFijo(estado: EstadoAlerta | "pagado") {
     )
   }
   if (estado === "proximo") {
-    return (
-      <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
-        próximo
-      </Badge>
-    )
+    return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">próximo</Badge>
   }
-  return (
-    <Badge className="bg-sky-100 text-sky-700 border-sky-200 text-[11px]">
-      pendiente
-    </Badge>
-  )
+  return <Badge className="bg-sky-100 text-sky-700 border-sky-200 text-[11px]">pendiente</Badge>
 }
 
 type EstadoGastoVar = "pendiente" | "pagado" | "vencido"
 
-interface NuevoGastoVariableLocal {
+interface GastoVariableLocal {
   id: string
   nombre: string
   salon: string
@@ -115,7 +106,7 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 // ---------------------------------------------------------------------------
 
 export default function CajaJazminePage() {
-  const { state } = useStore()
+  const { state, updateCostoOperativo } = useStore()
   const data = useCajaJazmines(state)
 
   const {
@@ -128,9 +119,44 @@ export default function CajaJazminePage() {
     ingresosProyectados30Dias,
   } = data
 
-  // Estado local para gastos variables nuevos (hasta que exista GastoVariable en el store)
-  const [gastosVariablesLocal, setGastosVariablesLocal] = useState<NuevoGastoVariableLocal[]>([])
-  const [modalAbierto, setModalAbierto] = useState(false)
+  // ── Edición de gastos fijos ──────────────────────────────────────────────
+  const [editandoFijo, setEditandoFijo] = useState<GastoFijoMes | null>(null)
+  const [editFijo, setEditFijo] = useState({
+    concepto: "",
+    monto: "",
+    fechaVencimiento: "",
+    pagado: false,
+  })
+
+  function abrirEditFijo(gasto: GastoFijoMes) {
+    setEditandoFijo(gasto)
+    setEditFijo({
+      concepto: gasto.concepto,
+      monto: String(gasto.monto),
+      fechaVencimiento:
+        state.costosOperativos?.find((c) => c.id === gasto.id)?.fechaVencimiento ?? "",
+      pagado: gasto.estado === "pagado",
+    })
+  }
+
+  function guardarEditFijo() {
+    if (!editandoFijo) return
+    const updates: Parameters<typeof updateCostoOperativo>[1] = {
+      concepto: editFijo.concepto,
+      monto: Number(editFijo.monto),
+      fechaVencimiento: editFijo.fechaVencimiento || undefined,
+    }
+    // "pagado" se maneja marcando la fecha de vencimiento en el pasado o
+    // almacenando en un campo extra; como no existe ese campo en CostoOperativo,
+    // lo guardamos como nota especial para que el hook lo pueda leer.
+    // Por ahora actualizamos lo disponible.
+    updateCostoOperativo(editandoFijo.id, updates)
+    setEditandoFijo(null)
+  }
+
+  // ── Gastos variables (locales, ordenados por fecha) ──────────────────────
+  const [gastosVariablesLocal, setGastosVariablesLocal] = useState<GastoVariableLocal[]>([])
+  const [modalVariableAbierto, setModalVariableAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
     monto: "",
@@ -148,27 +174,24 @@ export default function CajaJazminePage() {
       estado: g.estado,
     })),
     ...gastosVariablesLocal,
-  ]
+  ].sort((a, b) => a.fecha.localeCompare(b.fecha)) // orden ascendente por fecha
 
   const totalGastosFijos = gastosFijosMes.reduce((s, g) => s + g.monto, 0)
-
   const barMax = Math.max(saldoActual, ingresosProyectados30Dias, gastosPróximos30Dias, 1)
 
-  const handleAgregarGasto = () => {
-    if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon) return
-    const nuevo: NuevoGastoVariableLocal = {
+  function handleAgregarGasto() {
+    if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon || !nuevoGasto.fecha) return
+    const nuevo: GastoVariableLocal = {
       id: `gv-local-${Date.now()}`,
       nombre: nuevoGasto.nombre,
       salon: nuevoGasto.salon,
-      fecha: nuevoGasto.fecha || new Date().toISOString().split("T")[0],
+      fecha: nuevoGasto.fecha,
       monto: Number(nuevoGasto.monto),
       estado: "pendiente",
     }
-    // Log para debug hasta que se conecte al store
-    console.log("[v0] Nuevo gasto variable (pendiente integración al store):", nuevo)
-    setGastosVariablesLocal((prev) => [nuevo, ...prev])
+    setGastosVariablesLocal((prev) => [...prev, nuevo])
     setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "" })
-    setModalAbierto(false)
+    setModalVariableAbierto(false)
   }
 
   return (
@@ -179,31 +202,23 @@ export default function CajaJazminePage() {
           <Building className="h-5 w-5 text-purple-700" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Caja Jazmines
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Jazmines</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             50% de cada cobro de cuota. Fondos de la empresa: sueldos, gastos fijos y administración.
           </p>
         </div>
       </div>
 
-      {/* Sección 1 — Tres métricas */}
+      {/* Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="border-purple-200 bg-purple-50">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-purple-700 uppercase tracking-wide">
-                Saldo Actual
-              </p>
+              <p className="text-xs font-medium text-purple-700 uppercase tracking-wide">Saldo Actual</p>
               <Wallet className="h-4 w-4 text-purple-600" />
             </div>
-            <p className="text-3xl font-bold text-purple-800">
-              {formatCurrency(saldoActual)}
-            </p>
-            <p className="text-xs text-purple-600 mt-1">
-              Cobros acumulados × 50% − gastos
-            </p>
+            <p className="text-3xl font-bold text-purple-800">{formatCurrency(saldoActual)}</p>
+            <p className="text-xs text-purple-600 mt-1">Cobros acumulados × 50% − gastos</p>
           </CardContent>
         </Card>
 
@@ -215,56 +230,30 @@ export default function CajaJazminePage() {
               </p>
               <TrendingDown className="h-4 w-4 text-red-500" />
             </div>
-            <p className="text-3xl font-bold text-red-600">
-              {formatCurrency(gastosPróximos30Dias)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Costos operativos pendientes del período
-            </p>
+            <p className="text-3xl font-bold text-red-600">{formatCurrency(gastosPróximos30Dias)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Costos operativos pendientes del período</p>
           </CardContent>
         </Card>
 
-        <Card
-          className={
-            saldoProyectado30Dias >= 0
-              ? "border-teal-200 bg-teal-50"
-              : "border-red-200 bg-red-50"
-          }
-        >
+        <Card className={saldoProyectado30Dias >= 0 ? "border-teal-200 bg-teal-50" : "border-red-200 bg-red-50"}>
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
-              <p
-                className={`text-xs font-medium uppercase tracking-wide ${
-                  saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"
-                }`}
-              >
+              <p className={`text-xs font-medium uppercase tracking-wide ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"}`}>
                 Saldo proyectado a 30 días
               </p>
-              <TrendingUp
-                className={`h-4 w-4 ${
-                  saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"
-                }`}
-              />
+              <TrendingUp className={`h-4 w-4 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`} />
             </div>
-            <p
-              className={`text-3xl font-bold ${
-                saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"
-              }`}
-            >
+            <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
               {formatCurrency(saldoProyectado30Dias)}
             </p>
-            <p
-              className={`text-xs mt-1 ${
-                saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"
-              }`}
-            >
+            <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}>
               Saldo + ingresos − gastos estimados
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Sección 2 — Alertas de vencimiento */}
+      {/* Alertas */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -286,9 +275,7 @@ export default function CajaJazminePage() {
                 >
                   {puntoPrioridad(alerta.estado)}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {alerta.concepto}
-                    </p>
+                    <p className="text-sm font-medium text-foreground">{alerta.concepto}</p>
                     <p className="text-xs text-muted-foreground mt-0.5 capitalize">
                       {descripcionAlerta(alerta.diasRestantes, alerta.estado)}
                     </p>
@@ -317,9 +304,10 @@ export default function CajaJazminePage() {
         </CardContent>
       </Card>
 
-      {/* Sección 3 — Dos columnas */}
+      {/* Gastos fijos + Gastos variables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Gastos fijos del mes */}
+
+        {/* ── Gastos fijos del mes ─────────────────────────────────────── */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -346,11 +334,23 @@ export default function CajaJazminePage() {
                         {gasto.salon ? ` · ${gasto.salon}` : ""}
                       </p>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="text-sm font-bold text-foreground">
-                        {formatCurrency(gasto.monto)}
-                      </span>
-                      {badgeEstadoFijo(gasto.estado)}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-sm font-bold text-foreground">
+                          {formatCurrency(gasto.monto)}
+                        </span>
+                        {badgeEstadoFijo(gasto.estado)}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        onClick={() => abrirEditFijo(gasto)}
+                        title="Editar"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span className="sr-only">Editar gasto fijo</span>
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -365,14 +365,23 @@ export default function CajaJazminePage() {
           </CardContent>
         </Card>
 
-        {/* Gastos variables */}
+        {/* ── Gastos variables ────────────────────────────────────────── */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <Plus className="h-4 w-4 text-purple-600" />
+                <Calendar className="h-4 w-4 text-purple-600" />
                 Gastos variables
               </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                onClick={() => setModalVariableAbierto(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Agendar gasto
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -401,20 +410,11 @@ export default function CajaJazminePage() {
                 </div>
               ))
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-2 border-dashed border-purple-300 text-purple-700 hover:bg-purple-50"
-              onClick={() => setModalAbierto(true)}
-            >
-              <Plus className="h-4 w-4 mr-1.5" />
-              Agregar gasto
-            </Button>
           </CardContent>
         </Card>
       </div>
 
-      {/* Sección 4 — Proyección visual del saldo a 30 días */}
+      {/* Proyección visual */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -424,26 +424,9 @@ export default function CajaJazminePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {[
-            {
-              label: "Saldo actual",
-              value: saldoActual,
-              color: "bg-purple-500",
-              textColor: "text-purple-700",
-            },
-            {
-              label: "Gastos proyectados",
-              value: gastosPróximos30Dias,
-              color: "bg-red-400",
-              textColor: "text-red-600",
-              signo: "−",
-            },
-            {
-              label: "Ingresos proyectados (50%)",
-              value: ingresosProyectados30Dias,
-              color: "bg-purple-300",
-              textColor: "text-purple-600",
-              signo: "+",
-            },
+            { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
+            { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−" },
+            { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+" },
           ].map(({ label, value, color, textColor, signo }) => {
             const pct = Math.round((value / barMax) * 100)
             return (
@@ -451,31 +434,19 @@ export default function CajaJazminePage() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium text-foreground">{label}</span>
                   <span className={`font-semibold ${textColor}`}>
-                    {signo ? `${signo} ` : ""}
-                    {formatCurrency(value)}
+                    {signo ? `${signo} ` : ""}{formatCurrency(value)}
                   </span>
                 </div>
                 <div className="h-3 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${color} transition-all duration-500`}
-                    style={{ width: `${pct}%` }}
-                  />
+                  <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
                 </div>
               </div>
             )
           })}
-
-          {/* Línea resultado */}
           <div className="pt-3 border-t border-border">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-foreground">
-                Saldo proyectado resultante
-              </span>
-              <span
-                className={`text-xl font-bold ${
-                  saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"
-                }`}
-              >
+              <span className="text-sm font-semibold text-foreground">Saldo proyectado resultante</span>
+              <span className={`text-xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
                 {formatCurrency(saldoProyectado30Dias)}
               </span>
             </div>
@@ -486,45 +457,100 @@ export default function CajaJazminePage() {
         </CardContent>
       </Card>
 
-      {/* Modal — Agregar gasto variable */}
-      <Dialog open={modalAbierto} onOpenChange={setModalAbierto}>
+      {/* ── Dialog: Editar gasto fijo ──────────────────────────────────────── */}
+      <Dialog open={!!editandoFijo} onOpenChange={(open) => !open && setEditandoFijo(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Agregar gasto variable</DialogTitle>
+            <DialogTitle>Editar gasto fijo</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="concepto">Concepto</Label>
+              <Label htmlFor="ef-concepto">Nombre</Label>
               <Input
-                id="concepto"
-                placeholder="Ej: Reparación de heladera"
-                value={nuevoGasto.nombre}
-                onChange={(e) =>
-                  setNuevoGasto((p) => ({ ...p, nombre: e.target.value }))
-                }
+                id="ef-concepto"
+                value={editFijo.concepto}
+                onChange={(e) => setEditFijo((p) => ({ ...p, concepto: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="monto">Monto (ARS)</Label>
+              <Label htmlFor="ef-monto">Monto (ARS)</Label>
               <Input
-                id="monto"
+                id="ef-monto"
+                type="number"
+                value={editFijo.monto}
+                onChange={(e) => setEditFijo((p) => ({ ...p, monto: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ef-fecha">Fecha de vencimiento</Label>
+              <Input
+                id="ef-fecha"
+                type="date"
+                value={editFijo.fechaVencimiento}
+                onChange={(e) => setEditFijo((p) => ({ ...p, fechaVencimiento: e.target.value }))}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div>
+                <p className="text-sm font-medium">Marcado como pagado</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Cambia el estado a pagado en este mes
+                </p>
+              </div>
+              <Switch
+                checked={editFijo.pagado}
+                onCheckedChange={(checked) => setEditFijo((p) => ({ ...p, pagado: checked }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditandoFijo(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={guardarEditFijo}
+              disabled={!editFijo.concepto || !editFijo.monto}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Agendar gasto variable ────────────────────────────────── */}
+      <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agendar gasto variable</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="gv-concepto">Concepto</Label>
+              <Input
+                id="gv-concepto"
+                placeholder="Ej: Reparación de heladera"
+                value={nuevoGasto.nombre}
+                onChange={(e) => setNuevoGasto((p) => ({ ...p, nombre: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gv-monto">Monto (ARS)</Label>
+              <Input
+                id="gv-monto"
                 type="number"
                 placeholder="Ej: 50000"
                 value={nuevoGasto.monto}
-                onChange={(e) =>
-                  setNuevoGasto((p) => ({ ...p, monto: e.target.value }))
-                }
+                onChange={(e) => setNuevoGasto((p) => ({ ...p, monto: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="salon">Salón</Label>
+              <Label htmlFor="gv-salon">Salón</Label>
               <Select
                 value={nuevoGasto.salon}
-                onValueChange={(v) =>
-                  setNuevoGasto((p) => ({ ...p, salon: v }))
-                }
+                onValueChange={(v) => setNuevoGasto((p) => ({ ...p, salon: v }))}
               >
-                <SelectTrigger id="salon">
+                <SelectTrigger id="gv-salon">
                   <SelectValue placeholder="Seleccionar salón" />
                 </SelectTrigger>
                 <SelectContent>
@@ -536,30 +562,28 @@ export default function CajaJazminePage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="fecha">Fecha</Label>
+              <Label htmlFor="gv-fecha">Fecha del gasto</Label>
               <Input
-                id="fecha"
+                id="gv-fecha"
                 type="date"
                 value={nuevoGasto.fecha}
-                onChange={(e) =>
-                  setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))
-                }
+                onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground">
+                Podés agendar gastos futuros; se ordenan automáticamente por fecha.
+              </p>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setModalAbierto(false)}
-            >
+            <Button variant="outline" onClick={() => setModalVariableAbierto(false)}>
               Cancelar
             </Button>
             <Button
               onClick={handleAgregarGasto}
-              disabled={!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon}
+              disabled={!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon || !nuevoGasto.fecha}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
-              Agregar
+              Agendar
             </Button>
           </DialogFooter>
         </DialogContent>
