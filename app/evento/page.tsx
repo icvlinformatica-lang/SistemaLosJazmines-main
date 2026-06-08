@@ -24,6 +24,7 @@ import {
   type EstadoEvento,
   type EventoGuardado,
   type VersionContrato,
+  type MovimientoCaja,
   SALONES,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -1412,135 +1413,216 @@ function EventoPageContent() {
           />
         </SectionCard>
 
-        {/* ==================== PAQUETES DE SERVICIOS (OCULTO TEMPORALMENTE) ==================== */}
-        {/* La sección de paquetes está comentada pero el código subyacente permanece intacto */}
-        {false && (
-        <SectionCard
-          sectionKey="servicios"
-          locked={esBloqueado}
-          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Package className="h-5 w-5 text-emerald-600" /></div>}
-          title="Paquetes de Servicios"
-          subtitle={paquetesSeleccionados.length > 0 ? `${paquetesSeleccionados.length} paquete${paquetesSeleccionados.length > 1 ? "s" : ""} seleccionado${paquetesSeleccionados.length > 1 ? "s" : ""}` : "Selecciona paquetes para el evento"}
-        >
-          {/* No salon selected warning */}
-          {!evento.salon && (
-            <div className="flex items-center gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
-              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-amber-800">Selecciona un salon primero</p>
-                <p className="text-xs text-amber-600">Los paquetes se filtran segun el salon elegido</p>
-              </div>
-            </div>
-          )}
 
-          {/* Salon selected but no packages */}
-          {evento.salon && paquetesDelSalon.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Package className="h-10 w-10 text-muted-foreground mb-3" />
-              <p className="text-sm font-medium text-muted-foreground">No hay paquetes para {evento.salon}</p>
+
+        {/* ==================== SERVICIOS DEL EVENTO ==================== */}
+        <SectionCard
+          sectionKey="servicios-evento"
+          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
+          title="Servicios del Evento"
+          subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
+        >
+          {/* Tabla multiplechoice de servicios */}
+          {catalogoServicios.filter(s => s.activo).length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
+              <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No hay servicios en el catalogo</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Crea paquetes en Servicios {'>'} {evento.salon}
+                Ve a Finanzas → Servicios para agregar servicios
               </p>
             </div>
-          )}
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/70 border-b border-border">
+                    <th className="w-10 px-3 py-2" />
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Servicio</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Categoria</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700 uppercase tracking-wide">Precio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalogoServicios.filter(s => s.activo).map((servicio, idx) => {
+                    const seleccionado = serviciosEvento.some(se => se.servicioId === servicio.id)
+                    const precioVenta = servicio.precioVenta ?? 0
+                    const costoSeña = Math.round((servicio.costoParaCajaEventos ?? 0) * (servicio.porcentajeSeña ?? 30) / 100)
 
-          {/* Package cards */}
-          {evento.salon && paquetesDelSalon.length > 0 && (
-            <div className="space-y-3">
-              {paquetesDelSalon.map((paq) => {
-                const isSelected = paquetesSeleccionados.includes(paq.id)
-                const totales = calcularTotalesPaquete(paq, catalogoServicios || [])
+                    const fmt = (n: number) =>
+                      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
 
-                return (
-                  <button
-                    key={paq.id}
-                    type="button"
-                    onClick={() => handleTogglePaquete(paq.id)}
-                    className={`w-full text-left rounded-xl border-2 p-4 transition-all ${
-                      isSelected
-                        ? "border-emerald-500 bg-emerald-50 shadow-sm ring-1 ring-emerald-200"
-                        : "border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/30"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 shrink-0 ${
-                            isSelected ? "border-emerald-500 bg-emerald-500" : "border-muted-foreground/40"
+                    const toggleServicio = () => {
+                      if (seleccionado) {
+                        updateEventoActual({ servicios: serviciosEvento.filter(se => se.servicioId !== servicio.id) })
+                      } else {
+                        const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
+                        const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
+                        const costoBase = servicio.costoParaCajaEventos ?? 0
+                        const pct = servicio.porcentajeSeña ?? 30
+                        const montoSeña = Math.round(costoBase * pct / 100)
+                        const saldoPendiente = costoBase - montoSeña
+
+                        const diasAnticipacion = servicio.diasAnticipacionSeña ?? 30
+                        const fechaSeñaDate = new Date(fechaEvento)
+                        fechaSeñaDate.setDate(fechaEvento.getDate() - diasAnticipacion)
+                        const fechaSaldoDate = new Date(fechaEvento)
+                        fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
+
+                        const nuevoServicio: ServicioEvento = {
+                          servicioId: servicio.id,
+                          nombre: servicio.nombre,
+                          cantidad: 1,
+                          unidad: servicio.unidad || "Fijo",
+                          estadoPago: "sin_seña",
+                          montoSeña,
+                          saldoPendiente,
+                          fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
+                          fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                        }
+                        updateEventoActual({ servicios: [...serviciosEvento, nuevoServicio] })
+                      }
+                    }
+
+                    const esPorHora = servicio.unidad === "Por Hora"
+                    const servicioEnEvento = serviciosEvento.find(se => se.servicioId === servicio.id)
+                    const horas = servicioEnEvento?.cantidad ?? 1
+                    const precioTotal = esPorHora ? precioVenta * horas : precioVenta
+
+                    const handleHoras = (e: React.ChangeEvent<HTMLInputElement>) => {
+                      e.stopPropagation()
+                      const nuevasHoras = Math.max(1, parseInt(e.target.value) || 1)
+                      const nuevoPrecioVenta = precioVenta * nuevasHoras
+                      const pct = servicio.porcentajeSeña ?? 30
+                      const nuevaSeña = Math.round(nuevoPrecioVenta * pct / 100)
+                      const nuevoSaldo = nuevoPrecioVenta - nuevaSeña
+                      const nuevoCosto = (servicio.costoParaCajaEventos ?? 0) * nuevasHoras
+                      const nuevaSeñaCosto = Math.round(nuevoCosto * pct / 100)
+
+                      const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
+                      const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
+                      const diasAnticipacion = servicio.diasAnticipacionSeña ?? 30
+                      const fechaSeñaDate = new Date(fechaEvento)
+                      fechaSeñaDate.setDate(fechaEvento.getDate() - diasAnticipacion)
+                      const fechaSaldoDate = new Date(fechaEvento)
+                      fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
+
+                      updateEventoActual({
+                        servicios: serviciosEvento.map(se =>
+                          se.servicioId === servicio.id
+                            ? {
+                                ...se,
+                                cantidad: nuevasHoras,
+                                montoSeña: nuevaSeñaCosto,
+                                saldoPendiente: (nuevoCosto - nuevaSeñaCosto),
+                                fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
+                                fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                              }
+                            : se
+                        ),
+                      })
+                    }
+
+                    return (
+                      <tr
+                        key={servicio.id}
+                        onClick={toggleServicio}
+                        className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
+                          seleccionado
+                            ? "bg-emerald-50/70 hover:bg-emerald-50"
+                            : idx % 2 === 0
+                            ? "hover:bg-muted/40"
+                            : "bg-muted/10 hover:bg-muted/40"
+                        }`}
+                      >
+                        {/* Checkbox visual */}
+                        <td className="w-10 px-3 py-2.5">
+                          <div className={`w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
+                            seleccionado
+                              ? "bg-emerald-600 border-emerald-600"
+                              : "border-muted-foreground/30 bg-background"
                           }`}>
-                            {isSelected && (
-                              <CheckCircle className="h-3.5 w-3.5 text-white" />
+                            {seleccionado && (
+                              <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />
                             )}
                           </div>
-                          <h4 className="font-semibold text-sm">{paq.nombre}</h4>
-                        </div>
-                        {paq.descripcion && (
-                          <p className="text-xs text-muted-foreground mt-1 ml-7">{paq.descripcion}</p>
-                        )}
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-base font-bold text-emerald-700">
-                          {formatCurrency(totales.precioOficial)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Precio oficial
-                        </p>
-                      </div>
-                    </div>
+                        </td>
 
-                    {/* Services included preview */}
-                    <div className="mt-3 ml-7 space-y-1">
-                      {(expandedPaquetes[paq.id] ? paq.serviciosIncluidos : paq.serviciosIncluidos.slice(0, 5)).map((si) => {
-                        const nombreServicio = si.nombre || (catalogoServicios || []).find(s => s.id === si.servicioId)?.nombre || "Servicio"
-                        return (
-                          <div key={si.servicioId} className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground truncate">
-                              {nombreServicio} {si.cantidad && si.cantidad > 1 ? `x${si.cantidad}` : ""}
-                            </span>
-                            <span className="text-muted-foreground font-medium shrink-0 ml-2">
-                              {formatCurrency(si.precioOficial * (si.cantidad || 1))}
-                            </span>
-                          </div>
-                        )
-                      })}
-                      {paq.serviciosIncluidos.length > 5 && (
-                        <p
-                          className="text-xs text-emerald-600 font-medium cursor-pointer hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setExpandedPaquetes(prev => ({ ...prev, [paq.id]: !prev[paq.id] }))
-                          }}
-                        >
-                          {expandedPaquetes[paq.id]
-                            ? "Ver menos"
-                            : `Ver mas... (+${paq.serviciosIncluidos.length - 5})`
+                        {/* Nombre + input horas si aplica */}
+                        <td className="px-3 py-2.5">
+                          <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>
+                            {servicio.nombre}
+                          </span>
+                          {servicio.descripcion && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{servicio.descripcion}</p>
+                          )}
+                          {esPorHora && seleccionado && (
+                            <div
+                              className="flex items-center gap-1.5 mt-1.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <label className="text-xs text-muted-foreground whitespace-nowrap">Horas:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                value={horas}
+                                onChange={handleHoras}
+                                className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
+                              />
+                              <span className="text-xs text-muted-foreground">h</span>
+                            </div>
+                          )}
+                          {esPorHora && !seleccionado && (
+                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">Por hora</p>
+                          )}
+                        </td>
+
+                        {/* Categoria */}
+                        <td className="px-3 py-2.5 hidden sm:table-cell">
+                          <Badge variant="outline" className="text-[11px]">{servicio.categoria}</Badge>
+                        </td>
+
+                        {/* Precio venta (× horas si aplica) */}
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                          {precioTotal > 0
+                            ? (
+                              <span>
+                                {fmt(precioTotal)}
+                                {esPorHora && seleccionado && horas > 1 && (
+                                  <span className="block text-[11px] font-normal text-muted-foreground">
+                                    {fmt(precioVenta)}/h × {horas}
+                                  </span>
+                                )}
+                              </span>
+                            )
+                            : <span className="text-muted-foreground font-normal">—</span>
                           }
-                        </p>
-                      )}
-                    </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
 
-                    {/* Capacity info */}
-                    {(paq.capacidadMinima > 0 || paq.capacidadMaxima > 0) && (
-                      <div className="mt-2 ml-7">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          {paq.capacidadMinima} - {paq.capacidadMaxima} personas
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-
-              {/* Totals summary */}
-              {paquetesSeleccionados.length > 0 && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-emerald-800">Total Paquetes</span>
-                    <span className="text-lg font-bold text-emerald-700">{formatCurrency(costoPaquetesOficial)}</span>
-                  </div>
-                </div>
-              )}
+                {/* Footer: resumen seleccionados */}
+                {serviciosEvento.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-muted/60 border-t-2 border-border">
+                      <td colSpan={3} className="px-3 py-2 text-xs font-semibold text-muted-foreground">
+                        {serviciosEvento.length} servicio{serviciosEvento.length !== 1 ? "s" : ""} seleccionado{serviciosEvento.length !== 1 ? "s" : ""}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-emerald-700">
+                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
+                          serviciosEvento.reduce((sum, se) => {
+                            const cat = catalogoServicios.find(s => s.id === se.servicioId)
+                            const precio = cat?.precioVenta ?? 0
+                            const horas = (cat?.unidad === "Por Hora") ? (se.cantidad ?? 1) : 1
+                            return sum + precio * horas
+                          }, 0)
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
           )}
 
@@ -1709,220 +1791,6 @@ function EventoPageContent() {
               </div>
             )
           })()}
-        </SectionCard>
-        )}
-
-        {/* ==================== SERVICIOS DEL EVENTO ==================== */}
-        <SectionCard
-          sectionKey="servicios-evento"
-          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
-          title="Servicios del Evento"
-          subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
-        >
-          {/* Tabla multiplechoice de servicios */}
-          {catalogoServicios.filter(s => s.activo).length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
-              <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground">No hay servicios en el catalogo</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Ve a Finanzas → Servicios para agregar servicios
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/70 border-b border-border">
-                    <th className="w-10 px-3 py-2" />
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Servicio</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Categoria</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700 uppercase tracking-wide">Precio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {catalogoServicios.filter(s => s.activo).map((servicio, idx) => {
-                    const seleccionado = serviciosEvento.some(se => se.servicioId === servicio.id)
-                    const precioVenta = servicio.precioVenta ?? 0
-                    const costoSeña = Math.round((servicio.costoParaCajaEventos ?? 0) * (servicio.porcentajeSeña ?? 30) / 100)
-
-                    const fmt = (n: number) =>
-                      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
-
-                    const toggleServicio = () => {
-                      if (seleccionado) {
-                        updateEventoActual({ servicios: serviciosEvento.filter(se => se.servicioId !== servicio.id) })
-                      } else {
-                        const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
-                        const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
-                        const costoBase = servicio.costoParaCajaEventos ?? 0
-                        const pct = servicio.porcentajeSeña ?? 30
-                        const montoSeña = Math.round(costoBase * pct / 100)
-                        const saldoPendiente = costoBase - montoSeña
-
-                        // La seña al proveedor se paga ANTES de fin del mes en que se
-                        // contrata el evento (hoy). Vence el último día de ese mes.
-                        const hoyContrato = new Date()
-                        const fechaSeñaDate = new Date(hoyContrato.getFullYear(), hoyContrato.getMonth() + 1, 0)
-                        const fechaSaldoDate = new Date(fechaEvento)
-                        fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
-
-                        const nuevoServicio: ServicioEvento = {
-                          servicioId: servicio.id,
-                          nombre: servicio.nombre,
-                          cantidad: 1,
-                          unidad: servicio.unidad || "Fijo",
-                          estadoPago: "sin_seña",
-                          montoSeña,
-                          saldoPendiente,
-                          fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
-                          fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
-                        }
-                        updateEventoActual({ servicios: [...serviciosEvento, nuevoServicio] })
-                      }
-                    }
-
-                    const esPorHora = servicio.unidad === "Por Hora"
-                    const servicioEnEvento = serviciosEvento.find(se => se.servicioId === servicio.id)
-                    const horas = servicioEnEvento?.cantidad ?? 1
-                    const precioTotal = esPorHora ? precioVenta * horas : precioVenta
-
-                    const handleHoras = (e: React.ChangeEvent<HTMLInputElement>) => {
-                      e.stopPropagation()
-                      const nuevasHoras = Math.max(1, parseInt(e.target.value) || 1)
-                      const nuevoPrecioVenta = precioVenta * nuevasHoras
-                      const pct = servicio.porcentajeSeña ?? 30
-                      const nuevaSeña = Math.round(nuevoPrecioVenta * pct / 100)
-                      const nuevoSaldo = nuevoPrecioVenta - nuevaSeña
-                      const nuevoCosto = (servicio.costoParaCajaEventos ?? 0) * nuevasHoras
-                      const nuevaSeñaCosto = Math.round(nuevoCosto * pct / 100)
-
-                      const fechaEvento = evento?.fecha ? new Date(evento.fecha + "T12:00:00") : new Date()
-                      const diasSaldo = servicio.diasAnticipacionSaldo ?? 7
-                      // La seña al proveedor vence a fin del mes en que se contrata (hoy)
-                      const hoyContrato = new Date()
-                      const fechaSeñaDate = new Date(hoyContrato.getFullYear(), hoyContrato.getMonth() + 1, 0)
-                      const fechaSaldoDate = new Date(fechaEvento)
-                      fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
-
-                      updateEventoActual({
-                        servicios: serviciosEvento.map(se =>
-                          se.servicioId === servicio.id
-                            ? {
-                                ...se,
-                                cantidad: nuevasHoras,
-                                montoSeña: nuevaSeñaCosto,
-                                saldoPendiente: (nuevoCosto - nuevaSeñaCosto),
-                                fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
-                                fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
-                              }
-                            : se
-                        ),
-                      })
-                    }
-
-                    return (
-                      <tr
-                        key={servicio.id}
-                        onClick={toggleServicio}
-                        className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
-                          seleccionado
-                            ? "bg-emerald-50/70 hover:bg-emerald-50"
-                            : idx % 2 === 0
-                            ? "hover:bg-muted/40"
-                            : "bg-muted/10 hover:bg-muted/40"
-                        }`}
-                      >
-                        {/* Checkbox visual */}
-                        <td className="w-10 px-3 py-2.5">
-                          <div className={`w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
-                            seleccionado
-                              ? "bg-emerald-600 border-emerald-600"
-                              : "border-muted-foreground/30 bg-background"
-                          }`}>
-                            {seleccionado && (
-                              <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Nombre + input horas si aplica */}
-                        <td className="px-3 py-2.5">
-                          <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>
-                            {servicio.nombre}
-                          </span>
-                          {servicio.descripcion && (
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{servicio.descripcion}</p>
-                          )}
-                          {esPorHora && seleccionado && (
-                            <div
-                              className="flex items-center gap-1.5 mt-1.5"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <label className="text-xs text-muted-foreground whitespace-nowrap">Horas:</label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={horas}
-                                onChange={handleHoras}
-                                className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
-                              />
-                              <span className="text-xs text-muted-foreground">h</span>
-                            </div>
-                          )}
-                          {esPorHora && !seleccionado && (
-                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">Por hora</p>
-                          )}
-                        </td>
-
-                        {/* Categoria */}
-                        <td className="px-3 py-2.5 hidden sm:table-cell">
-                          <Badge variant="outline" className="text-[11px]">{servicio.categoria}</Badge>
-                        </td>
-
-                        {/* Precio venta (× horas si aplica) */}
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
-                          {precioTotal > 0
-                            ? (
-                              <span>
-                                {fmt(precioTotal)}
-                                {esPorHora && seleccionado && horas > 1 && (
-                                  <span className="block text-[11px] font-normal text-muted-foreground">
-                                    {fmt(precioVenta)}/h × {horas}
-                                  </span>
-                                )}
-                              </span>
-                            )
-                            : <span className="text-muted-foreground font-normal">—</span>
-                          }
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-
-                {/* Footer: resumen seleccionados */}
-                {serviciosEvento.length > 0 && (
-                  <tfoot>
-                    <tr className="bg-muted/60 border-t-2 border-border">
-                      <td colSpan={3} className="px-3 py-2 text-xs font-semibold text-muted-foreground">
-                        {serviciosEvento.length} servicio{serviciosEvento.length !== 1 ? "s" : ""} seleccionado{serviciosEvento.length !== 1 ? "s" : ""}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-emerald-700">
-                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
-                          serviciosEvento.reduce((sum, se) => {
-                            const cat = catalogoServicios.find(s => s.id === se.servicioId)
-                            const precio = cat?.precioVenta ?? 0
-                            const horas = (cat?.unidad === "Por Hora") ? (se.cantidad ?? 1) : 1
-                            return sum + precio * horas
-                          }, 0)
-                        )}
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          )}
         </SectionCard>
 
         {/* ==================== CONTRATO SECTION ==================== */}
