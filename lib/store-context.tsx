@@ -42,6 +42,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
 
 interface StoreContextType {
   state: AppState
@@ -156,6 +157,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false)
   const [showIPCDialog, setShowIPCDialog] = useState(false)
   const [porcentajeIPC, setPorcentajeIPC] = useState("")
+  const { toast } = useToast()
 
   useEffect(() => {
     const initializeData = async () => {
@@ -208,6 +210,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
+        toast({ title: "Error al cargar datos", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
         supabaseData = {
           servicios: localState.servicios,
           personal: localState.personal,
@@ -278,6 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding insumo:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -297,6 +301,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating insumo:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -311,6 +316,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting insumo:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -335,6 +341,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding insumo barra:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -354,6 +361,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating insumo barra:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -368,6 +376,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting insumo barra:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -393,6 +402,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding receta:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -412,6 +422,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating receta:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -426,6 +437,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting receta:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -451,6 +463,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding coctel:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -470,6 +483,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating coctel:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -484,6 +498,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting coctel:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -508,6 +523,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding barra template:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -527,6 +543,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating barra template:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -541,6 +558,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting barra template:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -557,6 +575,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertServicio(newServicio)
     } catch (error) {
       console.error("[v0] Error syncing servicio to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -574,6 +593,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing servicio update to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -588,6 +608,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteServ(id)
     } catch (error) {
       console.error("[v0] Error deleting servicio from Supabase:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -608,6 +629,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertCostoOperativo(newCosto)
     } catch (error) {
       console.error("[v0] Error syncing costo operativo to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -625,6 +647,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing costo operativo update to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -639,6 +662,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteCosto(id)
     } catch (error) {
       console.error("[v0] Error deleting costo operativo from Supabase:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -703,6 +727,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertPersonal(newPersonal)
     } catch (error) {
       console.error("[v0] Error syncing personal to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -720,6 +745,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing personal update to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -734,6 +760,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deletePers(id)
     } catch (error) {
       console.error("[v0] Error deleting personal from Supabase:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -754,6 +781,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertPagoPersonal(newPago)
     } catch (error) {
       console.error("[v0] Error syncing pago personal to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -771,6 +799,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing pago personal update to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -785,6 +814,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deletePago(id)
     } catch (error) {
       console.error("[v0] Error deleting pago personal from Supabase:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -848,6 +878,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error("[v0] Error adding evento:", err)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -865,6 +896,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     } catch (err) {
       console.error("[v0] Error updating evento:", err)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -882,6 +914,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteMovimientosByEvento(id)
     } catch (err) {
       console.error("[v0] Error deleting evento:", err)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -955,6 +988,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertConfiguracionCajas(config)
     } catch (error) {
       console.error("[v0] Error syncing configuracion cajas to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -969,6 +1003,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await insertMovimientoCaja(movimiento)
     } catch (error) {
       console.error("[v0] Error syncing movimiento caja to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -985,6 +1020,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing movimientos caja to Supabase:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
@@ -999,6 +1035,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteMov(id)
     } catch (error) {
       console.error("[v0] Error deleting movimiento caja from Supabase:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
     }
   }
 
