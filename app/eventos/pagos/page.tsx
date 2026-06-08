@@ -8,7 +8,6 @@ import {
   generateId,
   formatCurrency,
   generarCalendarioCuotas,
-  generarMovimientoIngreso,
   type EventoGuardado,
   type MovimientoCaja,
   type PagoEvento,
@@ -384,17 +383,7 @@ function PagosPageContent() {
     if (evento.salon) {
       const montoCuota = evento.planDeCuotas.montoCuota || 0
       const nombreEvento = evento.nombre || evento.nombrePareja || "Evento"
-      const movimientos = generarMovimientoIngreso(
-        evento.salon,
-        montoCuota,
-        `Cuota ${numeroCuota} - ${nombreEvento}`,
-        configuracionCajas,
-        movimientosCaja,
-        eventoId
-      )
-      addMovimientosCaja(movimientos)
-
-      // Generar dos movimientos adicionales: 50% para cada caja específica
+      // Generar dos movimientos: 50% para cada caja específica
       const mitad = montoCuota / 2
       const fecha = new Date().toISOString()
 
