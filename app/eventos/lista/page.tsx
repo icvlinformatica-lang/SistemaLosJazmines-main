@@ -331,9 +331,15 @@ export default function EventosListaPage() {
       })
     }
 
-    const resultado = Object.values(mapa).sort((a, b) =>
-      a.insumo.descripcion.localeCompare(b.insumo.descripcion)
-    )
+    const resultado = Object.values(mapa).sort((a, b) => {
+      const pa = (a.insumo?.proveedor && a.insumo.proveedor !== '-') ? a.insumo.proveedor : ''
+      const pb = (b.insumo?.proveedor && b.insumo.proveedor !== '-') ? b.insumo.proveedor : ''
+      if (pa === '' && pb !== '') return 1
+      if (pa !== '' && pb === '') return -1
+      const provCmp = pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+      if (provCmp !== 0) return provCmp
+      return (a.insumo?.descripcion || '').localeCompare(b.insumo?.descripcion || '', 'es', { sensitivity: 'base' })
+    })
     setCompraConsolidada(resultado)
     setConsolidadaDialogOpen(true)
   }
