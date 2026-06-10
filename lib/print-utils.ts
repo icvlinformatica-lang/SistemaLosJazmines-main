@@ -208,9 +208,13 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     html += `<th style="${S.thBlack}text-align:right;width:80px;">PRECIO STOCK</th>`
     html += `</tr></thead><tbody>`
     const comprasOrdenadas = [...compras].sort((a, b) => {
-      const pa = a.insumo?.proveedor || ''
-      const pb = b.insumo?.proveedor || ''
-      return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+      const pa = (a.insumo?.proveedor && a.insumo.proveedor !== '-') ? a.insumo.proveedor : ''
+      const pb = (b.insumo?.proveedor && b.insumo.proveedor !== '-') ? b.insumo.proveedor : ''
+      if (pa === '' && pb !== '') return 1
+      if (pa !== '' && pb === '') return -1
+      const provCmp = pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+      if (provCmp !== 0) return provCmp
+      return (a.insumo?.descripcion || '').localeCompare(b.insumo?.descripcion || '', 'es', { sensitivity: 'base' })
     })
     comprasOrdenadas.forEach((item, i) => {
       const d = item.insumo
@@ -260,9 +264,13 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     html += `<th style="${S.thBlack}text-align:right;width:80px;">PRECIO STOCK</th>`
     html += `</tr></thead><tbody>`
     const comprasBarrasOrdenadas = [...comprasBarras].sort((a, b) => {
-      const pa = a.insumoBarra?.proveedor || ''
-      const pb = b.insumoBarra?.proveedor || ''
-      return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+      const pa = (a.insumoBarra?.proveedor && a.insumoBarra.proveedor !== '-') ? a.insumoBarra.proveedor : ''
+      const pb = (b.insumoBarra?.proveedor && b.insumoBarra.proveedor !== '-') ? b.insumoBarra.proveedor : ''
+      if (pa === '' && pb !== '') return 1
+      if (pa !== '' && pb === '') return -1
+      const provCmp = pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+      if (provCmp !== 0) return provCmp
+      return (a.insumoBarra?.descripcion || '').localeCompare(b.insumoBarra?.descripcion || '', 'es', { sensitivity: 'base' })
     })
     comprasBarrasOrdenadas.forEach((item, i) => {
       const buy = item.cantidadAComprar > 0
@@ -388,9 +396,13 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<th style="${S.thGray}text-align:right;width:80px;">X PERSONA</th>`
       html += `</tr></thead><tbody>`
       const comprasOrdenadas = [...compras].sort((a, b) => {
-        const pa = a.insumo?.proveedor || ''
-        const pb = b.insumo?.proveedor || ''
-        return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+        const pa = (a.insumo?.proveedor && a.insumo.proveedor !== '-') ? a.insumo.proveedor : ''
+        const pb = (b.insumo?.proveedor && b.insumo.proveedor !== '-') ? b.insumo.proveedor : ''
+        if (pa === '' && pb !== '') return 1
+        if (pa !== '' && pb === '') return -1
+        const provCmp = pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+        if (provCmp !== 0) return provCmp
+        return (a.insumo?.descripcion || '').localeCompare(b.insumo?.descripcion || '', 'es', { sensitivity: 'base' })
       })
       comprasOrdenadas.forEach((item, i) => {
         const d = item.insumo
@@ -424,9 +436,13 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<th style="${S.thGray}text-align:right;width:80px;">X PERSONA</th>`
       html += `</tr></thead><tbody>`
       const comprasBarrasOrdenadas = [...comprasBarras].sort((a, b) => {
-        const pa = a.insumoBarra?.proveedor || ''
-        const pb = b.insumoBarra?.proveedor || ''
-        return pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+        const pa = (a.insumoBarra?.proveedor && a.insumoBarra.proveedor !== '-') ? a.insumoBarra.proveedor : ''
+        const pb = (b.insumoBarra?.proveedor && b.insumoBarra.proveedor !== '-') ? b.insumoBarra.proveedor : ''
+        if (pa === '' && pb !== '') return 1
+        if (pa !== '' && pb === '') return -1
+        const provCmp = pa.localeCompare(pb, 'es', { sensitivity: 'base' })
+        if (provCmp !== 0) return provCmp
+        return (a.insumoBarra?.descripcion || '').localeCompare(b.insumoBarra?.descripcion || '', 'es', { sensitivity: 'base' })
       })
       comprasBarrasOrdenadas.forEach((item, i) => {
         if ((item.costoMateriaPrima || 0) === 0) return
