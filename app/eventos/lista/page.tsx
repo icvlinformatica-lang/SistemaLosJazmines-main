@@ -112,6 +112,8 @@ type CoberturaItem = {
   cubierto: boolean
   aplica: boolean
   detalle: string
+  /** Estado intermedio: seña pagada pero saldo pendiente */
+  senaPagada?: boolean
 }
 
 // Calcula el estado de cobertura (pagado al proveedor) de cocina, barra y servicios
@@ -134,8 +136,25 @@ function calcularCobertura(evento: EventoGuardado): {
   // Servicios: aplica si hay servicios contratados
   const servicios = evento.servicios || []
   const tieneServicios = servicios.length > 0
-  const serviciosPagados = tieneServicios && servicios.every((s) => s.pagado === true)
-  const serviciosPagadosCount = servicios.filter((s) => s.pagado === true).length
+
+  // Verde: todos pagado_total (o pagado legacy)
+  const serviciosTotalesPagados =
+    tieneServicios &&
+    servicios.every(
+      (s) => s.estadoPago === "pagado_total" || s.pagado === true
+    )
+  // Naranja: al menos uno señado y todavía no todos pagados totalmente
+  const serviciosConSena =
+    tieneServicios &&
+    !serviciosTotalesPagados &&
+    servicios.some((s) => s.estadoPago === "señado" || s.estadoPago === "saldo_pendiente")
+
+  const pagadosTotalCount = servicios.filter(
+    (s) => s.estadoPago === "pagado_total" || s.pagado === true
+  ).length
+  const senadosCount = servicios.filter(
+    (s) => s.estadoPago === "señado" || s.estadoPago === "saldo_pendiente"
+  ).length
 
   const items: CoberturaItem[] = [
     {
@@ -164,12 +183,15 @@ function calcularCobertura(evento: EventoGuardado): {
       icon: ConciergeBell,
       label: "Servicios",
       aplica: tieneServicios,
-      cubierto: serviciosPagados,
+      cubierto: serviciosTotalesPagados,
+      senaPagada: serviciosConSena,
       detalle: !tieneServicios
         ? "Sin servicios contratados"
-        : serviciosPagados
+        : serviciosTotalesPagados
           ? "Todos los servicios pagados"
-          : `${serviciosPagadosCount}/${servicios.length} servicios pagados`,
+          : serviciosConSena
+            ? `Seña pagada (${senadosCount + pagadosTotalCount}/${servicios.length}) — saldo pendiente`
+            : `${pagadosTotalCount}/${servicios.length} servicios pagados`,
     },
   ]
 
@@ -984,7 +1006,9 @@ export default function EventosListaPage() {
                                                 ? "border-dashed border-border bg-transparent text-muted-foreground/30"
                                                 : item.cubierto
                                                   ? "border-emerald-300 bg-emerald-50 text-emerald-600"
-                                                  : "border-rose-200 bg-rose-50 text-rose-500"
+                                                  : item.senaPagada
+                                                    ? "border-orange-300 bg-orange-50 text-orange-500"
+                                                    : "border-rose-200 bg-rose-50 text-rose-500"
                                             }`}
                                             aria-label={`${item.label}: ${item.detalle}`}
                                           >
