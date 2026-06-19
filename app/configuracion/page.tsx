@@ -17,12 +17,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed } from "lucide-react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
 import type { Insumo, Receta } from "@/lib/store"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 type ActivityEntry = {
   id: string
@@ -67,6 +68,8 @@ export default function ConfiguracionPage() {
   const { state, insumos, recetas, historial, setInsumos, setRecetas } = useStore()
   const { toast } = useToast()
 
+  const [isRespaldoOpen, setIsRespaldoOpen] = useState(false)
+  const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<Record<string, { count: number; synced: boolean }>>({
@@ -514,43 +517,35 @@ export default function ConfiguracionPage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-8">
-        {/* Section 0: Estado de Guardado */}
+        {/* Section 0: Estado de Guardado (colapsable) */}
+        <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen}>
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <Database className="h-6 w-6" />
-                  Estado de Guardado
-                </CardTitle>
-                <CardDescription className="text-base mt-1">
-                  Informacion almacenada en la base de datos
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-3">
-                {lastSaveTime ? (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-lg">
-                    <Check className="h-5 w-5" />
-                    <span className="font-medium">Guardado</span>
+          <CardHeader className="pb-4">
+            <CollapsibleTrigger asChild>
+              <button className="w-full text-left">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <Database className="h-6 w-6" />
+                      Estado de Guardado
+                    </CardTitle>
+                    <CardDescription className="text-base mt-1">
+                      Informacion almacenada en la base de datos
+                    </CardDescription>
                   </div>
-                ) : (
-                  <Button 
-                    onClick={handleManualSync}
-                    disabled={isSyncing}
-                    className="bg-blue-500 hover:bg-blue-600"
-                  >
-                    {isSyncing ? (
-                      <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
+                  <div className="flex items-center gap-3">
+                    {isConfigOpen ? (
+                      <ChevronUp className="h-5 w-5 text-muted-foreground" />
                     ) : (
-                      <RefreshCw className="h-5 w-5 mr-2" />
+                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
                     )}
-                    Guardar
-                  </Button>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
+              </button>
+            </CollapsibleTrigger>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CollapsibleContent>
+          <CardContent className="space-y-4 pt-0">
             {/* Last save time */}
             <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
               <span className="text-muted-foreground">Ultimo guardado automatico:</span>
@@ -612,7 +607,9 @@ export default function ConfiguracionPage() {
               </div>
             </div>
           </CardContent>
+          </CollapsibleContent>
         </Card>
+        </Collapsible>
 
         {/* Section 1: Historial de Actividad */}
         <Card>
@@ -714,15 +711,35 @@ export default function ConfiguracionPage() {
           </CardContent>
         </Card>
 
-        {/* Section 2: Respaldo y Recuperacion */}
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold">Respaldo y Recuperacion de Datos</h2>
-            <p className="text-base text-muted-foreground mt-1">
-              Guarda una copia de tu sistema en la computadora para no perder nada.
-            </p>
-          </div>
-          
+        {/* Section 2: Respaldo y Recuperacion (colapsable) */}
+        <Collapsible open={isRespaldoOpen} onOpenChange={setIsRespaldoOpen}>
+        <Card>
+          <CardHeader className="pb-4">
+            <CollapsibleTrigger asChild>
+              <button className="w-full text-left">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <Download className="h-6 w-6" />
+                      Respaldo y Recuperacion de Datos
+                    </CardTitle>
+                    <CardDescription className="text-base mt-1">
+                      Guarda una copia de tu sistema en la computadora para no perder nada.
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isRespaldoOpen ? (
+                      <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                </div>
+              </button>
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CollapsibleContent>
+          <CardContent className="pt-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Card A: Export/Download */}
             <Card className="border-2 border-blue-200 bg-blue-50">
@@ -780,7 +797,10 @@ export default function ConfiguracionPage() {
               </CardContent>
             </Card>
           </div>
-        </div>
+          </CardContent>
+          </CollapsibleContent>
+        </Card>
+        </Collapsible>
 
         {/* Section 3: Zona Peligrosa - REMOVED */}
 
