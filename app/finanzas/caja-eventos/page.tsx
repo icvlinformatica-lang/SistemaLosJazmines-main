@@ -89,7 +89,6 @@ export default function CajaEventosPage() {
     () => insumosBarra.reduce((sum, ins) => sum + (ins.stockActual ?? 0) * (ins.precioUnitario ?? 0), 0),
     [insumosBarra]
   )
-  const totalPatrimonio = saldoActual + valorStockCocina + valorStockBarra
   const [mesCalendario, setMesCalendario] = useState(() => {
     const h = new Date()
     return new Date(h.getFullYear(), h.getMonth(), 1)
@@ -109,6 +108,8 @@ export default function CajaEventosPage() {
     totalPorPagar,
     mesActualLabel,
   } = data
+
+  const totalPatrimonio = saldoActual + valorStockCocina + valorStockBarra
 
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
