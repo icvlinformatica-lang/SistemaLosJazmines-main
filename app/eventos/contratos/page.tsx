@@ -40,14 +40,11 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  Clock,
   DollarSign,
   Package,
   Info,
   Pencil,
   ExternalLink,
-  Hourglass,
-  CheckCheck,
 } from "lucide-react"
 
 // =====================================================================
@@ -548,35 +545,9 @@ function SalonesTabs({
 
       {SALONES.map((salon) => {
         const evs = eventosPorSalon[salon]
-        // Status buckets: pendientes (borrador/pendiente), en preparación, finalizados
-        const pendientes = evs.filter((e) => e.estado === "pendiente" || e.estado === "borrador")
-        const enPreparacion = evs.filter((e) => e.estado === "en_preparacion")
-        const finalizados = evs.filter((e) => e.estado === "completado")
 
         return (
           <TabsContent key={salon} value={salon} className="space-y-5 mt-5">
-            {/* Dashboard de estados */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <DashboardStat
-                label="Pendientes"
-                value={pendientes.length}
-                icon={<Clock className="h-5 w-5" />}
-                className="border-amber-200 bg-amber-50 text-amber-700"
-              />
-              <DashboardStat
-                label="En preparacion"
-                value={enPreparacion.length}
-                icon={<Hourglass className="h-5 w-5" />}
-                className="border-sky-200 bg-sky-50 text-sky-700"
-              />
-              <DashboardStat
-                label="Finalizados"
-                value={finalizados.length}
-                icon={<CheckCheck className="h-5 w-5" />}
-                className="border-emerald-200 bg-emerald-50 text-emerald-700"
-              />
-            </div>
-
             {/* Lista de eventos del salón */}
             {evs.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center">
@@ -598,29 +569,6 @@ function SalonesTabs({
   )
 }
 
-function DashboardStat({
-  label,
-  value,
-  icon,
-  className,
-}: {
-  label: string
-  value: number
-  icon: React.ReactNode
-  className?: string
-}) {
-  return (
-    <div className={`flex items-center gap-3 rounded-xl border p-4 ${className ?? ""}`}>
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background/60">
-        {icon}
-      </div>
-      <div>
-        <p className="text-2xl font-bold tabular-nums leading-none">{value}</p>
-        <p className="text-xs font-medium mt-1">{label}</p>
-      </div>
-    </div>
-  )
-}
 
 // =====================================================================
 // EVENTS TABLE GROUPED BY MONTH + SALON
@@ -685,7 +633,6 @@ function EventosPorMesSalon({
                 {!hideSalonColumn && <TableHead className="w-[120px]">Salon</TableHead>}
                 <TableHead>Evento</TableHead>
                 <TableHead className="w-[90px] text-center">Invitados</TableHead>
-                <TableHead className="w-[130px] text-right">Precio</TableHead>
                 <TableHead className="w-[110px] text-center">Contrato</TableHead>
               </TableRow>
             </TableHeader>
@@ -714,9 +661,6 @@ function EventosPorMesSalon({
                     )}
                     <TableCell className="font-medium">{ev.nombrePareja || ev.nombre}</TableCell>
                     <TableCell className="text-center tabular-nums">{totalPersonas}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {ev.precioVenta ? formatCurrency(ev.precioVenta) : "—"}
-                    </TableCell>
                     <TableCell className="text-center">
                       {versiones > 0 ? (
                         <Badge variant="secondary" className="gap-1 text-xs">
