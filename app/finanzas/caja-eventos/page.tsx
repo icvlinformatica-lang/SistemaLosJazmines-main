@@ -44,6 +44,7 @@ import {
   ArrowUpFromLine,
   History,
   RotateCcw,
+  Eye,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -74,8 +75,21 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
   const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja } = useStore()
+  const insumos = state.insumos ?? []
+  const insumosBarra = state.insumosBarra ?? []
   const data = useCajaEventos(state)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
+  const [desgloseOpen, setDesgloseOpen] = useState(false)
+
+  const valorStockCocina = useMemo(
+    () => insumos.reduce((sum, ins) => sum + (ins.stockActual ?? 0) * (ins.precioUnitario ?? 0), 0),
+    [insumos]
+  )
+  const valorStockBarra = useMemo(
+    () => insumosBarra.reduce((sum, ins) => sum + (ins.stockActual ?? 0) * (ins.precioUnitario ?? 0), 0),
+    [insumosBarra]
+  )
+  const totalPatrimonio = saldoActual + valorStockCocina + valorStockBarra
   const [mesCalendario, setMesCalendario] = useState(() => {
     const h = new Date()
     return new Date(h.getFullYear(), h.getMonth(), 1)
@@ -246,11 +260,17 @@ export default function CajaEventosPage() {
 
       {/* DASHBOARD: 4 métricas clave */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="border-teal-200 bg-teal-50">
+        <Card
+          className="border-teal-200 bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors"
+          onClick={() => setDesgloseOpen(true)}
+        >
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
               <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora</p>
-              <Wallet className="h-4 w-4 text-teal-600" />
+              <div className="flex items-center gap-1.5">
+                <Eye className="h-3.5 w-3.5 text-teal-500" />
+                <Wallet className="h-4 w-4 text-teal-600" />
+              </div>
             </div>
             <p className="text-2xl font-bold text-teal-800">{formatCurrency(saldoActual)}</p>
           </CardContent>
@@ -709,6 +729,39 @@ export default function CajaEventosPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: desglose "Tengo ahora" */}
+      <Dialog open={desgloseOpen} onOpenChange={setDesgloseOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-teal-600" />
+              Desglose — Tengo ahora
+            </DialogTitle>
+            <DialogDescription>
+              Composición del patrimonio actual del negocio.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-1 space-y-1">
+            <div className="flex items-center justify-between py-2.5 border-b border-border">
+              <span className="text-sm text-muted-foreground">Efectivo en caja</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(saldoActual)}</span>
+            </div>
+            <div className="flex items-center justify-between py-2.5 border-b border-border">
+              <span className="text-sm text-muted-foreground">Valor stock cocina</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(valorStockCocina)}</span>
+            </div>
+            <div className="flex items-center justify-between py-2.5 border-b border-border">
+              <span className="text-sm text-muted-foreground">Valor stock barra</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(valorStockBarra)}</span>
+            </div>
+            <div className="flex items-center justify-between pt-3">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="text-base font-bold text-teal-700 tabular-nums">{formatCurrency(totalPatrimonio)}</span>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
