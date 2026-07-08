@@ -190,7 +190,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
-        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB] = await Promise.all([
+        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB] = await Promise.all([
           db.fetchServicios(),
           db.fetchPersonal(),
           db.fetchPagosPersonal(),
@@ -198,7 +198,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           db.fetchAsignaciones(),
           db.fetchMovimientosCaja(),
           db.fetchConfiguracionCajas(),
+          db.fetchPreciosVenta(),
         ])
+
+        // Migración one-time: si Supabase devuelve vacío pero localStorage tiene precios, upsertearlos ahora
+        const preciosLocal = localState.preciosVenta || {}
+        const hayPreciosLocales = Object.keys(preciosLocal).length > 0
+        const hayPreciosDB = Object.keys(preciosDB).length > 0
+        if (!hayPreciosDB && hayPreciosLocales) {
+          for (const salon of Object.keys(preciosLocal)) {
+            for (const fecha of Object.keys(preciosLocal[salon])) {
+              await db.upsertPrecioVenta(salon, fecha, preciosLocal[salon][fecha])
+            }
+          }
+        }
+
         supabaseData = {
           servicios: serviciosDB.length > 0 ? serviciosDB : localState.servicios,
           personal: personalDB.length > 0 ? personalDB : localState.personal,
@@ -207,6 +221,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           asignaciones: asignacionesDB.length > 0 ? asignacionesDB : localState.asignaciones,
           movimientosCaja: movimientosDB.length > 0 ? movimientosDB : localState.movimientosCaja,
           configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
+          preciosVenta: hayPreciosDB ? preciosDB : preciosLocal,
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
@@ -248,6 +263,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         asignaciones: supabaseData.asignaciones,
         movimientosCaja: movimientosSaneados,
         configuracionCajas: supabaseData.configuracionCajas,
+        preciosVenta: supabaseData.preciosVenta ?? localState.preciosVenta ?? {},
       })
 
       setIsHydrated(true)
@@ -954,16 +970,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // === Precios Venta ===
-  const setPrecioVenta = (salon: string, fecha: string, precio: number) => {
+  const setPrecioVenta = async (salon: string, fecha: string, precio: number) => {
     setState((prev) => {
       const current = { ...(prev.preciosVenta || {}) }
       if (!current[salon]) current[salon] = {}
       current[salon] = { ...current[salon], [fecha]: precio }
       return { ...prev, preciosVenta: current }
     })
+    try {
+      const { upsertPrecioVenta } = await import("./supabase/data-service")
+      await upsertPrecioVenta(salon, fecha, precio)
+    } catch (error) {
+      console.error("[v0] Error syncing precioVenta:", error)
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar el precio. Reintentá.", variant: "destructive" })
+    }
   }
 
-  const deletePrecioVenta = (salon: string, fecha: string) => {
+  const deletePrecioVenta = async (salon: string, fecha: string) => {
     setState((prev) => {
       const current = { ...(prev.preciosVenta || {}) }
       if (current[salon]) {
@@ -973,10 +996,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return { ...prev, preciosVenta: current }
     })
+    try {
+      const { deletePrecioVenta: deleteDB } = await import("./supabase/data-service")
+      await deleteDB(salon, fecha)
+    } catch (error) {
+      console.error("[v0] Error deleting precioVenta:", error)
+      toast({ title: "Error al eliminar", description: "No se pudo sincronizar. Reintentá.", variant: "destructive" })
+    }
   }
 
-  const setPreciosVenta = (preciosVenta: PreciosVentaMap) => {
+  const setPreciosVenta = async (preciosVenta: PreciosVentaMap) => {
     setState((prev) => ({ ...prev, preciosVenta }))
+    try {
+      const { upsertPrecioVenta } = await import("./supabase/data-service")
+      const entries: Array<[string, string, number]> = []
+      for (const salon of Object.keys(preciosVenta)) {
+        for (const fecha of Object.keys(preciosVenta[salon])) {
+          entries.push([salon, fecha, preciosVenta[salon][fecha]])
+        }
+      }
+      await Promise.all(entries.map(([s, f, p]) => upsertPrecioVenta(s, f, p)))
+    } catch (error) {
+      console.error("[v0] Error syncing preciosVenta bulk:", error)
+      toast({ title: "Error al importar precios", description: "No se pudo sincronizar con la base de datos.", variant: "destructive" })
+    }
   }
 
   // === Cajas ===
