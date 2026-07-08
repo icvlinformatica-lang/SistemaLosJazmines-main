@@ -71,6 +71,7 @@ export type RecetaCategoria =
   | "Vegano"
   | "Vegetariano"
   | "Sin Sal"
+  | "Mesa Dulce"
 
 export interface Insumo {
   id: string
