@@ -16,6 +16,15 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -41,6 +50,8 @@ import {
   Phone,
   Mail,
   History,
+  Save,
+  Check,
 } from "lucide-react"
 
 // =====================================================================
@@ -346,7 +357,7 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
 // =====================================================================
 function ContratosPageContent() {
   const searchParams = useSearchParams()
-  const { state } = useStore()
+  const { state, updateEvento } = useStore()
   const { eventos, paquetesSalones, recetas } = state
   const catalogoServicios = state.servicios || []
 
@@ -355,6 +366,16 @@ function ContratosPageContent() {
   const [salonesActivos, setSalonesActivos] = useState<string[]>([...SALONES])
   const [selectedEventoId, setSelectedEventoId] = useState<string>("")
   const [showPreview, setShowPreview] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editForm, setEditForm] = useState({
+    nombreCompleto: "",
+    dni: "",
+    telefono: "",
+    direccion: "",
+    email: "",
+    condicionIVA: "Consumidor Final",
+  })
 
   // Valid events (exclude cancelled + require name & date)
   const eventosValidos = useMemo(
@@ -388,6 +409,22 @@ function ContratosPageContent() {
     () => eventosValidos.find((e) => e.id === selectedEventoId) || null,
     [eventosValidos, selectedEventoId]
   )
+
+  // When switching events, exit edit mode and reload the form with fresh data
+  useEffect(() => {
+    setIsEditing(false)
+    if (selectedEvento) {
+      const c = selectedEvento.contrato || {}
+      setEditForm({
+        nombreCompleto: c.nombreCompleto || "",
+        dni: c.dni || "",
+        telefono: c.telefono || "",
+        direccion: c.direccion || "",
+        email: c.email || "",
+        condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
+      })
+    }
+  }, [selectedEvento])
 
   const serviciosIncluidos = useMemo(
     () => (selectedEvento ? getServiciosIncluidos(selectedEvento, catalogoServicios) : []),
@@ -423,6 +460,42 @@ function ContratosPageContent() {
     printWindow.document.write(html)
     printWindow.document.close()
     setTimeout(() => { printWindow.print() }, 300)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!selectedEvento) return
+    setSaving(true)
+    try {
+      await updateEvento(selectedEvento.id, {
+        contrato: {
+          ...(selectedEvento.contrato || {}),
+          nombreCompleto: editForm.nombreCompleto.trim(),
+          dni: editForm.dni.trim(),
+          telefono: editForm.telefono.trim(),
+          direccion: editForm.direccion.trim(),
+          email: editForm.email.trim(),
+        },
+        condicionIVA: editForm.condicionIVA as EventoGuardado["condicionIVA"],
+      })
+      setIsEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    if (selectedEvento) {
+      const c = selectedEvento.contrato || {}
+      setEditForm({
+        nombreCompleto: c.nombreCompleto || "",
+        dni: c.dni || "",
+        telefono: c.telefono || "",
+        direccion: c.direccion || "",
+        email: c.email || "",
+        condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
+      })
+    }
+    setIsEditing(false)
   }
 
   // --- Month grid ---
@@ -591,6 +664,29 @@ function ContratosPageContent() {
                     <Badge variant="outline" className="text-xs text-muted-foreground">Sin contrato generado</Badge>
                   )}
                 </div>
+
+                {/* Toolbar: editar (lapiz) + imprimir */}
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    variant={isEditing ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => (isEditing ? handleCancelEdit() : setIsEditing(true))}
+                    className="gap-2 bg-transparent"
+                    aria-pressed={isEditing}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    {isEditing ? "Cancelar edicion" : "Editar"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePrint}
+                    className="gap-2 bg-transparent"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Imprimir
+                  </Button>
+                </div>
               </SheetHeader>
 
               <ScrollArea className="flex-1">
@@ -625,12 +721,84 @@ function ContratosPageContent() {
                   {/* Cliente */}
                   <section className="space-y-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-primary">Datos del cliente</p>
-                    <DetailRow icon={<User className="h-4 w-4" />} label="Nombre completo" value={contrato.nombreCompleto} />
-                    <DetailRow icon={<FileText className="h-4 w-4" />} label="DNI" value={contrato.dni} />
-                    <DetailRow icon={<Phone className="h-4 w-4" />} label="Telefono" value={contrato.telefono} />
-                    <DetailRow icon={<MapPin className="h-4 w-4" />} label="Direccion" value={contrato.direccion} />
-                    <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={contrato.email} />
-                    <DetailRow icon={<FileText className="h-4 w-4" />} label="Condicion IVA" value={selectedEvento.condicionIVA || "Consumidor Final"} />
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-nombre" className="text-xs text-muted-foreground">Nombre completo</Label>
+                          <Input
+                            id="edit-nombre"
+                            value={editForm.nombreCompleto}
+                            onChange={(e) => setEditForm((f) => ({ ...f, nombreCompleto: e.target.value }))}
+                            placeholder="Nombre y apellido"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="edit-dni" className="text-xs text-muted-foreground">DNI</Label>
+                            <Input
+                              id="edit-dni"
+                              value={editForm.dni}
+                              onChange={(e) => setEditForm((f) => ({ ...f, dni: e.target.value }))}
+                              placeholder="DNI"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="edit-telefono" className="text-xs text-muted-foreground">Telefono</Label>
+                            <Input
+                              id="edit-telefono"
+                              value={editForm.telefono}
+                              onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))}
+                              placeholder="Telefono"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-direccion" className="text-xs text-muted-foreground">Direccion</Label>
+                          <Input
+                            id="edit-direccion"
+                            value={editForm.direccion}
+                            onChange={(e) => setEditForm((f) => ({ ...f, direccion: e.target.value }))}
+                            placeholder="Direccion"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-email" className="text-xs text-muted-foreground">Email</Label>
+                          <Input
+                            id="edit-email"
+                            type="email"
+                            value={editForm.email}
+                            onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                            placeholder="Email"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Condicion IVA</Label>
+                          <Select
+                            value={editForm.condicionIVA}
+                            onValueChange={(v) => setEditForm((f) => ({ ...f, condicionIVA: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Condicion IVA" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Consumidor Final">Consumidor Final</SelectItem>
+                              <SelectItem value="Responsable Inscripto">Responsable Inscripto</SelectItem>
+                              <SelectItem value="Monotributista">Monotributista</SelectItem>
+                              <SelectItem value="Exento">Exento</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <DetailRow icon={<User className="h-4 w-4" />} label="Nombre completo" value={contrato.nombreCompleto} />
+                        <DetailRow icon={<FileText className="h-4 w-4" />} label="DNI" value={contrato.dni} />
+                        <DetailRow icon={<Phone className="h-4 w-4" />} label="Telefono" value={contrato.telefono} />
+                        <DetailRow icon={<MapPin className="h-4 w-4" />} label="Direccion" value={contrato.direccion} />
+                        <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={contrato.email} />
+                        <DetailRow icon={<FileText className="h-4 w-4" />} label="Condicion IVA" value={selectedEvento.condicionIVA || "Consumidor Final"} />
+                      </>
+                    )}
                   </section>
 
                   <Separator />
@@ -692,22 +860,37 @@ function ContratosPageContent() {
 
               {/* Actions */}
               <div className="border-t border-border p-4">
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setShowPreview(true)} className="flex-1 gap-2 bg-transparent">
-                    <Eye className="h-4 w-4" />
-                    Vista Previa
-                  </Button>
-                  <Button variant="outline" onClick={handlePrint} className="flex-1 gap-2 bg-transparent">
-                    <Printer className="h-4 w-4" />
-                    Imprimir
-                  </Button>
-                </div>
-                <Link href={`/evento?id=${selectedEvento.id}&from=contratos`} className="mt-2 block">
-                  <Button variant="ghost" className="w-full gap-2 text-muted-foreground">
-                    <Pencil className="h-4 w-4" />
-                    Editar en el planificador
-                  </Button>
-                </Link>
+                {isEditing ? (
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleCancelEdit} disabled={saving} className="flex-1 gap-2 bg-transparent">
+                      <X className="h-4 w-4" />
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleSaveEdit} disabled={saving} className="flex-1 gap-2">
+                      {saving ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                      {saving ? "Guardando..." : "Guardar cambios"}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setShowPreview(true)} className="flex-1 gap-2 bg-transparent">
+                        <Eye className="h-4 w-4" />
+                        Vista Previa
+                      </Button>
+                      <Button variant="outline" onClick={handlePrint} className="flex-1 gap-2 bg-transparent">
+                        <Printer className="h-4 w-4" />
+                        Imprimir
+                      </Button>
+                    </div>
+                    <Link href={`/evento?id=${selectedEvento.id}&from=contratos`} className="mt-2 block">
+                      <Button variant="ghost" className="w-full gap-2 text-muted-foreground">
+                        <Pencil className="h-4 w-4" />
+                        Editar en el planificador
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </>
           )}
