@@ -200,9 +200,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
         fechaPagoMenu.setDate(fechaEvento.getDate() - 14)
         const fechaPagoMenuStr = `${fechaPagoMenu.getFullYear()}-${String(fechaPagoMenu.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoMenu.getDate()).padStart(2, "0")}`
 
-        const menuPagado = movimientos.some(
-          (m) => m.eventoId === evento.id && m.cajaDestino === "caja_eventos" && m.tipo === "egreso" && (m.concepto || "").startsWith("Pago menú")
-        )
+        const menuPagado = evento.cocinaPagada === true
 
         if (!menuPagado) {
           egresosPendientes.push({
@@ -230,9 +228,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
         fechaPagoBarra.setDate(fechaEvento.getDate() - 14)
         const fechaPagoBarraStr = `${fechaPagoBarra.getFullYear()}-${String(fechaPagoBarra.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoBarra.getDate()).padStart(2, "0")}`
 
-        const barraPagada = movimientos.some(
-          (m) => m.eventoId === evento.id && m.cajaDestino === "caja_eventos" && m.tipo === "egreso" && (m.concepto || "").startsWith("Pago barra"),
-        )
+        const barraPagada = evento.barraPagada === true
 
         if (!barraPagada) {
           egresosPendientes.push({

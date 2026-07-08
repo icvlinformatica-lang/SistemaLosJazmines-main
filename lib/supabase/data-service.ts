@@ -763,3 +763,44 @@ export async function insertHistorialIPC(hist: Partial<HistorialIPC>): Promise<H
     eventosActualizados: data.eventos_actualizados || 0,
   } : null
 }
+
+// === Precios Venta ===
+
+import type { PreciosVentaMap } from "@/lib/store"
+
+export async function fetchPreciosVenta(): Promise<PreciosVentaMap> {
+  const { data, error } = await supabase
+    .from("precios_venta")
+    .select("salon, fecha, precio")
+  if (error || !data) return {}
+  const map: PreciosVentaMap = {}
+  for (const row of data) {
+    if (!map[row.salon]) map[row.salon] = {}
+    map[row.salon][row.fecha] = Number(row.precio)
+  }
+  return map
+}
+
+export async function upsertPrecioVenta(
+  salon: string,
+  fecha: string,
+  precio: number
+): Promise<void> {
+  await supabase.from("precios_venta").upsert({
+    id: `${salon}-${fecha}`,
+    salon,
+    fecha,
+    precio,
+    updated_at: new Date().toISOString(),
+  })
+}
+
+export async function deletePrecioVenta(
+  salon: string,
+  fecha: string
+): Promise<void> {
+  await supabase
+    .from("precios_venta")
+    .delete()
+    .eq("id", `${salon}-${fecha}`)
+}
