@@ -1056,14 +1056,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       movimientosCaja: [...(prev.movimientosCaja || []), ...movimientos],
     }))
     // Sync to Supabase
+    const insertados: string[] = []
     try {
-      const { insertMovimientoCaja } = await import("./supabase/data-service")
+      const { insertMovimientoCaja, deleteMovimientoCaja: deleteMov } =
+        await import("./supabase/data-service")
       for (const mov of movimientos) {
         await insertMovimientoCaja(mov)
+        insertados.push(mov.id)
       }
     } catch (error) {
-      console.error("[v0] Error syncing movimientos caja to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      console.error("[v0] Error syncing movimientos caja:", error)
+      // Rollback: eliminar los que sí se insertaron para
+      // evitar desbalance entre caja_eventos y caja_jazmines
+      if (insertados.length > 0) {
+        try {
+          const { deleteMovimientoCaja: deleteMov } =
+            await import("./supabase/data-service")
+          await Promise.all(insertados.map((id) => deleteMov(id)))
+        } catch (rollbackError) {
+          console.error("[v0] Error en rollback:", rollbackError)
+        }
+        // Revertir también el estado local
+        setState((prev) => ({
+          ...prev,
+          movimientosCaja: (prev.movimientosCaja || []).filter(
+            (m) => !insertados.includes(m.id)
+          ),
+        }))
+      }
+      toast({
+        title: "Error al guardar",
+        description: "No se pudo registrar el movimiento. Reintentá.",
+        variant: "destructive",
+      })
     }
   }
 
