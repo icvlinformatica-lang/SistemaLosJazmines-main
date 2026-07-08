@@ -280,8 +280,15 @@ function ContractPreview({
 }) {
   const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio)
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-      <div className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div
+        className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-primary" />
@@ -642,7 +649,7 @@ function ContratosPageContent() {
       </main>
 
       {/* SIDE PANEL — read-only contract details */}
-      <Sheet open={!!selectedEvento} onOpenChange={(o) => { if (!o) setSelectedEventoId("") }}>
+      <Sheet open={!!selectedEvento} onOpenChange={(o) => { console.log("[v0] Sheet onOpenChange:", o, "showPreview:", showPreview); if (!o) setSelectedEventoId("") }}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
           {selectedEvento && (
             <>
@@ -874,7 +881,7 @@ function ContratosPageContent() {
                 ) : (
                   <>
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => setShowPreview(true)} className="flex-1 gap-2 bg-transparent">
+                      <Button variant="outline" onClick={() => { console.log("[v0] Vista Previa clicked"); setShowPreview(true) }} className="flex-1 gap-2 bg-transparent">
                         <Eye className="h-4 w-4" />
                         Vista Previa
                       </Button>
@@ -894,18 +901,20 @@ function ContratosPageContent() {
               </div>
             </>
           )}
+
+          {/* Preview rendered INSIDE the Sheet so Radix treats its
+              interactions as "inside" and does not close the panel */}
+          {showPreview && selectedEvento && (
+            <ContractPreview
+              evento={selectedEvento}
+              recetas={recetas}
+              serviciosIncluidos={serviciosIncluidos}
+              paquetePrecio={paquetePrecio}
+              onClose={() => setShowPreview(false)}
+            />
+          )}
         </SheetContent>
       </Sheet>
-
-      {showPreview && selectedEvento && (
-        <ContractPreview
-          evento={selectedEvento}
-          recetas={recetas}
-          serviciosIncluidos={serviciosIncluidos}
-          paquetePrecio={paquetePrecio}
-          onClose={() => setShowPreview(false)}
-        />
-      )}
     </div>
   )
 }
