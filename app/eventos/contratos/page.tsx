@@ -32,6 +32,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   ArrowLeft,
   FileText,
   Printer,
@@ -274,35 +280,27 @@ function generateContractHTML(
 // CONTRACT PREVIEW MODAL
 // =====================================================================
 function ContractPreview({
-  evento, recetas, serviciosIncluidos, paquetePrecio, onClose,
+  open, evento, recetas, serviciosIncluidos, paquetePrecio, onOpenChange,
 }: {
-  evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onClose: () => void
+  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onOpenChange: (open: boolean) => void
 }) {
   const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio)
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <div
-        className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[90vh] max-w-4xl flex-col gap-0 p-0 sm:max-w-4xl">
+        <DialogHeader className="border-b border-border px-6 py-4">
+          <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-primary" />
-            <span className="font-semibold">Vista Previa del Contrato</span>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button>
-        </div>
+            Vista Previa del Contrato
+          </DialogTitle>
+        </DialogHeader>
         <iframe
           srcDoc={html}
           className="flex-1 w-full rounded-b-xl"
           title="Vista previa del contrato"
         />
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -649,7 +647,7 @@ function ContratosPageContent() {
       </main>
 
       {/* SIDE PANEL — read-only contract details */}
-      <Sheet open={!!selectedEvento} onOpenChange={(o) => { console.log("[v0] Sheet onOpenChange:", o, "showPreview:", showPreview); if (!o) setSelectedEventoId("") }}>
+      <Sheet open={!!selectedEvento} onOpenChange={(o) => { if (!o) setSelectedEventoId("") }}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
           {selectedEvento && (
             <>
@@ -881,7 +879,7 @@ function ContratosPageContent() {
                 ) : (
                   <>
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => { console.log("[v0] Vista Previa clicked"); setShowPreview(true) }} className="flex-1 gap-2 bg-transparent">
+                      <Button variant="outline" onClick={() => setShowPreview(true)} className="flex-1 gap-2 bg-transparent">
                         <Eye className="h-4 w-4" />
                         Vista Previa
                       </Button>
@@ -902,15 +900,16 @@ function ContratosPageContent() {
             </>
           )}
 
-          {/* Preview rendered INSIDE the Sheet so Radix treats its
-              interactions as "inside" and does not close the panel */}
-          {showPreview && selectedEvento && (
+          {/* Preview rendered as a Dialog INSIDE the Sheet: Radix's layer
+              stack keeps the Sheet open while the Dialog is the top layer */}
+          {selectedEvento && (
             <ContractPreview
+              open={showPreview}
               evento={selectedEvento}
               recetas={recetas}
               serviciosIncluidos={serviciosIncluidos}
               paquetePrecio={paquetePrecio}
-              onClose={() => setShowPreview(false)}
+              onOpenChange={setShowPreview}
             />
           )}
         </SheetContent>
