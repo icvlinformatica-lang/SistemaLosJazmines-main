@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, Suspense } from "react"
+import { useState, useMemo, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store-context"
@@ -371,6 +371,10 @@ function ContratosPageContent() {
   const [salonesActivos, setSalonesActivos] = useState<string[]>([...SALONES])
   const [selectedEventoId, setSelectedEventoId] = useState<string>("")
   const [showPreview, setShowPreview] = useState(false)
+  // Ref siempre actual para leer showPreview dentro de los handlers del Sheet
+  // (evita el closure obsoleto que dejaba pasar el cierre)
+  const showPreviewRef = useRef(false)
+  useEffect(() => { showPreviewRef.current = showPreview }, [showPreview])
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -648,7 +652,14 @@ function ContratosPageContent() {
 
       {/* SIDE PANEL — read-only contract details */}
       <Sheet open={!!selectedEvento} onOpenChange={(o) => { if (!o) setSelectedEventoId("") }}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+          onInteractOutside={(e) => { if (showPreviewRef.current) e.preventDefault() }}
+          onFocusOutside={(e) => { if (showPreviewRef.current) e.preventDefault() }}
+          onPointerDownOutside={(e) => { if (showPreviewRef.current) e.preventDefault() }}
+          onEscapeKeyDown={(e) => { if (showPreviewRef.current) { e.preventDefault(); setShowPreview(false) } }}
+        >
           {selectedEvento && (
             <>
               <SheetHeader className="border-b border-border px-6 py-4 text-left">
