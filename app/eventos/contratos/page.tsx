@@ -25,18 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+
+
 import {
   ArrowLeft,
   FileText,
@@ -280,27 +270,43 @@ function generateContractHTML(
 // CONTRACT PREVIEW MODAL
 // =====================================================================
 function ContractPreview({
-  open, evento, recetas, serviciosIncluidos, paquetePrecio, onOpenChange,
+  open, evento, recetas, serviciosIncluidos, paquetePrecio, onClose,
 }: {
-  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onOpenChange: (open: boolean) => void
+  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onClose: () => void
 }) {
   const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio)
+  if (!open) return null
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[90vh] max-w-4xl flex-col gap-0 p-0 sm:max-w-4xl">
-        <DialogHeader className="border-b border-border px-6 py-4">
-          <DialogTitle className="flex items-center gap-2">
+    // Este div vive DENTRO del SheetContent en el JSX, por lo que Radix
+    // no lo detecta como "fuera" del Sheet al medir foco/pointer.
+    // El position:fixed cubre toda la pantalla visualmente.
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
+      // Evitar que clicks en el backdrop cierren el Sheet
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+          <div className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-primary" />
-            Vista Previa del Contrato
-          </DialogTitle>
-        </DialogHeader>
+            <span className="font-semibold">Vista Previa del Contrato</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); onClose() }}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
         <iframe
           srcDoc={html}
-          className="flex-1 w-full rounded-b-xl"
+          className="flex-1 w-full"
           title="Vista previa del contrato"
         />
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   )
 }
 
@@ -370,11 +376,18 @@ function ContratosPageContent() {
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [salonesActivos, setSalonesActivos] = useState<string[]>([...SALONES])
   const [selectedEventoId, setSelectedEventoId] = useState<string>("")
-  const [showPreview, setShowPreview] = useState(false)
-  // Ref siempre actual para leer showPreview dentro de los handlers del Sheet
-  // (evita el closure obsoleto que dejaba pasar el cierre)
+  // panelOpen controla la visibilidad del Sheet de forma independiente
+  // de selectedEventoId, para que el Sheet no se cierre cuando Radix
+  // detecta "focus outside" al abrir la vista previa
+  const [panelOpen, setPanelOpen] = useState(false)
   const showPreviewRef = useRef(false)
-  useEffect(() => { showPreviewRef.current = showPreview }, [showPreview])
+  const [showPreview, setShowPreview] = useState(false)
+  // Wrapper que mantiene el ref sincronizado en el mismo tick del render,
+  // sin depender del useEffect (que llega un tick tarde para los handlers de Radix)
+  const setShowPreviewSync = (v: boolean) => {
+    showPreviewRef.current = v
+    setShowPreview(v)
+  }
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -397,6 +410,7 @@ function ContratosPageContent() {
     const eventoId = searchParams?.get("eventoId")
     if (eventoId) {
       setSelectedEventoId(eventoId)
+      setPanelOpen(true)
       const ev = eventosValidos.find((e) => e.id === eventoId)
       if (ev?.fecha) {
         const d = parseEventDate(ev.fecha)
@@ -542,7 +556,7 @@ function ContratosPageContent() {
             return (
               <button
                 key={ev.id}
-                onClick={() => setSelectedEventoId(ev.id)}
+                onClick={() => { setSelectedEventoId(ev.id); setPanelOpen(true) }}
                 className={`w-full truncate rounded-sm border-l-4 px-1.5 py-0.5 text-left text-xs transition-colors ${color.pill}`}
                 title={`${ev.nombrePareja || ev.nombre || "Evento"} · ${ev.salon || "Sin salon"}`}
               >
@@ -650,24 +664,42 @@ function ContratosPageContent() {
         </Card>
       </main>
 
-      {/* SIDE PANEL — read-only contract details */}
-      <Sheet open={!!selectedEvento} onOpenChange={(o) => { if (!o) setSelectedEventoId("") }}>
-        <SheetContent
-          side="right"
-          className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
-          onInteractOutside={(e) => { if (showPreviewRef.current) e.preventDefault() }}
-          onFocusOutside={(e) => { if (showPreviewRef.current) e.preventDefault() }}
-          onPointerDownOutside={(e) => { if (showPreviewRef.current) e.preventDefault() }}
-          onEscapeKeyDown={(e) => { if (showPreviewRef.current) { e.preventDefault(); setShowPreview(false) } }}
-        >
+      {/* SIDE PANEL — panel custom sin Radix para evitar cierre involuntario */}
+      {panelOpen && (
+        <>
+          {/* backdrop — solo cierra si no hay preview activa */}
+          <div
+            className="fixed inset-0 z-40 bg-black/40"
+            onClick={() => {
+              if (showPreviewRef.current) return
+              setPanelOpen(false)
+              setSelectedEventoId("")
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col gap-0 border-l border-border bg-background shadow-xl"
+          >
           {selectedEvento && (
             <>
-              <SheetHeader className="border-b border-border px-6 py-4 text-left">
-                <div className="flex items-center gap-2">
-                  <span className={`h-3 w-3 rounded-full ${getSalonColor(selectedEvento.salon).dot}`} />
-                  <SheetTitle className="text-base">
-                    {selectedEvento.nombrePareja || selectedEvento.nombre || "Evento"}
-                  </SheetTitle>
+              <div className="border-b border-border px-6 py-4 text-left">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-3 w-3 rounded-full ${getSalonColor(selectedEvento.salon).dot}`} />
+                    <h2 className="text-base font-semibold">
+                      {selectedEvento.nombrePareja || selectedEvento.nombre || "Evento"}
+                    </h2>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => { setPanelOpen(false); setSelectedEventoId("") }}
+                    aria-label="Cerrar panel"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="text-xs">{selectedEvento.salon || "Sin salon"}</Badge>
@@ -703,7 +735,7 @@ function ContratosPageContent() {
                     Imprimir
                   </Button>
                 </div>
-              </SheetHeader>
+                </div>
 
               <ScrollArea className="flex-1">
                 <div className="space-y-6 px-6 py-5">
@@ -890,7 +922,18 @@ function ContratosPageContent() {
                 ) : (
                   <>
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => setShowPreview(true)} className="flex-1 gap-2 bg-transparent">
+                      <Button
+                        variant="outline"
+                        onPointerDown={(e) => {
+                          // Actualizar ref síncronamente y parar la propagación
+                          // para que el listener de Radix en el documento no
+                          // interprete este pointer-down como "fuera del Sheet"
+                          showPreviewRef.current = true
+                          e.stopPropagation()
+                        }}
+                        onClick={() => setShowPreviewSync(true)}
+                        className="flex-1 gap-2 bg-transparent"
+                      >
                         <Eye className="h-4 w-4" />
                         Vista Previa
                       </Button>
@@ -920,11 +963,12 @@ function ContratosPageContent() {
               recetas={recetas}
               serviciosIncluidos={serviciosIncluidos}
               paquetePrecio={paquetePrecio}
-              onOpenChange={setShowPreview}
+              onClose={() => setShowPreviewSync(false)}
             />
           )}
-        </SheetContent>
-      </Sheet>
+          </div>
+        </>
+      )}
     </div>
   )
 }
