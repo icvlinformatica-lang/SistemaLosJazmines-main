@@ -679,11 +679,11 @@ function ContratosPageContent() {
           <div
             role="dialog"
             aria-modal="true"
-            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col gap-0 border-l border-border bg-background shadow-xl"
+            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col gap-0 border-l border-border bg-background shadow-xl overflow-hidden"
           >
           {selectedEvento && (
             <>
-              <div className="border-b border-border px-6 py-4 text-left">
+              <div className="border-b border-border px-6 py-4 text-left shrink-0">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className={`h-3 w-3 rounded-full ${getSalonColor(selectedEvento.salon).dot}`} />
@@ -737,7 +737,7 @@ function ContratosPageContent() {
                 </div>
                 </div>
 
-              <ScrollArea className="flex-1">
+              <ScrollArea className="flex-1 min-h-0">
                 <div className="space-y-6 px-6 py-5">
                   {/* Evento */}
                   <section className="space-y-3">
