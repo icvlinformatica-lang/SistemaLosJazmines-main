@@ -39,6 +39,10 @@ import {
   Circle,
   Trash2,
   Archive,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -51,6 +55,22 @@ function formatFecha(dateStr: string): string {
   const date = new Date(y, m - 1, d)
   return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })
 }
+
+/** Avanza una fecha de vencimiento al próximo período según la frecuencia. */
+function siguienteVencimiento(
+  fechaStr: string | null | undefined,
+  frecuencia: string,
+): string | undefined {
+  if (!fechaStr) return undefined
+  const [y, m, d] = fechaStr.split("-").map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d, 12))
+  if (frecuencia === "Anual") date.setUTCFullYear(date.getUTCFullYear() + 1)
+  else date.setUTCMonth(date.getUTCMonth() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+/** Monto oculto mostrado cuando el usuario esconde una métrica. */
+const MONTO_OCULTO = "$ ••••••"
 
 function puntoPrioridad(estado: EstadoAlerta) {
   if (estado === "vencido" || estado === "urgente") {
@@ -110,12 +130,21 @@ export default function CajaJazminePage() {
 
   const hoyStr = new Date().toISOString().slice(0, 10)
 
-  // Archivar un gasto FIJO: guarda el pago de este período en el archivo y
-  // reinicia el gasto a "pendiente" para que reaparezca el próximo mes/año.
+  // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
+  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({})
+  const toggleColapsada = (key: string) =>
+    setColapsadas((p) => ({ ...p, [key]: !p[key] }))
+  const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({})
+  const toggleMonto = (key: string) =>
+    setMontosOcultos((p) => ({ ...p, [key]: !p[key] }))
+
+  // Archivar un gasto FIJO: registra el pago del período en el archivo y avanza
+  // el vencimiento al próximo mes/año. El gasto sale de la lista activa (queda el
+  // tilde verde de "cubierto") y reaparece automáticamente en el próximo período.
   function archivarFijo(gasto: GastoFijoMes) {
     const costo = state.costosOperativos?.find((c) => c.id === gasto.id)
     archivarGasto({
-      fecha: costo?.fechaVencimiento || hoyStr,
+      fecha: hoyStr,
       concepto: gasto.concepto,
       monto: gasto.monto,
       salon: gasto.salon ?? null,
@@ -124,8 +153,10 @@ export default function CajaJazminePage() {
       frecuencia: gasto.frecuencia,
       refId: gasto.id,
     })
-    // El gasto recurrente NO se elimina; solo se reinicia su estado de pago.
-    updateCostoOperativo(gasto.id, { pagado: false })
+    updateCostoOperativo(gasto.id, {
+      pagado: false,
+      fechaVencimiento: siguienteVencimiento(costo?.fechaVencimiento, gasto.frecuencia),
+    })
   }
 
   // Archivar un gasto VARIABLE (único): lo mueve al archivo y lo quita de la lista activa.
@@ -148,6 +179,7 @@ export default function CajaJazminePage() {
     saldoProyectado30Dias,
     alertasVencimiento,
     gastosFijosMes,
+    gastosFijosCubiertos,
     gastosVariables: gastosVariablesCombinados,
     ingresosProyectados30Dias,
   } = data
@@ -297,9 +329,22 @@ export default function CajaJazminePage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-purple-700 uppercase tracking-wide">Saldo Actual</p>
-              <Wallet className="h-4 w-4 text-purple-600" />
+              <div className="flex items-center gap-1.5">
+                <Wallet className="h-4 w-4 text-purple-600" />
+                <button
+                  type="button"
+                  onClick={() => toggleMonto("saldoActual")}
+                  className="text-purple-600 hover:text-purple-800"
+                  aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
+                  title={montosOcultos.saldoActual ? "Mostrar monto" : "Ocultar monto"}
+                >
+                  {montosOcultos.saldoActual ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
-            <p className="text-3xl font-bold text-purple-800">{formatCurrency(saldoActual)}</p>
+            <p className="text-3xl font-bold text-purple-800">
+              {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
+            </p>
             <p className="text-xs text-purple-600 mt-1">Cobros acumulados × 50% − gastos</p>
           </CardContent>
         </Card>
@@ -310,9 +355,22 @@ export default function CajaJazminePage() {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Gastos próximos 30 días
               </p>
-              <TrendingDown className="h-4 w-4 text-red-500" />
+              <div className="flex items-center gap-1.5">
+                <TrendingDown className="h-4 w-4 text-red-500" />
+                <button
+                  type="button"
+                  onClick={() => toggleMonto("gastos30")}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
+                  title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
+                >
+                  {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
-            <p className="text-3xl font-bold text-red-600">{formatCurrency(gastosPróximos30Dias)}</p>
+            <p className="text-3xl font-bold text-red-600">
+              {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
+            </p>
             <p className="text-xs text-muted-foreground mt-1">Costos operativos pendientes del período</p>
           </CardContent>
         </Card>
@@ -323,10 +381,21 @@ export default function CajaJazminePage() {
               <p className={`text-xs font-medium uppercase tracking-wide ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"}`}>
                 Saldo proyectado a 30 días
               </p>
-              <TrendingUp className={`h-4 w-4 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`} />
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className={`h-4 w-4 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`} />
+                <button
+                  type="button"
+                  onClick={() => toggleMonto("saldoProyectado")}
+                  className={saldoProyectado30Dias >= 0 ? "text-teal-600 hover:text-teal-800" : "text-red-600 hover:text-red-800"}
+                  aria-label={montosOcultos.saldoProyectado ? "Mostrar saldo proyectado" : "Ocultar saldo proyectado"}
+                  title={montosOcultos.saldoProyectado ? "Mostrar monto" : "Ocultar monto"}
+                >
+                  {montosOcultos.saldoProyectado ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
-              {formatCurrency(saldoProyectado30Dias)}
+              {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
             </p>
             <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}>
               Saldo + ingresos − gastos estimados
@@ -338,11 +407,24 @@ export default function CajaJazminePage() {
       {/* Alertas */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-500" />
-            Alertas de vencimiento
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+              Alertas de vencimiento
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => toggleColapsada("alertas")}
+              aria-label={colapsadas.alertas ? "Expandir alertas" : "Minimizar alertas"}
+              title={colapsadas.alertas ? "Expandir" : "Minimizar"}
+            >
+              {colapsadas.alertas ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
         </CardHeader>
+        {!colapsadas.alertas && (
         <CardContent className="space-y-2">
           {alertasVencimiento.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
@@ -385,6 +467,7 @@ export default function CajaJazminePage() {
             </>
           )}
         </CardContent>
+        )}
       </Card>
 
       {/* Gastos fijos + Gastos variables */}
@@ -398,24 +481,42 @@ export default function CajaJazminePage() {
                 <TrendingDown className="h-4 w-4 text-red-500" />
                 Gastos fijos del mes
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50"
-                onClick={() => setModalFijoAbierto(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Agregar
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={() => setModalFijoAbierto(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Agregar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleColapsada("fijos")}
+                  aria-label={colapsadas.fijos ? "Expandir gastos fijos" : "Minimizar gastos fijos"}
+                  title={colapsadas.fijos ? "Expandir" : "Minimizar"}
+                >
+                  {colapsadas.fijos ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
           </CardHeader>
+          {!colapsadas.fijos && (
           <CardContent className="space-y-2">
-            {gastosFijosMes.length === 0 ? (
+            {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 No hay gastos fijos configurados.
               </p>
             ) : (
               <>
+                {gastosFijosMes.length === 0 && gastosFijosCubiertos.length > 0 && (
+                  <p className="text-sm text-muted-foreground py-2 text-center">
+                    No hay gastos fijos pendientes este mes.
+                  </p>
+                )}
                 {gastosFijosMes.map((gasto) => {
                   const esPagado = gasto.estado === "pagado"
                   return (
@@ -428,6 +529,7 @@ export default function CajaJazminePage() {
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {gasto.frecuencia}
                           {` · ${salonLabel(gasto.salon)}`}
+                          {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -488,15 +590,38 @@ export default function CajaJazminePage() {
                     </div>
                   )
                 })}
-                <div className="pt-2 border-t border-border flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total</span>
-                  <span className="text-base font-bold text-foreground">
-                    {formatCurrency(totalGastosFijos)}
-                  </span>
-                </div>
+
+                {/* Cubiertos este mes: tilde verde */}
+                {gastosFijosCubiertos.map((gasto) => (
+                  <div
+                    key={gasto.id}
+                    className="flex items-center gap-3 rounded-lg border border-teal-200 bg-teal-50 p-3"
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-teal-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-teal-800 truncate">{gasto.concepto}</p>
+                      <p className="text-xs text-teal-600 mt-0.5">
+                        Ya cubriste este gasto fijo del mes · {salonLabel(gasto.salon)}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-teal-700 shrink-0">
+                      {formatCurrency(gasto.monto)}
+                    </span>
+                  </div>
+                ))}
+
+                {gastosFijosMes.length > 0 && (
+                  <div className="pt-2 border-t border-border flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Total pendiente</span>
+                    <span className="text-base font-bold text-foreground">
+                      {formatCurrency(totalGastosFijos)}
+                    </span>
+                  </div>
+                )}
               </>
             )}
           </CardContent>
+          )}
         </Card>
 
         {/* ── Gastos variables ────────────────────────────────��───────── */}
