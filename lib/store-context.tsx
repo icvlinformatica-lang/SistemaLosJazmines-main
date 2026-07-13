@@ -247,11 +247,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Migración one-time de costos operativos (gastos fijos y variables):
+        // si Supabase está vacío pero quedaron costos en localStorage, subirlos a la base.
+        // A partir de ahí Supabase es la única fuente de verdad (no más localStorage/seed).
+        let costosMigrados = costosDB
+        const costosLocales = (localState.costosOperativos || []).filter((c) => c && c.id)
+        if (costosDB.length === 0 && costosLocales.length > 0) {
+          const subidos = await Promise.all(costosLocales.map((c) => db.upsertCostoOperativo(c)))
+          costosMigrados = subidos.filter((c): c is NonNullable<typeof c> => c != null)
+        }
+
         supabaseData = {
           servicios: serviciosDB.length > 0 ? serviciosDB : localState.servicios,
           personal: personalDB.length > 0 ? personalDB : localState.personal,
           pagosPersonal: pagosDB.length > 0 ? pagosDB : localState.pagosPersonal,
-          costosOperativos: costosDB.length > 0 ? costosDB : localState.costosOperativos,
+          // Costos: SOLO Supabase (ya migrados arriba). Nunca caer al seed local.
+          costosOperativos: costosMigrados,
           asignaciones: asignacionesDB.length > 0 ? asignacionesDB : localState.asignaciones,
           movimientosCaja: movimientosDB.length > 0 ? movimientosDB : localState.movimientosCaja,
           configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
@@ -265,7 +276,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           servicios: localState.servicios,
           personal: localState.personal,
           pagosPersonal: localState.pagosPersonal,
-          costosOperativos: localState.costosOperativos,
+          // Costos operativos viven solo en Supabase; sin conexión no mostramos datos stale.
+          costosOperativos: [],
           asignaciones: localState.asignaciones,
           movimientosCaja: localState.movimientosCaja,
           configuracionCajas: localState.configuracionCajas,
@@ -311,9 +323,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isHydrated) {
-      // Only save non-DB modules to localStorage to avoid stale data
-      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, eventos, ...localOnly } = state
-      saveState({ ...localOnly, insumos: [], insumosBarra: [], recetas: [], cocteles: [], barrasTemplates: [], eventos: [] })
+      // Only save non-DB modules to localStorage to avoid stale data.
+      // costosOperativos vive solo en Supabase, así que también se excluye.
+      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, eventos, costosOperativos, ...localOnly } =
+        state
+      saveState({
+        ...localOnly,
+        insumos: [],
+        insumosBarra: [],
+        recetas: [],
+        cocteles: [],
+        barrasTemplates: [],
+        eventos: [],
+        costosOperativos: [],
+      })
     }
   }, [state, isHydrated])
 

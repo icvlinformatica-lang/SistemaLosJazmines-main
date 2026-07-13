@@ -1225,24 +1225,6 @@ const initialCocteles: Coctel[] = [
   },
 ]
 
-const initialCostosOperativos: CostoOperativo[] = [
-  // Quinta
-  { id: "CO_Q_LUZ", concepto: "Luz - Quinta", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Quinta", activo: true, notas: "" },
-  { id: "CO_Q_AGUA", concepto: "Agua - Quinta", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Quinta", activo: true, notas: "" },
-  { id: "CO_Q_GAS", concepto: "Gas - Quinta", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Quinta", activo: true, notas: "" },
-  { id: "CO_Q_ALQ", concepto: "Alquiler - Quinta", tipo: "Alquiler", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Quinta", activo: true, notas: "" },
-  // Casona
-  { id: "CO_C_LUZ", concepto: "Luz - Casona", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Casona", activo: true, notas: "" },
-  { id: "CO_C_AGUA", concepto: "Agua - Casona", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Casona", activo: true, notas: "" },
-  { id: "CO_C_GAS", concepto: "Gas - Casona", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Casona", activo: true, notas: "" },
-  { id: "CO_C_ALQ", concepto: "Alquiler - Casona", tipo: "Alquiler", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Casona", activo: true, notas: "" },
-  // Salon
-  { id: "CO_S_LUZ", concepto: "Luz - Salon", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Salon", activo: true, notas: "" },
-  { id: "CO_S_AGUA", concepto: "Agua - Salon", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Salon", activo: true, notas: "" },
-  { id: "CO_S_GAS", concepto: "Gas - Salon", tipo: "Servicios Basicos", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Salon", activo: true, notas: "" },
-  { id: "CO_S_ALQ", concepto: "Alquiler - Salon", tipo: "Alquiler", monto: 0, frecuencia: "Mensual", esPorPersona: false, salon: "Salon", activo: true, notas: "" },
-]
-
 const initialBarrasTemplates: BarraTemplate[] = [
   {
     id: "BT_CLASICA",
@@ -1290,7 +1272,8 @@ export function loadState(): AppState {
     cocteles: initialCocteles,
     barrasTemplates: initialBarrasTemplates,
     servicios: [],
-    costosOperativos: initialCostosOperativos,
+    // Costos operativos viven solo en Supabase; sin seed de ejemplo.
+    costosOperativos: [],
     eventoActual: null,
     eventos: [],
     historial: [],
@@ -1332,7 +1315,8 @@ export function loadState(): AppState {
         cocteles: parsed.cocteles || initialCocteles,
         barrasTemplates: parsed.barrasTemplates || initialBarrasTemplates,
         servicios: parsed.servicios || [],
-        costosOperativos: parsed.costosOperativos && parsed.costosOperativos.length > 0 ? parsed.costosOperativos : initialCostosOperativos,
+        // Costos operativos se hidratan desde Supabase en StoreProvider, no desde localStorage.
+        costosOperativos: parsed.costosOperativos || [],
         preciosVenta: parsed.preciosVenta || {},
         paquetesSalones: parsed.paquetesSalones || [],
         temporadas: parsed.temporadas || [],
