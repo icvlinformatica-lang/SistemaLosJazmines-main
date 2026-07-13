@@ -717,11 +717,24 @@ export default function CajaJazminePage() {
       {/* Proyección visual */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-purple-600" />
-            Proyección del saldo a 30 días
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-purple-600" />
+              Proyección del saldo a 30 días
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => toggleColapsada("proyeccion")}
+              aria-label={colapsadas.proyeccion ? "Expandir proyección" : "Minimizar proyección"}
+              title={colapsadas.proyeccion ? "Expandir" : "Minimizar"}
+            >
+              {colapsadas.proyeccion ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
         </CardHeader>
+        {!colapsadas.proyeccion && (
         <CardContent className="space-y-4">
           {[
             { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
@@ -755,6 +768,7 @@ export default function CajaJazminePage() {
             </p>
           </div>
         </CardContent>
+        )}
       </Card>
 
       {/* ── Dialog: Agregar gasto fijo ────────────────────────────────────── */}
