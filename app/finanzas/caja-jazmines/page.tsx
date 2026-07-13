@@ -38,7 +38,9 @@ import {
   CheckCircle2,
   Circle,
   Trash2,
+  Archive,
 } from "lucide-react"
+import Link from "next/link"
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -101,9 +103,44 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 // ---------------------------------------------------------------------------
 
 export default function CajaJazminePage() {
-  const { state, updateCostoOperativo, addCostoOperativo, deleteCostoOperativo } = useStore()
+  const { state, updateCostoOperativo, addCostoOperativo, deleteCostoOperativo, archivarGasto } =
+    useStore()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
   const data = useCajaJazmines(state, salonFiltro)
+
+  const hoyStr = new Date().toISOString().slice(0, 10)
+
+  // Archivar un gasto FIJO: guarda el pago de este período en el archivo y
+  // reinicia el gasto a "pendiente" para que reaparezca el próximo mes/año.
+  function archivarFijo(gasto: GastoFijoMes) {
+    const costo = state.costosOperativos?.find((c) => c.id === gasto.id)
+    archivarGasto({
+      fecha: costo?.fechaVencimiento || hoyStr,
+      concepto: gasto.concepto,
+      monto: gasto.monto,
+      salon: gasto.salon ?? null,
+      origen: "caja_jazmines_fijo",
+      categoria: "Gasto fijo",
+      frecuencia: gasto.frecuencia,
+      refId: gasto.id,
+    })
+    // El gasto recurrente NO se elimina; solo se reinicia su estado de pago.
+    updateCostoOperativo(gasto.id, { pagado: false })
+  }
+
+  // Archivar un gasto VARIABLE (único): lo mueve al archivo y lo quita de la lista activa.
+  function archivarVariable(gasto: { id: string; nombre: string; salon: string; fecha: string; monto: number }) {
+    archivarGasto({
+      fecha: gasto.fecha || hoyStr,
+      concepto: gasto.nombre,
+      monto: gasto.monto,
+      salon: gasto.salon || null,
+      origen: "caja_jazmines_variable",
+      categoria: "Gasto variable",
+      refId: gasto.id,
+    })
+    deleteCostoOperativo(gasto.id)
+  }
 
   const {
     saldoActual,
@@ -223,6 +260,12 @@ export default function CajaJazminePage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
+            <Link href="/finanzas/archivo">
+              <Archive className="h-4 w-4" />
+              Archivo
+            </Link>
+          </Button>
           <Building className="h-4 w-4 text-muted-foreground" />
           <Select value={salonFiltro} onValueChange={setSalonFiltro}>
             <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
@@ -408,6 +451,17 @@ export default function CajaJazminePage() {
                           }
                           <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
                         </Button>
+                        {/* Archivar */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-purple-600"
+                          title="Archivar pago de este período"
+                          onClick={() => archivarFijo(gasto)}
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                          <span className="sr-only">Archivar gasto fijo</span>
+                        </Button>
                         {/* Editar */}
                         <Button
                           variant="ghost"
@@ -503,6 +557,17 @@ export default function CajaJazminePage() {
                           : <Circle className="h-4 w-4" />
                         }
                         <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                      </Button>
+                      {/* Archivar */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-purple-600"
+                        title="Archivar gasto"
+                        onClick={() => archivarVariable(gasto)}
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        <span className="sr-only">Archivar gasto variable</span>
                       </Button>
                       {/* Eliminar */}
                       <Button
