@@ -299,6 +299,32 @@ export interface CostoOperativo {
   pagado?: boolean
 }
 
+// --- Gastos Archivados (historial consolidado de egresos) ---
+
+export type OrigenGastoArchivado =
+  | "caja_jazmines_fijo"
+  | "caja_jazmines_variable"
+  | "caja_eventos"
+
+export interface GastoArchivado {
+  id: string
+  /** Fecha en que se hizo el gasto (YYYY-MM-DD) */
+  fecha: string
+  concepto: string
+  monto: number
+  /** Salón atribuido; null/undefined = general */
+  salon?: string | null
+  origen: OrigenGastoArchivado
+  /** Categoría / tipo de pago para agrupar en gráficos */
+  categoria?: string | null
+  /** Frecuencia original (para gastos fijos) */
+  frecuencia?: string | null
+  eventoId?: string | null
+  eventoNombre?: string | null
+  /** id de la entidad de origen (costoOperativo o movimiento) */
+  refId?: string | null
+}
+
 export const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
 export type SalonNombre = (typeof SALONES)[number]
 
@@ -578,6 +604,8 @@ export interface AppState {
   // CAJAS
   configuracionCajas: ConfiguracionCajas
   movimientosCaja: MovimientoCaja[]
+  // ARCHIVO — historial consolidado de gastos archivados
+  gastosArchivados: GastoArchivado[]
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
@@ -1283,6 +1311,7 @@ export function loadState(): AppState {
       admin: { saldoInicial: 0 },
     },
     movimientosCaja: [],
+    gastosArchivados: [],
     historialIPC: [],
     ultimoMesIPC: null,
   }
@@ -1321,6 +1350,7 @@ export function loadState(): AppState {
           admin: { saldoInicial: 0 },
         },
         movimientosCaja: parsed.movimientosCaja || [],
+        gastosArchivados: parsed.gastosArchivados || [],
         historialIPC: parsed.historialIPC || [],
         ultimoMesIPC: parsed.ultimoMesIPC || null,
       }

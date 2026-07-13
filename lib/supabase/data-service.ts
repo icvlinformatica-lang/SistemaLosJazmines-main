@@ -9,6 +9,7 @@ import type {
   AsignacionPersonal,
   CostoOperativo,
   MovimientoCaja,
+  GastoArchivado,
   HistorialIPC
 } from "../store"
 
@@ -652,6 +653,72 @@ export async function deleteMovimientosByEvento(eventoId: string): Promise<boole
 
   if (error) {
     console.error("Error deleting movimientos_caja for evento:", error)
+    return false
+  }
+  return true
+}
+
+// ============ GASTOS ARCHIVADOS ============
+function mapGastoArchivado(g: Record<string, any>): GastoArchivado {
+  return {
+    id: g.id,
+    fecha: g.fecha,
+    concepto: g.concepto,
+    monto: Number(g.monto) || 0,
+    salon: g.salon ?? null,
+    origen: g.origen,
+    categoria: g.categoria ?? null,
+    frecuencia: g.frecuencia ?? null,
+    eventoId: g.evento_id ?? null,
+    eventoNombre: g.evento_nombre ?? null,
+    refId: g.ref_id ?? null,
+  }
+}
+
+export async function fetchGastosArchivados(): Promise<GastoArchivado[]> {
+  const { data, error } = await supabase
+    .from("gastos_archivados")
+    .select("*")
+    .order("fecha", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching gastos_archivados:", error)
+    return []
+  }
+  return (data || []).map(mapGastoArchivado)
+}
+
+export async function insertGastoArchivado(g: GastoArchivado): Promise<GastoArchivado | null> {
+  const record = {
+    id: g.id,
+    fecha: g.fecha,
+    concepto: g.concepto,
+    monto: g.monto,
+    salon: g.salon ?? null,
+    origen: g.origen,
+    categoria: g.categoria ?? null,
+    frecuencia: g.frecuencia ?? null,
+    evento_id: g.eventoId ?? null,
+    evento_nombre: g.eventoNombre ?? null,
+    ref_id: g.refId ?? null,
+  }
+  const { data, error } = await supabase
+    .from("gastos_archivados")
+    .insert(record)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Error inserting gasto_archivado:", error)
+    return null
+  }
+  return data ? mapGastoArchivado(data) : null
+}
+
+export async function deleteGastoArchivado(id: string): Promise<boolean> {
+  const { error } = await supabase.from("gastos_archivados").delete().eq("id", id)
+  if (error) {
+    console.error("Error deleting gasto_archivado:", error)
     return false
   }
   return true

@@ -20,6 +20,7 @@ import {
   type PreciosVentaMap,
   type ConfiguracionCajas,
   type MovimientoCaja,
+  type GastoArchivado,
   type HistorialIPCEntry,
   loadState,
   saveState,
@@ -143,6 +144,11 @@ interface StoreContextType {
   addMovimientosCaja: (movimientos: MovimientoCaja[]) => void
   deleteMovimientoCaja: (id: string) => void
 
+  // Archivo de gastos
+  gastosArchivados: GastoArchivado[]
+  archivarGasto: (gasto: Omit<GastoArchivado, "id">) => void
+  desarchivarGasto: (id: string) => void
+
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
@@ -190,7 +196,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
-        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB] = await Promise.all([
+        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB] = await Promise.all([
           db.fetchServicios(),
           db.fetchPersonal(),
           db.fetchPagosPersonal(),
@@ -199,6 +205,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           db.fetchMovimientosCaja(),
           db.fetchConfiguracionCajas(),
           db.fetchPreciosVenta(),
+          db.fetchGastosArchivados(),
         ])
 
         // Migración one-time: si Supabase devuelve vacío pero localStorage tiene precios, upsertearlos ahora
@@ -222,6 +229,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           movimientosCaja: movimientosDB.length > 0 ? movimientosDB : localState.movimientosCaja,
           configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
           preciosVenta: hayPreciosDB ? preciosDB : preciosLocal,
+          gastosArchivados: archivadosDB.length > 0 ? archivadosDB : (localState.gastosArchivados || []),
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
@@ -234,6 +242,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           asignaciones: localState.asignaciones,
           movimientosCaja: localState.movimientosCaja,
           configuracionCajas: localState.configuracionCajas,
+          gastosArchivados: localState.gastosArchivados || [],
         }
       }
 
@@ -264,6 +273,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         movimientosCaja: movimientosSaneados,
         configuracionCajas: supabaseData.configuracionCajas,
         preciosVenta: supabaseData.preciosVenta ?? localState.preciosVenta ?? {},
+        gastosArchivados: supabaseData.gastosArchivados ?? localState.gastosArchivados ?? [],
       })
 
       setIsHydrated(true)
@@ -1107,6 +1117,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // === Archivo de gastos ===
+  const archivarGasto = async (gasto: Omit<GastoArchivado, "id">) => {
+    const nuevo: GastoArchivado = { ...gasto, id: generateId() }
+    setState((prev) => ({
+      ...prev,
+      gastosArchivados: [nuevo, ...(prev.gastosArchivados || [])],
+    }))
+    try {
+      const { insertGastoArchivado } = await import("./supabase/data-service")
+      await insertGastoArchivado(nuevo)
+    } catch (error) {
+      console.error("[v0] Error archivando gasto en Supabase:", error)
+      toast({ title: "Error al archivar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+    }
+  }
+
+  const desarchivarGasto = async (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      gastosArchivados: (prev.gastosArchivados || []).filter((g) => g.id !== id),
+    }))
+    try {
+      const { deleteGastoArchivado } = await import("./supabase/data-service")
+      await deleteGastoArchivado(id)
+    } catch (error) {
+      console.error("[v0] Error desarchivando gasto en Supabase:", error)
+      toast({ title: "Error al quitar del archivo", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+    }
+  }
+
   // === IPC ===
   const aplicarIPC = (porcentaje: number): number => {
     const eventosActualizados = actualizarCuotasIPC(state.eventos || [], porcentaje)
@@ -1263,6 +1303,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         addMovimientoCaja,
         addMovimientosCaja,
         deleteMovimientoCaja,
+        gastosArchivados: state.gastosArchivados || [],
+        archivarGasto,
+        desarchivarGasto,
         historialIPC: state.historialIPC || [],
         ultimoMesIPC: state.ultimoMesIPC || null,
         aplicarIPC,

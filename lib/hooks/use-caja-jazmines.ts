@@ -27,6 +27,7 @@ export interface GastoFijoMes {
   salon: string | null | undefined
   monto: number
   estado: EstadoAlerta | "pagado"
+  fechaVencimiento?: string
 }
 
 export interface GastoVariable {
@@ -44,6 +45,8 @@ export interface CajaJazminData {
   saldoProyectado30Dias: number
   alertasVencimiento: AlertaVencimiento[]
   gastosFijosMes: GastoFijoMes[]
+  /** Gastos fijos ya pagados y archivados en el período en curso */
+  gastosFijosCubiertos: GastoFijoMes[]
   gastosVariables: GastoVariable[]
   ingresosProyectados30Dias: number
 }
@@ -53,6 +56,27 @@ export interface CajaJazminData {
 // ============================================================
 function parseLocalDate(dateStr: string): Date {
   return new Date(dateStr + "T12:00:00")
+}
+
+/**
+ * Un gasto fijo se considera "cubierto este período" si existe un registro
+ * archivado (origen caja_jazmines_fijo) para ese costo cuya fecha de archivo
+ * cae en el mes actual (o el año actual, si es Anual).
+ */
+function gastoFijoCubierto(
+  costoId: string,
+  frecuencia: CostoOperativo["frecuencia"],
+  archivados: { origen: string; refId?: string | null; fecha: string }[],
+  hoy: Date,
+): boolean {
+  const anioHoy = hoy.getFullYear()
+  const mesHoy = hoy.getMonth()
+  return archivados.some((g) => {
+    if (g.origen !== "caja_jazmines_fijo" || g.refId !== costoId || !g.fecha) return false
+    const [gy, gm] = g.fecha.split("-").map(Number)
+    if (frecuencia === "Anual") return gy === anioHoy
+    return gy === anioHoy && gm - 1 === mesHoy
+  })
 }
 
 // ============================================================
@@ -76,6 +100,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string): CajaJazm
     const eventos = (state.eventos || []).filter(
       (e) => !salonSel || e.salon === salonSel
     )
+    const gastosArchivados = state.gastosArchivados || []
 
     // ----------------------------------------------------------
     // 1. SALDO ACTUAL de caja_jazmines
@@ -94,12 +119,29 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string): CajaJazm
     let gastosPróximos30Dias = 0
     const alertasVencimiento: AlertaVencimiento[] = []
     const gastosFijosMes: GastoFijoMes[] = []
+    const gastosFijosCubiertos: GastoFijoMes[] = []
 
     // Separar fijos (Mensual/Anual) de variables (esVariable=true)
     const costosFijos = costosOperativos.filter((c) => c.activo && !c.esVariable)
     const costosVariablesStore = costosOperativos.filter((c) => c.activo && c.esVariable === true)
 
     costosFijos.forEach((costo) => {
+        // Si ya se pagó y archivó en el período actual, sale de la lista activa
+        // y pasa a "cubiertos" (indicador con tilde verde).
+        if (gastoFijoCubierto(costo.id, costo.frecuencia, gastosArchivados, hoy)) {
+          gastosFijosCubiertos.push({
+            id: costo.id,
+            concepto: costo.concepto,
+            tipo: costo.tipo,
+            frecuencia: costo.frecuencia,
+            salon: costo.salon,
+            monto: costo.monto,
+            estado: "pagado",
+            fechaVencimiento: costo.fechaVencimiento,
+          })
+          return
+        }
+
         const fechaVencStr = costo.fechaVencimiento
         if (!fechaVencStr) {
           gastosFijosMes.push({
@@ -148,6 +190,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string): CajaJazm
             salon: costo.salon,
             monto: costo.monto,
             estado: estado as EstadoAlerta | "pagado",
+            fechaVencimiento: fechaVencStr,
           })
         }
       })
@@ -251,8 +294,9 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string): CajaJazm
       saldoProyectado30Dias,
       alertasVencimiento,
       gastosFijosMes,
+      gastosFijosCubiertos,
       gastosVariables,
       ingresosProyectados30Dias,
     }
-  }, [state.movimientosCaja, state.costosOperativos, state.eventos, salonFiltro])
+  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, salonFiltro])
 }
