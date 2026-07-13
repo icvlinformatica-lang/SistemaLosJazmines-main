@@ -44,6 +44,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { useClock } from "@/lib/clock-context"
 
 interface StoreContextType {
   state: AppState
@@ -158,12 +159,38 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | null>(null)
 
+// Prefijos de métodos que mutan/persisten datos. En modo lectura se neutralizan.
+const MUTATOR_RE = /^(add|update|delete|set|archivar|desarchivar|aplicar|generar|sincronizar|clear)/
+// Excepciones: setters efímeros del flujo de planificación (no persisten hasta "addEvento").
+const KEEP_ACTIVE = new Set(["setEventoActual", "updateEventoActual"])
+
+/**
+ * En modo solo-lectura (viaje en el tiempo) reemplaza todos los mutadores del
+ * store por no-ops que avisan al usuario, dejando intactos getters y setters
+ * efímeros. Así se puede navegar y recalcular sin riesgo de tocar datos reales.
+ */
+function aplicarSoloLectura<T extends Record<string, any>>(
+  value: T,
+  soloLectura: boolean,
+  aviso: () => void,
+): T {
+  if (!soloLectura) return value
+  const out: Record<string, any> = { ...value }
+  for (const key of Object.keys(out)) {
+    if (typeof out[key] === "function" && MUTATOR_RE.test(key) && !KEEP_ACTIVE.has(key)) {
+      out[key] = () => aviso()
+    }
+  }
+  return out as T
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState())
   const [isHydrated, setIsHydrated] = useState(false)
   const [showIPCDialog, setShowIPCDialog] = useState(false)
   const [porcentajeIPC, setPorcentajeIPC] = useState("")
   const { toast } = useToast()
+  const { soloLectura } = useClock()
 
   useEffect(() => {
     const initializeData = async () => {
@@ -1214,9 +1241,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return null
   }
 
-  return (
-    <StoreContext.Provider
-      value={{
+  const rawValue: StoreContextType = {
         state,
         loading: !isHydrated,
         insumos: state.insumos,
@@ -1310,8 +1335,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ultimoMesIPC: state.ultimoMesIPC || null,
         aplicarIPC,
         abrirDialogIPC,
-      }}
-    >
+      }
+
+  const contextValue = aplicarSoloLectura(rawValue, soloLectura, () =>
+    toast({
+      title: "Modo lectura activo",
+      description: "Estás viendo el sistema en otra fecha. Volvé a hoy para hacer cambios.",
+    }),
+  )
+
+  return (
+    <StoreContext.Provider value={contextValue}>
       {children}
 
       {/* Dialog IPC */}

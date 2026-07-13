@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
+import { useClock } from "@/lib/clock-context"
 import { generateId, SALONES, salonLabel, type MovimientoCaja } from "@/lib/store"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import type {
@@ -105,10 +106,11 @@ export default function CajaEventosPage() {
       refId: pago.id,
     })
   }
+  const { ahora } = useClock()
   const insumos = state.insumos ?? []
   const insumosBarra = state.insumosBarra ?? []
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
-  const data = useCajaEventos(state, salonFiltro)
+  const data = useCajaEventos(state, salonFiltro, ahora)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
 
@@ -121,8 +123,7 @@ export default function CajaEventosPage() {
     [insumosBarra]
   )
   const [mesCalendario, setMesCalendario] = useState(() => {
-    const h = new Date()
-    return new Date(h.getFullYear(), h.getMonth(), 1)
+    return new Date(ahora.getFullYear(), ahora.getMonth(), 1)
   })
 
   const {
@@ -270,10 +271,10 @@ export default function CajaEventosPage() {
   const cambiarMes = (delta: number) =>
     setMesCalendario((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
 
-  const hoyNum = new Date().getDate()
+  const hoyNum = ahora.getDate()
   const esMesActualCal =
-    mesCalendario.getMonth() === new Date().getMonth() &&
-    mesCalendario.getFullYear() === new Date().getFullYear()
+    mesCalendario.getMonth() === ahora.getMonth() &&
+    mesCalendario.getFullYear() === ahora.getFullYear()
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">

@@ -23,6 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
+import { useClock } from "@/lib/clock-context"
 import { SALONES, salonLabel } from "@/lib/store"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
 import type { EstadoAlerta, GastoFijoMes } from "@/lib/hooks/use-caja-jazmines"
@@ -125,10 +126,11 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 export default function CajaJazminePage() {
   const { state, updateCostoOperativo, addCostoOperativo, deleteCostoOperativo, archivarGasto } =
     useStore()
+  const { ahora } = useClock()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
-  const data = useCajaJazmines(state, salonFiltro)
+  const data = useCajaJazmines(state, salonFiltro, ahora)
 
-  const hoyStr = new Date().toISOString().slice(0, 10)
+  const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
   const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({})

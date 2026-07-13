@@ -38,6 +38,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
 import { useUI } from "@/lib/ui-context"
+import { TimeTravelButton } from "@/components/time-travel-button"
 import { useProfile } from "@/lib/profile-context"
 import { generateId } from "@/lib/utils-client"
 
@@ -226,13 +227,18 @@ export function Sidebar() {
         )}
       >
         {/* Logo Section */}
-        <div className="px-5 pt-6 pb-4">
+        <div className="px-5 pt-6 pb-3">
           <Link href="/" className="block">
             <h1 className="text-lg font-bold text-[#f5f0e8] leading-tight">
               Los Jazmines
             </h1>
             <p className="text-sm text-[#f5f0e8]/70 font-medium">Sistema</p>
           </Link>
+        </div>
+
+        {/* Botón de viaje en el tiempo (fecha del sistema) */}
+        <div className="px-3 pb-3">
+          <TimeTravelButton />
         </div>
 
         {/* Navigation Items */}

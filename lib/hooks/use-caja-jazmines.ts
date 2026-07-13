@@ -82,10 +82,11 @@ function gastoFijoCubierto(
 // ============================================================
 // Hook
 // ============================================================
-export function useCajaJazmines(state: AppState, salonFiltro?: string): CajaJazminData {
+export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: Date): CajaJazminData {
+  const ahoraMs = ahora ? ahora.getTime() : null
   return useMemo(() => {
     const salonSel = salonFiltro && salonFiltro !== "todos" ? salonFiltro : null
-    const hoy = new Date()
+    const hoy = ahora ? new Date(ahora) : new Date()
     hoy.setHours(0, 0, 0, 0)
 
     const en30Dias = new Date(hoy)
@@ -298,5 +299,5 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string): CajaJazm
       gastosVariables,
       ingresosProyectados30Dias,
     }
-  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, salonFiltro])
+  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, salonFiltro, ahoraMs])
 }
