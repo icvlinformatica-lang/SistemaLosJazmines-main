@@ -34,6 +34,7 @@ export interface EgresoPendienteServicio {
   id: string
   eventoId: string
   eventoNombre: string
+  salon: string
   servicioNombre: string
   servicioId?: string // presente para egresos de servicios (no menú/barra)
   tipo: "seña" | "saldo" | "menu" | "barra"
@@ -97,8 +98,9 @@ function mesLabel(d: Date): string {
 // ============================================================
 // Hook
 // ============================================================
-export function useCajaEventos(state: AppState): CajaEventosData {
+export function useCajaEventos(state: AppState, salonFiltro?: string): CajaEventosData {
   return useMemo(() => {
+    const salonSel = salonFiltro && salonFiltro !== "todos" ? salonFiltro : null
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
 
@@ -113,8 +115,12 @@ export function useCajaEventos(state: AppState): CajaEventosData {
     const mesActualKey = mesKey(hoy)
     const mesActualLabel = mesLabel(hoy)
 
-    const movimientos: MovimientoCaja[] = state.movimientosCaja || []
-    const eventos = state.eventos || []
+    const movimientos: MovimientoCaja[] = (state.movimientosCaja || []).filter(
+      (m) => !salonSel || m.salon === salonSel
+    )
+    const eventos = (state.eventos || []).filter(
+      (e) => !salonSel || e.salon === salonSel
+    )
 
     // ----------------------------------------------------------
     // 1. SALDO ACTUAL
@@ -207,6 +213,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
             id: `${evento.id}-menu`,
             eventoId: evento.id,
             eventoNombre,
+            salon: evento.salon || "",
             servicioNombre: "Menú del evento",
             tipo: "menu",
             monto: costoMenu,
@@ -235,6 +242,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
             id: `${evento.id}-barra`,
             eventoId: evento.id,
             eventoNombre,
+            salon: evento.salon || "",
             servicioNombre: "Barra del evento",
             tipo: "barra",
             monto: costoBarra,
@@ -259,6 +267,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
             id: `${evento.id}-${srv.servicioId}-seña`,
             eventoId: evento.id,
             eventoNombre,
+            salon: evento.salon || "",
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
             tipo: "seña",
@@ -280,6 +289,7 @@ export function useCajaEventos(state: AppState): CajaEventosData {
             id: `${evento.id}-${srv.servicioId}-saldo`,
             eventoId: evento.id,
             eventoNombre,
+            salon: evento.salon || "",
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
             tipo: "saldo",
@@ -390,5 +400,5 @@ export function useCajaEventos(state: AppState): CajaEventosData {
       totalPorPagar,
       mesActualLabel,
     }
-  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra])
+  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra, salonFiltro])
 }

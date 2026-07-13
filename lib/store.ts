@@ -302,6 +302,13 @@ export interface CostoOperativo {
 export const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
 export type SalonNombre = (typeof SALONES)[number]
 
+/** Etiqueta amigable para mostrar un salón en la UI ("Salon" -> "Salón"). */
+export function salonLabel(salon: string | null | undefined): string {
+  if (!salon) return "General"
+  if (salon === "Salon") return "Salón"
+  return salon
+}
+
 // ==========================================
 // CAJAS - CONFIGURACIÓN Y MOVIMIENTOS
 // ==========================================
