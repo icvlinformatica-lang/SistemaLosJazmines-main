@@ -44,6 +44,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { useClock } from "@/lib/clock-context"
 
 interface StoreContextType {
   state: AppState
@@ -158,12 +159,38 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | null>(null)
 
+// Prefijos de métodos que mutan/persisten datos. En modo lectura se neutralizan.
+const MUTATOR_RE = /^(add|update|delete|set|archivar|desarchivar|aplicar|generar|sincronizar|clear)/
+// Excepciones: setters efímeros del flujo de planificación (no persisten hasta "addEvento").
+const KEEP_ACTIVE = new Set(["setEventoActual", "updateEventoActual"])
+
+/**
+ * En modo solo-lectura (viaje en el tiempo) reemplaza todos los mutadores del
+ * store por no-ops que avisan al usuario, dejando intactos getters y setters
+ * efímeros. Así se puede navegar y recalcular sin riesgo de tocar datos reales.
+ */
+function aplicarSoloLectura<T extends Record<string, any>>(
+  value: T,
+  soloLectura: boolean,
+  aviso: () => void,
+): T {
+  if (!soloLectura) return value
+  const out: Record<string, any> = { ...value }
+  for (const key of Object.keys(out)) {
+    if (typeof out[key] === "function" && MUTATOR_RE.test(key) && !KEEP_ACTIVE.has(key)) {
+      out[key] = () => aviso()
+    }
+  }
+  return out as T
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState())
   const [isHydrated, setIsHydrated] = useState(false)
   const [showIPCDialog, setShowIPCDialog] = useState(false)
   const [porcentajeIPC, setPorcentajeIPC] = useState("")
   const { toast } = useToast()
+  const { soloLectura } = useClock()
 
   useEffect(() => {
     const initializeData = async () => {
@@ -220,11 +247,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Migración one-time de costos operativos (gastos fijos y variables):
+        // si Supabase está vacío pero quedaron costos en localStorage, subirlos a la base.
+        // A partir de ahí Supabase es la única fuente de verdad (no más localStorage/seed).
+        let costosMigrados = costosDB
+        const costosLocales = (localState.costosOperativos || []).filter((c) => c && c.id)
+        if (costosDB.length === 0 && costosLocales.length > 0) {
+          const subidos = await Promise.all(costosLocales.map((c) => db.upsertCostoOperativo(c)))
+          costosMigrados = subidos.filter((c): c is NonNullable<typeof c> => c != null)
+        }
+
         supabaseData = {
           servicios: serviciosDB.length > 0 ? serviciosDB : localState.servicios,
           personal: personalDB.length > 0 ? personalDB : localState.personal,
           pagosPersonal: pagosDB.length > 0 ? pagosDB : localState.pagosPersonal,
-          costosOperativos: costosDB.length > 0 ? costosDB : localState.costosOperativos,
+          // Costos: SOLO Supabase (ya migrados arriba). Nunca caer al seed local.
+          costosOperativos: costosMigrados,
           asignaciones: asignacionesDB.length > 0 ? asignacionesDB : localState.asignaciones,
           movimientosCaja: movimientosDB.length > 0 ? movimientosDB : localState.movimientosCaja,
           configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
@@ -238,7 +276,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           servicios: localState.servicios,
           personal: localState.personal,
           pagosPersonal: localState.pagosPersonal,
-          costosOperativos: localState.costosOperativos,
+          // Costos operativos viven solo en Supabase; sin conexión no mostramos datos stale.
+          costosOperativos: [],
           asignaciones: localState.asignaciones,
           movimientosCaja: localState.movimientosCaja,
           configuracionCajas: localState.configuracionCajas,
@@ -284,9 +323,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isHydrated) {
-      // Only save non-DB modules to localStorage to avoid stale data
-      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, eventos, ...localOnly } = state
-      saveState({ ...localOnly, insumos: [], insumosBarra: [], recetas: [], cocteles: [], barrasTemplates: [], eventos: [] })
+      // Only save non-DB modules to localStorage to avoid stale data.
+      // costosOperativos vive solo en Supabase, así que también se excluye.
+      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, eventos, costosOperativos, ...localOnly } =
+        state
+      saveState({
+        ...localOnly,
+        insumos: [],
+        insumosBarra: [],
+        recetas: [],
+        cocteles: [],
+        barrasTemplates: [],
+        eventos: [],
+        costosOperativos: [],
+      })
     }
   }, [state, isHydrated])
 
@@ -1214,9 +1264,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return null
   }
 
-  return (
-    <StoreContext.Provider
-      value={{
+  const rawValue: StoreContextType = {
         state,
         loading: !isHydrated,
         insumos: state.insumos,
@@ -1310,8 +1358,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ultimoMesIPC: state.ultimoMesIPC || null,
         aplicarIPC,
         abrirDialogIPC,
-      }}
-    >
+      }
+
+  const contextValue = aplicarSoloLectura(rawValue, soloLectura, () =>
+    toast({
+      title: "Modo lectura activo",
+      description: "Estás viendo el sistema en otra fecha. Volvé a hoy para hacer cambios.",
+    }),
+  )
+
+  return (
+    <StoreContext.Provider value={contextValue}>
       {children}
 
       {/* Dialog IPC */}

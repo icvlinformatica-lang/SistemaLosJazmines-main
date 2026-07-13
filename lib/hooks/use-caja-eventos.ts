@@ -98,10 +98,11 @@ function mesLabel(d: Date): string {
 // ============================================================
 // Hook
 // ============================================================
-export function useCajaEventos(state: AppState, salonFiltro?: string): CajaEventosData {
+export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Date): CajaEventosData {
+  const ahoraMs = ahora ? ahora.getTime() : null
   return useMemo(() => {
     const salonSel = salonFiltro && salonFiltro !== "todos" ? salonFiltro : null
-    const hoy = new Date()
+    const hoy = ahora ? new Date(ahora) : new Date()
     hoy.setHours(0, 0, 0, 0)
 
     // Lunes -> Viernes de la semana actual (trabajamos L-V 09-20hs)
@@ -400,5 +401,5 @@ export function useCajaEventos(state: AppState, salonFiltro?: string): CajaEvent
       totalPorPagar,
       mesActualLabel,
     }
-  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra, salonFiltro])
+  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra, salonFiltro, ahoraMs])
 }

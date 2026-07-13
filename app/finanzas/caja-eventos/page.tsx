@@ -20,6 +20,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -29,7 +30,10 @@ import {
 } from "@/components/ui/select"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
-import { generateId, SALONES, salonLabel, type MovimientoCaja } from "@/lib/store"
+import { useClock } from "@/lib/clock-context"
+import { useToast } from "@/hooks/use-toast"
+import { construirCobroCuota } from "@/lib/cobrar-cuota"
+import { generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import type {
   EgresoPendienteServicio,
@@ -105,12 +109,41 @@ export default function CajaEventosPage() {
       refId: pago.id,
     })
   }
+  const { ahora } = useClock()
   const insumos = state.insumos ?? []
   const insumosBarra = state.insumosBarra ?? []
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
-  const data = useCajaEventos(state, salonFiltro)
+  const data = useCajaEventos(state, salonFiltro, ahora)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
+  const [marcarCobrada, setMarcarCobrada] = useState(false)
+  const { toast } = useToast()
+
+  // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
+  // "por cobrar" y genera el ingreso 50/50 a Caja Eventos y Caja Jazmines,
+  // datado en la fecha de vencimiento de la cuota.
+  function confirmarCobroCuota(ing: IngresoPendiente) {
+    const evento = state.eventos?.find((e) => e.id === ing.eventoId) as EventoGuardado | undefined
+    if (!evento) return
+    const { yaCobrada, planUpdate, movimientos } = construirCobroCuota(
+      evento,
+      ing.numeroCuota,
+      ing.montoTotal,
+      ing.fechaVencimiento,
+      state.movimientosCaja || [],
+    )
+    if (yaCobrada) {
+      toast({ title: "Esta cuota ya figura como cobrada." })
+      return
+    }
+    if (planUpdate) updateEvento(ing.eventoId, planUpdate)
+    if (movimientos.length > 0) addMovimientosCaja(movimientos)
+    toast({
+      title: "Cuota marcada como cobrada",
+      description: `Cuota ${ing.numeroCuota}/${ing.totalCuotas} · ${ing.eventoNombre}`,
+    })
+    setClienteSel(null)
+  }
 
   const valorStockCocina = useMemo(
     () => insumos.reduce((sum, ins) => sum + (ins.stockActual ?? 0) * (ins.precioUnitario ?? 0), 0),
@@ -121,8 +154,7 @@ export default function CajaEventosPage() {
     [insumosBarra]
   )
   const [mesCalendario, setMesCalendario] = useState(() => {
-    const h = new Date()
-    return new Date(h.getFullYear(), h.getMonth(), 1)
+    return new Date(ahora.getFullYear(), ahora.getMonth(), 1)
   })
 
   const {
@@ -270,10 +302,10 @@ export default function CajaEventosPage() {
   const cambiarMes = (delta: number) =>
     setMesCalendario((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
 
-  const hoyNum = new Date().getDate()
+  const hoyNum = ahora.getDate()
   const esMesActualCal =
-    mesCalendario.getMonth() === new Date().getMonth() &&
-    mesCalendario.getFullYear() === new Date().getFullYear()
+    mesCalendario.getMonth() === ahora.getMonth() &&
+    mesCalendario.getFullYear() === ahora.getFullYear()
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
@@ -756,7 +788,13 @@ export default function CajaEventosPage() {
       </Tabs>
 
       {/* DIALOG: datos de contacto del cliente */}
-      <Dialog open={!!clienteSel} onOpenChange={(open) => !open && setClienteSel(null)}>
+      <Dialog
+        open={!!clienteSel}
+        onOpenChange={(open) => {
+          if (!open) setClienteSel(null)
+          setMarcarCobrada(false)
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -808,6 +846,32 @@ export default function CajaEventosPage() {
                     <span>DNI {clienteSel.contacto.dni}</span>
                   </div>
                 )}
+              </div>
+
+              {/* Marcar como ya cobrada (para eventos viejos) */}
+              <div className="border-t border-border pt-3 space-y-3">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <Checkbox
+                    checked={marcarCobrada}
+                    onCheckedChange={(v) => setMarcarCobrada(v === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm leading-snug">
+                    Marcar esta cuota como <span className="font-medium">ya cobrada</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Registra el ingreso 50/50 a Caja Eventos y Caja Jazmines con fecha{" "}
+                      {formatFecha(clienteSel.fechaVencimiento)}.
+                    </span>
+                  </span>
+                </label>
+                <Button
+                  className="w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={!marcarCobrada}
+                  onClick={() => confirmarCobroCuota(clienteSel)}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Confirmar cobro
+                </Button>
               </div>
             </div>
           )}
