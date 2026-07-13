@@ -53,7 +53,9 @@ import {
   RotateCcw,
   Eye,
   Building,
+  Archive,
 } from "lucide-react"
+import Link from "next/link"
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -82,7 +84,27 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
-  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja } = useStore()
+  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto } =
+    useStore()
+
+  // Ids de pagos ya archivados (para ocultarlos del historial activo sin tocar el saldo)
+  const pagosArchivadosIds = new Set(
+    (gastosArchivados || []).filter((g) => g.origen === "caja_eventos" && g.refId).map((g) => g.refId as string),
+  )
+
+  function archivarPagoEvento(pago: PagoRealizado) {
+    archivarGasto({
+      fecha: pago.fecha.slice(0, 10),
+      concepto: pago.servicioNombre || pago.concepto,
+      monto: pago.monto,
+      salon: pago.salon || null,
+      origen: "caja_eventos",
+      categoria: pago.tipoPago,
+      eventoId: pago.eventoId ?? null,
+      eventoNombre: pago.eventoNombre || null,
+      refId: pago.id,
+    })
+  }
   const insumos = state.insumos ?? []
   const insumosBarra = state.insumosBarra ?? []
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
@@ -269,6 +291,12 @@ export default function CajaEventosPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
+            <Link href="/finanzas/archivo">
+              <Archive className="h-4 w-4" />
+              Archivo
+            </Link>
+          </Button>
           <Building className="h-4 w-4 text-muted-foreground" />
           <Select value={salonFiltro} onValueChange={setSalonFiltro}>
             <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
@@ -644,9 +672,9 @@ export default function CajaEventosPage() {
         <TabsContent value="historial" className="mt-4">
           <Card>
             <CardContent className="px-0 py-2">
-              {pagosRealizados.length === 0 ? (
+              {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  Todavía no registraste pagos a proveedores.
+                  No hay pagos en el historial activo. Los pagos archivados se ven en el Archivo.
                 </p>
               ) : (
                 <Table>
@@ -660,7 +688,7 @@ export default function CajaEventosPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pagosRealizados.map((pago) => (
+                    {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).map((pago) => (
                       <TableRow key={pago.id}>
                         <TableCell className="pl-6">
                           <div className="flex items-center gap-2">
@@ -683,26 +711,42 @@ export default function CajaEventosPage() {
                           −{formatCurrency(pago.monto)}
                         </TableCell>
                         <TableCell className="text-right pr-6">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs bg-transparent"
-                            onClick={() => handleRevertirPago(pago)}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Revertir
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs bg-transparent"
+                              onClick={() => archivarPagoEvento(pago)}
+                            >
+                              <Archive className="h-3.5 w-3.5" />
+                              Archivar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs bg-transparent"
+                              onClick={() => handleRevertirPago(pago)}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Revertir
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               )}
-              {pagosRealizados.length > 0 && (
+              {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">Total pagado</span>
                   <span className="text-base font-bold text-red-600">
-                    −{formatCurrency(pagosRealizados.reduce((s, p) => s + p.monto, 0))}
+                    −
+                    {formatCurrency(
+                      pagosRealizados
+                        .filter((p) => !pagosArchivadosIds.has(p.id))
+                        .reduce((s, p) => s + p.monto, 0),
+                    )}
                   </span>
                 </div>
               )}
