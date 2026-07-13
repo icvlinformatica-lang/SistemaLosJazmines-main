@@ -39,6 +39,19 @@ export interface GastoVariable {
   estado: "pendiente" | "pagado" | "vencido"
 }
 
+export interface CuotaPorCobrar {
+  id: string
+  eventoId: string
+  eventoNombre: string
+  salon: string
+  numeroCuota: number
+  totalCuotas: number
+  fechaVencimiento: string
+  diasRestantes: number
+  montoCuota: number // cuota completa
+  montoJazmines: number // 50% que va a Caja Jazmines
+}
+
 export interface CajaJazminData {
   saldoActual: number
   gastosPróximos30Dias: number
@@ -49,6 +62,8 @@ export interface CajaJazminData {
   gastosFijosCubiertos: GastoFijoMes[]
   gastosVariables: GastoVariable[]
   ingresosProyectados30Dias: number
+  /** Todas las cuotas pendientes de cobro (para marcarlas como cobradas) */
+  cuotasPorCobrar: CuotaPorCobrar[]
 }
 
 // ============================================================
@@ -232,8 +247,10 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
 
     // ----------------------------------------------------------
     // 3. INGRESOS PROYECTADOS a 30 días (50% de cuotas pendientes)
+    //    + lista completa de cuotas por cobrar (para marcarlas cobradas)
     // ----------------------------------------------------------
     let ingresosProyectados30Dias = 0
+    const cuotasPorCobrar: CuotaPorCobrar[] = []
 
     for (const evento of eventos) {
       if (evento.estado === "cancelado" || evento.estado === "completado") continue
@@ -242,6 +259,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
 
       const cuotas = plan.cuotas ?? []
       const cuotasPagadasArr = plan.cuotasPagadas ?? []
+      const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
 
       for (const cuota of cuotas) {
         if (cuota.pagada) continue
@@ -252,8 +270,23 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         if (fechaVenc >= hoy && fechaVenc <= en30Dias) {
           ingresosProyectados30Dias += cuota.montoCuota / 2
         }
+
+        cuotasPorCobrar.push({
+          id: `${evento.id}-cuota-${cuota.numero}`,
+          eventoId: evento.id,
+          eventoNombre,
+          salon: evento.salon || "",
+          numeroCuota: cuota.numero,
+          totalCuotas: plan.numeroCuotas,
+          fechaVencimiento: cuota.fechaVencimiento,
+          diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+          montoCuota: cuota.montoCuota,
+          montoJazmines: cuota.montoCuota / 2,
+        })
       }
     }
+
+    cuotasPorCobrar.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))
 
     // ----------------------------------------------------------
     // 4. SALDO PROYECTADO A 30 DÍAS
@@ -298,6 +331,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       gastosFijosCubiertos,
       gastosVariables,
       ingresosProyectados30Dias,
+      cuotasPorCobrar,
     }
   }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, salonFiltro, ahoraMs])
 }

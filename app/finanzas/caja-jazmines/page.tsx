@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -24,9 +25,11 @@ import { Switch } from "@/components/ui/switch"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
-import { SALONES, salonLabel } from "@/lib/store"
+import { useToast } from "@/hooks/use-toast"
+import { construirCobroCuota } from "@/lib/cobrar-cuota"
+import { SALONES, salonLabel, type EventoGuardado } from "@/lib/store"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
-import type { EstadoAlerta, GastoFijoMes } from "@/lib/hooks/use-caja-jazmines"
+import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar } from "@/lib/hooks/use-caja-jazmines"
 import {
   Building,
   TrendingDown,
@@ -44,6 +47,7 @@ import {
   EyeOff,
   ChevronDown,
   ChevronUp,
+  HandCoins,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -124,10 +128,45 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 // ---------------------------------------------------------------------------
 
 export default function CajaJazminePage() {
-  const { state, updateCostoOperativo, addCostoOperativo, deleteCostoOperativo, archivarGasto } =
-    useStore()
+  const {
+    state,
+    updateCostoOperativo,
+    addCostoOperativo,
+    deleteCostoOperativo,
+    archivarGasto,
+    updateEvento,
+    addMovimientosCaja,
+  } = useStore()
   const { ahora } = useClock()
+  const { toast } = useToast()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
+  const [cuotaSel, setCuotaSel] = useState<CuotaPorCobrar | null>(null)
+  const [marcarCobrada, setMarcarCobrada] = useState(false)
+
+  // Marca una cuota como ya cobrada (útil al cargar eventos viejos): genera el
+  // ingreso 50/50 a Caja Eventos y Caja Jazmines, datado en el vencimiento.
+  function confirmarCobroCuota(cuota: CuotaPorCobrar) {
+    const evento = state.eventos?.find((e) => e.id === cuota.eventoId) as EventoGuardado | undefined
+    if (!evento) return
+    const { yaCobrada, planUpdate, movimientos } = construirCobroCuota(
+      evento,
+      cuota.numeroCuota,
+      cuota.montoCuota,
+      cuota.fechaVencimiento,
+      state.movimientosCaja || [],
+    )
+    if (yaCobrada) {
+      toast({ title: "Esta cuota ya figura como cobrada." })
+      return
+    }
+    if (planUpdate) updateEvento(cuota.eventoId, planUpdate)
+    if (movimientos.length > 0) addMovimientosCaja(movimientos)
+    toast({
+      title: "Cuota marcada como cobrada",
+      description: `Cuota ${cuota.numeroCuota}/${cuota.totalCuotas} · ${cuota.eventoNombre}`,
+    })
+    setCuotaSel(null)
+  }
   const data = useCajaJazmines(state, salonFiltro, ahora)
 
   const hoyStr = ahora.toISOString().slice(0, 10)
@@ -184,6 +223,7 @@ export default function CajaJazminePage() {
     gastosFijosCubiertos,
     gastosVariables: gastosVariablesCombinados,
     ingresosProyectados30Dias,
+    cuotasPorCobrar,
   } = data
 
   // ── Edición de gastos fijos ──────────────────────────────────────────────
@@ -469,6 +509,64 @@ export default function CajaJazminePage() {
             </>
           )}
         </CardContent>
+        )}
+      </Card>
+
+      {/* ── Cuotas por cobrar (marcar como cobradas) ─────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <HandCoins className="h-4 w-4 text-emerald-600" />
+              Cuotas por cobrar
+              {cuotasPorCobrar.length > 0 && (
+                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[11px]">
+                  {cuotasPorCobrar.length}
+                </Badge>
+              )}
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => toggleColapsada("cuotas")}
+              aria-label={colapsadas.cuotas ? "Expandir cuotas" : "Minimizar cuotas"}
+              title={colapsadas.cuotas ? "Expandir" : "Minimizar"}
+            >
+              {colapsadas.cuotas ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+        </CardHeader>
+        {!colapsadas.cuotas && (
+          <CardContent className="space-y-2">
+            {cuotasPorCobrar.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No hay cuotas pendientes de cobro.
+              </p>
+            ) : (
+              cuotasPorCobrar.map((cuota) => (
+                <button
+                  key={cuota.id}
+                  onClick={() => {
+                    setCuotaSel(cuota)
+                    setMarcarCobrada(false)
+                  }}
+                  className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
+                      {cuota.salon ? ` · ${salonLabel(cuota.salon)}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-emerald-700 shrink-0">
+                    +{formatCurrency(cuota.montoJazmines)}
+                  </span>
+                </button>
+              ))
+            )}
+          </CardContent>
         )}
       </Card>
 
@@ -1010,6 +1108,65 @@ export default function CajaJazminePage() {
               Agendar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: marcar cuota como cobrada ─────────────────────────────── */}
+      <Dialog
+        open={!!cuotaSel}
+        onOpenChange={(open) => {
+          if (!open) setCuotaSel(null)
+          setMarcarCobrada(false)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HandCoins className="h-4 w-4 text-emerald-600" />
+              {cuotaSel?.eventoNombre}
+            </DialogTitle>
+          </DialogHeader>
+          {cuotaSel && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-emerald-700">
+                    Cuota {cuotaSel.numeroCuota}/{cuotaSel.totalCuotas} · vence {formatFecha(cuotaSel.fechaVencimiento)}
+                  </span>
+                  <span className="text-lg font-bold text-emerald-800">
+                    {formatCurrency(cuotaSel.montoCuota)}
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-700/80">
+                  Se reparte 50% a Caja Eventos ({formatCurrency(cuotaSel.montoJazmines)}) y 50% a Caja Jazmines (
+                  {formatCurrency(cuotaSel.montoJazmines)}).
+                </p>
+              </div>
+
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <Checkbox
+                  checked={marcarCobrada}
+                  onCheckedChange={(v) => setMarcarCobrada(v === true)}
+                  className="mt-0.5"
+                />
+                <span className="text-sm leading-snug">
+                  Marcar esta cuota como <span className="font-medium">ya cobrada</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Registra el ingreso en ambas cajas con fecha {formatFecha(cuotaSel.fechaVencimiento)}.
+                  </span>
+                </span>
+              </label>
+
+              <Button
+                className="w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={!marcarCobrada}
+                onClick={() => confirmarCobroCuota(cuotaSel)}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Confirmar cobro
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
