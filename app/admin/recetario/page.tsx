@@ -387,6 +387,7 @@ export default function RecetarioPage() {
                           <SelectItem value="Vegano">Vegano</SelectItem>
                           <SelectItem value="Vegetariano">Vegetariano</SelectItem>
                           <SelectItem value="Sin Sal">Sin Sal</SelectItem>
+                          <SelectItem value="Mesa Dulce">Mesa Dulce</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

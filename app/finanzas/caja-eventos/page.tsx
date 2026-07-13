@@ -20,9 +20,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
-import { generateId, type MovimientoCaja } from "@/lib/store"
+import { generateId, SALONES, salonLabel, type MovimientoCaja } from "@/lib/store"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import type {
   EgresoPendienteServicio,
@@ -45,6 +52,7 @@ import {
   History,
   RotateCcw,
   Eye,
+  Building,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -77,7 +85,8 @@ export default function CajaEventosPage() {
   const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja } = useStore()
   const insumos = state.insumos ?? []
   const insumosBarra = state.insumosBarra ?? []
-  const data = useCajaEventos(state)
+  const [salonFiltro, setSalonFiltro] = useState<string>("todos")
+  const data = useCajaEventos(state, salonFiltro)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
 
@@ -247,17 +256,42 @@ export default function CajaEventosPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="h-10 w-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
-          <Wallet className="h-5 w-5 text-teal-700" />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-start gap-3 flex-1">
+          <div className="h-10 w-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
+            <Wallet className="h-5 w-5 text-teal-700" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Eventos</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Qué debo cobrar y pagar, mes a mes. <span className="capitalize">{mesActualLabel}</span>.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Eventos</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Qué debo cobrar y pagar, mes a mes. <span className="capitalize">{mesActualLabel}</span>.
-          </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <Building className="h-4 w-4 text-muted-foreground" />
+          <Select value={salonFiltro} onValueChange={setSalonFiltro}>
+            <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
+              <SelectValue placeholder="Todos los salones" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los salones</SelectItem>
+              {SALONES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {salonLabel(s)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
+
+      {salonFiltro !== "todos" && (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Mostrando únicamente movimientos, cobros y pagos del salón{" "}
+          <span className="font-medium text-foreground">{salonLabel(salonFiltro)}</span>.
+        </p>
+      )}
 
       {/* DASHBOARD: 4 métricas clave */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -551,7 +585,10 @@ export default function CajaEventosPage() {
                       <TableRow key={eg.id}>
                         <TableCell className="pl-6">
                           <p className="font-medium text-sm">{eg.servicioNombre}</p>
-                          <p className="text-xs text-muted-foreground">{eg.eventoNombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {eg.eventoNombre}
+                            {eg.salon ? ` · ${salonLabel(eg.salon)}` : ""}
+                          </p>
                         </TableCell>
                         <TableCell>
                           <Badge

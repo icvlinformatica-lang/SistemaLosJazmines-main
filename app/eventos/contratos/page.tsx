@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo, useEffect, Suspense } from "react"
+import { useState, useMemo, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store-context"
 import {
   formatCurrency,
@@ -10,41 +10,44 @@ import {
   SALONES,
   type EventoGuardado,
   type Receta,
-  type VersionContrato,
-  type ImpactoContrato,
 } from "@/lib/store"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Textarea } from "@/components/ui/textarea"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
+
 import {
   ArrowLeft,
   FileText,
   Printer,
-  Calendar,
+  Calendar as CalendarIcon,
   Users,
   Eye,
-  Save,
-  Plus,
   X,
-  CheckCircle2,
   User,
-  ListChecks,
-  History,
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  DollarSign,
-  Package,
-  Info,
+  ChevronLeft,
+  ChevronRight,
   Pencil,
-  ExternalLink,
+  DollarSign,
+  Clock,
+  MapPin,
+  ListChecks,
+  Phone,
+  Mail,
+  History,
+  Save,
+  Check,
 } from "lucide-react"
 
 // =====================================================================
@@ -55,6 +58,51 @@ const SALON_DIRECCIONES: Record<string, string> = {
   Quinta: "Quinta Los Jazmines - Del Viso - Bs. As.",
   Salon: "Salon Los Jazmines - Del Viso - Bs. As.",
 }
+
+// =====================================================================
+// SALON COLOR MAP (one distinct color per salon)
+// =====================================================================
+type SalonColor = { dot: string; chip: string; chipActive: string; pill: string }
+const SALON_COLORES: Record<string, SalonColor> = {
+  Quinta: {
+    dot: "bg-emerald-500",
+    chip: "border-emerald-200 text-emerald-700",
+    chipActive: "border-emerald-400 bg-emerald-50 text-emerald-800",
+    pill: "border-l-emerald-500 bg-emerald-50 text-emerald-900 hover:bg-emerald-100",
+  },
+  Casona: {
+    dot: "bg-rose-500",
+    chip: "border-rose-200 text-rose-700",
+    chipActive: "border-rose-400 bg-rose-50 text-rose-800",
+    pill: "border-l-rose-500 bg-rose-50 text-rose-900 hover:bg-rose-100",
+  },
+  Salon: {
+    dot: "bg-sky-500",
+    chip: "border-sky-200 text-sky-700",
+    chipActive: "border-sky-400 bg-sky-50 text-sky-800",
+    pill: "border-l-sky-500 bg-sky-50 text-sky-900 hover:bg-sky-100",
+  },
+  "Salon 4": {
+    dot: "bg-amber-500",
+    chip: "border-amber-200 text-amber-700",
+    chipActive: "border-amber-400 bg-amber-50 text-amber-800",
+    pill: "border-l-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100",
+  },
+  "Salon 5": {
+    dot: "bg-teal-500",
+    chip: "border-teal-200 text-teal-700",
+    chipActive: "border-teal-400 bg-teal-50 text-teal-800",
+    pill: "border-l-teal-500 bg-teal-50 text-teal-900 hover:bg-teal-100",
+  },
+}
+const FALLBACK_COLOR: SalonColor = {
+  dot: "bg-muted-foreground",
+  chip: "border-border text-muted-foreground",
+  chipActive: "border-border bg-muted text-foreground",
+  pill: "border-l-muted-foreground bg-muted text-foreground hover:bg-muted/70",
+}
+const getSalonColor = (salon?: string): SalonColor =>
+  (salon && SALON_COLORES[salon]) || FALLBACK_COLOR
 
 // =====================================================================
 // HELPER: Build menu details from event recipes
@@ -102,7 +150,6 @@ function generateContractHTML(
   const horarioInicio = evento.horario || "___:___"
   const horarioFin = evento.horarioFin || "___:___"
   const condicionIVA = evento.condicionIVA || "Consumidor Final"
-  const precioEvento = evento.precioVenta || paquetePrecio || 0
   const modalidadPago = planCuotas?.modalidadPago || "cuotas"
   const montoSena = planCuotas?.montoSena || 0
   const porcentajeRecargo = planCuotas?.porcentajeRecargo || 0
@@ -220,84 +267,42 @@ function generateContractHTML(
 }
 
 // =====================================================================
-// CHANGE DETECTION
-// =====================================================================
-function detectarImpactos(
-  prevVersion: VersionContrato | null,
-  contratoActual: {
-    nombreCompleto: string; dni: string; telefono: string; direccion: string; email: string; condicionIVA: string
-  },
-  serviciosActuales: string[],
-  serviciosLibresActuales: string[],
-  planCuotasActual: EventoGuardado["planDeCuotas"],
-): ImpactoContrato[] {
-  if (!prevVersion) return []
-  const impactos: ImpactoContrato[] = []
-
-  // Datos del cliente
-  const prev = prevVersion.snapshotContrato
-  if (
-    prev.nombreCompleto !== contratoActual.nombreCompleto ||
-    prev.dni !== contratoActual.dni ||
-    prev.telefono !== contratoActual.telefono ||
-    prev.direccion !== contratoActual.direccion ||
-    prev.email !== contratoActual.email ||
-    prev.condicionIVA !== contratoActual.condicionIVA
-  ) impactos.push("datos_cliente")
-
-  // Servicios
-  const prevServs = [...prevVersion.snapshotServicios].sort().join(",")
-  const currServs = [...serviciosActuales].sort().join(",")
-  const prevLibres = [...prevVersion.snapshotServiciosLibres].sort().join(",")
-  const currLibres = [...serviciosLibresActuales].sort().join(",")
-  if (prevServs !== currServs || prevLibres !== currLibres) impactos.push("servicios")
-
-  // Financiero — plan de cuotas
-  const prevPlan = prevVersion.snapshotPlanCuotas
-  const currPlan = planCuotasActual
-  if (prevPlan || currPlan) {
-    const montoChanged = (prevPlan?.montoTotal ?? 0) !== (currPlan?.montoTotal ?? 0)
-    const cuotasChanged = (prevPlan?.numeroCuotas ?? 0) !== (currPlan?.numeroCuotas ?? 0)
-    const modalidadChanged = (prevPlan?.modalidadPago ?? "") !== (currPlan?.modalidadPago ?? "")
-    const senaChanged = (prevPlan?.montoSena ?? 0) !== (currPlan?.montoSena ?? 0)
-    if (montoChanged || cuotasChanged || modalidadChanged || senaChanged) impactos.push("financiero")
-  }
-
-  return impactos.length > 0 ? impactos : ["sin_cambios"]
-}
-
-// =====================================================================
-// IMPACT BADGE
-// =====================================================================
-const IMPACTO_CONFIG: Record<ImpactoContrato, { label: string; className: string; icon: React.ReactNode }> = {
-  financiero: { label: "Impacto financiero", className: "bg-red-100 text-red-700 border-red-200", icon: <DollarSign className="h-3 w-3" /> },
-  servicios: { label: "Cambian servicios", className: "bg-amber-100 text-amber-700 border-amber-200", icon: <Package className="h-3 w-3" /> },
-  datos_cliente: { label: "Datos del cliente", className: "bg-sky-100 text-sky-700 border-sky-200", icon: <User className="h-3 w-3" /> },
-  sin_cambios: { label: "Sin cambios", className: "bg-muted text-muted-foreground", icon: <Info className="h-3 w-3" /> },
-}
-
-// =====================================================================
 // CONTRACT PREVIEW MODAL
 // =====================================================================
 function ContractPreview({
-  evento, recetas, serviciosIncluidos, paquetePrecio, onClose,
+  open, evento, recetas, serviciosIncluidos, paquetePrecio, onClose,
 }: {
-  evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onClose: () => void
+  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onClose: () => void
 }) {
   const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio)
+  if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+    // Este div vive DENTRO del SheetContent en el JSX, por lo que Radix
+    // no lo detecta como "fuera" del Sheet al medir foco/pointer.
+    // El position:fixed cubre toda la pantalla visualmente.
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
+      // Evitar que clicks en el backdrop cierren el Sheet
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
           <div className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-primary" />
             <span className="font-semibold">Vista Previa del Contrato</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); onClose() }}
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </div>
         <iframe
           srcDoc={html}
-          className="flex-1 w-full rounded-b-xl"
+          className="flex-1 w-full"
           title="Vista previa del contrato"
         />
       </div>
@@ -306,377 +311,54 @@ function ContractPreview({
 }
 
 // =====================================================================
-// VERSION HISTORY PANEL
+// HELPERS: contract services + package price for an event
 // =====================================================================
-function VersionHistoryPanel({
-  versiones,
-  evento,
-  recetas,
-  catalogoServicios,
-}: {
-  versiones: VersionContrato[]
-  evento: EventoGuardado
-  recetas: Receta[]
-  catalogoServicios: { id: string; nombre: string }[]
-}) {
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
-  const sorted = [...versiones].sort((a, b) => b.version - a.version)
-
-  if (sorted.length === 0) return null
-
-  const handlePreview = (v: VersionContrato) => {
-    const serviciosNombres = v.snapshotServicios
-      .map((id) => catalogoServicios.find((s) => s.id === id)?.nombre || id)
-      .concat(v.snapshotServiciosLibres)
-    // Build a modified evento snapshot for this version
-    const eventoSnapshot: EventoGuardado = {
-      ...evento,
-      contrato: {
-        nombreCompleto: v.snapshotContrato.nombreCompleto,
-        dni: v.snapshotContrato.dni,
-        telefono: v.snapshotContrato.telefono,
-        direccion: v.snapshotContrato.direccion,
-        email: v.snapshotContrato.email,
-      },
-      planDeCuotas: v.snapshotPlanCuotas || evento.planDeCuotas,
-    }
-    const html = generateContractHTML(eventoSnapshot, recetas, serviciosNombres, 0)
-    const win = window.open("", "_blank")
-    if (win) { win.document.write(html); win.document.close() }
-  }
-
-  const handlePrint = (v: VersionContrato) => {
-    const serviciosNombres = v.snapshotServicios
-      .map((id) => catalogoServicios.find((s) => s.id === id)?.nombre || id)
-      .concat(v.snapshotServiciosLibres)
-    const eventoSnapshot: EventoGuardado = {
-      ...evento,
-      contrato: {
-        nombreCompleto: v.snapshotContrato.nombreCompleto,
-        dni: v.snapshotContrato.dni,
-        telefono: v.snapshotContrato.telefono,
-        direccion: v.snapshotContrato.direccion,
-        email: v.snapshotContrato.email,
-      },
-      planDeCuotas: v.snapshotPlanCuotas || evento.planDeCuotas,
-    }
-    const html = generateContractHTML(eventoSnapshot, recetas, serviciosNombres, 0)
-    const win = window.open("", "_blank")
-    if (win) {
-      win.document.write(html)
-      win.document.close()
-      win.focus()
-      setTimeout(() => { win.print() }, 600)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <History className="h-4 w-4 text-primary" />
-          Historial de versiones
-          <Badge variant="secondary" className="ml-auto">{sorted.length}</Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {sorted.map((v, idx) => {
-          const isExpanded = expandedIdx === idx
-          const isFirst = idx === 0
-          return (
-            <div
-              key={v.version}
-              className={`rounded-lg border transition-colors ${isFirst ? "border-primary/30 bg-primary/5" : "border-border"}`}
-            >
-              {/* Row header */}
-              <div className="flex w-full items-center gap-3 px-4 py-3">
-                {/* Version badge */}
-                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${isFirst ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                  v{v.version}
-                </div>
-
-                {/* Date + impactos — clickable to expand */}
-                <button
-                  className="flex-1 min-w-0 text-left"
-                  onClick={() => setExpandedIdx(isExpanded ? null : idx)}
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium">
-                      {new Date(v.fechaGuardado).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}
-                      {" "}
-                      <span className="text-muted-foreground font-normal text-xs">
-                        {new Date(v.fechaGuardado).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </span>
-                    {isFirst && <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">Actual</Badge>}
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {v.impactos.map((imp) => (
-                      <span
-                        key={imp}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${IMPACTO_CONFIG[imp].className}`}
-                      >
-                        {IMPACTO_CONFIG[imp].icon}
-                        {IMPACTO_CONFIG[imp].label}
-                      </span>
-                    ))}
-                    {v.motivo && (
-                      <span className="text-[11px] text-muted-foreground italic truncate max-w-[280px]">"{v.motivo}"</span>
-                    )}
-                  </div>
-                </button>
-
-                {/* Action buttons */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    title="Vista previa"
-                    onClick={() => handlePreview(v)}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    title="Imprimir"
-                    onClick={() => handlePrint(v)}
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
-                  {/* Pencil only on latest version */}
-                  {isFirst && (
-                    <Link href={`/evento?id=${evento.id}&from=contratos`}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Editar en el planificador"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </Link>
-                  )}
-                  <button
-                    className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setExpandedIdx(isExpanded ? null : idx)}
-                    title="Ver detalle"
-                  >
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Expandable detail */}
-              {isExpanded && (
-                <div className="border-t border-border px-4 pb-4 pt-3 space-y-3 text-sm">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Cliente</p>
-                    <p>{v.snapshotContrato.nombreCompleto || "—"} {v.snapshotContrato.dni ? `· DNI ${v.snapshotContrato.dni}` : ""}</p>
-                    {v.snapshotContrato.telefono && <p className="text-muted-foreground">{v.snapshotContrato.telefono}</p>}
-                  </div>
-                  {(v.snapshotServicios.length > 0 || v.snapshotServiciosLibres.length > 0) && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Servicios</p>
-                      <ul className="space-y-0.5">
-                        {v.snapshotServicios.map((id, i) => {
-                          const nombre = catalogoServicios.find((s) => s.id === id)?.nombre || id
-                          return <li key={i} className="text-muted-foreground">{nombre}</li>
-                        })}
-                        {v.snapshotServiciosLibres.map((s, i) => (
-                          <li key={i} className="text-muted-foreground">{s} <span className="text-[10px]">(manual)</span></li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {v.snapshotPlanCuotas && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Financiacion</p>
-                      <p>{formatCurrency(v.snapshotPlanCuotas.montoTotal)} · {v.snapshotPlanCuotas.numeroCuotas} cuotas</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </CardContent>
-    </Card>
-  )
+function getServiciosIncluidos(
+  evento: EventoGuardado,
+  catalogoServicios: { id: string; nombre: string; activo?: boolean }[]
+): string[] {
+  const savedIds = evento.serviciosContrato
+  const savedLibres = evento.serviciosLibresContrato || []
+  const ids = savedIds && savedIds.length > 0
+    ? savedIds
+    : (evento.servicios || []).map((se) => se.servicioId).filter((id): id is string => Boolean(id))
+  const fromCatalog = catalogoServicios
+    .filter((s) => ids.includes(s.id) && s.activo !== false)
+    .map((s) => s.nombre)
+  return [...fromCatalog, ...savedLibres]
 }
 
 // =====================================================================
-// SALON TABS WITH DASHBOARD + EVENT LIST
+// CALENDAR HELPERS
 // =====================================================================
-function SalonesTabs({
-  eventos,
-  selectedEventoId,
-  onSelect,
-}: {
-  eventos: EventoGuardado[]
-  selectedEventoId: string
-  onSelect: (id: string) => void
-}) {
-  // Group events by salon (ignoring cancelled, already filtered upstream)
-  const eventosPorSalon = useMemo(() => {
-    const map: Record<string, EventoGuardado[]> = {}
-    for (const salon of SALONES) map[salon] = []
-    for (const ev of eventos) {
-      const key = (SALONES as readonly string[]).includes(ev.salon || "") ? (ev.salon as string) : null
-      if (key) map[key].push(ev)
-    }
-    return map
-  }, [eventos])
-
-  return (
-    <Tabs defaultValue={SALONES[0]} className="w-full">
-      <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto gap-1">
-        {SALONES.map((salon) => (
-          <TabsTrigger key={salon} value={salon} className="text-xs sm:text-sm">
-            {salon}
-            <Badge variant="secondary" className="ml-1.5 px-1.5 text-[10px]">
-              {eventosPorSalon[salon].length}
-            </Badge>
-          </TabsTrigger>
-        ))}
-      </TabsList>
-
-      {SALONES.map((salon) => {
-        const evs = eventosPorSalon[salon]
-
-        return (
-          <TabsContent key={salon} value={salon} className="space-y-5 mt-5">
-            {/* Lista de eventos del salón */}
-            {evs.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center">
-                <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No hay eventos para {salon}.</p>
-              </div>
-            ) : (
-              <EventosPorMesSalon
-                eventos={evs}
-                selectedEventoId={selectedEventoId}
-                onSelect={onSelect}
-                hideSalonColumn
-              />
-            )}
-          </TabsContent>
-        )
-      })}
-    </Tabs>
-  )
-}
-
-
-// =====================================================================
-// EVENTS TABLE GROUPED BY MONTH + SALON
-// =====================================================================
-const MESES_ES = [
+const DIAS_SEMANA = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
+const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
+const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate()
+const getFirstDayOfMonth = (year: number, month: number) => {
+  const day = new Date(year, month, 1).getDay()
+  return day === 0 ? 6 : day - 1 // Monday = 0
+}
+const isSameDay = (d1: Date, d2: Date) =>
+  d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate()
+const parseEventDate = (fecha: string): Date => {
+  const [y, m, d] = fecha.split("-").map(Number)
+  return new Date(y, m - 1, d)
+}
 
-function EventosPorMesSalon({
-  eventos,
-  selectedEventoId,
-  onSelect,
-  hideSalonColumn = false,
-}: {
-  eventos: EventoGuardado[]
-  selectedEventoId: string
-  onSelect: (id: string) => void
-  hideSalonColumn?: boolean
-}) {
-  // Group by month (YYYY-MM), then sort rows inside each month by salon, then date
-  const grupos = useMemo(() => {
-    const map = new Map<string, { label: string; eventos: EventoGuardado[] }>()
-    for (const ev of eventos) {
-      const d = new Date(ev.fecha + "T12:00:00")
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-      const label = `${MESES_ES[d.getMonth()]} ${d.getFullYear()}`
-      if (!map.has(key)) map.set(key, { label, eventos: [] })
-      map.get(key)!.eventos.push(ev)
-    }
-    // Sort months chronologically (ascending), and rows by salon then date
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, grupo]) => ({
-        key,
-        label: grupo.label,
-        eventos: [...grupo.eventos].sort((a, b) => {
-          const salonCmp = (a.salon || "zzz").localeCompare(b.salon || "zzz")
-          if (salonCmp !== 0) return salonCmp
-          return new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-        }),
-      }))
-  }, [eventos])
-
-  if (grupos.length === 0) return null
-
+// =====================================================================
+// DETAIL ROW
+// =====================================================================
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
-    <div className="space-y-6">
-      {grupos.map((grupo) => (
-        <div key={grupo.key} className="overflow-hidden rounded-xl border border-border">
-          <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
-            <Calendar className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold capitalize">{grupo.label}</h3>
-            <Badge variant="secondary" className="ml-auto text-xs">
-              {grupo.eventos.length} evento{grupo.eventos.length !== 1 ? "s" : ""}
-            </Badge>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[100px]">Fecha</TableHead>
-                {!hideSalonColumn && <TableHead className="w-[120px]">Salon</TableHead>}
-                <TableHead>Evento</TableHead>
-                <TableHead className="w-[90px] text-center">Invitados</TableHead>
-                <TableHead className="w-[110px] text-center">Contrato</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {grupo.eventos.map((ev) => {
-                const totalPersonas =
-                  ev.adultos + ev.adolescentes + ev.ninos + (ev.personasDietasEspeciales || 0)
-                const versiones = ev.versionesContrato?.length || 0
-                const isSelected = ev.id === selectedEventoId
-                return (
-                  <TableRow
-                    key={ev.id}
-                    onClick={() => onSelect(ev.id)}
-                    className={`cursor-pointer ${isSelected ? "bg-primary/5 hover:bg-primary/10" : ""}`}
-                  >
-                    <TableCell className="font-medium tabular-nums">
-                      {new Date(ev.fecha + "T12:00:00").toLocaleDateString("es-AR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                      })}
-                    </TableCell>
-                    {!hideSalonColumn && (
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">{ev.salon || "Sin salon"}</Badge>
-                      </TableCell>
-                    )}
-                    <TableCell className="font-medium">{ev.nombrePareja || ev.nombre}</TableCell>
-                    <TableCell className="text-center tabular-nums">{totalPersonas}</TableCell>
-                    <TableCell className="text-center">
-                      {versiones > 0 ? (
-                        <Badge variant="secondary" className="gap-1 text-xs">
-                          <History className="h-3 w-3" />v{Math.max(...ev.versionesContrato!.map((v) => v.version))}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Sin generar</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      ))}
+    <div className="flex items-start gap-3">
+      <div className="mt-0.5 text-muted-foreground">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="text-sm text-foreground break-words">{value || "—"}</p>
+      </div>
     </div>
   )
 }
@@ -685,82 +367,93 @@ function EventosPorMesSalon({
 // MAIN PAGE
 // =====================================================================
 function ContratosPageContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const { state, updateEvento } = useStore()
   const { eventos, paquetesSalones, recetas } = state
   const catalogoServicios = state.servicios || []
 
+  const today = new Date()
+  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
+  const [salonesActivos, setSalonesActivos] = useState<string[]>([...SALONES])
   const [selectedEventoId, setSelectedEventoId] = useState<string>("")
+  // panelOpen controla la visibilidad del Sheet de forma independiente
+  // de selectedEventoId, para que el Sheet no se cierre cuando Radix
+  // detecta "focus outside" al abrir la vista previa
+  const [panelOpen, setPanelOpen] = useState(false)
+  const showPreviewRef = useRef(false)
+  const [showPreview, setShowPreview] = useState(false)
+  // Wrapper que mantiene el ref sincronizado en el mismo tick del render,
+  // sin depender del useEffect (que llega un tick tarde para los handlers de Radix)
+  const setShowPreviewSync = (v: boolean) => {
+    showPreviewRef.current = v
+    setShowPreview(v)
+  }
+  const [isEditing, setIsEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editForm, setEditForm] = useState({
+    nombreCompleto: "",
+    dni: "",
+    telefono: "",
+    direccion: "",
+    email: "",
+    condicionIVA: "Consumidor Final",
+  })
+
+  // Valid events (exclude cancelled + require name & date)
+  const eventosValidos = useMemo(
+    () => (eventos || []).filter((e) => e.estado !== "cancelado" && (e.nombre || e.nombrePareja) && e.fecha),
+    [eventos]
+  )
 
   // Auto-select event when coming back from planificador (?eventoId=X)
   useEffect(() => {
     const eventoId = searchParams?.get("eventoId")
-    if (eventoId) setSelectedEventoId(eventoId)
-  }, [searchParams])
-  const [showPreview, setShowPreview] = useState(false)
-  const [savedOk, setSavedOk] = useState(false)
-  const [motivoCambio, setMotivoCambio] = useState("")
+    if (eventoId) {
+      setSelectedEventoId(eventoId)
+      setPanelOpen(true)
+      const ev = eventosValidos.find((e) => e.id === eventoId)
+      if (ev?.fecha) {
+        const d = parseEventDate(ev.fecha)
+        setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1))
+      }
+    }
+  }, [searchParams, eventosValidos])
 
-  // Local editable state
-  const [contratoLocal, setContratoLocal] = useState({
-    nombreCompleto: "", dni: "", telefono: "", direccion: "", email: "", condicionIVA: "Consumidor Final",
-  })
-  const [checkedIds, setCheckedIds] = useState<string[]>([])
-  const [serviciosLibres, setServiciosLibres] = useState<string[]>([])
-  const [nuevoServicio, setNuevoServicio] = useState("")
-
-  // Available events
-  const eventosDisponibles = useMemo(() =>
-    (eventos || [])
-      .filter((e) => e.estado !== "cancelado" && (e.nombre || e.nombrePareja) && e.fecha)
-      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()),
-    [eventos]
-  )
+  const countsPorSalon = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const salon of SALONES) map[salon] = 0
+    for (const ev of eventosValidos) {
+      if (ev.salon && map[ev.salon] !== undefined) map[ev.salon] += 1
+    }
+    return map
+  }, [eventosValidos])
 
   const selectedEvento = useMemo(
-    () => eventosDisponibles.find((e) => e.id === selectedEventoId),
-    [eventosDisponibles, selectedEventoId]
+    () => eventosValidos.find((e) => e.id === selectedEventoId) || null,
+    [eventosValidos, selectedEventoId]
   )
 
-  // Auto-sync when event changes — pre-populate from planificador data
+  // When switching events, exit edit mode and reload the form with fresh data
   useEffect(() => {
-    if (!selectedEvento) {
-      setContratoLocal({ nombreCompleto: "", dni: "", telefono: "", direccion: "", email: "", condicionIVA: "Consumidor Final" })
-      setCheckedIds([])
-      setServiciosLibres([])
-      return
+    setIsEditing(false)
+    if (selectedEvento) {
+      const c = selectedEvento.contrato || {}
+      setEditForm({
+        nombreCompleto: c.nombreCompleto || "",
+        dni: c.dni || "",
+        telefono: c.telefono || "",
+        direccion: c.direccion || "",
+        email: c.email || "",
+        condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
+      })
     }
-    const c = selectedEvento.contrato || {}
-    setContratoLocal({
-      nombreCompleto: c.nombreCompleto || selectedEvento.nombrePareja || selectedEvento.nombre || "",
-      dni: c.dni || selectedEvento.dniNovio1 || "",
-      telefono: c.telefono || "",
-      direccion: c.direccion || "",
-      email: c.email || "",
-      condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
-    })
-    // Restore services: if the contract was explicitly saved before, honour that.
-    // Use length > 0 check so an empty array doesn't mask services added in the planificador.
-    const savedIds = selectedEvento.serviciosContrato
-    const savedLibres = selectedEvento.serviciosLibresContrato
+  }, [selectedEvento])
 
-    if (savedIds && savedIds.length > 0) {
-      setCheckedIds(savedIds)
-      setServiciosLibres(savedLibres || [])
-    } else {
-      // Auto-populate from the planificador: use every servicioId attached to this event.
-      const fromPlanificador = (selectedEvento.servicios || [])
-        .map((se) => se.servicioId)
-        .filter((id): id is string => Boolean(id))
-      setCheckedIds(fromPlanificador)
-      setServiciosLibres(savedLibres || [])
-    }
-  // Re-run when the event changes OR when its services list changes (planificador edits).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEventoId, selectedEvento?.servicios?.length, selectedEvento?.serviciosContrato?.join(",")])
+  const serviciosIncluidos = useMemo(
+    () => (selectedEvento ? getServiciosIncluidos(selectedEvento, catalogoServicios) : []),
+    [selectedEvento, catalogoServicios]
+  )
 
-  // Package price
   const paquetePrecio = useMemo(() => {
     if (!selectedEvento) return 0
     return (selectedEvento.paquetesSeleccionados || []).reduce((total, pid) => {
@@ -770,81 +463,130 @@ function ContratosPageContent() {
     }, 0)
   }, [selectedEvento, paquetesSalones, catalogoServicios])
 
-  // Services list for the contract
-  const serviciosIncluidos = useMemo(() => {
-    const fromCatalog = (catalogoServicios || [])
-      .filter((s) => checkedIds.includes(s.id) && s.activo !== false)
-      .map((s) => s.nombre)
-    return [...fromCatalog, ...serviciosLibres]
-  }, [checkedIds, serviciosLibres, catalogoServicios])
+  const toggleSalon = (salon: string) =>
+    setSalonesActivos((prev) => (prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon]))
 
-  // Change detection vs last version
-  const ultimaVersion = useMemo(() =>
-    selectedEvento?.versionesContrato?.length
-      ? [...selectedEvento.versionesContrato].sort((a, b) => b.version - a.version)[0]
-      : null,
-    [selectedEvento]
-  )
+  const eventsForDate = (date: Date) =>
+    eventosValidos.filter(
+      (e) => salonesActivos.includes(e.salon || "") && isSameDay(parseEventDate(e.fecha), date)
+    )
 
-  const impactosDetectados = useMemo(() =>
-    detectarImpactos(ultimaVersion, contratoLocal, checkedIds, serviciosLibres, selectedEvento?.planDeCuotas),
-    [ultimaVersion, contratoLocal, checkedIds, serviciosLibres, selectedEvento]
-  )
+  const navigateMonth = (dir: number) =>
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + dir, 1))
+  const goToToday = () => setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1))
 
-  const hayImpactoFinanciero = impactosDetectados.includes("financiero")
-  const hayCambios = !impactosDetectados.includes("sin_cambios") || ultimaVersion === null
-
-  const handleSave = async () => {
+  const handlePrint = () => {
     if (!selectedEvento) return
+    const html = generateContractHTML(selectedEvento, recetas, serviciosIncluidos, paquetePrecio)
+    const printWindow = window.open("", "_blank", "width=900,height=700")
+    if (!printWindow) return
+    printWindow.document.write(html)
+    printWindow.document.close()
+    setTimeout(() => { printWindow.print() }, 300)
+  }
 
-    const versionNueva: VersionContrato = {
-      version: (selectedEvento.versionesContrato?.length ?? 0) + 1,
-      fechaGuardado: new Date().toISOString(),
-      motivo: motivoCambio.trim() || undefined,
-      snapshotContrato: { ...contratoLocal },
-      snapshotServicios: checkedIds,
-      snapshotServiciosLibres: serviciosLibres,
-      snapshotPlanCuotas: selectedEvento.planDeCuotas,
-      impactos: hayCambios ? impactosDetectados : ["sin_cambios"],
+  const handleSaveEdit = async () => {
+    if (!selectedEvento) return
+    setSaving(true)
+    try {
+      await updateEvento(selectedEvento.id, {
+        contrato: {
+          ...(selectedEvento.contrato || {}),
+          nombreCompleto: editForm.nombreCompleto.trim(),
+          dni: editForm.dni.trim(),
+          telefono: editForm.telefono.trim(),
+          direccion: editForm.direccion.trim(),
+          email: editForm.email.trim(),
+        },
+        condicionIVA: editForm.condicionIVA as EventoGuardado["condicionIVA"],
+      })
+      setIsEditing(false)
+    } finally {
+      setSaving(false)
     }
-
-    await updateEvento(selectedEvento.id, {
-      contrato: {
-        nombreCompleto: contratoLocal.nombreCompleto,
-        dni: contratoLocal.dni,
-        telefono: contratoLocal.telefono,
-        direccion: contratoLocal.direccion,
-        email: contratoLocal.email,
-      },
-      condicionIVA: contratoLocal.condicionIVA as EventoGuardado["condicionIVA"],
-      serviciosContrato: checkedIds,
-      serviciosLibresContrato: serviciosLibres,
-      versionesContrato: [...(selectedEvento.versionesContrato || []), versionNueva],
-    })
-
-    setMotivoCambio("")
-    setShowMotivo(false)
-    setSavedOk(true)
-    setTimeout(() => setSavedOk(false), 2500)
   }
 
-  const toggleChecked = (id: string) =>
-    setCheckedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
-
-  const handleAddServicioLibre = () => {
-    const trimmed = nuevoServicio.trim()
-    if (!trimmed) return
-    setServiciosLibres((prev) => [...prev, trimmed])
-    setNuevoServicio("")
+  const handleCancelEdit = () => {
+    if (selectedEvento) {
+      const c = selectedEvento.contrato || {}
+      setEditForm({
+        nombreCompleto: c.nombreCompleto || "",
+        dni: c.dni || "",
+        telefono: c.telefono || "",
+        direccion: c.direccion || "",
+        email: c.email || "",
+        condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
+      })
+    }
+    setIsEditing(false)
   }
 
-  const handleRemoveServicioLibre = (idx: number) =>
-    setServiciosLibres((prev) => prev.filter((_, i) => i !== idx))
+  // --- Month grid ---
+  const year = currentDate.getFullYear()
+  const month = currentDate.getMonth()
+  const daysInMonth = getDaysInMonth(year, month)
+  const firstDay = getFirstDayOfMonth(year, month)
+  const cells: React.ReactNode[] = []
+  for (let i = 0; i < firstDay; i++) {
+    cells.push(<div key={`empty-${i}`} className="min-h-24 rounded-sm border border-border/50 bg-muted/20" />)
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day)
+    const dayEvents = eventsForDate(date)
+    const isToday = isSameDay(date, today)
+    cells.push(
+      <div
+        key={day}
+        className={`min-h-24 rounded-sm border border-border/50 p-1 ${isToday ? "border-primary/30 bg-primary/5" : "bg-card"}`}
+      >
+        <div className="mb-0.5 flex items-center justify-between">
+          <span
+            className={`text-xs font-medium leading-none ${
+              isToday
+                ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                : "text-foreground"
+            }`}
+          >
+            {day}
+          </span>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          {dayEvents.slice(0, 3).map((ev) => {
+            const color = getSalonColor(ev.salon)
+            return (
+              <button
+                key={ev.id}
+                onClick={() => { setSelectedEventoId(ev.id); setPanelOpen(true) }}
+                className={`w-full truncate rounded-sm border-l-4 px-1.5 py-0.5 text-left text-xs transition-colors ${color.pill}`}
+                title={`${ev.nombrePareja || ev.nombre || "Evento"} · ${ev.salon || "Sin salon"}`}
+              >
+                <span className="block truncate font-medium">
+                  {ev.horario && <span className="opacity-70">{ev.horario} </span>}
+                  {ev.nombrePareja || ev.nombre || "Evento"}
+                </span>
+              </button>
+            )
+          })}
+          {dayEvents.length > 3 && (
+            <span className="text-center text-[10px] text-muted-foreground">+{dayEvents.length - 3} mas</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const contrato = selectedEvento?.contrato || {}
+  const totalInvitados = selectedEvento
+    ? selectedEvento.adultos + selectedEvento.adolescentes + selectedEvento.ninos + (selectedEvento.personasDietasEspeciales || 0)
+    : 0
+  const ultimaVersion = selectedEvento?.versionesContrato?.length
+    ? Math.max(...selectedEvento.versionesContrato.map((v) => v.version))
+    : 0
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-5xl flex items-center gap-4">
+        <div className="mx-auto flex max-w-6xl items-center gap-4">
           <Link href="/eventos/lista" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
           </Link>
@@ -853,443 +595,379 @@ function ContratosPageContent() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-6xl space-y-5 px-6 py-6">
+        {/* Salon filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-sm font-medium text-muted-foreground">Salones:</span>
+          {SALONES.map((salon) => {
+            const active = salonesActivos.includes(salon)
+            const color = getSalonColor(salon)
+            return (
+              <button
+                key={salon}
+                onClick={() => toggleSalon(salon)}
+                aria-pressed={active}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  active ? color.chipActive : `bg-background ${color.chip} opacity-60 hover:opacity-100`
+                }`}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full ${color.dot}`} />
+                {salon}
+                <span className="tabular-nums opacity-70">{countsPorSalon[salon] ?? 0}</span>
+              </button>
+            )
+          })}
+        </div>
 
-        {/* Event Selector */}
+        {/* Calendar */}
         <Card>
-          <CardContent className="p-6 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-card-foreground mb-1">Generar Contrato</h2>
-              <p className="text-sm text-muted-foreground">
-                Selecciona un evento para cargar automaticamente sus datos desde el planificador. Podes editar antes de generar.
-              </p>
+          <CardContent className="p-4 sm:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold capitalize">
+                  {MESES[month]} {year}
+                </h2>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={goToToday} className="mr-1 h-8 bg-transparent">
+                  Hoy
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)} className="h-8 w-8 bg-transparent">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => navigateMonth(1)} className="h-8 w-8 bg-transparent">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
-            {eventosDisponibles.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="rounded-full bg-muted p-6 mb-4">
-                  <Calendar className="h-10 w-10 text-muted-foreground" />
+            <div className="mb-px grid grid-cols-7 gap-px">
+              {DIAS_SEMANA.map((d) => (
+                <div key={d} className="py-1.5 text-center text-xs font-semibold text-muted-foreground">
+                  {d}
                 </div>
-                <p className="text-lg font-semibold text-card-foreground mb-1">No hay eventos guardados</p>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  Primero crea un evento desde el planificador de fiesta.
-                </p>
-                <Link href="/evento"><Button className="mt-4">Crear Evento</Button></Link>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label>Eventos por salon</Label>
-                <SalonesTabs
-                  eventos={eventosDisponibles}
-                  selectedEventoId={selectedEventoId}
-                  onSelect={setSelectedEventoId}
-                />
-              </div>
-            )}
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-px">{cells}</div>
 
-            {/* Event quick summary */}
-            {selectedEvento && (
-              <div className="rounded-xl border border-border bg-muted/30 p-4">
-                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                  <div>
-                    <p className="text-muted-foreground">Fecha</p>
-                    <p className="font-medium">{new Date(selectedEvento.fecha + "T12:00:00").toLocaleDateString("es-AR")}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Salon</p>
-                    <p className="font-medium">{selectedEvento.salon || "---"}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Invitados</p>
-                    <p className="font-medium flex items-center gap-1">
-                      <Users className="h-3.5 w-3.5" />
-                      {selectedEvento.adultos + selectedEvento.adolescentes + selectedEvento.ninos + (selectedEvento.personasDietasEspeciales || 0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Precio</p>
-                    <p className="font-medium">
-                      {selectedEvento.precioVenta
-                        ? formatCurrency(selectedEvento.precioVenta)
-                        : paquetePrecio > 0 ? formatCurrency(paquetePrecio) : "Sin precio"}
-                    </p>
-                  </div>
-                </div>
+            {eventosValidos.length === 0 && (
+              <div className="mt-6 rounded-xl border border-dashed border-border px-5 py-10 text-center">
+                <CalendarIcon className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No hay eventos guardados todavia.</p>
+                <Link href="/evento">
+                  <Button className="mt-4">Crear Evento</Button>
+                </Link>
               </div>
             )}
           </CardContent>
         </Card>
-
-        {/* VERSION HISTORY + observacion + save — shown first */}
-        {selectedEvento && (
-          <>
-            {selectedEvento.versionesContrato && selectedEvento.versionesContrato.length > 0 && (
-              <VersionHistoryPanel
-                versiones={selectedEvento.versionesContrato}
-                evento={selectedEvento}
-                recetas={recetas}
-                catalogoServicios={catalogoServicios}
-              />
-            )}
-
-            {/* Tip: editing happens from the planificador via the pencil icon */}
-            {(!selectedEvento.versionesContrato || selectedEvento.versionesContrato.length === 0) && (
-              <div className="rounded-xl border border-dashed border-border px-5 py-4 text-sm text-muted-foreground flex items-center gap-3">
-                <History className="h-4 w-4 shrink-0" />
-                <span>
-                  Este contrato no tiene versiones guardadas aun. Guarda la primera version desde el planificador del evento.
-                </span>
-                <Link href={`/evento?id=${selectedEvento.id}&from=contratos`} className="ml-auto shrink-0">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Pencil className="h-3.5 w-3.5" />
-                    Ir al planificador
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* EDITABLE PANELS */}
-        {selectedEvento && (
-          <>
-            {/* Change impact warning */}
-            {ultimaVersion && hayCambios && !impactosDetectados.includes("sin_cambios") && (
-              <div className={`rounded-xl border px-5 py-4 flex gap-3 ${hayImpactoFinanciero ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
-                <AlertTriangle className={`h-5 w-5 shrink-0 mt-0.5 ${hayImpactoFinanciero ? "text-red-500" : "text-amber-500"}`} />
-                <div className="space-y-1.5">
-                  <p className={`text-sm font-semibold ${hayImpactoFinanciero ? "text-red-800" : "text-amber-800"}`}>
-                    {hayImpactoFinanciero
-                      ? "Cambio con impacto financiero — afecta el plan de cuotas y Caja Eventos"
-                      : "Hay cambios respecto a la ultima version guardada"}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {impactosDetectados.map((imp) => (
-                      <span
-                        key={imp}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${IMPACTO_CONFIG[imp].className}`}
-                      >
-                        {IMPACTO_CONFIG[imp].icon}
-                        {IMPACTO_CONFIG[imp].label}
-                      </span>
-                    ))}
-                  </div>
-                  <p className={`text-xs ${hayImpactoFinanciero ? "text-red-600" : "text-amber-600"}`}>
-                    Al guardar se creara la version {(ultimaVersion?.version ?? 0) + 1} del contrato y quedara registrado en el historial.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* First version info */}
-            {!ultimaVersion && (
-              <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 flex gap-3">
-                <Info className="h-4 w-4 shrink-0 mt-0.5 text-sky-500" />
-                <p className="text-sm text-sky-700">
-                  Este evento no tiene contrato guardado todavia. Los datos se precargaron automaticamente desde el planificador. Revisalos y guarda para crear la version 1.
-                </p>
-              </div>
-            )}
-
-            <div className="grid gap-6 lg:grid-cols-2">
-
-              {/* PANEL 1: Datos del Contrato */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <User className="h-4 w-4 text-primary" />
-                    Datos del Contrato
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="nombreCompleto">Nombre completo</Label>
-                      <Input
-                        id="nombreCompleto"
-                        value={contratoLocal.nombreCompleto}
-                        onChange={(e) => setContratoLocal((p) => ({ ...p, nombreCompleto: e.target.value }))}
-                        placeholder="Nombre y apellido del cliente"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="dni">DNI</Label>
-                        <Input
-                          id="dni"
-                          value={contratoLocal.dni}
-                          onChange={(e) => setContratoLocal((p) => ({ ...p, dni: e.target.value }))}
-                          placeholder="12.345.678"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="telefono">Telefono</Label>
-                        <Input
-                          id="telefono"
-                          value={contratoLocal.telefono}
-                          onChange={(e) => setContratoLocal((p) => ({ ...p, telefono: e.target.value }))}
-                          placeholder="11 1234-5678"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="direccion">Direccion</Label>
-                      <Input
-                        id="direccion"
-                        value={contratoLocal.direccion}
-                        onChange={(e) => setContratoLocal((p) => ({ ...p, direccion: e.target.value }))}
-                        placeholder="Calle, numero, localidad"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={contratoLocal.email}
-                        onChange={(e) => setContratoLocal((p) => ({ ...p, email: e.target.value }))}
-                        placeholder="cliente@email.com"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Condicion IVA</Label>
-                      <Select
-                        value={contratoLocal.condicionIVA}
-                        onValueChange={(v) => setContratoLocal((p) => ({ ...p, condicionIVA: v }))}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Consumidor Final">Consumidor Final</SelectItem>
-                          <SelectItem value="Responsable Inscripto">Responsable Inscripto</SelectItem>
-                          <SelectItem value="Monotributista">Monotributista</SelectItem>
-                          <SelectItem value="Exento">Exento</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* PANEL 2: Servicios */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <ListChecks className="h-4 w-4 text-primary" />
-                    Servicios del Contrato
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Servicios del evento (agregados desde el planificador) */}
-                  {(() => {
-                    const serviciosEvento = selectedEvento?.servicios || []
-                    const serviciosEnEvento = serviciosEvento.map((se) => {
-                      const cat = catalogoServicios.find((s) => s.id === se.servicioId)
-                      return { id: se.servicioId, nombre: se.nombre || cat?.nombre || se.servicioId, precio: cat?.precioVenta, cantidad: se.cantidad, unidad: se.unidad }
-                    })
-
-                    // Servicios del catalogo no incluidos en el evento
-                    const idsEnEvento = serviciosEvento.map((se) => se.servicioId)
-                    const catalogoExtras = catalogoServicios.filter((s) => s.activo !== false && !idsEnEvento.includes(s.id))
-
-                    return (
-                      <>
-                        {/* Sección principal: los del evento */}
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Contratados en este evento
-                          </p>
-                          {serviciosEnEvento.length > 0 ? (
-                            <div className="rounded-md border border-border divide-y divide-border">
-                              {serviciosEnEvento.map((s) => (
-                                <label
-                                  key={s.id}
-                                  className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors"
-                                >
-                                  <Checkbox
-                                    checked={checkedIds.includes(s.id)}
-                                    onCheckedChange={() => toggleChecked(s.id)}
-                                  />
-                                  <span className="flex-1 text-sm font-medium text-card-foreground">{s.nombre}</span>
-                                  {s.unidad === "Por Hora" && s.cantidad && s.cantidad > 1 && (
-                                    <span className="text-xs text-muted-foreground">{s.cantidad}h</span>
-                                  )}
-                                  {s.precio != null && (
-                                    <span className="text-xs text-muted-foreground tabular-nums">
-                                      {formatCurrency(s.unidad === "Por Hora" && s.cantidad ? s.precio * s.cantidad : s.precio)}
-                                    </span>
-                                  )}
-                                </label>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="rounded-md border border-dashed border-border px-3 py-4 text-center">
-                              <p className="text-sm text-muted-foreground">
-                                No hay servicios agregados en el planificador de este evento.
-                              </p>
-                              <Link
-                                href={selectedEvento?.id ? `/evento?id=${selectedEvento.id}` : "/evento"}
-                                className="text-xs text-primary underline hover:no-underline"
-                              >
-                                Ir al planificador del evento
-                              </Link>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Sección secundaria: otros del catálogo no incluidos en el evento */}
-                        {catalogoExtras.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                              Agregar del catalogo
-                            </p>
-                            <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border">
-                              {catalogoExtras.map((s) => (
-                                <label
-                                  key={s.id}
-                                  className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/40 transition-colors"
-                                >
-                                  <Checkbox
-                                    checked={checkedIds.includes(s.id)}
-                                    onCheckedChange={() => toggleChecked(s.id)}
-                                  />
-                                  <span className="flex-1 text-sm text-card-foreground">{s.nombre}</span>
-                                  {s.precioVenta != null && (
-                                    <span className="text-xs text-muted-foreground tabular-nums">{formatCurrency(s.precioVenta)}</span>
-                                  )}
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )
-                  })()}
-
-                  {/* Texto libre */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Agregar servicio manual</p>
-                    <div className="flex gap-2">
-                      <Input
-                        value={nuevoServicio}
-                        onChange={(e) => setNuevoServicio(e.target.value)}
-                        placeholder="Ej: Barra de tragos premium"
-                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddServicioLibre() } }}
-                        className="flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={handleAddServicioLibre}
-                        disabled={!nuevoServicio.trim()}
-                        className="bg-transparent"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {serviciosLibres.length > 0 && (
-                      <div className="space-y-1">
-                        {serviciosLibres.map((s, i) => (
-                          <div key={i} className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-1.5">
-                            <span className="flex-1 text-sm">{s}</span>
-                            <button onClick={() => handleRemoveServicioLibre(i)} className="text-muted-foreground hover:text-destructive transition-colors">
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {serviciosIncluidos.length > 0 && (
-                    <p className="text-xs text-muted-foreground border-t border-border pt-2">
-                      {serviciosIncluidos.length} servicio{serviciosIncluidos.length !== 1 ? "s" : ""} se incluiran en el contrato
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Plan de cuotas info */}
-            {selectedEvento.planDeCuotas && selectedEvento.planDeCuotas.montoTotal > 0 && (
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <DollarSign className="h-4 w-4 text-primary" />
-                    <p className="text-sm font-semibold">Plan de financiacion</p>
-                    <Badge variant="outline" className="ml-auto text-xs capitalize">
-                      {selectedEvento.planDeCuotas.modalidadPago || "cuotas"}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                    <div>
-                      <p className="text-muted-foreground">Total</p>
-                      <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoTotal)}</p>
-                    </div>
-                    {selectedEvento.planDeCuotas.montoSena && selectedEvento.planDeCuotas.montoSena > 0 && (
-                      <div>
-                        <p className="text-muted-foreground">Sena</p>
-                        <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoSena)}</p>
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-muted-foreground">Cuotas</p>
-                      <p className="font-semibold">{selectedEvento.planDeCuotas.numeroCuotas}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Por cuota</p>
-                      <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoCuota)}</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-3">
-                    Para modificar la financiacion, editá el plan de cuotas desde el{" "}
-                    <Link href={`/evento?id=${selectedEvento.id}`} className="text-primary underline hover:no-underline">planificador</Link>.
-                    Cualquier cambio de monto o modalidad se detectara automaticamente al volver a esta pantalla.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Print / preview actions */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button
-                variant="outline"
-                onClick={() => setShowPreview(true)}
-                className="flex-1 h-12 gap-2 bg-transparent"
-              >
-                <Eye className="h-4 w-4" />
-                Vista Previa
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (!selectedEvento) return
-                  const html = generateContractHTML(selectedEvento, recetas, serviciosIncluidos, paquetePrecio)
-                  const printWindow = window.open("", "_blank", "width=900,height=700")
-                  if (!printWindow) return
-                  printWindow.document.write(html)
-                  printWindow.document.close()
-                  setTimeout(() => { printWindow.print() }, 300)
-                }}
-                className="h-12 gap-2 bg-transparent sm:w-44"
-              >
-                <Printer className="h-4 w-4" />
-                Imprimir
-              </Button>
-            </div>
-
-          </>
-        )}
       </main>
 
-      {showPreview && selectedEvento && (
-        <ContractPreview
-          evento={selectedEvento}
-          recetas={recetas}
-          serviciosIncluidos={serviciosIncluidos}
-          paquetePrecio={paquetePrecio}
-          onClose={() => setShowPreview(false)}
-        />
+      {/* SIDE PANEL — panel custom sin Radix para evitar cierre involuntario */}
+      {panelOpen && (
+        <>
+          {/* backdrop — solo cierra si no hay preview activa */}
+          <div
+            className="fixed inset-0 z-40 bg-black/40"
+            onClick={() => {
+              if (showPreviewRef.current) return
+              setPanelOpen(false)
+              setSelectedEventoId("")
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col gap-0 border-l border-border bg-background shadow-xl"
+          >
+          {selectedEvento && (
+            <>
+              <div className="border-b border-border px-6 py-4 text-left">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-3 w-3 rounded-full ${getSalonColor(selectedEvento.salon).dot}`} />
+                    <h2 className="text-base font-semibold">
+                      {selectedEvento.nombrePareja || selectedEvento.nombre || "Evento"}
+                    </h2>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => { setPanelOpen(false); setSelectedEventoId("") }}
+                    aria-label="Cerrar panel"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="text-xs">{selectedEvento.salon || "Sin salon"}</Badge>
+                  {ultimaVersion > 0 ? (
+                    <Badge variant="secondary" className="gap-1 text-xs">
+                      <History className="h-3 w-3" />
+                      Contrato v{ultimaVersion}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">Sin contrato generado</Badge>
+                  )}
+                </div>
+
+                {/* Toolbar: editar (lapiz) + imprimir */}
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    variant={isEditing ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => (isEditing ? handleCancelEdit() : setIsEditing(true))}
+                    className="gap-2 bg-transparent"
+                    aria-pressed={isEditing}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    {isEditing ? "Cancelar edicion" : "Editar"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePrint}
+                    className="gap-2 bg-transparent"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Imprimir
+                  </Button>
+                </div>
+                </div>
+
+              <ScrollArea className="flex-1">
+                <div className="space-y-6 px-6 py-5">
+                  {/* Evento */}
+                  <section className="space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Datos del evento</p>
+                    <DetailRow
+                      icon={<CalendarIcon className="h-4 w-4" />}
+                      label="Fecha"
+                      value={new Date(selectedEvento.fecha + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+                    />
+                    <DetailRow
+                      icon={<Clock className="h-4 w-4" />}
+                      label="Horario"
+                      value={selectedEvento.horario ? `${selectedEvento.horario}${selectedEvento.horarioFin ? ` a ${selectedEvento.horarioFin}` : ""} hs.` : "—"}
+                    />
+                    <DetailRow
+                      icon={<MapPin className="h-4 w-4" />}
+                      label="Salon"
+                      value={selectedEvento.salon ? SALON_DIRECCIONES[selectedEvento.salon] || selectedEvento.salon : "—"}
+                    />
+                    <DetailRow
+                      icon={<Users className="h-4 w-4" />}
+                      label="Invitados"
+                      value={`${totalInvitados} personas (${selectedEvento.adultos} adultos, ${selectedEvento.adolescentes} adol., ${selectedEvento.ninos} ninos)`}
+                    />
+                  </section>
+
+                  <Separator />
+
+                  {/* Cliente */}
+                  <section className="space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Datos del cliente</p>
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-nombre" className="text-xs text-muted-foreground">Nombre completo</Label>
+                          <Input
+                            id="edit-nombre"
+                            value={editForm.nombreCompleto}
+                            onChange={(e) => setEditForm((f) => ({ ...f, nombreCompleto: e.target.value }))}
+                            placeholder="Nombre y apellido"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="edit-dni" className="text-xs text-muted-foreground">DNI</Label>
+                            <Input
+                              id="edit-dni"
+                              value={editForm.dni}
+                              onChange={(e) => setEditForm((f) => ({ ...f, dni: e.target.value }))}
+                              placeholder="DNI"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="edit-telefono" className="text-xs text-muted-foreground">Telefono</Label>
+                            <Input
+                              id="edit-telefono"
+                              value={editForm.telefono}
+                              onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))}
+                              placeholder="Telefono"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-direccion" className="text-xs text-muted-foreground">Direccion</Label>
+                          <Input
+                            id="edit-direccion"
+                            value={editForm.direccion}
+                            onChange={(e) => setEditForm((f) => ({ ...f, direccion: e.target.value }))}
+                            placeholder="Direccion"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-email" className="text-xs text-muted-foreground">Email</Label>
+                          <Input
+                            id="edit-email"
+                            type="email"
+                            value={editForm.email}
+                            onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                            placeholder="Email"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Condicion IVA</Label>
+                          <Select
+                            value={editForm.condicionIVA}
+                            onValueChange={(v) => setEditForm((f) => ({ ...f, condicionIVA: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Condicion IVA" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Consumidor Final">Consumidor Final</SelectItem>
+                              <SelectItem value="Responsable Inscripto">Responsable Inscripto</SelectItem>
+                              <SelectItem value="Monotributista">Monotributista</SelectItem>
+                              <SelectItem value="Exento">Exento</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <DetailRow icon={<User className="h-4 w-4" />} label="Nombre completo" value={contrato.nombreCompleto} />
+                        <DetailRow icon={<FileText className="h-4 w-4" />} label="DNI" value={contrato.dni} />
+                        <DetailRow icon={<Phone className="h-4 w-4" />} label="Telefono" value={contrato.telefono} />
+                        <DetailRow icon={<MapPin className="h-4 w-4" />} label="Direccion" value={contrato.direccion} />
+                        <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={contrato.email} />
+                        <DetailRow icon={<FileText className="h-4 w-4" />} label="Condicion IVA" value={selectedEvento.condicionIVA || "Consumidor Final"} />
+                      </>
+                    )}
+                  </section>
+
+                  <Separator />
+
+                  {/* Servicios */}
+                  <section className="space-y-3">
+                    <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                      <ListChecks className="h-3.5 w-3.5" />
+                      Servicios del contrato
+                    </p>
+                    {serviciosIncluidos.length > 0 ? (
+                      <ul className="space-y-1">
+                        {serviciosIncluidos.map((s, i) => (
+                          <li key={i} className="flex items-center gap-2 text-sm text-foreground">
+                            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Sin servicios cargados.</p>
+                    )}
+                  </section>
+
+                  {/* Plan de cuotas */}
+                  {selectedEvento.planDeCuotas && selectedEvento.planDeCuotas.montoTotal > 0 && (
+                    <>
+                      <Separator />
+                      <section className="space-y-3">
+                        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                          <DollarSign className="h-3.5 w-3.5" />
+                          Financiacion
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Total</p>
+                            <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoTotal)}</p>
+                          </div>
+                          {selectedEvento.planDeCuotas.montoSena && selectedEvento.planDeCuotas.montoSena > 0 && (
+                            <div>
+                              <p className="text-xs text-muted-foreground">Sena</p>
+                              <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoSena)}</p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs text-muted-foreground">Cuotas</p>
+                            <p className="font-semibold">{selectedEvento.planDeCuotas.numeroCuotas}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Por cuota</p>
+                            <p className="font-semibold">{formatCurrency(selectedEvento.planDeCuotas.montoCuota)}</p>
+                          </div>
+                        </div>
+                      </section>
+                    </>
+                  )}
+                </div>
+              </ScrollArea>
+
+              {/* Actions */}
+              <div className="border-t border-border p-4">
+                {isEditing ? (
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleCancelEdit} disabled={saving} className="flex-1 gap-2 bg-transparent">
+                      <X className="h-4 w-4" />
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleSaveEdit} disabled={saving} className="flex-1 gap-2">
+                      {saving ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                      {saving ? "Guardando..." : "Guardar cambios"}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onPointerDown={(e) => {
+                          // Actualizar ref síncronamente y parar la propagación
+                          // para que el listener de Radix en el documento no
+                          // interprete este pointer-down como "fuera del Sheet"
+                          showPreviewRef.current = true
+                          e.stopPropagation()
+                        }}
+                        onClick={() => setShowPreviewSync(true)}
+                        className="flex-1 gap-2 bg-transparent"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Vista Previa
+                      </Button>
+                      <Button variant="outline" onClick={handlePrint} className="flex-1 gap-2 bg-transparent">
+                        <Printer className="h-4 w-4" />
+                        Imprimir
+                      </Button>
+                    </div>
+                    <Link href={`/evento?id=${selectedEvento.id}&from=contratos`} className="mt-2 block">
+                      <Button variant="ghost" className="w-full gap-2 text-muted-foreground">
+                        <Pencil className="h-4 w-4" />
+                        Editar en el planificador
+                      </Button>
+                    </Link>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Preview rendered as a Dialog INSIDE the Sheet: Radix's layer
+              stack keeps the Sheet open while the Dialog is the top layer */}
+          {selectedEvento && (
+            <ContractPreview
+              open={showPreview}
+              evento={selectedEvento}
+              recetas={recetas}
+              serviciosIncluidos={serviciosIncluidos}
+              paquetePrecio={paquetePrecio}
+              onClose={() => setShowPreviewSync(false)}
+            />
+          )}
+          </div>
+        </>
       )}
     </div>
   )

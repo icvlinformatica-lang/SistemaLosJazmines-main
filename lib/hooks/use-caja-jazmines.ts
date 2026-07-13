@@ -12,6 +12,7 @@ export type EstadoAlerta = "vencido" | "urgente" | "proximo" | "ok"
 export interface AlertaVencimiento {
   id: string
   concepto: string
+  salon: string | null | undefined
   monto: number
   fechaVencimiento: string
   diasRestantes: number
@@ -57,17 +58,24 @@ function parseLocalDate(dateStr: string): Date {
 // ============================================================
 // Hook
 // ============================================================
-export function useCajaJazmines(state: AppState): CajaJazminData {
+export function useCajaJazmines(state: AppState, salonFiltro?: string): CajaJazminData {
   return useMemo(() => {
+    const salonSel = salonFiltro && salonFiltro !== "todos" ? salonFiltro : null
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
 
     const en30Dias = new Date(hoy)
     en30Dias.setDate(en30Dias.getDate() + 30)
 
-    const movimientos: MovimientoCaja[] = state.movimientosCaja || []
-    const costosOperativos = state.costosOperativos || []
-    const eventos = state.eventos || []
+    const movimientos: MovimientoCaja[] = (state.movimientosCaja || []).filter(
+      (m) => !salonSel || m.salon === salonSel
+    )
+    const costosOperativos = (state.costosOperativos || []).filter(
+      (c) => !salonSel || c.salon === salonSel
+    )
+    const eventos = (state.eventos || []).filter(
+      (e) => !salonSel || e.salon === salonSel
+    )
 
     // ----------------------------------------------------------
     // 1. SALDO ACTUAL de caja_jazmines
@@ -122,6 +130,7 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
           alertasVencimiento.push({
             id: costo.id,
             concepto: costo.concepto,
+            salon: costo.salon,
             monto: costo.monto,
             fechaVencimiento: fechaVencStr,
             diasRestantes,
@@ -167,6 +176,7 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
         alertasVencimiento.push({
           id: costo.id,
           concepto: `[Variable] ${costo.concepto}`,
+          salon: costo.salon,
           monto: costo.monto,
           fechaVencimiento: costo.fechaVencimiento,
           diasRestantes,
@@ -244,5 +254,5 @@ export function useCajaJazmines(state: AppState): CajaJazminData {
       gastosVariables,
       ingresosProyectados30Dias,
     }
-  }, [state.movimientosCaja, state.costosOperativos, state.eventos])
+  }, [state.movimientosCaja, state.costosOperativos, state.eventos, salonFiltro])
 }

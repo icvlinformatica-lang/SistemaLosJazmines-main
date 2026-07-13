@@ -23,6 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
+import { SALONES, salonLabel } from "@/lib/store"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
 import type { EstadoAlerta, GastoFijoMes } from "@/lib/hooks/use-caja-jazmines"
 import {
@@ -101,7 +102,8 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
 
 export default function CajaJazminePage() {
   const { state, updateCostoOperativo, addCostoOperativo, deleteCostoOperativo } = useStore()
-  const data = useCajaJazmines(state)
+  const [salonFiltro, setSalonFiltro] = useState<string>("todos")
+  const data = useCajaJazmines(state, salonFiltro)
 
   const {
     saldoActual,
@@ -119,6 +121,7 @@ export default function CajaJazminePage() {
     concepto: "",
     monto: "",
     fechaVencimiento: "",
+    salon: "",
     pagado: false,
   })
 
@@ -129,6 +132,7 @@ export default function CajaJazminePage() {
       monto: String(gasto.monto),
       fechaVencimiento:
         state.costosOperativos?.find((c) => c.id === gasto.id)?.fechaVencimiento ?? "",
+      salon: gasto.salon ?? "",
       pagado: gasto.estado === "pagado",
     })
   }
@@ -139,6 +143,7 @@ export default function CajaJazminePage() {
       concepto: editFijo.concepto,
       monto: Number(editFijo.monto),
       fechaVencimiento: editFijo.fechaVencimiento || undefined,
+      salon: editFijo.salon || null,
       pagado: editFijo.pagado,
     })
     setEditandoFijo(null)
@@ -150,6 +155,7 @@ export default function CajaJazminePage() {
     concepto: "",
     monto: "",
     fechaVencimiento: "",
+    salon: "",
     frecuencia: "Mensual" as "Mensual" | "Anual",
   })
 
@@ -161,12 +167,13 @@ export default function CajaJazminePage() {
       monto: Number(nuevoFijo.monto),
       frecuencia: nuevoFijo.frecuencia,
       esPorPersona: false,
+      salon: nuevoFijo.salon || null,
       activo: true,
       fechaVencimiento: nuevoFijo.fechaVencimiento || undefined,
       esVariable: false,
       pagado: false,
     })
-    setNuevoFijo({ concepto: "", monto: "", fechaVencimiento: "", frecuencia: "Mensual" })
+    setNuevoFijo({ concepto: "", monto: "", fechaVencimiento: "", salon: "", frecuencia: "Mensual" })
     setModalFijoAbierto(false)
   }
 
@@ -203,17 +210,43 @@ export default function CajaJazminePage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-          <Building className="h-5 w-5 text-purple-700" />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-start gap-3 flex-1">
+          <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
+            <Building className="h-5 w-5 text-purple-700" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Jazmines</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              50% de cada cobro de cuota. Fondos de la empresa: sueldos, gastos fijos y administración.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Jazmines</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            50% de cada cobro de cuota. Fondos de la empresa: sueldos, gastos fijos y administración.
-          </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <Building className="h-4 w-4 text-muted-foreground" />
+          <Select value={salonFiltro} onValueChange={setSalonFiltro}>
+            <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
+              <SelectValue placeholder="Todos los salones" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los salones</SelectItem>
+              {SALONES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {salonLabel(s)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
+
+      {salonFiltro !== "todos" && (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Mostrando únicamente el saldo y los gastos del salón{" "}
+          <span className="font-medium text-foreground">{salonLabel(salonFiltro)}</span>.
+          Los gastos generales (sin salón) solo aparecen en la vista de todos los salones.
+        </p>
+      )}
 
       {/* Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -282,8 +315,9 @@ export default function CajaJazminePage() {
                   {puntoPrioridad(alerta.estado)}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">{alerta.concepto}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 capitalize">
-                      {descripcionAlerta(alerta.diasRestantes, alerta.estado)}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      <span className="capitalize">{descripcionAlerta(alerta.diasRestantes, alerta.estado)}</span>
+                      {alerta.salon ? ` · ${salonLabel(alerta.salon)}` : ""}
                     </p>
                   </div>
                   <span className="text-sm font-bold text-red-600 shrink-0">
@@ -350,7 +384,7 @@ export default function CajaJazminePage() {
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {gasto.frecuencia}
-                          {gasto.salon ? ` · ${gasto.salon}` : ""}
+                          {` · ${salonLabel(gasto.salon)}`}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -446,7 +480,7 @@ export default function CajaJazminePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{gasto.nombre}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {gasto.salon} · {formatFecha(gasto.fecha)}
+                        {salonLabel(gasto.salon)} · {formatFecha(gasto.fecha)}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -561,6 +595,28 @@ export default function CajaJazminePage() {
               />
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="nf-salon">Salón</Label>
+              <Select
+                value={nuevoFijo.salon || "General"}
+                onValueChange={(v) => setNuevoFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
+              >
+                <SelectTrigger id="nf-salon">
+                  <SelectValue placeholder="Seleccionar salón" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="General">General (todos los salones)</SelectItem>
+                  {SALONES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {salonLabel(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Elegí un salón para atribuir el gasto, o &quot;General&quot; si es compartido.
+              </p>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="nf-fecha">Fecha de vencimiento</Label>
               <Input
                 id="nf-fecha"
@@ -622,6 +678,25 @@ export default function CajaJazminePage() {
                 value={editFijo.monto}
                 onChange={(e) => setEditFijo((p) => ({ ...p, monto: e.target.value }))}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ef-salon">Salón</Label>
+              <Select
+                value={editFijo.salon || "General"}
+                onValueChange={(v) => setEditFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
+              >
+                <SelectTrigger id="ef-salon">
+                  <SelectValue placeholder="Seleccionar salón" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="General">General (todos los salones)</SelectItem>
+                  {SALONES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {salonLabel(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ef-fecha">Fecha de vencimiento</Label>
@@ -696,10 +771,11 @@ export default function CajaJazminePage() {
                   <SelectValue placeholder="Seleccionar salón" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Quinta">Quinta</SelectItem>
-                  <SelectItem value="Casona">Casona</SelectItem>
-                  <SelectItem value="Salon">Salón</SelectItem>
-                  <SelectItem value="General">General</SelectItem>
+                  {SALONES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {salonLabel(s)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
