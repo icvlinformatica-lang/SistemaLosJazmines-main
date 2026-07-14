@@ -629,16 +629,22 @@ export interface HistorialIPCEntry {
 
 /**
  * Determina si un evento tiene cuotas que se ajustan por IPC.
- * Requiere un plan en cuotas con array de cuotas y la bandera ajustaPorIPC distinta de false
- * (undefined se considera "ajustable" para no romper eventos previos al selector).
+ *
+ * REGLA ESTRICTA (opt-in): el IPC SOLO se aplica cuando el evento fue marcado
+ * explícitamente como "Ajustables por IPC" (ajustaPorIPC === true). Las cuotas
+ * fijas, los eventos sin la bandera (undefined / previos al selector), los pagos
+ * completos y las señas nunca se ajustan. Así nunca se le suma IPC a un plan de
+ * cuotas fijas por error.
  */
 export function eventoAjustaPorIPC(evento: { planDeCuotas?: EventoGuardado["planDeCuotas"] }): boolean {
   const plan = evento.planDeCuotas
   if (!plan) return false
-  if (plan.ajustaPorIPC === false) return false
+  // Debe estar marcado explícitamente como ajustable
+  if (plan.ajustaPorIPC !== true) return false
+  // Y debe ser una financiación en más de una cuota con detalle de cuotas
   const tieneCuotas = Array.isArray(plan.cuotas) && plan.cuotas.length > 0
   const enCuotas = (plan.numeroCuotas ?? 0) > 1
-  return tieneCuotas || enCuotas
+  return tieneCuotas && enCuotas
 }
 
 /**

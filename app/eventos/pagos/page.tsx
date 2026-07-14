@@ -798,7 +798,8 @@ function PagosPageContent() {
               const calendarioCuotas = generarCalendarioCuotas(freshEvento)
               const proximaCuota = calendarioCuotas.find(c => !c.pagada)
               const montoCuotaOriginal = freshEvento.planDeCuotas?.montoCuota || 0
-              const ajustaPorIPC = freshEvento.planDeCuotas?.ajustaPorIPC !== false
+              // Estricto: solo eventos marcados explícitamente como ajustables por IPC
+              const ajustaPorIPC = freshEvento.planDeCuotas?.ajustaPorIPC === true
               const cuotaFueAjustada = ajustaPorIPC && proximaCuota != null && montoCuotaOriginal > 0 && proximaCuota.monto > montoCuotaOriginal
 
               if (proximaCuota && proximaCuota.fechaVencimiento) {
