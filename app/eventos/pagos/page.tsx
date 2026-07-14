@@ -8,6 +8,8 @@ import {
   generateId,
   formatCurrency,
   generarCalendarioCuotas,
+  salonLabel,
+  SALONES,
   type EventoGuardado,
   type MovimientoCaja,
   type PagoEvento,
@@ -17,6 +19,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -177,6 +187,10 @@ function PagosPageContent() {
   const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja } = useStore()
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
+  // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
+  const [searchMode, setSearchMode] = useState<"texto" | "fechaSalon">("texto")
+  const [filtroFecha, setFiltroFecha] = useState("")
+  const [filtroSalon, setFiltroSalon] = useState<string>("todos")
   const [selectedEvento, setSelectedEvento] = useState<EventoGuardado | null>(() => {
     if (initialSearch) {
       const found = eventos.find(
@@ -209,21 +223,40 @@ function PagosPageContent() {
   const [montoTotal, setMontoTotal] = useState(0)
   const [showCuotasConfig, setShowCuotasConfig] = useState(false)
 
+  // ¿Hay una búsqueda activa según el modo?
+  const hayBusquedaActiva =
+    searchMode === "texto"
+      ? searchTerm.trim().length > 0
+      : filtroFecha.trim().length > 0 || filtroSalon !== "todos"
+
   // Search results
   const searchResults = useMemo(() => {
-    if (!searchTerm.trim()) return []
-    const term = searchTerm.toLowerCase().trim()
-    return eventos.filter((e) => {
-      const nameMatch = (e.nombre || "").toLowerCase().includes(term)
-      const parejaMatch = (e.nombrePareja || "").toLowerCase().includes(term)
-      const dniMatch = (e.dniNovio1 || "").includes(term) || (e.dniNovio2 || "").includes(term)
-      return nameMatch || parejaMatch || dniMatch
-    })
-  }, [eventos, searchTerm])
+    if (searchMode === "texto") {
+      if (!searchTerm.trim()) return []
+      const term = searchTerm.toLowerCase().trim()
+      return eventos.filter((e) => {
+        const nameMatch = (e.nombre || "").toLowerCase().includes(term)
+        const parejaMatch = (e.nombrePareja || "").toLowerCase().includes(term)
+        const dniMatch = (e.dniNovio1 || "").includes(term) || (e.dniNovio2 || "").includes(term)
+        return nameMatch || parejaMatch || dniMatch
+      })
+    }
+    // Modo fecha + salón: al menos un filtro debe estar activo
+    if (!filtroFecha.trim() && filtroSalon === "todos") return []
+    return eventos
+      .filter((e) => {
+        const fechaMatch = !filtroFecha.trim() || e.fecha === filtroFecha
+        const salonMatch = filtroSalon === "todos" || e.salon === filtroSalon
+        return fechaMatch && salonMatch
+      })
+      .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""))
+  }, [eventos, searchMode, searchTerm, filtroFecha, filtroSalon])
 
   const handleSelectEvento = (ev: EventoGuardado) => {
     setSelectedEvento(ev)
     setSearchTerm("")
+    setFiltroFecha("")
+    setFiltroSalon("todos")
     // Load cuotas data if exists
     if (ev.montoTotalPlan && ev.montoTotalPlan > 0) {
       setMontoTotal(ev.montoTotalPlan)
@@ -443,56 +476,133 @@ function PagosPageContent() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Buscar Evento</CardTitle>
-              <CardDescription>Busca por DNI o nombre del evento para gestionar sus pagos</CardDescription>
+              <CardDescription>Busca por DNI/nombre, o filtra por fecha y salón para gestionar los pagos</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nombre, festejados o DNI..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 h-12 text-base"
-                  autoFocus
-                />
-              </div>
-              {searchTerm.trim() && (
-                <div className="space-y-2 max-h-60 overflow-y-auto">
+            <CardContent className="space-y-4">
+              <Tabs
+                value={searchMode}
+                onValueChange={(v) => {
+                  setSearchMode(v as "texto" | "fechaSalon")
+                  setSearchTerm("")
+                  setFiltroFecha("")
+                  setFiltroSalon("todos")
+                }}
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="texto">DNI o Nombre</TabsTrigger>
+                  <TabsTrigger value="fechaSalon">Fecha y Salón</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {searchMode === "texto" ? (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nombre, festejados o DNI..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 h-12 text-base"
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="filtro-fecha" className="text-xs text-muted-foreground">
+                      Fecha del evento
+                    </Label>
+                    <div className="relative">
+                      <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      <Input
+                        id="filtro-fecha"
+                        type="date"
+                        value={filtroFecha}
+                        onChange={(e) => setFiltroFecha(e.target.value)}
+                        className="pl-10 h-11"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="filtro-salon" className="text-xs text-muted-foreground">
+                      Salón
+                    </Label>
+                    <Select value={filtroSalon} onValueChange={setFiltroSalon}>
+                      <SelectTrigger id="filtro-salon" className="h-11">
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        <SelectValue placeholder="Todos los salones" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos los salones</SelectItem>
+                        {SALONES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {salonLabel(s)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(filtroFecha || filtroSalon !== "todos") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFiltroFecha("")
+                        setFiltroSalon("todos")
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 justify-self-start sm:col-span-2"
+                    >
+                      Limpiar filtros
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {hayBusquedaActiva && (
+                <div className="space-y-2 max-h-72 overflow-y-auto">
                   {searchResults.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-4 text-center">Sin resultados para &quot;{searchTerm}&quot;</p>
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      {searchMode === "texto"
+                        ? `Sin resultados para "${searchTerm}"`
+                        : "Sin eventos para esa fecha y salón"}
+                    </p>
                   ) : (
-                    searchResults.map((ev) => {
-                      const estadoCfg = ESTADO_CONFIG[ev.estado] || ESTADO_CONFIG.pendiente
-                      const total = ev.adultos + ev.adolescentes + ev.ninos + (ev.personasDietasEspeciales || 0)
-                      const pagosSum = (ev.pagos || []).reduce((s, p) => s + p.monto, 0)
-                      return (
-                        <div
-                          key={ev.id}
-                          className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-accent/30 cursor-pointer transition-colors"
-                          onClick={() => handleSelectEvento(ev)}
-                        >
-                          <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${estadoCfg.dotColor}`} />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium truncate">{ev.nombre || ev.tipoEvento || "Evento"}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {ev.fecha}
-                              {ev.nombrePareja && ` - ${ev.nombrePareja}`}
-                              {` - ${total} pax`}
-                            </p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <Badge variant="outline" className={`text-xs ${estadoCfg.className}`}>
-                              {estadoCfg.label}
-                            </Badge>
-                            {pagosSum > 0 && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Pagado: {formatCurrency(pagosSum)}
+                    <>
+                      <p className="text-xs text-muted-foreground px-1">
+                        {searchResults.length} {searchResults.length === 1 ? "evento encontrado" : "eventos encontrados"}
+                      </p>
+                      {searchResults.map((ev) => {
+                        const estadoCfg = ESTADO_CONFIG[ev.estado] || ESTADO_CONFIG.pendiente
+                        const total = ev.adultos + ev.adolescentes + ev.ninos + (ev.personasDietasEspeciales || 0)
+                        const pagosSum = (ev.pagos || []).reduce((s, p) => s + p.monto, 0)
+                        return (
+                          <div
+                            key={ev.id}
+                            className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-accent/30 cursor-pointer transition-colors"
+                            onClick={() => handleSelectEvento(ev)}
+                          >
+                            <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${estadoCfg.dotColor}`} />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{ev.nombre || ev.tipoEvento || "Evento"}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {ev.fecha}
+                                {ev.salon && ` - ${salonLabel(ev.salon)}`}
+                                {ev.nombrePareja && ` - ${ev.nombrePareja}`}
+                                {` - ${total} pax`}
                               </p>
-                            )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <Badge variant="outline" className={`text-xs ${estadoCfg.className}`}>
+                                {estadoCfg.label}
+                              </Badge>
+                              {pagosSum > 0 && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Pagado: {formatCurrency(pagosSum)}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })
+                        )
+                      })}
+                    </>
                   )}
                 </div>
               )}
@@ -982,12 +1092,14 @@ function PagosPageContent() {
         )}
 
         {/* Empty state when no event selected */}
-        {!selectedEvento && !searchTerm.trim() && (
+        {!selectedEvento && !hayBusquedaActiva && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Search className="h-16 w-16 text-muted-foreground/30 mb-4" />
             <h2 className="text-xl font-semibold text-muted-foreground">Busca un evento</h2>
             <p className="text-muted-foreground mt-2 max-w-sm">
-              Escribe el nombre del evento, festejados o DNI para ver y gestionar los pagos
+              {searchMode === "texto"
+                ? "Escribe el nombre del evento, festejados o DNI para ver y gestionar los pagos"
+                : "Elegí una fecha y/o un salón para ver los eventos y gestionar sus pagos"}
             </p>
           </div>
         )}
