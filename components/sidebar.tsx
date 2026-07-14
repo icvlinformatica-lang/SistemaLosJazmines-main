@@ -102,6 +102,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
         // { href: "/admin/gastos-fijos", label: "Gastos Fijos", icon: Receipt },
         // { href: "/finanzas/cajas", label: "Cajas", icon: Wallet },
         { href: "/eventos/pagos", label: "Pagos", icon: CreditCard, locked: !tieneAccesoTotal },
+        { href: "/finanzas/ipc", label: "IPC", icon: TrendingUp, locked: !tieneAccesoTotal },
         { href: "/finanzas/caja-eventos", label: "Caja Eventos", icon: Wallet },
         { href: "/finanzas/caja-jazmines", label: "Caja Jazmines", icon: Building2 },
         { href: "/finanzas/servicios", label: "Servicios", icon: Briefcase },

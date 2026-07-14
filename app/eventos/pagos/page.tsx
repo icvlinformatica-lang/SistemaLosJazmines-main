@@ -39,6 +39,7 @@ import {
   Clock,
   FileText,
   Phone,
+  TrendingUp,
 } from "lucide-react"
 
 const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -796,7 +797,10 @@ function PagosPageContent() {
               const freshEvento = eventos.find(e => e.id === selectedEvento.id) || selectedEvento
               const calendarioCuotas = generarCalendarioCuotas(freshEvento)
               const proximaCuota = calendarioCuotas.find(c => !c.pagada)
-              
+              const montoCuotaOriginal = freshEvento.planDeCuotas?.montoCuota || 0
+              const ajustaPorIPC = freshEvento.planDeCuotas?.ajustaPorIPC !== false
+              const cuotaFueAjustada = ajustaPorIPC && proximaCuota != null && montoCuotaOriginal > 0 && proximaCuota.monto > montoCuotaOriginal
+
               if (proximaCuota && proximaCuota.fechaVencimiento) {
                 return (
                   <Card className="border-2 border-primary/30 bg-primary/5">
@@ -816,8 +820,17 @@ function PagosPageContent() {
                             <CalendarIcon className="h-3.5 w-3.5" />
                             Vencimiento: {new Date(proximaCuota.fechaVencimiento + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })}
                           </p>
+                          {cuotaFueAjustada && (
+                            <Badge variant="secondary" className="mt-2 gap-1 text-emerald-700">
+                              <TrendingUp className="h-3.5 w-3.5" />
+                              Ajustada por IPC
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-right">
+                          {cuotaFueAjustada && (
+                            <p className="text-sm text-muted-foreground line-through">{formatCurrency(montoCuotaOriginal)}</p>
+                          )}
                           <p className="text-2xl font-bold text-primary">{formatCurrency(proximaCuota.monto)}</p>
                           <Button
                             size="sm"

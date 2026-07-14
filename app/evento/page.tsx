@@ -94,6 +94,7 @@ import {
   Info,
   AlertTriangle,
   ClipboardList,
+  TrendingUp,
 } from "lucide-react"
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
@@ -213,6 +214,7 @@ function EventoPageContent() {
   const [localModalidadPago, setLocalModalidadPago] = useState<"completo" | "sena" | "cuotas">("cuotas")
   const [localMontoSena, setLocalMontoSena] = useState(0)
   const [localPorcentajeRecargo, setLocalPorcentajeRecargo] = useState(0)
+  const [localAjustaPorIPC, setLocalAjustaPorIPC] = useState(true)
   const [expandedPaquetes, setExpandedPaquetes] = useState<Record<string, boolean>>({})
 
   // Sincronizar estado local cuando cambia el evento (al cargar)
@@ -246,6 +248,7 @@ function EventoPageContent() {
       setLocalModalidadPago(evento.planDeCuotas?.modalidadPago || "cuotas")
       setLocalMontoSena(evento.planDeCuotas?.montoSena || 0)
       setLocalPorcentajeRecargo(evento.planDeCuotas?.porcentajeRecargo || 0)
+      setLocalAjustaPorIPC(evento.planDeCuotas?.ajustaPorIPC !== false)
     }
   }, [evento?.id, editingEventoId]) // Solo cuando cambia el ID del evento o el parámetro de edición
 
@@ -557,6 +560,8 @@ function EventoPageContent() {
           modalidadPago: modalidad,
           montoSena: modalidad === "sena" ? localMontoSena : undefined,
           porcentajeRecargo: localPorcentajeRecargo > 0 ? localPorcentajeRecargo : undefined,
+          // Solo tiene sentido ajustar por IPC cuando hay más de una cuota (financiación en cuotas)
+          ajustaPorIPC: cuotasEfectivas > 1 ? localAjustaPorIPC : false,
           cuotas: cuotasDetalle,
         }
       })() : undefined,
@@ -1935,6 +1940,52 @@ function EventoPageContent() {
                       />
                     </div>
                   </div>
+
+                  {/* --- AJUSTE POR IPC (solo con financiacion en varias cuotas) --- */}
+                  {localNumeroCuotas > 1 && (
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2 font-semibold">
+                        <TrendingUp className="h-4 w-4" />
+                        Tipo de Cuotas
+                      </Label>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label
+                          className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${localAjustaPorIPC ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="ajustaPorIPC"
+                            checked={localAjustaPorIPC}
+                            onChange={() => setLocalAjustaPorIPC(true)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">Ajustables por IPC</p>
+                            <p className="text-xs text-muted-foreground">
+                              Las cuotas restantes suben cada mes segun el IPC de inflacion que cargues en Finanzas. Las ya pagadas no cambian.
+                            </p>
+                          </div>
+                        </label>
+                        <label
+                          className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${!localAjustaPorIPC ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="ajustaPorIPC"
+                            checked={!localAjustaPorIPC}
+                            onChange={() => setLocalAjustaPorIPC(false)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">Fijas</p>
+                            <p className="text-xs text-muted-foreground">
+                              El monto de cada cuota se mantiene igual durante todo el plan.
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 

@@ -31,6 +31,7 @@ import {
   migrarServiciosAPreciosDinamicos,
   obtenerPreciosServicio,
   actualizarCuotasIPC,
+  eventoAjustaPorIPC,
 } from "./store"
 import {
   Dialog,
@@ -1199,10 +1200,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // === IPC ===
   const aplicarIPC = (porcentaje: number): number => {
-    const eventosActualizados = actualizarCuotasIPC(state.eventos || [], porcentaje)
-    const eventosConIPC = eventosActualizados.filter(
-      (e, i) => e !== (state.eventos || [])[i]
-    ).length
+    const eventosPrevios = state.eventos || []
+    const { eventos: eventosActualizados, eventosActualizados: eventosConIPC } = actualizarCuotasIPC(
+      eventosPrevios,
+      porcentaje,
+    )
 
     const hoy = new Date()
     const nuevaEntrada: HistorialIPCEntry = {
@@ -1213,12 +1215,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       eventosActualizados: eventosConIPC,
     }
 
+    // Optimistic local update
     setState((prev) => ({
       ...prev,
       eventos: eventosActualizados,
       historialIPC: [...(prev.historialIPC || []), nuevaEntrada],
       ultimoMesIPC: { mes: hoy.getMonth(), anio: hoy.getFullYear() },
     }))
+
+    // Persistir en Supabase solo los eventos cuyo planDeCuotas cambió
+    const eventosParaPersistir = eventosActualizados.filter((e, i) => e !== eventosPrevios[i])
+    void (async () => {
+      for (const evento of eventosParaPersistir) {
+        try {
+          await fetch(`/api/eventos/${evento.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
+          })
+        } catch (err) {
+          console.error("[v0] Error persistiendo IPC en evento:", evento.id, err)
+        }
+      }
+      if (eventosParaPersistir.length > 0) {
+        toast({
+          title: "IPC aplicado",
+          description: `Se ajustaron las cuotas restantes de ${eventosConIPC} evento(s).`,
+        })
+      }
+    })()
 
     return eventosConIPC
   }
@@ -1237,10 +1262,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const anioActual = hoy.getFullYear()
     const ultimo = state.ultimoMesIPC
 
-    // Verificar si hay eventos con modalidad IPC
-    const tieneEventosIPC = (state.eventos || []).some(
-      (e) => e.planDeCuotas?.modalidadPago === "ipc"
-    )
+    // Verificar si hay eventos con cuotas ajustables por IPC y aún con cuotas pendientes
+    const tieneEventosIPC = (state.eventos || []).some((e) => {
+      if (!eventoAjustaPorIPC(e)) return false
+      const cuotas = e.planDeCuotas?.cuotas ?? []
+      const pagadas = e.planDeCuotas?.cuotasPagadas ?? []
+      return cuotas.some((c) => !(c.pagada === true || pagadas.includes(c.numero)))
+    })
 
     if (!tieneEventosIPC) return
 
@@ -1375,9 +1403,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       <Dialog open={showIPCDialog} onOpenChange={setShowIPCDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Cambio de mes detectado</DialogTitle>
+            <DialogTitle>Cargar IPC del mes</DialogTitle>
             <DialogDescription>
-              Hay cuotas con modalidad IPC que necesitan actualizarse. Ingresa el porcentaje de inflacion del mes para aplicar el ajuste.
+              Ingresa el porcentaje de inflacion (IPC) del mes. Se aplicara solo a las cuotas restantes (no pagadas) de los eventos con cuotas ajustables, de forma compuesta.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
