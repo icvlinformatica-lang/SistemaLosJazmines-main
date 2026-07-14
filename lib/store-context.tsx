@@ -31,6 +31,7 @@ import {
   migrarServiciosAPreciosDinamicos,
   obtenerPreciosServicio,
   actualizarCuotasIPC,
+  revertirCuotasIPC,
   eventoAjustaPorIPC,
 } from "./store"
 import {
@@ -155,6 +156,7 @@ interface StoreContextType {
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
   aplicarIPC: (porcentaje: number) => number
+  eliminarIPC: (entry: HistorialIPCEntry) => number
   abrirDialogIPC: () => void
 }
 
@@ -671,7 +673,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertServicio(newServicio)
     } catch (error) {
       console.error("[v0] Error syncing servicio to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintent��.", variant: "destructive" })
     }
   }
 
@@ -1227,6 +1229,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     const hoy = new Date()
     const nuevaEntrada: HistorialIPCEntry = {
+      id: crypto.randomUUID(),
       mes: hoy.getMonth(),
       anio: hoy.getFullYear(),
       porcentaje,
@@ -1279,6 +1282,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const abrirDialogIPC = () => {
     setPorcentajeIPC("")
     setShowIPCDialog(true)
+  }
+
+  /**
+   * Deshace un ajuste de IPC: revierte las cuotas restantes a su valor previo,
+   * elimina la entrada del historial y recalcula el último mes aplicado.
+   * Solo debe usarse sobre el ajuste más reciente (la reversión es compuesta).
+   */
+  const eliminarIPC = (entry: HistorialIPCEntry): number => {
+    const eventosPrevios = state.eventos || []
+    const { eventos: eventosRevertidos, eventosActualizados: eventosAfectados } = revertirCuotasIPC(
+      eventosPrevios,
+      entry.porcentaje,
+    )
+
+    const historialRestante = (state.historialIPC || []).filter((h) =>
+      entry.id ? h.id !== entry.id : h.fechaAplicacion !== entry.fechaAplicacion,
+    )
+
+    // Recalcular el último mes aplicado a partir del historial restante
+    const nuevoUltimo = [...historialRestante].sort(
+      (a, b) => new Date(b.fechaAplicacion).getTime() - new Date(a.fechaAplicacion).getTime(),
+    )[0]
+
+    // Optimistic local update
+    setState((prev) => ({
+      ...prev,
+      eventos: eventosRevertidos,
+      historialIPC: historialRestante,
+      ultimoMesIPC: nuevoUltimo ? { mes: nuevoUltimo.mes, anio: nuevoUltimo.anio } : null,
+    }))
+
+    // Persistir en Supabase: eventos revertidos + borrar la entrada del historial
+    const eventosParaPersistir = eventosRevertidos.filter((e, i) => e !== eventosPrevios[i])
+    void (async () => {
+      for (const evento of eventosParaPersistir) {
+        try {
+          await fetch(`/api/eventos/${evento.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
+          })
+        } catch (err) {
+          console.error("[v0] Error revirtiendo IPC en evento:", evento.id, err)
+        }
+      }
+
+      if (entry.id) {
+        try {
+          const db = await import("./supabase/data-service")
+          await db.deleteHistorialIPC(entry.id)
+        } catch (err) {
+          console.error("[v0] Error eliminando historial IPC en Supabase:", err)
+        }
+      }
+
+      toast({
+        title: "IPC deshecho",
+        description: `Se revirtieron las cuotas restantes de ${eventosAfectados} evento(s) a su valor anterior.`,
+      })
+    })()
+
+    return eventosAfectados
   }
 
   // Detectar cambio de mes para IPC
@@ -1412,8 +1477,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         desarchivarGasto,
         historialIPC: state.historialIPC || [],
         ultimoMesIPC: state.ultimoMesIPC || null,
-        aplicarIPC,
-        abrirDialogIPC,
+      aplicarIPC,
+      eliminarIPC,
+      abrirDialogIPC,
       }
 
   const contextValue = aplicarSoloLectura(rawValue, soloLectura, () =>

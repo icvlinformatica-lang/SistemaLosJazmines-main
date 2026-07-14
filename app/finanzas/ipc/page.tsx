@@ -1,12 +1,13 @@
 "use client"
 
+import { useState } from "react"
 import { useStore } from "@/lib/store-context"
-import { eventoAjustaPorIPC } from "@/lib/store"
+import { eventoAjustaPorIPC, type HistorialIPCEntry } from "@/lib/store"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, Calendar, AlertTriangle, CheckCircle2, Layers } from "lucide-react"
+import { TrendingUp, Calendar, AlertTriangle, CheckCircle2, Layers, Undo2 } from "lucide-react"
 import {
   Table,
   TableBody,
@@ -15,6 +16,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -22,7 +33,9 @@ const MESES = [
 ]
 
 export default function FinanzasIPCPage() {
-  const { eventos, historialIPC, ultimoMesIPC, abrirDialogIPC } = useStore()
+  const { eventos, historialIPC, ultimoMesIPC, abrirDialogIPC, eliminarIPC } = useStore()
+
+  const [entryAEliminar, setEntryAEliminar] = useState<HistorialIPCEntry | null>(null)
 
   const hoy = new Date()
   const mesActual = hoy.getMonth()
@@ -155,7 +168,7 @@ export default function FinanzasIPCPage() {
             Historial de Ajustes IPC
           </CardTitle>
           <CardDescription>
-            Cada ajuste se aplica de forma compuesta: parte del valor ya aumentado el mes anterior.
+            Cada ajuste se aplica de forma compuesta: parte del valor ya aumentado el mes anterior. Por eso solo se puede deshacer el ajuste más reciente.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -176,11 +189,12 @@ export default function FinanzasIPCPage() {
                     <TableHead className="text-right">Porcentaje</TableHead>
                     <TableHead className="text-right">Eventos actualizados</TableHead>
                     <TableHead>Fecha de aplicación</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {[...historialIPC].reverse().map((entry, idx) => (
-                    <TableRow key={idx}>
+                    <TableRow key={entry.id ?? idx}>
                       <TableCell className="font-medium">
                         {MESES[entry.mes]} {entry.anio}
                       </TableCell>
@@ -197,6 +211,21 @@ export default function FinanzasIPCPage() {
                           year: "numeric",
                         })}
                       </TableCell>
+                      <TableCell className="text-right">
+                        {idx === 0 ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5 text-destructive hover:text-destructive"
+                            onClick={() => setEntryAEliminar(entry)}
+                          >
+                            <Undo2 className="h-4 w-4" />
+                            Deshacer
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -205,6 +234,38 @@ export default function FinanzasIPCPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={entryAEliminar != null} onOpenChange={(open) => !open && setEntryAEliminar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Deshacer este ajuste de IPC?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {entryAEliminar && (
+                <>
+                  Se revertirá el aumento del{" "}
+                  <span className="font-semibold">+{entryAEliminar.porcentaje.toFixed(1)}%</span> de{" "}
+                  <span className="font-semibold">
+                    {MESES[entryAEliminar.mes]} {entryAEliminar.anio}
+                  </span>
+                  . Las cuotas restantes (no pagadas) volverán a su valor anterior y la entrada se eliminará del historial. Las cuotas ya cobradas no se modifican.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (entryAEliminar) eliminarIPC(entryAEliminar)
+                setEntryAEliminar(null)
+              }}
+            >
+              Sí, deshacer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

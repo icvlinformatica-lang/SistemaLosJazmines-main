@@ -619,6 +619,7 @@ export interface AppState {
 // ==========================================
 
 export interface HistorialIPCEntry {
+  id?: string
   mes: number
   anio: number
   porcentaje: number
@@ -669,6 +670,54 @@ export function actualizarCuotasIPC<T extends { planDeCuotas?: EventoGuardado["p
       return {
         ...cuota,
         montoCuota: Math.round(cuota.montoCuota * factor),
+      }
+    })
+
+    if (!cambiada) return evento
+    eventosActualizados++
+
+    return {
+      ...evento,
+      planDeCuotas: {
+        ...plan,
+        cuotas: cuotasActualizadas,
+      },
+    }
+  })
+
+  return { eventos: nuevos, eventosActualizados }
+}
+
+/**
+ * Revierte (deshace) un ajuste de IPC en las cuotas RESTANTES (no pagadas).
+ * Es la operación inversa de actualizarCuotasIPC: divide el monto vigente por el factor,
+ * devolviendo las cuotas pendientes a su valor previo a ese ajuste.
+ * Las cuotas ya pagadas no se tocan (se cobraron a su valor de ese momento).
+ */
+export function revertirCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"] }>(
+  eventos: T[],
+  porcentajeDelMes: number
+): { eventos: T[]; eventosActualizados: number } {
+  const factor = 1 + porcentajeDelMes / 100
+  if (factor <= 0) return { eventos, eventosActualizados: 0 }
+  let eventosActualizados = 0
+
+  const nuevos = eventos.map(evento => {
+    if (!eventoAjustaPorIPC(evento)) return evento
+
+    const plan = evento.planDeCuotas!
+    const pagadas = plan.cuotasPagadas ?? []
+    const cuotasBase = plan.cuotas ?? []
+    if (cuotasBase.length === 0) return evento
+
+    let cambiada = false
+    const cuotasActualizadas = cuotasBase.map(cuota => {
+      const estaPagada = cuota.pagada === true || pagadas.includes(cuota.numero)
+      if (estaPagada) return cuota
+      cambiada = true
+      return {
+        ...cuota,
+        montoCuota: Math.round(cuota.montoCuota / factor),
       }
     })
 

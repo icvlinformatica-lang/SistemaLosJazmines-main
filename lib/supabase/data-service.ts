@@ -10,7 +10,7 @@ import type {
   CostoOperativo,
   MovimientoCaja,
   GastoArchivado,
-  HistorialIPC
+  HistorialIPCEntry as HistorialIPC
 } from "../store"
 
 const supabase = createClient()
@@ -829,6 +829,19 @@ export async function insertHistorialIPC(hist: Partial<HistorialIPC>): Promise<H
     fechaAplicacion: data.fecha_aplicacion,
     eventosActualizados: data.eventos_actualizados || 0,
   } : null
+}
+
+export async function deleteHistorialIPC(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("historial_ipc")
+    .delete()
+    .eq("id", id)
+
+  if (error) {
+    console.error("Error deleting historial_ipc:", error)
+    return false
+  }
+  return true
 }
 
 // === Precios Venta ===
