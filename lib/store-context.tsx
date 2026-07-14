@@ -224,7 +224,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
-        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB] = await Promise.all([
+        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB, historialIPCDB] = await Promise.all([
           db.fetchServicios(),
           db.fetchPersonal(),
           db.fetchPagosPersonal(),
@@ -234,6 +234,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           db.fetchConfiguracionCajas(),
           db.fetchPreciosVenta(),
           db.fetchGastosArchivados(),
+          db.fetchHistorialIPC(),
         ])
 
         // Migración one-time: si Supabase devuelve vacío pero localStorage tiene precios, upsertearlos ahora
@@ -269,6 +270,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
           preciosVenta: hayPreciosDB ? preciosDB : preciosLocal,
           gastosArchivados: archivadosDB.length > 0 ? archivadosDB : (localState.gastosArchivados || []),
+          historialIPC: historialIPCDB,
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
@@ -295,6 +297,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (m: MovimientoCaja) => !m.eventoId || idsEventosVigentes.has(m.eventoId)
       )
 
+      // Historial IPC desde Supabase (undefined si falló la conexión, para caer a localStorage)
+      const historialIPCDesdeDB: HistorialIPCEntry[] | undefined = Array.isArray(supabaseData.historialIPC)
+        ? supabaseData.historialIPC
+        : undefined
+      const ultimoMesDesdeDB = (historialIPCDesdeDB && historialIPCDesdeDB.length > 0)
+        ? [...historialIPCDesdeDB].sort((a, b) =>
+            new Date(b.fechaAplicacion).getTime() - new Date(a.fechaAplicacion).getTime()
+          )[0]
+        : undefined
+      const ultimoMesIPCVal = ultimoMesDesdeDB
+        ? { mes: ultimoMesDesdeDB.mes, anio: ultimoMesDesdeDB.anio }
+        : undefined
+
       setState({
         ...localState,
         insumos: insumosRes ?? localState.insumos,
@@ -314,6 +329,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         configuracionCajas: supabaseData.configuracionCajas,
         preciosVenta: supabaseData.preciosVenta ?? localState.preciosVenta ?? {},
         gastosArchivados: supabaseData.gastosArchivados ?? localState.gastosArchivados ?? [],
+        // Historial IPC: fuente de verdad = Supabase (compartido entre dispositivos).
+        // ultimoMesIPC se deriva de la entrada más reciente para no re-aplicar el mismo mes.
+        historialIPC: historialIPCDesdeDB ?? localState.historialIPC ?? [],
+        ultimoMesIPC: ultimoMesIPCVal ?? localState.ultimoMesIPC,
       })
 
       setIsHydrated(true)
@@ -1237,12 +1256,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           console.error("[v0] Error persistiendo IPC en evento:", evento.id, err)
         }
       }
-      if (eventosParaPersistir.length > 0) {
-        toast({
-          title: "IPC aplicado",
-          description: `Se ajustaron las cuotas restantes de ${eventosConIPC} evento(s).`,
-        })
+
+      // Persistir la entrada del historial IPC en Supabase (fuente de verdad compartida)
+      try {
+        const db = await import("./supabase/data-service")
+        await db.insertHistorialIPC(nuevaEntrada)
+      } catch (err) {
+        console.error("[v0] Error persistiendo historial IPC en Supabase:", err)
       }
+
+      toast({
+        title: "IPC aplicado",
+        description: eventosConIPC > 0
+          ? `Se ajustaron las cuotas restantes de ${eventosConIPC} evento(s).`
+          : "No había eventos con cuotas pendientes para ajustar, pero el IPC quedó registrado.",
+      })
     })()
 
     return eventosConIPC
