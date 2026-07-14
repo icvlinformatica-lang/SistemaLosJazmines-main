@@ -214,7 +214,7 @@ function EventoPageContent() {
   const [localModalidadPago, setLocalModalidadPago] = useState<"completo" | "sena" | "cuotas">("cuotas")
   const [localMontoSena, setLocalMontoSena] = useState(0)
   const [localPorcentajeRecargo, setLocalPorcentajeRecargo] = useState(0)
-  const [localAjustaPorIPC, setLocalAjustaPorIPC] = useState(true)
+  const [localAjustaPorIPC, setLocalAjustaPorIPC] = useState(false)
   const [expandedPaquetes, setExpandedPaquetes] = useState<Record<string, boolean>>({})
 
   // Sincronizar estado local cuando cambia el evento (al cargar)
@@ -248,7 +248,7 @@ function EventoPageContent() {
       setLocalModalidadPago(evento.planDeCuotas?.modalidadPago || "cuotas")
       setLocalMontoSena(evento.planDeCuotas?.montoSena || 0)
       setLocalPorcentajeRecargo(evento.planDeCuotas?.porcentajeRecargo || 0)
-      setLocalAjustaPorIPC(evento.planDeCuotas?.ajustaPorIPC !== false)
+      setLocalAjustaPorIPC(evento.planDeCuotas?.ajustaPorIPC === true)
     }
   }, [evento?.id, editingEventoId]) // Solo cuando cambia el ID del evento o el parámetro de edición
 
@@ -513,11 +513,17 @@ function EventoPageContent() {
       },
       planDeCuotas: localMontoTotal > 0 ? (() => {
         const modalidad = localModalidadPago
+        const cuotasEfectivas = modalidad === "completo" ? 1 : localNumeroCuotas
+        // Reglas de negocio:
+        // - Seña + Cuotas: el saldo se ajusta por IPC, nunca lleva recargo.
+        // - Solo Cuotas: es una u otra -> recargo por financiación (fijas) O ajuste por IPC.
+        //   Cuando se elige IPC, el recargo queda en 0.
+        const usaIPC = cuotasEfectivas > 1 && (modalidad === "sena" || (modalidad === "cuotas" && localAjustaPorIPC))
+        const recargoEfectivo = (modalidad === "cuotas" && !usaIPC) ? localPorcentajeRecargo : 0
         const montoFinanciado = modalidad === "sena" 
           ? Math.max(0, localMontoTotal - localMontoSena) 
           : localMontoTotal
-        const montoConRecargo = montoFinanciado * (1 + localPorcentajeRecargo / 100)
-        const cuotasEfectivas = modalidad === "completo" ? 1 : localNumeroCuotas
+        const montoConRecargo = montoFinanciado * (1 + recargoEfectivo / 100)
         const montoCuotaCalc = cuotasEfectivas > 0 ? Math.round((montoConRecargo / cuotasEfectivas) * 100) / 100 : 0
         const cuotasPagadasPrev = evento.planDeCuotas?.cuotasPagadas || []
 
@@ -559,9 +565,9 @@ function EventoPageContent() {
           cuotasPagadas: cuotasPagadasPrev,
           modalidadPago: modalidad,
           montoSena: modalidad === "sena" ? localMontoSena : undefined,
-          porcentajeRecargo: localPorcentajeRecargo > 0 ? localPorcentajeRecargo : undefined,
-          // Solo tiene sentido ajustar por IPC cuando hay más de una cuota (financiación en cuotas)
-          ajustaPorIPC: cuotasEfectivas > 1 ? localAjustaPorIPC : false,
+          porcentajeRecargo: recargoEfectivo > 0 ? recargoEfectivo : undefined,
+          // IPC solo cuando corresponde (Seña+Cuotas siempre; Solo Cuotas si se eligió IPC)
+          ajustaPorIPC: usaIPC,
           cuotas: cuotasDetalle,
         }
       })() : undefined,
@@ -1777,7 +1783,22 @@ function EventoPageContent() {
                 </Label>
                 <RadioGroup
                   value={localModalidadPago}
-                  onValueChange={(v) => setLocalModalidadPago(v as "completo" | "sena" | "cuotas")}
+                  onValueChange={(v) => {
+                    const nueva = v as "completo" | "sena" | "cuotas"
+                    setLocalModalidadPago(nueva)
+                    if (nueva === "sena") {
+                      // Seña + Cuotas: el saldo se ajusta por IPC y nunca lleva recargo
+                      setLocalAjustaPorIPC(true)
+                      setLocalPorcentajeRecargo(0)
+                    } else if (nueva === "cuotas") {
+                      // Solo Cuotas: por defecto cuotas fijas con recargo por financiación
+                      setLocalAjustaPorIPC(false)
+                    } else {
+                      // Pago completo: sin cuotas, sin recargo ni IPC
+                      setLocalAjustaPorIPC(false)
+                      setLocalPorcentajeRecargo(0)
+                    }
+                  }}
                   className="grid grid-cols-1 sm:grid-cols-3 gap-2"
                 >
                   <label
@@ -1859,55 +1880,6 @@ function EventoPageContent() {
                         className="h-11"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="porcentajeRecargo" className="flex items-center gap-2 font-semibold">
-                        <Percent className="h-4 w-4" />
-                        Recargo por Financiacion ({localPorcentajeRecargo}%)
-                      </Label>
-                      <div className="flex items-center gap-3">
-                        <Slider
-                          value={[localPorcentajeRecargo]}
-                          onValueChange={(v) => setLocalPorcentajeRecargo(v[0])}
-                          min={0}
-                          max={50}
-                          step={0.5}
-                          className="flex-1"
-                        />
-                        <Input
-                          id="porcentajeRecargo"
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.5"
-                          value={localPorcentajeRecargo || ""}
-                          onChange={(e) => setLocalPorcentajeRecargo(parseFloat(e.target.value) || 0)}
-                          className="h-9 w-20 font-mono text-center"
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {[
-                          { cuotas: "1-6", pct: 0 },
-                          { cuotas: "7-10", pct: 5 },
-                          { cuotas: "11-12", pct: 8 },
-                          { cuotas: "13-18", pct: 12 },
-                          { cuotas: "19-24", pct: 15 },
-                          { cuotas: "25+", pct: 20 },
-                        ].map(({ cuotas, pct }) => (
-                          <button
-                            type="button"
-                            key={cuotas}
-                            onClick={() => setLocalPorcentajeRecargo(pct)}
-                            className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors cursor-pointer ${
-                              localPorcentajeRecargo === pct
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-muted border-input text-muted-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {cuotas}: {pct}%
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1941,48 +1913,117 @@ function EventoPageContent() {
                     </div>
                   </div>
 
-                  {/* --- AJUSTE POR IPC (solo con financiacion en varias cuotas) --- */}
-                  {localNumeroCuotas > 1 && (
-                    <div className="space-y-2">
+                  {/* --- SOLO CUOTAS: recargo por financiación O ajuste por IPC (una u otra) --- */}
+                  {localModalidadPago === "cuotas" && localNumeroCuotas > 1 && (
+                    <div className="space-y-3">
                       <Label className="flex items-center gap-2 font-semibold">
                         <TrendingUp className="h-4 w-4" />
-                        Tipo de Cuotas
+                        Tipo de Financiación
                       </Label>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <label
-                          className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${localAjustaPorIPC ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
-                        >
-                          <input
-                            type="radio"
-                            name="ajustaPorIPC"
-                            checked={localAjustaPorIPC}
-                            onChange={() => setLocalAjustaPorIPC(true)}
-                            className="mt-1"
-                          />
-                          <div>
-                            <p className="font-medium">Ajustables por IPC</p>
-                            <p className="text-xs text-muted-foreground">
-                              Las cuotas restantes suben cada mes segun el IPC de inflacion que cargues en Finanzas. Las ya pagadas no cambian.
-                            </p>
-                          </div>
-                        </label>
                         <label
                           className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${!localAjustaPorIPC ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
                         >
                           <input
                             type="radio"
-                            name="ajustaPorIPC"
+                            name="tipoFinanciacion"
                             checked={!localAjustaPorIPC}
                             onChange={() => setLocalAjustaPorIPC(false)}
                             className="mt-1"
                           />
                           <div>
-                            <p className="font-medium">Fijas</p>
+                            <p className="font-medium">Recargo por financiación</p>
                             <p className="text-xs text-muted-foreground">
-                              El monto de cada cuota se mantiene igual durante todo el plan.
+                              Cuotas fijas con un porcentaje de recargo. El monto no cambia durante el plan.
                             </p>
                           </div>
                         </label>
+                        <label
+                          className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${localAjustaPorIPC ? "border-primary bg-primary/5" : "border-input hover:border-muted-foreground/30"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="tipoFinanciacion"
+                            checked={localAjustaPorIPC}
+                            onChange={() => {
+                              setLocalAjustaPorIPC(true)
+                              setLocalPorcentajeRecargo(0)
+                            }}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">Ajuste por IPC</p>
+                            <p className="text-xs text-muted-foreground">
+                              Sin recargo. Las cuotas restantes suben cada mes según el IPC que cargues en Finanzas. Las ya pagadas no cambian.
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+
+                      {/* Recargo: solo cuando se eligió "Recargo por financiación" */}
+                      {!localAjustaPorIPC && (
+                        <div className="space-y-2 p-3 rounded-lg border border-input bg-muted/30">
+                          <Label htmlFor="porcentajeRecargo" className="flex items-center gap-2 font-semibold">
+                            <Percent className="h-4 w-4" />
+                            Recargo por Financiacion ({localPorcentajeRecargo}%)
+                          </Label>
+                          <div className="flex items-center gap-3">
+                            <Slider
+                              value={[localPorcentajeRecargo]}
+                              onValueChange={(v) => setLocalPorcentajeRecargo(v[0])}
+                              min={0}
+                              max={50}
+                              step={0.5}
+                              className="flex-1"
+                            />
+                            <Input
+                              id="porcentajeRecargo"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                              value={localPorcentajeRecargo || ""}
+                              onChange={(e) => setLocalPorcentajeRecargo(parseFloat(e.target.value) || 0)}
+                              className="h-9 w-20 font-mono text-center"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {[
+                              { cuotas: "1-6", pct: 0 },
+                              { cuotas: "7-10", pct: 5 },
+                              { cuotas: "11-12", pct: 8 },
+                              { cuotas: "13-18", pct: 12 },
+                              { cuotas: "19-24", pct: 15 },
+                              { cuotas: "25+", pct: 20 },
+                            ].map(({ cuotas, pct }) => (
+                              <button
+                                type="button"
+                                key={cuotas}
+                                onClick={() => setLocalPorcentajeRecargo(pct)}
+                                className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors cursor-pointer ${
+                                  localPorcentajeRecargo === pct
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : "bg-muted border-input text-muted-foreground hover:bg-accent"
+                                }`}
+                              >
+                                {cuotas}: {pct}%
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* --- SEÑA + CUOTAS: el saldo se ajusta por IPC, sin recargo --- */}
+                  {localModalidadPago === "sena" && localNumeroCuotas > 1 && (
+                    <div className="flex items-start gap-3 p-3 rounded-lg border-2 border-primary/40 bg-primary/5">
+                      <TrendingUp className="h-4 w-4 mt-0.5 text-primary" />
+                      <div>
+                        <p className="font-medium">El saldo en cuotas se ajusta por IPC</p>
+                        <p className="text-xs text-muted-foreground">
+                          Las cuotas del saldo no llevan recargo por financiación: suben cada mes según el IPC que cargues en Finanzas. Las ya pagadas no cambian.
+                        </p>
                       </div>
                     </div>
                   )}
