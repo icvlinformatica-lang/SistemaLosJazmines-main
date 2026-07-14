@@ -514,12 +514,11 @@ function EventoPageContent() {
       planDeCuotas: localMontoTotal > 0 ? (() => {
         const modalidad = localModalidadPago
         const cuotasEfectivas = modalidad === "completo" ? 1 : localNumeroCuotas
-        // Reglas de negocio:
-        // - Seña + Cuotas: el saldo se ajusta por IPC, nunca lleva recargo.
-        // - Solo Cuotas: es una u otra -> recargo por financiación (fijas) O ajuste por IPC.
-        //   Cuando se elige IPC, el recargo queda en 0.
-        const usaIPC = cuotasEfectivas > 1 && (modalidad === "sena" || (modalidad === "cuotas" && localAjustaPorIPC))
-        const recargoEfectivo = (modalidad === "cuotas" && !usaIPC) ? localPorcentajeRecargo : 0
+        // Reglas de negocio (aplican tanto a "Seña + Cuotas" como a "Solo Cuotas"):
+        // el saldo en cuotas es UNA de dos -> recargo por financiación (fijas) O ajuste por IPC.
+        // Cuando se elige IPC, el recargo queda en 0. Pago completo nunca lleva ninguno.
+        const usaIPC = modalidad !== "completo" && cuotasEfectivas > 1 && localAjustaPorIPC
+        const recargoEfectivo = (modalidad !== "completo" && !usaIPC) ? localPorcentajeRecargo : 0
         const montoFinanciado = modalidad === "sena" 
           ? Math.max(0, localMontoTotal - localMontoSena) 
           : localMontoTotal
@@ -1786,17 +1785,13 @@ function EventoPageContent() {
                   onValueChange={(v) => {
                     const nueva = v as "completo" | "sena" | "cuotas"
                     setLocalModalidadPago(nueva)
-                    if (nueva === "sena") {
-                      // Seña + Cuotas: el saldo se ajusta por IPC y nunca lleva recargo
-                      setLocalAjustaPorIPC(true)
-                      setLocalPorcentajeRecargo(0)
-                    } else if (nueva === "cuotas") {
-                      // Solo Cuotas: por defecto cuotas fijas con recargo por financiación
-                      setLocalAjustaPorIPC(false)
-                    } else {
+                    if (nueva === "completo") {
                       // Pago completo: sin cuotas, sin recargo ni IPC
                       setLocalAjustaPorIPC(false)
                       setLocalPorcentajeRecargo(0)
+                    } else {
+                      // Seña + Cuotas / Solo Cuotas: por defecto cuotas fijas con recargo
+                      setLocalAjustaPorIPC(false)
                     }
                   }}
                   className="grid grid-cols-1 sm:grid-cols-3 gap-2"
@@ -1913,12 +1908,13 @@ function EventoPageContent() {
                     </div>
                   </div>
 
-                  {/* --- SOLO CUOTAS: recargo por financiación O ajuste por IPC (una u otra) --- */}
-                  {localModalidadPago === "cuotas" && localNumeroCuotas > 1 && (
+                  {/* --- TIPO DE FINANCIACIÓN: recargo (fijas) O ajuste por IPC (una u otra) --- */}
+                  {/* Aplica al saldo en cuotas tanto en "Seña + Cuotas" como en "Solo Cuotas" */}
+                  {localModalidadPago !== "completo" && localNumeroCuotas > 1 && (
                     <div className="space-y-3">
                       <Label className="flex items-center gap-2 font-semibold">
                         <TrendingUp className="h-4 w-4" />
-                        Tipo de Financiación
+                        {localModalidadPago === "sena" ? "Tipo de Financiación del saldo" : "Tipo de Financiación"}
                       </Label>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <label
@@ -1932,9 +1928,9 @@ function EventoPageContent() {
                             className="mt-1"
                           />
                           <div>
-                            <p className="font-medium">Recargo por financiación</p>
+                            <p className="font-medium">Cuotas fijas (recargo)</p>
                             <p className="text-xs text-muted-foreground">
-                              Cuotas fijas con un porcentaje de recargo. El monto no cambia durante el plan.
+                              Cuotas fijas con un porcentaje de recargo por financiación. El monto no cambia durante el plan.
                             </p>
                           </div>
                         </label>
@@ -1960,7 +1956,7 @@ function EventoPageContent() {
                         </label>
                       </div>
 
-                      {/* Recargo: solo cuando se eligió "Recargo por financiación" */}
+                      {/* Recargo: solo cuando se eligió "Cuotas fijas (recargo)" */}
                       {!localAjustaPorIPC && (
                         <div className="space-y-2 p-3 rounded-lg border border-input bg-muted/30">
                           <Label htmlFor="porcentajeRecargo" className="flex items-center gap-2 font-semibold">
@@ -2015,18 +2011,6 @@ function EventoPageContent() {
                     </div>
                   )}
 
-                  {/* --- SEÑA + CUOTAS: el saldo se ajusta por IPC, sin recargo --- */}
-                  {localModalidadPago === "sena" && localNumeroCuotas > 1 && (
-                    <div className="flex items-start gap-3 p-3 rounded-lg border-2 border-primary/40 bg-primary/5">
-                      <TrendingUp className="h-4 w-4 mt-0.5 text-primary" />
-                      <div>
-                        <p className="font-medium">El saldo en cuotas se ajusta por IPC</p>
-                        <p className="text-xs text-muted-foreground">
-                          Las cuotas del saldo no llevan recargo por financiación: suben cada mes según el IPC que cargues en Finanzas. Las ya pagadas no cambian.
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
 
