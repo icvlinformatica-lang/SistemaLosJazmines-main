@@ -7,7 +7,7 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, Calendar, AlertTriangle, CheckCircle2, Layers, Undo2 } from "lucide-react"
+import { TrendingUp, Calendar, AlertTriangle, Layers, Undo2 } from "lucide-react"
 import {
   Table,
   TableBody,
@@ -38,11 +38,20 @@ export default function FinanzasIPCPage() {
   const [entryAEliminar, setEntryAEliminar] = useState<HistorialIPCEntry | null>(null)
 
   const hoy = new Date()
-  const mesActual = hoy.getMonth()
-  const anioActual = hoy.getFullYear()
 
-  const yaAplicadoEsteMes =
-    ultimoMesIPC != null && ultimoMesIPC.mes === mesActual && ultimoMesIPC.anio === anioActual
+  // Próximo mes a cargar de forma secuencial: mes siguiente al último aplicado.
+  // Si no hay historial, arranca en el mes/año actual.
+  const proximoMes = (() => {
+    if (!historialIPC || historialIPC.length === 0) {
+      return { mes: hoy.getMonth(), anio: hoy.getFullYear() }
+    }
+    const ultimoOrden = historialIPC.reduce(
+      (max, h) => Math.max(max, h.anio * 12 + h.mes),
+      -Infinity,
+    )
+    const siguiente = ultimoOrden + 1
+    return { mes: ((siguiente % 12) + 12) % 12, anio: Math.floor(siguiente / 12) }
+  })()
 
   // Eventos con cuotas ajustables por IPC
   const eventosAjustables = (eventos || []).filter(eventoAjustaPorIPC)
@@ -74,50 +83,34 @@ export default function FinanzasIPCPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Ajuste por IPC</h1>
           <p className="text-sm text-muted-foreground">
-            Cargá el IPC de inflación de este mes para actualizar las cuotas restantes de los eventos ajustables.
+            Cargá el IPC mes a mes, en orden. Cada carga actualiza las cuotas restantes de los eventos ajustables.
           </p>
         </div>
         <Button onClick={abrirDialogIPC} className="gap-2 self-start sm:self-auto" disabled={!hayPendientes}>
           <TrendingUp className="h-4 w-4" />
-          Cargar IPC del mes
+          Cargar IPC de un mes
         </Button>
       </div>
 
-      {/* Estado del mes actual */}
+      {/* Próximo mes a cargar (secuencial) */}
       {hayPendientes ? (
-        yaAplicadoEsteMes ? (
-          <Card className="border-emerald-300 bg-emerald-50">
-            <CardContent className="flex items-center gap-3 py-4">
-              <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
-              <div>
-                <p className="font-semibold text-emerald-800">
-                  El IPC de {MESES[mesActual]} {anioActual} ya fue aplicado
-                </p>
-                <p className="text-sm text-emerald-700">
-                  Las cuotas restantes ya reflejan el aumento de este mes. Podés volver a aplicarlo si necesitás corregirlo.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="border-amber-300 bg-amber-50">
-            <CardContent className="flex items-center gap-3 py-4">
-              <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0" />
-              <div className="flex-1">
-                <p className="font-semibold text-amber-800">
-                  Falta cargar el IPC de {MESES[mesActual]} {anioActual}
-                </p>
-                <p className="text-sm text-amber-700">
-                  Hay {cuotasPendientes} cuota(s) pendiente(s) en {eventosConPendientes} evento(s) que se ajustarán al cargar el porcentaje.
-                </p>
-              </div>
-              <Button onClick={abrirDialogIPC} variant="outline" className="gap-2 shrink-0">
-                <TrendingUp className="h-4 w-4" />
-                Cargar ahora
-              </Button>
-            </CardContent>
-          </Card>
-        )
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="flex items-center gap-3 py-4">
+            <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-amber-800">
+                Próximo IPC a cargar: {MESES[proximoMes.mes]} {proximoMes.anio}
+              </p>
+              <p className="text-sm text-amber-700">
+                Los meses se cargan en orden, uno por mes. Hay {cuotasPendientes} cuota(s) pendiente(s) en {eventosConPendientes} evento(s) que se ajustarán al aplicar el porcentaje.
+              </p>
+            </div>
+            <Button onClick={abrirDialogIPC} variant="outline" className="gap-2 shrink-0">
+              <TrendingUp className="h-4 w-4" />
+              Cargar {MESES[proximoMes.mes]}
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <Card className="border-border">
           <CardContent className="flex items-center gap-3 py-4 text-muted-foreground">

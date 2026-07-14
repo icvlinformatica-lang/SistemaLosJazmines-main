@@ -32,7 +32,6 @@ import {
   obtenerPreciosServicio,
   actualizarCuotasIPC,
   revertirCuotasIPC,
-  eventoAjustaPorIPC,
 } from "./store"
 import {
   Dialog,
@@ -45,6 +44,13 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useClock } from "@/lib/clock-context"
 
@@ -155,12 +161,38 @@ interface StoreContextType {
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
-  aplicarIPC: (porcentaje: number) => number
+  aplicarIPC: (porcentaje: number, mes: number, anio: number) => number
   eliminarIPC: (entry: HistorialIPCEntry) => number
   abrirDialogIPC: () => void
 }
 
 const StoreContext = createContext<StoreContextType | null>(null)
+
+const MESES_IPC = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+/**
+ * Calcula el próximo mes a cargar de IPC de forma secuencial: es el mes siguiente
+ * al último aplicado (el más reciente por mes/año en el historial). Si el historial
+ * está vacío, arranca en el mes/año actual.
+ */
+function calcularProximoMesIPC(
+  historial: HistorialIPCEntry[],
+  fallbackMes: number,
+  fallbackAnio: number,
+): { mes: number; anio: number } {
+  if (!historial || historial.length === 0) {
+    return { mes: fallbackMes, anio: fallbackAnio }
+  }
+  const ultimo = historial.reduce((max, h) => {
+    const orden = h.anio * 12 + h.mes
+    return orden > max ? orden : max
+  }, -Infinity)
+  const siguiente = ultimo + 1
+  return { mes: ((siguiente % 12) + 12) % 12, anio: Math.floor(siguiente / 12) }
+}
 
 // Prefijos de métodos que mutan/persisten datos. En modo lectura se neutralizan.
 const MUTATOR_RE = /^(add|update|delete|set|archivar|desarchivar|aplicar|generar|sincronizar|clear)/
@@ -192,6 +224,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false)
   const [showIPCDialog, setShowIPCDialog] = useState(false)
   const [porcentajeIPC, setPorcentajeIPC] = useState("")
+  const [mesIPC, setMesIPC] = useState<number>(new Date().getMonth())
+  const [anioIPC, setAnioIPC] = useState<number>(new Date().getFullYear())
   const { toast } = useToast()
   const { soloLectura } = useClock()
 
@@ -1220,20 +1254,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // === IPC ===
-  const aplicarIPC = (porcentaje: number): number => {
+  /**
+   * Aplica el IPC de un mes/año específico. Solo se permite UN IPC por mes.
+   * El mes/año lo elige el usuario (puede cargar meses pasados); la fecha real
+   * de carga (fechaAplicacion) es solo informativa y no afecta el orden.
+   */
+  const aplicarIPC = (porcentaje: number, mes: number, anio: number): number => {
+    // Regla: un solo IPC por mes. Si ya existe ese mes/año, no se aplica.
+    const yaExiste = (state.historialIPC || []).some((h) => h.mes === mes && h.anio === anio)
+    if (yaExiste) {
+      toast({
+        title: "Ese mes ya tiene IPC",
+        description: `El IPC de ${MESES_IPC[mes]} ${anio} ya fue cargado. Solo se permite uno por mes.`,
+        variant: "destructive",
+      })
+      return 0
+    }
+
     const eventosPrevios = state.eventos || []
     const { eventos: eventosActualizados, eventosActualizados: eventosConIPC } = actualizarCuotasIPC(
       eventosPrevios,
       porcentaje,
     )
 
-    const hoy = new Date()
     const nuevaEntrada: HistorialIPCEntry = {
       id: crypto.randomUUID(),
-      mes: hoy.getMonth(),
-      anio: hoy.getFullYear(),
+      mes,
+      anio,
       porcentaje,
-      fechaAplicacion: hoy.toISOString(),
+      fechaAplicacion: new Date().toISOString(),
       eventosActualizados: eventosConIPC,
     }
 
@@ -1242,7 +1291,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...prev,
       eventos: eventosActualizados,
       historialIPC: [...(prev.historialIPC || []), nuevaEntrada],
-      ultimoMesIPC: { mes: hoy.getMonth(), anio: hoy.getFullYear() },
+      ultimoMesIPC: { mes, anio },
     }))
 
     // Persistir en Supabase solo los eventos cuyo planDeCuotas cambió
@@ -1280,6 +1329,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const abrirDialogIPC = () => {
+    const hoy = new Date()
+    const proximo = calcularProximoMesIPC(state.historialIPC || [], hoy.getMonth(), hoy.getFullYear())
+    setMesIPC(proximo.mes)
+    setAnioIPC(proximo.anio)
     setPorcentajeIPC("")
     setShowIPCDialog(true)
   }
@@ -1346,39 +1399,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return eventosAfectados
   }
 
-  // Detectar cambio de mes para IPC
-  useEffect(() => {
-    if (!isHydrated) return
-
-    const hoy = new Date()
-    const mesActual = hoy.getMonth()
-    const anioActual = hoy.getFullYear()
-    const ultimo = state.ultimoMesIPC
-
-    // Verificar si hay eventos con cuotas ajustables por IPC y aún con cuotas pendientes
-    const tieneEventosIPC = (state.eventos || []).some((e) => {
-      if (!eventoAjustaPorIPC(e)) return false
-      const cuotas = e.planDeCuotas?.cuotas ?? []
-      const pagadas = e.planDeCuotas?.cuotasPagadas ?? []
-      return cuotas.some((c) => !(c.pagada === true || pagadas.includes(c.numero)))
-    })
-
-    if (!tieneEventosIPC) return
-
-    // Si nunca se aplicó o si cambió el mes/año
-    if (!ultimo || ultimo.mes !== mesActual || ultimo.anio !== anioActual) {
-      setShowIPCDialog(true)
-    }
-  }, [isHydrated, state.ultimoMesIPC, state.eventos])
-
   const handleAplicarIPC = () => {
     const porcentaje = parseFloat(porcentajeIPC.replace(",", "."))
     if (isNaN(porcentaje)) return
 
-    const cantidad = aplicarIPC(porcentaje)
+    // Bloquear duplicados: un solo IPC por mes
+    const yaExiste = (state.historialIPC || []).some((h) => h.mes === mesIPC && h.anio === anioIPC)
+    if (yaExiste) return
+
+    aplicarIPC(porcentaje, mesIPC, anioIPC)
     setShowIPCDialog(false)
     setPorcentajeIPC("")
-    // El toast se puede agregar aquí si se quiere
   }
 
   if (!isHydrated) {
@@ -1497,45 +1528,105 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       <Dialog open={showIPCDialog} onOpenChange={setShowIPCDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Cargar IPC del mes</DialogTitle>
+            <DialogTitle>Cargar IPC de un mes</DialogTitle>
             <DialogDescription>
-              Ingresa el porcentaje de inflacion (IPC) del mes. Se aplicara solo a las cuotas restantes (no pagadas) de los eventos con cuotas ajustables, de forma compuesta.
+              Elegí el mes al que corresponde el IPC y su porcentaje. Se permite un solo IPC por mes y se aplica solo a las cuotas restantes (no pagadas) de los eventos ajustables, de forma compuesta.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="porcentaje-ipc">Porcentaje IPC del mes</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="porcentaje-ipc"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Ej: 3.2"
-                  value={porcentajeIPC}
-                  onChange={(e) => setPorcentajeIPC(e.target.value)}
-                  className="flex-1"
-                />
-                <span className="text-sm text-muted-foreground">%</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Ingresa el porcentaje como numero decimal (ej: 3.2 para 3,2%)
-              </p>
-            </div>
-          </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-row">
-            <Button
-              variant="outline"
-              onClick={() => setShowIPCDialog(false)}
-            >
-              Recordar despues
-            </Button>
-            <Button
-              onClick={handleAplicarIPC}
-              disabled={!porcentajeIPC || isNaN(parseFloat(porcentajeIPC.replace(",", ".")))}
-            >
-              Aplicar ahora
-            </Button>
-          </DialogFooter>
+          {(() => {
+            const mesYaCargado = (state.historialIPC || []).some(
+              (h) => h.mes === mesIPC && h.anio === anioIPC,
+            )
+            const hoy = new Date()
+            const anios = Array.from(new Set([
+              hoy.getFullYear() - 1,
+              hoy.getFullYear(),
+              hoy.getFullYear() + 1,
+              anioIPC,
+            ])).sort((a, b) => a - b)
+            return (
+              <>
+                <div className="space-y-4 py-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Mes del IPC</Label>
+                      <Select value={String(mesIPC)} onValueChange={(v) => setMesIPC(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MESES_IPC.map((nombre, idx) => (
+                            <SelectItem key={idx} value={String(idx)}>
+                              {nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Año</Label>
+                      <Select value={String(anioIPC)} onValueChange={(v) => setAnioIPC(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {anios.map((a) => (
+                            <SelectItem key={a} value={String(a)}>
+                              {a}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {mesYaCargado ? (
+                    <p className="text-xs font-medium text-destructive">
+                      El IPC de {MESES_IPC[mesIPC]} {anioIPC} ya fue cargado. Elegí otro mes: solo se permite uno por mes.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Vas a cargar el IPC de <span className="font-medium text-foreground">{MESES_IPC[mesIPC]} {anioIPC}</span>.
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="porcentaje-ipc">Porcentaje IPC de {MESES_IPC[mesIPC]}</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="porcentaje-ipc"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Ej: 3.2"
+                        value={porcentajeIPC}
+                        onChange={(e) => setPorcentajeIPC(e.target.value)}
+                        className="flex-1"
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Ingresa el porcentaje como numero decimal (ej: 3.2 para 3,2%)
+                    </p>
+                  </div>
+                </div>
+                <DialogFooter className="flex-col gap-2 sm:flex-row">
+                  <Button variant="outline" onClick={() => setShowIPCDialog(false)}>
+                    Recordar despues
+                  </Button>
+                  <Button
+                    onClick={handleAplicarIPC}
+                    disabled={
+                      mesYaCargado ||
+                      !porcentajeIPC ||
+                      isNaN(parseFloat(porcentajeIPC.replace(",", ".")))
+                    }
+                  >
+                    Aplicar ahora
+                  </Button>
+                </DialogFooter>
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </StoreContext.Provider>
