@@ -700,7 +700,7 @@ export default function CajaJazminePage() {
 
       {/* Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-purple-200 bg-purple-50">
+        <Card style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}>
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
@@ -721,7 +721,7 @@ export default function CajaJazminePage() {
             <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
               {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
             </p>
-            <p className="text-xs text-purple-600 mt-1">Cobros  − gastos</p>
+            <p className="text-xs mt-1" style={{ color: "#4010fa" }}>Cobros  − gastos</p>
           </CardContent>
         </Card>
 
@@ -1106,7 +1106,7 @@ export default function CajaJazminePage() {
           )}
         </Card>
 
-        {/* ── Gastos variables ─────────────────��─────��─────��──��───────── */}
+        {/* ── Gastos variables ─────────────────��─���───��─────��──��───────── */}
         <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
