@@ -910,12 +910,11 @@ export default function CajaJazminePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* ���─ Gastos fijos del mes ─────────────────────────────────────── */}
-        <Card>
+        <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-red-500" />
-                Gastos fijos del mes
+                Gastos fijos
               </CardTitle>
               <div className="flex items-center gap-1">
                 <Button
@@ -1110,11 +1109,10 @@ export default function CajaJazminePage() {
         </Card>
 
         {/* ── Gastos variables ────────────────────────────────��───────── */}
-        <Card>
+        <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-purple-600" />
                 Gastos variables
               </CardTitle>
               <div className="flex items-center gap-1">
