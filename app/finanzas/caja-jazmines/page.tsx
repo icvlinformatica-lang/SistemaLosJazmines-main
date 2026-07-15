@@ -845,7 +845,7 @@ export default function CajaJazminePage() {
       </Card>
 
       {/* ── Cuotas por cobrar (columna izquierda) ─────────────────────── */}
-      <Card className="order-1">
+      <Card className="order-1" style={{ backgroundColor: "#aeffa0" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
