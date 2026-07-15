@@ -65,6 +65,16 @@ const MESES_RECIBO = [
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
 
+// Registra un movimiento de dinero en el historial de actividad (Configuración > Actividad).
+// Todo manejo de dinero (registrar/eliminar pagos) debe dejar rastro.
+function logMoneyActivity(accion: "creado" | "eliminado", nombre: string, detalle: string) {
+  fetch("/api/activity-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tipo: "pago", accion, nombre, detalle }),
+  }).catch(() => {})
+}
+
 function PaymentReceipt({
   evento,
   pago,
@@ -210,7 +220,7 @@ function PaymentReceipt({
 function PagosPageContent() {
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get("evento") || ""
-  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, historialIPC } = useStore()
+  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC } = useStore()
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
@@ -248,6 +258,9 @@ function PagosPageContent() {
   const [cuotasTotal, setCuotasTotal] = useState(1)
   const [montoTotal, setMontoTotal] = useState(0)
   const [showCuotasConfig, setShowCuotasConfig] = useState(false)
+
+  // Confirmación de eliminación de comprobante/pago
+  const [pagoToDelete, setPagoToDelete] = useState<PagoEvento | null>(null)
 
   // ¿Hay una búsqueda activa según el modo?
   const hayBusquedaActiva =
@@ -390,6 +403,15 @@ function PagosPageContent() {
       addMovimientosCaja([movEventos, movJazmines])
     }
 
+    // Registrar en el historial de actividad (manejo de dinero)
+    const nombreEventoLog = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
+    const etiquetaLog = cuotaPagadaNumero ? `Cuota ${cuotaPagadaNumero}` : "Pago"
+    logMoneyActivity(
+      "creado",
+      `${etiquetaLog} - ${nombreEventoLog}`,
+      `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""}${selectedEvento.salon ? ` | Ingreso dividido 50/50 en Caja Eventos y Caja Jazmines` : ""}`,
+    )
+
     setMontoCuotaBase(0)
     setPagoForm({
       monto: 0,
@@ -404,9 +426,66 @@ function PagosPageContent() {
 
   const handleDeletePago = (pagoId: string) => {
     if (!selectedEvento) return
+    const pago = (selectedEvento.pagos || []).find((p) => p.id === pagoId)
+    if (!pago) return
+
+    // 1) Determinar a qué cuota corresponde el pago (para revertirla y hallar sus movimientos)
+    const matchCuota = /Cuota\s+(\d+)/i.exec(pago.notas || "")
+    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : null
+    const etiquetaCuota = numeroCuota ? `Cuota ${numeroCuota}` : "Pago"
+
+    // 2) Revertir los movimientos de caja que se habían sumado por este pago.
+    //    Se buscan por evento + etiqueta de la cuota, tomando por cada caja el
+    //    movimiento cuyo monto más se acerca a la mitad del pago.
+    let cajasRevertidas = false
+    const candidatos = movimientosCaja.filter(
+      (m: MovimientoCaja) =>
+        m.eventoId === selectedEvento.id &&
+        m.tipo === "ingreso" &&
+        typeof m.concepto === "string" &&
+        m.concepto.startsWith(`${etiquetaCuota} - `),
+    )
+    const mitadObjetivo = pago.monto / 2
+    ;(["caja_eventos", "caja_jazmines"] as const).forEach((caja) => {
+      const delCaja = candidatos.filter((m) => m.cajaDestino === caja)
+      if (delCaja.length === 0) return
+      const elegido = delCaja.reduce((best, m) =>
+        Math.abs(m.monto - mitadObjetivo) < Math.abs(best.monto - mitadObjetivo) ? m : best,
+      )
+      deleteMovimientoCaja(elegido.id)
+      cajasRevertidas = true
+    })
+
+    // 3) Marcar la cuota como NO pagada de nuevo (vuelve a adeudarse)
+    let updatedPlanDeCuotas = selectedEvento.planDeCuotas
+    if (updatedPlanDeCuotas && numeroCuota) {
+      updatedPlanDeCuotas = {
+        ...updatedPlanDeCuotas,
+        cuotasPagadas: (updatedPlanDeCuotas.cuotasPagadas || []).filter((n) => n !== numeroCuota),
+      }
+    }
+
+    // 4) Quitar el pago del evento
     const updatedPagos = (selectedEvento.pagos || []).filter((p) => p.id !== pagoId)
-    updateEvento(selectedEvento.id, { pagos: updatedPagos })
-    setSelectedEvento({ ...selectedEvento, pagos: updatedPagos })
+    updateEvento(selectedEvento.id, {
+      pagos: updatedPagos,
+      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
+    })
+    setSelectedEvento({
+      ...selectedEvento,
+      pagos: updatedPagos,
+      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
+    })
+
+    // 5) Registrar en el historial de actividad (manejo de dinero)
+    const nombreEventoLog = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
+    logMoneyActivity(
+      "eliminado",
+      `${etiquetaCuota} - ${nombreEventoLog}`,
+      `Pago eliminado por ${formatCurrency(pago.monto)}${cajasRevertidas ? " | Monto descontado de Caja Eventos y Caja Jazmines" : ""}${numeroCuota ? ` | La cuota ${numeroCuota} vuelve a figurar como impaga` : ""}`,
+    )
+
+    setPagoToDelete(null)
   }
 
   const totalPagos = selectedEvento ? (selectedEvento.pagos || []).reduce((s, p) => s + p.monto, 0) : 0
@@ -531,6 +610,13 @@ function PagosPageContent() {
       }
 
       addMovimientosCaja([movEventos, movJazmines])
+
+      // Registrar en el historial de actividad (manejo de dinero)
+      logMoneyActivity(
+        "creado",
+        `Cuota ${numeroCuota} - ${nombreEvento}`,
+        `Cuota marcada como pagada por ${formatCurrency(montoCuota)} | Ingreso dividido 50/50 en Caja Eventos y Caja Jazmines`,
+      )
     }
   }
 
@@ -1147,7 +1233,7 @@ function PagosPageContent() {
                             variant="ghost"
                             size="sm"
                             className="h-7 px-2 text-destructive hover:text-destructive"
-                            onClick={() => handleDeletePago(pago.id)}
+                            onClick={() => setPagoToDelete(pago)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -1298,6 +1384,42 @@ function PagosPageContent() {
             <Button variant="outline" size="sm" onClick={() => setShowPagoDialog(false)}>Cancelar</Button>
             <Button size="sm" onClick={handleAddPago} disabled={pagoForm.monto <= 0 || !pagoForm.pagadoPor}>
               Registrar {formatCurrency(pagoForm.monto)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación de eliminación de comprobante/pago */}
+      <Dialog open={!!pagoToDelete} onOpenChange={(open) => !open && setPagoToDelete(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Eliminar este comprobante de pago?</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 pt-1">
+                <p>
+                  Vas a eliminar el registro del pago de{" "}
+                  <span className="font-semibold text-foreground">
+                    {pagoToDelete ? formatCurrency(pagoToDelete.monto) : ""}
+                  </span>
+                  {pagoToDelete?.notas ? ` (${pagoToDelete.notas})` : ""}. Esta acción:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-sm">
+                  <li>Descuenta el monto de la Caja Eventos y la Caja Jazmines.</li>
+                  <li>Vuelve a marcar la cuota como impaga (el cliente la vuelve a adeudar).</li>
+                  <li>Queda registrada en Configuración &gt; Actividad.</li>
+                </ul>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPagoToDelete(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => pagoToDelete && handleDeletePago(pagoToDelete.id)}
+            >
+              Eliminar pago
             </Button>
           </DialogFooter>
         </DialogContent>

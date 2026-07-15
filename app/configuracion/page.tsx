@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp } from "lucide-react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
@@ -40,6 +40,7 @@ const TIPO_LABELS: Record<string, string> = {
   receta: "Receta",
   coctel: "Coctel",
   evento: "Evento",
+  pago: "Pago",
 }
 
 const ACCION_ICON: Record<string, React.ReactNode> = {
@@ -62,6 +63,7 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   receta: <ChefHat className="h-4 w-4 text-emerald-600" />,
   coctel: <Wine className="h-4 w-4 text-rose-600" />,
   evento: <CalendarCheck className="h-4 w-4 text-sky-600" />,
+  pago: <CreditCard className="h-4 w-4 text-green-600" />,
 }
 
 export default function ConfiguracionPage() {
