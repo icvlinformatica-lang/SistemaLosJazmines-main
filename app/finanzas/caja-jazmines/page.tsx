@@ -703,7 +703,7 @@ export default function CajaJazminePage() {
         <Card className="border-purple-200 bg-purple-50">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
+              <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
               <div className="flex items-center gap-1.5">
                 <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
                 <button
@@ -1106,7 +1106,7 @@ export default function CajaJazminePage() {
           )}
         </Card>
 
-        {/* ── Gastos variables ───────────────────────��─────��──��───────── */}
+        {/* ── Gastos variables ─────────────────��─────��─────��──��───────── */}
         <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
