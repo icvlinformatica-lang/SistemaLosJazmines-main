@@ -783,7 +783,7 @@ export default function CajaJazminePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
       {/* Alertas de vencimiento (columna derecha) */}
-      <Card className="order-2">
+      <Card className="order-2" style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
