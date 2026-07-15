@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Wine, Pencil } from "lucide-react"
+import { Plus, Trash2, Wine, Pencil, Beer } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export default function CoctelesPage() {
@@ -148,6 +148,56 @@ export default function CoctelesPage() {
 
   const getInsumoBarraById = (id: string) => state.insumosBarra.find((i) => i.id === id)
 
+  // --- Convertir un insumo de barra en un coctel (para que aparezca en el evento) ---
+  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false)
+  const [convertInsumoId, setConvertInsumoId] = useState("")
+  const [convertCantidad, setConvertCantidad] = useState<number>(1)
+
+  // Genera el proximo codigo COC disponible (COC001, COC002, ...)
+  const getNextCoctelCodigo = () => {
+    const nums = state.cocteles
+      .map((c) => {
+        const m = /^COC(\d+)$/i.exec(c.codigo || "")
+        return m ? parseInt(m[1], 10) : 0
+      })
+      .filter((n) => !isNaN(n))
+    const next = (nums.length ? Math.max(...nums) : 0) + 1
+    return `COC${String(next).padStart(3, "0")}`
+  }
+
+  const insumoParaConvertir = state.insumosBarra.find((i) => i.id === convertInsumoId)
+
+  const openConvertDialog = () => {
+    setConvertInsumoId("")
+    setConvertCantidad(1)
+    setIsConvertDialogOpen(true)
+  }
+
+  const handleConvertInsumo = async () => {
+    const insumo = state.insumosBarra.find((i) => i.id === convertInsumoId)
+    if (!insumo) return
+    // Categoria del coctel segun el tipo de insumo
+    const categoria: CategoriaCoctel =
+      insumo.categoria === "Alcoholes" || insumo.categoria === "Licores" ? "Con Alcohol" : "Sin Alcohol"
+    const nuevoCoctel: Omit<Coctel, "id"> = {
+      codigo: getNextCoctelCodigo(),
+      nombre: insumo.descripcion,
+      descripcion: `Bebida directa de barra: ${insumo.descripcion}`,
+      categoria,
+      insumos: [
+        {
+          insumoBarraId: insumo.id,
+          cantidadPorCoctel: convertCantidad > 0 ? convertCantidad : 1,
+          unidadCoctel: getDefaultRecipeUnit(insumo.unidad),
+        },
+      ],
+      preparacion: "",
+    }
+    const created = await addCoctel(nuevoCoctel)
+    if (created) setSelectedCoctel(created)
+    setIsConvertDialogOpen(false)
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -156,7 +206,74 @@ export default function CoctelesPage() {
             <h1 className="text-2xl font-bold tracking-tight">Carta de Cocteles</h1>
             <p className="mt-1 text-base text-muted-foreground">Crea y gestiona tus recetas de cocteles</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" onClick={openConvertDialog}>
+                  <Beer className="mr-2 h-4 w-4" />
+                  Desde insumo
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md w-11/12">
+                <DialogHeader>
+                  <DialogTitle>Agregar bebida desde un insumo</DialogTitle>
+                  <DialogDescription>
+                    Convertí un insumo de barra (ej: cerveza, agua, gaseosa) en una bebida que podrás
+                    seleccionar en la barra del evento.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-2">
+                  <div>
+                    <Label htmlFor="convert-insumo">Insumo de barra</Label>
+                    <Select value={convertInsumoId} onValueChange={setConvertInsumoId}>
+                      <SelectTrigger id="convert-insumo">
+                        <SelectValue placeholder="Elegí un insumo..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {state.insumosBarra.map((i) => (
+                          <SelectItem key={i.id} value={i.id}>
+                            {i.descripcion} ({i.categoria})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {insumoParaConvertir && (
+                    <div>
+                      <Label htmlFor="convert-cantidad">
+                        Cantidad por unidad ({getDefaultRecipeUnit(insumoParaConvertir.unidad)})
+                      </Label>
+                      <Input
+                        id="convert-cantidad"
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={convertCantidad}
+                        onChange={(e) => setConvertCantidad(Number(e.target.value))}
+                      />
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Se creará como{" "}
+                        <span className="font-medium text-foreground">
+                          {insumoParaConvertir.categoria === "Alcoholes" ||
+                          insumoParaConvertir.categoria === "Licores"
+                            ? "Con Alcohol"
+                            : "Sin Alcohol"}
+                        </span>
+                        . Podés editarla luego como cualquier cóctel.
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsConvertDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleConvertInsumo} disabled={!convertInsumoId}>
+                    Crear bebida
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Dialog
               open={isAddDialogOpen}
               onOpenChange={(open) => {

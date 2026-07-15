@@ -83,7 +83,7 @@ interface StoreContextType {
   deleteReceta: (id: string) => void
   setRecetas: (recetas: Receta[]) => void
   // Cocteles
-  addCoctel: (coctel: Omit<Coctel, "id">) => void
+  addCoctel: (coctel: Omit<Coctel, "id">) => Promise<Coctel | undefined>
   updateCoctel: (id: string, coctel: Partial<Coctel>) => void
   deleteCoctel: (id: string) => void
   setCocteles: (cocteles: Coctel[]) => void

@@ -10,6 +10,7 @@ const CATEGORIAS_ORDEN = [
   "Plato Principal",
   "Guarnición",
   "Postre",
+  "Mesa Dulce",
   "Menú para Niños",
   "Menú Adolescente",
   "Celiaco",
@@ -25,6 +26,7 @@ const FILTROS = [
   { label: "Principales", value: "Plato Principal" },
   { label: "Guarnición", value: "Guarnición" },
   { label: "Postres", value: "Postre" },
+  { label: "Mesa Dulce", value: "Mesa Dulce" },
   { label: "Niños", value: "Menú para Niños" },
 ]
 
@@ -217,11 +219,18 @@ export function MenuTable({
     ? recetas.filter((r) => r.categoria === filtroActivo)
     : recetas
 
-  // Agrupar por categoria respetando el orden
-  const grupos = CATEGORIAS_ORDEN.map((cat) => ({
-    categoria: cat,
-    recetas: recetasFiltradas.filter((r) => r.categoria === cat),
-  })).filter((g) => g.recetas.length > 0)
+  // Agrupar por categoria respetando el orden. Cualquier categoría que no esté
+  // en CATEGORIAS_ORDEN (nuevas categorías/platos) se agrega al final para que
+  // siempre se muestre y nunca quede oculta.
+  const categoriasExtra = Array.from(
+    new Set(recetasFiltradas.map((r) => r.categoria).filter((c) => !CATEGORIAS_ORDEN.includes(c))),
+  )
+  const grupos = [...CATEGORIAS_ORDEN, ...categoriasExtra]
+    .map((cat) => ({
+      categoria: cat,
+      recetas: recetasFiltradas.filter((r) => r.categoria === cat),
+    }))
+    .filter((g) => g.recetas.length > 0)
 
   const totalSeleccionados =
     recetasAdultos.length + recetasAdolescentes.length + recetasNinos.length + recetasDietasEspeciales.length
