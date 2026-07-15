@@ -335,13 +335,14 @@ export default function RecetarioPage() {
                 <div className="grid gap-4 py-4">
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="codigo">Código</Label>
-                      <Input
-                        id="codigo"
-                        value={formData.codigo}
-                        onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                        placeholder="Ej: P1"
-                      />
+                      <Label>Código</Label>
+                      <div className="mt-1">
+                        {isEditMode ? (
+                          <span className="font-mono text-sm">{formData.codigo}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Se asignará automáticamente según la categoría</span>
+                        )}
+                      </div>
                     </div>
 
                     <div>

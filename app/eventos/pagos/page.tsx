@@ -17,6 +17,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -1309,11 +1310,9 @@ function PagosPageContent() {
               {/* Monto final */}
               <div className="grid gap-1">
                 <Label className="text-xs">Monto Final ($)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={pagoForm.monto || ""}
-                  onChange={(e) => setPagoForm({ ...pagoForm, monto: parseFloat(e.target.value) || 0 })}
+                <MoneyInput
+                  value={pagoForm.monto}
+                  onValueChange={(monto) => setPagoForm({ ...pagoForm, monto })}
                   placeholder="0"
                   className="h-10 text-base font-semibold"
                 />
@@ -1345,12 +1344,10 @@ function PagosPageContent() {
               <div className="rounded-md border border-dashed border-border px-3 py-2.5 space-y-2">
                 <div className="grid gap-1">
                   <Label className="text-xs text-muted-foreground font-semibold">Monto que entrega el cliente ($)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={pagoForm.montoRecibido || ""}
-                    onChange={(e) => setPagoForm({ ...pagoForm, montoRecibido: parseFloat(e.target.value) || 0 })}
-                    placeholder="Ej: 100000"
+                  <MoneyInput
+                    value={pagoForm.montoRecibido}
+                    onValueChange={(montoRecibido) => setPagoForm({ ...pagoForm, montoRecibido })}
+                    placeholder="Ej: 100.000"
                     className="h-10 text-base"
                   />
                 </div>
