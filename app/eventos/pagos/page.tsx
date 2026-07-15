@@ -234,10 +234,15 @@ function PagosPageContent() {
     if (searchMode === "texto") {
       if (!searchTerm.trim()) return []
       const term = searchTerm.toLowerCase().trim()
+      // Normaliza DNI: quita puntos, espacios y guiones para que "12.345.678" y "12345678" coincidan
+      const soloDigitos = (v?: string) => (v || "").replace(/[.\s-]/g, "")
+      const termDni = soloDigitos(term)
       return eventos.filter((e) => {
         const nameMatch = (e.nombre || "").toLowerCase().includes(term)
         const parejaMatch = (e.nombrePareja || "").toLowerCase().includes(term)
-        const dniMatch = (e.dniNovio1 || "").includes(term) || (e.dniNovio2 || "").includes(term)
+        const dnis = [e.dniNovio1, e.dniNovio2, e.contrato?.dni]
+        const dniMatch =
+          termDni.length > 0 && dnis.some((d) => soloDigitos(d).includes(termDni))
         return nameMatch || parejaMatch || dniMatch
       })
     }
