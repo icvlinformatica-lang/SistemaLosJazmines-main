@@ -10,6 +10,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
@@ -392,12 +393,10 @@ export default function GastosFijosPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-2">
                 <Label htmlFor="co-monto">Monto ($)</Label>
-                <Input
+                <MoneyInput
                   id="co-monto"
-                  type="number"
-                  min={0}
-                  value={form.monto || ""}
-                  onChange={(e) => setForm({ ...form, monto: parseFloat(e.target.value) || 0 })}
+                  value={form.monto || 0}
+                  onValueChange={(v) => setForm({ ...form, monto: v })}
                 />
               </div>
               <div className="grid gap-2">
@@ -429,12 +428,10 @@ export default function GastosFijosPage() {
             {form.esPorPersona && (
               <div className="grid gap-2">
                 <Label htmlFor="co-mpp">Monto por persona ($)</Label>
-                <Input
+                <MoneyInput
                   id="co-mpp"
-                  type="number"
-                  min={0}
-                  value={form.montoPorPersona || ""}
-                  onChange={(e) => setForm({ ...form, montoPorPersona: parseFloat(e.target.value) || 0 })}
+                  value={form.montoPorPersona || 0}
+                  onValueChange={(v) => setForm({ ...form, montoPorPersona: v })}
                 />
               </div>
             )}

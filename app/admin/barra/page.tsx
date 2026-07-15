@@ -6,6 +6,7 @@ import { useStore } from "@/lib/store-context"
 import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -256,12 +257,10 @@ function BarraAlmacenContent() {
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="precio" className="text-right">Precio $</Label>
-                      <Input
+                      <MoneyInput
                         id="precio"
-                        type="number"
-                        step="0.01"
                         value={formData.precioUnitario}
-                        onChange={(e) => setFormData({ ...formData, precioUnitario: Number.parseFloat(e.target.value) || 0 })}
+                        onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })}
                         className="col-span-3"
                       />
                     </div>

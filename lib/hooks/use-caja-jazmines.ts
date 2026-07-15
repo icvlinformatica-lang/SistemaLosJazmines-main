@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import type { AppState, CostoOperativo, MovimientoCaja } from "../store"
+import { salonLabel } from "../store"
 
 // ============================================================
 // Tipos de salida
@@ -74,6 +75,49 @@ function parseLocalDate(dateStr: string): Date {
 }
 
 /**
+ * Resuelve la lista de costos operativos según el salón seleccionado, aplicando
+ * el reparto por porcentaje (`distribucion`) cuando existe.
+ *
+ * - Gasto con reparto y vista de un salón: se incluye SOLO si ese salón participa,
+ *   con el monto prorrateado a su porcentaje y el concepto anotado (ej. "Luz · 50%").
+ * - Gasto con reparto y vista "todos": se incluye una sola línea con el monto total
+ *   y un resumen del reparto en el concepto.
+ * - Gasto sin reparto (un salón o general): comportamiento clásico de filtro por salón.
+ */
+function resolverCostosPorSalon(
+  costos: CostoOperativo[],
+  salonSel: string | null,
+): CostoOperativo[] {
+  const out: CostoOperativo[] = []
+  for (const c of costos) {
+    const dist = (c.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+    if (dist.length > 0) {
+      if (salonSel) {
+        const entry = dist.find((d) => d.salon === salonSel)
+        if (!entry) continue
+        out.push({
+          ...c,
+          monto: Math.round((c.monto * entry.porcentaje) / 100),
+          salon: salonSel,
+          concepto: `${c.concepto} · ${entry.porcentaje}%`,
+        })
+      } else {
+        const resumen = dist.map((d) => `${salonLabel(d.salon)} ${d.porcentaje}%`).join(" · ")
+        out.push({
+          ...c,
+          salon: null,
+          concepto: `${c.concepto} · repartido (${resumen})`,
+        })
+      }
+    } else {
+      if (salonSel && c.salon !== salonSel) continue
+      out.push(c)
+    }
+  }
+  return out
+}
+
+/**
  * Un gasto fijo se considera "cubierto este período" si existe un registro
  * archivado (origen caja_jazmines_fijo) para ese costo cuya fecha de archivo
  * cae en el mes actual (o el año actual, si es Anual).
@@ -110,9 +154,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     const movimientos: MovimientoCaja[] = (state.movimientosCaja || []).filter(
       (m) => !salonSel || m.salon === salonSel
     )
-    const costosOperativos = (state.costosOperativos || []).filter(
-      (c) => !salonSel || c.salon === salonSel
-    )
+    const costosOperativos = resolverCostosPorSalon(state.costosOperativos || [], salonSel)
     const eventos = (state.eventos || []).filter(
       (e) => !salonSel || e.salon === salonSel
     )

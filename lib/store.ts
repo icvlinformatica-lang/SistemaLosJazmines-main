@@ -334,6 +334,18 @@ export interface CostoOperativo {
   esVariable?: boolean
   /** true si el gasto ya fue pagado */
   pagado?: boolean
+  /**
+   * Reparto del gasto entre varios salones (porcentaje que "debe" cada uno).
+   * Si está presente y con entradas, tiene prioridad sobre `salon`: el monto
+   * se prorratea por salón. Ej: [{ salon: "Quinta", porcentaje: 50 }, { salon: "Casona", porcentaje: 50 }].
+   */
+  distribucion?: DistribucionSalon[]
+}
+
+/** Una porción del reparto de un gasto: qué salón y qué porcentaje le corresponde. */
+export interface DistribucionSalon {
+  salon: string
+  porcentaje: number
 }
 
 // --- Gastos Archivados (historial consolidado de egresos) ---
@@ -449,7 +461,30 @@ export interface EventoGuardado extends Evento {
   }
 }
 
-export type ImpactoContrato = "financiero" | "servicios" | "datos_cliente" | "sin_cambios"
+export type ImpactoContrato =
+  | "financiero"
+  | "servicios"
+  | "datos_cliente"
+  | "menu"
+  | "barra"
+  | "invitados"
+  | "sin_cambios"
+
+/** Snapshot del menu (recetas seleccionadas por tipo de comensal) en una version. */
+export interface SnapshotMenu {
+  recetasAdultos: string[]
+  recetasAdolescentes: string[]
+  recetasNinos: string[]
+  recetasDietasEspeciales: string[]
+}
+
+/** Snapshot de la cantidad de invitados por tipo. */
+export interface SnapshotInvitados {
+  adultos: number
+  adolescentes: number
+  ninos: number
+  dietasEspeciales: number
+}
 
 export interface VersionContrato {
   /** Numero de version incremental */
@@ -472,8 +507,102 @@ export interface VersionContrato {
   snapshotServiciosLibres: string[]
   /** Snapshot del plan de cuotas (si existia) */
   snapshotPlanCuotas?: EventoGuardado["planDeCuotas"]
+  /** Snapshot del menu contratado (recetas por tipo de comensal) */
+  snapshotMenu?: SnapshotMenu
+  /** Snapshot de las barras contratadas */
+  snapshotBarras?: BarraEvento[]
+  /** Snapshot de la cantidad de invitados */
+  snapshotInvitados?: SnapshotInvitados
   /** Tipos de cambios detectados respecto a la version anterior */
   impactos: ImpactoContrato[]
+}
+
+/**
+ * Compara dos versiones de contrato y devuelve la lista de impactos detectados.
+ * Se usa para etiquetar cada nueva version con "que cambio" respecto a la anterior.
+ */
+export function detectarImpactosContrato(
+  anterior: VersionContrato | undefined,
+  actual: Omit<VersionContrato, "impactos" | "version" | "fechaGuardado">,
+): ImpactoContrato[] {
+  if (!anterior) return ["sin_cambios"]
+  const impactos: ImpactoContrato[] = []
+  const sameSet = (a: string[] = [], b: string[] = []) => {
+    if (a.length !== b.length) return false
+    const sa = [...a].sort()
+    const sb = [...b].sort()
+    return sa.every((v, i) => v === sb[i])
+  }
+
+  // Datos del cliente
+  const ca = anterior.snapshotContrato || {}
+  const cb = actual.snapshotContrato || {}
+  if (
+    ca.nombreCompleto !== cb.nombreCompleto ||
+    ca.dni !== cb.dni ||
+    ca.telefono !== cb.telefono ||
+    ca.direccion !== cb.direccion ||
+    ca.email !== cb.email ||
+    ca.condicionIVA !== cb.condicionIVA
+  ) {
+    impactos.push("datos_cliente")
+  }
+
+  // Servicios
+  if (
+    !sameSet(anterior.snapshotServicios, actual.snapshotServicios) ||
+    !sameSet(anterior.snapshotServiciosLibres, actual.snapshotServiciosLibres)
+  ) {
+    impactos.push("servicios")
+  }
+
+  // Menu
+  const ma = anterior.snapshotMenu
+  const mb = actual.snapshotMenu
+  if (
+    !sameSet(ma?.recetasAdultos, mb?.recetasAdultos) ||
+    !sameSet(ma?.recetasAdolescentes, mb?.recetasAdolescentes) ||
+    !sameSet(ma?.recetasNinos, mb?.recetasNinos) ||
+    !sameSet(ma?.recetasDietasEspeciales, mb?.recetasDietasEspeciales)
+  ) {
+    impactos.push("menu")
+  }
+
+  // Barra
+  const barrasA = (anterior.snapshotBarras || []).map((b) => b.barraTemplateId).filter(Boolean)
+  const barrasB = (actual.snapshotBarras || []).map((b) => b.barraTemplateId).filter(Boolean)
+  const coctelesA = (anterior.snapshotBarras || []).flatMap((b) => b.coctelesIncluidos || [])
+  const coctelesB = (actual.snapshotBarras || []).flatMap((b) => b.coctelesIncluidos || [])
+  if (!sameSet(barrasA, barrasB) || !sameSet(coctelesA, coctelesB)) {
+    impactos.push("barra")
+  }
+
+  // Invitados
+  const ia = anterior.snapshotInvitados
+  const ib = actual.snapshotInvitados
+  if (
+    (ia?.adultos ?? 0) !== (ib?.adultos ?? 0) ||
+    (ia?.adolescentes ?? 0) !== (ib?.adolescentes ?? 0) ||
+    (ia?.ninos ?? 0) !== (ib?.ninos ?? 0) ||
+    (ia?.dietasEspeciales ?? 0) !== (ib?.dietasEspeciales ?? 0)
+  ) {
+    impactos.push("invitados")
+  }
+
+  // Plan de cuotas / financiero
+  const pa = anterior.snapshotPlanCuotas
+  const pb = actual.snapshotPlanCuotas
+  if (
+    (pa?.montoTotal ?? 0) !== (pb?.montoTotal ?? 0) ||
+    (pa?.numeroCuotas ?? 0) !== (pb?.numeroCuotas ?? 0) ||
+    (pa?.montoSena ?? 0) !== (pb?.montoSena ?? 0) ||
+    (pa?.modalidadPago ?? "") !== (pb?.modalidadPago ?? "") ||
+    (pa?.ajustaPorIPC ?? true) !== (pb?.ajustaPorIPC ?? true)
+  ) {
+    impactos.push("financiero")
+  }
+
+  return impactos.length > 0 ? impactos : ["sin_cambios"]
 }
 
 export interface EventoHistorial {

@@ -523,6 +523,7 @@ export async function fetchCostosOperativos(): Promise<CostoOperativo[]> {
     fechaVencimiento: c.fecha_vencimiento ?? undefined,
     esVariable: c.es_variable ?? false,
     pagado: c.pagado ?? false,
+    distribucion: Array.isArray(c.distribucion) ? c.distribucion : undefined,
   }))
 }
 
@@ -540,6 +541,7 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     fecha_vencimiento: costo.fechaVencimiento || null,
     es_variable: costo.esVariable ?? false,
     pagado: costo.pagado ?? false,
+    distribucion: costo.distribucion && costo.distribucion.length > 0 ? costo.distribucion : null,
     updated_at: new Date().toISOString(),
   }
   
@@ -567,6 +569,7 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     fechaVencimiento: data.fecha_vencimiento,
     esVariable: data.es_variable ?? false,
     pagado: data.pagado ?? false,
+    distribucion: Array.isArray(data.distribucion) ? data.distribucion : undefined,
   } : null
 }
 

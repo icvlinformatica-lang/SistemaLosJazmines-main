@@ -25,10 +25,12 @@ import {
   type EventoGuardado,
   type VersionContrato,
   type MovimientoCaja,
+  detectarImpactosContrato,
   SALONES,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -583,10 +585,12 @@ function EventoPageContent() {
       // When coming from contratos: auto-create a new VersionContrato snapshot
       let versionesContrato = evento?.versionesContrato || []
       if (fromContratos) {
-        const serviciosIds = (evento?.servicios || []).map((se) => se.servicioId).filter(Boolean) as string[]
-        const nuevaVersion: VersionContrato = {
-          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
-          fechaGuardado: new Date().toISOString(),
+        const serviciosIds = (eventData.servicios || []).map((se: ServicioEvento) => se.servicioId).filter(Boolean) as string[]
+        const versionAnterior =
+          versionesContrato.length > 0
+            ? versionesContrato.reduce((a, b) => (a.version >= b.version ? a : b))
+            : undefined
+        const snapshotBase = {
           motivo: observacionContrato.trim() || undefined,
           snapshotContrato: {
             nombreCompleto: eventData.contrato?.nombreCompleto,
@@ -594,11 +598,30 @@ function EventoPageContent() {
             telefono: eventData.contrato?.telefono,
             direccion: eventData.contrato?.direccion,
             email: eventData.contrato?.email,
+            condicionIVA: eventData.condicionIVA,
           },
           snapshotServicios: serviciosIds,
-          snapshotServiciosLibres: evento?.serviciosLibresContrato || [],
+          snapshotServiciosLibres: eventData.serviciosLibresContrato || [],
           snapshotPlanCuotas: eventData.planDeCuotas,
-          impactos: ["sin_cambios"],
+          snapshotMenu: {
+            recetasAdultos: eventData.recetasAdultos || [],
+            recetasAdolescentes: eventData.recetasAdolescentes || [],
+            recetasNinos: eventData.recetasNinos || [],
+            recetasDietasEspeciales: eventData.recetasDietasEspeciales || [],
+          },
+          snapshotBarras: eventData.barras || [],
+          snapshotInvitados: {
+            adultos: eventData.adultos || 0,
+            adolescentes: eventData.adolescentes || 0,
+            ninos: eventData.ninos || 0,
+            dietasEspeciales: eventData.personasDietasEspeciales || 0,
+          },
+        }
+        const nuevaVersion: VersionContrato = {
+          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
+          fechaGuardado: new Date().toISOString(),
+          ...snapshotBase,
+          impactos: detectarImpactosContrato(versionAnterior, snapshotBase),
         }
         versionesContrato = [...versionesContrato, nuevaVersion]
       }
@@ -636,10 +659,24 @@ function EventoPageContent() {
           telefono: eventData.contrato?.telefono,
           direccion: eventData.contrato?.direccion,
           email: eventData.contrato?.email,
+          condicionIVA: eventData.condicionIVA,
         },
         snapshotServicios: serviciosIds,
         snapshotServiciosLibres: eventData.serviciosLibresContrato || [],
         snapshotPlanCuotas: eventData.planDeCuotas,
+        snapshotMenu: {
+          recetasAdultos: eventData.recetasAdultos || [],
+          recetasAdolescentes: eventData.recetasAdolescentes || [],
+          recetasNinos: eventData.recetasNinos || [],
+          recetasDietasEspeciales: eventData.recetasDietasEspeciales || [],
+        },
+        snapshotBarras: eventData.barras || [],
+        snapshotInvitados: {
+          adultos: eventData.adultos || 0,
+          adolescentes: eventData.adolescentes || 0,
+          ninos: eventData.ninos || 0,
+          dietasEspeciales: eventData.personasDietasEspeciales || 0,
+        },
         impactos: ["sin_cambios"],
       }
 
@@ -1760,16 +1797,11 @@ function EventoPageContent() {
                   <DollarSign className="h-4 w-4" />
                   Monto Total del Evento
                 </Label>
-                <Input
+                <MoneyInput
                   id="montoTotalContrato"
-                  type="number"
-                  min="0"
-                  value={localMontoTotal || ""}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0
-                    setLocalMontoTotal(val)
-                  }}
-                  placeholder="Ej: 500000"
+                  value={localMontoTotal || 0}
+                  onValueChange={(val) => setLocalMontoTotal(val)}
+                  placeholder="Ej: 500.000"
                   className="h-12 text-lg font-mono"
                 />
               </div>
@@ -1836,14 +1868,11 @@ function EventoPageContent() {
                     <Banknote className="h-4 w-4" />
                     {"Monto de la Seña"}
                   </Label>
-                  <Input
+                  <MoneyInput
                     id="montoSena"
-                    type="number"
-                    min="0"
-                    max={localMontoTotal}
-                    value={localMontoSena || ""}
-                    onChange={(e) => setLocalMontoSena(parseFloat(e.target.value) || 0)}
-                    placeholder="Ej: 100000"
+                    value={localMontoSena || 0}
+                    onValueChange={(val) => setLocalMontoSena(val)}
+                    placeholder="Ej: 100.000"
                     className="h-11 font-mono"
                   />
                   {localMontoSena > 0 && localMontoTotal > 0 && (

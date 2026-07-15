@@ -6,6 +6,7 @@ import { SALONES, ConfiguracionCajas } from "@/lib/store"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Button } from "@/components/ui/button"
@@ -107,11 +108,9 @@ export default function ConfiguracionCajasPage() {
                   </Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={salonConfig.saldoInicial || ""}
-                      onChange={(e) => handleSalonChange(salon, "saldoInicial", Number(e.target.value) || 0)}
+                    <MoneyInput
+                      value={salonConfig.saldoInicial || 0}
+                      onValueChange={(v) => handleSalonChange(salon, "saldoInicial", v)}
                       className="pl-7"
                       placeholder="0"
                     />
@@ -166,11 +165,9 @@ export default function ConfiguracionCajasPage() {
               </Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                <Input
-                  type="number"
-                  min={0}
-                  value={config.admin.saldoInicial || ""}
-                  onChange={(e) => handleAdminSaldoChange(Number(e.target.value) || 0)}
+                <MoneyInput
+                  value={config.admin.saldoInicial || 0}
+                  onValueChange={(v) => handleAdminSaldoChange(v)}
                   className="pl-7"
                   placeholder="0"
                 />

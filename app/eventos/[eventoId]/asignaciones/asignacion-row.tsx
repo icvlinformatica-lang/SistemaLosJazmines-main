@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -390,10 +391,9 @@ export function AsignacionRow({
                 <Banknote className="h-4 w-4 text-amber-600" />
                 Monto Total
               </Label>
-              <Input
-                type="number"
+              <MoneyInput
                 value={montoPersonalizado}
-                onChange={(e) => setMontoPersonalizado(parseFloat(e.target.value) || 0)}
+                onValueChange={(v) => setMontoPersonalizado(v)}
                 placeholder="Monto"
               />
               <p className="text-xs text-muted-foreground">
@@ -408,10 +408,9 @@ export function AsignacionRow({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Monto de Seña</Label>
-                <Input
-                  type="number"
+                <MoneyInput
                   value={montoSeña}
-                  onChange={(e) => setMontoSeña(parseFloat(e.target.value) || 0)}
+                  onValueChange={(v) => setMontoSeña(v)}
                   placeholder="0 (opcional)"
                 />
               </div>

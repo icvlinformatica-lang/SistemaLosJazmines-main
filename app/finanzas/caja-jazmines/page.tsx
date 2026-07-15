@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -27,7 +28,7 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { SALONES, salonLabel, type EventoGuardado } from "@/lib/store"
+import { SALONES, salonLabel, type EventoGuardado, type DistribucionSalon } from "@/lib/store"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
 import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar } from "@/lib/hooks/use-caja-jazmines"
 import {
@@ -121,6 +122,117 @@ function badgeEstadoVar(estado: EstadoGastoVar) {
     return <Badge className="bg-red-100 text-red-700 border-red-200 text-[11px]">vencido</Badge>
   }
   return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">pendiente</Badge>
+}
+
+// ---------------------------------------------------------------------------
+// REPARTO ENTRE SALONES
+// ---------------------------------------------------------------------------
+
+/** Suma de porcentajes del reparto. */
+function totalReparto(dist: DistribucionSalon[]): number {
+  return dist.reduce((s, d) => s + (Number(d.porcentaje) || 0), 0)
+}
+
+/** Un reparto es válido si tiene al menos un salón y los porcentajes suman 100. */
+function repartoValido(dist: DistribucionSalon[]): boolean {
+  const activos = dist.filter((d) => d.salon && (Number(d.porcentaje) || 0) > 0)
+  return activos.length > 0 && totalReparto(activos) === 100
+}
+
+/**
+ * Editor para repartir un gasto entre varios salones por porcentaje.
+ * Cada salón tildado suma su porción; el total debe dar 100%.
+ */
+function RepartoSalonesEditor({
+  value,
+  onChange,
+}: {
+  value: DistribucionSalon[]
+  onChange: (v: DistribucionSalon[]) => void
+}) {
+  const total = totalReparto(value)
+
+  function toggleSalon(salon: string, checked: boolean) {
+    if (checked) {
+      if (value.some((d) => d.salon === salon)) return
+      onChange([...value, { salon, porcentaje: 0 }])
+    } else {
+      onChange(value.filter((d) => d.salon !== salon))
+    }
+  }
+
+  function setPorcentaje(salon: string, pct: number) {
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)))
+    onChange(value.map((d) => (d.salon === salon ? { ...d, porcentaje: clamped } : d)))
+  }
+
+  function repartirIgual() {
+    if (value.length === 0) return
+    const base = Math.floor(100 / value.length)
+    const resto = 100 - base * value.length
+    onChange(value.map((d, i) => ({ ...d, porcentaje: base + (i < resto ? 1 : 0) })))
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground">
+          Tildá los salones y asigná el porcentaje que le corresponde a cada uno.
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-purple-600 hover:text-purple-800"
+          onClick={repartirIgual}
+          disabled={value.length === 0}
+        >
+          Repartir igual
+        </Button>
+      </div>
+      <div className="space-y-1.5">
+        {SALONES.map((s) => {
+          const entry = value.find((d) => d.salon === s)
+          const checked = !!entry
+          return (
+            <div key={s} className="flex items-center gap-2.5">
+              <Checkbox
+                id={`rep-${s}`}
+                checked={checked}
+                onCheckedChange={(v) => toggleSalon(s, v === true)}
+              />
+              <Label htmlFor={`rep-${s}`} className="flex-1 text-sm font-normal cursor-pointer">
+                {salonLabel(s)}
+              </Label>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  inputMode="numeric"
+                  disabled={!checked}
+                  value={checked ? String(entry?.porcentaje ?? 0) : ""}
+                  onChange={(e) => setPorcentaje(s, Number(e.target.value))}
+                  className="h-8 w-20 text-right"
+                  aria-label={`Porcentaje de ${salonLabel(s)}`}
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex items-center justify-between pt-1 border-t border-border">
+        <span className="text-xs text-muted-foreground">Total asignado</span>
+        <span className={`text-sm font-bold ${total === 100 ? "text-teal-600" : "text-red-600"}`}>
+          {total}%
+        </span>
+      </div>
+      {total !== 100 && (
+        <p className="text-xs text-red-600">Los porcentajes deben sumar 100%.</p>
+      )}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -234,28 +346,42 @@ export default function CajaJazminePage() {
     fechaVencimiento: "",
     salon: "",
     pagado: false,
+    repartir: false,
+    distribucion: [] as DistribucionSalon[],
   })
 
+  const editRepartoInvalido = editFijo.repartir && !repartoValido(editFijo.distribucion)
+
   function abrirEditFijo(gasto: GastoFijoMes) {
+    // El gasto que llega puede venir prorrateado (concepto/monto ajustados). Usamos
+    // el costo original de Supabase para editar los valores reales sin el reparto aplicado.
+    const original = state.costosOperativos?.find((c) => c.id === gasto.id)
+    const dist = original?.distribucion ?? []
     setEditandoFijo(gasto)
     setEditFijo({
-      concepto: gasto.concepto,
-      monto: String(gasto.monto),
-      fechaVencimiento:
-        state.costosOperativos?.find((c) => c.id === gasto.id)?.fechaVencimiento ?? "",
-      salon: gasto.salon ?? "",
+      concepto: original?.concepto ?? gasto.concepto,
+      monto: String(original?.monto ?? gasto.monto),
+      fechaVencimiento: original?.fechaVencimiento ?? "",
+      salon: original?.salon ?? "",
       pagado: gasto.estado === "pagado",
+      repartir: dist.length > 0,
+      distribucion: dist,
     })
   }
 
   function guardarEditFijo() {
     if (!editandoFijo) return
+    if (editRepartoInvalido) return
+    const dist = editFijo.repartir
+      ? editFijo.distribucion.filter((d) => d.salon && d.porcentaje > 0)
+      : []
     updateCostoOperativo(editandoFijo.id, {
       concepto: editFijo.concepto,
       monto: Number(editFijo.monto),
       fechaVencimiento: editFijo.fechaVencimiento || undefined,
-      salon: editFijo.salon || null,
+      salon: dist.length > 0 ? null : editFijo.salon || null,
       pagado: editFijo.pagado,
+      distribucion: dist.length > 0 ? dist : undefined,
     })
     setEditandoFijo(null)
   }
@@ -268,23 +394,32 @@ export default function CajaJazminePage() {
     fechaVencimiento: "",
     salon: "",
     frecuencia: "Mensual" as "Mensual" | "Anual",
+    repartir: false,
+    distribucion: [] as DistribucionSalon[],
   })
+
+  const fijoRepartoInvalido = nuevoFijo.repartir && !repartoValido(nuevoFijo.distribucion)
 
   function handleAgregarFijo() {
     if (!nuevoFijo.concepto || !nuevoFijo.monto) return
+    if (fijoRepartoInvalido) return
+    const dist = nuevoFijo.repartir
+      ? nuevoFijo.distribucion.filter((d) => d.salon && d.porcentaje > 0)
+      : []
     addCostoOperativo({
       concepto: nuevoFijo.concepto,
       tipo: "Gastos Generales" as any,
       monto: Number(nuevoFijo.monto),
       frecuencia: nuevoFijo.frecuencia,
       esPorPersona: false,
-      salon: nuevoFijo.salon || null,
+      salon: dist.length > 0 ? null : nuevoFijo.salon || null,
       activo: true,
       fechaVencimiento: nuevoFijo.fechaVencimiento || undefined,
       esVariable: false,
       pagado: false,
+      distribucion: dist.length > 0 ? dist : undefined,
     })
-    setNuevoFijo({ concepto: "", monto: "", fechaVencimiento: "", salon: "", frecuencia: "Mensual" })
+    setNuevoFijo({ concepto: "", monto: "", fechaVencimiento: "", salon: "", frecuencia: "Mensual", repartir: false, distribucion: [] })
     setModalFijoAbierto(false)
   }
 
@@ -295,26 +430,39 @@ export default function CajaJazminePage() {
     monto: "",
     salon: "",
     fecha: "",
+    repartir: false,
+    distribucion: [] as DistribucionSalon[],
   })
+
+  const variableRepartoInvalido = nuevoGasto.repartir && !repartoValido(nuevoGasto.distribucion)
 
   const totalGastosFijos = gastosFijosMes.reduce((s, g) => s + g.monto, 0)
   const barMax = Math.max(saldoActual, ingresosProyectados30Dias, gastosPróximos30Dias, 1)
 
   function handleAgregarGasto() {
-    if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon || !nuevoGasto.fecha) return
+    if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.fecha) return
+    if (nuevoGasto.repartir) {
+      if (variableRepartoInvalido) return
+    } else if (!nuevoGasto.salon) {
+      return
+    }
+    const dist = nuevoGasto.repartir
+      ? nuevoGasto.distribucion.filter((d) => d.salon && d.porcentaje > 0)
+      : []
     addCostoOperativo({
       concepto: nuevoGasto.nombre,
       tipo: "Gastos Generales" as any,
       monto: Number(nuevoGasto.monto),
       frecuencia: "Por Evento",
       esPorPersona: false,
-      salon: nuevoGasto.salon,
+      salon: dist.length > 0 ? null : nuevoGasto.salon,
       activo: true,
       fechaVencimiento: nuevoGasto.fecha,
       esVariable: true,
       pagado: false,
+      distribucion: dist.length > 0 ? dist : undefined,
     })
-    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "" })
+    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", repartir: false, distribucion: [] })
     setModalVariableAbierto(false)
   }
 
@@ -573,7 +721,7 @@ export default function CajaJazminePage() {
       {/* Gastos fijos + Gastos variables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        {/* ── Gastos fijos del mes ─────────────────────────────────────── */}
+        {/* ���─ Gastos fijos del mes ─────────────────────────────────────── */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -889,36 +1037,51 @@ export default function CajaJazminePage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nf-monto">Monto (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="nf-monto"
-                type="number"
-                min="0"
                 placeholder="0"
-                value={nuevoFijo.monto}
-                onChange={(e) => setNuevoFijo((p) => ({ ...p, monto: e.target.value }))}
+                value={Number(nuevoFijo.monto) || 0}
+                onValueChange={(v) => setNuevoFijo((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="nf-salon">Salón</Label>
-              <Select
-                value={nuevoFijo.salon || "General"}
-                onValueChange={(v) => setNuevoFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
-              >
-                <SelectTrigger id="nf-salon">
-                  <SelectValue placeholder="Seleccionar salón" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="General">General (todos los salones)</SelectItem>
-                  {SALONES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {salonLabel(s)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Elegí un salón para atribuir el gasto, o &quot;General&quot; si es compartido.
-              </p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="nf-repartir">Repartir entre varios salones</Label>
+                <Switch
+                  id="nf-repartir"
+                  checked={nuevoFijo.repartir}
+                  onCheckedChange={(checked) => setNuevoFijo((p) => ({ ...p, repartir: checked }))}
+                />
+              </div>
+              {nuevoFijo.repartir ? (
+                <RepartoSalonesEditor
+                  value={nuevoFijo.distribucion}
+                  onChange={(v) => setNuevoFijo((p) => ({ ...p, distribucion: v }))}
+                />
+              ) : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="nf-salon">Salón</Label>
+                  <Select
+                    value={nuevoFijo.salon || "General"}
+                    onValueChange={(v) => setNuevoFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
+                  >
+                    <SelectTrigger id="nf-salon">
+                      <SelectValue placeholder="Seleccionar salón" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="General">General (todos los salones)</SelectItem>
+                      {SALONES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {salonLabel(s)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Elegí un salón para atribuir el gasto, o &quot;General&quot; si es compartido.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nf-fecha">Fecha de vencimiento</Label>
@@ -950,7 +1113,7 @@ export default function CajaJazminePage() {
             </Button>
             <Button
               onClick={handleAgregarFijo}
-              disabled={!nuevoFijo.concepto || !nuevoFijo.monto}
+              disabled={!nuevoFijo.concepto || !nuevoFijo.monto || fijoRepartoInvalido}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               Agregar
@@ -976,31 +1139,47 @@ export default function CajaJazminePage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ef-monto">Monto (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="ef-monto"
-                type="number"
-                value={editFijo.monto}
-                onChange={(e) => setEditFijo((p) => ({ ...p, monto: e.target.value }))}
+                value={Number(editFijo.monto) || 0}
+                onValueChange={(v) => setEditFijo((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ef-salon">Salón</Label>
-              <Select
-                value={editFijo.salon || "General"}
-                onValueChange={(v) => setEditFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
-              >
-                <SelectTrigger id="ef-salon">
-                  <SelectValue placeholder="Seleccionar salón" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="General">General (todos los salones)</SelectItem>
-                  {SALONES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {salonLabel(s)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ef-repartir">Repartir entre varios salones</Label>
+                <Switch
+                  id="ef-repartir"
+                  checked={editFijo.repartir}
+                  onCheckedChange={(checked) => setEditFijo((p) => ({ ...p, repartir: checked }))}
+                />
+              </div>
+              {editFijo.repartir ? (
+                <RepartoSalonesEditor
+                  value={editFijo.distribucion}
+                  onChange={(v) => setEditFijo((p) => ({ ...p, distribucion: v }))}
+                />
+              ) : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="ef-salon">Salón</Label>
+                  <Select
+                    value={editFijo.salon || "General"}
+                    onValueChange={(v) => setEditFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
+                  >
+                    <SelectTrigger id="ef-salon">
+                      <SelectValue placeholder="Seleccionar salón" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="General">General (todos los salones)</SelectItem>
+                      {SALONES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {salonLabel(s)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ef-fecha">Fecha de vencimiento</Label>
@@ -1030,7 +1209,7 @@ export default function CajaJazminePage() {
             </Button>
             <Button
               onClick={guardarEditFijo}
-              disabled={!editFijo.concepto || !editFijo.monto}
+              disabled={!editFijo.concepto || !editFijo.monto || editRepartoInvalido}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
               Guardar
@@ -1057,31 +1236,47 @@ export default function CajaJazminePage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="gv-monto">Monto (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="gv-monto"
-                type="number"
-                placeholder="Ej: 50000"
-                value={nuevoGasto.monto}
-                onChange={(e) => setNuevoGasto((p) => ({ ...p, monto: e.target.value }))}
+                placeholder="Ej: 50.000"
+                value={Number(nuevoGasto.monto) || 0}
+                onValueChange={(v) => setNuevoGasto((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="gv-salon">Salón</Label>
-              <Select
-                value={nuevoGasto.salon}
-                onValueChange={(v) => setNuevoGasto((p) => ({ ...p, salon: v }))}
-              >
-                <SelectTrigger id="gv-salon">
-                  <SelectValue placeholder="Seleccionar salón" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SALONES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {salonLabel(s)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="gv-repartir">Repartir entre varios salones</Label>
+                <Switch
+                  id="gv-repartir"
+                  checked={nuevoGasto.repartir}
+                  onCheckedChange={(checked) => setNuevoGasto((p) => ({ ...p, repartir: checked }))}
+                />
+              </div>
+              {nuevoGasto.repartir ? (
+                <RepartoSalonesEditor
+                  value={nuevoGasto.distribucion}
+                  onChange={(v) => setNuevoGasto((p) => ({ ...p, distribucion: v }))}
+                />
+              ) : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="gv-salon">Salón</Label>
+                  <Select
+                    value={nuevoGasto.salon}
+                    onValueChange={(v) => setNuevoGasto((p) => ({ ...p, salon: v }))}
+                  >
+                    <SelectTrigger id="gv-salon">
+                      <SelectValue placeholder="Seleccionar salón" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SALONES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {salonLabel(s)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="gv-fecha">Fecha del gasto</Label>
@@ -1102,7 +1297,12 @@ export default function CajaJazminePage() {
             </Button>
             <Button
               onClick={handleAgregarGasto}
-              disabled={!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon || !nuevoGasto.fecha}
+              disabled={
+                !nuevoGasto.nombre ||
+                !nuevoGasto.monto ||
+                !nuevoGasto.fecha ||
+                (nuevoGasto.repartir ? variableRepartoInvalido : !nuevoGasto.salon)
+              }
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
               Agendar
