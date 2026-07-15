@@ -720,7 +720,7 @@ export default function CajaJazminePage() {
             <p className="text-3xl font-bold text-purple-800">
               {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
             </p>
-            <p className="text-xs text-purple-600 mt-1">Cobros acumulados × 50% − gastos</p>
+            <p className="text-xs text-purple-600 mt-1"></p>
           </CardContent>
         </Card>
 
@@ -728,7 +728,7 @@ export default function CajaJazminePage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Gastos próximos 30 días
+                Gastos A 30 días
               </p>
               <div className="flex items-center gap-1.5">
                 <TrendingDown className="h-4 w-4 text-red-500" />
@@ -746,7 +746,7 @@ export default function CajaJazminePage() {
             <p className="text-3xl font-bold" style={{ color: "#b96b19" }}>
               {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Costos operativos pendientes del período</p>
+            <p className="text-xs text-muted-foreground mt-1"></p>
           </CardContent>
         </Card>
 
@@ -754,7 +754,7 @@ export default function CajaJazminePage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
               <p className={`text-xs font-medium uppercase tracking-wide ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"}`}>
-                Saldo proyectado a 30 días
+                Saldo a 30 días
               </p>
               <div className="flex items-center gap-1.5">
                 <TrendingUp className={`h-4 w-4 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`} />
@@ -772,9 +772,7 @@ export default function CajaJazminePage() {
             <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
               {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
             </p>
-            <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}>
-              Saldo + ingresos − gastos estimados
-            </p>
+            <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}></p>
           </CardContent>
         </Card>
       </div>
@@ -1436,7 +1434,7 @@ export default function CajaJazminePage() {
                     onValueChange={(v) => setEditFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
                   >
                     <SelectTrigger id="ef-salon">
-                      <SelectValue placeholder="Seleccionar salón" />
+                      <SelectValue placeholder="Seleccionar sal��n" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="General">General (todos los salones)</SelectItem>
