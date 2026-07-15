@@ -548,13 +548,13 @@ export default function CajaEventosPage() {
       {/* TABS: Cobros / Pagos */}
       <Tabs defaultValue="cobrar" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="cobrar" className="gap-1.5">
+          <TabsTrigger value="cobrar" className="gap-1.5" style={{ backgroundColor: "rgba(92, 255, 57, 0.14)" }}>
             <ArrowDownToLine className="h-4 w-4" /> Por cobrar
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-1">
               {ingresosPendientes.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="pagar" className="gap-1.5">
+          <TabsTrigger value="pagar" className="gap-1.5" style={{ backgroundColor: "rgba(217, 225, 35, 0.14)", paddingLeft: "79px" }}>
             <ArrowUpFromLine className="h-4 w-4" /> Por pagar
             <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] ml-1">
               {egresosPendientes.length}
