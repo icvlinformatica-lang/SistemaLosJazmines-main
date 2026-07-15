@@ -340,12 +340,33 @@ export interface CostoOperativo {
    * se prorratea por salón. Ej: [{ salon: "Quinta", porcentaje: 50 }, { salon: "Casona", porcentaje: 50 }].
    */
   distribucion?: DistribucionSalon[]
+  /**
+   * Registro histórico de montos pagados mes a mes (para seguir los aumentos, ej. luz).
+   * Cada vez que llega la boleta real se agrega un registro y `monto` se actualiza
+   * al último valor pagado, que pasa a ser la referencia del mes próximo.
+   */
+  historialMontos?: RegistroMonto[]
 }
 
 /** Una porción del reparto de un gasto: qué salón y qué porcentaje le corresponde. */
 export interface DistribucionSalon {
   salon: string
   porcentaje: number
+}
+
+/** Un registro puntual de cuánto se pagó de un gasto fijo en un período dado. */
+export interface RegistroMonto {
+  id: string
+  /** Período al que corresponde el pago, formato YYYY-MM. */
+  mes: string
+  /** Monto realmente pagado en ese período. */
+  monto: number
+  /** Monto que estaba vigente antes de este registro (para calcular el aumento). */
+  montoAnterior: number
+  /** Fecha en que se dejó el registro (ISO). */
+  fecha: string
+  /** Nota opcional (ej. "aumento tarifa", "consumo alto verano"). */
+  nota?: string
 }
 
 // --- Gastos Archivados (historial consolidado de egresos) ---

@@ -28,7 +28,7 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { SALONES, salonLabel, type EventoGuardado, type DistribucionSalon } from "@/lib/store"
+import { SALONES, salonLabel, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
 import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar } from "@/lib/hooks/use-caja-jazmines"
 import {
@@ -49,6 +49,12 @@ import {
   ChevronDown,
   ChevronUp,
   HandCoins,
+  Folder,
+  FolderOpen,
+  Receipt,
+  History,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -60,6 +66,25 @@ function formatFecha(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
   const date = new Date(y, m - 1, d)
   return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+/** Devuelve el mes actual en formato YYYY-MM. */
+function mesActualISO(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+}
+
+/** Formatea un mes YYYY-MM a algo legible, ej. "jul 2026". */
+function formatMes(mes: string): string {
+  const [y, m] = mes.split("-").map(Number)
+  if (!y || !m) return mes
+  return new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "short", year: "numeric" })
+}
+
+/** Calcula la variación porcentual entre dos montos. */
+function calcularVariacion(anterior: number, actual: number): number | null {
+  if (!anterior || anterior <= 0) return null
+  return ((actual - anterior) / anterior) * 100
 }
 
 /** Avanza una fecha de vencimiento al próximo período según la frecuencia. */
@@ -236,6 +261,123 @@ function RepartoSalonesEditor({
 }
 
 // ---------------------------------------------------------------------------
+// CARPETAS POR SALÓN
+// ---------------------------------------------------------------------------
+
+/** Paleta de colores por salón para las carpetas de gastos. */
+const SALON_FOLDER_STYLES: Record<string, { header: string; dot: string; border: string; icon: string }> = {
+  Quinta: { header: "bg-blue-50 text-blue-800 hover:bg-blue-100", dot: "bg-blue-500", border: "border-blue-200", icon: "text-blue-500" },
+  Casona: { header: "bg-emerald-50 text-emerald-800 hover:bg-emerald-100", dot: "bg-emerald-500", border: "border-emerald-200", icon: "text-emerald-500" },
+  Salon: { header: "bg-amber-50 text-amber-800 hover:bg-amber-100", dot: "bg-amber-500", border: "border-amber-200", icon: "text-amber-500" },
+  "Salon 4": { header: "bg-rose-50 text-rose-800 hover:bg-rose-100", dot: "bg-rose-500", border: "border-rose-200", icon: "text-rose-500" },
+  "Salon 5": { header: "bg-cyan-50 text-cyan-800 hover:bg-cyan-100", dot: "bg-cyan-500", border: "border-cyan-200", icon: "text-cyan-500" },
+  General: { header: "bg-slate-100 text-slate-700 hover:bg-slate-200", dot: "bg-slate-400", border: "border-slate-200", icon: "text-slate-400" },
+}
+
+function folderStyle(salon: string | null | undefined) {
+  return SALON_FOLDER_STYLES[salon || "General"] || SALON_FOLDER_STYLES.General
+}
+
+/** Agrupa una lista de gastos por salón, respetando el orden de SALONES. */
+function agruparPorSalon<T extends { salon?: string | null; monto: number }>(
+  items: T[],
+): { salon: string; items: T[]; subtotal: number }[] {
+  const map = new Map<string, T[]>()
+  for (const it of items) {
+    const key = it.salon || "General"
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(it)
+  }
+  const orden = [...SALONES, "General"]
+  return Array.from(map.entries())
+    .sort((a, b) => orden.indexOf(a[0] as any) - orden.indexOf(b[0] as any))
+    .map(([salon, items]) => ({
+      salon,
+      items,
+      subtotal: items.reduce((s, g) => s + g.monto, 0),
+    }))
+}
+
+/** Carpeta colapsable de color que agrupa los gastos de un salón. */
+function CarpetaGastos({
+  salon,
+  count,
+  subtotal,
+  children,
+}: {
+  salon: string
+  count: number
+  subtotal: number
+  children: React.ReactNode
+}) {
+  const [abierta, setAbierta] = useState(true)
+  const st = folderStyle(salon)
+  return (
+    <div className={`rounded-lg border ${st.border} overflow-hidden`}>
+      <button
+        type="button"
+        onClick={() => setAbierta((v) => !v)}
+        className={`flex w-full items-center gap-2 px-3 py-2 transition-colors ${st.header}`}
+        aria-expanded={abierta}
+      >
+        {abierta ? <FolderOpen className={`h-4 w-4 ${st.icon}`} /> : <Folder className={`h-4 w-4 ${st.icon}`} />}
+        <span className={`h-2 w-2 rounded-full ${st.dot}`} aria-hidden="true" />
+        <span className="text-sm font-semibold flex-1 text-left">{salonLabel(salon)}</span>
+        <span className="text-xs font-medium opacity-80">
+          {count} {count === 1 ? "gasto" : "gastos"} · {formatCurrency(subtotal)}
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`} />
+      </button>
+      {abierta && <div className="space-y-2 bg-card p-2">{children}</div>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SEGUIMIENTO DE AUMENTOS (historial de montos por gasto fijo)
+// ---------------------------------------------------------------------------
+
+/** Chip que muestra la variación % del último registro respecto al anterior. */
+function DeltaMonto({ variacion }: { variacion: number | null }) {
+  if (variacion === null || Math.abs(variacion) < 0.5) return null
+  const subio = variacion > 0
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+        subio ? "bg-red-100 text-red-700" : "bg-teal-100 text-teal-700"
+      }`}
+      title={`${subio ? "Aumentó" : "Bajó"} ${Math.abs(variacion).toFixed(1)}% respecto al registro anterior`}
+    >
+      {subio ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />}
+      {Math.abs(variacion).toFixed(1)}%
+    </span>
+  )
+}
+
+/** Timeline colapsable con el historial de montos pagados de un gasto fijo. */
+function HistorialMontos({ historial }: { historial: RegistroMonto[] }) {
+  const ordenado = [...historial].sort((a, b) => b.mes.localeCompare(a.mes))
+  return (
+    <div className="mt-2 rounded-md border border-border bg-muted/40 p-2 space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1">
+        Historial de pagos
+      </p>
+      {ordenado.map((r) => {
+        const variacion = calcularVariacion(r.montoAnterior, r.monto)
+        return (
+          <div key={r.id} className="flex items-center gap-2 rounded px-1 py-0.5 text-xs">
+            <span className="w-16 shrink-0 text-muted-foreground">{formatMes(r.mes)}</span>
+            <span className="font-medium text-foreground">{formatCurrency(r.monto)}</span>
+            <DeltaMonto variacion={variacion} />
+            {r.nota ? <span className="truncate text-muted-foreground italic">· {r.nota}</span> : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 
@@ -284,7 +426,7 @@ export default function CajaJazminePage() {
   const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
-  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({})
+  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({ fijos: true, variables: true })
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
   const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({})
@@ -386,6 +528,49 @@ export default function CajaJazminePage() {
     setEditandoFijo(null)
   }
 
+  // ── Registro de montos pagados (seguimiento de aumentos) ─────────────────
+  const [historialAbierto, setHistorialAbierto] = useState<Record<string, boolean>>({})
+  const [registrandoMonto, setRegistrandoMonto] = useState<GastoFijoMes | null>(null)
+  const [formRegistro, setFormRegistro] = useState({ monto: "", mes: "", nota: "" })
+
+  function toggleHistorial(id: string) {
+    setHistorialAbierto((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  function abrirRegistroMonto(gasto: GastoFijoMes) {
+    const original = state.costosOperativos?.find((c) => c.id === gasto.id)
+    setRegistrandoMonto(gasto)
+    // Prefill con el último monto conocido para que solo ajusten la diferencia.
+    setFormRegistro({
+      monto: String(original?.monto ?? gasto.monto),
+      mes: mesActualISO(),
+      nota: "",
+    })
+  }
+
+  function guardarRegistroMonto() {
+    if (!registrandoMonto) return
+    const montoNum = Number(formRegistro.monto)
+    if (!montoNum || montoNum <= 0) return
+    const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
+    if (!original) return
+    const historial = original.historialMontos || []
+    const nuevoRegistro: RegistroMonto = {
+      id: generateId(),
+      mes: formRegistro.mes || mesActualISO(),
+      monto: montoNum,
+      montoAnterior: original.monto,
+      fecha: new Date().toISOString(),
+      nota: formRegistro.nota.trim() || undefined,
+    }
+    // El monto base se actualiza al último pagado: pasa a ser la referencia del mes próximo.
+    updateCostoOperativo(registrandoMonto.id, {
+      monto: montoNum,
+      historialMontos: [...historial, nuevoRegistro],
+    })
+    setRegistrandoMonto(null)
+  }
+
   // ── Agregar gasto fijo ───────────────────────────────────────────────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
   const [nuevoFijo, setNuevoFijo] = useState({
@@ -423,7 +608,7 @@ export default function CajaJazminePage() {
     setModalFijoAbierto(false)
   }
 
-  // ── Gastos variables ─────────────────────────────────────────────────────
+  // ── Gastos variables ──────────────────────────���──────────────────────────
   const [modalVariableAbierto, setModalVariableAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
@@ -594,8 +779,11 @@ export default function CajaJazminePage() {
         </Card>
       </div>
 
-      {/* Alertas */}
-      <Card>
+      {/* Cuotas por cobrar (izquierda) + Vencimientos (derecha) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+
+      {/* Alertas de vencimiento (columna derecha) */}
+      <Card className="order-2">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -660,8 +848,8 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-      {/* ── Cuotas por cobrar (marcar como cobradas) ─────────────────────── */}
-      <Card>
+      {/* ── Cuotas por cobrar (columna izquierda) ─────────────────────── */}
+      <Card className="order-1">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -718,6 +906,8 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
+      </div>
+
       {/* Gastos fijos + Gastos variables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
@@ -765,19 +955,33 @@ export default function CajaJazminePage() {
                     No hay gastos fijos pendientes este mes.
                   </p>
                 )}
-                {gastosFijosMes.map((gasto) => {
+                {agruparPorSalon(gastosFijosMes).map((carpeta) => (
+                  <CarpetaGastos
+                    key={`fijo-${carpeta.salon}`}
+                    salon={carpeta.salon}
+                    count={carpeta.items.length}
+                    subtotal={carpeta.subtotal}
+                  >
+                    {carpeta.items.map((gasto) => {
                   const esPagado = gasto.estado === "pagado"
+                  const hist = gasto.historialMontos || []
+                  const ultimoRegistro = hist.length > 0 ? hist[hist.length - 1] : null
+                  const variacion = ultimoRegistro
+                    ? calcularVariacion(ultimoRegistro.montoAnterior, ultimoRegistro.monto)
+                    : null
+                  const histVisible = historialAbierto[gasto.id]
                   return (
                     <div
                       key={gasto.id}
-                      className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                      className="rounded-lg border border-border bg-card"
                     >
+                    <div className="flex items-center gap-3 p-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {gasto.frecuencia}
-                          {` · ${salonLabel(gasto.salon)}`}
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
+                          {ultimoRegistro ? ` · últ. pago ${formatMes(ultimoRegistro.mes)}` : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -785,8 +989,35 @@ export default function CajaJazminePage() {
                           <span className="text-sm font-bold text-foreground">
                             {formatCurrency(gasto.monto)}
                           </span>
-                          {badgeEstadoFijo(gasto.estado)}
+                          <div className="flex items-center gap-1">
+                            <DeltaMonto variacion={variacion} />
+                            {badgeEstadoFijo(gasto.estado)}
+                          </div>
                         </div>
+                        {/* Registrar monto pagado (seguir aumentos) */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-amber-600"
+                          title="Registrar monto pagado este mes"
+                          onClick={() => abrirRegistroMonto(gasto)}
+                        >
+                          <Receipt className="h-3.5 w-3.5" />
+                          <span className="sr-only">Registrar monto pagado</span>
+                        </Button>
+                        {/* Ver historial de aumentos */}
+                        {hist.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${histVisible ? "text-purple-600" : "text-muted-foreground hover:text-purple-600"}`}
+                            title="Ver historial de montos"
+                            onClick={() => toggleHistorial(gasto.id)}
+                          >
+                            <History className="h-3.5 w-3.5" />
+                            <span className="sr-only">Ver historial de montos</span>
+                          </Button>
+                        )}
                         {/* Toggle pagado */}
                         <Button
                           variant="ghost"
@@ -836,8 +1067,16 @@ export default function CajaJazminePage() {
                         </Button>
                       </div>
                     </div>
+                    {histVisible && hist.length > 0 && (
+                      <div className="px-3 pb-3">
+                        <HistorialMontos historial={hist} />
+                      </div>
+                    )}
+                    </div>
                   )
-                })}
+                    })}
+                  </CarpetaGastos>
+                ))}
 
                 {/* Cubiertos este mes: tilde verde */}
                 {gastosFijosCubiertos.map((gasto) => (
@@ -880,24 +1119,44 @@ export default function CajaJazminePage() {
                 <Calendar className="h-4 w-4 text-purple-600" />
                 Gastos variables
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
-                onClick={() => setModalVariableAbierto(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Agendar gasto
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                  onClick={() => setModalVariableAbierto(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Agendar gasto
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleColapsada("variables")}
+                  aria-label={colapsadas.variables ? "Expandir gastos variables" : "Minimizar gastos variables"}
+                  title={colapsadas.variables ? "Expandir" : "Minimizar"}
+                >
+                  {colapsadas.variables ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
           </CardHeader>
+          {!colapsadas.variables && (
           <CardContent className="space-y-2">
             {gastosVariablesCombinados.length === 0 ? (
               <p className="text-sm text-muted-foreground py-3 text-center">
                 Sin gastos variables registrados.
               </p>
             ) : (
-              gastosVariablesCombinados.map((gasto) => {
+              agruparPorSalon(gastosVariablesCombinados).map((carpeta) => (
+                <CarpetaGastos
+                  key={`var-${carpeta.salon}`}
+                  salon={carpeta.salon}
+                  count={carpeta.items.length}
+                  subtotal={carpeta.subtotal}
+                >
+                  {carpeta.items.map((gasto) => {
                 const esPagado = gasto.estado === "pagado"
                 return (
                   <div
@@ -907,7 +1166,7 @@ export default function CajaJazminePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{gasto.nombre}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {salonLabel(gasto.salon)} · {formatFecha(gasto.fecha)}
+                        {formatFecha(gasto.fecha)}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -956,9 +1215,12 @@ export default function CajaJazminePage() {
                     </div>
                   </div>
                 )
-              })
+              })}
+                </CarpetaGastos>
+              ))
             )}
           </CardContent>
+          )}
         </Card>
       </div>
 
@@ -984,26 +1246,33 @@ export default function CajaJazminePage() {
         </CardHeader>
         {!colapsadas.proyeccion && (
         <CardContent className="space-y-4">
-          {[
-            { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
-            { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−" },
-            { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+" },
-          ].map(({ label, value, color, textColor, signo }) => {
-            const pct = Math.round((value / barMax) * 100)
-            return (
-              <div key={label} className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-foreground">{label}</span>
-                  <span className={`font-semibold ${textColor}`}>
+          <div className="flex items-end justify-around gap-3 sm:gap-6 h-56 pt-2">
+            {[
+              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
+              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−" },
+              { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+" },
+            ].map(({ label, value, color, textColor, signo }) => {
+              const pct = Math.round((value / barMax) * 100)
+              return (
+                <div key={label} className="flex h-full flex-1 flex-col items-center gap-2">
+                  <span className={`text-xs font-semibold whitespace-nowrap ${textColor}`}>
                     {signo ? `${signo} ` : ""}{formatCurrency(value)}
                   </span>
+                  <div className="flex w-full flex-1 items-end justify-center">
+                    <div className="relative flex h-full w-10 items-end overflow-hidden rounded-t-md bg-muted sm:w-16">
+                      <div
+                        className={`w-full rounded-t-md ${color} transition-all duration-500`}
+                        style={{ height: `${Math.max(pct, 2)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-center text-xs font-medium leading-tight text-foreground">
+                    {label}
+                  </span>
                 </div>
-                <div className="h-3 rounded-full bg-muted overflow-hidden">
-                  <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
           <div className="pt-3 border-t border-border">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-foreground">Saldo proyectado resultante</span>
@@ -1367,6 +1636,84 @@ export default function CajaJazminePage() {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Registrar monto pagado (seguimiento de aumentos) ─────────────── */}
+      <Dialog open={!!registrandoMonto} onOpenChange={(open) => !open && setRegistrandoMonto(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar monto pagado</DialogTitle>
+          </DialogHeader>
+          {registrandoMonto && (() => {
+            const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
+            const montoAnterior = original?.monto ?? registrandoMonto.monto
+            const montoNuevo = Number(formRegistro.monto) || 0
+            const variacion = calcularVariacion(montoAnterior, montoNuevo)
+            const historialPrevio = original?.historialMontos || []
+            return (
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground">
+                  {registrandoMonto.concepto}. Anotá cuánto pagaste realmente este mes.
+                  El monto de referencia se actualizará para el mes próximo.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rm-mes">Período</Label>
+                  <Input
+                    id="rm-mes"
+                    type="month"
+                    value={formRegistro.mes}
+                    onChange={(e) => setFormRegistro((p) => ({ ...p, mes: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rm-monto">Monto pagado (ARS)</Label>
+                  <MoneyInput
+                    id="rm-monto"
+                    value={montoNuevo}
+                    onValueChange={(v) => setFormRegistro((p) => ({ ...p, monto: v ? String(v) : "" }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rm-nota">Nota (opcional)</Label>
+                  <Input
+                    id="rm-nota"
+                    placeholder="Ej. aumento de tarifa, consumo alto"
+                    value={formRegistro.nota}
+                    onChange={(e) => setFormRegistro((p) => ({ ...p, nota: e.target.value }))}
+                  />
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Monto anterior</span>
+                    <span className="font-medium">{formatCurrency(montoAnterior)}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-muted-foreground">Monto nuevo</span>
+                    <span className="font-bold text-foreground flex items-center gap-1.5">
+                      {formatCurrency(montoNuevo)}
+                      <DeltaMonto variacion={variacion} />
+                    </span>
+                  </div>
+                  {historialPrevio.length > 0 && (
+                    <HistorialMontos historial={historialPrevio} />
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegistrandoMonto(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={guardarRegistroMonto}
+              disabled={!formRegistro.monto || Number(formRegistro.monto) <= 0}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Guardar registro
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
