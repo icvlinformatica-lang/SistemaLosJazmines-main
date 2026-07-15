@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import type { AppState, CostoOperativo, MovimientoCaja } from "../store"
+import type { AppState, CostoOperativo, MovimientoCaja, RegistroMonto } from "../store"
 import { salonLabel } from "../store"
 
 // ============================================================
@@ -29,6 +29,8 @@ export interface GastoFijoMes {
   monto: number
   estado: EstadoAlerta | "pagado"
   fechaVencimiento?: string
+  /** Historial de montos pagados mes a mes (seguimiento de aumentos). */
+  historialMontos?: RegistroMonto[]
 }
 
 export interface GastoVariable {
@@ -196,6 +198,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
             monto: costo.monto,
             estado: "pagado",
             fechaVencimiento: costo.fechaVencimiento,
+            historialMontos: costo.historialMontos,
           })
           return
         }
@@ -210,6 +213,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
             salon: costo.salon,
             monto: costo.monto,
             estado: costo.pagado ? "pagado" : "ok",
+            historialMontos: costo.historialMontos,
           })
           return
         }
@@ -249,6 +253,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
             monto: costo.monto,
             estado: estado as EstadoAlerta | "pagado",
             fechaVencimiento: fechaVencStr,
+            historialMontos: costo.historialMontos,
           })
         }
       })

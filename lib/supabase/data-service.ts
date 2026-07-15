@@ -524,6 +524,7 @@ export async function fetchCostosOperativos(): Promise<CostoOperativo[]> {
     esVariable: c.es_variable ?? false,
     pagado: c.pagado ?? false,
     distribucion: Array.isArray(c.distribucion) ? c.distribucion : undefined,
+    historialMontos: Array.isArray(c.historial_montos) ? c.historial_montos : undefined,
   }))
 }
 
@@ -542,6 +543,7 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     es_variable: costo.esVariable ?? false,
     pagado: costo.pagado ?? false,
     distribucion: costo.distribucion && costo.distribucion.length > 0 ? costo.distribucion : null,
+    historial_montos: costo.historialMontos && costo.historialMontos.length > 0 ? costo.historialMontos : null,
     updated_at: new Date().toISOString(),
   }
   
@@ -570,6 +572,7 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     esVariable: data.es_variable ?? false,
     pagado: data.pagado ?? false,
     distribucion: Array.isArray(data.distribucion) ? data.distribucion : undefined,
+    historialMontos: Array.isArray(data.historial_montos) ? data.historial_montos : undefined,
   } : null
 }
 

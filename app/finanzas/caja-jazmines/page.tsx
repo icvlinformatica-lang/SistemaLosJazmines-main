@@ -28,7 +28,7 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { SALONES, salonLabel, type EventoGuardado, type DistribucionSalon } from "@/lib/store"
+import { SALONES, salonLabel, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
 import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar } from "@/lib/hooks/use-caja-jazmines"
 import {
@@ -51,6 +51,10 @@ import {
   HandCoins,
   Folder,
   FolderOpen,
+  Receipt,
+  History,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -62,6 +66,25 @@ function formatFecha(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
   const date = new Date(y, m - 1, d)
   return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+/** Devuelve el mes actual en formato YYYY-MM. */
+function mesActualISO(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+}
+
+/** Formatea un mes YYYY-MM a algo legible, ej. "jul 2026". */
+function formatMes(mes: string): string {
+  const [y, m] = mes.split("-").map(Number)
+  if (!y || !m) return mes
+  return new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "short", year: "numeric" })
+}
+
+/** Calcula la variación porcentual entre dos montos. */
+function calcularVariacion(anterior: number, actual: number): number | null {
+  if (!anterior || anterior <= 0) return null
+  return ((actual - anterior) / anterior) * 100
 }
 
 /** Avanza una fecha de vencimiento al próximo período según la frecuencia. */
@@ -311,6 +334,50 @@ function CarpetaGastos({
 }
 
 // ---------------------------------------------------------------------------
+// SEGUIMIENTO DE AUMENTOS (historial de montos por gasto fijo)
+// ---------------------------------------------------------------------------
+
+/** Chip que muestra la variación % del último registro respecto al anterior. */
+function DeltaMonto({ variacion }: { variacion: number | null }) {
+  if (variacion === null || Math.abs(variacion) < 0.5) return null
+  const subio = variacion > 0
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+        subio ? "bg-red-100 text-red-700" : "bg-teal-100 text-teal-700"
+      }`}
+      title={`${subio ? "Aumentó" : "Bajó"} ${Math.abs(variacion).toFixed(1)}% respecto al registro anterior`}
+    >
+      {subio ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />}
+      {Math.abs(variacion).toFixed(1)}%
+    </span>
+  )
+}
+
+/** Timeline colapsable con el historial de montos pagados de un gasto fijo. */
+function HistorialMontos({ historial }: { historial: RegistroMonto[] }) {
+  const ordenado = [...historial].sort((a, b) => b.mes.localeCompare(a.mes))
+  return (
+    <div className="mt-2 rounded-md border border-border bg-muted/40 p-2 space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1">
+        Historial de pagos
+      </p>
+      {ordenado.map((r) => {
+        const variacion = calcularVariacion(r.montoAnterior, r.monto)
+        return (
+          <div key={r.id} className="flex items-center gap-2 rounded px-1 py-0.5 text-xs">
+            <span className="w-16 shrink-0 text-muted-foreground">{formatMes(r.mes)}</span>
+            <span className="font-medium text-foreground">{formatCurrency(r.monto)}</span>
+            <DeltaMonto variacion={variacion} />
+            {r.nota ? <span className="truncate text-muted-foreground italic">· {r.nota}</span> : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 
@@ -459,6 +526,49 @@ export default function CajaJazminePage() {
       distribucion: dist.length > 0 ? dist : undefined,
     })
     setEditandoFijo(null)
+  }
+
+  // ── Registro de montos pagados (seguimiento de aumentos) ─────────────────
+  const [historialAbierto, setHistorialAbierto] = useState<Record<string, boolean>>({})
+  const [registrandoMonto, setRegistrandoMonto] = useState<GastoFijoMes | null>(null)
+  const [formRegistro, setFormRegistro] = useState({ monto: "", mes: "", nota: "" })
+
+  function toggleHistorial(id: string) {
+    setHistorialAbierto((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  function abrirRegistroMonto(gasto: GastoFijoMes) {
+    const original = state.costosOperativos?.find((c) => c.id === gasto.id)
+    setRegistrandoMonto(gasto)
+    // Prefill con el último monto conocido para que solo ajusten la diferencia.
+    setFormRegistro({
+      monto: String(original?.monto ?? gasto.monto),
+      mes: mesActualISO(),
+      nota: "",
+    })
+  }
+
+  function guardarRegistroMonto() {
+    if (!registrandoMonto) return
+    const montoNum = Number(formRegistro.monto)
+    if (!montoNum || montoNum <= 0) return
+    const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
+    if (!original) return
+    const historial = original.historialMontos || []
+    const nuevoRegistro: RegistroMonto = {
+      id: generateId(),
+      mes: formRegistro.mes || mesActualISO(),
+      monto: montoNum,
+      montoAnterior: original.monto,
+      fecha: new Date().toISOString(),
+      nota: formRegistro.nota.trim() || undefined,
+    }
+    // El monto base se actualiza al último pagado: pasa a ser la referencia del mes próximo.
+    updateCostoOperativo(registrandoMonto.id, {
+      monto: montoNum,
+      historialMontos: [...historial, nuevoRegistro],
+    })
+    setRegistrandoMonto(null)
   }
 
   // ── Agregar gasto fijo ───────────────────────────────────────────────────
@@ -854,16 +964,24 @@ export default function CajaJazminePage() {
                   >
                     {carpeta.items.map((gasto) => {
                   const esPagado = gasto.estado === "pagado"
+                  const hist = gasto.historialMontos || []
+                  const ultimoRegistro = hist.length > 0 ? hist[hist.length - 1] : null
+                  const variacion = ultimoRegistro
+                    ? calcularVariacion(ultimoRegistro.montoAnterior, ultimoRegistro.monto)
+                    : null
+                  const histVisible = historialAbierto[gasto.id]
                   return (
                     <div
                       key={gasto.id}
-                      className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                      className="rounded-lg border border-border bg-card"
                     >
+                    <div className="flex items-center gap-3 p-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {gasto.frecuencia}
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
+                          {ultimoRegistro ? ` · últ. pago ${formatMes(ultimoRegistro.mes)}` : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -871,8 +989,35 @@ export default function CajaJazminePage() {
                           <span className="text-sm font-bold text-foreground">
                             {formatCurrency(gasto.monto)}
                           </span>
-                          {badgeEstadoFijo(gasto.estado)}
+                          <div className="flex items-center gap-1">
+                            <DeltaMonto variacion={variacion} />
+                            {badgeEstadoFijo(gasto.estado)}
+                          </div>
                         </div>
+                        {/* Registrar monto pagado (seguir aumentos) */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-amber-600"
+                          title="Registrar monto pagado este mes"
+                          onClick={() => abrirRegistroMonto(gasto)}
+                        >
+                          <Receipt className="h-3.5 w-3.5" />
+                          <span className="sr-only">Registrar monto pagado</span>
+                        </Button>
+                        {/* Ver historial de aumentos */}
+                        {hist.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${histVisible ? "text-purple-600" : "text-muted-foreground hover:text-purple-600"}`}
+                            title="Ver historial de montos"
+                            onClick={() => toggleHistorial(gasto.id)}
+                          >
+                            <History className="h-3.5 w-3.5" />
+                            <span className="sr-only">Ver historial de montos</span>
+                          </Button>
+                        )}
                         {/* Toggle pagado */}
                         <Button
                           variant="ghost"
@@ -921,6 +1066,12 @@ export default function CajaJazminePage() {
                           <span className="sr-only">Eliminar gasto fijo</span>
                         </Button>
                       </div>
+                    </div>
+                    {histVisible && hist.length > 0 && (
+                      <div className="px-3 pb-3">
+                        <HistorialMontos historial={hist} />
+                      </div>
+                    )}
                     </div>
                   )
                     })}
@@ -1485,6 +1636,84 @@ export default function CajaJazminePage() {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Registrar monto pagado (seguimiento de aumentos) ─────────────── */}
+      <Dialog open={!!registrandoMonto} onOpenChange={(open) => !open && setRegistrandoMonto(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar monto pagado</DialogTitle>
+          </DialogHeader>
+          {registrandoMonto && (() => {
+            const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
+            const montoAnterior = original?.monto ?? registrandoMonto.monto
+            const montoNuevo = Number(formRegistro.monto) || 0
+            const variacion = calcularVariacion(montoAnterior, montoNuevo)
+            const historialPrevio = original?.historialMontos || []
+            return (
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground">
+                  {registrandoMonto.concepto}. Anotá cuánto pagaste realmente este mes.
+                  El monto de referencia se actualizará para el mes próximo.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rm-mes">Período</Label>
+                  <Input
+                    id="rm-mes"
+                    type="month"
+                    value={formRegistro.mes}
+                    onChange={(e) => setFormRegistro((p) => ({ ...p, mes: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rm-monto">Monto pagado (ARS)</Label>
+                  <MoneyInput
+                    id="rm-monto"
+                    value={montoNuevo}
+                    onValueChange={(v) => setFormRegistro((p) => ({ ...p, monto: v ? String(v) : "" }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rm-nota">Nota (opcional)</Label>
+                  <Input
+                    id="rm-nota"
+                    placeholder="Ej. aumento de tarifa, consumo alto"
+                    value={formRegistro.nota}
+                    onChange={(e) => setFormRegistro((p) => ({ ...p, nota: e.target.value }))}
+                  />
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Monto anterior</span>
+                    <span className="font-medium">{formatCurrency(montoAnterior)}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-muted-foreground">Monto nuevo</span>
+                    <span className="font-bold text-foreground flex items-center gap-1.5">
+                      {formatCurrency(montoNuevo)}
+                      <DeltaMonto variacion={variacion} />
+                    </span>
+                  </div>
+                  {historialPrevio.length > 0 && (
+                    <HistorialMontos historial={historialPrevio} />
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegistrandoMonto(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={guardarRegistroMonto}
+              disabled={!formRegistro.monto || Number(formRegistro.monto) <= 0}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Guardar registro
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
