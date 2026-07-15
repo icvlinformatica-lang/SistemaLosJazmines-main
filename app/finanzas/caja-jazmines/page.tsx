@@ -744,7 +744,7 @@ export default function CajaJazminePage() {
             <p className="text-3xl font-bold" style={{ color: "#b96b19" }}>
               {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1"></p>
+            <p className="text-xs text-muted-foreground mt-1">Costos pendientes </p>
           </CardContent>
         </Card>
 
@@ -1106,7 +1106,7 @@ export default function CajaJazminePage() {
           )}
         </Card>
 
-        {/* ── Gastos variables ─────────────────────────────��──��───────── */}
+        {/* ── Gastos variables ───────────────────────��─────��──��───────── */}
         <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
