@@ -703,13 +703,14 @@ export default function CajaJazminePage() {
         <Card className="border-purple-200 bg-purple-50">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-purple-700 uppercase tracking-wide">Saldo Actual</p>
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
               <div className="flex items-center gap-1.5">
-                <Wallet className="h-4 w-4 text-purple-600" />
+                <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
                 <button
                   type="button"
                   onClick={() => toggleMonto("saldoActual")}
-                  className="text-purple-600 hover:text-purple-800"
+                  style={{ color: "#0035db" }}
+                  className="hover:opacity-80"
                   aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
                   title={montosOcultos.saldoActual ? "Mostrar monto" : "Ocultar monto"}
                 >
@@ -717,7 +718,7 @@ export default function CajaJazminePage() {
                 </button>
               </div>
             </div>
-            <p className="text-3xl font-bold text-purple-800">
+            <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
               {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
             </p>
             <p className="text-xs text-purple-600 mt-1"></p>
@@ -730,18 +731,15 @@ export default function CajaJazminePage() {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Gastos A 30 días
               </p>
-              <div className="flex items-center gap-1.5">
-                <TrendingDown className="h-4 w-4 text-red-500" />
-                <button
-                  type="button"
-                  onClick={() => toggleMonto("gastos30")}
-                  className="text-muted-foreground hover:text-foreground"
-                  aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
-                  title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
-                >
-                  {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => toggleMonto("gastos30")}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
+                title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
+              >
+                {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
             <p className="text-3xl font-bold" style={{ color: "#b96b19" }}>
               {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
