@@ -49,6 +49,8 @@ import {
   ChevronDown,
   ChevronUp,
   HandCoins,
+  Folder,
+  FolderOpen,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -236,6 +238,79 @@ function RepartoSalonesEditor({
 }
 
 // ---------------------------------------------------------------------------
+// CARPETAS POR SALÓN
+// ---------------------------------------------------------------------------
+
+/** Paleta de colores por salón para las carpetas de gastos. */
+const SALON_FOLDER_STYLES: Record<string, { header: string; dot: string; border: string; icon: string }> = {
+  Quinta: { header: "bg-blue-50 text-blue-800 hover:bg-blue-100", dot: "bg-blue-500", border: "border-blue-200", icon: "text-blue-500" },
+  Casona: { header: "bg-emerald-50 text-emerald-800 hover:bg-emerald-100", dot: "bg-emerald-500", border: "border-emerald-200", icon: "text-emerald-500" },
+  Salon: { header: "bg-amber-50 text-amber-800 hover:bg-amber-100", dot: "bg-amber-500", border: "border-amber-200", icon: "text-amber-500" },
+  "Salon 4": { header: "bg-rose-50 text-rose-800 hover:bg-rose-100", dot: "bg-rose-500", border: "border-rose-200", icon: "text-rose-500" },
+  "Salon 5": { header: "bg-cyan-50 text-cyan-800 hover:bg-cyan-100", dot: "bg-cyan-500", border: "border-cyan-200", icon: "text-cyan-500" },
+  General: { header: "bg-slate-100 text-slate-700 hover:bg-slate-200", dot: "bg-slate-400", border: "border-slate-200", icon: "text-slate-400" },
+}
+
+function folderStyle(salon: string | null | undefined) {
+  return SALON_FOLDER_STYLES[salon || "General"] || SALON_FOLDER_STYLES.General
+}
+
+/** Agrupa una lista de gastos por salón, respetando el orden de SALONES. */
+function agruparPorSalon<T extends { salon?: string | null; monto: number }>(
+  items: T[],
+): { salon: string; items: T[]; subtotal: number }[] {
+  const map = new Map<string, T[]>()
+  for (const it of items) {
+    const key = it.salon || "General"
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(it)
+  }
+  const orden = [...SALONES, "General"]
+  return Array.from(map.entries())
+    .sort((a, b) => orden.indexOf(a[0] as any) - orden.indexOf(b[0] as any))
+    .map(([salon, items]) => ({
+      salon,
+      items,
+      subtotal: items.reduce((s, g) => s + g.monto, 0),
+    }))
+}
+
+/** Carpeta colapsable de color que agrupa los gastos de un salón. */
+function CarpetaGastos({
+  salon,
+  count,
+  subtotal,
+  children,
+}: {
+  salon: string
+  count: number
+  subtotal: number
+  children: React.ReactNode
+}) {
+  const [abierta, setAbierta] = useState(true)
+  const st = folderStyle(salon)
+  return (
+    <div className={`rounded-lg border ${st.border} overflow-hidden`}>
+      <button
+        type="button"
+        onClick={() => setAbierta((v) => !v)}
+        className={`flex w-full items-center gap-2 px-3 py-2 transition-colors ${st.header}`}
+        aria-expanded={abierta}
+      >
+        {abierta ? <FolderOpen className={`h-4 w-4 ${st.icon}`} /> : <Folder className={`h-4 w-4 ${st.icon}`} />}
+        <span className={`h-2 w-2 rounded-full ${st.dot}`} aria-hidden="true" />
+        <span className="text-sm font-semibold flex-1 text-left">{salonLabel(salon)}</span>
+        <span className="text-xs font-medium opacity-80">
+          {count} {count === 1 ? "gasto" : "gastos"} · {formatCurrency(subtotal)}
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`} />
+      </button>
+      {abierta && <div className="space-y-2 bg-card p-2">{children}</div>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 
@@ -284,7 +359,7 @@ export default function CajaJazminePage() {
   const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
-  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({})
+  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({ fijos: true, variables: true })
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
   const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({})
@@ -423,7 +498,7 @@ export default function CajaJazminePage() {
     setModalFijoAbierto(false)
   }
 
-  // ── Gastos variables ─────────────────────────────────────────────────────
+  // ── Gastos variables ──────────────────────────���──────────────────────────
   const [modalVariableAbierto, setModalVariableAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
@@ -594,8 +669,11 @@ export default function CajaJazminePage() {
         </Card>
       </div>
 
-      {/* Alertas */}
-      <Card>
+      {/* Cuotas por cobrar (izquierda) + Vencimientos (derecha) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+
+      {/* Alertas de vencimiento (columna derecha) */}
+      <Card className="order-2">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -660,8 +738,8 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-      {/* ── Cuotas por cobrar (marcar como cobradas) ─────────────────────── */}
-      <Card>
+      {/* ── Cuotas por cobrar (columna izquierda) ─────────────────────── */}
+      <Card className="order-1">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -718,6 +796,8 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
+      </div>
+
       {/* Gastos fijos + Gastos variables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
@@ -765,7 +845,14 @@ export default function CajaJazminePage() {
                     No hay gastos fijos pendientes este mes.
                   </p>
                 )}
-                {gastosFijosMes.map((gasto) => {
+                {agruparPorSalon(gastosFijosMes).map((carpeta) => (
+                  <CarpetaGastos
+                    key={`fijo-${carpeta.salon}`}
+                    salon={carpeta.salon}
+                    count={carpeta.items.length}
+                    subtotal={carpeta.subtotal}
+                  >
+                    {carpeta.items.map((gasto) => {
                   const esPagado = gasto.estado === "pagado"
                   return (
                     <div
@@ -776,7 +863,6 @@ export default function CajaJazminePage() {
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {gasto.frecuencia}
-                          {` · ${salonLabel(gasto.salon)}`}
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </div>
@@ -837,7 +923,9 @@ export default function CajaJazminePage() {
                       </div>
                     </div>
                   )
-                })}
+                    })}
+                  </CarpetaGastos>
+                ))}
 
                 {/* Cubiertos este mes: tilde verde */}
                 {gastosFijosCubiertos.map((gasto) => (
@@ -880,24 +968,44 @@ export default function CajaJazminePage() {
                 <Calendar className="h-4 w-4 text-purple-600" />
                 Gastos variables
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
-                onClick={() => setModalVariableAbierto(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Agendar gasto
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                  onClick={() => setModalVariableAbierto(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Agendar gasto
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleColapsada("variables")}
+                  aria-label={colapsadas.variables ? "Expandir gastos variables" : "Minimizar gastos variables"}
+                  title={colapsadas.variables ? "Expandir" : "Minimizar"}
+                >
+                  {colapsadas.variables ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
           </CardHeader>
+          {!colapsadas.variables && (
           <CardContent className="space-y-2">
             {gastosVariablesCombinados.length === 0 ? (
               <p className="text-sm text-muted-foreground py-3 text-center">
                 Sin gastos variables registrados.
               </p>
             ) : (
-              gastosVariablesCombinados.map((gasto) => {
+              agruparPorSalon(gastosVariablesCombinados).map((carpeta) => (
+                <CarpetaGastos
+                  key={`var-${carpeta.salon}`}
+                  salon={carpeta.salon}
+                  count={carpeta.items.length}
+                  subtotal={carpeta.subtotal}
+                >
+                  {carpeta.items.map((gasto) => {
                 const esPagado = gasto.estado === "pagado"
                 return (
                   <div
@@ -907,7 +1015,7 @@ export default function CajaJazminePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{gasto.nombre}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {salonLabel(gasto.salon)} · {formatFecha(gasto.fecha)}
+                        {formatFecha(gasto.fecha)}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -956,9 +1064,12 @@ export default function CajaJazminePage() {
                     </div>
                   </div>
                 )
-              })
+              })}
+                </CarpetaGastos>
+              ))
             )}
           </CardContent>
+          )}
         </Card>
       </div>
 
@@ -984,26 +1095,33 @@ export default function CajaJazminePage() {
         </CardHeader>
         {!colapsadas.proyeccion && (
         <CardContent className="space-y-4">
-          {[
-            { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
-            { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−" },
-            { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+" },
-          ].map(({ label, value, color, textColor, signo }) => {
-            const pct = Math.round((value / barMax) * 100)
-            return (
-              <div key={label} className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-foreground">{label}</span>
-                  <span className={`font-semibold ${textColor}`}>
+          <div className="flex items-end justify-around gap-3 sm:gap-6 h-56 pt-2">
+            {[
+              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
+              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−" },
+              { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+" },
+            ].map(({ label, value, color, textColor, signo }) => {
+              const pct = Math.round((value / barMax) * 100)
+              return (
+                <div key={label} className="flex h-full flex-1 flex-col items-center gap-2">
+                  <span className={`text-xs font-semibold whitespace-nowrap ${textColor}`}>
                     {signo ? `${signo} ` : ""}{formatCurrency(value)}
                   </span>
+                  <div className="flex w-full flex-1 items-end justify-center">
+                    <div className="relative flex h-full w-10 items-end overflow-hidden rounded-t-md bg-muted sm:w-16">
+                      <div
+                        className={`w-full rounded-t-md ${color} transition-all duration-500`}
+                        style={{ height: `${Math.max(pct, 2)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-center text-xs font-medium leading-tight text-foreground">
+                    {label}
+                  </span>
                 </div>
-                <div className="h-3 rounded-full bg-muted overflow-hidden">
-                  <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
           <div className="pt-3 border-t border-border">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-foreground">Saldo proyectado resultante</span>
