@@ -721,7 +721,7 @@ export default function CajaJazminePage() {
             <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
               {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
             </p>
-            <p className="text-xs mt-1" style={{ color: "#4010fa" }}>Cobros  − gastos</p>
+            <p className="text-xs mt-1" style={{ color: "#4010fa" }}>Ingresos − gastos</p>
           </CardContent>
         </Card>
 
@@ -744,7 +744,7 @@ export default function CajaJazminePage() {
             <p className="text-3xl font-bold" style={{ color: "#b7933b" }}>
               {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Costos pendientes </p>
+            <p className="text-xs text-muted-foreground mt-1">Gastos pendientes</p>
           </CardContent>
         </Card>
 
@@ -918,7 +918,8 @@ export default function CajaJazminePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                  style={{ color: "#000000", backgroundColor: "#ffffff" }}
+                  className="h-7 gap-1.5 text-xs"
                   onClick={() => setModalFijoAbierto(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -1106,7 +1107,7 @@ export default function CajaJazminePage() {
           )}
         </Card>
 
-        {/* ── Gastos variables ─────────────────��─���───��─────��──��───────── */}
+        {/* ── Gastos variables ──────────��──────��─���───��─────��──��───────── */}
         <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -1117,7 +1118,8 @@ export default function CajaJazminePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                  style={{ color: "#000000", backgroundColor: "#ffffff" }}
+                  className="h-7 gap-1.5 text-xs"
                   onClick={() => setModalVariableAbierto(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
