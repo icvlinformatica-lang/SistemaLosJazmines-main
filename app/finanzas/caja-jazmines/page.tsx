@@ -661,9 +661,9 @@ export default function CajaJazminePage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Jazmines</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              50% de cada cobro de cuota. Fondos de la empresa: sueldos, gastos fijos y administración.
-            </p>
+  <p className="text-sm text-muted-foreground mt-0.5">
+    50% de cada cobro de cuota.
+  </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
