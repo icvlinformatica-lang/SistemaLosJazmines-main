@@ -255,10 +255,9 @@ function PagosPageContent() {
     montoRecibido: 0,
   })
 
-  // Cuotas config
+  // Cuotas config (solo lectura — se edita desde Contratos)
   const [cuotasTotal, setCuotasTotal] = useState(1)
   const [montoTotal, setMontoTotal] = useState(0)
-  const [showCuotasConfig, setShowCuotasConfig] = useState(false)
 
   // Confirmación de eliminación de comprobante/pago
   const [pagoToDelete, setPagoToDelete] = useState<PagoEvento | null>(null)
@@ -960,65 +959,24 @@ function PagosPageContent() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Plan de Cuotas</CardTitle>
-                  <div className="flex items-center gap-2">
-                    {showCuotasConfig && montoTotal > 0 && cuotasTotal >= 1 && (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          updateEvento(selectedEvento.id, {
-                            planCuotas: cuotasTotal,
-                            montoTotalPlan: montoTotal,
-                          })
-                          setSelectedEvento({ ...selectedEvento, planCuotas: cuotasTotal, montoTotalPlan: montoTotal })
-                          setShowCuotasConfig(false)
-                        }}
-                      >
-                        Guardar Plan
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="bg-transparent"
-                      onClick={() => setShowCuotasConfig(!showCuotasConfig)}
-                    >
-                      {showCuotasConfig ? "Cancelar" : "Configurar"}
-                    </Button>
-                  </div>
+                  <Button asChild variant="outline" size="sm" className="bg-transparent">
+                    <Link href={`/eventos/contratos?eventoId=${selectedEvento.id}`}>
+                      <FileText className="h-4 w-4 mr-1.5" />
+                      Editar en Contratos
+                    </Link>
+                  </Button>
                 </div>
-                {selectedEvento.planCuotas && selectedEvento.planCuotas > 0 && !showCuotasConfig && (
+                {selectedEvento.planCuotas && selectedEvento.planCuotas > 0 ? (
                   <CardDescription>
                     Plan guardado: {selectedEvento.planCuotas} cuotas de {formatCurrency((selectedEvento.montoTotalPlan || 0) / selectedEvento.planCuotas)}
+                  </CardDescription>
+                ) : (
+                  <CardDescription>
+                    El plan de cuotas y el monto total se configuran desde Contratos. Aquí solo se registran y consultan los pagos.
                   </CardDescription>
                 )}
               </CardHeader>
               <CardContent className="space-y-4">
-                {showCuotasConfig && (
-                  <div className="grid gap-4 sm:grid-cols-2 pb-4 border-b border-border">
-                    <div className="space-y-2">
-                      <Label>Monto Total del Evento ($)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={montoTotal || ""}
-                        onChange={(e) => setMontoTotal(parseFloat(e.target.value) || 0)}
-                        className="h-11 text-lg"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Cantidad de Cuotas</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={48}
-                        value={cuotasTotal}
-                        onChange={(e) => setCuotasTotal(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="h-11 text-lg"
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {montoTotal > 0 && (
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="text-center p-3 rounded-lg bg-muted/50">

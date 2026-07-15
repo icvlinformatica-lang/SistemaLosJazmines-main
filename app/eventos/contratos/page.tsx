@@ -10,6 +10,9 @@ import {
   SALONES,
   type EventoGuardado,
   type Receta,
+  type Servicio,
+  type VersionContrato,
+  type ImpactoContrato,
 } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -48,6 +51,9 @@ import {
   History,
   Save,
   Check,
+  ChevronDown,
+  Utensils,
+  Wine,
 } from "lucide-react"
 
 // =====================================================================
@@ -360,6 +366,203 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
         <p className="text-sm text-foreground break-words">{value || "—"}</p>
       </div>
     </div>
+  )
+}
+
+// =====================================================================
+// HISTORIAL DE MODIFICACIONES (TIMELINE)
+// =====================================================================
+const IMPACTO_META: Record<ImpactoContrato, { label: string; className: string }> = {
+  financiero: { label: "Pago / Cuotas", className: "border-amber-300 bg-amber-100 text-amber-800" },
+  servicios: { label: "Servicios", className: "border-blue-300 bg-blue-100 text-blue-800" },
+  datos_cliente: { label: "Datos cliente", className: "border-slate-300 bg-slate-100 text-slate-700" },
+  menu: { label: "Menú", className: "border-emerald-300 bg-emerald-100 text-emerald-800" },
+  barra: { label: "Barra", className: "border-rose-300 bg-rose-100 text-rose-800" },
+  invitados: { label: "Invitados", className: "border-cyan-300 bg-cyan-100 text-cyan-800" },
+  sin_cambios: { label: "Versión inicial", className: "border-border bg-muted text-muted-foreground" },
+}
+
+function HistorialContratoTimeline({
+  versiones,
+  recetas,
+  catalogoServicios,
+}: {
+  versiones: VersionContrato[]
+  recetas: Receta[]
+  catalogoServicios: Servicio[]
+}) {
+  const [expandidas, setExpandidas] = useState<Set<number>>(() => new Set())
+
+  const ordenadas = useMemo(
+    () => [...versiones].sort((a, b) => b.version - a.version),
+    [versiones],
+  )
+
+  if (ordenadas.length === 0) {
+    return <p className="text-sm text-muted-foreground">Sin modificaciones registradas todavía.</p>
+  }
+
+  const nombreReceta = (id: string) => recetas.find((r) => r.id === id)?.nombre || id
+  const nombreServicio = (id: string) => catalogoServicios.find((s) => s.id === id)?.nombre || id
+
+  const toggle = (v: number) =>
+    setExpandidas((prev) => {
+      const next = new Set(prev)
+      if (next.has(v)) next.delete(v)
+      else next.add(v)
+      return next
+    })
+
+  const fmtFecha = (iso: string) =>
+    new Date(iso).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+
+  return (
+    <ol className="relative space-y-4 pl-6">
+      {/* línea vertical del timeline */}
+      <span className="absolute left-2 top-1 bottom-1 w-px bg-border" aria-hidden="true" />
+      {ordenadas.map((v) => {
+        const abierta = expandidas.has(v.version)
+        const menu = v.snapshotMenu
+        const totalRecetas =
+          (menu?.recetasAdultos?.length || 0) +
+          (menu?.recetasAdolescentes?.length || 0) +
+          (menu?.recetasNinos?.length || 0) +
+          (menu?.recetasDietasEspeciales?.length || 0)
+        const cocteles = (v.snapshotBarras || []).flatMap((b) => b.coctelesIncluidos || [])
+        const plan = v.snapshotPlanCuotas
+        return (
+          <li key={v.version} className="relative">
+            {/* marcador */}
+            <span className="absolute -left-[18px] top-1.5 h-3 w-3 rounded-full border-2 border-primary bg-background" aria-hidden="true" />
+            <div className="rounded-lg border border-border bg-card">
+              <button
+                type="button"
+                onClick={() => toggle(v.version)}
+                className="flex w-full items-start justify-between gap-2 px-3 py-2.5 text-left"
+                aria-expanded={abierta}
+              >
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">Versión {v.version}</span>
+                    <span className="text-xs text-muted-foreground">{fmtFecha(v.fechaGuardado)}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {v.impactos.map((imp) => (
+                      <span
+                        key={imp}
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${IMPACTO_META[imp].className}`}
+                      >
+                        {IMPACTO_META[imp].label}
+                      </span>
+                    ))}
+                  </div>
+                  {v.motivo && <p className="text-xs text-muted-foreground break-words">{v.motivo}</p>}
+                </div>
+                <ChevronDown
+                  className={`mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${abierta ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {abierta && (
+                <div className="space-y-3 border-t border-border px-3 py-3 text-xs">
+                  {/* Invitados */}
+                  <div className="flex items-start gap-2">
+                    <Users className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium text-foreground">Invitados</p>
+                      {v.snapshotInvitados ? (
+                        <p className="text-muted-foreground">
+                          {v.snapshotInvitados.adultos} adultos, {v.snapshotInvitados.adolescentes} adol.,{" "}
+                          {v.snapshotInvitados.ninos} niños
+                          {v.snapshotInvitados.dietasEspeciales > 0
+                            ? `, ${v.snapshotInvitados.dietasEspeciales} dietas esp.`
+                            : ""}
+                        </p>
+                      ) : (
+                        <p className="text-muted-foreground">—</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Menú */}
+                  <div className="flex items-start gap-2">
+                    <Utensils className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">Menú ({totalRecetas} platos)</p>
+                      {menu ? (
+                        <p className="text-muted-foreground break-words">
+                          {[
+                            ...(menu.recetasAdultos || []),
+                            ...(menu.recetasAdolescentes || []),
+                            ...(menu.recetasNinos || []),
+                            ...(menu.recetasDietasEspeciales || []),
+                          ]
+                            .map(nombreReceta)
+                            .join(", ") || "Sin platos cargados"}
+                        </p>
+                      ) : (
+                        <p className="text-muted-foreground">—</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Barra */}
+                  <div className="flex items-start gap-2">
+                    <Wine className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium text-foreground">
+                        Barra ({(v.snapshotBarras || []).length} barra{(v.snapshotBarras || []).length === 1 ? "" : "s"})
+                      </p>
+                      <p className="text-muted-foreground">
+                        {cocteles.length > 0 ? `${cocteles.length} cócteles incluidos` : "Sin barra contratada"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Servicios */}
+                  <div className="flex items-start gap-2">
+                    <ListChecks className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">
+                        Servicios ({v.snapshotServicios.length + (v.snapshotServiciosLibres?.length || 0)})
+                      </p>
+                      <p className="text-muted-foreground break-words">
+                        {[...v.snapshotServicios.map(nombreServicio), ...(v.snapshotServiciosLibres || [])].join(", ") ||
+                          "Sin servicios"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Financiación */}
+                  <div className="flex items-start gap-2">
+                    <DollarSign className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium text-foreground">Modalidad de pago</p>
+                      {plan && plan.montoTotal > 0 ? (
+                        <p className="text-muted-foreground">
+                          Total {formatCurrency(plan.montoTotal)}
+                          {plan.montoSena && plan.montoSena > 0 ? ` · Seña ${formatCurrency(plan.montoSena)}` : ""}
+                          {plan.numeroCuotas ? ` · ${plan.numeroCuotas} cuotas` : ""}
+                          {plan.ajustaPorIPC === false ? " · fijas" : " · ajustables IPC"}
+                        </p>
+                      ) : (
+                        <p className="text-muted-foreground">—</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
@@ -903,6 +1106,20 @@ function ContratosPageContent() {
                       </section>
                     </>
                   )}
+
+                  {/* Historial de modificaciones */}
+                  <Separator />
+                  <section className="space-y-3">
+                    <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                      <History className="h-3.5 w-3.5" />
+                      Historial de modificaciones
+                    </p>
+                    <HistorialContratoTimeline
+                      versiones={selectedEvento.versionesContrato || []}
+                      recetas={recetas}
+                      catalogoServicios={catalogoServicios}
+                    />
+                  </section>
                 </div>
               </ScrollArea>
 

@@ -25,6 +25,7 @@ import {
   type EventoGuardado,
   type VersionContrato,
   type MovimientoCaja,
+  detectarImpactosContrato,
   SALONES,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -584,10 +585,12 @@ function EventoPageContent() {
       // When coming from contratos: auto-create a new VersionContrato snapshot
       let versionesContrato = evento?.versionesContrato || []
       if (fromContratos) {
-        const serviciosIds = (evento?.servicios || []).map((se) => se.servicioId).filter(Boolean) as string[]
-        const nuevaVersion: VersionContrato = {
-          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
-          fechaGuardado: new Date().toISOString(),
+        const serviciosIds = (eventData.servicios || []).map((se: ServicioEvento) => se.servicioId).filter(Boolean) as string[]
+        const versionAnterior =
+          versionesContrato.length > 0
+            ? versionesContrato.reduce((a, b) => (a.version >= b.version ? a : b))
+            : undefined
+        const snapshotBase = {
           motivo: observacionContrato.trim() || undefined,
           snapshotContrato: {
             nombreCompleto: eventData.contrato?.nombreCompleto,
@@ -595,11 +598,30 @@ function EventoPageContent() {
             telefono: eventData.contrato?.telefono,
             direccion: eventData.contrato?.direccion,
             email: eventData.contrato?.email,
+            condicionIVA: eventData.condicionIVA,
           },
           snapshotServicios: serviciosIds,
-          snapshotServiciosLibres: evento?.serviciosLibresContrato || [],
+          snapshotServiciosLibres: eventData.serviciosLibresContrato || [],
           snapshotPlanCuotas: eventData.planDeCuotas,
-          impactos: ["sin_cambios"],
+          snapshotMenu: {
+            recetasAdultos: eventData.recetasAdultos || [],
+            recetasAdolescentes: eventData.recetasAdolescentes || [],
+            recetasNinos: eventData.recetasNinos || [],
+            recetasDietasEspeciales: eventData.recetasDietasEspeciales || [],
+          },
+          snapshotBarras: eventData.barras || [],
+          snapshotInvitados: {
+            adultos: eventData.adultos || 0,
+            adolescentes: eventData.adolescentes || 0,
+            ninos: eventData.ninos || 0,
+            dietasEspeciales: eventData.personasDietasEspeciales || 0,
+          },
+        }
+        const nuevaVersion: VersionContrato = {
+          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
+          fechaGuardado: new Date().toISOString(),
+          ...snapshotBase,
+          impactos: detectarImpactosContrato(versionAnterior, snapshotBase),
         }
         versionesContrato = [...versionesContrato, nuevaVersion]
       }
@@ -637,10 +659,24 @@ function EventoPageContent() {
           telefono: eventData.contrato?.telefono,
           direccion: eventData.contrato?.direccion,
           email: eventData.contrato?.email,
+          condicionIVA: eventData.condicionIVA,
         },
         snapshotServicios: serviciosIds,
         snapshotServiciosLibres: eventData.serviciosLibresContrato || [],
         snapshotPlanCuotas: eventData.planDeCuotas,
+        snapshotMenu: {
+          recetasAdultos: eventData.recetasAdultos || [],
+          recetasAdolescentes: eventData.recetasAdolescentes || [],
+          recetasNinos: eventData.recetasNinos || [],
+          recetasDietasEspeciales: eventData.recetasDietasEspeciales || [],
+        },
+        snapshotBarras: eventData.barras || [],
+        snapshotInvitados: {
+          adultos: eventData.adultos || 0,
+          adolescentes: eventData.adolescentes || 0,
+          ninos: eventData.ninos || 0,
+          dietasEspeciales: eventData.personasDietasEspeciales || 0,
+        },
         impactos: ["sin_cambios"],
       }
 
