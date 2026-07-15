@@ -293,12 +293,14 @@ function PagosPageContent() {
 
     // Also mark the next pending cuota as paid in planDeCuotas
     let updatedPlanDeCuotas = selectedEvento.planDeCuotas
+    let cuotaPagadaNumero: number | null = null
     if (updatedPlanDeCuotas && updatedPlanDeCuotas.numeroCuotas > 0) {
       const cuotasPagadasArr = updatedPlanDeCuotas.cuotasPagadas || []
       // Find the next unpaid cuota number
       const nextUnpaid = Array.from({ length: updatedPlanDeCuotas.numeroCuotas }, (_, i) => i + 1)
         .find(n => !cuotasPagadasArr.includes(n))
       if (nextUnpaid) {
+        cuotaPagadaNumero = nextUnpaid
         updatedPlanDeCuotas = {
           ...updatedPlanDeCuotas,
           cuotasPagadas: [...cuotasPagadasArr, nextUnpaid],
@@ -319,6 +321,49 @@ function PagosPageContent() {
       montoTotalPlan: montoTotal,
       ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
     })
+
+    // Generar los movimientos de caja del ingreso (50% Caja Eventos + 50% Caja Jazmines).
+    // Antes solo se hacía desde los recordatorios de cuotas, por lo que un pago
+    // registrado desde este diálogo no aparecía en las cajas.
+    if (selectedEvento.salon && pagoForm.monto > 0) {
+      const nombreEvento = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
+      const etiquetaCuota = cuotaPagadaNumero ? `Cuota ${cuotaPagadaNumero}` : "Pago"
+      const mitadEventos = Math.round((pagoForm.monto / 2) * 100) / 100
+      const mitadJazmines = Math.round((pagoForm.monto - mitadEventos) * 100) / 100
+      const fechaMov = new Date().toISOString()
+
+      const saldoPrevEventos = movimientosCaja
+        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === selectedEvento.salon)
+        .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+      const saldoPrevJazmines = movimientosCaja
+        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
+        .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+
+      const movEventos: MovimientoCaja = {
+        id: generateId(),
+        fecha: fechaMov,
+        tipo: "ingreso",
+        concepto: `${etiquetaCuota} - ${nombreEvento} (Caja Eventos)`,
+        monto: mitadEventos,
+        salon: selectedEvento.salon,
+        eventoId: selectedEvento.id,
+        cajaDestino: "caja_eventos",
+        saldoResultante: saldoPrevEventos + mitadEventos,
+      }
+      const movJazmines: MovimientoCaja = {
+        id: generateId(),
+        fecha: fechaMov,
+        tipo: "ingreso",
+        concepto: `${etiquetaCuota} - ${nombreEvento} (Caja Jazmines)`,
+        monto: mitadJazmines,
+        salon: selectedEvento.salon,
+        eventoId: selectedEvento.id,
+        cajaDestino: "caja_jazmines",
+        saldoResultante: saldoPrevJazmines + mitadJazmines,
+      }
+      addMovimientosCaja([movEventos, movJazmines])
+    }
+
     setMontoCuotaBase(0)
     setPagoForm({
       monto: 0,
