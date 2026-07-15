@@ -298,13 +298,14 @@ export default function CoctelesPage() {
                   <div className="grid gap-4 py-4">
                     <div className="space-y-4">
                       <div>
-                        <Label htmlFor="codigo">Codigo</Label>
-                        <Input
-                          id="codigo"
-                          value={formData.codigo}
-                          onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                          placeholder="Ej: COC001"
-                        />
+                        <Label>Codigo</Label>
+                        <div className="mt-1">
+                          {isEditMode ? (
+                            <span className="font-mono text-sm">{formData.codigo}</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Se asignará automáticamente</span>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <Label htmlFor="nombre">Nombre del Coctel</Label>

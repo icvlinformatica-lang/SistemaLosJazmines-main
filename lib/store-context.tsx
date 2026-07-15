@@ -32,6 +32,8 @@ import {
   obtenerPreciosServicio,
   actualizarCuotasIPC,
   revertirCuotasIPC,
+  generateNextCodigo,
+  RECETA_CODIGO_PREFIX,
 } from "./store"
 import {
   Dialog,
@@ -399,10 +401,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // === Insumos (Cocina) - Synced with API ===
   const addInsumo = async (insumo: Omit<Insumo, "id">) => {
     try {
+      // Código automático (INS001, INS002, ...) si no se proporcionó uno
+      const codigo = insumo.codigo?.trim() || generateNextCodigo(state.insumos.map((i) => i.codigo), "INS")
       const res = await fetch("/api/insumos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(insumo),
+        body: JSON.stringify({ ...insumo, codigo }),
       })
       if (res.ok) {
         const newInsumo = await res.json()
@@ -459,10 +463,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // === Insumos Barra - Synced with API ===
   const addInsumoBarra = async (insumo: Omit<InsumoBarra, "id">) => {
     try {
+      // Código automático (BAR001, BAR002, ...) si no se proporcionó uno
+      const codigo = insumo.codigo?.trim() || generateNextCodigo(state.insumosBarra.map((i) => i.codigo), "BAR")
       const res = await fetch("/api/insumos-barra", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(insumo),
+        body: JSON.stringify({ ...insumo, codigo }),
       })
       if (res.ok) {
         const newInsumo = await res.json()
@@ -519,10 +525,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // === Recetas - Synced with API ===
   const addReceta = async (receta: Omit<Receta, "id">) => {
     try {
+      // Código automático por categoría (P001, E001, R001, ...) si no se proporcionó uno
+      const prefix = RECETA_CODIGO_PREFIX[receta.categoria] || "REC"
+      const codigo = receta.codigo?.trim() || generateNextCodigo(state.recetas.map((r) => r.codigo), prefix)
       const res = await fetch("/api/recetas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(receta),
+        body: JSON.stringify({ ...receta, codigo }),
       })
       if (res.ok) {
         const newReceta = await res.json()
@@ -580,10 +589,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // === Cocteles - Synced with API ===
   const addCoctel = async (coctel: Omit<Coctel, "id">) => {
     try {
+      // Código automático (COC001, COC002, ...) si no se proporcionó uno
+      const codigo = coctel.codigo?.trim() || generateNextCodigo(state.cocteles.map((c) => c.codigo), "COC")
       const res = await fetch("/api/cocteles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(coctel),
+        body: JSON.stringify({ ...coctel, codigo }),
       })
       if (res.ok) {
         const newCoctel = await res.json()

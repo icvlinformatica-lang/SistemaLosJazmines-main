@@ -193,14 +193,14 @@ function BarraAlmacenContent() {
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="codigo" className="text-right">Codigo</Label>
-                      <Input
-                        id="codigo"
-                        value={formData.codigo}
-                        onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                        className="col-span-3"
-                        placeholder="Ej: BAR001"
-                      />
+                      <Label className="text-right">Codigo</Label>
+                      <div className="col-span-3">
+                        {editingInsumo ? (
+                          <span className="font-mono text-sm">{formData.codigo}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Se asignará automáticamente</span>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="descripcion" className="text-right">Descripcion</Label>
