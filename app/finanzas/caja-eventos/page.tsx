@@ -410,7 +410,6 @@ export default function CajaEventosPage() {
           <CardTitle className="text-base flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-amber-600" />
             Vienen esta semana a pagar
-            <span className="text-xs font-normal text-muted-foreground">(Lun a Vie · 09 a 20hs)</span>
             {vienenEstaSemana.length > 0 && (
               <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
                 {vienenEstaSemana.length}
