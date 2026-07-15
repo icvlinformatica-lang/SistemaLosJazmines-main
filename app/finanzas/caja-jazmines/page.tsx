@@ -661,9 +661,9 @@ export default function CajaJazminePage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Jazmines</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              50% de cada cobro de cuota. Fondos de la empresa: sueldos, gastos fijos y administración.
-            </p>
+  <p className="text-sm text-muted-foreground mt-0.5">
+    50% de cada cobro de cuota.
+  </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -700,16 +700,17 @@ export default function CajaJazminePage() {
 
       {/* Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-purple-200 bg-purple-50">
+        <Card style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}>
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-purple-700 uppercase tracking-wide">Saldo Actual</p>
+              <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
               <div className="flex items-center gap-1.5">
-                <Wallet className="h-4 w-4 text-purple-600" />
+                <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
                 <button
                   type="button"
                   onClick={() => toggleMonto("saldoActual")}
-                  className="text-purple-600 hover:text-purple-800"
+                  style={{ color: "#0035db" }}
+                  className="hover:opacity-80"
                   aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
                   title={montosOcultos.saldoActual ? "Mostrar monto" : "Ocultar monto"}
                 >
@@ -717,10 +718,10 @@ export default function CajaJazminePage() {
                 </button>
               </div>
             </div>
-            <p className="text-3xl font-bold text-purple-800">
+            <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
               {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
             </p>
-            <p className="text-xs text-purple-600 mt-1">Cobros acumulados × 50% − gastos</p>
+            <p className="text-xs mt-1" style={{ color: "#4010fa" }}>Ingresos − gastos</p>
           </CardContent>
         </Card>
 
@@ -728,25 +729,22 @@ export default function CajaJazminePage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Gastos próximos 30 días
+                Gastos A 30 días
               </p>
-              <div className="flex items-center gap-1.5">
-                <TrendingDown className="h-4 w-4 text-red-500" />
-                <button
-                  type="button"
-                  onClick={() => toggleMonto("gastos30")}
-                  className="text-muted-foreground hover:text-foreground"
-                  aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
-                  title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
-                >
-                  {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => toggleMonto("gastos30")}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
+                title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
+              >
+                {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
-            <p className="text-3xl font-bold text-red-600">
+            <p className="text-3xl font-bold" style={{ color: "#b7933b" }}>
               {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Costos operativos pendientes del período</p>
+            <p className="text-xs text-muted-foreground mt-1">Gastos pendientes</p>
           </CardContent>
         </Card>
 
@@ -754,7 +752,7 @@ export default function CajaJazminePage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between mb-2">
               <p className={`text-xs font-medium uppercase tracking-wide ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"}`}>
-                Saldo proyectado a 30 días
+                Saldo a 30 días
               </p>
               <div className="flex items-center gap-1.5">
                 <TrendingUp className={`h-4 w-4 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`} />
@@ -772,9 +770,7 @@ export default function CajaJazminePage() {
             <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
               {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
             </p>
-            <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}>
-              Saldo + ingresos − gastos estimados
-            </p>
+            <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}></p>
           </CardContent>
         </Card>
       </div>
@@ -783,7 +779,7 @@ export default function CajaJazminePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
       {/* Alertas de vencimiento (columna derecha) */}
-      <Card className="order-2">
+      <Card className="order-2" style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -849,7 +845,7 @@ export default function CajaJazminePage() {
       </Card>
 
       {/* ── Cuotas por cobrar (columna izquierda) ─────────────────────── */}
-      <Card className="order-1">
+      <Card className="order-1" style={{ backgroundColor: "#cdf7c6" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -912,18 +908,18 @@ export default function CajaJazminePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* ���─ Gastos fijos del mes ─────────────────────────────────────── */}
-        <Card>
+        <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-red-500" />
-                Gastos fijos del mes
+                Gastos fijos
               </CardTitle>
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                  style={{ color: "#000000", backgroundColor: "#ffffff" }}
+                  className="h-7 gap-1.5 text-xs"
                   onClick={() => setModalFijoAbierto(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -1111,19 +1107,19 @@ export default function CajaJazminePage() {
           )}
         </Card>
 
-        {/* ── Gastos variables ────────────────────────────────��───────── */}
-        <Card>
+        {/* ── Gastos variables ──────────��──────��─���───��─────��──��───────── */}
+        <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-purple-600" />
                 Gastos variables
               </CardTitle>
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                  style={{ color: "#000000", backgroundColor: "#ffffff" }}
+                  className="h-7 gap-1.5 text-xs"
                   onClick={() => setModalVariableAbierto(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -1225,7 +1221,7 @@ export default function CajaJazminePage() {
       </div>
 
       {/* Proyección visual */}
-      <Card>
+      <Card style={{ backgroundColor: "#ffffff" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -1248,21 +1244,21 @@ export default function CajaJazminePage() {
         <CardContent className="space-y-4">
           <div className="flex items-end justify-around gap-3 sm:gap-6 h-56 pt-2">
             {[
-              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
-              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−" },
-              { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+" },
-            ].map(({ label, value, color, textColor, signo }) => {
+              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
+              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−", colorStyle: { backgroundColor: "#90b203" }, textStyle: { color: "#788224" } },
+              { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+", textStyle: { color: "#0f7a14" } },
+            ].map(({ label, value, color, textColor, signo, colorStyle, textStyle }) => {
               const pct = Math.round((value / barMax) * 100)
               return (
                 <div key={label} className="flex h-full flex-1 flex-col items-center gap-2">
-                  <span className={`text-xs font-semibold whitespace-nowrap ${textColor}`}>
+                  <span className="text-xs font-semibold whitespace-nowrap" style={textStyle || {}}>
                     {signo ? `${signo} ` : ""}{formatCurrency(value)}
                   </span>
                   <div className="flex w-full flex-1 items-end justify-center">
                     <div className="relative flex h-full w-10 items-end overflow-hidden rounded-t-md bg-muted sm:w-16">
                       <div
-                        className={`w-full rounded-t-md ${color} transition-all duration-500`}
-                        style={{ height: `${Math.max(pct, 2)}%` }}
+                        className="w-full rounded-t-md transition-all duration-500"
+                        style={{ height: `${Math.max(pct, 2)}%`, ...colorStyle }}
                       />
                     </div>
                   </div>
@@ -1436,7 +1432,7 @@ export default function CajaJazminePage() {
                     onValueChange={(v) => setEditFijo((p) => ({ ...p, salon: v === "General" ? "" : v }))}
                   >
                     <SelectTrigger id="ef-salon">
-                      <SelectValue placeholder="Seleccionar salón" />
+                      <SelectValue placeholder="Seleccionar sal��n" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="General">General (todos los salones)</SelectItem>
