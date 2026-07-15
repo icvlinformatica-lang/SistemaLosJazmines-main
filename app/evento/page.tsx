@@ -319,7 +319,7 @@ function EventoPageContent() {
     updateEventoActual({
       [key]: {
         ...currentMultipliers,
-        [recetaId]: Math.max(0.5, value),
+        [recetaId]: Math.max(0.25, value),
       },
     })
   }, [evento, updateEventoActual])

@@ -16,8 +16,15 @@ interface Props {
 export function CoctelTable({ cocteles, coctelesSeleccionados, esBloqueado, onToggle }: Props) {
   const [filtroActivo, setFiltroActivo] = useState<string | null>(null)
 
+  // Orden completo: categorías conocidas + cualquier categoría nueva presente
+  // en los cocteles (para que los nuevos siempre se muestren).
+  const categoriasExtra = Array.from(
+    new Set(cocteles.map((c) => c.categoria || CATEGORIA_DEFAULT).filter((c) => !CATEGORIAS_ORDEN.includes(c))),
+  )
+  const ordenCompleto = [...CATEGORIAS_ORDEN, ...categoriasExtra]
+
   // Categorias presentes en los cocteles (para los filtros)
-  const categoriasPresentes = CATEGORIAS_ORDEN.filter((cat) =>
+  const categoriasPresentes = ordenCompleto.filter((cat) =>
     cocteles.some((c) => (c.categoria || CATEGORIA_DEFAULT) === cat),
   )
 
@@ -31,7 +38,7 @@ export function CoctelTable({ cocteles, coctelesSeleccionados, esBloqueado, onTo
     : cocteles
 
   // Agrupar por categoria respetando el orden
-  const grupos = CATEGORIAS_ORDEN.map((cat) => ({
+  const grupos = ordenCompleto.map((cat) => ({
     categoria: cat,
     cocteles: coctelesFiltrados.filter((c) => (c.categoria || CATEGORIA_DEFAULT) === cat),
   })).filter((g) => g.cocteles.length > 0)
