@@ -997,12 +997,19 @@ function PagosPageContent() {
                             size="sm"
                             className="mt-2"
                             onClick={() => {
+                              // IPC acumulado que ya incrementó el precio de esta cuota, calculado
+                              // automáticamente: monto ajustado vs monto original del plan (>IPC).
+                              // Queda guardado en el pago para que el comprobante imprimible lo detalle.
+                              const ipcAcumulado =
+                                cuotaFueAjustada && montoCuotaOriginal > 0
+                                  ? Math.round(((proximaCuota.monto - montoCuotaOriginal) / montoCuotaOriginal) * 10000) / 100
+                                  : 0
                               setMontoCuotaBase(proximaCuota.monto)
                               setPagoForm({
                                 monto: proximaCuota.monto,
                                 fecha: new Date().toISOString().split("T")[0],
                                 pagadoPor: "",
-                                porcentajeIPC: 0,
+                                porcentajeIPC: ipcAcumulado,
                                 notas: `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`,
                                 montoRecibido: 0,
                               })
