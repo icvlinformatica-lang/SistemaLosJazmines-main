@@ -13,6 +13,7 @@ import {
   type EventoGuardado,
   type MovimientoCaja,
   type PagoEvento,
+  type HistorialIPCEntry,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -59,13 +60,38 @@ const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor
   cancelado: { label: "Cancelado", className: "bg-red-100 text-red-800 border-red-300", dotColor: "bg-red-400" },
 }
 
-function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEvento }) {
+const MESES_RECIBO = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+function PaymentReceipt({
+  evento,
+  pago,
+  historialIPC = [],
+}: {
+  evento: EventoGuardado
+  pago: PagoEvento
+  historialIPC?: HistorialIPCEntry[]
+}) {
   const receiptRef = useRef<HTMLDivElement>(null)
 
   const totalCuotas = evento.cantidadCuotas || 0
   const pagoIndex = (evento.pagos || []).findIndex((p) => p.id === pago.id)
   const cuotaActual = pagoIndex >= 0 ? pagoIndex + 1 : (evento.pagos || []).length
   const cuotasFaltantes = Math.max(0, totalCuotas - cuotaActual)
+
+  // Mes al que corresponde el IPC aplicado como recargo: el último IPC cargado
+  // (>IPC) con fecha igual o anterior a la fecha del pago. Se toma automáticamente.
+  const ipcMesLabel = (() => {
+    if (!(pago.porcentajeIPC > 0) || historialIPC.length === 0) return ""
+    const fechaPago = pago.fecha ? new Date(pago.fecha).getTime() : Date.now()
+    const aplicables = historialIPC
+      .filter((e) => !e.fechaAplicacion || new Date(e.fechaAplicacion).getTime() <= fechaPago)
+      .sort((a, b) => (a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes))
+    const ref = aplicables.length > 0 ? aplicables[aplicables.length - 1] : null
+    return ref ? `${MESES_RECIBO[ref.mes]} ${ref.anio}` : ""
+  })()
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank")
@@ -115,7 +141,7 @@ function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEv
               return `
                 <div class="section" style="background:#f9fafb;border-radius:8px;padding:15px;margin:20px 0;border:1px solid #e5e7eb;">
                   <div class="row"><span class="label">Monto original de la cuota</span><span class="value">${formatCurrency(montoBase)}</span></div>
-                  <div class="row"><span class="label">IPC aplicado (${pago.porcentajeIPC}%)</span><span class="value" style="color:#b45309;">+ ${formatCurrency(ipcMonto)}</span></div>
+                  <div class="row"><span class="label">IPC aplicado (${pago.porcentajeIPC}%)${ipcMesLabel ? ` - corresponde a ${ipcMesLabel}` : ""}</span><span class="value" style="color:#b45309;">+ ${formatCurrency(ipcMonto)}</span></div>
                   <div style="border-top:2px solid #2d5a3d;margin-top:10px;padding-top:10px;">
                     <div class="row"><span class="label" style="font-weight:bold;font-size:14px;">Monto final a pagar</span><span class="value" style="font-size:22px;color:#2d5a3d;">${formatCurrency(pago.monto)}</span></div>
                   </div>
@@ -134,7 +160,7 @@ function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEv
             <h3>Datos del Pago</h3>
             <div class="row"><span class="label">Fecha de pago:</span><span class="value">${pago.fecha}</span></div>
             <div class="row"><span class="label">Pagado por:</span><span class="value">${pago.pagadoPor}</span></div>
-            ${pago.porcentajeIPC > 0 ? `<div class="row"><span class="label">IPC aplicado:</span><span class="value">${pago.porcentajeIPC}%</span></div>` : ""}
+            ${pago.porcentajeIPC > 0 ? `<div class="row"><span class="label">IPC aplicado:</span><span class="value">${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}</span></div>` : ""}
             ${pago.notas ? `<div class="row"><span class="label">Notas:</span><span class="value">${pago.notas}</span></div>` : ""}
           </div>
           ${totalCuotas > 0 ? `
@@ -184,7 +210,7 @@ function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEv
 function PagosPageContent() {
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get("evento") || ""
-  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja } = useStore()
+  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, historialIPC } = useStore()
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
@@ -1116,7 +1142,7 @@ function PagosPageContent() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <PaymentReceipt evento={selectedEvento} pago={pago} />
+                          <PaymentReceipt evento={selectedEvento} pago={pago} historialIPC={historialIPC} />
                           <Button
                             variant="ghost"
                             size="sm"
