@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -633,10 +634,9 @@ export default function PersonalPage() {
 
                 <div>
                   <Label>Tarifa Base (referencia)</Label>
-                  <Input
-                    type="number"
+                  <MoneyInput
                     value={formData.tarifaBase}
-                    onChange={(e) => setFormData({ ...formData, tarifaBase: parseFloat(e.target.value) || 0 })}
+                    onValueChange={(v) => setFormData({ ...formData, tarifaBase: v })}
                     placeholder="0"
                   />
                   <p className="text-xs text-muted-foreground mt-1">Puedes agregar tarifas especificas desde la ficha de persona</p>
@@ -732,11 +732,10 @@ export default function PersonalPage() {
             </div>
             <div>
               <Label>Monto *</Label>
-              <Input
-                type="number"
+              <MoneyInput
                 value={tarifaForm.monto}
-                onChange={(e) => setTarifaForm({ ...tarifaForm, monto: parseFloat(e.target.value) || 0 })}
-                placeholder="500000"
+                onValueChange={(v) => setTarifaForm({ ...tarifaForm, monto: v })}
+                placeholder="500.000"
               />
             </div>
           </div>

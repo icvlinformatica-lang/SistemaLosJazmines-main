@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -889,13 +890,11 @@ export default function CajaJazminePage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nf-monto">Monto (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="nf-monto"
-                type="number"
-                min="0"
                 placeholder="0"
-                value={nuevoFijo.monto}
-                onChange={(e) => setNuevoFijo((p) => ({ ...p, monto: e.target.value }))}
+                value={Number(nuevoFijo.monto) || 0}
+                onValueChange={(v) => setNuevoFijo((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
             <div className="space-y-1.5">
@@ -976,11 +975,10 @@ export default function CajaJazminePage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ef-monto">Monto (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="ef-monto"
-                type="number"
-                value={editFijo.monto}
-                onChange={(e) => setEditFijo((p) => ({ ...p, monto: e.target.value }))}
+                value={Number(editFijo.monto) || 0}
+                onValueChange={(v) => setEditFijo((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
             <div className="space-y-1.5">
@@ -1057,12 +1055,11 @@ export default function CajaJazminePage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="gv-monto">Monto (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="gv-monto"
-                type="number"
-                placeholder="Ej: 50000"
-                value={nuevoGasto.monto}
-                onChange={(e) => setNuevoGasto((p) => ({ ...p, monto: e.target.value }))}
+                placeholder="Ej: 50.000"
+                value={Number(nuevoGasto.monto) || 0}
+                onValueChange={(v) => setNuevoGasto((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
             <div className="space-y-1.5">

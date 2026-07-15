@@ -14,6 +14,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -1447,11 +1448,9 @@ export default function CalendarioPage() {
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
               <Label>Monto ($)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={pagoForm.monto || ""}
-                onChange={(e) => setPagoForm({ ...pagoForm, monto: parseFloat(e.target.value) || 0 })}
+              <MoneyInput
+                value={pagoForm.monto || 0}
+                onValueChange={(v) => setPagoForm({ ...pagoForm, monto: v })}
                 placeholder="0"
               />
             </div>

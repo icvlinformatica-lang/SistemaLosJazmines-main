@@ -29,6 +29,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -1760,16 +1761,11 @@ function EventoPageContent() {
                   <DollarSign className="h-4 w-4" />
                   Monto Total del Evento
                 </Label>
-                <Input
+                <MoneyInput
                   id="montoTotalContrato"
-                  type="number"
-                  min="0"
-                  value={localMontoTotal || ""}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0
-                    setLocalMontoTotal(val)
-                  }}
-                  placeholder="Ej: 500000"
+                  value={localMontoTotal || 0}
+                  onValueChange={(val) => setLocalMontoTotal(val)}
+                  placeholder="Ej: 500.000"
                   className="h-12 text-lg font-mono"
                 />
               </div>
@@ -1836,14 +1832,11 @@ function EventoPageContent() {
                     <Banknote className="h-4 w-4" />
                     {"Monto de la Seña"}
                   </Label>
-                  <Input
+                  <MoneyInput
                     id="montoSena"
-                    type="number"
-                    min="0"
-                    max={localMontoTotal}
-                    value={localMontoSena || ""}
-                    onChange={(e) => setLocalMontoSena(parseFloat(e.target.value) || 0)}
-                    placeholder="Ej: 100000"
+                    value={localMontoSena || 0}
+                    onValueChange={(val) => setLocalMontoSena(val)}
+                    placeholder="Ej: 100.000"
                     className="h-11 font-mono"
                   />
                   {localMontoSena > 0 && localMontoTotal > 0 && (

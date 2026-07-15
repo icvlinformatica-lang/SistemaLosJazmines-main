@@ -370,7 +370,12 @@ function PagosPageContent() {
       const etiquetaCuota = cuotaPagadaNumero ? `Cuota ${cuotaPagadaNumero}` : "Pago"
       const mitadEventos = Math.round((pagoForm.monto / 2) * 100) / 100
       const mitadJazmines = Math.round((pagoForm.monto - mitadEventos) * 100) / 100
-      const fechaMov = new Date().toISOString()
+      // Usar la fecha real de cobro elegida en el formulario (no la fecha de hoy),
+      // así los pagos de cuotas atrasadas quedan asentados en el mes correcto.
+      // Se fija el mediodía para evitar corrimientos de día por zona horaria.
+      const fechaMov = pagoForm.fecha
+        ? new Date(`${pagoForm.fecha}T12:00:00`).toISOString()
+        : new Date().toISOString()
 
       const saldoPrevEventos = movimientosCaja
         .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === selectedEvento.salon)
@@ -1288,13 +1293,16 @@ function PagosPageContent() {
             <div className="grid gap-3">
               {/* Fecha */}
               <div className="grid gap-1">
-                <Label className="text-xs">Fecha</Label>
+                <Label className="text-xs">Fecha de cobro</Label>
                 <Input
                   type="date"
                   value={pagoForm.fecha}
                   onChange={(e) => setPagoForm({ ...pagoForm, fecha: e.target.value })}
                   className="h-9"
                 />
+                <p className="text-[11px] text-muted-foreground leading-tight">
+                  El ingreso se registra en las cajas con esta fecha. Para cuotas atrasadas, elegí el mes real en que se cobró.
+                </p>
               </div>
 
               {/* Total a pagar (el IPC ya se aplica automáticamente al monto de la cuota) */}

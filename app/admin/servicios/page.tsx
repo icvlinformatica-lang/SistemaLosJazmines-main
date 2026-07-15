@@ -20,6 +20,7 @@ import { calcularTotalesPaquete } from "@/lib/store"
 import { useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -817,20 +818,18 @@ function DialogoServicio({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Costo para el salón ($)</Label>
-                <Input
-                  type="number"
-                  value={formData.costoParaCajaEventos || ""}
-                  onChange={(e) => setFormData({ ...formData, costoParaCajaEventos: parseFloat(e.target.value) || 0 })}
+                <MoneyInput
+                  value={formData.costoParaCajaEventos || 0}
+                  onValueChange={(v) => setFormData({ ...formData, costoParaCajaEventos: v })}
                   placeholder="0"
                 />
                 <p className="text-xs text-muted-foreground mt-1">Impacta como egreso en Caja Eventos</p>
               </div>
               <div>
                 <Label>Precio al cliente ($)</Label>
-                <Input
-                  type="number"
-                  value={formData.precioVenta || ""}
-                  onChange={(e) => setFormData({ ...formData, precioVenta: parseFloat(e.target.value) || 0 })}
+                <MoneyInput
+                  value={formData.precioVenta || 0}
+                  onValueChange={(v) => setFormData({ ...formData, precioVenta: v })}
                   placeholder="0"
                 />
                 <p className="text-xs text-muted-foreground mt-1">Figura en el contrato del evento</p>

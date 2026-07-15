@@ -5,6 +5,7 @@ import { useStore } from "@/lib/store-context"
 import { formatCurrency, SALONES } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -361,11 +362,9 @@ export default function PreciosPage() {
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
               <Label>Precio ($)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={editPrice || ""}
-                onChange={(e) => setEditPrice(parseFloat(e.target.value) || 0)}
+              <MoneyInput
+                value={editPrice || 0}
+                onValueChange={(v) => setEditPrice(v)}
                 placeholder="Ingresa el precio de venta"
                 autoFocus
               />
@@ -435,11 +434,9 @@ export default function PreciosPage() {
             </div>
             <div className="grid gap-2">
               <Label>Precio ($)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={bulkPrice || ""}
-                onChange={(e) => setBulkPrice(parseFloat(e.target.value) || 0)}
+              <MoneyInput
+                value={bulkPrice || 0}
+                onValueChange={(v) => setBulkPrice(v)}
                 placeholder="Precio para los dias seleccionados"
               />
             </div>
