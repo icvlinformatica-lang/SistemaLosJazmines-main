@@ -334,6 +334,18 @@ export interface CostoOperativo {
   esVariable?: boolean
   /** true si el gasto ya fue pagado */
   pagado?: boolean
+  /**
+   * Reparto del gasto entre varios salones (porcentaje que "debe" cada uno).
+   * Si está presente y con entradas, tiene prioridad sobre `salon`: el monto
+   * se prorratea por salón. Ej: [{ salon: "Quinta", porcentaje: 50 }, { salon: "Casona", porcentaje: 50 }].
+   */
+  distribucion?: DistribucionSalon[]
+}
+
+/** Una porción del reparto de un gasto: qué salón y qué porcentaje le corresponde. */
+export interface DistribucionSalon {
+  salon: string
+  porcentaje: number
 }
 
 // --- Gastos Archivados (historial consolidado de egresos) ---
