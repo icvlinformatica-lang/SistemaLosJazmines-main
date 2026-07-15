@@ -1221,7 +1221,7 @@ export default function CajaJazminePage() {
       </div>
 
       {/* Proyección visual */}
-      <Card>
+      <Card style={{ backgroundColor: "#ffffff" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -1244,21 +1244,21 @@ export default function CajaJazminePage() {
         <CardContent className="space-y-4">
           <div className="flex items-end justify-around gap-3 sm:gap-6 h-56 pt-2">
             {[
-              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700" },
-              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−" },
-              { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+" },
-            ].map(({ label, value, color, textColor, signo }) => {
+              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
+              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−", colorStyle: { backgroundColor: "#90b203" }, textStyle: { color: "#788224" } },
+              { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+", textStyle: { color: "#0f7a14" } },
+            ].map(({ label, value, color, textColor, signo, colorStyle, textStyle }) => {
               const pct = Math.round((value / barMax) * 100)
               return (
                 <div key={label} className="flex h-full flex-1 flex-col items-center gap-2">
-                  <span className={`text-xs font-semibold whitespace-nowrap ${textColor}`}>
+                  <span className="text-xs font-semibold whitespace-nowrap" style={textStyle || {}}>
                     {signo ? `${signo} ` : ""}{formatCurrency(value)}
                   </span>
                   <div className="flex w-full flex-1 items-end justify-center">
                     <div className="relative flex h-full w-10 items-end overflow-hidden rounded-t-md bg-muted sm:w-16">
                       <div
-                        className={`w-full rounded-t-md ${color} transition-all duration-500`}
-                        style={{ height: `${Math.max(pct, 2)}%` }}
+                        className="w-full rounded-t-md transition-all duration-500"
+                        style={{ height: `${Math.max(pct, 2)}%`, ...colorStyle }}
                       />
                     </div>
                   </div>
