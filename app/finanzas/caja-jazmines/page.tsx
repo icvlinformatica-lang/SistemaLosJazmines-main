@@ -741,7 +741,7 @@ export default function CajaJazminePage() {
                 {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <p className="text-3xl font-bold" style={{ color: "#b96b19" }}>
+            <p className="text-3xl font-bold" style={{ color: "#b7933b" }}>
               {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">Costos pendientes </p>
