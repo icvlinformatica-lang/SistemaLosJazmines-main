@@ -158,6 +158,9 @@ export interface Evento {
     montoSena?: number
     porcentajeRecargo?: number
     porcentajeIPC?: number
+    // Si es true (o undefined = default), las cuotas restantes se ajustan cada mes por IPC.
+    // Si es false, las cuotas son fijas y nunca se modifican por inflación.
+    ajustaPorIPC?: boolean
     cuotas?: Array<{
       numero: number
       montoCuota: number
@@ -616,6 +619,7 @@ export interface AppState {
 // ==========================================
 
 export interface HistorialIPCEntry {
+  id?: string
   mes: number
   anio: number
   porcentaje: number
@@ -623,24 +627,119 @@ export interface HistorialIPCEntry {
   eventosActualizados: number
 }
 
-export function actualizarCuotasIPC(
-  eventos: Evento[],
+/**
+ * Determina si un evento tiene cuotas que se ajustan por IPC.
+ *
+ * REGLA ESTRICTA (opt-in): el IPC SOLO se aplica cuando el evento fue marcado
+ * explícitamente como "Ajustables por IPC" (ajustaPorIPC === true). Las cuotas
+ * fijas, los eventos sin la bandera (undefined / previos al selector), los pagos
+ * completos y las señas nunca se ajustan. Así nunca se le suma IPC a un plan de
+ * cuotas fijas por error.
+ */
+export function eventoAjustaPorIPC(evento: { planDeCuotas?: EventoGuardado["planDeCuotas"] }): boolean {
+  const plan = evento.planDeCuotas
+  if (!plan) return false
+  // Debe estar marcado explícitamente como ajustable
+  if (plan.ajustaPorIPC !== true) return false
+  // Y debe ser una financiación en más de una cuota con detalle de cuotas
+  const tieneCuotas = Array.isArray(plan.cuotas) && plan.cuotas.length > 0
+  const enCuotas = (plan.numeroCuotas ?? 0) > 1
+  return tieneCuotas && enCuotas
+}
+
+/**
+ * Aplica el IPC del mes a las cuotas RESTANTES (no pagadas) de los eventos ajustables.
+ * - Las cuotas ya pagadas quedan congeladas (no se tocan).
+ * - El aumento es compuesto: se aplica sobre el monto vigente de cada cuota, por lo que
+ *   mes a mes crece de forma exponencial tomando como base el valor ya aumentado.
+ */
+export function actualizarCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"] }>(
+  eventos: T[],
   porcentajeDelMes: number
-): Evento[] {
-  return eventos.map(evento => {
-    if (!evento.planDeCuotas || evento.planDeCuotas.modalidadPago !== 'ipc') return evento
-    const cuotasActualizadas = (evento.planDeCuotas.cuotas ?? []).map(cuota => ({
-      ...cuota,
-      montoCuota: cuota.montoCuota * (1 + porcentajeDelMes / 100)
-    }))
+): { eventos: T[]; eventosActualizados: number } {
+  const factor = 1 + porcentajeDelMes / 100
+  let eventosActualizados = 0
+
+  const nuevos = eventos.map(evento => {
+    if (!eventoAjustaPorIPC(evento)) return evento
+
+    const plan = evento.planDeCuotas!
+    const pagadas = plan.cuotasPagadas ?? []
+    const cuotasBase = plan.cuotas ?? []
+    if (cuotasBase.length === 0) return evento
+
+    let cambiada = false
+    const cuotasActualizadas = cuotasBase.map(cuota => {
+      const estaPagada = cuota.pagada === true || pagadas.includes(cuota.numero)
+      if (estaPagada) return cuota
+      cambiada = true
+      return {
+        ...cuota,
+        montoCuota: Math.round(cuota.montoCuota * factor),
+      }
+    })
+
+    if (!cambiada) return evento
+    eventosActualizados++
+
     return {
       ...evento,
       planDeCuotas: {
-        ...evento.planDeCuotas,
-        cuotas: cuotasActualizadas
-      }
+        ...plan,
+        cuotas: cuotasActualizadas,
+      },
     }
   })
+
+  return { eventos: nuevos, eventosActualizados }
+}
+
+/**
+ * Revierte (deshace) un ajuste de IPC en las cuotas RESTANTES (no pagadas).
+ * Es la operación inversa de actualizarCuotasIPC: divide el monto vigente por el factor,
+ * devolviendo las cuotas pendientes a su valor previo a ese ajuste.
+ * Las cuotas ya pagadas no se tocan (se cobraron a su valor de ese momento).
+ */
+export function revertirCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"] }>(
+  eventos: T[],
+  porcentajeDelMes: number
+): { eventos: T[]; eventosActualizados: number } {
+  const factor = 1 + porcentajeDelMes / 100
+  if (factor <= 0) return { eventos, eventosActualizados: 0 }
+  let eventosActualizados = 0
+
+  const nuevos = eventos.map(evento => {
+    if (!eventoAjustaPorIPC(evento)) return evento
+
+    const plan = evento.planDeCuotas!
+    const pagadas = plan.cuotasPagadas ?? []
+    const cuotasBase = plan.cuotas ?? []
+    if (cuotasBase.length === 0) return evento
+
+    let cambiada = false
+    const cuotasActualizadas = cuotasBase.map(cuota => {
+      const estaPagada = cuota.pagada === true || pagadas.includes(cuota.numero)
+      if (estaPagada) return cuota
+      cambiada = true
+      return {
+        ...cuota,
+        montoCuota: Math.round(cuota.montoCuota / factor),
+      }
+    })
+
+    if (!cambiada) return evento
+    eventosActualizados++
+
+    return {
+      ...evento,
+      planDeCuotas: {
+        ...plan,
+        cuotas: cuotasActualizadas,
+      },
+    }
+  })
+
+  return { eventos: nuevos, eventosActualizados }
 }
 
 export interface CalculoCompra {
@@ -1886,10 +1985,20 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
     return []
   }
 
-  const { numeroCuotas, montoCuota, montoTotal, fechaInicioPlan, diaVencimiento, cuotasPagadas = [] } = evento.planDeCuotas
+  const { numeroCuotas, montoCuota, montoTotal, fechaInicioPlan, diaVencimiento, cuotasPagadas = [], cuotas = [] } = evento.planDeCuotas
 
   // Fallback: if montoCuota is 0 but montoTotal exists, calculate it
   const montoReal = montoCuota > 0 ? montoCuota : (montoTotal > 0 && numeroCuotas > 0 ? montoTotal / numeroCuotas : 0)
+
+  // Mapa de montos por cuota provenientes de planDeCuotas.cuotas[] (reflejan el IPC acumulado)
+  const montoPorCuota = new Map<number, number>()
+  for (const c of cuotas) {
+    if (typeof c.montoCuota === "number" && c.montoCuota > 0) {
+      montoPorCuota.set(c.numero, c.montoCuota)
+    }
+  }
+
+  const resolverMonto = (cuotaNum: number) => montoPorCuota.get(cuotaNum) ?? montoReal
 
   return Array.from({ length: numeroCuotas }).map((_, idx) => {
     const cuotaNum = idx + 1
@@ -1899,7 +2008,7 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
       return {
         numeroCuota: cuotaNum,
         fechaVencimiento: "",
-        monto: montoReal,
+        monto: resolverMonto(cuotaNum),
         pagada: cuotasPagadas.includes(cuotaNum),
       }
     }
@@ -1910,7 +2019,7 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
     return {
       numeroCuota: cuotaNum,
       fechaVencimiento: fechaISO,
-      monto: montoReal,
+      monto: resolverMonto(cuotaNum),
       pagada: cuotasPagadas.includes(cuotaNum),
     }
   })

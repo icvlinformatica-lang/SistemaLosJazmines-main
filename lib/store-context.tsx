@@ -31,6 +31,7 @@ import {
   migrarServiciosAPreciosDinamicos,
   obtenerPreciosServicio,
   actualizarCuotasIPC,
+  revertirCuotasIPC,
 } from "./store"
 import {
   Dialog,
@@ -43,6 +44,13 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useClock } from "@/lib/clock-context"
 
@@ -153,11 +161,38 @@ interface StoreContextType {
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
-  aplicarIPC: (porcentaje: number) => number
+  aplicarIPC: (porcentaje: number, mes: number, anio: number) => number
+  eliminarIPC: (entry: HistorialIPCEntry) => number
   abrirDialogIPC: () => void
 }
 
 const StoreContext = createContext<StoreContextType | null>(null)
+
+const MESES_IPC = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+/**
+ * Calcula el próximo mes a cargar de IPC de forma secuencial: es el mes siguiente
+ * al último aplicado (el más reciente por mes/año en el historial). Si el historial
+ * está vacío, arranca en el mes/año actual.
+ */
+function calcularProximoMesIPC(
+  historial: HistorialIPCEntry[],
+  fallbackMes: number,
+  fallbackAnio: number,
+): { mes: number; anio: number } {
+  if (!historial || historial.length === 0) {
+    return { mes: fallbackMes, anio: fallbackAnio }
+  }
+  const ultimo = historial.reduce((max, h) => {
+    const orden = h.anio * 12 + h.mes
+    return orden > max ? orden : max
+  }, -Infinity)
+  const siguiente = ultimo + 1
+  return { mes: ((siguiente % 12) + 12) % 12, anio: Math.floor(siguiente / 12) }
+}
 
 // Prefijos de métodos que mutan/persisten datos. En modo lectura se neutralizan.
 const MUTATOR_RE = /^(add|update|delete|set|archivar|desarchivar|aplicar|generar|sincronizar|clear)/
@@ -189,6 +224,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false)
   const [showIPCDialog, setShowIPCDialog] = useState(false)
   const [porcentajeIPC, setPorcentajeIPC] = useState("")
+  const [mesIPC, setMesIPC] = useState<number>(new Date().getMonth())
+  const [anioIPC, setAnioIPC] = useState<number>(new Date().getFullYear())
   const { toast } = useToast()
   const { soloLectura } = useClock()
 
@@ -223,7 +260,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
-        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB] = await Promise.all([
+        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB, historialIPCDB] = await Promise.all([
           db.fetchServicios(),
           db.fetchPersonal(),
           db.fetchPagosPersonal(),
@@ -233,6 +270,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           db.fetchConfiguracionCajas(),
           db.fetchPreciosVenta(),
           db.fetchGastosArchivados(),
+          db.fetchHistorialIPC(),
         ])
 
         // Migración one-time: si Supabase devuelve vacío pero localStorage tiene precios, upsertearlos ahora
@@ -268,6 +306,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
           preciosVenta: hayPreciosDB ? preciosDB : preciosLocal,
           gastosArchivados: archivadosDB.length > 0 ? archivadosDB : (localState.gastosArchivados || []),
+          historialIPC: historialIPCDB,
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
@@ -294,6 +333,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (m: MovimientoCaja) => !m.eventoId || idsEventosVigentes.has(m.eventoId)
       )
 
+      // Historial IPC desde Supabase (undefined si falló la conexión, para caer a localStorage)
+      const historialIPCDesdeDB: HistorialIPCEntry[] | undefined = Array.isArray(supabaseData.historialIPC)
+        ? supabaseData.historialIPC
+        : undefined
+      const ultimoMesDesdeDB = (historialIPCDesdeDB && historialIPCDesdeDB.length > 0)
+        ? [...historialIPCDesdeDB].sort((a, b) =>
+            new Date(b.fechaAplicacion).getTime() - new Date(a.fechaAplicacion).getTime()
+          )[0]
+        : undefined
+      const ultimoMesIPCVal = ultimoMesDesdeDB
+        ? { mes: ultimoMesDesdeDB.mes, anio: ultimoMesDesdeDB.anio }
+        : undefined
+
       setState({
         ...localState,
         insumos: insumosRes ?? localState.insumos,
@@ -313,6 +365,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         configuracionCajas: supabaseData.configuracionCajas,
         preciosVenta: supabaseData.preciosVenta ?? localState.preciosVenta ?? {},
         gastosArchivados: supabaseData.gastosArchivados ?? localState.gastosArchivados ?? [],
+        // Historial IPC: fuente de verdad = Supabase (compartido entre dispositivos).
+        // ultimoMesIPC se deriva de la entrada más reciente para no re-aplicar el mismo mes.
+        historialIPC: historialIPCDesdeDB ?? localState.historialIPC ?? [],
+        ultimoMesIPC: ultimoMesIPCVal ?? localState.ultimoMesIPC,
       })
 
       setIsHydrated(true)
@@ -651,7 +707,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertServicio(newServicio)
     } catch (error) {
       console.error("[v0] Error syncing servicio to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintent��.", variant: "destructive" })
     }
   }
 
@@ -1198,66 +1254,162 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // === IPC ===
-  const aplicarIPC = (porcentaje: number): number => {
-    const eventosActualizados = actualizarCuotasIPC(state.eventos || [], porcentaje)
-    const eventosConIPC = eventosActualizados.filter(
-      (e, i) => e !== (state.eventos || [])[i]
-    ).length
+  /**
+   * Aplica el IPC de un mes/año específico. Solo se permite UN IPC por mes.
+   * El mes/año lo elige el usuario (puede cargar meses pasados); la fecha real
+   * de carga (fechaAplicacion) es solo informativa y no afecta el orden.
+   */
+  const aplicarIPC = (porcentaje: number, mes: number, anio: number): number => {
+    // Regla: un solo IPC por mes. Si ya existe ese mes/año, no se aplica.
+    const yaExiste = (state.historialIPC || []).some((h) => h.mes === mes && h.anio === anio)
+    if (yaExiste) {
+      toast({
+        title: "Ese mes ya tiene IPC",
+        description: `El IPC de ${MESES_IPC[mes]} ${anio} ya fue cargado. Solo se permite uno por mes.`,
+        variant: "destructive",
+      })
+      return 0
+    }
 
-    const hoy = new Date()
-    const nuevaEntrada: HistorialIPCEntry = {
-      mes: hoy.getMonth(),
-      anio: hoy.getFullYear(),
+    const eventosPrevios = state.eventos || []
+    const { eventos: eventosActualizados, eventosActualizados: eventosConIPC } = actualizarCuotasIPC(
+      eventosPrevios,
       porcentaje,
-      fechaAplicacion: hoy.toISOString(),
+    )
+
+    const nuevaEntrada: HistorialIPCEntry = {
+      id: crypto.randomUUID(),
+      mes,
+      anio,
+      porcentaje,
+      fechaAplicacion: new Date().toISOString(),
       eventosActualizados: eventosConIPC,
     }
 
+    // Optimistic local update
     setState((prev) => ({
       ...prev,
       eventos: eventosActualizados,
       historialIPC: [...(prev.historialIPC || []), nuevaEntrada],
-      ultimoMesIPC: { mes: hoy.getMonth(), anio: hoy.getFullYear() },
+      ultimoMesIPC: { mes, anio },
     }))
+
+    // Persistir en Supabase solo los eventos cuyo planDeCuotas cambió
+    const eventosParaPersistir = eventosActualizados.filter((e, i) => e !== eventosPrevios[i])
+    void (async () => {
+      for (const evento of eventosParaPersistir) {
+        try {
+          await fetch(`/api/eventos/${evento.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
+          })
+        } catch (err) {
+          console.error("[v0] Error persistiendo IPC en evento:", evento.id, err)
+        }
+      }
+
+      // Persistir la entrada del historial IPC en Supabase (fuente de verdad compartida)
+      try {
+        const db = await import("./supabase/data-service")
+        await db.insertHistorialIPC(nuevaEntrada)
+      } catch (err) {
+        console.error("[v0] Error persistiendo historial IPC en Supabase:", err)
+      }
+
+      toast({
+        title: "IPC aplicado",
+        description: eventosConIPC > 0
+          ? `Se ajustaron las cuotas restantes de ${eventosConIPC} evento(s).`
+          : "No había eventos con cuotas pendientes para ajustar, pero el IPC quedó registrado.",
+      })
+    })()
 
     return eventosConIPC
   }
 
   const abrirDialogIPC = () => {
+    const hoy = new Date()
+    const proximo = calcularProximoMesIPC(state.historialIPC || [], hoy.getMonth(), hoy.getFullYear())
+    setMesIPC(proximo.mes)
+    setAnioIPC(proximo.anio)
     setPorcentajeIPC("")
     setShowIPCDialog(true)
   }
 
-  // Detectar cambio de mes para IPC
-  useEffect(() => {
-    if (!isHydrated) return
-
-    const hoy = new Date()
-    const mesActual = hoy.getMonth()
-    const anioActual = hoy.getFullYear()
-    const ultimo = state.ultimoMesIPC
-
-    // Verificar si hay eventos con modalidad IPC
-    const tieneEventosIPC = (state.eventos || []).some(
-      (e) => e.planDeCuotas?.modalidadPago === "ipc"
+  /**
+   * Deshace un ajuste de IPC: revierte las cuotas restantes a su valor previo,
+   * elimina la entrada del historial y recalcula el último mes aplicado.
+   * Solo debe usarse sobre el ajuste más reciente (la reversión es compuesta).
+   */
+  const eliminarIPC = (entry: HistorialIPCEntry): number => {
+    const eventosPrevios = state.eventos || []
+    const { eventos: eventosRevertidos, eventosActualizados: eventosAfectados } = revertirCuotasIPC(
+      eventosPrevios,
+      entry.porcentaje,
     )
 
-    if (!tieneEventosIPC) return
+    const historialRestante = (state.historialIPC || []).filter((h) =>
+      entry.id ? h.id !== entry.id : h.fechaAplicacion !== entry.fechaAplicacion,
+    )
 
-    // Si nunca se aplicó o si cambió el mes/año
-    if (!ultimo || ultimo.mes !== mesActual || ultimo.anio !== anioActual) {
-      setShowIPCDialog(true)
-    }
-  }, [isHydrated, state.ultimoMesIPC, state.eventos])
+    // Recalcular el último mes aplicado a partir del historial restante
+    const nuevoUltimo = [...historialRestante].sort(
+      (a, b) => new Date(b.fechaAplicacion).getTime() - new Date(a.fechaAplicacion).getTime(),
+    )[0]
+
+    // Optimistic local update
+    setState((prev) => ({
+      ...prev,
+      eventos: eventosRevertidos,
+      historialIPC: historialRestante,
+      ultimoMesIPC: nuevoUltimo ? { mes: nuevoUltimo.mes, anio: nuevoUltimo.anio } : null,
+    }))
+
+    // Persistir en Supabase: eventos revertidos + borrar la entrada del historial
+    const eventosParaPersistir = eventosRevertidos.filter((e, i) => e !== eventosPrevios[i])
+    void (async () => {
+      for (const evento of eventosParaPersistir) {
+        try {
+          await fetch(`/api/eventos/${evento.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
+          })
+        } catch (err) {
+          console.error("[v0] Error revirtiendo IPC en evento:", evento.id, err)
+        }
+      }
+
+      if (entry.id) {
+        try {
+          const db = await import("./supabase/data-service")
+          await db.deleteHistorialIPC(entry.id)
+        } catch (err) {
+          console.error("[v0] Error eliminando historial IPC en Supabase:", err)
+        }
+      }
+
+      toast({
+        title: "IPC deshecho",
+        description: `Se revirtieron las cuotas restantes de ${eventosAfectados} evento(s) a su valor anterior.`,
+      })
+    })()
+
+    return eventosAfectados
+  }
 
   const handleAplicarIPC = () => {
     const porcentaje = parseFloat(porcentajeIPC.replace(",", "."))
     if (isNaN(porcentaje)) return
 
-    const cantidad = aplicarIPC(porcentaje)
+    // Bloquear duplicados: un solo IPC por mes
+    const yaExiste = (state.historialIPC || []).some((h) => h.mes === mesIPC && h.anio === anioIPC)
+    if (yaExiste) return
+
+    aplicarIPC(porcentaje, mesIPC, anioIPC)
     setShowIPCDialog(false)
     setPorcentajeIPC("")
-    // El toast se puede agregar aquí si se quiere
   }
 
   if (!isHydrated) {
@@ -1356,8 +1508,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         desarchivarGasto,
         historialIPC: state.historialIPC || [],
         ultimoMesIPC: state.ultimoMesIPC || null,
-        aplicarIPC,
-        abrirDialogIPC,
+      aplicarIPC,
+      eliminarIPC,
+      abrirDialogIPC,
       }
 
   const contextValue = aplicarSoloLectura(rawValue, soloLectura, () =>
@@ -1375,45 +1528,105 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       <Dialog open={showIPCDialog} onOpenChange={setShowIPCDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Cambio de mes detectado</DialogTitle>
+            <DialogTitle>Cargar IPC de un mes</DialogTitle>
             <DialogDescription>
-              Hay cuotas con modalidad IPC que necesitan actualizarse. Ingresa el porcentaje de inflacion del mes para aplicar el ajuste.
+              Elegí el mes al que corresponde el IPC y su porcentaje. Se permite un solo IPC por mes y se aplica solo a las cuotas restantes (no pagadas) de los eventos ajustables, de forma compuesta.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="porcentaje-ipc">Porcentaje IPC del mes</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="porcentaje-ipc"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Ej: 3.2"
-                  value={porcentajeIPC}
-                  onChange={(e) => setPorcentajeIPC(e.target.value)}
-                  className="flex-1"
-                />
-                <span className="text-sm text-muted-foreground">%</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Ingresa el porcentaje como numero decimal (ej: 3.2 para 3,2%)
-              </p>
-            </div>
-          </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-row">
-            <Button
-              variant="outline"
-              onClick={() => setShowIPCDialog(false)}
-            >
-              Recordar despues
-            </Button>
-            <Button
-              onClick={handleAplicarIPC}
-              disabled={!porcentajeIPC || isNaN(parseFloat(porcentajeIPC.replace(",", ".")))}
-            >
-              Aplicar ahora
-            </Button>
-          </DialogFooter>
+          {(() => {
+            const mesYaCargado = (state.historialIPC || []).some(
+              (h) => h.mes === mesIPC && h.anio === anioIPC,
+            )
+            const hoy = new Date()
+            const anios = Array.from(new Set([
+              hoy.getFullYear() - 1,
+              hoy.getFullYear(),
+              hoy.getFullYear() + 1,
+              anioIPC,
+            ])).sort((a, b) => a - b)
+            return (
+              <>
+                <div className="space-y-4 py-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Mes del IPC</Label>
+                      <Select value={String(mesIPC)} onValueChange={(v) => setMesIPC(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MESES_IPC.map((nombre, idx) => (
+                            <SelectItem key={idx} value={String(idx)}>
+                              {nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Año</Label>
+                      <Select value={String(anioIPC)} onValueChange={(v) => setAnioIPC(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {anios.map((a) => (
+                            <SelectItem key={a} value={String(a)}>
+                              {a}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {mesYaCargado ? (
+                    <p className="text-xs font-medium text-destructive">
+                      El IPC de {MESES_IPC[mesIPC]} {anioIPC} ya fue cargado. Elegí otro mes: solo se permite uno por mes.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Vas a cargar el IPC de <span className="font-medium text-foreground">{MESES_IPC[mesIPC]} {anioIPC}</span>.
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="porcentaje-ipc">Porcentaje IPC de {MESES_IPC[mesIPC]}</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="porcentaje-ipc"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Ej: 3.2"
+                        value={porcentajeIPC}
+                        onChange={(e) => setPorcentajeIPC(e.target.value)}
+                        className="flex-1"
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Ingresa el porcentaje como numero decimal (ej: 3.2 para 3,2%)
+                    </p>
+                  </div>
+                </div>
+                <DialogFooter className="flex-col gap-2 sm:flex-row">
+                  <Button variant="outline" onClick={() => setShowIPCDialog(false)}>
+                    Recordar despues
+                  </Button>
+                  <Button
+                    onClick={handleAplicarIPC}
+                    disabled={
+                      mesYaCargado ||
+                      !porcentajeIPC ||
+                      isNaN(parseFloat(porcentajeIPC.replace(",", ".")))
+                    }
+                  >
+                    Aplicar ahora
+                  </Button>
+                </DialogFooter>
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </StoreContext.Provider>

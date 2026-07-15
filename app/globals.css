@@ -169,8 +169,9 @@
   }
   
   /* Ensure minimum touch targets of 44px (h-12 = 48px) */
-  button, 
-  [role="button"],
+  /* Exclude tab triggers: they live inside a fixed-height list and would overflow it */
+  button:not([data-slot="tabs-trigger"]), 
+  [role="button"]:not([data-slot="tabs-trigger"]),
   input[type="submit"],
   input[type="button"] {
     min-height: 44px;
