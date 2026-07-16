@@ -614,13 +614,13 @@ export default function CajaEventosPage() {
               {egresosProximos.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="futuros" className="gap-1.5">
+          <TabsTrigger value="futuros" className="gap-1.5" style={{ backgroundColor: "rgba(233, 233, 136, 0.12)" }}>
             <CalendarDays className="h-4 w-4" /> Gastos futuros
             <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px] ml-1">
               {egresosFuturos.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="historial" className="gap-1.5">
+          <TabsTrigger value="historial" className="gap-1.5" style={{ backgroundColor: "rgba(213, 208, 208, 0.49)" }}>
             <History className="h-4 w-4" /> Historial
             <Badge className="bg-muted text-muted-foreground border-border text-[10px] ml-1">
               {pagosRealizados.length}
@@ -721,7 +721,7 @@ export default function CajaEventosPage() {
                                     : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
+                            {eg.tipo === "seña" ? "Se��a" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>
