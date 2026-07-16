@@ -28,6 +28,7 @@ export interface IngresoPendiente {
   montoTotal: number // cuota completa
   contacto: ClienteContacto
   esEstaSemana: boolean
+  esVencida: boolean // fecha de vencimiento ya pasó (debería haberse cobrado)
 }
 
 export interface EgresoPendienteServicio {
@@ -166,6 +167,8 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         const fechaVencDia = new Date(fechaVenc)
         fechaVencDia.setHours(0, 0, 0, 0)
         const esEstaSemana = fechaVencDia >= lunes && fechaVencDia <= viernes
+        // Vencida = la fecha de vencimiento ya pasó (debería haberse cobrado)
+        const esVencida = fechaVencDia < hoy
 
         ingresosPendientes.push({
           id: `${evento.id}-cuota-${cuota.numero}`,
@@ -180,6 +183,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           montoTotal: cuota.montoCuota,
           contacto,
           esEstaSemana,
+          esVencida,
         })
       }
     }
@@ -356,7 +360,15 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
     const totalPorCobrar = ingresosPendientes.reduce((s, i) => s + i.monto, 0)
     const totalPorPagar = egresosPendientes.reduce((s, e) => s + e.monto, 0)
 
-    const vienenEstaSemana = ingresosPendientes.filter((i) => i.esEstaSemana)
+    // Incluye cuotas a cobrar esta semana Y cuotas ya vencidas (que deberían
+    // haberse cobrado). Las vencidas van primero por ser las más urgentes; luego
+    // por fecha de vencimiento (más antigua primero).
+    const vienenEstaSemana = ingresosPendientes
+      .filter((i) => i.esEstaSemana || i.esVencida)
+      .sort((a, b) => {
+        if (a.esVencida !== b.esVencida) return a.esVencida ? -1 : 1
+        return a.fechaVencimiento.localeCompare(b.fechaVencimiento)
+      })
 
     // ----------------------------------------------------------
     // 5. HISTORIAL DE PAGOS REALIZADOS (egresos a proveedores)
