@@ -390,7 +390,7 @@ export default function CajaEventosPage() {
         >
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora</p>
+              <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora:</p>
               <div className="flex items-center gap-1.5">
                 <Eye className="h-3.5 w-3.5 text-teal-500" />
                 <Wallet className="h-4 w-4 text-teal-600" />
@@ -403,7 +403,7 @@ export default function CajaEventosPage() {
         <Card className="border-emerald-200 bg-emerald-50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro este mes</p>
+              <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro este mes:</p>
               <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
             </div>
             <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(porCobrarEsteMes)}</p>
@@ -413,7 +413,7 @@ export default function CajaEventosPage() {
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago este mes</p>
+              <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago este mes:</p>
               <ArrowUpFromLine className="h-4 w-4 text-red-600" />
             </div>
             <p className="text-2xl font-bold text-red-700">−{formatCurrency(porPagarEsteMes)}</p>
@@ -423,7 +423,7 @@ export default function CajaEventosPage() {
         <Card className={saldoFinMes >= 0 ? "border-teal-200" : "border-red-300"}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Al fin de mes</p>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">tengo a fin de mes:</p>
               <TrendingUp className={`h-4 w-4 ${saldoFinMes >= 0 ? "text-teal-600" : "text-red-600"}`} />
             </div>
             <p className={`text-2xl font-bold ${saldoFinMes >= 0 ? "text-foreground" : "text-red-700"}`}>
@@ -438,7 +438,7 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-amber-600" />
-            Cuotas por cobrar
+            Cuotas por cobrar:
             {vienenEstaSemana.length > 0 && (
               <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
                 {vienenEstaSemana.length}
@@ -477,7 +477,7 @@ export default function CajaEventosPage() {
                         {ing.eventoNombre} · Cuota {ing.numeroCuota}/{ing.totalCuotas} · vence {formatFecha(ing.fechaVencimiento)}
                       </p>
                       {ing.esVencida && (
-                        <p className="text-xs font-medium text-yellow-700 mt-0.5">
+                        <p className="text-xs font-medium text-yellow-700 mt-0.5 italic">
                           Pendiente de cobro desde hace {Math.abs(ing.diasRestantes)} día{Math.abs(ing.diasRestantes) !== 1 ? "s" : ""}
                         </p>
                       )}
@@ -504,17 +504,17 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
-            Proyección mensual (6 meses)
+            Proyección en 6 meses:
           </CardTitle>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-6">Mes</TableHead>
-                <TableHead className="text-right">A cobrar</TableHead>
-                <TableHead className="text-right">A pagar</TableHead>
-                <TableHead className="text-right pr-6">Balance</TableHead>
+                <TableHead className="pl-6 font-bold">Mes</TableHead>
+                <TableHead className="text-center font-bold">A cobrar</TableHead>
+                <TableHead className="text-center font-bold">A pagar</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Balance</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -524,10 +524,10 @@ export default function CajaEventosPage() {
                     {m.label}
                     {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
                   </TableCell>
-                  <TableCell className="text-right text-emerald-700 font-medium">
+                  <TableCell className="text-center text-emerald-700 font-medium">
                     {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
                   </TableCell>
-                  <TableCell className="text-right text-red-600 font-medium">
+                  <TableCell className="text-center text-[var(--accent)] font-medium">
                     {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
                   </TableCell>
                   <TableCell className={`text-right pr-6 font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
