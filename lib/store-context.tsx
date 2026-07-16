@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useClock } from "@/lib/clock-context"
+import { fetchWithRetry } from "@/lib/fetch-with-retry"
 
 interface StoreContextType {
   state: AppState
@@ -235,7 +236,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const initializeData = async () => {
       const fetchSafe = async (url: string) => {
         try {
-          const r = await fetch(url)
+          const r = await fetchWithRetry(url)
           if (!r.ok) return null
           const data = await r.json()
           return Array.isArray(data) ? data : null
@@ -312,7 +313,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
-        toast({ title: "Error al cargar datos", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+        toast({ title: "Error al cargar datos", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
         supabaseData = {
           servicios: localState.servicios,
           personal: localState.personal,
@@ -403,7 +404,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       // Código automático (INS001, INS002, ...) si no se proporcionó uno
       const codigo = insumo.codigo?.trim() || generateNextCodigo(state.insumos.map((i) => i.codigo), "INS")
-      const res = await fetch("/api/insumos", {
+      const res = await fetchWithRetry("/api/insumos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...insumo, codigo }),
@@ -417,13 +418,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding insumo:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const updateInsumo = async (id: string, updates: Partial<Insumo>) => {
     try {
-      const res = await fetch(`/api/insumos/${id}`, {
+      const res = await fetchWithRetry(`/api/insumos/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -437,13 +438,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating insumo:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const deleteInsumo = async (id: string) => {
     try {
-      const res = await fetch(`/api/insumos/${id}`, { method: "DELETE" })
+      const res = await fetchWithRetry(`/api/insumos/${id}`, { method: "DELETE" })
       if (res.ok) {
         setState((prev) => ({
           ...prev,
@@ -452,7 +453,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting insumo:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -465,7 +466,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       // Código automático (BAR001, BAR002, ...) si no se proporcionó uno
       const codigo = insumo.codigo?.trim() || generateNextCodigo(state.insumosBarra.map((i) => i.codigo), "BAR")
-      const res = await fetch("/api/insumos-barra", {
+      const res = await fetchWithRetry("/api/insumos-barra", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...insumo, codigo }),
@@ -479,13 +480,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding insumo barra:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const updateInsumoBarra = async (id: string, updates: Partial<InsumoBarra>) => {
     try {
-      const res = await fetch(`/api/insumos-barra/${id}`, {
+      const res = await fetchWithRetry(`/api/insumos-barra/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -499,13 +500,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating insumo barra:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const deleteInsumoBarra = async (id: string) => {
     try {
-      const res = await fetch(`/api/insumos-barra/${id}`, { method: "DELETE" })
+      const res = await fetchWithRetry(`/api/insumos-barra/${id}`, { method: "DELETE" })
       if (res.ok) {
         setState((prev) => ({
           ...prev,
@@ -514,7 +515,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting insumo barra:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -528,7 +529,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Código automático por categoría (P001, E001, R001, ...) si no se proporcionó uno
       const prefix = RECETA_CODIGO_PREFIX[receta.categoria] || "REC"
       const codigo = receta.codigo?.trim() || generateNextCodigo(state.recetas.map((r) => r.codigo), prefix)
-      const res = await fetch("/api/recetas", {
+      const res = await fetchWithRetry("/api/recetas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...receta, codigo }),
@@ -543,13 +544,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding receta:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const updateReceta = async (id: string, updates: Partial<Receta>) => {
     try {
-      const res = await fetch(`/api/recetas/${id}`, {
+      const res = await fetchWithRetry(`/api/recetas/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -563,13 +564,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating receta:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const deleteReceta = async (id: string) => {
     try {
-      const res = await fetch(`/api/recetas/${id}`, { method: "DELETE" })
+      const res = await fetchWithRetry(`/api/recetas/${id}`, { method: "DELETE" })
       if (res.ok) {
         setState((prev) => ({
           ...prev,
@@ -578,7 +579,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting receta:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -591,7 +592,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       // Código automático (COC001, COC002, ...) si no se proporcionó uno
       const codigo = coctel.codigo?.trim() || generateNextCodigo(state.cocteles.map((c) => c.codigo), "COC")
-      const res = await fetch("/api/cocteles", {
+      const res = await fetchWithRetry("/api/cocteles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...coctel, codigo }),
@@ -606,13 +607,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding coctel:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const updateCoctel = async (id: string, updates: Partial<Coctel>) => {
     try {
-      const res = await fetch(`/api/cocteles/${id}`, {
+      const res = await fetchWithRetry(`/api/cocteles/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -626,13 +627,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating coctel:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const deleteCoctel = async (id: string) => {
     try {
-      const res = await fetch(`/api/cocteles/${id}`, { method: "DELETE" })
+      const res = await fetchWithRetry(`/api/cocteles/${id}`, { method: "DELETE" })
       if (res.ok) {
         setState((prev) => ({
           ...prev,
@@ -641,7 +642,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting coctel:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -652,7 +653,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // === Barras Templates - Synced with API ===
   const addBarraTemplate = async (template: Omit<BarraTemplate, "id">) => {
     try {
-      const res = await fetch("/api/barra-templates", {
+      const res = await fetchWithRetry("/api/barra-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(template),
@@ -666,13 +667,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error adding barra template:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const updateBarraTemplate = async (id: string, updates: Partial<BarraTemplate>) => {
     try {
-      const res = await fetch(`/api/barra-templates/${id}`, {
+      const res = await fetchWithRetry(`/api/barra-templates/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -686,13 +687,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error updating barra template:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
   const deleteBarraTemplate = async (id: string) => {
     try {
-      const res = await fetch(`/api/barra-templates/${id}`, { method: "DELETE" })
+      const res = await fetchWithRetry(`/api/barra-templates/${id}`, { method: "DELETE" })
       if (res.ok) {
         setState((prev) => ({
           ...prev,
@@ -701,7 +702,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error deleting barra template:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -718,7 +719,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertServicio(newServicio)
     } catch (error) {
       console.error("[v0] Error syncing servicio to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintent��.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -736,7 +737,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing servicio update to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -751,7 +752,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteServ(id)
     } catch (error) {
       console.error("[v0] Error deleting servicio from Supabase:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -772,7 +773,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertCostoOperativo(newCosto)
     } catch (error) {
       console.error("[v0] Error syncing costo operativo to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -790,7 +791,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing costo operativo update to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -805,7 +806,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteCosto(id)
     } catch (error) {
       console.error("[v0] Error deleting costo operativo from Supabase:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -870,7 +871,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertPersonal(newPersonal)
     } catch (error) {
       console.error("[v0] Error syncing personal to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -888,7 +889,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing personal update to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -903,7 +904,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deletePers(id)
     } catch (error) {
       console.error("[v0] Error deleting personal from Supabase:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -924,7 +925,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertPagoPersonal(newPago)
     } catch (error) {
       console.error("[v0] Error syncing pago personal to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -942,7 +943,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("[v0] Error syncing pago personal update to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -957,7 +958,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deletePago(id)
     } catch (error) {
       console.error("[v0] Error deleting pago personal from Supabase:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1006,7 +1007,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Optimistic: add locally first so UI responds immediately
     setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
     try {
-      const res = await fetch("/api/eventos", {
+      const res = await fetchWithRetry("/api/eventos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(evento),
@@ -1021,7 +1022,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error("[v0] Error adding evento:", err)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1032,14 +1033,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updates } : e)),
     }))
     try {
-      await fetch(`/api/eventos/${id}`, {
+      await fetchWithRetry(`/api/eventos/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       })
     } catch (err) {
       console.error("[v0] Error updating evento:", err)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1052,12 +1053,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }))
     // API soft-deletes evento and moves to papelera; also purge its caja movements
     try {
-      await fetch(`/api/eventos/${id}`, { method: "DELETE" })
+      await fetchWithRetry(`/api/eventos/${id}`, { method: "DELETE" })
       const { deleteMovimientosByEvento } = await import("./supabase/data-service")
       await deleteMovimientosByEvento(id)
     } catch (err) {
       console.error("[v0] Error deleting evento:", err)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1109,7 +1110,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertPrecioVenta(salon, fecha, precio)
     } catch (error) {
       console.error("[v0] Error syncing precioVenta:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar el precio. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el precio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1128,7 +1129,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteDB(salon, fecha)
     } catch (error) {
       console.error("[v0] Error deleting precioVenta:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y no se pudo eliminar; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1145,7 +1146,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await Promise.all(entries.map(([s, f, p]) => upsertPrecioVenta(s, f, p)))
     } catch (error) {
       console.error("[v0] Error syncing preciosVenta bulk:", error)
-      toast({ title: "Error al importar precios", description: "No se pudo sincronizar con la base de datos.", variant: "destructive" })
+      toast({ title: "Error al importar precios", description: "Revisá tu conexión a internet. Reintentamos varias veces y no se pudieron importar los precios; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1158,7 +1159,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await upsertConfiguracionCajas(config)
     } catch (error) {
       console.error("[v0] Error syncing configuracion cajas to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1173,7 +1174,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await insertMovimientoCaja(movimiento)
     } catch (error) {
       console.error("[v0] Error syncing movimiento caja to Supabase:", error)
-      toast({ title: "Error al guardar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1230,7 +1231,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteMov(id)
     } catch (error) {
       console.error("[v0] Error deleting movimiento caja from Supabase:", error)
-      toast({ title: "Error al eliminar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1246,7 +1247,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await insertGastoArchivado(nuevo)
     } catch (error) {
       console.error("[v0] Error archivando gasto en Supabase:", error)
-      toast({ title: "Error al archivar", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al archivar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1260,7 +1261,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteGastoArchivado(id)
     } catch (error) {
       console.error("[v0] Error desarchivando gasto en Supabase:", error)
-      toast({ title: "Error al quitar del archivo", description: "No se pudo sincronizar con la base de datos. Reintentá.", variant: "destructive" })
+      toast({ title: "Error al quitar del archivo", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
     }
   }
 
@@ -1310,7 +1311,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void (async () => {
       for (const evento of eventosParaPersistir) {
         try {
-          await fetch(`/api/eventos/${evento.id}`, {
+          await fetchWithRetry(`/api/eventos/${evento.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
@@ -1382,7 +1383,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void (async () => {
       for (const evento of eventosParaPersistir) {
         try {
-          await fetch(`/api/eventos/${evento.id}`, {
+          await fetchWithRetry(`/api/eventos/${evento.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
