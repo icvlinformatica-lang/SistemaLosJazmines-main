@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Navigation } from "@/components/navigation"
 import { useStore } from "@/lib/store-context"
 import { formatCurrency, calcularCompras } from "@/lib/store"
@@ -7,7 +8,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Printer, ShoppingCart, ArrowLeft, CheckCircle2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Printer, ShoppingCart, ArrowLeft, CheckCircle2, CalendarClock } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
@@ -15,6 +24,13 @@ export default function ComprasPage() {
   const { state } = useStore()
   const evento = state.eventoActual
   const selectedReceta = state.recetas.find((r) => r.id === evento?.recetaId)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const fechaHoy = new Date().toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  })
 
   if (!evento || !selectedReceta) {
     return (
@@ -50,8 +66,10 @@ export default function ComprasPage() {
   const itemsAComprar = compras.filter((c) => c.cantidadAComprar > 0).length
   const itemsEnStock = compras.filter((c) => c.cantidadAComprar === 0).length
 
-  const handlePrint = () => {
-    window.print()
+  const handleConfirmarImpresion = () => {
+    setConfirmOpen(false)
+    // Esperamos a que el diálogo se cierre antes de abrir el diálogo de impresión.
+    setTimeout(() => window.print(), 150)
   }
 
   return (
@@ -72,11 +90,42 @@ export default function ComprasPage() {
               <p className="text-muted-foreground">Lista inteligente de insumos a comprar</p>
             </div>
           </div>
-          <Button onClick={handlePrint} className="gap-2">
+          <Button onClick={() => setConfirmOpen(true)} className="gap-2">
             <Printer className="h-4 w-4" />
             Imprimir
           </Button>
         </div>
+
+        {/* Confirmación antes de imprimir: recuerda que los precios son los del almacén a hoy */}
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                  <CalendarClock className="h-5 w-5 text-primary" />
+                </div>
+                <DialogTitle>Generar lista de compras</DialogTitle>
+              </div>
+              <DialogDescription className="pt-2 text-left">
+                Vas a generar la lista de compras con los precios de los insumos cargados a la fecha{" "}
+                <span className="font-semibold text-foreground">{fechaHoy}</span>.
+                <br />
+                <br />
+                Si el evento se festeja más adelante, generá la lista una semana antes para que los
+                precios estén actualizados.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleConfirmarImpresion} className="gap-2">
+                <Printer className="h-4 w-4" />
+                Confirmar e imprimir
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Print Header */}
         <div className="hidden print:block mb-6">
