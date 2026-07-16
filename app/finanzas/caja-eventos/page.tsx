@@ -434,9 +434,9 @@ export default function CajaEventosPage() {
               </Badge>
             )}
             {vencidasCount > 0 && (
-              <Badge className="bg-red-100 text-red-700 border-red-200 ml-1 gap-1">
+              <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 ml-1 gap-1">
                 <AlertTriangle className="h-3 w-3" />
-                {vencidasCount} vencida{vencidasCount !== 1 ? "s" : ""}
+                {vencidasCount} pendiente{vencidasCount !== 1 ? "s" : ""}
               </Badge>
             )}
           </CardTitle>
@@ -452,13 +452,13 @@ export default function CajaEventosPage() {
                   onClick={() => setClienteSel(ing)}
                   className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
                     ing.esVencida
-                      ? "border-red-300 bg-red-50 hover:bg-red-100"
+                      ? "border-yellow-300 bg-yellow-50 hover:bg-yellow-100"
                       : "border-amber-200 bg-card hover:bg-amber-50"
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {ing.esVencida && (
-                      <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" aria-label="Cuota vencida" />
+                      <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0" aria-label="Cuota pendiente de cobro" />
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{ing.contacto.nombre}</p>
@@ -466,17 +466,17 @@ export default function CajaEventosPage() {
                         {ing.eventoNombre} · Cuota {ing.numeroCuota}/{ing.totalCuotas} · vence {formatFecha(ing.fechaVencimiento)}
                       </p>
                       {ing.esVencida && (
-                        <p className="text-xs font-semibold text-red-600 mt-0.5">
-                          ¡Ya debería estar cobrada! Venció hace {Math.abs(ing.diasRestantes)} día{Math.abs(ing.diasRestantes) !== 1 ? "s" : ""}
+                        <p className="text-xs font-medium text-yellow-700 mt-0.5">
+                          Pendiente de cobro desde hace {Math.abs(ing.diasRestantes)} día{Math.abs(ing.diasRestantes) !== 1 ? "s" : ""}
                         </p>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {ing.esVencida && (
-                      <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">Vencida</Badge>
+                      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 text-[10px]">Pendiente</Badge>
                     )}
-                    <span className={`text-sm font-bold ${ing.esVencida ? "text-red-700" : "text-emerald-700"}`}>
+                    <span className={`text-sm font-bold ${ing.esVencida ? "text-yellow-700" : "text-emerald-700"}`}>
                       +{formatCurrency(ing.monto)}
                     </span>
                     {ing.contacto.telefono && <Phone className="h-3.5 w-3.5 text-muted-foreground" />}
