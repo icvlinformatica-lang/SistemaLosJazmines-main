@@ -687,8 +687,8 @@ export default function CajaEventosPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="pl-6">Evento / Servicio</TableHead>
-                      <TableHead>Tipo</TableHead>
+                      <TableHead className="pl-6">Tipo</TableHead>
+                      <TableHead>Evento / Servicio</TableHead>
                       <TableHead>Vence</TableHead>
                       <TableHead className="text-right">A pagar</TableHead>
                       <TableHead className="text-right pr-6"></TableHead>
@@ -698,13 +698,6 @@ export default function CajaEventosPage() {
                     {egresosProximos.map((eg) => (
                       <TableRow key={eg.id}>
                         <TableCell className="pl-6">
-                          <p className="font-medium text-sm">{eg.servicioNombre}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {eg.eventoNombre}
-                            {eg.salon ? ` · ${salonLabel(eg.salon)}` : ""}
-                          </p>
-                        </TableCell>
-                        <TableCell>
                           <Badge
                             variant="outline"
                             className={
@@ -719,6 +712,13 @@ export default function CajaEventosPage() {
                           >
                             {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-medium text-sm">{eg.servicioNombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {eg.eventoNombre}
+                            {eg.salon ? ` · ${salonLabel(eg.salon)}` : ""}
+                          </p>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
