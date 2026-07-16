@@ -168,11 +168,25 @@ export default function CajaEventosPage() {
     pagosRealizados,
     vienenEstaSemana,
     totalPorCobrar,
-    totalPorPagar,
     mesActualLabel,
   } = data
 
   const totalPatrimonio = saldoActual + valorStockCocina + valorStockBarra
+
+  // Corte de vencimiento: los pagos que vencen dentro de los próximos 30 días
+  // se muestran en "Por pagar" (activo). Lo que vence más adelante se aparta en
+  // "Gastos futuros" para no inflar lo que realmente hay que pagar ahora.
+  const DIAS_CORTE_PAGO = 30
+  const egresosProximos = useMemo(
+    () => egresosPendientes.filter((e) => e.diasRestantes <= DIAS_CORTE_PAGO),
+    [egresosPendientes],
+  )
+  const egresosFuturos = useMemo(
+    () => egresosPendientes.filter((e) => e.diasRestantes > DIAS_CORTE_PAGO),
+    [egresosPendientes],
+  )
+  const totalPorPagarProximos = egresosProximos.reduce((s, e) => s + e.monto, 0)
+  const totalPorPagarFuturos = egresosFuturos.reduce((s, e) => s + e.monto, 0)
 
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
@@ -410,7 +424,6 @@ export default function CajaEventosPage() {
           <CardTitle className="text-base flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-amber-600" />
             Vienen esta semana a pagar
-            <span className="text-xs font-normal text-muted-foreground">(Lun a Vie · 09 a 20hs)</span>
             {vienenEstaSemana.length > 0 && (
               <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
                 {vienenEstaSemana.length}
@@ -548,17 +561,23 @@ export default function CajaEventosPage() {
 
       {/* TABS: Cobros / Pagos */}
       <Tabs defaultValue="cobrar" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="cobrar" className="gap-1.5">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="cobrar" className="gap-1.5" style={{ backgroundColor: "rgba(92, 255, 57, 0.14)" }}>
             <ArrowDownToLine className="h-4 w-4" /> Por cobrar
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-1">
               {ingresosPendientes.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="pagar" className="gap-1.5">
+          <TabsTrigger value="pagar" className="gap-1.5" style={{ backgroundColor: "rgba(217, 225, 35, 0.14)" }}>
             <ArrowUpFromLine className="h-4 w-4" /> Por pagar
             <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] ml-1">
-              {egresosPendientes.length}
+              {egresosProximos.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="futuros" className="gap-1.5">
+            <CalendarDays className="h-4 w-4" /> Gastos futuros
+            <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px] ml-1">
+              {egresosFuturos.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="historial" className="gap-1.5">
@@ -623,12 +642,18 @@ export default function CajaEventosPage() {
           </Card>
         </TabsContent>
 
-        {/* POR PAGAR */}
+        {/* POR PAGAR (vence dentro de los próximos 30 días) */}
         <TabsContent value="pagar" className="mt-4">
           <Card>
             <CardContent className="px-0 py-2">
-              {egresosPendientes.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No hay pagos a proveedores pendientes.</p>
+              <p className="text-xs text-muted-foreground px-6 pb-2">
+                Pagos que vencen dentro de los próximos {DIAS_CORTE_PAGO} días. Lo que vence más adelante
+                está en la pestaña <span className="font-medium text-foreground">Gastos futuros</span>.
+              </p>
+              {egresosProximos.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  No hay pagos a proveedores en los próximos {DIAS_CORTE_PAGO} días.
+                </p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -641,7 +666,7 @@ export default function CajaEventosPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {egresosPendientes.map((eg) => (
+                    {egresosProximos.map((eg) => (
                       <TableRow key={eg.id}>
                         <TableCell className="pl-6">
                           <p className="font-medium text-sm">{eg.servicioNombre}</p>
@@ -690,10 +715,82 @@ export default function CajaEventosPage() {
                   </TableBody>
                 </Table>
               )}
-              {egresosPendientes.length > 0 && (
+              {egresosProximos.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
-                  <span className="text-sm font-medium text-muted-foreground">Total por pagar</span>
-                  <span className="text-base font-bold text-red-600">−{formatCurrency(totalPorPagar)}</span>
+                  <span className="text-sm font-medium text-muted-foreground">Total por pagar (30 días)</span>
+                  <span className="text-base font-bold text-red-600">−{formatCurrency(totalPorPagarProximos)}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* GASTOS FUTUROS (vencen a más de 30 días) */}
+        <TabsContent value="futuros" className="mt-4">
+          <Card>
+            <CardContent className="px-0 py-2">
+              <p className="text-xs text-muted-foreground px-6 pb-2">
+                Pagos que todavía no vencen: faltan más de {DIAS_CORTE_PAGO} días. Se listan solo como
+                referencia y no se cuentan en el total a pagar de ahora.
+              </p>
+              {egresosFuturos.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">No hay gastos futuros registrados.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-6">Evento / Servicio</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Vence</TableHead>
+                      <TableHead className="text-right pr-6">Monto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {egresosFuturos.map((eg) => (
+                      <TableRow key={eg.id} className="opacity-80">
+                        <TableCell className="pl-6">
+                          <p className="font-medium text-sm">{eg.servicioNombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {eg.eventoNombre}
+                            {eg.salon ? ` · ${salonLabel(eg.salon)}` : ""}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={
+                              eg.tipo === "seña"
+                                ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
+                                : eg.tipo === "menu"
+                                  ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
+                                  : eg.tipo === "barra"
+                                    ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
+                                    : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+                            }
+                          >
+                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{formatFecha(eg.fechaVencimiento)}</span>
+                            <Badge variant="outline" className="text-[11px] text-muted-foreground">
+                              faltan {eg.diasRestantes}d
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right pr-6 font-medium text-muted-foreground">
+                          {formatCurrency(eg.monto)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {egresosFuturos.length > 0 && (
+                <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
+                  <span className="text-sm font-medium text-muted-foreground">Total gastos futuros</span>
+                  <span className="text-base font-bold text-muted-foreground">{formatCurrency(totalPorPagarFuturos)}</span>
                 </div>
               )}
             </CardContent>

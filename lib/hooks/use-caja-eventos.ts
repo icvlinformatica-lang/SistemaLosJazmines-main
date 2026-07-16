@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { calcularComprasBarras, type AppState, type MovimientoCaja } from "../store"
+import { calcularComprasBarras, calcularCostoInsumosEvento, type AppState, type MovimientoCaja } from "../store"
 
 // ============================================================
 // Tipos de salida
@@ -200,7 +200,18 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       // Se paga 2 semanas (14 días) antes de la fecha del evento.
       // El estado "pagado" se deriva de la existencia de un movimiento de egreso
       // de menú asociado a este evento en Caja Eventos.
-      const costoMenu = evento.costoInsumos ?? 0
+      //
+      // El costo se recalcula EN VIVO con los precios actuales del almacén, en
+      // lugar de usar la foto guardada `evento.costoInsumos` (que puede quedar
+      // desactualizada si los precios cambiaron desde que se creó el evento).
+      const costoMenuLive = calcularCostoInsumosEvento(
+        evento,
+        state.recetas || [],
+        state.insumos || [],
+        state.cocteles || [],
+        state.insumosBarra || [],
+      )
+      const costoMenu = costoMenuLive > 0 ? costoMenuLive : (evento.costoInsumos ?? 0)
       if (costoMenu > 0 && evento.fecha) {
         const fechaEvento = parseLocalDate(evento.fecha)
         const fechaPagoMenu = new Date(fechaEvento)

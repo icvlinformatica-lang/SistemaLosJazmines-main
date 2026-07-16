@@ -2114,6 +2114,29 @@ export function calcularComprasBarras(
     .filter((item): item is NonNullable<typeof item> => item !== null)
 }
 
+/**
+ * Calcula EN VIVO el costo de insumos (materia prima) de un evento usando los
+ * precios ACTUALES del almacén (cocina + barra).
+ *
+ * Importante: el campo `evento.costoInsumos` guardado es solo una "foto" del
+ * momento en que se creó/guardó el evento. Como los precios de los insumos
+ * cambian con el tiempo, ese valor queda desactualizado. Esta función recalcula
+ * el costo real con los precios de hoy, sin tocar el precio de venta al cliente.
+ */
+export function calcularCostoInsumosEvento(
+  evento: Evento,
+  recetas: Receta[],
+  insumos: Insumo[],
+  cocteles: Coctel[],
+  insumosBarra: InsumoBarra[],
+): number {
+  const compras = calcularComprasSegmentadas(evento, recetas, insumos)
+  const comprasBarras = calcularComprasBarras(evento, cocteles, insumosBarra)
+  const costoCocina = compras.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
+  const costoBarra = comprasBarras.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
+  return costoCocina + costoBarra
+}
+
 // ==================== CUOTAS HELPER FUNCTIONS ====================
 
 /**
