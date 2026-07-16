@@ -118,6 +118,8 @@ export default function CajaEventosPage() {
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
   const [marcarCobrada, setMarcarCobrada] = useState(false)
+  const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
+  const [pagoExito, setPagoExito] = useState(false)
   const { toast } = useToast()
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
@@ -250,6 +252,15 @@ export default function CajaEventosPage() {
       saldoResultante: saldoPrev - egreso.monto,
     }
     addMovimientosCaja([movimiento])
+  }
+
+  // Confirma el pago desde el diálogo: ejecuta el marcado y muestra la animación de check.
+  const confirmarMarcarPagado = () => {
+    if (!pagoConfirmar) return
+    handleMarcarPagado(pagoConfirmar)
+    setPagoConfirmar(null)
+    setPagoExito(true)
+    setTimeout(() => setPagoExito(false), 1400)
   }
 
   // Revertir un pago realizado: vuelve "no realizado", actualizando los
@@ -734,7 +745,7 @@ export default function CajaEventosPage() {
                             size="sm"
                             variant="outline"
                             className="h-7 text-[11px] px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => handleMarcarPagado(eg)}
+                            onClick={() => setPagoConfirmar(eg)}
                           >
                             <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pagado
                           </Button>
@@ -1036,6 +1047,49 @@ export default function CajaEventosPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmación de pago */}
+      <Dialog open={!!pagoConfirmar} onOpenChange={(open) => !open && setPagoConfirmar(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirmar pago
+            </DialogTitle>
+            <DialogDescription>
+              {pagoConfirmar
+                ? `¿Estás seguro que querés marcar como pagado "${pagoConfirmar.servicioNombre}" por ${formatCurrency(pagoConfirmar.monto)}? Esta acción registra el egreso en Caja Eventos.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setPagoConfirmar(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={confirmarMarcarPagado}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1" /> Sí, marcar pagado
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Animación de check verde al confirmar */}
+      {pagoExito && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 pointer-events-none">
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-background px-10 py-8 shadow-xl animate-in fade-in zoom-in-95 duration-200">
+            <span className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 animate-in zoom-in-50 duration-300">
+              <CheckCircle2
+                className="h-14 w-14 text-emerald-600 animate-in zoom-in-75 duration-500"
+                strokeWidth={2.5}
+              />
+            </span>
+            <p className="text-sm font-semibold text-emerald-700">¡Pago registrado!</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
