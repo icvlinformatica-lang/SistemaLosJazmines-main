@@ -118,6 +118,8 @@ export default function CajaEventosPage() {
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
   const [marcarCobrada, setMarcarCobrada] = useState(false)
+  const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
+  const [pagoExito, setPagoExito] = useState(false)
   const { toast } = useToast()
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
@@ -252,6 +254,15 @@ export default function CajaEventosPage() {
     addMovimientosCaja([movimiento])
   }
 
+  // Confirma el pago desde el diálogo: ejecuta el marcado y muestra la animación de check.
+  const confirmarMarcarPagado = () => {
+    if (!pagoConfirmar) return
+    handleMarcarPagado(pagoConfirmar)
+    setPagoConfirmar(null)
+    setPagoExito(true)
+    setTimeout(() => setPagoExito(false), 1400)
+  }
+
   // Revertir un pago realizado: vuelve "no realizado", actualizando los
   // indicadores de costos cubiertos en /eventos/lista y eliminando el egreso.
   const handleRevertirPago = (pago: PagoRealizado) => {
@@ -379,7 +390,7 @@ export default function CajaEventosPage() {
         >
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora</p>
+              <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora:</p>
               <div className="flex items-center gap-1.5">
                 <Eye className="h-3.5 w-3.5 text-teal-500" />
                 <Wallet className="h-4 w-4 text-teal-600" />
@@ -392,7 +403,7 @@ export default function CajaEventosPage() {
         <Card className="border-emerald-200 bg-emerald-50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro este mes</p>
+              <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro este mes:</p>
               <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
             </div>
             <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(porCobrarEsteMes)}</p>
@@ -402,7 +413,7 @@ export default function CajaEventosPage() {
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago este mes</p>
+              <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago este mes:</p>
               <ArrowUpFromLine className="h-4 w-4 text-red-600" />
             </div>
             <p className="text-2xl font-bold text-red-700">−{formatCurrency(porPagarEsteMes)}</p>
@@ -412,7 +423,7 @@ export default function CajaEventosPage() {
         <Card className={saldoFinMes >= 0 ? "border-teal-200" : "border-red-300"}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Al fin de mes</p>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">tengo a fin de mes:</p>
               <TrendingUp className={`h-4 w-4 ${saldoFinMes >= 0 ? "text-teal-600" : "text-red-600"}`} />
             </div>
             <p className={`text-2xl font-bold ${saldoFinMes >= 0 ? "text-foreground" : "text-red-700"}`}>
@@ -427,7 +438,7 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-amber-600" />
-            Cuotas por cobrar (esta semana y vencidas)
+            Cuotas por cobrar:
             {vienenEstaSemana.length > 0 && (
               <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
                 {vienenEstaSemana.length}
@@ -466,7 +477,7 @@ export default function CajaEventosPage() {
                         {ing.eventoNombre} · Cuota {ing.numeroCuota}/{ing.totalCuotas} · vence {formatFecha(ing.fechaVencimiento)}
                       </p>
                       {ing.esVencida && (
-                        <p className="text-xs font-medium text-yellow-700 mt-0.5">
+                        <p className="text-xs font-medium text-yellow-700 mt-0.5 italic">
                           Pendiente de cobro desde hace {Math.abs(ing.diasRestantes)} día{Math.abs(ing.diasRestantes) !== 1 ? "s" : ""}
                         </p>
                       )}
@@ -493,17 +504,17 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
-            Proyección mensual (6 meses)
+            Proyección en 6 meses:
           </CardTitle>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-6">Mes</TableHead>
-                <TableHead className="text-right">A cobrar</TableHead>
-                <TableHead className="text-right">A pagar</TableHead>
-                <TableHead className="text-right pr-6">Balance</TableHead>
+                <TableHead className="pl-6 font-bold">Mes</TableHead>
+                <TableHead className="text-center font-bold">A cobrar</TableHead>
+                <TableHead className="text-center font-bold">A pagar</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Balance</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -513,10 +524,10 @@ export default function CajaEventosPage() {
                     {m.label}
                     {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
                   </TableCell>
-                  <TableCell className="text-right text-emerald-700 font-medium">
+                  <TableCell className="text-center text-emerald-700 font-medium">
                     {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
                   </TableCell>
-                  <TableCell className="text-right text-red-600 font-medium">
+                  <TableCell className="text-center text-[var(--accent)] font-medium">
                     {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
                   </TableCell>
                   <TableCell className={`text-right pr-6 font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
@@ -734,7 +745,7 @@ export default function CajaEventosPage() {
                             size="sm"
                             variant="outline"
                             className="h-7 text-[11px] px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => handleMarcarPagado(eg)}
+                            onClick={() => setPagoConfirmar(eg)}
                           >
                             <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pagado
                           </Button>
@@ -1036,6 +1047,49 @@ export default function CajaEventosPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmación de pago */}
+      <Dialog open={!!pagoConfirmar} onOpenChange={(open) => !open && setPagoConfirmar(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirmar pago
+            </DialogTitle>
+            <DialogDescription>
+              {pagoConfirmar
+                ? `¿Estás seguro que querés marcar como pagado "${pagoConfirmar.servicioNombre}" por ${formatCurrency(pagoConfirmar.monto)}? Esta acción registra el egreso en Caja Eventos.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setPagoConfirmar(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={confirmarMarcarPagado}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1" /> Sí, marcar pagado
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Animación de check verde al confirmar */}
+      {pagoExito && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 pointer-events-none">
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-background px-10 py-8 shadow-xl animate-in fade-in zoom-in-95 duration-200">
+            <span className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 animate-in zoom-in-50 duration-300">
+              <CheckCircle2
+                className="h-14 w-14 text-emerald-600 animate-in zoom-in-75 duration-500"
+                strokeWidth={2.5}
+              />
+            </span>
+            <p className="text-sm font-semibold text-emerald-700">¡Pago registrado!</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
