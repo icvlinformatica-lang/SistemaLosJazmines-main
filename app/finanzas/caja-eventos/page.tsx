@@ -438,7 +438,7 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-amber-600" />
-            Cuotas por cobrar (esta semana y vencidas)
+            Cuotas por cobrar
             {vienenEstaSemana.length > 0 && (
               <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
                 {vienenEstaSemana.length}
