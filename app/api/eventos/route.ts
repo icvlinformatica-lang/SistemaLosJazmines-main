@@ -32,6 +32,7 @@ function toRow(ev: Record<string, unknown>) {
     barras: JSON.stringify(ev.barras || []),
     servicios: JSON.stringify(ev.servicios || []),
     paquetes_seleccionados: (ev.paquetesSeleccionados as string[]) || [],
+    personal_evento: JSON.stringify(ev.personalEvento || []),
     condicion_iva: (ev.condicionIva as string) || null,
     contrato: JSON.stringify(ev.contrato || null),
     plan_de_cuotas: JSON.stringify(ev.planDeCuotas || null),
@@ -48,6 +49,10 @@ function toRow(ev: Record<string, unknown>) {
     costos_calculados: JSON.stringify(ev.costosCalculados || null),
     stock_descontado: (ev.stockDescontado as boolean) || false,
     fecha_impresion: (ev.fechaImpresion as string) || null,
+    versiones_contrato: JSON.stringify(ev.versionesContrato || []),
+    generaciones_contrato: JSON.stringify(ev.generacionesContrato || []),
+    servicios_contrato: ev.serviciosContrato ? JSON.stringify(ev.serviciosContrato) : null,
+    servicios_libres_contrato: ev.serviciosLibresContrato ? JSON.stringify(ev.serviciosLibresContrato) : null,
   }
 }
 
@@ -90,6 +95,7 @@ function fromRow(r: Record<string, any>) {
     barras: parseJsonField(r.barras, []),
     servicios: parseJsonField(r.servicios, []),
     paquetesSeleccionados: r.paquetes_seleccionados ?? [],
+    personalEvento: parseJsonField(r.personal_evento, []),
     condicionIva: r.condicion_iva,
     contrato: parseJsonField(r.contrato, null),
     planDeCuotas: parseJsonField(r.plan_de_cuotas, null),
@@ -106,6 +112,10 @@ function fromRow(r: Record<string, any>) {
     costosCalculados: parseJsonField(r.costos_calculados, null),
     stockDescontado: r.stock_descontado ?? false,
     fechaImpresion: r.fecha_impresion,
+    versionesContrato: parseJsonField(r.versiones_contrato, []),
+    generacionesContrato: parseJsonField(r.generaciones_contrato, []),
+    serviciosContrato: parseJsonField(r.servicios_contrato, undefined),
+    serviciosLibresContrato: parseJsonField(r.servicios_libres_contrato, undefined),
     cocinaPagada: r.cocina_pagada ?? false,
     barraPagada: r.barra_pagada ?? false,
     createdAt: r.created_at,
@@ -118,7 +128,7 @@ const SELECT_COLS = `
   dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
   recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
   multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
-  descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+  descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
   precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
   notas_internas, pagos, asignaciones, costos_calculados,
@@ -134,11 +144,12 @@ export async function GET() {
         dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
         recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
         multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
-        descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+        descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at,
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos
       WHERE deleted_at IS NULL
       ORDER BY fecha DESC NULLS LAST, created_at DESC
@@ -164,22 +175,24 @@ export async function POST(req: Request) {
         dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
         recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
         multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
-        descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+        descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion
+        stock_descontado, fecha_impresion,
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       ) VALUES (
         ${r.id}, ${r.nombre}, ${r.fecha}, ${r.horario}, ${r.horario_fin}, ${r.salon},
         ${r.tipo_evento}, ${r.nombre_pareja}, ${r.dni_novio1}, ${r.dni_novio2},
         ${r.adultos}, ${r.adolescentes}, ${r.ninos}, ${r.personas_dietas_especiales},
         ${r.recetas_adultos}, ${r.recetas_adolescentes}, ${r.recetas_ninos}, ${r.recetas_dietas_especiales},
         ${r.multipliers_adultos}, ${r.multipliers_adolescentes}, ${r.multipliers_ninos}, ${r.multipliers_dietas_especiales},
-        ${r.descripcion_personalizada}, ${r.barras}, ${r.servicios}, ${r.paquetes_seleccionados},
+        ${r.descripcion_personalizada}, ${r.barras}, ${r.servicios}, ${r.paquetes_seleccionados}, ${r.personal_evento},
         ${r.condicion_iva}, ${r.contrato}, ${r.plan_de_cuotas}, ${r.estado}, ${r.color_tag},
         ${r.precio_venta}, ${r.costo_personal}, ${r.costo_insumos}, ${r.costo_servicios}, ${r.costo_operativo},
         ${r.notas_internas}, ${r.pagos}, ${r.asignaciones}, ${r.costos_calculados},
-        ${r.stock_descontado}, ${r.fecha_impresion}
+        ${r.stock_descontado}, ${r.fecha_impresion},
+        ${r.versiones_contrato}, ${r.generaciones_contrato}, ${r.servicios_contrato}, ${r.servicios_libres_contrato}
       )
       ON CONFLICT (id) DO UPDATE SET
         nombre = EXCLUDED.nombre, fecha = EXCLUDED.fecha, estado = EXCLUDED.estado,
@@ -193,11 +206,12 @@ export async function POST(req: Request) {
         dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
         recetas_adultos, recetas_adolescentes, recetas_ninos, recetas_dietas_especiales,
         multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
-        descripcion_personalizada, barras, servicios, paquetes_seleccionados,
+        descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, created_at, updated_at
+        stock_descontado, fecha_impresion, created_at, updated_at,
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos WHERE id = ${r.id}
     `
     const created = rows2[0]

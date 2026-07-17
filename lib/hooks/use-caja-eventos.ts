@@ -37,8 +37,8 @@ export interface EgresoPendienteServicio {
   eventoNombre: string
   salon: string
   servicioNombre: string
-  servicioId?: string // presente para egresos de servicios (no menú/barra)
-  tipo: "seña" | "saldo" | "menu" | "barra"
+  servicioId?: string // presente para egresos de servicios (no menú/barra); para sueldos es el id de la entrada de personal
+  tipo: "seña" | "saldo" | "menu" | "barra" | "sueldo"
   monto: number
   fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
@@ -53,8 +53,8 @@ export interface PagoRealizado {
   eventoNombre: string
   salon: string
   monto: number
-  tipoPago: "menu" | "barra" | "seña" | "saldo" | "otro"
-  servicioNombre?: string // presente para pagos de servicios (seña/saldo)
+  tipoPago: "menu" | "barra" | "seña" | "saldo" | "sueldo" | "otro"
+  servicioNombre?: string // presente para pagos de servicios (seña/saldo) y sueldos
 }
 
 export interface MesProyeccion {
@@ -269,6 +269,58 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         }
       }
 
+      // --- COMPROMISOS de personal asignados manualmente (Finanzas → Personal) ---
+      // Vencen en su fechaLimitePago (por defecto, el día del evento).
+      const compromisosEvento = (state.pagosPersonal || []).filter(
+        (pp) => pp.eventoId === evento.id && pp.estado !== "pagado"
+      )
+      for (const pp of compromisosEvento) {
+        const montoPendiente = pp.montoTotal - (pp.montoSeña || 0)
+        if (montoPendiente <= 0) continue
+        const fechaVenc = pp.fechaLimitePago || pp.fechaEvento || evento.fecha
+        if (!fechaVenc) continue
+        const fechaVencDate = parseLocalDate(fechaVenc)
+        egresosPendientes.push({
+          id: `${evento.id}-compromiso-${pp.id}`,
+          eventoId: evento.id,
+          eventoNombre,
+          salon: evento.salon || "",
+          servicioNombre: `${pp.nombrePersonal} (${pp.servicioNombre})`,
+          servicioId: pp.id,
+          tipo: "sueldo",
+          monto: montoPendiente,
+          fechaVencimiento: fechaVenc,
+          diasRestantes: Math.ceil((fechaVencDate.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+          estadoPago: "saldo_pendiente",
+        })
+      }
+
+      // --- SUELDOS del personal del evento ---
+      // Cargados desde el generador de evento/contrato (sección Personal).
+      // Vencen el mismo día del evento.
+      const personalDelEvento = evento.personalEvento ?? []
+      if (personalDelEvento.length > 0 && evento.fecha) {
+        const fechaEvento = parseLocalDate(evento.fecha)
+        const fechaEventoStr = evento.fecha
+        for (const pe of personalDelEvento) {
+          if (pe.pagado) continue
+          if (!pe.monto || pe.monto <= 0) continue
+          egresosPendientes.push({
+            id: `${evento.id}-sueldo-${pe.id}`,
+            eventoId: evento.id,
+            eventoNombre,
+            salon: evento.salon || "",
+            servicioNombre: `${pe.nombre} (${pe.funcion})`,
+            servicioId: pe.id,
+            tipo: "sueldo",
+            monto: pe.monto,
+            fechaVencimiento: fechaEventoStr,
+            diasRestantes: Math.ceil((fechaEvento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+            estadoPago: "saldo_pendiente",
+          })
+        }
+      }
+
       for (const srv of serviciosEvento) {
         const estadoPago = srv.estadoPago ?? "sin_seña"
 
@@ -389,6 +441,10 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           tipoPago = "menu"
         } else if (/^Pago barra/i.test(concepto)) {
           tipoPago = "barra"
+        } else if (/^Pago sueldo/i.test(concepto)) {
+          tipoPago = "sueldo"
+          const matchSueldo = concepto.match(/^Pago sueldo (.+?) - /i)
+          if (matchSueldo) servicioNombre = matchSueldo[1]
         } else {
           const matchServicio = concepto.match(/^Pago (seña|saldo) (.+?) - /i)
           if (matchServicio) {

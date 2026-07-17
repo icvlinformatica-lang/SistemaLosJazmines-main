@@ -90,7 +90,7 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
-  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto } =
+  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal } =
     useStore()
 
   // Ids de pagos ya archivados (para ocultarlos del historial activo sin tocar el saldo)
@@ -210,6 +210,20 @@ export default function CajaEventosPage() {
       updateEvento(egreso.eventoId, { cocinaPagada: true })
     } else if (egreso.tipo === "barra") {
       updateEvento(egreso.eventoId, { barraPagada: true })
+    } else if (egreso.tipo === "sueldo") {
+      if (egreso.id.includes("-compromiso-")) {
+        // Compromiso asignado manualmente desde Finanzas → Personal
+        updatePagoPersonal(egreso.servicioId!, {
+          estado: "pagado",
+          fechaPago: new Date().toISOString().split("T")[0],
+        })
+      } else {
+        // Sueldo del personal del evento (generador de contrato): marcar la entrada como pagada
+        const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
+          pe.id === egreso.servicioId ? { ...pe, pagado: true } : pe
+        )
+        updateEvento(egreso.eventoId, { personalEvento: nuevoPersonal })
+      }
     } else {
       // Servicio: matchear por servicioId exacto y marcar pagado + estadoPago,
       // así el indicador de servicios en /eventos/lista (que lee srv.pagado) se sincroniza.
@@ -239,7 +253,9 @@ export default function CajaEventosPage() {
         ? `Pago menú - ${egreso.eventoNombre}`
         : egreso.tipo === "barra"
           ? `Pago barra - ${egreso.eventoNombre}`
-          : `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`
+          : egreso.tipo === "sueldo"
+            ? `Pago sueldo ${egreso.servicioNombre} - ${egreso.eventoNombre}`
+            : `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`
 
     const movimiento: MovimientoCaja = {
       id: generateId(),
@@ -274,6 +290,23 @@ export default function CajaEventosPage() {
           updateEvento(pago.eventoId, { cocinaPagada: false })
         } else if (pago.tipoPago === "barra") {
           updateEvento(pago.eventoId, { barraPagada: false })
+        } else if (pago.tipoPago === "sueldo") {
+          // Revertir sueldo: puede ser un compromiso manual (pagosPersonal) o
+          // una entrada de personal del generador de contrato
+          const compromisoPagado = (state.pagosPersonal || []).find(
+            (pp) =>
+              pp.eventoId === pago.eventoId &&
+              pp.estado === "pagado" &&
+              `${pp.nombrePersonal} (${pp.servicioNombre})` === pago.servicioNombre
+          )
+          if (compromisoPagado) {
+            updatePagoPersonal(compromisoPagado.id, { estado: "pendiente", fechaPago: undefined })
+          } else {
+            const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
+              `${pe.nombre} (${pe.funcion})` === pago.servicioNombre ? { ...pe, pagado: false } : pe
+            )
+            updateEvento(pago.eventoId, { personalEvento: nuevoPersonal })
+          }
         } else if (pago.tipoPago === "seña" || pago.tipoPago === "saldo") {
           const nuevosServicios = (evento.servicios ?? []).map((srv) => {
             if (srv.nombre !== pago.servicioNombre) return srv
@@ -722,10 +755,12 @@ export default function CajaEventosPage() {
                                   ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
                                   : eg.tipo === "barra"
                                     ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                                    : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+                                    : eg.tipo === "sueldo"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
+                                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Se��a" : eg.tipo === "menu" ? "Men��" : eg.tipo === "barra" ? "Barra" : "Saldo"}
+                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -821,10 +856,12 @@ export default function CajaEventosPage() {
                                   ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
                                   : eg.tipo === "barra"
                                     ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                                    : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+                                    : eg.tipo === "sueldo"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
+                                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
+                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>

@@ -166,6 +166,8 @@ export interface Evento {
   barras?: BarraEvento[]
   servicios?: ServicioEvento[]
   paquetesSeleccionados?: string[] // IDs de PaqueteSalon seleccionados
+  /** Personal que trabaja el evento: impacta en Caja Eventos como sueldos a pagar */
+  personalEvento?: PersonalDelEvento[]
 
   horarioFin?: string
   condicionIVA?: "Consumidor Final" | "Responsable Inscripto" | "Monotributista" | "Exento"
@@ -498,6 +500,8 @@ export interface EventoGuardado extends Evento {
   serviciosLibresContrato?: string[]
   /** Historial de versiones del contrato — se agrega una entrada cada vez que se guarda */
   versionesContrato?: VersionContrato[]
+  /** Historial de generaciones/impresiones del contrato — se agrega una entrada cada vez que se genera */
+  generacionesContrato?: GeneracionContrato[]
 
   // --- Extensiones para asignaciones y costos calculados ---
   /** Asignaciones de personal a los servicios de este evento */
@@ -521,6 +525,24 @@ export type ImpactoContrato =
   | "barra"
   | "invitados"
   | "sin_cambios"
+
+/** Registro de cada generacion/impresion del contrato. */
+export interface GeneracionContrato {
+  /** ID unico de la generacion */
+  id: string
+  /** ISO timestamp de cuando se genero/imprimio */
+  fecha: string
+  /** Desde donde se genero: pantalla de contratos, generador de evento, o lista de eventos */
+  origen: "contratos" | "generador" | "lista"
+  /** Numero de version del contrato vigente al momento de generar (si existia) */
+  version?: number
+  /** Cantidad de personal asignado incluido en el contrato generado */
+  cantidadPersonal?: number
+  /** Cantidad de servicios incluidos */
+  cantidadServicios?: number
+  /** Monto total del plan de cuotas al momento de generar */
+  montoTotal?: number
+}
 
 /** Snapshot del menu (recetas seleccionadas por tipo de comensal) en una version. */
 export interface SnapshotMenu {
@@ -746,6 +768,40 @@ export interface TemporadaPrecio {
 // ==========================================
 // PERSONAL Y PAGOS
 // ==========================================
+
+/**
+ * Funciones estándar del personal que trabaja en eventos.
+ * Se usan como sugerencias en Finanzas → Personal y en el generador de eventos.
+ */
+export const FUNCIONES_PERSONAL = [
+  "Coordinador",
+  "Metre",
+  "Mozo",
+  "Barman",
+  "Maestranza",
+  "Puerta",
+  "DJ",
+  "Técnica",
+  "Parrillero",
+  "Cocinero",
+  "Ayudante de cocina",
+  "Bachero",
+] as const
+
+/**
+ * Personal asignado a trabajar en un evento (cargado desde el generador de
+ * contrato/evento). El monto impacta en Caja Eventos como sueldo a pagar,
+ * con vencimiento en la fecha del evento.
+ */
+export interface PersonalDelEvento {
+  id: string
+  /** ID del PersonalEvento del roster (Finanzas → Personal) */
+  personalId: string
+  nombre: string
+  funcion: string
+  monto: number
+  pagado?: boolean
+}
 
 export interface PersonalEvento {
   id: string

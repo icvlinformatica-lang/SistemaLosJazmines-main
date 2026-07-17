@@ -142,7 +142,8 @@ function generateContractHTML(
   evento: EventoGuardado,
   recetas: Receta[],
   serviciosIncluidos: string[],
-  paquetePrecio: number
+  paquetePrecio: number,
+  personalAsignado: { nombre: string; funcion: string }[] = [],
 ) {
   const totalPersonas = evento.adultos + evento.adolescentes + evento.ninos + (evento.personasDietasEspeciales || 0)
   const contrato = evento.contrato || {}
@@ -188,6 +189,10 @@ function generateContractHTML(
   ].filter(Boolean).join("")
 
   const serviciosRows = serviciosIncluidos.map((s) => `<li style="margin-bottom:4px;">${s}</li>`).join("")
+
+  const personalRows = personalAsignado
+    .map((p) => `<tr><td style="font-weight:bold;padding:4px 8px;width:220px;">${p.funcion}</td><td style="padding:4px 8px;">${p.nombre}</td></tr>`)
+    .join("")
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -238,6 +243,11 @@ function generateContractHTML(
   <ul style="margin:0;padding-left:20px;">${serviciosRows}</ul>
   ` : ""}
 
+  ${personalRows ? `
+  <h2>PERSONAL ASIGNADO AL EVENTO</h2>
+  <table style="width:100%;border-collapse:collapse;">${personalRows}</table>
+  ` : ""}
+
   ${menuRows ? `
   <h2>MENU</h2>
   <table style="width:100%;border-collapse:collapse;">${menuRows}</table>
@@ -276,11 +286,11 @@ function generateContractHTML(
 // CONTRACT PREVIEW MODAL
 // =====================================================================
 function ContractPreview({
-  open, evento, recetas, serviciosIncluidos, paquetePrecio, onClose,
+  open, evento, recetas, serviciosIncluidos, paquetePrecio, personalAsignado, onClose,
 }: {
-  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; onClose: () => void
+  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; personalAsignado: { nombre: string; funcion: string }[]; onClose: () => void
 }) {
-  const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio)
+  const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio, personalAsignado)
   if (!open) return null
   return (
     // Este div vive DENTRO del SheetContent en el JSX, por lo que Radix
@@ -666,6 +676,28 @@ function ContratosPageContent() {
     }, 0)
   }, [selectedEvento, paquetesSalones, catalogoServicios])
 
+  // Personal asignado al evento: combina el personal del generador de contrato
+  // (personalEvento) con los compromisos asignados despues desde Finanzas → Personal
+  const personalAsignado = useMemo(() => {
+    if (!selectedEvento) return []
+    const resultado: { nombre: string; funcion: string }[] = []
+    const vistos = new Set<string>()
+    for (const pe of selectedEvento.personalEvento || []) {
+      const clave = pe.personalId || pe.nombre.toLowerCase()
+      if (vistos.has(clave)) continue
+      vistos.add(clave)
+      resultado.push({ nombre: pe.nombre, funcion: pe.funcion })
+    }
+    for (const pp of state.pagosPersonal || []) {
+      if (pp.eventoId !== selectedEvento.id) continue
+      const clave = pp.personalId || pp.nombrePersonal.toLowerCase()
+      if (vistos.has(clave) || vistos.has(pp.nombrePersonal.toLowerCase())) continue
+      vistos.add(clave)
+      resultado.push({ nombre: pp.nombrePersonal, funcion: pp.servicioNombre })
+    }
+    return resultado
+  }, [selectedEvento, state.pagosPersonal])
+
   const toggleSalon = (salon: string) =>
     setSalonesActivos((prev) => (prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon]))
 
@@ -680,12 +712,30 @@ function ContratosPageContent() {
 
   const handlePrint = () => {
     if (!selectedEvento) return
-    const html = generateContractHTML(selectedEvento, recetas, serviciosIncluidos, paquetePrecio)
+    const html = generateContractHTML(selectedEvento, recetas, serviciosIncluidos, paquetePrecio, personalAsignado)
     const printWindow = window.open("", "_blank", "width=900,height=700")
     if (!printWindow) return
     printWindow.document.write(html)
     printWindow.document.close()
     setTimeout(() => { printWindow.print() }, 300)
+
+    // Registrar la generacion en el historial del contrato
+    const versionActual = selectedEvento.versionesContrato?.length
+      ? Math.max(...selectedEvento.versionesContrato.map((v) => v.version))
+      : undefined
+    const nuevaGeneracion = {
+      id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      fecha: new Date().toISOString(),
+      origen: "contratos" as const,
+      version: versionActual,
+      cantidadPersonal: personalAsignado.length,
+      cantidadServicios: serviciosIncluidos.length,
+      montoTotal: selectedEvento.planDeCuotas?.montoTotal || undefined,
+    }
+    updateEvento(selectedEvento.id, {
+      generacionesContrato: [...(selectedEvento.generacionesContrato || []), nuevaGeneracion],
+      fechaImpresion: new Date().toISOString(),
+    })
   }
 
   const handleSaveEdit = async () => {
@@ -912,7 +962,15 @@ function ContratosPageContent() {
                       Contrato v{ultimaVersion}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-xs text-muted-foreground">Sin contrato generado</Badge>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">Sin modificaciones</Badge>
+                  )}
+                  {(selectedEvento.generacionesContrato?.length || 0) > 0 ? (
+                    <Badge variant="secondary" className="gap-1 text-xs">
+                      <Printer className="h-3 w-3" />
+                      Generado {selectedEvento.generacionesContrato!.length}{selectedEvento.generacionesContrato!.length === 1 ? " vez" : " veces"}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">Sin generar</Badge>
                   )}
                 </div>
 
@@ -1107,6 +1165,27 @@ function ContratosPageContent() {
                     </>
                   )}
 
+                  {/* Personal asignado al evento */}
+                  {personalAsignado.length > 0 && (
+                    <>
+                      <Separator />
+                      <section className="space-y-3">
+                        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                          <Users className="h-3.5 w-3.5" />
+                          Personal asignado ({personalAsignado.length})
+                        </p>
+                        <div className="space-y-1.5">
+                          {personalAsignado.map((p, i) => (
+                            <div key={i} className="flex items-center justify-between gap-2 text-sm">
+                              <span className="truncate">{p.nombre}</span>
+                              <Badge variant="outline" className="text-[10px] shrink-0">{p.funcion}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    </>
+                  )}
+
                   {/* Historial de modificaciones */}
                   <Separator />
                   <section className="space-y-3">
@@ -1119,6 +1198,43 @@ function ContratosPageContent() {
                       recetas={recetas}
                       catalogoServicios={catalogoServicios}
                     />
+                  </section>
+
+                  {/* Historial de generaciones del contrato */}
+                  <Separator />
+                  <section className="space-y-3">
+                    <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                      <Printer className="h-3.5 w-3.5" />
+                      Historial de generaciones
+                    </p>
+                    {(selectedEvento.generacionesContrato || []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Este contrato todavia no fue generado.</p>
+                    ) : (
+                      <ol className="space-y-2">
+                        {[...(selectedEvento.generacionesContrato || [])]
+                          .sort((a, b) => b.fecha.localeCompare(a.fecha))
+                          .map((gen, idx, arr) => (
+                            <li key={gen.id} className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2">
+                              <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium">
+                                  Generacion #{arr.length - idx}
+                                  {gen.version ? ` · sobre version ${gen.version}` : ""}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(gen.fecha).toLocaleDateString("es-AR", {
+                                    day: "2-digit", month: "short", year: "numeric",
+                                    hour: "2-digit", minute: "2-digit",
+                                  })}
+                                  {typeof gen.cantidadServicios === "number" ? ` · ${gen.cantidadServicios} servicios` : ""}
+                                  {typeof gen.cantidadPersonal === "number" && gen.cantidadPersonal > 0 ? ` · ${gen.cantidadPersonal} personal` : ""}
+                                  {gen.montoTotal ? ` · ${formatCurrency(gen.montoTotal)}` : ""}
+                                </p>
+                              </div>
+                            </li>
+                          ))}
+                      </ol>
+                    )}
                   </section>
                 </div>
               </ScrollArea>
@@ -1178,9 +1294,10 @@ function ContratosPageContent() {
               open={showPreview}
               evento={selectedEvento}
               recetas={recetas}
-              serviciosIncluidos={serviciosIncluidos}
-              paquetePrecio={paquetePrecio}
-              onClose={() => setShowPreviewSync(false)}
+          serviciosIncluidos={serviciosIncluidos}
+          paquetePrecio={paquetePrecio}
+          personalAsignado={personalAsignado}
+          onClose={() => setShowPreviewSync(false)}
             />
           )}
           </div>

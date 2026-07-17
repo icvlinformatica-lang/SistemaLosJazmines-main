@@ -105,6 +105,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
         { href: "/finanzas/caja-eventos", label: "Caja Eventos", icon: Wallet },
         { href: "/finanzas/caja-jazmines", label: "Caja Jazmines", icon: Building2 },
         { href: "/finanzas/servicios", label: "Servicios", icon: Briefcase },
+        { href: "/finanzas/personal", label: "Personal", icon: Users, locked: !tieneAccesoTotal },
         { href: "/finanzas/ipc", label: "IPC", icon: TrendingUp, locked: !tieneAccesoTotal },
         // { href: "/finanzas/cashflow", label: "Cashflow", icon: TrendingUp },
         // { href: "/finanzas/balance-mensual", label: "Balance Mensual", icon: BarChart2 },
