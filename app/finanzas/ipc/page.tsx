@@ -163,6 +163,11 @@ export default function FinanzasIPCPage() {
             <p className="text-xs text-amber-600 mt-2">
               en {eventosConPendientes} evento{eventosConPendientes !== 1 ? 's' : ''}
             </p>
+            <p className="text-xs text-amber-700 mt-2 leading-relaxed">
+              Son las cuotas que todavía no se cobraron y que subirán de precio
+              cuando cargues el IPC del próximo mes. Las cuotas ya pagadas no se
+              cuentan ni se modifican.
+            </p>
           </div>
         </div>
       </div>

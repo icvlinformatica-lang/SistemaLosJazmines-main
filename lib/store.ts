@@ -1641,7 +1641,11 @@ export function saveState(state: AppState): void {
 
 // Helper functions
 export function generateId(): string {
-  return Math.random().toString(36).substring(2, 9)
+  // UUID v4 criptográficamente seguro; evita colisiones del viejo Math.random()
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`
 }
 
 export function formatCurrency(value: number): string {

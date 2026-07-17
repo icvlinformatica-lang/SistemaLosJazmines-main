@@ -158,8 +158,32 @@
   }
   
   html {
-    /* Base font size 16px minimum for accessibility */
+    /* Base font size 16px on mobile/tablet for accessibility & touch.
+       En escritorio se reduce la escala base para que la interfaz no se vea
+       sobredimensionada: como Tailwind usa unidades rem, esto achica de forma
+       proporcional tipografía, espaciados y hasta el ancho del sidebar. */
     font-size: 16px;
+  }
+
+  /* Escritorio / portátil (~900-1279px): escala compacta */
+  @media (min-width: 900px) {
+    html {
+      font-size: 14px;
+    }
+  }
+
+  /* Escritorio grande (≥1280px): un punto intermedio cómodo */
+  @media (min-width: 1280px) {
+    html {
+      font-size: 15px;
+    }
+  }
+
+  /* Monitores muy grandes (≥1920px): volver a 16px */
+  @media (min-width: 1920px) {
+    html {
+      font-size: 16px;
+    }
   }
   
   body {

@@ -16,7 +16,7 @@ import {
   TrendingUp,
   Package
 } from "lucide-react"
-import { calcularTotalesPaquete } from "@/lib/store"
+import { calcularTotalesPaquete, obtenerPreciosServicio } from "@/lib/store"
 import { useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"

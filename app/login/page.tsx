@@ -2,35 +2,40 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { PERFILES, useProfile } from "@/lib/profile-context"
+import { PERFILES, useProfile, tieneAccesoRapido, olvidarAccesosRapidos } from "@/lib/profile-context"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { seleccionarPerfil } = useProfile()
+  const { seleccionarPerfil, seleccionarPerfilRapido } = useProfile()
 
   const [pinsGuardados, setPinsGuardados] = useState<Record<string, boolean>>({})
   const [perfilSeleccionado, setPerfilSeleccionado] = useState<string | null>(null)
   const [pinInput, setPinInput] = useState("")
   const [error, setError] = useState("")
+  const [cargando, setCargando] = useState(false)
 
   useEffect(() => {
     const guardados: Record<string, boolean> = {}
     PERFILES.forEach((p) => {
-      try {
-        const pin = localStorage.getItem(`pin_guardado_${p.id}`)
-        guardados[p.id] = pin === p.pin
-      } catch {
-        guardados[p.id] = false
-      }
+      guardados[p.id] = tieneAccesoRapido(p.id)
     })
     setPinsGuardados(guardados)
   }, [])
 
-  const handleCardClick = (id: string) => {
+  const handleCardClick = async (id: string) => {
     if (pinsGuardados[id]) {
-      const perfil = PERFILES.find((p) => p.id === id)!
-      const ok = seleccionarPerfil(id, perfil.pin)
-      if (ok) router.push("/")
+      setCargando(true)
+      const ok = await seleccionarPerfilRapido(id)
+      setCargando(false)
+      if (ok) {
+        router.push("/")
+      } else {
+        // Token vencido: pedir PIN
+        setPinsGuardados((prev) => ({ ...prev, [id]: false }))
+        setPerfilSeleccionado(id)
+        setPinInput("")
+        setError("")
+      }
     } else {
       setPerfilSeleccionado(id)
       setPinInput("")
@@ -38,9 +43,11 @@ export default function LoginPage() {
     }
   }
 
-  const handleIngresar = () => {
-    if (!perfilSeleccionado) return
-    const ok = seleccionarPerfil(perfilSeleccionado, pinInput)
+  const handleIngresar = async () => {
+    if (!perfilSeleccionado || cargando) return
+    setCargando(true)
+    const ok = await seleccionarPerfil(perfilSeleccionado, pinInput)
+    setCargando(false)
     if (ok) {
       router.push("/")
     } else {
@@ -49,11 +56,7 @@ export default function LoginPage() {
   }
 
   const handleOlvidarPins = () => {
-    PERFILES.forEach((p) => {
-      try {
-        localStorage.removeItem(`pin_guardado_${p.id}`)
-      } catch {}
-    })
+    olvidarAccesosRapidos()
     setPinsGuardados({})
     setPerfilSeleccionado(null)
     setPinInput("")
@@ -131,9 +134,10 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={handleIngresar}
-                    className="w-full rounded-lg px-3 py-2 text-sm font-semibold text-white bg-[#1a3a2a] hover:bg-[#25503c] transition-colors"
+                    disabled={cargando}
+                    className="w-full rounded-lg px-3 py-2 text-sm font-semibold text-white bg-[#1a3a2a] hover:bg-[#25503c] transition-colors disabled:opacity-60"
                   >
-                    Ingresar
+                    {cargando ? "Verificando..." : "Ingresar"}
                   </button>
                 </div>
               )}
