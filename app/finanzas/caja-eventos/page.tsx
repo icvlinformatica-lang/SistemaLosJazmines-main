@@ -34,6 +34,7 @@ import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import { SalonDot } from "@/components/salon-badge"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import type {
   EgresoPendienteServicio,
@@ -367,7 +368,10 @@ export default function CajaEventosPage() {
               <SelectItem value="todos">Todos los salones</SelectItem>
               {SALONES.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {salonLabel(s)}
+                  <span className="flex items-center gap-2">
+                    <SalonDot salon={s} size={8} />
+                    {salonLabel(s)}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -721,14 +725,20 @@ export default function CajaEventosPage() {
                                     : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Se��a" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
+                            {eg.tipo === "seña" ? "Se��a" : eg.tipo === "menu" ? "Men��" : eg.tipo === "barra" ? "Barra" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <p className="font-medium text-sm">{eg.servicioNombre}</p>
                           <p className="text-xs text-muted-foreground">
                             {eg.eventoNombre}
-                            {eg.salon ? ` · ${salonLabel(eg.salon)}` : ""}
+                            {eg.salon && (
+                              <span className="inline-flex items-center gap-1 align-middle">
+                                {" · "}
+                                <SalonDot salon={eg.salon} size={7} />
+                                {salonLabel(eg.salon)}
+                              </span>
+                            )}
                           </p>
                         </TableCell>
                         <TableCell>
@@ -792,7 +802,13 @@ export default function CajaEventosPage() {
                           <p className="font-medium text-sm">{eg.servicioNombre}</p>
                           <p className="text-xs text-muted-foreground">
                             {eg.eventoNombre}
-                            {eg.salon ? ` · ${salonLabel(eg.salon)}` : ""}
+                            {eg.salon && (
+                              <span className="inline-flex items-center gap-1 align-middle">
+                                {" · "}
+                                <SalonDot salon={eg.salon} size={7} />
+                                {salonLabel(eg.salon)}
+                              </span>
+                            )}
                           </p>
                         </TableCell>
                         <TableCell>
