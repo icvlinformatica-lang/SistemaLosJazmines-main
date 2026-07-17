@@ -244,7 +244,7 @@ function formatFecha(fecha: string) {
 export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual, servicios: catalogoServicios } = useStore()
+  const { state, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual, servicios: catalogoServicios } = useStore()
   const { eventos, loading: loadingEventos, fetchEventos, actualizarEvento: actualizarEventoDB, eliminarEvento: eliminarEventoDB } = useEventos()
 
   // Wrapper para actualizar evento en DB + sync local
@@ -598,7 +598,35 @@ export default function EventosListaPage() {
       })
       return
     }
-    imprimirUltimaVersionContrato(evento, recetas, catalogoServicios || [])
+    imprimirUltimaVersionContrato(evento, recetas, catalogoServicios || [], state.pagosPersonal || [])
+
+    // Registrar la generacion en el historial del contrato
+    const versionActual = evento.versionesContrato?.length
+      ? Math.max(...evento.versionesContrato.map((v) => v.version))
+      : undefined
+    const cantidadPersonal =
+      (evento.personalEvento?.length || 0) +
+      (state.pagosPersonal || []).filter(
+        (pp) =>
+          pp.eventoId === evento.id &&
+          !(evento.personalEvento || []).some(
+            (pe) => pe.personalId === pp.personalId || pe.nombre.toLowerCase() === pp.nombrePersonal.toLowerCase(),
+          ),
+      ).length
+    updateEvento(evento.id, {
+      generacionesContrato: [
+        ...(evento.generacionesContrato || []),
+        {
+          id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          fecha: new Date().toISOString(),
+          origen: "lista" as const,
+          version: versionActual,
+          cantidadPersonal,
+          montoTotal: evento.planDeCuotas?.montoTotal || undefined,
+        },
+      ],
+      fechaImpresion: new Date().toISOString(),
+    })
   }
 
   const handleConfirmarImpresion = async () => {

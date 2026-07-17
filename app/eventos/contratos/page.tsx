@@ -962,7 +962,15 @@ function ContratosPageContent() {
                       Contrato v{ultimaVersion}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-xs text-muted-foreground">Sin contrato generado</Badge>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">Sin modificaciones</Badge>
+                  )}
+                  {(selectedEvento.generacionesContrato?.length || 0) > 0 ? (
+                    <Badge variant="secondary" className="gap-1 text-xs">
+                      <Printer className="h-3 w-3" />
+                      Generado {selectedEvento.generacionesContrato!.length}{selectedEvento.generacionesContrato!.length === 1 ? " vez" : " veces"}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">Sin generar</Badge>
                   )}
                 </div>
 
@@ -1286,9 +1294,10 @@ function ContratosPageContent() {
               open={showPreview}
               evento={selectedEvento}
               recetas={recetas}
-              serviciosIncluidos={serviciosIncluidos}
-              paquetePrecio={paquetePrecio}
-              onClose={() => setShowPreviewSync(false)}
+          serviciosIncluidos={serviciosIncluidos}
+          paquetePrecio={paquetePrecio}
+          personalAsignado={personalAsignado}
+          onClose={() => setShowPreviewSync(false)}
             />
           )}
           </div>
