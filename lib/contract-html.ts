@@ -2,7 +2,46 @@ import {
   formatCurrency,
   type EventoGuardado,
   type Receta,
+  type PagoPersonal,
 } from "@/lib/store"
+
+// =====================================================================
+// HELPER: Personal asignado al evento para el contrato.
+// Combina el personal cargado desde el generador (evento.personalEvento)
+// con los compromisos asignados despues desde Finanzas → Personal
+// (pagosPersonal), sin duplicar personas.
+// =====================================================================
+export interface PersonalContrato {
+  nombre: string
+  funcion: string
+}
+
+export function buildPersonalContrato(
+  evento: EventoGuardado,
+  pagosPersonal: PagoPersonal[] = [],
+): PersonalContrato[] {
+  const resultado: PersonalContrato[] = []
+  const vistos = new Set<string>()
+
+  // 1) Personal del generador de contrato/evento
+  for (const pe of evento.personalEvento || []) {
+    const clave = pe.personalId || pe.nombre.toLowerCase()
+    if (vistos.has(clave)) continue
+    vistos.add(clave)
+    resultado.push({ nombre: pe.nombre, funcion: pe.funcion })
+  }
+
+  // 2) Compromisos asignados manualmente (cualquier estado, son personal del evento)
+  for (const pp of pagosPersonal) {
+    if (pp.eventoId !== evento.id) continue
+    const clave = pp.personalId || pp.nombrePersonal.toLowerCase()
+    if (vistos.has(clave) || vistos.has(pp.nombrePersonal.toLowerCase())) continue
+    vistos.add(clave)
+    resultado.push({ nombre: pp.nombrePersonal, funcion: pp.servicioNombre })
+  }
+
+  return resultado
+}
 
 const SALON_DIRECCIONES: Record<string, string> = {
   Casona: "Casona Florida 6040 - Del Viso - Bs. As.",
@@ -42,7 +81,8 @@ export function generateContractHTML(
   evento: EventoGuardado,
   recetas: Receta[],
   serviciosIncluidos: string[],
-  paquetePrecio: number
+  paquetePrecio: number,
+  personalAsignado: PersonalContrato[] = [],
 ) {
   const totalPersonas = evento.adultos + evento.adolescentes + evento.ninos + (evento.personasDietasEspeciales || 0)
   const contrato = evento.contrato || {}
@@ -89,6 +129,10 @@ export function generateContractHTML(
   ].filter(Boolean).join("")
 
   const serviciosRows = serviciosIncluidos.map((s) => `<li style="margin-bottom:4px;">${s}</li>`).join("")
+
+  const personalRows = personalAsignado
+    .map((p) => `<tr><td style="font-weight:bold;padding:4px 8px;width:220px;">${p.funcion}</td><td style="padding:4px 8px;">${p.nombre}</td></tr>`)
+    .join("")
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -139,6 +183,11 @@ export function generateContractHTML(
   <ul style="margin:0;padding-left:20px;">${serviciosRows}</ul>
   ` : ""}
 
+  ${personalRows ? `
+  <h2>PERSONAL ASIGNADO AL EVENTO</h2>
+  <table style="width:100%;border-collapse:collapse;">${personalRows}</table>
+  ` : ""}
+
   ${menuRows ? `
   <h2>MENU</h2>
   <table style="width:100%;border-collapse:collapse;">${menuRows}</table>
@@ -182,6 +231,7 @@ export function imprimirUltimaVersionContrato(
   evento: EventoGuardado,
   recetas: Receta[],
   catalogoServicios: { id: string; nombre: string }[],
+  pagosPersonal: PagoPersonal[] = [],
 ) {
   const versiones = evento.versionesContrato || []
   let eventoParaImprimir = evento
@@ -210,7 +260,8 @@ export function imprimirUltimaVersionContrato(
       .filter(Boolean) as string[]
   }
 
-  const html = generateContractHTML(eventoParaImprimir, recetas, serviciosNombres, 0)
+  const personalAsignado = buildPersonalContrato(evento, pagosPersonal)
+  const html = generateContractHTML(eventoParaImprimir, recetas, serviciosNombres, 0, personalAsignado)
   const win = window.open("", "_blank")
   if (win) {
     win.document.write(html)

@@ -58,6 +58,10 @@ function fromRow(r: Record<string, any>) {
     costosCalculados: parseJsonField(r.costos_calculados, null),
     stockDescontado: r.stock_descontado ?? false,
     fechaImpresion: r.fecha_impresion,
+    versionesContrato: parseJsonField(r.versiones_contrato, []),
+    generacionesContrato: parseJsonField(r.generaciones_contrato, []),
+    serviciosContrato: parseJsonField(r.servicios_contrato, undefined),
+    serviciosLibresContrato: parseJsonField(r.servicios_libres_contrato, undefined),
     cocinaPagada: r.cocina_pagada ?? false,
     barraPagada: r.barra_pagada ?? false,
     createdAt: r.created_at,
@@ -74,7 +78,8 @@ const SELECT_COLS = `
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
   precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
   notas_internas, pagos, asignaciones, costos_calculados,
-  stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at
+  stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at,
+  versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
 `
 
 async function fetchEvento(id: string) {
@@ -88,7 +93,8 @@ async function fetchEvento(id: string) {
       condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
       precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
       notas_internas, pagos, asignaciones, costos_calculados,
-      stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at
+      stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at,
+      versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
     FROM eventos WHERE id = ${id} AND deleted_at IS NULL
   `
   return rows[0] ?? null
@@ -134,12 +140,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       costosCalculados: "costos_calculados",
       stockDescontado: "stock_descontado", fechaImpresion: "fecha_impresion",
       cocinaPagada: "cocina_pagada", barraPagada: "barra_pagada",
+      versionesContrato: "versiones_contrato", generacionesContrato: "generaciones_contrato",
+      serviciosContrato: "servicios_contrato", serviciosLibresContrato: "servicios_libres_contrato",
     }
 
     const jsonFields = new Set([
       "barras","servicios","contrato","planDeCuotas","pagos","asignaciones",
       "costosCalculados","multipliersAdultos","multipliersAdolescentes",
       "multipliersNinos","multipliersDietasEspeciales","personalEvento",
+      "versionesContrato","generacionesContrato","serviciosContrato","serviciosLibresContrato",
     ])
 
     const setClauses: string[] = []
@@ -195,8 +204,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         condicion_iva=$26, contrato=$27, plan_de_cuotas=$28, estado=$29, color_tag=$30,
         precio_venta=$31, costo_personal=$32, costo_insumos=$33, costo_servicios=$34, costo_operativo=$35,
         notas_internas=$36, pagos=$37, asignaciones=$38, costos_calculados=$39,
-        stock_descontado=$40, fecha_impresion=$41, personal_evento=$42, updated_at=NOW()
-      WHERE id=$43`,
+        stock_descontado=$40, fecha_impresion=$41, personal_evento=$42,
+        versiones_contrato=$43, generaciones_contrato=$44, servicios_contrato=$45, servicios_libres_contrato=$46,
+        updated_at=NOW()
+      WHERE id=$47`,
       [
         nombre, ev.fecha||null, ev.horario||null, ev.horarioFin||null, ev.salon||null,
         ev.tipoEvento||null, ev.nombrePareja||null, ev.dniNovio1||null, ev.dniNovio2||null,
@@ -214,6 +225,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         JSON.stringify(ev.asignaciones||[]), JSON.stringify(ev.costosCalculados||null),
         ev.stockDescontado||false, ev.fechaImpresion||null,
         JSON.stringify(ev.personalEvento||[]),
+        JSON.stringify(ev.versionesContrato||[]), JSON.stringify(ev.generacionesContrato||[]),
+        ev.serviciosContrato ? JSON.stringify(ev.serviciosContrato) : null,
+        ev.serviciosLibresContrato ? JSON.stringify(ev.serviciosLibresContrato) : null,
         id,
       ]
     )
@@ -257,7 +271,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at,
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos WHERE id = ${id}
     `
     const row = rows[0]
