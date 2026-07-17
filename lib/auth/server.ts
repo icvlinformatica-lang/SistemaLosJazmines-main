@@ -5,6 +5,8 @@
 // Usa Web Crypto (crypto.subtle) para que funcione tanto en Node como en Edge middleware.
 
 export const SESSION_COOKIE = "lj_session"
+// Header alternativo para entornos donde las cookies no viajan (ej: vista previa en iframe)
+export const SESSION_HEADER = "x-lj-session"
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 12 // 12 horas
 const QUICK_TOKEN_DURATION_MS = 1000 * 60 * 60 * 24 * 30 // 30 días (acceso rápido)
 

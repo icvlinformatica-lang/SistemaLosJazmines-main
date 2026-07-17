@@ -32,7 +32,9 @@ export async function POST(req: Request) {
     const sessionToken = await signToken(perfilId)
     const nuevoQuickToken = await signQuickToken(perfilId)
 
-    const res = NextResponse.json({ ok: true, perfilId, quickToken: nuevoQuickToken })
+    // sessionToken también se devuelve en el body: en la vista previa embebida
+    // (iframe) las cookies pueden estar bloqueadas, y el cliente lo envía por header.
+    const res = NextResponse.json({ ok: true, perfilId, quickToken: nuevoQuickToken, sessionToken })
     res.cookies.set(SESSION_COOKIE, sessionToken, sessionCookieOptions())
     return res
   } catch (err) {
