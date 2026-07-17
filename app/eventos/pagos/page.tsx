@@ -558,15 +558,30 @@ function PagosPageContent() {
     )
   }, [eventos])
 
-  const handleMarcarCuotaPagada = (eventoId: string, numeroCuota: number) => {
+  const handleMarcarCuotaPagada = (eventoId: string, numeroCuota: number, montoCuotaItem?: number) => {
     const evento = eventos.find(e => e.id === eventoId)
     if (!evento || !evento.planDeCuotas) return
 
     const cuotasPagadas = evento.planDeCuotas.cuotasPagadas || []
     if (cuotasPagadas.includes(numeroCuota)) return
 
-    // Actualizar evento con cuota marcada
+    const montoCuota = montoCuotaItem ?? evento.planDeCuotas.montoCuota ?? 0
+
+    // Crear un registro de pago para que aparezca en "Pagos Registrados".
+    // Se etiqueta con "Cuota N" en notas para poder revertirlo luego.
+    const nuevoPago: PagoEvento = {
+      id: generateId(),
+      monto: montoCuota,
+      fecha: new Date().toISOString().split("T")[0],
+      pagadoPor: evento.contrato?.nombreCompleto || "Recordatorio de cuota",
+      porcentajeIPC: 0,
+      notas: `Cuota ${numeroCuota}`,
+    }
+    const updatedPagos = [...(evento.pagos || []), nuevoPago]
+
+    // Actualizar evento con cuota marcada y el pago registrado
     updateEvento(eventoId, {
+      pagos: updatedPagos,
       planDeCuotas: {
         ...evento.planDeCuotas,
         cuotasPagadas: [...cuotasPagadas, numeroCuota],
@@ -575,7 +590,6 @@ function PagosPageContent() {
 
     // Generar movimiento de caja si el evento tiene salón
     if (evento.salon) {
-      const montoCuota = evento.planDeCuotas.montoCuota || 0
       const nombreEvento = evento.nombre || evento.nombrePareja || "Evento"
       // Generar dos movimientos: 50% para cada caja específica
       const mitad = montoCuota / 2
@@ -623,6 +637,64 @@ function PagosPageContent() {
         `Cuota marcada como pagada por ${formatCurrency(montoCuota)} | Ingreso dividido 50/50 en Caja Eventos y Caja Jazmines`,
       )
     }
+  }
+
+  // Revertir una cuota marcada como pagada desde los recordatorios:
+  // quita la cuota de cuotasPagadas, elimina el pago registrado y los
+  // movimientos de caja generados.
+  const handleRevertirCuotaPagada = (eventoId: string, numeroCuota: number) => {
+    const evento = eventos.find(e => e.id === eventoId)
+    if (!evento || !evento.planDeCuotas) return
+
+    const nombreEvento = evento.nombre || evento.nombrePareja || "Evento"
+    const etiquetaCuota = `Cuota ${numeroCuota}`
+
+    // 1) Quitar la cuota de cuotasPagadas
+    const updatedPlanDeCuotas = {
+      ...evento.planDeCuotas,
+      cuotasPagadas: (evento.planDeCuotas.cuotasPagadas || []).filter(n => n !== numeroCuota),
+    }
+
+    // 2) Quitar el pago registrado asociado a esta cuota (match por notas)
+    const pagoRevertido = (evento.pagos || []).find(p => {
+      const m = /Cuota\s+(\d+)/i.exec(p.notas || "")
+      return m ? parseInt(m[1], 10) === numeroCuota : false
+    })
+    const updatedPagos = pagoRevertido
+      ? (evento.pagos || []).filter(p => p.id !== pagoRevertido.id)
+      : (evento.pagos || [])
+
+    updateEvento(eventoId, {
+      pagos: updatedPagos,
+      planDeCuotas: updatedPlanDeCuotas,
+    })
+
+    // 3) Revertir los movimientos de caja de esta cuota
+    let cajasRevertidas = false
+    const candidatos = movimientosCaja.filter(
+      (m: MovimientoCaja) =>
+        m.eventoId === eventoId &&
+        m.tipo === "ingreso" &&
+        typeof m.concepto === "string" &&
+        m.concepto.startsWith(`${etiquetaCuota} - `),
+    )
+    const mitadObjetivo = (pagoRevertido?.monto ?? evento.planDeCuotas.montoCuota ?? 0) / 2
+    ;(["caja_eventos", "caja_jazmines"] as const).forEach((caja) => {
+      const delCaja = candidatos.filter((m) => m.cajaDestino === caja)
+      if (delCaja.length === 0) return
+      const elegido = delCaja.reduce((best, m) =>
+        Math.abs(m.monto - mitadObjetivo) < Math.abs(best.monto - mitadObjetivo) ? m : best,
+      )
+      deleteMovimientoCaja(elegido.id)
+      cajasRevertidas = true
+    })
+
+    // 4) Registrar en el historial de actividad
+    logMoneyActivity(
+      "eliminado",
+      `${etiquetaCuota} - ${nombreEvento}`,
+      `Cuota marcada como impaga${cajasRevertidas ? " | Monto descontado de Caja Eventos y Caja Jazmines" : ""}`,
+    )
   }
 
   return (
@@ -852,13 +924,22 @@ function PagosPageContent() {
                             {item.evento.tipoEvento || "Evento"}
                           </div>
                         </div>
-                        {!item.pagada && (
+                        {!item.pagada ? (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleMarcarCuotaPagada(item.evento.id, item.numeroCuota)}
+                            onClick={() => handleMarcarCuotaPagada(item.evento.id, item.numeroCuota, item.monto)}
                           >
                             Marcar Pagada
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => handleRevertirCuotaPagada(item.evento.id, item.numeroCuota)}
+                          >
+                            Marcar Impaga
                           </Button>
                         )}
                       </div>
