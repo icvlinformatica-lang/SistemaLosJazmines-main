@@ -125,6 +125,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       multipliersNinos: "multipliers_ninos", multipliersDietasEspeciales: "multipliers_dietas_especiales",
       descripcionPersonalizada: "descripcion_personalizada",
       barras: "barras", servicios: "servicios", paquetesSeleccionados: "paquetes_seleccionados",
+      personalEvento: "personal_evento",
       condicionIva: "condicion_iva", contrato: "contrato", planDeCuotas: "plan_de_cuotas",
       estado: "estado", colorTag: "color_tag",
       precioVenta: "precio_venta", costoPersonal: "costo_personal",
@@ -138,7 +139,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const jsonFields = new Set([
       "barras","servicios","contrato","planDeCuotas","pagos","asignaciones",
       "costosCalculados","multipliersAdultos","multipliersAdolescentes",
-      "multipliersNinos","multipliersDietasEspeciales",
+      "multipliersNinos","multipliersDietasEspeciales","personalEvento",
     ])
 
     const setClauses: string[] = []
@@ -194,8 +195,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         condicion_iva=$26, contrato=$27, plan_de_cuotas=$28, estado=$29, color_tag=$30,
         precio_venta=$31, costo_personal=$32, costo_insumos=$33, costo_servicios=$34, costo_operativo=$35,
         notas_internas=$36, pagos=$37, asignaciones=$38, costos_calculados=$39,
-        stock_descontado=$40, fecha_impresion=$41, updated_at=NOW()
-      WHERE id=$42`,
+        stock_descontado=$40, fecha_impresion=$41, personal_evento=$42, updated_at=NOW()
+      WHERE id=$43`,
       [
         nombre, ev.fecha||null, ev.horario||null, ev.horarioFin||null, ev.salon||null,
         ev.tipoEvento||null, ev.nombrePareja||null, ev.dniNovio1||null, ev.dniNovio2||null,
@@ -212,6 +213,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ev.notasInternas||null, JSON.stringify(ev.pagos||[]),
         JSON.stringify(ev.asignaciones||[]), JSON.stringify(ev.costosCalculados||null),
         ev.stockDescontado||false, ev.fechaImpresion||null,
+        JSON.stringify(ev.personalEvento||[]),
         id,
       ]
     )
