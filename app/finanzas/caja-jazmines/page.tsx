@@ -28,7 +28,8 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { SALONES, salonLabel, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
+import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
+import { SalonDot } from "@/components/salon-badge"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
 import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar } from "@/lib/hooks/use-caja-jazmines"
 import {
@@ -226,7 +227,8 @@ function RepartoSalonesEditor({
                 checked={checked}
                 onCheckedChange={(v) => toggleSalon(s, v === true)}
               />
-              <Label htmlFor={`rep-${s}`} className="flex-1 text-sm font-normal cursor-pointer">
+              <Label htmlFor={`rep-${s}`} className="flex-1 text-sm font-normal cursor-pointer flex items-center gap-2">
+                <SalonDot salon={s} size={8} />
                 {salonLabel(s)}
               </Label>
               <div className="flex items-center gap-1">
@@ -264,20 +266,6 @@ function RepartoSalonesEditor({
 // CARPETAS POR SALÓN
 // ---------------------------------------------------------------------------
 
-/** Paleta de colores por salón para las carpetas de gastos. */
-const SALON_FOLDER_STYLES: Record<string, { header: string; dot: string; border: string; icon: string }> = {
-  Quinta: { header: "bg-blue-50 text-blue-800 hover:bg-blue-100", dot: "bg-blue-500", border: "border-blue-200", icon: "text-blue-500" },
-  Casona: { header: "bg-emerald-50 text-emerald-800 hover:bg-emerald-100", dot: "bg-emerald-500", border: "border-emerald-200", icon: "text-emerald-500" },
-  Salon: { header: "bg-amber-50 text-amber-800 hover:bg-amber-100", dot: "bg-amber-500", border: "border-amber-200", icon: "text-amber-500" },
-  "Salon 4": { header: "bg-rose-50 text-rose-800 hover:bg-rose-100", dot: "bg-rose-500", border: "border-rose-200", icon: "text-rose-500" },
-  "Salon 5": { header: "bg-cyan-50 text-cyan-800 hover:bg-cyan-100", dot: "bg-cyan-500", border: "border-cyan-200", icon: "text-cyan-500" },
-  General: { header: "bg-slate-100 text-slate-700 hover:bg-slate-200", dot: "bg-slate-400", border: "border-slate-200", icon: "text-slate-400" },
-}
-
-function folderStyle(salon: string | null | undefined) {
-  return SALON_FOLDER_STYLES[salon || "General"] || SALON_FOLDER_STYLES.General
-}
-
 /** Agrupa una lista de gastos por salón, respetando el orden de SALONES. */
 function agruparPorSalon<T extends { salon?: string | null; monto: number }>(
   items: T[],
@@ -311,17 +299,19 @@ function CarpetaGastos({
   children: React.ReactNode
 }) {
   const [abierta, setAbierta] = useState(true)
-  const st = folderStyle(salon)
+  const { configuracionCajas } = useStore()
+  const color = salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
   return (
-    <div className={`rounded-lg border ${st.border} overflow-hidden`}>
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }}>
       <button
         type="button"
         onClick={() => setAbierta((v) => !v)}
-        className={`flex w-full items-center gap-2 px-3 py-2 transition-colors ${st.header}`}
+        className="flex w-full items-center gap-2 px-3 py-2 transition-colors hover:brightness-95"
+        style={{ backgroundColor: `${color}1f`, color }}
         aria-expanded={abierta}
       >
-        {abierta ? <FolderOpen className={`h-4 w-4 ${st.icon}`} /> : <Folder className={`h-4 w-4 ${st.icon}`} />}
-        <span className={`h-2 w-2 rounded-full ${st.dot}`} aria-hidden="true" />
+        {abierta ? <FolderOpen className="h-4 w-4" style={{ color }} /> : <Folder className="h-4 w-4" style={{ color }} />}
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
         <span className="text-sm font-semibold flex-1 text-left">{salonLabel(salon)}</span>
         <span className="text-xs font-medium opacity-80">
           {count} {count === 1 ? "gasto" : "gastos"} · {formatCurrency(subtotal)}
@@ -682,7 +672,10 @@ export default function CajaJazminePage() {
               <SelectItem value="todos">Todos los salones</SelectItem>
               {SALONES.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {salonLabel(s)}
+                  <span className="flex items-center gap-2">
+                    <SalonDot salon={s} size={8} />
+                    {salonLabel(s)}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -815,8 +808,14 @@ export default function CajaJazminePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">{alerta.concepto}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      <span className="capitalize">{descripcionAlerta(alerta.diasRestantes, alerta.estado)}</span>
-                      {alerta.salon ? ` · ${salonLabel(alerta.salon)}` : ""}
+                            <span className="capitalize">{descripcionAlerta(alerta.diasRestantes, alerta.estado)}</span>
+                            {alerta.salon && (
+                              <span className="inline-flex items-center gap-1 align-middle">
+                                {" · "}
+                                <SalonDot salon={alerta.salon} size={7} />
+                                {salonLabel(alerta.salon)}
+                              </span>
+                            )}
                     </p>
                   </div>
                   <span className="text-sm font-bold text-red-600 shrink-0">
@@ -888,8 +887,14 @@ export default function CajaJazminePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
-                      {cuota.salon ? ` · ${salonLabel(cuota.salon)}` : ""}
+                            Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
+                            {cuota.salon && (
+                              <span className="inline-flex items-center gap-1 align-middle">
+                                {" · "}
+                                <SalonDot salon={cuota.salon} size={7} />
+                                {salonLabel(cuota.salon)}
+                              </span>
+                            )}
                     </p>
                   </div>
                   <span className="text-sm font-bold text-emerald-700 shrink-0">
@@ -1084,7 +1089,11 @@ export default function CajaJazminePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-teal-800 truncate">{gasto.concepto}</p>
                       <p className="text-xs text-teal-600 mt-0.5">
-                        Ya cubriste este gasto fijo del mes · {salonLabel(gasto.salon)}
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              Ya cubriste este gasto fijo del mes ·
+                              <SalonDot salon={gasto.salon} size={7} />
+                              {salonLabel(gasto.salon)}
+                            </span>
                       </p>
                     </div>
                     <span className="text-sm font-bold text-teal-700 shrink-0">
@@ -1337,7 +1346,10 @@ export default function CajaJazminePage() {
                       <SelectItem value="General">General (todos los salones)</SelectItem>
                       {SALONES.map((s) => (
                         <SelectItem key={s} value={s}>
-                          {salonLabel(s)}
+                          <span className="flex items-center gap-2">
+                            <SalonDot salon={s} size={8} />
+                            {salonLabel(s)}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1438,7 +1450,10 @@ export default function CajaJazminePage() {
                       <SelectItem value="General">General (todos los salones)</SelectItem>
                       {SALONES.map((s) => (
                         <SelectItem key={s} value={s}>
-                          {salonLabel(s)}
+                          <span className="flex items-center gap-2">
+                            <SalonDot salon={s} size={8} />
+                            {salonLabel(s)}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1535,7 +1550,10 @@ export default function CajaJazminePage() {
                     <SelectContent>
                       {SALONES.map((s) => (
                         <SelectItem key={s} value={s}>
-                          {salonLabel(s)}
+                          <span className="flex items-center gap-2">
+                            <SalonDot salon={s} size={8} />
+                            {salonLabel(s)}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>

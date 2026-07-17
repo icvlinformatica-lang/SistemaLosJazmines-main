@@ -8,10 +8,14 @@ import { useStore } from "@/lib/store-context"
 import {
   generateId,
   formatCurrency,
+  salonColor,
+  salonLabel,
+  SALONES,
   type EventoGuardado,
   type EstadoEvento,
   type PagoEvento,
 } from "@/lib/store"
+import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -106,17 +110,21 @@ const TRIMESTRE_NOMBRES = ["Ene - Mar", "Abr - Jun", "Jul - Sep", "Oct - Dic"]
 // --- Sub-components ---
 
 function EventBadge({ evento }: { evento: EventoGuardado }) {
+  const { configuracionCajas } = useStore()
   const total = evento.adultos + evento.adolescentes + evento.ninos + (evento.personasDietasEspeciales || 0)
   const tipoColor = TIPO_COLORES[evento.tipoEvento || "Otro"] || TIPO_COLORES["Otro"]
+  const color = evento.salon ? salonColor(evento.salon, configuracionCajas) : undefined
 
   return (
     <div
       className={`border-l-4 rounded-sm px-1.5 py-0.5 text-xs truncate cursor-pointer transition-opacity hover:opacity-80 ${tipoColor}`}
-      title={`${evento.nombre || evento.tipoEvento || "Evento"} - ${total} personas`}
+      style={color ? { borderLeftColor: color } : undefined}
+      title={`${evento.nombre || evento.tipoEvento || "Evento"}${evento.salon ? ` - ${salonLabel(evento.salon)}` : ""} - ${total} personas`}
     >
-      <span className="font-medium truncate block">
+      <span className="font-medium truncate flex items-center gap-1">
+        {evento.salon && <SalonDot salon={evento.salon} size={6} />}
         {evento.horario && <span className="text-muted-foreground">{evento.horario} </span>}
-        {evento.nombre || evento.tipoEvento || "Evento"}
+        <span className="truncate">{evento.nombre || evento.tipoEvento || "Evento"}</span>
       </span>
     </div>
   )
@@ -211,7 +219,7 @@ function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEv
 
 export default function CalendarioPage() {
   const router = useRouter()
-  const { state, eventos, updateEvento, deleteEvento, setEventoActual } = useStore()
+  const { state, eventos, updateEvento, deleteEvento, setEventoActual, configuracionCajas } = useStore()
 
   const today = new Date()
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
@@ -669,6 +677,7 @@ export default function CalendarioPage() {
                 <Card
                   key={ev.id}
                   className={`border-l-4 cursor-pointer transition-shadow hover:shadow-md ${tipoColor}`}
+                  style={ev.salon ? { borderLeftColor: salonColor(ev.salon, configuracionCajas) } : undefined}
                   onClick={() => openDetail(ev)}
                 >
                   <CardContent className="p-4">
@@ -696,7 +705,7 @@ export default function CalendarioPage() {
                           </span>
                           {ev.salon && (
                             <span className="flex items-center gap-1">
-                              <Building2 className="h-3.5 w-3.5" /> {ev.salon}
+                              <SalonDot salon={ev.salon} size={8} /> {salonLabel(ev.salon)}
                             </span>
                           )}
                         </div>
@@ -792,6 +801,7 @@ export default function CalendarioPage() {
                         <div
                           key={ev.id}
                           className={`border-l-2 rounded-sm px-1 py-0.5 text-[9px] truncate max-w-full ${tipoColor}`}
+                          style={ev.salon ? { borderLeftColor: salonColor(ev.salon, configuracionCajas) } : undefined}
                           title={ev.nombre || ev.tipoEvento || "Evento"}
                         >
                           {parseEventDate(ev.fecha).getDate()} {ev.nombre || ev.tipoEvento || "Evento"}
@@ -1054,11 +1064,12 @@ export default function CalendarioPage() {
                   const evDate = parseEventDate(ev.fecha)
 
                   return (
-                    <div
-                      key={ev.id}
-                      className={`border-l-4 rounded-lg border p-3 cursor-pointer hover:shadow-sm transition-shadow ${tipoColor}`}
-                      onClick={() => openDetail(ev)}
-                    >
+                  <div
+                    key={ev.id}
+                    className={`border-l-4 rounded-lg border p-3 cursor-pointer hover:shadow-sm transition-shadow ${tipoColor}`}
+                    style={ev.salon ? { borderLeftColor: salonColor(ev.salon, configuracionCajas) } : undefined}
+                    onClick={() => openDetail(ev)}
+                  >
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <p className="font-medium text-sm truncate">{ev.nombre || ev.tipoEvento || "Evento"}</p>
                         <Badge variant="outline" className={`text-[10px] shrink-0 ${estadoCfg.className}`}>
@@ -1067,9 +1078,13 @@ export default function CalendarioPage() {
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span>{evDate.getDate()} {MESES[evDate.getMonth()].substring(0, 3)}</span>
-                        {ev.horario && <span>{ev.horario}</span>}
-                        <span>{total} pax</span>
-                        {ev.salon && <span>{ev.salon}</span>}
+                      {ev.horario && <span>{ev.horario}</span>}
+                      <span>{total} pax</span>
+                      {ev.salon && (
+                        <span className="flex items-center gap-1">
+                          <SalonDot salon={ev.salon} size={7} /> {salonLabel(ev.salon)}
+                        </span>
+                      )}
                       </div>
                     </div>
                   )

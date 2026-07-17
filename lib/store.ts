@@ -405,6 +405,35 @@ export function salonLabel(salon: string | null | undefined): string {
   return salon
 }
 
+/**
+ * Colores por defecto para cada salón. Se usan cuando el usuario todavía no
+ * personalizó un color desde Configuración. Son tonos distintos y legibles.
+ */
+export const SALON_COLORES_DEFAULT: Record<string, string> = {
+  Quinta: "#059669", // verde esmeralda
+  Casona: "#2563eb", // azul
+  Salon: "#d97706", // ámbar
+  "Salon 4": "#e11d48", // rosa/rojo
+  "Salon 5": "#0891b2", // celeste/cian
+}
+
+/** Color neutro para eventos/registros sin salón asignado ("General"). */
+export const SALON_COLOR_GENERAL = "#6b7280"
+
+/**
+ * Devuelve el color (hex) asignado a un salón. Prioriza el color personalizado
+ * guardado en Configuración de Cajas; si no hay, usa el color por defecto.
+ */
+export function salonColor(
+  salon: string | null | undefined,
+  configuracionCajas?: ConfiguracionCajas | null,
+): string {
+  if (!salon) return SALON_COLOR_GENERAL
+  const custom = configuracionCajas?.salones?.[salon]?.color
+  if (custom && /^#[0-9a-fA-F]{6}$/.test(custom)) return custom
+  return SALON_COLORES_DEFAULT[salon] || SALON_COLOR_GENERAL
+}
+
 // ==========================================
 // CAJAS - CONFIGURACIÓN Y MOVIMIENTOS
 // ==========================================
@@ -412,6 +441,8 @@ export function salonLabel(salon: string | null | undefined): string {
 export interface ConfiguracionCaja {
   saldoInicial: number
   porcentajeAporteAdmin: number
+  /** Color identificatorio del salón (hex, editable desde Configuración). */
+  color?: string
 }
 
 export interface ConfiguracionCajas {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useStore } from "@/lib/store-context"
-import { SALONES, ConfiguracionCajas } from "@/lib/store"
+import { SALONES, ConfiguracionCajas, salonColor, salonLabel, SALON_COLORES_DEFAULT } from "@/lib/store"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -49,6 +49,19 @@ export default function ConfiguracionCajasPage() {
     }))
   }
 
+  const handleColorChange = (salon: string, color: string) => {
+    setConfig((prev) => ({
+      ...prev,
+      salones: {
+        ...prev.salones,
+        [salon]: {
+          ...prev.salones[salon],
+          color,
+        },
+      },
+    }))
+  }
+
   const handleAdminSaldoChange = (value: number) => {
     setConfig((prev) => ({
       ...prev,
@@ -90,16 +103,53 @@ export default function ConfiguracionCajasPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {SALONES.map((salon) => {
           const salonConfig = config.salones[salon] || { saldoInicial: 0, porcentajeAporteAdmin: 0 }
+          const color = salonColor(salon, config)
           return (
-            <Card key={salon} className="border-border">
+            <Card
+              key={salon}
+              className="border-border overflow-hidden border-l-4"
+              style={{ borderLeftColor: color }}
+            >
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Building2 className="h-5 w-5 text-primary" />
-                  {salon}
+                  <Building2 className="h-5 w-5" style={{ color }} />
+                  {salonLabel(salon)}
                 </CardTitle>
-                <CardDescription>Caja del salon {salon}</CardDescription>
+                <CardDescription>Caja del salon {salonLabel(salon)}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
+                {/* Color identificatorio */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5 text-sm font-medium">
+                    <span className="h-4 w-4 rounded-full border border-border" style={{ backgroundColor: color }} />
+                    Color del salon
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={color}
+                      onChange={(e) => handleColorChange(salon, e.target.value)}
+                      aria-label={`Color de ${salonLabel(salon)}`}
+                      className="h-9 w-14 cursor-pointer rounded-md border border-border bg-transparent p-1"
+                    />
+                    <span className="font-mono text-xs uppercase text-muted-foreground">{color}</span>
+                    {salonConfig.color && salonConfig.color !== SALON_COLORES_DEFAULT[salon] && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto h-7 px-2 text-xs"
+                        onClick={() => handleColorChange(salon, SALON_COLORES_DEFAULT[salon] || "#6b7280")}
+                      >
+                        Restablecer
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Se usa para identificar este salon en todo el sistema
+                  </p>
+                </div>
+
                 {/* Saldo Inicial */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5 text-sm font-medium">
