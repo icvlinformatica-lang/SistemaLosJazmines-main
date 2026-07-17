@@ -760,7 +760,7 @@ export default function CajaEventosPage() {
                                       : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Se��a" : eg.tipo === "menu" ? "Men��" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
+                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>

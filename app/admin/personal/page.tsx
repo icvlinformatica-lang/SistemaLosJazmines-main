@@ -937,7 +937,7 @@ export default function PersonalPage() {
               <Label>Monto a pagar</Label>
               <MoneyInput
                 value={compromisoForm.monto}
-                onChange={(v) => setCompromisoForm(prev => ({ ...prev, monto: v, tarifaId: "manual" }))}
+                onValueChange={(v) => setCompromisoForm(prev => ({ ...prev, monto: v, tarifaId: "manual" }))}
               />
             </div>
 
@@ -1055,29 +1055,6 @@ export default function PersonalPage() {
                       <option key={f} value={f} />
                     ))}
                   </datalist>
-                </div>
-
-                <div>
-                  <Label>Servicio Vinculado</Label>
-                  <Select
-                    value={formData.servicioVinculadoId || "ninguno"}
-                    onValueChange={(v) => setFormData({ ...formData, servicioVinculadoId: v === "ninguno" ? "" : v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un servicio" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ninguno">Sin servicio vinculado</SelectItem>
-                      {servicios.filter(s => s.activo).map((servicio) => (
-                        <SelectItem key={servicio.id} value={servicio.id}>
-                          {servicio.nombre} ({servicio.categoria})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Vincula esta persona a un servicio del catalogo para asignarla a eventos
-                  </p>
                 </div>
 
                 <div>

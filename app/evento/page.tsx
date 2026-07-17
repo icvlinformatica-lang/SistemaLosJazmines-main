@@ -1565,7 +1565,7 @@ function EventoPageContent() {
                             {seleccionado ? (
                               <MoneyInput
                                 value={entrada.monto}
-                                onChange={(v) => updateMontoPersonalEvento(persona.id, v)}
+                                onValueChange={(v) => updateMontoPersonalEvento(persona.id, v)}
                                 disabled={esBloqueado}
                                 className="ml-auto h-8 w-32 text-right"
                               />
