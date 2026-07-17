@@ -602,25 +602,25 @@ export default function CajaEventosPage() {
       {/* TABS: Cobros / Pagos */}
       <Tabs defaultValue="cobrar" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="cobrar" className="gap-1.5" style={{ backgroundColor: "rgba(92, 255, 57, 0.14)" }}>
+          <TabsTrigger value="cobrar" className="gap-1.5 bg-emerald-100/40">
             <ArrowDownToLine className="h-4 w-4" /> Por cobrar
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-1">
               {ingresosPendientes.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="pagar" className="gap-1.5" style={{ backgroundColor: "rgba(217, 225, 35, 0.14)" }}>
+          <TabsTrigger value="pagar" className="gap-1.5 bg-yellow-100/40">
             <ArrowUpFromLine className="h-4 w-4" /> Por pagar
             <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] ml-1">
               {egresosProximos.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="futuros" className="gap-1.5" style={{ backgroundColor: "rgba(233, 233, 136, 0.12)" }}>
+          <TabsTrigger value="futuros" className="gap-1.5 bg-amber-100/30">
             <CalendarDays className="h-4 w-4" /> Gastos futuros
             <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px] ml-1">
               {egresosFuturos.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="historial" className="gap-1.5" style={{ backgroundColor: "rgba(213, 208, 208, 0.49)" }}>
+          <TabsTrigger value="historial" className="gap-1.5 bg-slate-200/50">
             <History className="h-4 w-4" /> Historial
             <Badge className="bg-muted text-muted-foreground border-border text-[10px] ml-1">
               {pagosRealizados.length}

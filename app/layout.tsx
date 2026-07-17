@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" className="bg-background" style={{ colorScheme: "light" }}>
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#1a3a2a" />
