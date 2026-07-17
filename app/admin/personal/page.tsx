@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import { useStore } from "@/lib/store-context"
 import { useToast } from "@/hooks/use-toast"
-import { generateId, generarMovimientoEgreso } from "@/lib/store"
+import { generateId, generarMovimientoEgreso, FUNCIONES_PERSONAL } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -599,11 +599,11 @@ export default function PersonalPage() {
                   <Input
                     value={formData.funcion}
                     onChange={(e) => setFormData({ ...formData, funcion: e.target.value })}
-                    placeholder="Ej: Fotografo, DJ, Decorador, Mozo"
+                    placeholder="Ej: Coordinador, Metre, Mozo, Barman"
                     list="funciones-list"
                   />
                   <datalist id="funciones-list">
-                    {funciones.map(f => (
+                    {Array.from(new Set([...FUNCIONES_PERSONAL, ...funciones])).map(f => (
                       <option key={f} value={f} />
                     ))}
                   </datalist>

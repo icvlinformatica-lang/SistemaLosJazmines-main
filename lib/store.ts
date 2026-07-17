@@ -166,6 +166,8 @@ export interface Evento {
   barras?: BarraEvento[]
   servicios?: ServicioEvento[]
   paquetesSeleccionados?: string[] // IDs de PaqueteSalon seleccionados
+  /** Personal que trabaja el evento: impacta en Caja Eventos como sueldos a pagar */
+  personalEvento?: PersonalDelEvento[]
 
   horarioFin?: string
   condicionIVA?: "Consumidor Final" | "Responsable Inscripto" | "Monotributista" | "Exento"
@@ -746,6 +748,40 @@ export interface TemporadaPrecio {
 // ==========================================
 // PERSONAL Y PAGOS
 // ==========================================
+
+/**
+ * Funciones estándar del personal que trabaja en eventos.
+ * Se usan como sugerencias en Finanzas → Personal y en el generador de eventos.
+ */
+export const FUNCIONES_PERSONAL = [
+  "Coordinador",
+  "Metre",
+  "Mozo",
+  "Barman",
+  "Maestranza",
+  "Puerta",
+  "DJ",
+  "Técnica",
+  "Parrillero",
+  "Cocinero",
+  "Ayudante de cocina",
+  "Bachero",
+] as const
+
+/**
+ * Personal asignado a trabajar en un evento (cargado desde el generador de
+ * contrato/evento). El monto impacta en Caja Eventos como sueldo a pagar,
+ * con vencimiento en la fecha del evento.
+ */
+export interface PersonalDelEvento {
+  id: string
+  /** ID del PersonalEvento del roster (Finanzas → Personal) */
+  personalId: string
+  nombre: string
+  funcion: string
+  monto: number
+  pagado?: boolean
+}
 
 export interface PersonalEvento {
   id: string

@@ -210,6 +210,12 @@ export default function CajaEventosPage() {
       updateEvento(egreso.eventoId, { cocinaPagada: true })
     } else if (egreso.tipo === "barra") {
       updateEvento(egreso.eventoId, { barraPagada: true })
+    } else if (egreso.tipo === "sueldo") {
+      // Sueldo del personal del evento: marcar la entrada como pagada
+      const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
+        pe.id === egreso.servicioId ? { ...pe, pagado: true } : pe
+      )
+      updateEvento(egreso.eventoId, { personalEvento: nuevoPersonal })
     } else {
       // Servicio: matchear por servicioId exacto y marcar pagado + estadoPago,
       // así el indicador de servicios en /eventos/lista (que lee srv.pagado) se sincroniza.
@@ -239,7 +245,9 @@ export default function CajaEventosPage() {
         ? `Pago menú - ${egreso.eventoNombre}`
         : egreso.tipo === "barra"
           ? `Pago barra - ${egreso.eventoNombre}`
-          : `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`
+          : egreso.tipo === "sueldo"
+            ? `Pago sueldo ${egreso.servicioNombre} - ${egreso.eventoNombre}`
+            : `Pago ${egreso.tipo === "seña" ? "seña" : "saldo"} ${egreso.servicioNombre} - ${egreso.eventoNombre}`
 
     const movimiento: MovimientoCaja = {
       id: generateId(),
@@ -274,6 +282,12 @@ export default function CajaEventosPage() {
           updateEvento(pago.eventoId, { cocinaPagada: false })
         } else if (pago.tipoPago === "barra") {
           updateEvento(pago.eventoId, { barraPagada: false })
+        } else if (pago.tipoPago === "sueldo") {
+          // Revertir sueldo: la entrada de personal vuelve a pendiente
+          const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
+            `${pe.nombre} (${pe.funcion})` === pago.servicioNombre ? { ...pe, pagado: false } : pe
+          )
+          updateEvento(pago.eventoId, { personalEvento: nuevoPersonal })
         } else if (pago.tipoPago === "seña" || pago.tipoPago === "saldo") {
           const nuevosServicios = (evento.servicios ?? []).map((srv) => {
             if (srv.nombre !== pago.servicioNombre) return srv
@@ -722,10 +736,12 @@ export default function CajaEventosPage() {
                                   ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
                                   : eg.tipo === "barra"
                                     ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                                    : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+                                    : eg.tipo === "sueldo"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
+                                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Se��a" : eg.tipo === "menu" ? "Men��" : eg.tipo === "barra" ? "Barra" : "Saldo"}
+                            {eg.tipo === "seña" ? "Se��a" : eg.tipo === "menu" ? "Men��" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -821,10 +837,12 @@ export default function CajaEventosPage() {
                                   ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
                                   : eg.tipo === "barra"
                                     ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                                    : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+                                    : eg.tipo === "sueldo"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
+                                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
                             }
                           >
-                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : "Saldo"}
+                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
                           </Badge>
                         </TableCell>
                         <TableCell>

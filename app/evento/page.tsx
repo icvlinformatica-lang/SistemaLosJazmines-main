@@ -25,6 +25,7 @@ import {
   type EventoGuardado,
   type VersionContrato,
   type MovimientoCaja,
+  type PersonalDelEvento,
   detectarImpactosContrato,
   SALONES,
 } from "@/lib/store"
@@ -109,7 +110,7 @@ function EventoPageContent() {
   const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
-  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal } = useStore()
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
@@ -170,6 +171,7 @@ function EventoPageContent() {
     detalles: true,
     menu: false,
     barras: false,
+    personal: false,
     servicios: false,
     contrato: false,
   })
@@ -505,6 +507,7 @@ function EventoPageContent() {
       barras: evento.barras,
       servicios: evento.servicios,
       paquetesSeleccionados: evento.paquetesSeleccionados,
+      personalEvento: evento.personalEvento,
       contrato: {
         nombreCompleto: localContratoNombre || undefined,
         dni: localContratoDni || undefined,
@@ -1057,6 +1060,40 @@ function EventoPageContent() {
     updateEventoActual({ barras: [barraActualizada] })
   }
 
+  // ==================== PERSONAL DEL EVENTO ====================
+  // Roster activo cargado en Finanzas → Personal
+  const personalActivoRoster = (personal || []).filter((p) => p.activo)
+  const personalDelEvento = evento.personalEvento || []
+  const totalSueldosEvento = personalDelEvento.reduce((sum, pe) => sum + (pe.monto || 0), 0)
+
+  const togglePersonalEvento = (personalId: string) => {
+    const existente = personalDelEvento.find((pe) => pe.personalId === personalId)
+    if (existente) {
+      updateEventoActual({
+        personalEvento: personalDelEvento.filter((pe) => pe.personalId !== personalId),
+      })
+      return
+    }
+    const persona = personalActivoRoster.find((p) => p.id === personalId)
+    if (!persona) return
+    const nuevaEntrada: PersonalDelEvento = {
+      id: generateId(),
+      personalId: persona.id,
+      nombre: `${persona.nombre} ${persona.apellido}`.trim(),
+      funcion: persona.funcion,
+      monto: persona.tarifaBase || 0,
+    }
+    updateEventoActual({ personalEvento: [...personalDelEvento, nuevaEntrada] })
+  }
+
+  const updateMontoPersonalEvento = (personalId: string, monto: number) => {
+    updateEventoActual({
+      personalEvento: personalDelEvento.map((pe) =>
+        pe.personalId === personalId ? { ...pe, monto } : pe
+      ),
+    })
+  }
+
   // Service handlers removed - now using package selection
 
   return (
@@ -1458,6 +1495,106 @@ function EventoPageContent() {
             esBloqueado={esBloqueado}
             onToggle={toggleCoctelEvento}
           />
+        </SectionCard>
+
+        {/* ==================== PERSONAL DEL EVENTO ==================== */}
+        <SectionCard
+          sectionKey="personal"
+          icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><Users className="h-5 w-5 text-sky-600" /></div>}
+          title="Personal del Evento"
+          subtitle={
+            personalDelEvento.length > 0
+              ? `${personalDelEvento.length} persona${personalDelEvento.length > 1 ? "s" : ""} · ${formatCurrency(totalSueldosEvento)} en sueldos`
+              : "Selecciona el personal que trabajara este evento"
+          }
+          badge={
+            personalDelEvento.length > 0 ? (
+              <Badge variant="secondary" className="text-xs">{formatCurrency(totalSueldosEvento)}</Badge>
+            ) : undefined
+          }
+          locked={esBloqueado}
+        >
+          {personalActivoRoster.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
+              <Users className="h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No hay personal registrado</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ve a Finanzas → Personal para agregar coordinadores, mozos, barman, etc.
+              </p>
+              <Button asChild variant="outline" size="sm" className="mt-3">
+                <Link href="/finanzas/personal">Ir a Personal</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/70 border-b border-border">
+                      <th className="w-10 px-3 py-2" />
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Nombre</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Funcion</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-sky-700 uppercase tracking-wide">Sueldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {personalActivoRoster.map((persona, idx) => {
+                      const entrada = personalDelEvento.find((pe) => pe.personalId === persona.id)
+                      const seleccionado = !!entrada
+                      return (
+                        <tr
+                          key={persona.id}
+                          className={`${idx % 2 === 1 ? "bg-muted/30" : ""} ${seleccionado ? "bg-sky-50/60" : ""} border-b border-border last:border-0`}
+                        >
+                          <td className="px-3 py-2">
+                            <Checkbox
+                              checked={seleccionado}
+                              disabled={esBloqueado}
+                              onCheckedChange={() => togglePersonalEvento(persona.id)}
+                              aria-label={`Incluir a ${persona.nombre} ${persona.apellido}`}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <p className="font-medium">{persona.nombre} {persona.apellido}</p>
+                            <p className="text-xs text-muted-foreground sm:hidden">{persona.funcion}</p>
+                          </td>
+                          <td className="px-3 py-2 hidden sm:table-cell">
+                            <Badge variant="outline" className="text-xs">{persona.funcion}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {seleccionado ? (
+                              <MoneyInput
+                                value={entrada.monto}
+                                onChange={(v) => updateMontoPersonalEvento(persona.id, v)}
+                                disabled={esBloqueado}
+                                className="ml-auto h-8 w-32 text-right"
+                              />
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                {persona.tarifaBase > 0 ? formatCurrency(persona.tarifaBase) : "-"}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {personalDelEvento.length > 0 && (
+                <div className="flex items-center justify-between rounded-lg bg-sky-50 border border-sky-200 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-sky-900">Total sueldos del evento</p>
+                    <p className="text-xs text-sky-700">
+                      Impacta en Caja Eventos como sueldos a pagar, con vencimiento el dia del evento
+                    </p>
+                  </div>
+                  <p className="text-lg font-bold text-sky-900">{formatCurrency(totalSueldosEvento)}</p>
+                </div>
+              )}
+            </div>
+          )}
         </SectionCard>
 
 
