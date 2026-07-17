@@ -82,6 +82,7 @@ export default function PersonalPage() {
     deletePersonal,
     addPagoPersonal,
     updatePagoPersonal,
+    deletePagoPersonal,
     configuracionCajas,
     movimientosCaja,
     addMovimientoCaja,
@@ -96,6 +97,10 @@ export default function PersonalPage() {
   // Dialogo de asignar compromiso (evento + tarifa)
   const [dialogoCompromisoAbierto, setDialogoCompromisoAbierto] = useState(false)
   const [personaCompromisoId, setPersonaCompromisoId] = useState<string | null>(null)
+
+  // Dialogo de gestion de compromisos activos (lista por persona)
+  const [dialogoListaCompromisosAbierto, setDialogoListaCompromisosAbierto] = useState(false)
+  const [personaListaCompromisosId, setPersonaListaCompromisosId] = useState<string | null>(null)
   const [compromisoForm, setCompromisoForm] = useState({
     eventoId: "",
     tarifaId: "base", // "base" | id de tarifa | "manual"
@@ -152,21 +157,69 @@ export default function PersonalPage() {
     return true
   })
 
-  // Eventos disponibles para asignar compromisos (futuros primero)
+  // Eventos activos a la fecha del dia (hoy o futuros), ordenados por cercania
   const eventosParaCompromiso = useMemo(() => {
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
     return [...eventos]
-      .filter(e => e.fecha)
-      .sort((a, b) => {
-        const da = new Date(a.fecha + "T12:00:00").getTime()
-        const db = new Date(b.fecha + "T12:00:00").getTime()
-        const aFuturo = da >= hoy.getTime()
-        const bFuturo = db >= hoy.getTime()
-        if (aFuturo !== bFuturo) return aFuturo ? -1 : 1
-        return aFuturo ? da - db : db - da
-      })
+      .filter(e => e.fecha && new Date(e.fecha + "T23:59:59").getTime() >= hoy.getTime())
+      .sort((a, b) => new Date(a.fecha + "T12:00:00").getTime() - new Date(b.fecha + "T12:00:00").getTime())
   }, [eventos])
+
+  // === CONFLICTOS DE HORARIO ===
+  // Convierte "HH:MM" a minutos desde medianoche; null si no hay dato
+  const horaAMinutos = (hora?: string): number | null => {
+    if (!hora) return null
+    const m = hora.match(/(\d{1,2}):(\d{2})/)
+    if (!m) return null
+    return Number.parseInt(m[1], 10) * 60 + Number.parseInt(m[2], 10)
+  }
+
+  /**
+   * Verifica si asignar a una persona el evento dado genera conflicto con
+   * sus compromisos existentes: mismo dia y horario superpuesto.
+   * Si algun evento no tiene horario cargado, se considera que ocupa todo el dia.
+   */
+  const getConflictoAsignacion = (personaId: string, eventoId: string): { evento: typeof eventos[number]; motivo: string } | null => {
+    const eventoNuevo = eventos.find(e => e.id === eventoId)
+    if (!eventoNuevo?.fecha) return null
+
+    // Compromisos no pagados de la persona (activos)
+    const compromisosPersona = pagosPersonal.filter(p => p.personalId === personaId && p.estado !== "pagado")
+
+    for (const comp of compromisosPersona) {
+      // Ya asignado a este mismo evento
+      if (comp.eventoId === eventoId) {
+        return { evento: eventoNuevo, motivo: "Ya tiene un compromiso asignado en este evento" }
+      }
+      const eventoExistente = eventos.find(e => e.id === comp.eventoId)
+      if (!eventoExistente?.fecha) continue
+      if (eventoExistente.fecha !== eventoNuevo.fecha) continue
+
+      // Mismo dia: comparar horarios
+      const iniNuevo = horaAMinutos(eventoNuevo.horario)
+      const finNuevoRaw = horaAMinutos(eventoNuevo.horarioFin)
+      const iniExist = horaAMinutos(eventoExistente.horario)
+      const finExistRaw = horaAMinutos(eventoExistente.horarioFin)
+
+      // Sin horario en alguno de los dos → se considera todo el dia (conflicto)
+      if (iniNuevo === null || iniExist === null) {
+        return { evento: eventoExistente, motivo: "Mismo dia y sin horario definido (se considera todo el dia)" }
+      }
+
+      // Fin por defecto: inicio + 6hs; si cruza medianoche, sumar 24hs
+      let finNuevo = finNuevoRaw ?? iniNuevo + 360
+      if (finNuevo <= iniNuevo) finNuevo += 1440
+      let finExist = finExistRaw ?? iniExist + 360
+      if (finExist <= iniExist) finExist += 1440
+
+      const seSuperponen = iniNuevo < finExist && iniExist < finNuevo
+      if (seSuperponen) {
+        return { evento: eventoExistente, motivo: `Horario superpuesto (${eventoExistente.horario}${eventoExistente.horarioFin ? ` a ${eventoExistente.horarioFin}` : ""})` }
+      }
+    }
+    return null
+  }
 
   const handleAbrirDialogo = (p?: PersonalEvento) => {
     if (p) {
@@ -316,6 +369,17 @@ export default function PersonalPage() {
       return
     }
 
+    // Bloquear doble asignacion: mismo dia y mismo horario
+    const conflicto = getConflictoAsignacion(persona.id, evento.id)
+    if (conflicto) {
+      toast({
+        title: "Conflicto de agenda",
+        description: `${persona.nombre} ${persona.apellido} ya esta asignado a "${conflicto.evento.nombre || conflicto.evento.nombrePareja || "otro evento"}" el ${formatearFecha(conflicto.evento.fecha)}. ${conflicto.motivo}.`,
+        variant: "destructive",
+      })
+      return
+    }
+
     const tarifaSeleccionada = compromisoForm.tarifaId !== "base" && compromisoForm.tarifaId !== "manual"
       ? (persona.tarifas || []).find(t => t.id === compromisoForm.tarifaId)
       : null
@@ -339,6 +403,28 @@ export default function PersonalPage() {
     })
     setDialogoCompromisoAbierto(false)
   }
+
+  // === GESTION DE COMPROMISOS ACTIVOS (lista por persona) ===
+  const handleAbrirListaCompromisos = (personaId: string) => {
+    setPersonaListaCompromisosId(personaId)
+    setDialogoListaCompromisosAbierto(true)
+  }
+
+  const handleEliminarCompromiso = (compromisoId: string) => {
+    if (confirm("¿Eliminar este compromiso? Dejara de aparecer en Caja Eventos.")) {
+      deletePagoPersonal(compromisoId)
+      toast({ title: "Compromiso eliminado", variant: "destructive" })
+    }
+  }
+
+  // Compromisos activos (no pagados) de la persona seleccionada, con datos del evento
+  const compromisosActivosPersona = useMemo(() => {
+    if (!personaListaCompromisosId) return []
+    return pagosPersonal
+      .filter(p => p.personalId === personaListaCompromisosId && p.estado !== "pagado")
+      .map(p => ({ ...p, evento: eventos.find(e => e.id === p.eventoId) }))
+      .sort((a, b) => (a.fechaEvento || "").localeCompare(b.fechaEvento || ""))
+  }, [personaListaCompromisosId, pagosPersonal, eventos])
 
   // === COMPROMISOS FINANCIEROS ===
   const getCompromisosPersona = (personaId: string) => {
@@ -607,23 +693,33 @@ export default function PersonalPage() {
                     </div>
                   </td>
 
-                  {/* Compromisos activos */}
+                  {/* Compromisos activos (click para gestionar) */}
                   <td className="px-3 py-2">
-                    {compromisos.cantidad === 0 ? (
-                      <span className="text-xs text-muted-foreground/60 italic">Sin compromisos</span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[11px] bg-amber-50 text-amber-700 border-amber-200">
-                          {compromisos.cantidad} evento{compromisos.cantidad !== 1 ? "s" : ""}
-                        </Badge>
-                        <span className="text-xs font-semibold text-amber-700 tabular-nums">
-                          {formatearPrecio(compromisos.totalPendiente)}
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirListaCompromisos(persona.id)}
+                      className="flex items-center gap-2 rounded px-1.5 py-1 -mx-1.5 hover:bg-amber-50 transition-colors text-left w-full"
+                      title="Ver y gestionar compromisos de esta persona"
+                    >
+                      {compromisos.cantidad === 0 ? (
+                        <span className="text-xs text-muted-foreground/60 italic flex items-center gap-1">
+                          <Plus className="h-3 w-3" />
+                          Sin compromisos
                         </span>
-                        {compromisos.vencidos > 0 && (
-                          <Badge variant="destructive" className="text-[10px]">{compromisos.vencidos} venc.</Badge>
-                        )}
-                      </div>
-                    )}
+                      ) : (
+                        <>
+                          <Badge variant="outline" className="text-[11px] bg-amber-50 text-amber-700 border-amber-200">
+                            {compromisos.cantidad} evento{compromisos.cantidad !== 1 ? "s" : ""}
+                          </Badge>
+                          <span className="text-xs font-semibold text-amber-700 tabular-nums">
+                            {formatearPrecio(compromisos.totalPendiente)}
+                          </span>
+                          {compromisos.vencidos > 0 && (
+                            <Badge variant="destructive" className="text-[10px]">{compromisos.vencidos} venc.</Badge>
+                          )}
+                        </>
+                      )}
+                    </button>
                   </td>
 
                   {/* Acciones */}
@@ -674,6 +770,79 @@ export default function PersonalPage() {
         </table>
       </div>
 
+      {/* Dialogo de Gestion de Compromisos Activos */}
+      <Dialog open={dialogoListaCompromisosAbierto} onOpenChange={setDialogoListaCompromisosAbierto}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-amber-600" />
+              Compromisos Activos
+            </DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const p = personal.find(x => x.id === personaListaCompromisosId)
+                return p ? `Eventos asignados a ${p.nombre} ${p.apellido} (${p.funcion})` : ""
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {compromisosActivosPersona.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
+                Sin compromisos activos
+              </div>
+            ) : (
+              compromisosActivosPersona.map(comp => (
+                <div
+                  key={comp.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                      {comp.evento?.salon && <SalonDot salon={comp.evento.salon} size={8} />}
+                      {comp.evento?.nombre || comp.evento?.nombrePareja || "Evento eliminado"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {formatearFecha(comp.fechaEvento)}
+                      {comp.evento?.horario ? ` · ${comp.evento.horario}${comp.evento.horarioFin ? ` a ${comp.evento.horarioFin}` : "hs"}` : ""}
+                      {" · "}{comp.servicioNombre}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold text-amber-700 tabular-nums shrink-0">
+                    {formatearPrecio(comp.montoTotal - (comp.montoSeña || 0))}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => handleEliminarCompromiso(comp.id)}
+                    title="Eliminar compromiso"
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <DialogFooter className="flex-row justify-between sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogoListaCompromisosAbierto(false)
+                if (personaListaCompromisosId) handleAbrirDialogoCompromiso(personaListaCompromisosId)
+              }}
+            >
+              <CalendarPlus className="h-4 w-4 mr-2" />
+              Asignar a otro evento
+            </Button>
+            <Button variant="secondary" onClick={() => setDialogoListaCompromisosAbierto(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialogo de Asignar Compromiso a Evento */}
       <Dialog open={dialogoCompromisoAbierto} onOpenChange={setDialogoCompromisoAbierto}>
         <DialogContent className="max-w-lg">
@@ -705,19 +874,29 @@ export default function PersonalPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {eventosParaCompromiso.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No hay eventos creados</div>
+                    <div className="px-3 py-2 text-sm text-muted-foreground">No hay eventos activos desde hoy</div>
                   )}
-                  {eventosParaCompromiso.map(ev => (
-                    <SelectItem key={ev.id} value={ev.id}>
-                      <span className="flex items-center gap-2">
-                        {ev.salon && <SalonDot salon={ev.salon} size={8} />}
-                        <span className="font-medium">{ev.nombre || ev.nombrePareja || "Evento"}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {formatearFecha(ev.fecha)}{ev.salon ? ` · ${salonLabel(ev.salon)}` : ""}
+                  {eventosParaCompromiso.map(ev => {
+                    const conflicto = personaCompromisoId ? getConflictoAsignacion(personaCompromisoId, ev.id) : null
+                    return (
+                      <SelectItem key={ev.id} value={ev.id} disabled={!!conflicto}>
+                        <span className="flex items-center gap-2">
+                          {ev.salon && <SalonDot salon={ev.salon} size={8} />}
+                          <span className="font-medium">{ev.nombre || ev.nombrePareja || "Evento"}</span>
+                          <span className="text-muted-foreground text-xs">
+                            {formatearFecha(ev.fecha)}
+                            {ev.horario ? ` · ${ev.horario}${ev.horarioFin ? `-${ev.horarioFin}` : "hs"}` : ""}
+                            {ev.salon ? ` · ${salonLabel(ev.salon)}` : ""}
+                          </span>
+                          {conflicto && (
+                            <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">
+                              Ocupado
+                            </Badge>
+                          )}
                         </span>
-                      </span>
-                    </SelectItem>
-                  ))}
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
             </div>
