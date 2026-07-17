@@ -263,7 +263,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
-        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB, historialIPCDB] = await Promise.all([
+        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB, historialIPCDB, paquetesDB, temporadasDB] = await Promise.all([
           db.fetchServicios(),
           db.fetchPersonal(),
           db.fetchPagosPersonal(),
@@ -274,6 +274,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           db.fetchPreciosVenta(),
           db.fetchGastosArchivados(),
           db.fetchHistorialIPC(),
+          db.fetchPaquetesSalones(),
+          db.fetchTemporadas(),
         ])
 
         // Migración one-time: si Supabase devuelve vacío pero localStorage tiene precios, upsertearlos ahora
@@ -288,6 +290,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Migración one-time de paquetes de salones y temporadas:
+        // si Supabase está vacío pero quedaron datos en localStorage, subirlos ahora.
+        let paquetesMigrados = paquetesDB
+        const paquetesLocales = (localState.paquetesSalones || []).filter((p) => p && p.id)
+        if (paquetesDB.length === 0 && paquetesLocales.length > 0) {
+          await Promise.all(paquetesLocales.map((p) => db.upsertPaqueteSalon(p)))
+          paquetesMigrados = paquetesLocales
+        }
+        let temporadasMigradas = temporadasDB
+        const temporadasLocales = (localState.temporadas || []).filter((t) => t && t.id)
+        if (temporadasDB.length === 0 && temporadasLocales.length > 0) {
+          await Promise.all(temporadasLocales.map((t) => db.upsertTemporada(t)))
+          temporadasMigradas = temporadasLocales
+        }
+
         // Migración one-time de costos operativos (gastos fijos y variables):
         // si Supabase está vacío pero quedaron costos en localStorage, subirlos a la base.
         // A partir de ahí Supabase es la única fuente de verdad (no más localStorage/seed).
@@ -298,18 +315,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           costosMigrados = subidos.filter((c): c is NonNullable<typeof c> => c != null)
         }
 
+        // Migración one-time del resto de módulos financieros: si Supabase está
+        // vacío pero localStorage tiene datos, subirlos AHORA para que la base
+        // sea la única fuente de verdad (nunca más solo-localStorage).
+        let movimientosMigrados = movimientosDB
+        const movimientosLocales = (localState.movimientosCaja || []).filter((m) => m && m.id)
+        if (movimientosDB.length === 0 && movimientosLocales.length > 0) {
+          await Promise.all(movimientosLocales.map((m) => db.insertMovimientoCaja(m)))
+          movimientosMigrados = movimientosLocales
+        }
+        let pagosMigrados = pagosDB
+        const pagosLocales = (localState.pagosPersonal || []).filter((p) => p && p.id)
+        if (pagosDB.length === 0 && pagosLocales.length > 0) {
+          await Promise.all(pagosLocales.map((p) => db.upsertPagoPersonal(p)))
+          pagosMigrados = pagosLocales
+        }
+        let serviciosMigrados = serviciosDB
+        const serviciosLocales = (localState.servicios || []).filter((s) => s && s.id)
+        if (serviciosDB.length === 0 && serviciosLocales.length > 0) {
+          await Promise.all(serviciosLocales.map((s) => db.upsertServicio(s)))
+          serviciosMigrados = serviciosLocales
+        }
+        let personalMigrado = personalDB
+        const personalLocal = (localState.personal || []).filter((p) => p && p.id)
+        if (personalDB.length === 0 && personalLocal.length > 0) {
+          await Promise.all(personalLocal.map((p) => db.upsertPersonal(p)))
+          personalMigrado = personalLocal
+        }
+        let archivadosMigrados = archivadosDB
+        const archivadosLocales = (localState.gastosArchivados || []).filter((g) => g && g.id)
+        if (archivadosDB.length === 0 && archivadosLocales.length > 0) {
+          await Promise.all(archivadosLocales.map((g) => db.insertGastoArchivado(g)))
+          archivadosMigrados = archivadosLocales
+        }
+        // Configuración de cajas: si la base no tiene config pero local sí, subirla
+        let configMigrada = configDB
+        if (Object.keys(configDB).length <= 1 && localState.configuracionCajas) {
+          await db.upsertConfiguracionCajas(localState.configuracionCajas)
+          configMigrada = localState.configuracionCajas
+        }
+
         supabaseData = {
-          servicios: serviciosDB.length > 0 ? serviciosDB : localState.servicios,
-          personal: personalDB.length > 0 ? personalDB : localState.personal,
-          pagosPersonal: pagosDB.length > 0 ? pagosDB : localState.pagosPersonal,
+          servicios: serviciosMigrados,
+          personal: personalMigrado,
+          pagosPersonal: pagosMigrados,
           // Costos: SOLO Supabase (ya migrados arriba). Nunca caer al seed local.
           costosOperativos: costosMigrados,
           asignaciones: asignacionesDB.length > 0 ? asignacionesDB : localState.asignaciones,
-          movimientosCaja: movimientosDB.length > 0 ? movimientosDB : localState.movimientosCaja,
-          configuracionCajas: Object.keys(configDB).length > 1 ? configDB : localState.configuracionCajas,
+          movimientosCaja: movimientosMigrados,
+          configuracionCajas: configMigrada,
           preciosVenta: hayPreciosDB ? preciosDB : preciosLocal,
-          gastosArchivados: archivadosDB.length > 0 ? archivadosDB : (localState.gastosArchivados || []),
+          gastosArchivados: archivadosMigrados,
           historialIPC: historialIPCDB,
+          paquetesSalones: paquetesMigrados,
+          temporadas: temporadasMigradas,
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
@@ -368,6 +427,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         configuracionCajas: supabaseData.configuracionCajas,
         preciosVenta: supabaseData.preciosVenta ?? localState.preciosVenta ?? {},
         gastosArchivados: supabaseData.gastosArchivados ?? localState.gastosArchivados ?? [],
+        paquetesSalones: supabaseData.paquetesSalones ?? localState.paquetesSalones ?? [],
+        temporadas: supabaseData.temporadas ?? localState.temporadas ?? [],
         // Historial IPC: fuente de verdad = Supabase (compartido entre dispositivos).
         // ultimoMesIPC se deriva de la entrada más reciente para no re-aplicar el mismo mes.
         historialIPC: historialIPCDesdeDB ?? localState.historialIPC ?? [],
@@ -382,12 +443,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isHydrated) {
-      // Only save non-DB modules to localStorage to avoid stale data.
-      // costosOperativos vive solo en Supabase, así que también se excluye.
-      const { insumos, insumosBarra, recetas, cocteles, barrasTemplates, eventos, costosOperativos, ...localOnly } =
-        state
+      // Supabase es la ÚNICA fuente de verdad para todos los datos del negocio.
+      // En localStorage solo queda estado efímero de UI (eventoActual, historial de
+      // cálculos). Todos los módulos de datos se vacían para no dejar información
+      // financiera ni de clientes en el navegador.
       saveState({
-        ...localOnly,
+        ...state,
         insumos: [],
         insumosBarra: [],
         recetas: [],
@@ -395,6 +456,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         barrasTemplates: [],
         eventos: [],
         costosOperativos: [],
+        servicios: [],
+        personal: [],
+        pagosPersonal: [],
+        asignaciones: [],
+        movimientosCaja: [],
+        gastosArchivados: [],
+        historialIPC: [],
+        preciosVenta: {},
+        paquetesSalones: [],
+        temporadas: [],
+        // Config de cajas (saldos iniciales) también vive solo en Supabase;
+        // al omitirla, loadState() usa el default hasta que la DB la hidrate.
+        configuracionCajas: undefined as never,
       })
     }
   }, [state, isHydrated])
@@ -811,51 +885,101 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // === Paquetes de Salones ===
-  const addPaqueteSalon = (paquete: Omit<PaqueteSalon, "id">) => {
+  const addPaqueteSalon = async (paquete: Omit<PaqueteSalon, "id">) => {
+    const nuevo = { ...paquete, id: generateId() } as PaqueteSalon
     setState((prev) => ({
       ...prev,
-      paquetesSalones: [...(prev.paquetesSalones || []), { ...paquete, id: generateId() }],
+      paquetesSalones: [...(prev.paquetesSalones || []), nuevo],
     }))
+    try {
+      const { upsertPaqueteSalon } = await import("./supabase/data-service")
+      await upsertPaqueteSalon(nuevo)
+    } catch (error) {
+      console.error("[v0] Error syncing paquete salon to Supabase:", error)
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. El paquete no se guardó en la base; volvé a intentarlo.", variant: "destructive" })
+    }
   }
 
-  const updatePaqueteSalon = (id: string, updates: Partial<PaqueteSalon>) => {
+  const updatePaqueteSalon = async (id: string, updates: Partial<PaqueteSalon>) => {
+    const existing = state.paquetesSalones?.find((p) => p.id === id)
     setState((prev) => ({
       ...prev,
       paquetesSalones: (prev.paquetesSalones || []).map((p) =>
         p.id === id ? { ...p, ...updates } : p
       ),
     }))
+    try {
+      if (existing) {
+        const { upsertPaqueteSalon } = await import("./supabase/data-service")
+        await upsertPaqueteSalon({ ...existing, ...updates })
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing paquete salon update to Supabase:", error)
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. El cambio no se guardó en la base; volvé a intentarlo.", variant: "destructive" })
+    }
   }
 
-  const deletePaqueteSalon = (id: string) => {
+  const deletePaqueteSalon = async (id: string) => {
     setState((prev) => ({
       ...prev,
       paquetesSalones: (prev.paquetesSalones || []).filter((p) => p.id !== id),
     }))
+    try {
+      const { deletePaqueteSalon: deletePaq } = await import("./supabase/data-service")
+      await deletePaq(id)
+    } catch (error) {
+      console.error("[v0] Error deleting paquete salon from Supabase:", error)
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. El cambio no se guardó en la base; volvé a intentarlo.", variant: "destructive" })
+    }
   }
 
-  // === Temporadas ===
-  const addTemporada = (temporada: Omit<TemporadaPrecio, "id">) => {
+  // === Temporadas - Synced with Supabase ===
+  const addTemporada = async (temporada: Omit<TemporadaPrecio, "id">) => {
+    const nueva = { ...temporada, id: generateId() } as TemporadaPrecio
     setState((prev) => ({
       ...prev,
-      temporadas: [...(prev.temporadas || []), { ...temporada, id: generateId() }],
+      temporadas: [...(prev.temporadas || []), nueva],
     }))
+    try {
+      const { upsertTemporada } = await import("./supabase/data-service")
+      await upsertTemporada(nueva)
+    } catch (error) {
+      console.error("[v0] Error syncing temporada to Supabase:", error)
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. La temporada no se guardó en la base; volvé a intentarlo.", variant: "destructive" })
+    }
   }
 
-  const updateTemporada = (id: string, updates: Partial<TemporadaPrecio>) => {
+  const updateTemporada = async (id: string, updates: Partial<TemporadaPrecio>) => {
+    const existing = state.temporadas?.find((t) => t.id === id)
     setState((prev) => ({
       ...prev,
       temporadas: (prev.temporadas || []).map((t) =>
         t.id === id ? { ...t, ...updates } : t
       ),
     }))
+    try {
+      if (existing) {
+        const { upsertTemporada } = await import("./supabase/data-service")
+        await upsertTemporada({ ...existing, ...updates })
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing temporada update to Supabase:", error)
+      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. El cambio no se guardó en la base; volvé a intentarlo.", variant: "destructive" })
+    }
   }
 
-  const deleteTemporada = (id: string) => {
+  const deleteTemporada = async (id: string) => {
     setState((prev) => ({
       ...prev,
       temporadas: (prev.temporadas || []).filter((t) => t.id !== id),
     }))
+    try {
+      const { deleteTemporada: deleteTemp } = await import("./supabase/data-service")
+      await deleteTemp(id)
+    } catch (error) {
+      console.error("[v0] Error deleting temporada from Supabase:", error)
+      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. El cambio no se guardó en la base; volvé a intentarlo.", variant: "destructive" })
+    }
   }
 
   // === Personal - Synced with Supabase ===

@@ -890,3 +890,71 @@ export async function deletePrecioVenta(
     .delete()
     .eq("id", `${salon}-${fecha}`)
 }
+
+// === Paquetes de Salones (JSONB) ===
+
+import type { PaqueteSalon, TemporadaPrecio } from "@/lib/store"
+
+export async function fetchPaquetesSalones(): Promise<PaqueteSalon[]> {
+  const { data, error } = await supabase.from("paquetes_salones").select("id, data")
+  if (error) {
+    console.error("Error fetching paquetes_salones:", error)
+    return []
+  }
+  return (data || []).map((row) => ({ ...(row.data as PaqueteSalon), id: row.id }))
+}
+
+export async function upsertPaqueteSalon(paquete: PaqueteSalon): Promise<boolean> {
+  const { error } = await supabase.from("paquetes_salones").upsert({
+    id: paquete.id,
+    data: paquete,
+    updated_at: new Date().toISOString(),
+  })
+  if (error) {
+    console.error("Error upserting paquete_salon:", error)
+    return false
+  }
+  return true
+}
+
+export async function deletePaqueteSalon(id: string): Promise<boolean> {
+  const { error } = await supabase.from("paquetes_salones").delete().eq("id", id)
+  if (error) {
+    console.error("Error deleting paquete_salon:", error)
+    return false
+  }
+  return true
+}
+
+// === Temporadas de Precios (JSONB) ===
+
+export async function fetchTemporadas(): Promise<TemporadaPrecio[]> {
+  const { data, error } = await supabase.from("temporadas").select("id, data")
+  if (error) {
+    console.error("Error fetching temporadas:", error)
+    return []
+  }
+  return (data || []).map((row) => ({ ...(row.data as TemporadaPrecio), id: row.id }))
+}
+
+export async function upsertTemporada(temporada: TemporadaPrecio): Promise<boolean> {
+  const { error } = await supabase.from("temporadas").upsert({
+    id: temporada.id,
+    data: temporada,
+    updated_at: new Date().toISOString(),
+  })
+  if (error) {
+    console.error("Error upserting temporada:", error)
+    return false
+  }
+  return true
+}
+
+export async function deleteTemporada(id: string): Promise<boolean> {
+  const { error } = await supabase.from("temporadas").delete().eq("id", id)
+  if (error) {
+    console.error("Error deleting temporada:", error)
+    return false
+  }
+  return true
+}
