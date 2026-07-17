@@ -22,6 +22,8 @@ import {
   calcularComprasSegmentadas,
   type CalculoCompraSegmentado,
 } from "@/lib/store"
+import { salonLabel } from "@/lib/store"
+import { SalonDot } from "@/components/salon-badge"
 import { useEventos } from "@/lib/use-eventos"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
 import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
@@ -862,7 +864,12 @@ export default function EventosListaPage() {
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
               {SALONES.map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
+                <SelectItem key={s} value={s}>
+                  <span className="flex items-center gap-2">
+                    <SalonDot salon={s} size={8} />
+                    {salonLabel(s)}
+                  </span>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -971,8 +978,12 @@ export default function EventosListaPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
-                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-sm">{evento.salon || "-"}</span>
+                            {evento.salon ? (
+                              <SalonDot salon={evento.salon} size={9} />
+                            ) : (
+                              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                            <span className="text-sm">{evento.salon ? salonLabel(evento.salon) : "-"}</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">

@@ -10,7 +10,6 @@ import {
   formatCurrency,
   salonColor,
   salonLabel,
-  SALONES,
   type EventoGuardado,
   type EstadoEvento,
   type PagoEvento,
@@ -1280,7 +1279,14 @@ export default function CalendarioPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Salon:</span>{" "}
-                      <span className="font-medium">{selectedEvento.salon || "-"}</span>
+                      {selectedEvento.salon ? (
+                        <span className="font-medium inline-flex items-center gap-1.5">
+                          <SalonDot salon={selectedEvento.salon} size={9} />
+                          {salonLabel(selectedEvento.salon)}
+                        </span>
+                      ) : (
+                        <span className="font-medium">-</span>
+                      )}
                     </div>
                     {selectedEvento.dniNovio1 && (
                       <div>
