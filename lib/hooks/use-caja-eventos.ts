@@ -269,6 +269,32 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         }
       }
 
+      // --- COMPROMISOS de personal asignados manualmente (Finanzas → Personal) ---
+      // Vencen en su fechaLimitePago (por defecto, el día del evento).
+      const compromisosEvento = (state.pagosPersonal || []).filter(
+        (pp) => pp.eventoId === evento.id && pp.estado !== "pagado"
+      )
+      for (const pp of compromisosEvento) {
+        const montoPendiente = pp.montoTotal - (pp.montoSeña || 0)
+        if (montoPendiente <= 0) continue
+        const fechaVenc = pp.fechaLimitePago || pp.fechaEvento || evento.fecha
+        if (!fechaVenc) continue
+        const fechaVencDate = parseLocalDate(fechaVenc)
+        egresosPendientes.push({
+          id: `${evento.id}-compromiso-${pp.id}`,
+          eventoId: evento.id,
+          eventoNombre,
+          salon: evento.salon || "",
+          servicioNombre: `${pp.nombrePersonal} (${pp.servicioNombre})`,
+          servicioId: pp.id,
+          tipo: "sueldo",
+          monto: montoPendiente,
+          fechaVencimiento: fechaVenc,
+          diasRestantes: Math.ceil((fechaVencDate.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+          estadoPago: "saldo_pendiente",
+        })
+      }
+
       // --- SUELDOS del personal del evento ---
       // Cargados desde el generador de evento/contrato (sección Personal).
       // Vencen el mismo día del evento.

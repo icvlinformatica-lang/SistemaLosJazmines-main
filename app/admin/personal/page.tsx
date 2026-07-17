@@ -41,8 +41,33 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Search,
+  CalendarPlus,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { SalonDot } from "@/components/salon-badge"
+import { salonLabel } from "@/lib/store"
 import type { PersonalEvento, PagoPersonal } from "@/lib/store"
+
+// Colores de badge por función (estilo Servicios)
+const FUNCION_COLORS: Record<string, string> = {
+  "Coordinador": "bg-blue-50 text-blue-700 border-blue-200",
+  "Metre": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "Mozo": "bg-cyan-50 text-cyan-700 border-cyan-200",
+  "Barman": "bg-violet-50 text-violet-700 border-violet-200",
+  "Maestranza": "bg-slate-50 text-slate-700 border-slate-200",
+  "Puerta": "bg-stone-50 text-stone-700 border-stone-200",
+  "DJ": "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  "Técnica": "bg-purple-50 text-purple-700 border-purple-200",
+  "Parrillero": "bg-orange-50 text-orange-700 border-orange-200",
+  "Cocinero": "bg-amber-50 text-amber-700 border-amber-200",
+  "Ayudante de cocina": "bg-yellow-50 text-yellow-700 border-yellow-200",
+  "Bachero": "bg-teal-50 text-teal-700 border-teal-200",
+}
+
+function funcionColor(funcion: string): string {
+  return FUNCION_COLORS[funcion] || "bg-gray-50 text-gray-700 border-gray-200"
+}
 
 type Tarifa = { id: string; descripcion: string; monto: number }
 
@@ -55,6 +80,7 @@ export default function PersonalPage() {
     addPersonal,
     updatePersonal,
     deletePersonal,
+    addPagoPersonal,
     updatePagoPersonal,
     configuracionCajas,
     movimientosCaja,
@@ -65,6 +91,17 @@ export default function PersonalPage() {
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
   const [personalEditando, setPersonalEditando] = useState<PersonalEvento | null>(null)
   const [filtroFuncion, setFiltroFuncion] = useState<string>("todas")
+  const [busqueda, setBusqueda] = useState("")
+
+  // Dialogo de asignar compromiso (evento + tarifa)
+  const [dialogoCompromisoAbierto, setDialogoCompromisoAbierto] = useState(false)
+  const [personaCompromisoId, setPersonaCompromisoId] = useState<string | null>(null)
+  const [compromisoForm, setCompromisoForm] = useState({
+    eventoId: "",
+    tarifaId: "base", // "base" | id de tarifa | "manual"
+    monto: 0,
+    descripcion: "",
+  })
 
   // Dialogo de tarifas
   const [dialogoTarifaAbierto, setDialogoTarifaAbierto] = useState(false)
@@ -102,9 +139,34 @@ export default function PersonalPage() {
 
   const funciones = Array.from(new Set(personal.map(p => p.funcion))).filter(Boolean)
   const personalActivo = personal.filter(p => p.activo)
-  const personalFiltrado = filtroFuncion === "todas" 
-    ? personalActivo 
-    : personalActivo.filter(p => p.funcion === filtroFuncion)
+  const personalFiltrado = personalActivo.filter(p => {
+    if (filtroFuncion !== "todas" && p.funcion !== filtroFuncion) return false
+    if (busqueda) {
+      const q = busqueda.toLowerCase()
+      return (
+        `${p.nombre} ${p.apellido}`.toLowerCase().includes(q) ||
+        p.funcion.toLowerCase().includes(q) ||
+        (p.telefono || "").includes(q)
+      )
+    }
+    return true
+  })
+
+  // Eventos disponibles para asignar compromisos (futuros primero)
+  const eventosParaCompromiso = useMemo(() => {
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+    return [...eventos]
+      .filter(e => e.fecha)
+      .sort((a, b) => {
+        const da = new Date(a.fecha + "T12:00:00").getTime()
+        const db = new Date(b.fecha + "T12:00:00").getTime()
+        const aFuturo = da >= hoy.getTime()
+        const bFuturo = db >= hoy.getTime()
+        if (aFuturo !== bFuturo) return aFuturo ? -1 : 1
+        return aFuturo ? da - db : db - da
+      })
+  }, [eventos])
 
   const handleAbrirDialogo = (p?: PersonalEvento) => {
     if (p) {
@@ -216,6 +278,68 @@ export default function PersonalPage() {
     toast({ title: "Tarifa eliminada", variant: "destructive" })
   }
 
+  // === ASIGNAR COMPROMISO MANUAL (evento + tarifa) ===
+  const handleAbrirDialogoCompromiso = (personaId: string) => {
+    const persona = personal.find(p => p.id === personaId)
+    setPersonaCompromisoId(personaId)
+    setCompromisoForm({
+      eventoId: "",
+      tarifaId: "base",
+      monto: persona?.tarifaBase || 0,
+      descripcion: "",
+    })
+    setDialogoCompromisoAbierto(true)
+  }
+
+  const handleSeleccionTarifaCompromiso = (tarifaId: string) => {
+    const persona = personal.find(p => p.id === personaCompromisoId)
+    if (!persona) return
+    let monto = compromisoForm.monto
+    if (tarifaId === "base") {
+      monto = persona.tarifaBase || 0
+    } else if (tarifaId !== "manual") {
+      const tarifa = (persona.tarifas || []).find(t => t.id === tarifaId)
+      if (tarifa) monto = tarifa.monto
+    }
+    setCompromisoForm(prev => ({ ...prev, tarifaId, monto }))
+  }
+
+  const handleGuardarCompromiso = () => {
+    const persona = personal.find(p => p.id === personaCompromisoId)
+    const evento = eventos.find(e => e.id === compromisoForm.eventoId)
+    if (!persona || !evento) {
+      toast({ title: "Error", description: "Selecciona un evento", variant: "destructive" })
+      return
+    }
+    if (!compromisoForm.monto || compromisoForm.monto <= 0) {
+      toast({ title: "Error", description: "Ingresa un monto valido", variant: "destructive" })
+      return
+    }
+
+    const tarifaSeleccionada = compromisoForm.tarifaId !== "base" && compromisoForm.tarifaId !== "manual"
+      ? (persona.tarifas || []).find(t => t.id === compromisoForm.tarifaId)
+      : null
+
+    addPagoPersonal({
+      personalId: persona.id,
+      eventoId: evento.id,
+      nombrePersonal: `${persona.nombre} ${persona.apellido}`.trim(),
+      servicioNombre: compromisoForm.descripcion || tarifaSeleccionada?.descripcion || persona.funcion,
+      montoTotal: compromisoForm.monto,
+      fechaEvento: evento.fecha,
+      // Vence el mismo dia del evento
+      fechaLimitePago: evento.fecha,
+      estado: "pendiente",
+      tarifaId: tarifaSeleccionada?.id,
+    })
+
+    toast({
+      title: "Compromiso asignado",
+      description: `${persona.nombre} ${persona.apellido} - ${formatearPrecio(compromisoForm.monto)} para "${evento.nombre || evento.nombrePareja || "evento"}"`,
+    })
+    setDialogoCompromisoAbierto(false)
+  }
+
   // === COMPROMISOS FINANCIEROS ===
   const getCompromisosPersona = (personaId: string) => {
     const pagos = pagosPersonal.filter(p => p.personalId === personaId && p.estado !== "pagado")
@@ -323,12 +447,13 @@ export default function PersonalPage() {
   const historialPagos = personaHistorialId ? getHistorialPersona(personaHistorialId) : []
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="container mx-auto p-6 space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Gestion de Personal</h1>
-          <p className="text-muted-foreground">
-            Administra el personal, tarifas y compromisos financieros
+          <h1 className="text-2xl font-bold tracking-tight">Gestion de Personal</h1>
+          <p className="text-sm text-muted-foreground">
+            Administra el personal, tarifas y compromisos por evento
           </p>
         </div>
         <Button onClick={() => handleAbrirDialogo()}>
@@ -337,187 +462,331 @@ export default function PersonalPage() {
         </Button>
       </div>
 
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4 items-center">
-            <Label>Filtrar por funcion:</Label>
-            <Select value={filtroFuncion} onValueChange={setFiltroFuncion}>
-              <SelectTrigger className="w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas las funciones</SelectItem>
-                {funciones.map(funcion => (
-                  <SelectItem key={funcion} value={funcion}>
-                    {funcion}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Badge variant="outline" className="ml-auto">
-              {personalFiltrado.length} personas
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Lista de Personal */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {personalFiltrado.map((persona) => {
-          const compromisos = getCompromisosPersona(persona.id)
-          const tarifas = persona.tarifas || []
-          const servicioVinculado = servicios.find(s => s.id === persona.servicioVinculadoId)
-
-          return (
-            <Card key={persona.id} className="border-l-4 border-l-blue-500">
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-blue-100 p-2 rounded-full">
-                      <User className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg">
-                        {persona.nombre} {persona.apellido}
-                      </CardTitle>
-                      <CardDescription className="flex items-center gap-2">
-                        <Briefcase className="h-3 w-3" />
-                        {persona.funcion}
-                        {servicioVinculado && (
-                          <Badge variant="outline" className="text-[10px] ml-1">
-                            {servicioVinculado.nombre}
-                          </Badge>
-                        )}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleAbrirDialogo(persona)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEliminar(persona.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                {/* Info basica */}
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5" />
-                    <span>{persona.telefono}</span>
-                  </div>
-                  {persona.cuentaBancaria?.alias && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <CreditCard className="h-3.5 w-3.5" />
-                      <span className="truncate">{persona.cuentaBancaria.alias}</span>
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Tarifas */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-green-600" />
-                      Tarifas
-                    </span>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleAbrirDialogoTarifa(persona.id)}>
-                      <Plus className="h-3 w-3 mr-1" />
-                      Agregar
-                    </Button>
-                  </div>
-
-                  {tarifas.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">Sin tarifas configuradas</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {tarifas.map(tarifa => (
-                        <div key={tarifa.id} className="flex items-center justify-between bg-muted/50 rounded px-2 py-1.5">
-                          <span className="text-sm truncate flex-1">{tarifa.descripcion}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-green-600">{formatearPrecio(tarifa.monto)}</span>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAbrirDialogoTarifa(persona.id, tarifa)}>
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEliminarTarifa(persona.id, tarifa.id)}>
-                              <Trash2 className="h-3 w-3 text-red-500" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Compromisos activos */}
-                <div className="space-y-2">
-                  <span className="text-sm font-medium flex items-center gap-2">
-                    <Banknote className="h-4 w-4 text-amber-600" />
-                    Compromisos Activos
-                    {compromisos.vencidos > 0 && (
-                      <Badge variant="destructive" className="ml-auto">{compromisos.vencidos} vencidos</Badge>
-                    )}
-                  </span>
-
-                  {compromisos.cantidad === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">Sin compromisos pendientes</p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="text-center p-2 bg-blue-50 rounded">
-                        <p className="text-xs text-muted-foreground">Comprometido</p>
-                        <p className="text-sm font-semibold text-blue-700">{formatearPrecio(compromisos.totalComprometido)}</p>
-                      </div>
-                      <div className="text-center p-2 bg-green-50 rounded">
-                        <p className="text-xs text-muted-foreground">Senado</p>
-                        <p className="text-sm font-semibold text-green-700">{formatearPrecio(compromisos.totalSeñado)}</p>
-                      </div>
-                      <div className="text-center p-2 bg-amber-50 rounded">
-                        <p className="text-xs text-muted-foreground">Pendiente</p>
-                        <p className="text-sm font-semibold text-amber-700">{formatearPrecio(compromisos.totalPendiente)}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Boton historial */}
-                <Button variant="outline" className="w-full" size="sm" onClick={() => handleAbrirHistorial(persona.id)}>
-                  <History className="h-4 w-4 mr-2" />
-                  Ver Historial de Eventos
-                </Button>
-              </CardContent>
-            </Card>
-          )
-        })}
+      {/* Toolbar (estilo Servicios) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, funcion o telefono..."
+            className="pl-8 h-9"
+          />
+        </div>
+        <Select value={filtroFuncion} onValueChange={setFiltroFuncion}>
+          <SelectTrigger className="w-52 h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas las funciones</SelectItem>
+            {funciones.map(funcion => (
+              <SelectItem key={funcion} value={funcion}>
+                <Badge variant="outline" className={cn("text-[11px] font-medium", funcionColor(funcion))}>
+                  {funcion}
+                </Badge>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Badge variant="outline" className="ml-auto h-9 px-3 flex items-center">
+          {personalFiltrado.length} persona{personalFiltrado.length !== 1 ? "s" : ""}
+        </Badge>
       </div>
 
-      {personalFiltrado.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <User className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground mb-4">No hay personal registrado</p>
-            <Button onClick={() => handleAbrirDialogo()}>
-              <Plus className="h-4 w-4 mr-2" />
-              Agregar Primer Personal
+      {/* Tabla de Personal (estilo Servicios) */}
+      <div className="rounded-lg border border-border bg-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[980px]">
+          <thead>
+            <tr className="border-b border-border bg-muted/60">
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground w-[44px] text-xs uppercase tracking-wide">#</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Nombre</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[160px]">Funcion</th>
+              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[130px]">
+                <span className="flex items-center justify-end gap-1 text-emerald-700">
+                  <DollarSign className="h-3.5 w-3.5" />
+                  Tarifa base
+                </span>
+              </th>
+              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Tarifas</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wide w-[240px]">
+                <span className="flex items-center gap-1 text-amber-700">
+                  <Banknote className="h-3.5 w-3.5" />
+                  Compromisos activos
+                </span>
+              </th>
+              <th className="px-2 py-2.5 w-[160px]" />
+            </tr>
+          </thead>
+          <tbody>
+            {personalFiltrado.length === 0 && (
+              <tr>
+                <td colSpan={7} className="text-center py-16 text-muted-foreground">
+                  {busqueda || filtroFuncion !== "todas" ? (
+                    "No se encontro personal con esos filtros."
+                  ) : (
+                    <span className="flex flex-col items-center gap-3">
+                      <User className="h-10 w-10 text-muted-foreground/50" />
+                      No hay personal registrado
+                      <Button size="sm" onClick={() => handleAbrirDialogo()}>
+                        <Plus className="h-4 w-4 mr-1" />
+                        Agregar Primer Personal
+                      </Button>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            )}
+
+            {personalFiltrado.map((persona, idx) => {
+              const compromisos = getCompromisosPersona(persona.id)
+              const tarifas = persona.tarifas || []
+              return (
+                <tr
+                  key={persona.id}
+                  className={cn(
+                    "border-b border-border/60 hover:bg-muted/30 transition-colors group",
+                    idx % 2 === 0 ? "bg-card" : "bg-muted/10"
+                  )}
+                >
+                  {/* Nro fila */}
+                  <td className="px-3 py-2 text-muted-foreground/50 text-xs tabular-nums select-none">
+                    {idx + 1}
+                  </td>
+
+                  {/* Nombre + telefono */}
+                  <td className="px-3 py-2 min-w-[180px]">
+                    <p className="font-medium leading-tight">{persona.nombre} {persona.apellido}</p>
+                    {persona.telefono && (
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Phone className="h-3 w-3" />
+                        {persona.telefono}
+                      </p>
+                    )}
+                  </td>
+
+                  {/* Funcion */}
+                  <td className="px-3 py-2">
+                    <Badge variant="outline" className={cn("text-[11px] font-medium px-1.5 py-0 border", funcionColor(persona.funcion))}>
+                      {persona.funcion}
+                    </Badge>
+                  </td>
+
+                  {/* Tarifa base */}
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {persona.tarifaBase > 0 ? (
+                      <span className="font-semibold text-emerald-700">{formatearPrecio(persona.tarifaBase)}</span>
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
+                  </td>
+
+                  {/* Tarifas adicionales */}
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {tarifas.map(tarifa => (
+                        <button
+                          key={tarifa.id}
+                          type="button"
+                          onClick={() => handleAbrirDialogoTarifa(persona.id, tarifa)}
+                          className="inline-flex items-center gap-1 rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[11px] hover:bg-muted transition-colors"
+                          title={`Editar tarifa: ${tarifa.descripcion}`}
+                        >
+                          <span className="max-w-[90px] truncate">{tarifa.descripcion}</span>
+                          <span className="font-semibold text-emerald-700">{formatearPrecio(tarifa.monto)}</span>
+                        </button>
+                      ))}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleAbrirDialogoTarifa(persona.id)}
+                        title="Agregar tarifa"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </td>
+
+                  {/* Compromisos activos */}
+                  <td className="px-3 py-2">
+                    {compromisos.cantidad === 0 ? (
+                      <span className="text-xs text-muted-foreground/60 italic">Sin compromisos</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[11px] bg-amber-50 text-amber-700 border-amber-200">
+                          {compromisos.cantidad} evento{compromisos.cantidad !== 1 ? "s" : ""}
+                        </Badge>
+                        <span className="text-xs font-semibold text-amber-700 tabular-nums">
+                          {formatearPrecio(compromisos.totalPendiente)}
+                        </span>
+                        {compromisos.vencidos > 0 && (
+                          <Badge variant="destructive" className="text-[10px]">{compromisos.vencidos} venc.</Badge>
+                        )}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Acciones */}
+                  <td className="px-2 py-2">
+                    <div className="flex items-center justify-end gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-sky-600 hover:text-sky-700"
+                        onClick={() => handleAbrirDialogoCompromiso(persona.id)}
+                        title="Asignar compromiso a un evento"
+                      >
+                        <CalendarPlus className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleAbrirHistorial(persona.id)}
+                        title="Ver historial de eventos"
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleAbrirDialogo(persona)}
+                        title="Editar"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleEliminar(persona.id)}
+                        title="Eliminar"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Dialogo de Asignar Compromiso a Evento */}
+      <Dialog open={dialogoCompromisoAbierto} onOpenChange={setDialogoCompromisoAbierto}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5 text-sky-600" />
+              Asignar Compromiso
+            </DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const p = personal.find(x => x.id === personaCompromisoId)
+                return p
+                  ? `Asigna a ${p.nombre} ${p.apellido} (${p.funcion}) a un evento con su tarifa.`
+                  : "Selecciona el evento y la tarifa."
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Evento */}
+            <div className="space-y-2">
+              <Label>Evento</Label>
+              <Select
+                value={compromisoForm.eventoId}
+                onValueChange={(v) => setCompromisoForm(prev => ({ ...prev, eventoId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un evento..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {eventosParaCompromiso.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">No hay eventos creados</div>
+                  )}
+                  {eventosParaCompromiso.map(ev => (
+                    <SelectItem key={ev.id} value={ev.id}>
+                      <span className="flex items-center gap-2">
+                        {ev.salon && <SalonDot salon={ev.salon} size={8} />}
+                        <span className="font-medium">{ev.nombre || ev.nombrePareja || "Evento"}</span>
+                        <span className="text-muted-foreground text-xs">
+                          {formatearFecha(ev.fecha)}{ev.salon ? ` · ${salonLabel(ev.salon)}` : ""}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Tarifa */}
+            <div className="space-y-2">
+              <Label>Tarifa</Label>
+              <Select
+                value={compromisoForm.tarifaId}
+                onValueChange={handleSeleccionTarifaCompromiso}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(() => {
+                    const p = personal.find(x => x.id === personaCompromisoId)
+                    return (
+                      <>
+                        <SelectItem value="base">
+                          Tarifa base {p && p.tarifaBase > 0 ? `(${formatearPrecio(p.tarifaBase)})` : ""}
+                        </SelectItem>
+                        {(p?.tarifas || []).map(t => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.descripcion} ({formatearPrecio(t.monto)})
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="manual">Monto manual</SelectItem>
+                      </>
+                    )
+                  })()}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Monto */}
+            <div className="space-y-2">
+              <Label>Monto a pagar</Label>
+              <MoneyInput
+                value={compromisoForm.monto}
+                onChange={(v) => setCompromisoForm(prev => ({ ...prev, monto: v, tarifaId: "manual" }))}
+              />
+            </div>
+
+            {/* Descripcion opcional */}
+            <div className="space-y-2">
+              <Label>Descripcion (opcional)</Label>
+              <Input
+                value={compromisoForm.descripcion}
+                onChange={(e) => setCompromisoForm(prev => ({ ...prev, descripcion: e.target.value }))}
+                placeholder="Ej: Servicio de coordinacion, horas extra..."
+              />
+            </div>
+
+            <div className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2.5 text-xs text-sky-800 leading-relaxed">
+              El compromiso vence el dia del evento y aparece en Caja Eventos como sueldo a pagar para esa fecha.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogoCompromisoAbierto(false)}>
+              Cancelar
             </Button>
-          </CardContent>
-        </Card>
-      )}
+            <Button onClick={handleGuardarCompromiso}>
+              Asignar Compromiso
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialogo de Crear/Editar Persona */}
       <Dialog open={dialogoAbierto} onOpenChange={setDialogoAbierto}>
