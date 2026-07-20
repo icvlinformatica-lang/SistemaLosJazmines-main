@@ -809,6 +809,7 @@ function DialogoServicio({
                     <SelectItem value="Fijo">Fijo</SelectItem>
                     <SelectItem value="Por Persona">Por Persona</SelectItem>
                     <SelectItem value="Por Hora">Por Hora</SelectItem>
+                    <SelectItem value="Por Cantidad">Por Cantidad</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
