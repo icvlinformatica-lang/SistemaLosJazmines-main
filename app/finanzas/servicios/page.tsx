@@ -50,7 +50,7 @@ const CATEGORIAS: CategoriaServicio[] = [
   "Otros",
 ]
 
-const UNIDADES = ["Fijo", "Por Persona", "Por Hora"] as const
+const UNIDADES = ["Fijo", "Por Persona", "Por Hora", "Por Cantidad"] as const
 
 const CATEGORIA_COLORS: Record<CategoriaServicio, string> = {
   "Salon y Espacio":    "bg-blue-50 text-blue-700 border-blue-200",

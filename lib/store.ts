@@ -285,7 +285,7 @@ export interface Servicio {
   /** Días antes del evento en que vence el pago del saldo final (ej: 7). */
   diasAnticipacionSaldo: number
 
-  unidad: "Fijo" | "Por Persona" | "Por Hora"
+  unidad: "Fijo" | "Por Persona" | "Por Hora" | "Por Cantidad"
   proveedor?: string
   notas?: string
   activo: boolean
@@ -296,7 +296,7 @@ export interface ServicioEvento {
   nombre: string
   cantidad: number
   // precioUnitario se obtiene dinámicamente con obtenerPreciosServicio()
-  unidad: "Fijo" | "Por Persona" | "Por Hora"
+  unidad: "Fijo" | "Por Persona" | "Por Hora" | "Por Cantidad"
   notas?: string
   proveedor?: string
   pagado?: boolean
@@ -710,7 +710,7 @@ export interface PaqueteSalon {
     categoria: CategoriaServicio
     precioInterno: number
     precioOficial: number
-    unidad: "Fijo" | "Por Persona" | "Por Hora"
+    unidad: "Fijo" | "Por Persona" | "Por Hora" | "Por Cantidad"
     cantidad?: number
     notas?: string
   }>

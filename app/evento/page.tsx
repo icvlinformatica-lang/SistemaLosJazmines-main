@@ -1668,9 +1668,11 @@ function EventoPageContent() {
                     }
 
                     const esPorHora = servicio.unidad === "Por Hora"
+                    const esPorCantidad = servicio.unidad === "Por Cantidad"
+                    const usaCantidad = esPorHora || esPorCantidad
                     const servicioEnEvento = serviciosEvento.find(se => se.servicioId === servicio.id)
                     const horas = servicioEnEvento?.cantidad ?? 1
-                    const precioTotal = esPorHora ? precioVenta * horas : precioVenta
+                    const precioTotal = usaCantidad ? precioVenta * horas : precioVenta
 
                     const handleHoras = (e: React.ChangeEvent<HTMLInputElement>) => {
                       e.stopPropagation()
@@ -1739,12 +1741,14 @@ function EventoPageContent() {
                           {servicio.descripcion && (
                             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{servicio.descripcion}</p>
                           )}
-                          {esPorHora && seleccionado && (
+                          {usaCantidad && seleccionado && (
                             <div
                               className="flex items-center gap-1.5 mt-1.5"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <label className="text-xs text-muted-foreground whitespace-nowrap">Horas:</label>
+                              <label className="text-xs text-muted-foreground whitespace-nowrap">
+                                {esPorHora ? "Horas:" : "Cantidad:"}
+                              </label>
                               <input
                                 type="number"
                                 min={1}
@@ -1752,11 +1756,13 @@ function EventoPageContent() {
                                 onChange={handleHoras}
                                 className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
                               />
-                              <span className="text-xs text-muted-foreground">h</span>
+                              {esPorHora && <span className="text-xs text-muted-foreground">h</span>}
                             </div>
                           )}
-                          {esPorHora && !seleccionado && (
-                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">Por hora</p>
+                          {usaCantidad && !seleccionado && (
+                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                              {esPorHora ? "Por hora" : "Por cantidad"}
+                            </p>
                           )}
                         </td>
 
@@ -1771,9 +1777,9 @@ function EventoPageContent() {
                             ? (
                               <span>
                                 {fmt(precioTotal)}
-                                {esPorHora && seleccionado && horas > 1 && (
+                                {usaCantidad && seleccionado && horas > 1 && (
                                   <span className="block text-[11px] font-normal text-muted-foreground">
-                                    {fmt(precioVenta)}/h × {horas}
+                                    {fmt(precioVenta)}{esPorHora ? "/h" : "/u"} × {horas}
                                   </span>
                                 )}
                               </span>
@@ -1798,8 +1804,8 @@ function EventoPageContent() {
                           serviciosEvento.reduce((sum, se) => {
                             const cat = catalogoServicios.find(s => s.id === se.servicioId)
                             const precio = cat?.precioVenta ?? 0
-                            const horas = (cat?.unidad === "Por Hora") ? (se.cantidad ?? 1) : 1
-                            return sum + precio * horas
+                            const multCantidad = (cat?.unidad === "Por Hora" || cat?.unidad === "Por Cantidad") ? (se.cantidad ?? 1) : 1
+                            return sum + precio * multCantidad
                           }, 0)
                         )}
                       </td>
