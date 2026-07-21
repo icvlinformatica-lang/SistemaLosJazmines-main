@@ -1156,12 +1156,10 @@ export default function CajaJazminePage() {
             {(() => {
               const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
               const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
-              const eventosMes = new Set(cuotasMes.map((c) => c.eventoId)).size
               if (cuotasMes.length === 0) return null
               return (
-                <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}>
-                  {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"} de {eventosMes}{" "}
-                  {eventosMes === 1 ? "evento" : "eventos"} vienen a pagar este mes
+                <p className={`text-sm font-semibold mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                  {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
                 </p>
               )
             })()}
