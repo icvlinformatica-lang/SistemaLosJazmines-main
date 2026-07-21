@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Calendar, Percent, Banknote, ChevronDown, ChevronUp, UserCheck } from "lucide-react"
+import { ArrowLeft, Calendar, Percent, Banknote, ChevronDown, ChevronUp, UserCheck, Eye, EyeOff, TrendingUp } from "lucide-react"
 
 // Emojis disponibles como foto de perfil
 const EMOJIS_PERFIL = [
@@ -35,6 +35,14 @@ function totalVentaEvento(e: EventoGuardado): number {
   return e.precioVenta || 0
 }
 
+/** Fecha en que se vendió el evento: inicio del plan de cuotas o, si no hay, la fecha del evento */
+function fechaVentaEvento(e: EventoGuardado): string {
+  return e.planDeCuotas?.fechaInicioPlan || e.fecha || ""
+}
+
+/** Texto usado para tapar montos cuando el ojito está activado */
+const MONTO_TAPADO = "•••••••"
+
 function VendedorCard({
   vendedor,
   eventosAsignados,
@@ -46,12 +54,28 @@ function VendedorCard({
   const { toast } = useToast()
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [expandido, setExpandido] = useState(false)
+  const [oculto, setOculto] = useState(false)
   const [sueldoLocal, setSueldoLocal] = useState<number>(vendedor.sueldo || 0)
   const [comisionLocal, setComisionLocal] = useState<string>(String(vendedor.comisionPct || 0))
 
   const totalVendido = eventosAsignados.reduce((s, e) => s + totalVentaEvento(e), 0)
   const pct = Number.parseFloat(comisionLocal) || 0
   const totalComisiones = (totalVendido * pct) / 100
+
+  // Eventos vendidos en los últimos 30 días (según fecha de venta del contrato)
+  const hace30Dias = new Date()
+  hace30Dias.setDate(hace30Dias.getDate() - 30)
+  const hace30ISO = `${hace30Dias.getFullYear()}-${String(hace30Dias.getMonth() + 1).padStart(2, "0")}-${String(hace30Dias.getDate()).padStart(2, "0")}`
+  const vendidosUltimoMes = eventosAsignados
+    .filter((e) => {
+      const f = fechaVentaEvento(e)
+      return f && f >= hace30ISO
+    })
+    .sort((a, b) => fechaVentaEvento(b).localeCompare(fechaVentaEvento(a)))
+  const totalUltimoMes = vendidosUltimoMes.reduce((s, e) => s + totalVentaEvento(e), 0)
+
+  /** Muestra el monto o lo tapa según el ojito */
+  const monto = (v: number) => (oculto ? MONTO_TAPADO : formatCurrency(v))
 
   const guardarSueldo = () => {
     if (sueldoLocal === vendedor.sueldo) return
@@ -130,8 +154,21 @@ function VendedorCard({
           </div>
 
           <Badge variant="secondary" className="shrink-0 tabular-nums">
-            Vendió {formatCurrency(totalVendido)}
+            Vendió {monto(totalVendido)}
           </Badge>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            onClick={() => setOculto((v) => !v)}
+            title={oculto ? "Mostrar montos" : "Ocultar montos"}
+          >
+            {oculto ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            <span className="sr-only">
+              {oculto ? "Mostrar" : "Ocultar"} montos de {vendedor.nombre}
+            </span>
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -142,43 +179,87 @@ function VendedorCard({
               <Banknote className="h-3.5 w-3.5 text-teal-600" />
               Sueldo base mensual
             </Label>
-            <MoneyInput
-              id={`sueldo-${vendedor.id}`}
-              value={sueldoLocal}
-              onValueChange={(v) => setSueldoLocal(v || 0)}
-              onBlur={guardarSueldo}
-              className="h-10"
-            />
+            {oculto ? (
+              <div className="flex h-10 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground select-none">
+                {MONTO_TAPADO}
+              </div>
+            ) : (
+              <MoneyInput
+                id={`sueldo-${vendedor.id}`}
+                value={sueldoLocal}
+                onValueChange={(v) => setSueldoLocal(v || 0)}
+                onBlur={guardarSueldo}
+                className="h-10"
+              />
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`comision-${vendedor.id}`} className="text-xs font-medium flex items-center gap-1.5">
               <Percent className="h-3.5 w-3.5 text-amber-600" />
               Comisión por evento vendido (%)
             </Label>
-            <Input
-              id={`comision-${vendedor.id}`}
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={comisionLocal}
-              onChange={(e) => setComisionLocal(e.target.value)}
-              onBlur={guardarComision}
-              className="h-10"
-            />
+            {oculto ? (
+              <div className="flex h-10 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground select-none">
+                {MONTO_TAPADO}
+              </div>
+            ) : (
+              <Input
+                id={`comision-${vendedor.id}`}
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={comisionLocal}
+                onChange={(e) => setComisionLocal(e.target.value)}
+                onBlur={guardarComision}
+                className="h-10"
+              />
+            )}
           </div>
         </div>
 
         {/* Resumen de comisiones */}
         <div className="rounded-lg bg-muted/60 p-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
           <span className="text-muted-foreground">
-            Comisiones ({pct}% de {formatCurrency(totalVendido)}):
+            Comisiones ({oculto ? "•••" : `${pct}% de ${formatCurrency(totalVendido)}`}):
           </span>
-          <span className="font-bold text-teal-700 tabular-nums">{formatCurrency(totalComisiones)}</span>
+          <span className="font-bold text-teal-700 tabular-nums">{monto(totalComisiones)}</span>
           <span className="text-muted-foreground">Total con sueldo:</span>
           <span className="font-bold text-foreground tabular-nums">
-            {formatCurrency((vendedor.sueldo || 0) + totalComisiones)}
+            {monto((vendedor.sueldo || 0) + totalComisiones)}
           </span>
+        </div>
+
+        {/* Vendidos en el último mes */}
+        <div className="rounded-lg border border-teal-200 bg-teal-50/60 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-teal-200/70">
+            <TrendingUp className="h-3.5 w-3.5 text-teal-700 shrink-0" />
+            <span className="text-xs font-semibold text-teal-900 flex-1">Vendidos el último mes</span>
+            <Badge className="bg-teal-600 text-white border-transparent text-[11px]">
+              {vendidosUltimoMes.length}
+            </Badge>
+            <span className="text-xs font-bold text-teal-800 tabular-nums">{monto(totalUltimoMes)}</span>
+          </div>
+          {vendidosUltimoMes.length === 0 ? (
+            <p className="px-3 py-2.5 text-xs text-muted-foreground">Sin ventas en los últimos 30 días.</p>
+          ) : (
+            <div className="divide-y divide-teal-100">
+              {vendidosUltimoMes.map((e) => (
+                <div key={`mes-${e.id}`} className="flex items-center gap-3 px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{e.nombrePareja || e.nombre || "Sin nombre"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Vendido el {formatFecha(fechaVentaEvento(e))}
+                      {e.salon ? ` · ${e.salon}` : ""}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold text-teal-800 tabular-nums shrink-0">
+                    {monto(totalVentaEvento(e))}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Eventos asignados */}
@@ -216,9 +297,9 @@ function VendedorCard({
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold tabular-nums">{formatCurrency(total)}</p>
+                        <p className="text-sm font-semibold tabular-nums">{monto(total)}</p>
                         <p className="text-xs text-teal-700 tabular-nums">
-                          Comisión: {formatCurrency((total * pct) / 100)}
+                          Comisión: {monto((total * pct) / 100)}
                         </p>
                       </div>
                     </div>
