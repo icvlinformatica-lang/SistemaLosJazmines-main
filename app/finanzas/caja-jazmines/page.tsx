@@ -56,7 +56,10 @@ import {
   History,
   ArrowUp,
   ArrowDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
+import { ConfirmAction } from "@/components/confirm-action"
 import Link from "next/link"
 
 // ---------------------------------------------------------------------------
@@ -318,7 +321,7 @@ function CarpetaGastos({
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`} />
       </button>
-      {abierta && <div className="space-y-2 bg-card p-2">{children}</div>}
+      {abierta && <div className="space-y-2 bg-card p-2 reveal-stagger">{children}</div>}
     </div>
   )
 }
@@ -364,6 +367,273 @@ function HistorialMontos({ historial }: { historial: RegistroMonto[] }) {
         )
       })}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CALENDARIO DE GASTOS POR SALÓN
+// ---------------------------------------------------------------------------
+
+interface ItemCalendario {
+  id: string
+  concepto: string
+  monto: number
+  salon: string | null | undefined
+  fecha: string // YYYY-MM-DD
+  estado: string
+  tipo: "fijo" | "variable"
+}
+
+/** Formato compacto de moneda para las celdas del calendario. */
+function montoCompacto(monto: number): string {
+  if (monto >= 1_000_000) return `$${(monto / 1_000_000).toFixed(1).replace(".", ",").replace(",0", "")}M`
+  if (monto >= 1_000) return `$${Math.round(monto / 1_000)}k`
+  return `$${monto}`
+}
+
+/**
+ * Calendario mensual con los gastos (fijos y variables) por fecha de
+ * vencimiento, coloreados según el salón. Respeta el filtro de salón de la
+ * página porque recibe las listas ya filtradas por el hook.
+ */
+function CalendarioGastosSalones({
+  fijos,
+  cubiertos,
+  variables,
+  ahora,
+}: {
+  fijos: GastoFijoMes[]
+  cubiertos: GastoFijoMes[]
+  variables: { id: string; nombre: string; salon: string; fecha: string; monto: number; estado: string }[]
+  ahora: Date
+}) {
+  const { configuracionCajas } = useStore()
+  const [mesVista, setMesVista] = useState(() => new Date(ahora.getFullYear(), ahora.getMonth(), 1))
+  const [diaSel, setDiaSel] = useState<string | null>(null)
+
+  // Unificar todos los gastos con fecha en una sola lista
+  const items: ItemCalendario[] = [
+    ...fijos
+      .filter((g) => g.fechaVencimiento)
+      .map((g) => ({
+        id: `f-${g.id}`,
+        concepto: g.concepto,
+        monto: g.monto,
+        salon: g.salon,
+        fecha: g.fechaVencimiento!,
+        estado: g.estado,
+        tipo: "fijo" as const,
+      })),
+    ...cubiertos
+      .filter((g) => g.fechaVencimiento)
+      .map((g) => ({
+        id: `fc-${g.id}`,
+        concepto: g.concepto,
+        monto: g.monto,
+        salon: g.salon,
+        fecha: g.fechaVencimiento!,
+        estado: "pagado",
+        tipo: "fijo" as const,
+      })),
+    ...variables
+      .filter((g) => g.fecha)
+      .map((g) => ({
+        id: `v-${g.id}`,
+        concepto: g.nombre,
+        monto: g.monto,
+        salon: g.salon || null,
+        fecha: g.fecha,
+        estado: g.estado,
+        tipo: "variable" as const,
+      })),
+  ]
+
+  const anio = mesVista.getFullYear()
+  const mes = mesVista.getMonth()
+  const mesISO = `${anio}-${String(mes + 1).padStart(2, "0")}`
+  const itemsMes = items.filter((it) => it.fecha.startsWith(mesISO))
+
+  // Agrupar por día del mes
+  const porDia = new Map<string, ItemCalendario[]>()
+  for (const it of itemsMes) {
+    if (!porDia.has(it.fecha)) porDia.set(it.fecha, [])
+    porDia.get(it.fecha)!.push(it)
+  }
+
+  const totalMes = itemsMes.reduce((s, it) => s + it.monto, 0)
+
+  // Subtotales por salón del mes visible
+  const porSalon = new Map<string, number>()
+  for (const it of itemsMes) {
+    const key = it.salon || "General"
+    porSalon.set(key, (porSalon.get(key) || 0) + it.monto)
+  }
+  const ordenSalones = [...SALONES, "General"]
+  const resumenSalones = Array.from(porSalon.entries()).sort(
+    (a, b) => ordenSalones.indexOf(a[0] as any) - ordenSalones.indexOf(b[0] as any),
+  )
+
+  // Construcción de la grilla (semana empieza lunes)
+  const primerDia = new Date(anio, mes, 1)
+  const offset = (primerDia.getDay() + 6) % 7 // lunes=0
+  const diasEnMes = new Date(anio, mes + 1, 0).getDate()
+  const celdas: (number | null)[] = [
+    ...Array.from({ length: offset }, () => null),
+    ...Array.from({ length: diasEnMes }, (_, i) => i + 1),
+  ]
+  while (celdas.length % 7 !== 0) celdas.push(null)
+
+  const hoyISO = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`
+
+  const tituloMes = mesVista.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+  const itemsDiaSel = diaSel ? porDia.get(diaSel) || [] : []
+
+  function colorDe(salon: string | null | undefined): string {
+    return salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
+  }
+
+  function cambiarMes(delta: number) {
+    setMesVista((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1))
+    setDiaSel(null)
+  }
+
+  const esMesActual = anio === ahora.getFullYear() && mes === ahora.getMonth()
+
+  function irAHoy() {
+    setMesVista(new Date(ahora.getFullYear(), ahora.getMonth(), 1))
+    setDiaSel(hoyISO)
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Calendar className="h-4 w-4 text-purple-600" />
+            Calendario de gastos
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-xs mr-1 bg-transparent"
+              onClick={irAHoy}
+              disabled={esMesActual}
+              aria-label="Ir al mes de hoy"
+            >
+              Hoy
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="min-w-[130px] text-center text-sm font-semibold capitalize">{tituloMes}</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => cambiarMes(1)} aria-label="Mes siguiente">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        {resumenSalones.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
+            {resumenSalones.map(([salon, subtotal]) => (
+              <span key={salon} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: colorDe(salon) }} />
+                {salonLabel(salon)}: <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
+              </span>
+            ))}
+            <span className="ml-auto text-xs text-muted-foreground">
+              Total mes: <span className="font-bold text-red-600">{formatCurrency(totalMes)}</span>
+            </span>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-7 gap-1">
+          {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+            <div key={d} className="pb-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {d}
+            </div>
+          ))}
+          {celdas.map((dia, idx) => {
+            if (dia === null) return <div key={`x-${idx}`} className="min-h-[64px] rounded-md bg-muted/20" />
+            const fechaISO = `${mesISO}-${String(dia).padStart(2, "0")}`
+            const delDia = porDia.get(fechaISO) || []
+            const esHoy = fechaISO === hoyISO
+            const seleccionado = fechaISO === diaSel
+            const totalDia = delDia.reduce((s, it) => s + it.monto, 0)
+            return (
+              <button
+                key={fechaISO}
+                type="button"
+                onClick={() => setDiaSel(seleccionado ? null : fechaISO)}
+                className={`flex min-h-[64px] flex-col items-stretch gap-0.5 rounded-md border p-1 text-left transition-colors ${
+                  seleccionado
+                    ? "border-purple-400 bg-purple-50"
+                    : esHoy
+                      ? "border-purple-300 bg-card"
+                      : "border-border bg-card hover:bg-muted/40"
+                }`}
+                aria-label={`Día ${dia}${delDia.length > 0 ? `, ${delDia.length} gastos por ${formatCurrency(totalDia)}` : ""}`}
+              >
+                <span className={`text-[11px] font-semibold leading-none ${esHoy ? "text-purple-700" : "text-muted-foreground"}`}>
+                  {dia}
+                </span>
+                {delDia.slice(0, 2).map((it) => (
+                  <span
+                    key={it.id}
+                    className="flex items-center gap-1 truncate rounded px-1 py-px text-[10px] leading-tight"
+                    style={{ backgroundColor: `${colorDe(it.salon)}1f`, color: colorDe(it.salon) }}
+                    title={`${it.concepto} · ${salonLabel(it.salon || "General")} · ${formatCurrency(it.monto)}`}
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colorDe(it.salon) }} />
+                    <span className={`truncate font-medium ${it.estado === "pagado" ? "line-through opacity-60" : ""}`}>
+                      {montoCompacto(it.monto)}
+                    </span>
+                  </span>
+                ))}
+                {delDia.length > 2 && (
+                  <span className="px-1 text-[10px] font-medium text-muted-foreground">+{delDia.length - 2} más</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {diaSel && (
+          <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-3 space-y-2">
+            <p className="text-xs font-semibold text-purple-800">
+              {formatFecha(diaSel)} · {itemsDiaSel.length} {itemsDiaSel.length === 1 ? "gasto" : "gastos"}
+            </p>
+            {itemsDiaSel.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin gastos este día.</p>
+            ) : (
+              itemsDiaSel.map((it) => (
+                <div key={it.id} className="flex items-center gap-2.5 rounded-md border border-border bg-card p-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colorDe(it.salon) }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{it.concepto}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {salonLabel(it.salon || "General")} · {it.tipo === "fijo" ? "Gasto fijo" : "Gasto variable"}
+                    </p>
+                  </div>
+                  {it.estado === "pagado" ? (
+                    <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px] shrink-0">pagado</Badge>
+                  ) : it.estado === "vencido" ? (
+                    <Badge className="bg-red-100 text-red-700 border-red-200 text-[11px] shrink-0">vencido</Badge>
+                  ) : null}
+                  <span className="shrink-0 text-sm font-bold text-red-600">−{formatCurrency(it.monto)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {itemsMes.length === 0 && (
+          <p className="py-2 text-center text-sm text-muted-foreground">
+            No hay gastos con fecha en este mes para el filtro seleccionado.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -416,7 +686,27 @@ export default function CajaJazminePage() {
   const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
-  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({ fijos: true, variables: true })
+  // Al entrar, todas las tarjetas arrancan plegadas y se van abriendo solas,
+  // de a una, con la animación escalonada de sus subtarjetas.
+  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({
+    alertas: true,
+    cuotas: true,
+    fijos: true,
+    variables: true,
+    proyeccion: true,
+  })
+
+  useEffect(() => {
+    const orden = ["cuotas", "alertas", "fijos", "variables", "proyeccion"]
+    const timers = orden.map((key, i) =>
+      setTimeout(() => {
+        setColapsadas((prev) => ({ ...prev, [key]: false }))
+      }, 500 + i * 900),
+    )
+    return () => timers.forEach(clearTimeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
   const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({})
@@ -458,6 +748,45 @@ export default function CajaJazminePage() {
     deleteCostoOperativo(gasto.id)
   }
 
+  // ── Pagar directo desde la tarjeta de alertas ──────────────────────────
+  // Dispara la animación de desvanecido y, al terminar, archiva el gasto en
+  // el Archivo Histórico (fijo: avanza vencimiento / variable: se elimina).
+  const [alertasPagando, setAlertasPagando] = useState<Set<string>>(new Set())
+
+  function pagarDesdeAlerta(alerta: { id: string; concepto: string; monto: number }) {
+    const costo = state.costosOperativos?.find((c) => c.id === alerta.id)
+    if (!costo) return
+    setAlertasPagando((prev) => new Set(prev).add(alerta.id))
+    setTimeout(() => {
+      if (costo.esVariable) {
+        archivarVariable({
+          id: costo.id,
+          nombre: costo.concepto,
+          salon: costo.salon || "",
+          fecha: costo.fechaVencimiento || hoyStr,
+          monto: costo.monto,
+        })
+      } else {
+        archivarFijo({
+          id: costo.id,
+          concepto: costo.concepto,
+          monto: costo.monto,
+          salon: costo.salon,
+          frecuencia: costo.frecuencia,
+        } as GastoFijoMes)
+      }
+      toast({
+        title: "Pago registrado",
+        description: `"${costo.concepto}" se movió al Archivo Histórico.`,
+      })
+      setAlertasPagando((prev) => {
+        const next = new Set(prev)
+        next.delete(alerta.id)
+        return next
+      })
+    }, 650)
+  }
+
   const {
     saldoActual,
     gastosPróximos30Dias,
@@ -469,6 +798,32 @@ export default function CajaJazminePage() {
     ingresosProyectados30Dias,
     cuotasPorCobrar,
   } = data
+
+  // ── Proyección: gastos fijos del 1 al 10 del mes siguiente ──────────────
+  // Los gastos fijos agendados se repiten el mes que viene; acá se proyecta
+  // cuáles caen entre el día 1 y el 10 del próximo mes para anticipar pagos.
+  const [subcarpetaProximoMes, setSubcarpetaProximoMes] = useState(false)
+  const proxMesDate = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1)
+  const proxMesISO = `${proxMesDate.getFullYear()}-${String(proxMesDate.getMonth() + 1).padStart(2, "0")}`
+  const tituloProxMes = proxMesDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+
+  const gastosProximoMes1al10 = [...data.gastosFijosMes, ...data.gastosFijosCubiertos]
+    .map((g) => {
+      if (!g.fechaVencimiento) return null
+      const [vy, vm, vd] = g.fechaVencimiento.split("-").map(Number)
+      if (vd < 1 || vd > 10) return null
+      if (g.frecuencia === "Anual") {
+        // Solo si el aniversario cae exactamente en el mes próximo
+        if (vm !== proxMesDate.getMonth() + 1) return null
+        return { ...g, fechaProyectada: `${proxMesISO}-${String(vd).padStart(2, "0")}` }
+      }
+      // Mensual: se repite todos los meses el mismo día
+      return { ...g, fechaProyectada: `${proxMesISO}-${String(vd).padStart(2, "0")}` }
+    })
+    .filter((g): g is GastoFijoMes & { fechaProyectada: string } => g !== null)
+    .sort((a, b) => a.fechaProyectada.localeCompare(b.fechaProyectada))
+
+  const totalProximoMes1al10 = gastosProximoMes1al10.reduce((s, g) => s + g.monto, 0)
 
   // ── Revelado progresivo de cuotas por cobrar (de 5 en 5 con la rueda) ────
   const CUOTAS_POR_PAGINA = 5
@@ -611,6 +966,7 @@ export default function CajaJazminePage() {
   function handleAgregarFijo() {
     if (!nuevoFijo.concepto || !nuevoFijo.monto) return
     if (fijoRepartoInvalido) return
+    if (!confirm(`¿Agendar el gasto fijo "${nuevoFijo.concepto}" por ${formatCurrency(Number(nuevoFijo.monto))}?`)) return
     const dist = nuevoFijo.repartir
       ? nuevoFijo.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
@@ -654,6 +1010,7 @@ export default function CajaJazminePage() {
     } else if (!nuevoGasto.salon) {
       return
     }
+    if (!confirm(`¿Agendar el gasto "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} con vencimiento el ${nuevoGasto.fecha}?`)) return
     const dist = nuevoGasto.repartir
       ? nuevoGasto.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
@@ -693,7 +1050,7 @@ export default function CajaJazminePage() {
           <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
             <Link href="/finanzas/archivo">
               <Archive className="h-4 w-4" />
-              Archivo
+              Archivo Histórico
             </Link>
           </Button>
           <Building className="h-4 w-4 text-muted-foreground" />
@@ -796,7 +1153,16 @@ export default function CajaJazminePage() {
             <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
               {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
             </p>
-            <p className={`text-xs mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`}></p>
+            {(() => {
+              const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+              const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
+              if (cuotasMes.length === 0) return null
+              return (
+                <p className={`text-sm font-semibold mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                  {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
+                </p>
+              )
+            })()}
           </CardContent>
         </Card>
       </div>
@@ -825,7 +1191,7 @@ export default function CajaJazminePage() {
           </div>
         </CardHeader>
         {!colapsadas.alertas && (
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2 reveal-stagger">
           {alertasVencimiento.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
               No hay vencimientos en los próximos 30 días.
@@ -835,7 +1201,9 @@ export default function CajaJazminePage() {
               {alertasVencimiento.map((alerta) => (
                 <div
                   key={alerta.id}
-                  className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+                  className={`flex items-start gap-3 rounded-lg border border-border bg-card p-3 ${
+                    alertasPagando.has(alerta.id) ? "fade-out-paid" : ""
+                  }`}
                 >
                   {puntoPrioridad(alerta.estado)}
                   <div className="flex-1 min-w-0">
@@ -854,6 +1222,22 @@ export default function CajaJazminePage() {
                   <span className="text-sm font-bold text-red-600 shrink-0">
                     {formatCurrency(alerta.monto)}
                   </span>
+                  <ConfirmAction
+                    title="¿Marcar como pagado?"
+                    description={`Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`}
+                    confirmLabel="Sí, marcar pagado"
+                    onConfirm={() => pagarDesdeAlerta(alerta)}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
+                      title="Marcar como pagado"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
+                    </Button>
+                  </ConfirmAction>
                 </div>
               ))}
               <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
@@ -872,6 +1256,68 @@ export default function CajaJazminePage() {
               </div>
             </>
           )}
+
+          {/* ── Subcarpeta: proyección del 1 al 10 del mes siguiente ────── */}
+          <div className="mt-2 rounded-lg border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSubcarpetaProximoMes((v) => !v)}
+              className="w-full flex items-center gap-2 bg-muted/50 hover:bg-muted px-3 py-2 text-left transition-colors"
+              aria-expanded={subcarpetaProximoMes}
+            >
+              {subcarpetaProximoMes
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+              <Calendar className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span className="text-xs font-semibold text-foreground capitalize flex-1">
+                Del 1 al 10 de {tituloProxMes}
+              </span>
+              {gastosProximoMes1al10.length > 0 && (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+                  {gastosProximoMes1al10.length}
+                </Badge>
+              )}
+              <span className="text-xs font-bold text-red-600 tabular-nums">
+                {formatCurrency(totalProximoMes1al10)}
+              </span>
+            </button>
+            {subcarpetaProximoMes && (
+              <div className="space-y-2 bg-card p-2 reveal-stagger">
+                {gastosProximoMes1al10.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-3 text-center">
+                    No hay gastos fijos agendados del 1 al 10 del mes próximo.
+                  </p>
+                ) : (
+                  gastosProximoMes1al10.map((g) => (
+                    <div
+                      key={`prox-${g.id}`}
+                      className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+                    >
+                      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{g.concepto}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Vence el {formatFecha(g.fechaProyectada)}
+                          {g.salon && (
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              {" · "}
+                              <SalonDot salon={g.salon} size={7} />
+                              {salonLabel(g.salon)}
+                            </span>
+                          )}
+                          {" · "}
+                          {g.frecuencia}
+                        </p>
+                      </div>
+                      <span className="text-sm font-bold text-red-600 shrink-0">
+                        {formatCurrency(g.monto)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </CardContent>
         )}
       </Card>
@@ -908,7 +1354,7 @@ export default function CajaJazminePage() {
                 No hay cuotas pendientes de cobro.
               </p>
             ) : (
-              <div ref={cuotasListaRef} className="space-y-2">
+              <div ref={cuotasListaRef} className="space-y-2 reveal-stagger">
                 {cuotasPorCobrar.slice(0, cuotasVisibles).map((cuota) => (
                   <button
                     key={cuota.id}
@@ -987,7 +1433,7 @@ export default function CajaJazminePage() {
             </div>
           </CardHeader>
           {!colapsadas.fijos && (
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 reveal-stagger">
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 No hay gastos fijos configurados.
@@ -1063,30 +1509,42 @@ export default function CajaJazminePage() {
                           </Button>
                         )}
                         {/* Toggle pagado */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                          title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
-                          onClick={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
+                        <ConfirmAction
+                          title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                          description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}`}
+                          confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
+                          onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
                         >
-                          {esPagado
-                            ? <CheckCircle2 className="h-4 w-4" />
-                            : <Circle className="h-4 w-4" />
-                          }
-                          <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                            title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
+                          >
+                            {esPagado
+                              ? <CheckCircle2 className="h-4 w-4" />
+                              : <Circle className="h-4 w-4" />
+                            }
+                            <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                          </Button>
+                        </ConfirmAction>
                         {/* Archivar */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-purple-600"
-                          title="Archivar pago de este período"
-                          onClick={() => archivarFijo(gasto)}
+                        <ConfirmAction
+                          title="¿Archivar pago de este período?"
+                          description={`Se registra el pago de "${gasto.concepto}" (${formatCurrency(gasto.monto)}) y el vencimiento avanza al próximo período.`}
+                          confirmLabel="Sí, archivar"
+                          onConfirm={() => archivarFijo(gasto)}
                         >
-                          <Archive className="h-3.5 w-3.5" />
-                          <span className="sr-only">Archivar gasto fijo</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-purple-600"
+                            title="Archivar pago de este período"
+                          >
+                            <Archive className="h-3.5 w-3.5" />
+                            <span className="sr-only">Archivar gasto fijo</span>
+                          </Button>
+                        </ConfirmAction>
                         {/* Editar */}
                         <Button
                           variant="ghost"
@@ -1099,16 +1557,23 @@ export default function CajaJazminePage() {
                           <span className="sr-only">Editar gasto fijo</span>
                         </Button>
                         {/* Eliminar */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          title="Eliminar"
-                          onClick={() => deleteCostoOperativo(gasto.id)}
+                        <ConfirmAction
+                          title="¿Eliminar gasto fijo?"
+                          description={`Se elimina "${gasto.concepto}" de forma permanente. Esta acción no se puede deshacer.`}
+                          confirmLabel="Sí, eliminar"
+                          destructive
+                          onConfirm={() => deleteCostoOperativo(gasto.id)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="sr-only">Eliminar gasto fijo</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="sr-only">Eliminar gasto fijo</span>
+                          </Button>
+                        </ConfirmAction>
                       </div>
                     </div>
                     {histVisible && hist.length > 0 && (
@@ -1191,7 +1656,7 @@ export default function CajaJazminePage() {
             </div>
           </CardHeader>
           {!colapsadas.variables && (
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 reveal-stagger">
             {gastosVariablesCombinados.length === 0 ? (
               <p className="text-sm text-muted-foreground py-3 text-center">
                 Sin gastos variables registrados.
@@ -1225,41 +1690,60 @@ export default function CajaJazminePage() {
                         {badgeEstadoVar(gasto.estado)}
                       </div>
                       {/* Toggle pagado */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                        title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
-                        onClick={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
+                      <ConfirmAction
+                        title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                        description={`${gasto.nombre} · ${formatCurrency(gasto.monto)}`}
+                        confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
+                        onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
                       >
-                        {esPagado
-                          ? <CheckCircle2 className="h-4 w-4" />
-                          : <Circle className="h-4 w-4" />
-                        }
-                        <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                          title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
+                        >
+                          {esPagado
+                            ? <CheckCircle2 className="h-4 w-4" />
+                            : <Circle className="h-4 w-4" />
+                          }
+                          <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                        </Button>
+                      </ConfirmAction>
                       {/* Archivar */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-purple-600"
-                        title="Archivar gasto"
-                        onClick={() => archivarVariable(gasto)}
+                      <ConfirmAction
+                        title="¿Archivar gasto?"
+                        description={`Se registra el pago de "${gasto.nombre}" (${formatCurrency(gasto.monto)}) en el archivo.`}
+                        confirmLabel="Sí, archivar"
+                        onConfirm={() => archivarVariable(gasto)}
                       >
-                        <Archive className="h-3.5 w-3.5" />
-                        <span className="sr-only">Archivar gasto variable</span>
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-purple-600"
+                          title="Archivar gasto"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                          <span className="sr-only">Archivar gasto variable</span>
+                        </Button>
+                      </ConfirmAction>
                       {/* Eliminar */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Eliminar"
-                        onClick={() => deleteCostoOperativo(gasto.id)}
+                      <ConfirmAction
+                        title="¿Eliminar gasto?"
+                        description={`Se elimina "${gasto.nombre}" de forma permanente. Esta acción no se puede deshacer.`}
+                        confirmLabel="Sí, eliminar"
+                        destructive
+                        onConfirm={() => deleteCostoOperativo(gasto.id)}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span className="sr-only">Eliminar gasto variable</span>
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span className="sr-only">Eliminar gasto variable</span>
+                        </Button>
+                      </ConfirmAction>
                     </div>
                   </div>
                 )
@@ -1293,7 +1777,7 @@ export default function CajaJazminePage() {
           </div>
         </CardHeader>
         {!colapsadas.proyeccion && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 reveal-stagger">
           <div className="flex items-end justify-around gap-3 sm:gap-6 h-56 pt-2">
             {[
               { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
@@ -1335,6 +1819,14 @@ export default function CajaJazminePage() {
         </CardContent>
         )}
       </Card>
+
+      {/* ── Calendario de gastos por salón ─────────────────────────────────── */}
+      <CalendarioGastosSalones
+        fijos={gastosFijosMes}
+        cubiertos={gastosFijosCubiertos}
+        variables={gastosVariablesCombinados}
+        ahora={ahora}
+      />
 
       {/* ── Dialog: Agregar gasto fijo ────────────────────────────────────── */}
       <Dialog open={modalFijoAbierto} onOpenChange={setModalFijoAbierto}>
@@ -1442,7 +1934,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Editar gasto fijo ──────────────────────────────────────── */}
+      {/* ── Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
       <Dialog open={!!editandoFijo} onOpenChange={(open) => !open && setEditandoFijo(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1541,7 +2033,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ────────────────────────────────── */}
+      {/* ── Dialog: Agendar gasto variable ─────��──────────────────────────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

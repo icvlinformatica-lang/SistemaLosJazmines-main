@@ -174,12 +174,14 @@ export interface Evento {
 
   // Datos del contrato
   contrato?: {
-    nombreCompleto?: string
-    direccion?: string
-    telefono?: string
-    email?: string
-    dni?: string
-    fechaNacimiento?: string
+  nombreCompleto?: string
+  direccion?: string
+  telefono?: string
+  email?: string
+  dni?: string
+  fechaNacimiento?: string
+  /** Vendedor que cerró la venta del evento — impacta en el contrato impreso y en Eventos > Vendedores */
+  vendedor?: string
   }
 
   // Plan de cuotas
@@ -855,6 +857,32 @@ export interface PagoPersonal {
   asignacionId?: string
 }
 
+// ==========================================
+// VENDEDORES
+// ==========================================
+
+/** Vendedor del equipo comercial: se asigna a eventos desde el generador de contratos */
+export interface Vendedor {
+  id: string
+  nombre: string
+  /** Emoji usado como foto de perfil en Eventos > Vendedores */
+  emoji: string
+  /** Sueldo base mensual */
+  sueldo: number
+  /** Porcentaje de comisión sobre el total de cada evento vendido (ej: 5 = 5%) */
+  comisionPct: number
+}
+
+/** Vendedores por defecto del equipo */
+export const VENDEDORES_DEFAULT: Vendedor[] = [
+  { id: "ricky", nombre: "Ricky", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "diego", nombre: "Diego", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "giselle", nombre: "Giselle", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "maira", nombre: "Maira", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "sonia", nombre: "Sonia", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "gustavo", nombre: "Gustavo", emoji: "", sueldo: 0, comisionPct: 0 },
+]
+
 export interface AppState {
   insumos: Insumo[]
   insumosBarra: InsumoBarra[]
@@ -880,6 +908,8 @@ export interface AppState {
   movimientosCaja: MovimientoCaja[]
   // ARCHIVO — historial consolidado de gastos archivados
   gastosArchivados: GastoArchivado[]
+  // VENDEDORES — equipo comercial (emoji, sueldo, comisión)
+  vendedores: Vendedor[]
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
@@ -1665,6 +1695,7 @@ export function loadState(): AppState {
     },
     movimientosCaja: [],
     gastosArchivados: [],
+    vendedores: VENDEDORES_DEFAULT,
     historialIPC: [],
     ultimoMesIPC: null,
   }
@@ -1705,6 +1736,7 @@ export function loadState(): AppState {
         },
         movimientosCaja: parsed.movimientosCaja || [],
         gastosArchivados: parsed.gastosArchivados || [],
+        vendedores: parsed.vendedores || VENDEDORES_DEFAULT,
         historialIPC: parsed.historialIPC || [],
         ultimoMesIPC: parsed.ultimoMesIPC || null,
       }
@@ -2288,35 +2320,37 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
   // Fallback: if montoCuota is 0 but montoTotal exists, calculate it
   const montoReal = montoCuota > 0 ? montoCuota : (montoTotal > 0 && numeroCuotas > 0 ? montoTotal / numeroCuotas : 0)
 
-  // Mapa de montos por cuota provenientes de planDeCuotas.cuotas[] (reflejan el IPC acumulado)
+  // Mapa de montos y fechas por cuota provenientes de planDeCuotas.cuotas[].
+  // Ese detalle es el que se guardó al generar el contrato (fuente de verdad):
+  // los montos reflejan financiación/IPC y las fechas son las pactadas.
   const montoPorCuota = new Map<number, number>()
+  const fechaPorCuota = new Map<number, string>()
   for (const c of cuotas) {
     if (typeof c.montoCuota === "number" && c.montoCuota > 0) {
       montoPorCuota.set(c.numero, c.montoCuota)
+    }
+    if (typeof c.fechaVencimiento === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.fechaVencimiento)) {
+      fechaPorCuota.set(c.numero, c.fechaVencimiento)
     }
   }
 
   const resolverMonto = (cuotaNum: number) => montoPorCuota.get(cuotaNum) ?? montoReal
 
+  const resolverFecha = (cuotaNum: number): string => {
+    // Preferir la fecha guardada en el contrato; recalcular solo como fallback
+    const guardada = fechaPorCuota.get(cuotaNum)
+    if (guardada) return guardada
+    const fechaStr = calcularFechaCuota(fechaInicioPlan, cuotaNum, diaVencimiento || 10)
+    if (!fechaStr) return ""
+    const [dia, mes, año] = fechaStr.split("/")
+    return `${año}-${mes}-${dia}`
+  }
+
   return Array.from({ length: numeroCuotas }).map((_, idx) => {
     const cuotaNum = idx + 1
-    const fechaStr = calcularFechaCuota(fechaInicioPlan, cuotaNum, diaVencimiento || 10)
-
-    if (!fechaStr) {
-      return {
-        numeroCuota: cuotaNum,
-        fechaVencimiento: "",
-        monto: resolverMonto(cuotaNum),
-        pagada: cuotasPagadas.includes(cuotaNum),
-      }
-    }
-
-    const [dia, mes, año] = fechaStr.split("/")
-    const fechaISO = `${año}-${mes}-${dia}`
-
     return {
       numeroCuota: cuotaNum,
-      fechaVencimiento: fechaISO,
+      fechaVencimiento: resolverFecha(cuotaNum),
       monto: resolverMonto(cuotaNum),
       pagada: cuotasPagadas.includes(cuotaNum),
     }

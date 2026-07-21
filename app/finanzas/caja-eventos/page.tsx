@@ -60,6 +60,8 @@ import {
   Building,
   Archive,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -118,6 +120,58 @@ export default function CajaEventosPage() {
   const data = useCajaEventos(state, salonFiltro, ahora)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
+
+  // ── Carrusel del dashboard: vista "Este mes" / "Esta semana" ────────────
+  const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = mes, 1 = semana
+
+  // Resume la composición de egresos por tipo: "3 menú · 2 señas · 1 saldo"
+  const componerEgresos = (egresos: EgresoPendienteServicio[]): string => {
+    const counts: Record<string, number> = {}
+    for (const e of egresos) counts[e.tipo] = (counts[e.tipo] || 0) + 1
+    const partes: string[] = []
+    if (counts["menu"]) partes.push(`${counts["menu"]} menú`)
+    if (counts["seña"]) partes.push(`${counts["seña"]} ${counts["seña"] === 1 ? "seña" : "señas"}`)
+    if (counts["saldo"]) partes.push(`${counts["saldo"]} ${counts["saldo"] === 1 ? "saldo" : "saldos"}`)
+    if (counts["barra"]) partes.push(`${counts["barra"]} barra`)
+    if (counts["sueldo"]) partes.push(`${counts["sueldo"]} ${counts["sueldo"] === 1 ? "sueldo" : "sueldos"}`)
+    return partes.join(" · ")
+  }
+
+  // Semana actual: lunes a domingo
+  const { cobroSemana, cuotasSemanaCount, pagoSemana, pagoSemanaDetalle, saldoFinSemana, rangoSemanaLabel } = useMemo(() => {
+    const diaSemana = ahora.getDay() // 0 = domingo
+    const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
+    const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
+    const toISO = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const desde = toISO(lunes)
+    const hasta = toISO(domingo)
+
+    const cuotasSemana = data.ingresosPendientes.filter(
+      (i) => i.fechaVencimiento >= desde && i.fechaVencimiento <= hasta,
+    )
+    const egresosSemana = data.egresosPendientes.filter(
+      (e) => e.fechaVencimiento >= desde && e.fechaVencimiento <= hasta,
+    )
+    const cobro = cuotasSemana.reduce((s, i) => s + i.monto, 0)
+    const pago = egresosSemana.reduce((s, e) => s + e.monto, 0)
+    const fmt = (d: Date) => d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })
+    return {
+      cobroSemana: cobro,
+      cuotasSemanaCount: cuotasSemana.length,
+      pagoSemana: pago,
+      pagoSemanaDetalle: componerEgresos(egresosSemana),
+      saldoFinSemana: data.saldoActual + cobro - pago,
+      rangoSemanaLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
+    }
+  }, [data.ingresosPendientes, data.egresosPendientes, data.saldoActual, ahora])
+
+  // Composición de los pagos del mes en curso (mismo criterio que porPagarEsteMes)
+  const pagoMesDetalle = useMemo(() => {
+    const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+    const egresosMes = data.egresosPendientes.filter((e) => e.fechaVencimiento.slice(0, 7) === mesKey)
+    return componerEgresos(egresosMes)
+  }, [data.egresosPendientes, ahora])
   const [marcarCobrada, setMarcarCobrada] = useState(false)
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
@@ -389,7 +443,7 @@ export default function CajaEventosPage() {
           <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
             <Link href="/finanzas/archivo">
               <Archive className="h-4 w-4" />
-              Archivo
+              Archivo Histórico
             </Link>
           </Button>
           <Building className="h-4 w-4 text-muted-foreground" />
@@ -419,55 +473,169 @@ export default function CajaEventosPage() {
         </p>
       )}
 
-      {/* DASHBOARD: 4 métricas clave */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card
-          className="border-teal-200 bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors"
-          onClick={() => setDesgloseOpen(true)}
-        >
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora:</p>
-              <div className="flex items-center gap-1.5">
-                <Eye className="h-3.5 w-3.5 text-teal-500" />
-                <Wallet className="h-4 w-4 text-teal-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-teal-800">{formatCurrency(saldoActual)}</p>
-          </CardContent>
-        </Card>
+      {/* DASHBOARD: carrusel con vista mensual y semanal */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-foreground capitalize">
+            {vistaDashboard === 0 ? mesActualLabel : `Esta semana · ${rangoSemanaLabel}`}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 0 ? "w-4 bg-teal-600" : "w-1.5 bg-muted-foreground/30"}`} />
+            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 1 ? "w-4 bg-teal-600" : "w-1.5 bg-muted-foreground/30"}`} />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 ml-2 bg-transparent"
+              onClick={() => setVistaDashboard((v) => (v === 0 ? 1 : 0))}
+              disabled={vistaDashboard === 0}
+              aria-label="Ver este mes"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 bg-transparent"
+              onClick={() => setVistaDashboard((v) => (v === 0 ? 1 : 0))}
+              disabled={vistaDashboard === 1}
+              aria-label="Ver esta semana"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
-        <Card className="border-emerald-200 bg-emerald-50">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro este mes:</p>
-              <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-            </div>
-            <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(porCobrarEsteMes)}</p>
-          </CardContent>
-        </Card>
+        <div className="overflow-hidden">
+          <div
+            className="flex transition-transform duration-300 ease-in-out"
+            style={{ transform: `translateX(-${vistaDashboard * 100}%)` }}
+          >
+            {/* ── Slide 1: ESTE MES ─────────────────────────────────── */}
+            <div className="w-full shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3 pr-0.5">
+              <Card
+                className="border-teal-200 bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors"
+                onClick={() => setDesgloseOpen(true)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora:</p>
+                    <div className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-teal-500" />
+                      <Wallet className="h-4 w-4 text-teal-600" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-bold text-teal-800">{formatCurrency(saldoActual)}</p>
+                </CardContent>
+              </Card>
 
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago este mes:</p>
-              <ArrowUpFromLine className="h-4 w-4 text-red-600" />
-            </div>
-            <p className="text-2xl font-bold text-red-700">−{formatCurrency(porPagarEsteMes)}</p>
-          </CardContent>
-        </Card>
+              <Card className="border-emerald-200 bg-emerald-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro este mes:</p>
+                    <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(porCobrarEsteMes)}</p>
+                  {(() => {
+                    const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+                    const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
+                    if (cuotasMes.length === 0) return null
+                    return (
+                      <p className="text-lg font-semibold text-emerald-700 mt-1">
+                        {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
+                      </p>
+                    )
+                  })()}
+                </CardContent>
+              </Card>
 
-        <Card className={saldoFinMes >= 0 ? "border-teal-200" : "border-red-300"}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">tengo a fin de mes:</p>
-              <TrendingUp className={`h-4 w-4 ${saldoFinMes >= 0 ? "text-teal-600" : "text-red-600"}`} />
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago este mes:</p>
+                    <ArrowUpFromLine className="h-4 w-4 text-red-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-red-700">−{formatCurrency(porPagarEsteMes)}</p>
+                  {pagoMesDetalle && (
+                    <p className="text-lg font-semibold text-red-600 mt-1">{pagoMesDetalle}</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className={saldoFinMes >= 0 ? "border-teal-200" : "border-red-300"}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">tengo a fin de mes:</p>
+                    <TrendingUp className={`h-4 w-4 ${saldoFinMes >= 0 ? "text-teal-600" : "text-red-600"}`} />
+                  </div>
+                  <p className={`text-2xl font-bold ${saldoFinMes >= 0 ? "text-foreground" : "text-red-700"}`}>
+                    {formatCurrency(saldoFinMes)}
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-            <p className={`text-2xl font-bold ${saldoFinMes >= 0 ? "text-foreground" : "text-red-700"}`}>
-              {formatCurrency(saldoFinMes)}
-            </p>
-          </CardContent>
-        </Card>
+
+            {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
+            <div className="w-full shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3 pl-0.5" aria-hidden={vistaDashboard !== 1}>
+              <Card
+                className="border-teal-200 bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors"
+                onClick={() => setDesgloseOpen(true)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora:</p>
+                    <div className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-teal-500" />
+                      <Wallet className="h-4 w-4 text-teal-600" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-bold text-teal-800">{formatCurrency(saldoActual)}</p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-emerald-200 bg-emerald-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro esta semana:</p>
+                    <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(cobroSemana)}</p>
+                  {cuotasSemanaCount > 0 && (
+                    <p className="text-lg font-semibold text-emerald-700 mt-1">
+                      {cuotasSemanaCount} {cuotasSemanaCount === 1 ? "cuota" : "cuotas"}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago esta semana:</p>
+                    <ArrowUpFromLine className="h-4 w-4 text-red-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-red-700">−{formatCurrency(pagoSemana)}</p>
+                  {pagoSemanaDetalle && (
+                    <p className="text-lg font-semibold text-red-600 mt-1">{pagoSemanaDetalle}</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className={saldoFinSemana >= 0 ? "border-teal-200" : "border-red-300"}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      tengo a fin de semana:
+                    </p>
+                    <TrendingUp className={`h-4 w-4 ${saldoFinSemana >= 0 ? "text-teal-600" : "text-red-600"}`} />
+                  </div>
+                  <p className={`text-2xl font-bold ${saldoFinSemana >= 0 ? "text-foreground" : "text-red-700"}`}>
+                    {formatCurrency(saldoFinSemana)}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Vienen esta semana a pagar (L-V 09-20hs) */}

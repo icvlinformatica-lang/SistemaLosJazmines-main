@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef, Suspense } from "react"
+import { useState, useMemo, useRef, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -262,6 +262,18 @@ function PagosPageContent() {
   // Confirmación de eliminación de comprobante/pago
   const [pagoToDelete, setPagoToDelete] = useState<PagoEvento | null>(null)
 
+  // Mantener el evento seleccionado sincronizado con el store: si el plan de
+  // cuotas se editó desde Contratos (otra modalidad de financiación, montos o
+  // fechas nuevas), acá se refleja al instante en vez de mostrar el plan viejo.
+  useEffect(() => {
+    if (!selectedEvento) return
+    const fresh = eventos.find((e) => e.id === selectedEvento.id)
+    if (!fresh || fresh === selectedEvento) return
+    setSelectedEvento(fresh)
+    cargarPlanDesdeEvento(fresh)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventos])
+
   // ¿Hay una búsqueda activa según el modo?
   const hayBusquedaActiva =
     searchMode === "texto"
@@ -296,22 +308,41 @@ function PagosPageContent() {
       .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""))
   }, [eventos, searchMode, searchTerm, filtroFecha, filtroSalon])
 
+  // El plan guardado desde el generador de contratos (planDeCuotas) es la
+  // fuente de verdad: respeta la modalidad de financiación (pago completo /
+  // seña + cuotas / solo cuotas), el recargo y el monto de cuota real.
+  // Los campos legacy (montoTotalPlan / planCuotas) quedan solo como fallback
+  // para eventos viejos que no tienen planDeCuotas.
+  const cargarPlanDesdeEvento = (ev: EventoGuardado) => {
+    if (ev.planDeCuotas && ev.planDeCuotas.montoTotal > 0) {
+      setMontoTotal(ev.planDeCuotas.montoTotal)
+      setCuotasTotal(ev.planDeCuotas.numeroCuotas || 1)
+    } else {
+      if (ev.montoTotalPlan && ev.montoTotalPlan > 0) {
+        setMontoTotal(ev.montoTotalPlan)
+      } else {
+        const precioVenta = ev.precioVenta || 0
+        const costoTotal = (ev.costoInsumos || 0) + (ev.costoServicios || 0) + (ev.costoOperativo || 0)
+        setMontoTotal(precioVenta > 0 ? precioVenta : costoTotal)
+      }
+      if (ev.planCuotas && ev.planCuotas > 0) {
+        setCuotasTotal(ev.planCuotas)
+      }
+    }
+  }
+
+  // Cargar el plan al entrar con un evento preseleccionado (por URL)
+  useEffect(() => {
+    if (selectedEvento) cargarPlanDesdeEvento(selectedEvento)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleSelectEvento = (ev: EventoGuardado) => {
     setSelectedEvento(ev)
     setSearchTerm("")
     setFiltroFecha("")
     setFiltroSalon("todos")
-    // Load cuotas data if exists
-    if (ev.montoTotalPlan && ev.montoTotalPlan > 0) {
-      setMontoTotal(ev.montoTotalPlan)
-    } else {
-      const precioVenta = ev.precioVenta || 0
-      const costoTotal = (ev.costoInsumos || 0) + (ev.costoServicios || 0) + (ev.costoOperativo || 0)
-      setMontoTotal(precioVenta > 0 ? precioVenta : costoTotal)
-    }
-    if (ev.planCuotas && ev.planCuotas > 0) {
-      setCuotasTotal(ev.planCuotas)
-    }
+    cargarPlanDesdeEvento(ev)
   }
 
   const handleAddPago = () => {
@@ -506,7 +537,14 @@ function PagosPageContent() {
   const saldoPendiente = montoTotal > 0 ? montoTotal - totalPagos : 0
   const cuotasPagadas = selectedEvento ? (selectedEvento.pagos || []).length : 0
   const cuotasRestantes = Math.max(0, cuotasTotal - cuotasPagadas)
-  const montoPorCuota = cuotasTotal > 0 && montoTotal > 0 ? montoTotal / cuotasTotal : 0
+  // Monto real de cada cuota: el del plan guardado en el contrato (incluye
+  // recargo por financiación y descuenta la seña). Fallback: división simple.
+  const montoPorCuota =
+    selectedEvento?.planDeCuotas?.montoCuota && selectedEvento.planDeCuotas.montoCuota > 0
+      ? selectedEvento.planDeCuotas.montoCuota
+      : cuotasTotal > 0 && montoTotal > 0
+        ? montoTotal / cuotasTotal
+        : 0
 
   const detailTotal = selectedEvento
     ? selectedEvento.adultos + selectedEvento.adolescentes + selectedEvento.ninos + (selectedEvento.personasDietasEspeciales || 0)
@@ -928,7 +966,15 @@ function PagosPageContent() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleMarcarCuotaPagada(item.evento.id, item.numeroCuota, item.monto)}
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `¿Registrar el pago de la cuota ${item.numeroCuota} por ${formatCurrency(item.monto)}?`,
+                                )
+                              ) {
+                                handleMarcarCuotaPagada(item.evento.id, item.numeroCuota, item.monto)
+                              }
+                            }}
                           >
                             Marcar Pagada
                           </Button>
@@ -937,7 +983,11 @@ function PagosPageContent() {
                             size="sm"
                             variant="ghost"
                             className="text-muted-foreground hover:text-destructive"
-                            onClick={() => handleRevertirCuotaPagada(item.evento.id, item.numeroCuota)}
+                            onClick={() => {
+                              if (confirm(`¿Marcar la cuota ${item.numeroCuota} como impaga? El cliente la volverá a adeudar.`)) {
+                                handleRevertirCuotaPagada(item.evento.id, item.numeroCuota)
+                              }
+                            }}
                           >
                             Marcar Impaga
                           </Button>
@@ -1047,15 +1097,57 @@ function PagosPageContent() {
                     </Link>
                   </Button>
                 </div>
-                {selectedEvento.planCuotas && selectedEvento.planCuotas > 0 ? (
-                  <CardDescription>
-                    Plan guardado: {selectedEvento.planCuotas} cuotas de {formatCurrency((selectedEvento.montoTotalPlan || 0) / selectedEvento.planCuotas)}
-                  </CardDescription>
-                ) : (
-                  <CardDescription>
-                    El plan de cuotas y el monto total se configuran desde Contratos. Aquí solo se registran y consultan los pagos.
-                  </CardDescription>
-                )}
+                {(() => {
+                  const plan = selectedEvento.planDeCuotas
+                  if (plan && plan.numeroCuotas > 0) {
+                    const modalidad = plan.modalidadPago || "cuotas"
+                    const modalidadLabel =
+                      modalidad === "completo"
+                        ? "Pago completo"
+                        : modalidad === "sena"
+                          ? "Seña + Cuotas"
+                          : "Solo Cuotas"
+                    return (
+                      <CardDescription className="space-y-1">
+                        <span className="block">
+                          <span className="font-semibold text-foreground">{modalidadLabel}</span>
+                          {modalidad === "completo"
+                            ? ` · 1 pago de ${formatCurrency(plan.montoCuota || plan.montoTotal)}`
+                            : ` · ${plan.numeroCuotas} cuotas de ${formatCurrency(plan.montoCuota || 0)}`}
+                        </span>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          {modalidad === "sena" && (plan.montoSena || 0) > 0 && (
+                            <Badge variant="secondary" className="text-[11px]">
+                              Seña: {formatCurrency(plan.montoSena!)}
+                            </Badge>
+                          )}
+                          {(plan.porcentajeRecargo || 0) > 0 && (
+                            <Badge variant="secondary" className="text-[11px]">
+                              Recargo financiación: {plan.porcentajeRecargo}%
+                            </Badge>
+                          )}
+                          {plan.ajustaPorIPC === true && (
+                            <Badge variant="secondary" className="text-[11px] text-amber-700">
+                              Ajusta por IPC
+                            </Badge>
+                          )}
+                        </span>
+                      </CardDescription>
+                    )
+                  }
+                  if (selectedEvento.planCuotas && selectedEvento.planCuotas > 0) {
+                    return (
+                      <CardDescription>
+                        Plan guardado: {selectedEvento.planCuotas} cuotas de {formatCurrency((selectedEvento.montoTotalPlan || 0) / selectedEvento.planCuotas)}
+                      </CardDescription>
+                    )
+                  }
+                  return (
+                    <CardDescription>
+                      El plan de cuotas y el monto total se configuran desde Contratos. Aquí solo se registran y consultan los pagos.
+                    </CardDescription>
+                  )
+                })()}
               </CardHeader>
               <CardContent className="space-y-4">
                 {montoTotal > 0 && (

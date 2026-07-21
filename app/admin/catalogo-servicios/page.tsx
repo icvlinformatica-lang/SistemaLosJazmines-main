@@ -181,6 +181,7 @@ export default function CatalogoServiciosPage() {
       })
       return
     }
+    if (!confirm(`¿Eliminar el servicio "${servicio.nombre}"? Esta acción no se puede deshacer.`)) return
     deleteServicio(servicio.id)
     toast({ title: "Servicio eliminado" })
   }

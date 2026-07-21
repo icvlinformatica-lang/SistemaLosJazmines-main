@@ -496,7 +496,11 @@ export default function ServiciosPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => deleteServicio(servicio.id)}
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar el servicio "${servicio.nombre}"? Esta acción no se puede deshacer.`)) {
+                                    deleteServicio(servicio.id)
+                                  }
+                                }}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -580,7 +584,15 @@ function PaqueteCard({
             <Button variant="ghost" size="icon" onClick={onDuplicar}>
               <Copy className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={onEliminar}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (confirm(`¿Eliminar el paquete "${paquete.nombre}"? Esta acción no se puede deshacer.`)) {
+                  onEliminar()
+                }
+              }}
+            >
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>

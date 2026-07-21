@@ -236,6 +236,7 @@ function generateContractHTML(
     <tr><td>Horario</td><td>${horarioInicio} a ${horarioFin} hs.</td></tr>
     <tr><td>Salon</td><td>${salon} — ${direccion}</td></tr>
     <tr><td>Invitados</td><td>${totalPersonas} personas (${evento.adultos} adultos, ${evento.adolescentes} adolescentes, ${evento.ninos} ninos)</td></tr>
+    ${contrato.vendedor ? `<tr><td>Vendedor</td><td>${contrato.vendedor}</td></tr>` : ""}
   </table>
 
   ${serviciosIncluidos.length > 0 ? `
