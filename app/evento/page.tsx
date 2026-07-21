@@ -419,7 +419,8 @@ function EventoPageContent() {
       estado: "borrador" as EstadoEvento,
     }
     if (isEditing) {
-      await updateEvento(borradorData.id, { estado: "borrador" })
+      // Persistir también el contrato (incluye vendedor) para no perder la selección
+      await updateEvento(borradorData.id, { estado: "borrador", contrato: evento.contrato })
     } else {
       await addEvento(borradorData)
     }
@@ -515,6 +516,9 @@ function EventoPageContent() {
         email: localContratoEmail || undefined,
         direccion: localContratoDireccion || undefined,
         fechaNacimiento: localContratoFechaNac || undefined,
+        // El vendedor se elige en la sección "Vendedor" (vive en evento.contrato):
+        // hay que arrastrarlo acá o se pierde al guardar.
+        vendedor: evento.contrato?.vendedor || undefined,
       },
       planDeCuotas: localMontoTotal > 0 ? (() => {
         const modalidad = localModalidadPago
