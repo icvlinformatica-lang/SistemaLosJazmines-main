@@ -985,7 +985,7 @@ export default function CajaJazminePage() {
           <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
             <Link href="/finanzas/archivo">
               <Archive className="h-4 w-4" />
-              Archivo
+              Archivo Histórico
             </Link>
           </Button>
           <Building className="h-4 w-4 text-muted-foreground" />
