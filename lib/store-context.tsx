@@ -21,6 +21,7 @@ import {
   type ConfiguracionCajas,
   type MovimientoCaja,
   type GastoArchivado,
+  type Vendedor,
   type HistorialIPCEntry,
   loadState,
   saveState,
@@ -161,6 +162,10 @@ interface StoreContextType {
   archivarGasto: (gasto: Omit<GastoArchivado, "id">) => void
   desarchivarGasto: (id: string) => void
 
+  // Vendedores (equipo comercial)
+  vendedores: Vendedor[]
+  updateVendedor: (id: string, updates: Partial<Vendedor>) => void
+
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
@@ -263,7 +268,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
-        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB, historialIPCDB, paquetesDB, temporadasDB] = await Promise.all([
+        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB, historialIPCDB, paquetesDB, temporadasDB, vendedoresDB] = await Promise.all([
           db.fetchServicios(),
           db.fetchPersonal(),
           db.fetchPagosPersonal(),
@@ -276,6 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           db.fetchHistorialIPC(),
           db.fetchPaquetesSalones(),
           db.fetchTemporadas(),
+          db.fetchVendedores(),
         ])
 
         // Migración one-time: si Supabase devuelve vacío pero localStorage tiene precios, upsertearlos ahora
@@ -369,6 +375,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           historialIPC: historialIPCDB,
           paquetesSalones: paquetesMigrados,
           temporadas: temporadasMigradas,
+          vendedores: vendedoresDB,
         }
       } catch (error) {
         console.error("[v0] Error loading from Supabase, using localStorage:", error)
@@ -429,6 +436,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         gastosArchivados: supabaseData.gastosArchivados ?? localState.gastosArchivados ?? [],
         paquetesSalones: supabaseData.paquetesSalones ?? localState.paquetesSalones ?? [],
         temporadas: supabaseData.temporadas ?? localState.temporadas ?? [],
+        // Vendedores: fuente de verdad = Supabase; si la tabla está vacía o falló, usar defaults
+        vendedores: (Array.isArray(supabaseData.vendedores) && supabaseData.vendedores.length > 0)
+          ? supabaseData.vendedores
+          : (localState.vendedores ?? []),
         // Historial IPC: fuente de verdad = Supabase (compartido entre dispositivos).
         // ultimoMesIPC se deriva de la entrada más reciente para no re-aplicar el mismo mes.
         historialIPC: historialIPCDesdeDB ?? localState.historialIPC ?? [],
@@ -1359,6 +1370,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // === Vendedores (equipo comercial) — Synced with Supabase ===
+  const updateVendedor = async (id: string, updates: Partial<Vendedor>) => {
+    let actualizado: Vendedor | undefined
+    setState((prev) => {
+      const nuevos = (prev.vendedores || []).map((v) => {
+        if (v.id !== id) return v
+        actualizado = { ...v, ...updates }
+        return actualizado
+      })
+      return { ...prev, vendedores: nuevos }
+    })
+    // Sync to Supabase
+    try {
+      const { upsertVendedor } = await import("./supabase/data-service")
+      const base = (state.vendedores || []).find((v) => v.id === id)
+      if (base) await upsertVendedor({ ...base, ...updates })
+    } catch (error) {
+      console.error("[v0] Error syncing vendedor to Supabase:", error)
+    }
+  }
+
   // === Archivo de gastos ===
   const archivarGasto = async (gasto: Omit<GastoArchivado, "id">) => {
     const nuevo: GastoArchivado = { ...gasto, id: generateId() }
@@ -1642,6 +1674,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         gastosArchivados: state.gastosArchivados || [],
         archivarGasto,
         desarchivarGasto,
+        vendedores: state.vendedores || [],
+        updateVendedor,
         historialIPC: state.historialIPC || [],
         ultimoMesIPC: state.ultimoMesIPC || null,
       aplicarIPC,

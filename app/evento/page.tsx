@@ -110,7 +110,7 @@ function EventoPageContent() {
   const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
-  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores } = useStore()
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
@@ -1196,6 +1196,61 @@ function EventoPageContent() {
 
         {/* Collapsible sections */}
         <div className="space-y-4 mb-8">
+
+        {/* ── VENDEDOR: siempre abierto y visualmente destacado ─────────── */}
+        <div className="rounded-xl border-2 border-amber-300 bg-amber-50/70 overflow-hidden shadow-sm">
+          <div className="flex w-full items-center gap-4 px-5 py-4 border-b border-amber-200">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15 shrink-0">
+              <UserCheck className="h-5 w-5 text-amber-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-semibold text-amber-900 truncate">Vendedor</h2>
+                {evento.contrato?.vendedor ? (
+                  <Badge className="bg-amber-600 text-white border-transparent">{evento.contrato.vendedor}</Badge>
+                ) : (
+                  <Badge variant="outline" className="border-amber-400 text-amber-700 bg-transparent">Sin asignar</Badge>
+                )}
+              </div>
+              <p className="text-sm text-amber-800/70 mt-0.5">
+                Quién vendió este evento — figura en el contrato y en Eventos &gt; Vendedores
+              </p>
+            </div>
+          </div>
+          <div className="px-5 py-4">
+            <div className="flex flex-wrap gap-2">
+              {vendedores.map((v) => {
+                const seleccionado = evento.contrato?.vendedor === v.nombre
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() =>
+                      updateEventoActual({
+                        contrato: { ...(evento.contrato || {}), vendedor: seleccionado ? undefined : v.nombre },
+                      })
+                    }
+                    aria-pressed={seleccionado}
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
+                      seleccionado
+                        ? "bg-amber-600 border-amber-600 text-white shadow-sm"
+                        : "bg-card border-amber-300 text-amber-900 hover:bg-amber-100"
+                    }`}
+                  >
+                    {v.emoji && <span aria-hidden="true">{v.emoji}</span>}
+                    {v.nombre}
+                    {seleccionado && <CheckCircle className="h-4 w-4" />}
+                  </button>
+                )
+              })}
+            </div>
+            {evento.contrato?.vendedor && (
+              <p className="text-xs text-amber-800/70 mt-3">
+                En el contrato aparecerá: <span className="font-semibold text-amber-900">Vendedor: {evento.contrato.vendedor}</span> — tocá de nuevo el nombre para quitarlo.
+              </p>
+            )}
+          </div>
+        </div>
 
         <SectionCard
           sectionKey="detalles"

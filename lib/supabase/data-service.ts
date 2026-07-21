@@ -850,6 +850,47 @@ export async function deleteHistorialIPC(id: string): Promise<boolean> {
   return true
 }
 
+// ============ VENDEDORES ============
+
+import type { Vendedor } from "@/lib/store"
+
+export async function fetchVendedores(): Promise<Vendedor[]> {
+  const { data, error } = await supabase
+    .from("vendedores")
+    .select("*")
+    .order("nombre", { ascending: true })
+
+  if (error) {
+    console.error("Error fetching vendedores:", error)
+    return []
+  }
+
+  return (data || []).map((v) => ({
+    id: v.id,
+    nombre: v.nombre,
+    emoji: v.emoji || "",
+    sueldo: Number(v.sueldo) || 0,
+    comisionPct: Number(v.comision_pct) || 0,
+  }))
+}
+
+export async function upsertVendedor(vendedor: Vendedor): Promise<boolean> {
+  const { error } = await supabase.from("vendedores").upsert({
+    id: vendedor.id,
+    nombre: vendedor.nombre,
+    emoji: vendedor.emoji || "",
+    sueldo: vendedor.sueldo || 0,
+    comision_pct: vendedor.comisionPct || 0,
+    updated_at: new Date().toISOString(),
+  })
+
+  if (error) {
+    console.error("Error upserting vendedor:", error)
+    return false
+  }
+  return true
+}
+
 // === Precios Venta ===
 
 import type { PreciosVentaMap } from "@/lib/store"

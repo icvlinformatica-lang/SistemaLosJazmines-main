@@ -174,12 +174,14 @@ export interface Evento {
 
   // Datos del contrato
   contrato?: {
-    nombreCompleto?: string
-    direccion?: string
-    telefono?: string
-    email?: string
-    dni?: string
-    fechaNacimiento?: string
+  nombreCompleto?: string
+  direccion?: string
+  telefono?: string
+  email?: string
+  dni?: string
+  fechaNacimiento?: string
+  /** Vendedor que cerró la venta del evento — impacta en el contrato impreso y en Eventos > Vendedores */
+  vendedor?: string
   }
 
   // Plan de cuotas
@@ -855,6 +857,32 @@ export interface PagoPersonal {
   asignacionId?: string
 }
 
+// ==========================================
+// VENDEDORES
+// ==========================================
+
+/** Vendedor del equipo comercial: se asigna a eventos desde el generador de contratos */
+export interface Vendedor {
+  id: string
+  nombre: string
+  /** Emoji usado como foto de perfil en Eventos > Vendedores */
+  emoji: string
+  /** Sueldo base mensual */
+  sueldo: number
+  /** Porcentaje de comisión sobre el total de cada evento vendido (ej: 5 = 5%) */
+  comisionPct: number
+}
+
+/** Vendedores por defecto del equipo */
+export const VENDEDORES_DEFAULT: Vendedor[] = [
+  { id: "ricky", nombre: "Ricky", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "diego", nombre: "Diego", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "giselle", nombre: "Giselle", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "maira", nombre: "Maira", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "sonia", nombre: "Sonia", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "gustavo", nombre: "Gustavo", emoji: "", sueldo: 0, comisionPct: 0 },
+]
+
 export interface AppState {
   insumos: Insumo[]
   insumosBarra: InsumoBarra[]
@@ -880,6 +908,8 @@ export interface AppState {
   movimientosCaja: MovimientoCaja[]
   // ARCHIVO — historial consolidado de gastos archivados
   gastosArchivados: GastoArchivado[]
+  // VENDEDORES — equipo comercial (emoji, sueldo, comisión)
+  vendedores: Vendedor[]
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
@@ -1665,6 +1695,7 @@ export function loadState(): AppState {
     },
     movimientosCaja: [],
     gastosArchivados: [],
+    vendedores: VENDEDORES_DEFAULT,
     historialIPC: [],
     ultimoMesIPC: null,
   }
@@ -1705,6 +1736,7 @@ export function loadState(): AppState {
         },
         movimientosCaja: parsed.movimientosCaja || [],
         gastosArchivados: parsed.gastosArchivados || [],
+        vendedores: parsed.vendedores || VENDEDORES_DEFAULT,
         historialIPC: parsed.historialIPC || [],
         ultimoMesIPC: parsed.ultimoMesIPC || null,
       }
