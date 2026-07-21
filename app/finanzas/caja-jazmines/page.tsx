@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -470,6 +470,39 @@ export default function CajaJazminePage() {
     cuotasPorCobrar,
   } = data
 
+  // ── Revelado progresivo de cuotas por cobrar (de 5 en 5 con la rueda) ────
+  const CUOTAS_POR_PAGINA = 5
+  const [cuotasVisibles, setCuotasVisibles] = useState(CUOTAS_POR_PAGINA)
+  const cuotasListaRef = useRef<HTMLDivElement>(null)
+  const ultimoWheelRef = useRef(0)
+  const totalCuotas = cuotasPorCobrar.length
+
+  useEffect(() => {
+    const el = cuotasListaRef.current
+    if (!el) return
+
+    const onWheel = (e: WheelEvent) => {
+      const haciaAbajo = e.deltaY > 0
+      const puedeRevelar = haciaAbajo && cuotasVisibles < totalCuotas
+      const puedeOcultar = !haciaAbajo && cuotasVisibles > CUOTAS_POR_PAGINA
+      if (!puedeRevelar && !puedeOcultar) return
+
+      e.preventDefault()
+      const ahora = Date.now()
+      if (ahora - ultimoWheelRef.current < 250) return
+      ultimoWheelRef.current = ahora
+
+      setCuotasVisibles((v) =>
+        haciaAbajo
+          ? Math.min(v + CUOTAS_POR_PAGINA, totalCuotas)
+          : Math.max(v - CUOTAS_POR_PAGINA, CUOTAS_POR_PAGINA),
+      )
+    }
+
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => el.removeEventListener("wheel", onWheel)
+  }, [cuotasVisibles, totalCuotas])
+
   // ── Edición de gastos fijos ──────────────────────────────────────────────
   const [editandoFijo, setEditandoFijo] = useState<GastoFijoMes | null>(null)
   const [editFijo, setEditFijo] = useState({
@@ -869,39 +902,49 @@ export default function CajaJazminePage() {
           </div>
         </CardHeader>
         {!colapsadas.cuotas && (
-          <CardContent className="space-y-2">
+          <CardContent>
             {cuotasPorCobrar.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 No hay cuotas pendientes de cobro.
               </p>
             ) : (
-              cuotasPorCobrar.map((cuota) => (
-                <button
-                  key={cuota.id}
-                  onClick={() => {
-                    setCuotaSel(cuota)
-                    setMarcarCobrada(false)
-                  }}
-                  className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                            Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
-                            {cuota.salon && (
-                              <span className="inline-flex items-center gap-1 align-middle">
-                                {" · "}
-                                <SalonDot salon={cuota.salon} size={7} />
-                                {salonLabel(cuota.salon)}
-                              </span>
-                            )}
-                    </p>
-                  </div>
-                  <span className="text-sm font-bold text-emerald-700 shrink-0">
-                    +{formatCurrency(cuota.montoJazmines)}
-                  </span>
-                </button>
-              ))
+              <div ref={cuotasListaRef} className="space-y-2">
+                {cuotasPorCobrar.slice(0, cuotasVisibles).map((cuota) => (
+                  <button
+                    key={cuota.id}
+                    onClick={() => {
+                      setCuotaSel(cuota)
+                      setMarcarCobrada(false)
+                    }}
+                    className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                              Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
+                              {cuota.salon && (
+                                <span className="inline-flex items-center gap-1 align-middle">
+                                  {" · "}
+                                  <SalonDot salon={cuota.salon} size={7} />
+                                  {salonLabel(cuota.salon)}
+                                </span>
+                              )}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-emerald-700 shrink-0">
+                      +{formatCurrency(cuota.montoJazmines)}
+                    </span>
+                  </button>
+                ))}
+                {totalCuotas > CUOTAS_POR_PAGINA && (
+                  <p className="text-[11px] text-emerald-700/70 text-center pt-1 select-none">
+                    Mostrando {Math.min(cuotasVisibles, totalCuotas)} de {totalCuotas}
+                    {cuotasVisibles < totalCuotas
+                      ? " · usá la rueda del mouse para ver más"
+                      : " · rueda hacia arriba para ocultar"}
+                  </p>
+                )}
+              </div>
             )}
           </CardContent>
         )}
