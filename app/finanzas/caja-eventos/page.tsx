@@ -124,8 +124,21 @@ export default function CajaEventosPage() {
   // ── Carrusel del dashboard: vista "Este mes" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = mes, 1 = semana
 
+  // Resume la composición de egresos por tipo: "3 menú · 2 señas · 1 saldo"
+  const componerEgresos = (egresos: EgresoPendienteServicio[]): string => {
+    const counts: Record<string, number> = {}
+    for (const e of egresos) counts[e.tipo] = (counts[e.tipo] || 0) + 1
+    const partes: string[] = []
+    if (counts["menu"]) partes.push(`${counts["menu"]} menú`)
+    if (counts["seña"]) partes.push(`${counts["seña"]} ${counts["seña"] === 1 ? "seña" : "señas"}`)
+    if (counts["saldo"]) partes.push(`${counts["saldo"]} ${counts["saldo"] === 1 ? "saldo" : "saldos"}`)
+    if (counts["barra"]) partes.push(`${counts["barra"]} barra`)
+    if (counts["sueldo"]) partes.push(`${counts["sueldo"]} ${counts["sueldo"] === 1 ? "sueldo" : "sueldos"}`)
+    return partes.join(" · ")
+  }
+
   // Semana actual: lunes a domingo
-  const { cobroSemana, cuotasSemanaCount, pagoSemana, saldoFinSemana, rangoSemanaLabel } = useMemo(() => {
+  const { cobroSemana, cuotasSemanaCount, pagoSemana, pagoSemanaDetalle, saldoFinSemana, rangoSemanaLabel } = useMemo(() => {
     const diaSemana = ahora.getDay() // 0 = domingo
     const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
     const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
@@ -147,10 +160,18 @@ export default function CajaEventosPage() {
       cobroSemana: cobro,
       cuotasSemanaCount: cuotasSemana.length,
       pagoSemana: pago,
+      pagoSemanaDetalle: componerEgresos(egresosSemana),
       saldoFinSemana: data.saldoActual + cobro - pago,
       rangoSemanaLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
     }
   }, [data.ingresosPendientes, data.egresosPendientes, data.saldoActual, ahora])
+
+  // Composición de los pagos del mes en curso (mismo criterio que porPagarEsteMes)
+  const pagoMesDetalle = useMemo(() => {
+    const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+    const egresosMes = data.egresosPendientes.filter((e) => e.fechaVencimiento.slice(0, 7) === mesKey)
+    return componerEgresos(egresosMes)
+  }, [data.egresosPendientes, ahora])
   const [marcarCobrada, setMarcarCobrada] = useState(false)
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
@@ -534,6 +555,9 @@ export default function CajaEventosPage() {
                     <ArrowUpFromLine className="h-4 w-4 text-red-600" />
                   </div>
                   <p className="text-2xl font-bold text-red-700">−{formatCurrency(porPagarEsteMes)}</p>
+                  {pagoMesDetalle && (
+                    <p className="text-lg font-semibold text-red-600 mt-1">{pagoMesDetalle}</p>
+                  )}
                 </CardContent>
               </Card>
 
@@ -590,6 +614,9 @@ export default function CajaEventosPage() {
                     <ArrowUpFromLine className="h-4 w-4 text-red-600" />
                   </div>
                   <p className="text-2xl font-bold text-red-700">−{formatCurrency(pagoSemana)}</p>
+                  {pagoSemanaDetalle && (
+                    <p className="text-lg font-semibold text-red-600 mt-1">{pagoSemanaDetalle}</p>
+                  )}
                 </CardContent>
               </Card>
 
