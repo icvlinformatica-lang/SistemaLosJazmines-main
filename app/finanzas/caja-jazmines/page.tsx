@@ -59,6 +59,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
+import { ConfirmAction } from "@/components/confirm-action"
 import Link from "next/link"
 
 // ---------------------------------------------------------------------------
@@ -685,7 +686,8 @@ export default function CajaJazminePage() {
   const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
-  // Al entrar, todas las tarjetas arrancan plegadas.
+  // Al entrar, todas las tarjetas arrancan plegadas y se van abriendo solas,
+  // de a una, con la animación escalonada de sus subtarjetas.
   const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({
     alertas: true,
     cuotas: true,
@@ -693,6 +695,18 @@ export default function CajaJazminePage() {
     variables: true,
     proyeccion: true,
   })
+
+  useEffect(() => {
+    const orden = ["cuotas", "alertas", "fijos", "variables", "proyeccion"]
+    const timers = orden.map((key, i) =>
+      setTimeout(() => {
+        setColapsadas((prev) => ({ ...prev, [key]: false }))
+      }, 500 + i * 900),
+    )
+    return () => timers.forEach(clearTimeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
   const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({})
@@ -887,6 +901,7 @@ export default function CajaJazminePage() {
   function handleAgregarFijo() {
     if (!nuevoFijo.concepto || !nuevoFijo.monto) return
     if (fijoRepartoInvalido) return
+    if (!confirm(`¿Agendar el gasto fijo "${nuevoFijo.concepto}" por ${formatCurrency(Number(nuevoFijo.monto))}?`)) return
     const dist = nuevoFijo.repartir
       ? nuevoFijo.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
@@ -930,6 +945,7 @@ export default function CajaJazminePage() {
     } else if (!nuevoGasto.salon) {
       return
     }
+    if (!confirm(`¿Agendar el gasto "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} con vencimiento el ${nuevoGasto.fecha}?`)) return
     const dist = nuevoGasto.repartir
       ? nuevoGasto.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
@@ -1339,30 +1355,42 @@ export default function CajaJazminePage() {
                           </Button>
                         )}
                         {/* Toggle pagado */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                          title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
-                          onClick={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
+                        <ConfirmAction
+                          title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                          description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}`}
+                          confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
+                          onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
                         >
-                          {esPagado
-                            ? <CheckCircle2 className="h-4 w-4" />
-                            : <Circle className="h-4 w-4" />
-                          }
-                          <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                            title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
+                          >
+                            {esPagado
+                              ? <CheckCircle2 className="h-4 w-4" />
+                              : <Circle className="h-4 w-4" />
+                            }
+                            <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                          </Button>
+                        </ConfirmAction>
                         {/* Archivar */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-purple-600"
-                          title="Archivar pago de este período"
-                          onClick={() => archivarFijo(gasto)}
+                        <ConfirmAction
+                          title="¿Archivar pago de este período?"
+                          description={`Se registra el pago de "${gasto.concepto}" (${formatCurrency(gasto.monto)}) y el vencimiento avanza al próximo período.`}
+                          confirmLabel="Sí, archivar"
+                          onConfirm={() => archivarFijo(gasto)}
                         >
-                          <Archive className="h-3.5 w-3.5" />
-                          <span className="sr-only">Archivar gasto fijo</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-purple-600"
+                            title="Archivar pago de este período"
+                          >
+                            <Archive className="h-3.5 w-3.5" />
+                            <span className="sr-only">Archivar gasto fijo</span>
+                          </Button>
+                        </ConfirmAction>
                         {/* Editar */}
                         <Button
                           variant="ghost"
@@ -1375,16 +1403,23 @@ export default function CajaJazminePage() {
                           <span className="sr-only">Editar gasto fijo</span>
                         </Button>
                         {/* Eliminar */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          title="Eliminar"
-                          onClick={() => deleteCostoOperativo(gasto.id)}
+                        <ConfirmAction
+                          title="¿Eliminar gasto fijo?"
+                          description={`Se elimina "${gasto.concepto}" de forma permanente. Esta acción no se puede deshacer.`}
+                          confirmLabel="Sí, eliminar"
+                          destructive
+                          onConfirm={() => deleteCostoOperativo(gasto.id)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="sr-only">Eliminar gasto fijo</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="sr-only">Eliminar gasto fijo</span>
+                          </Button>
+                        </ConfirmAction>
                       </div>
                     </div>
                     {histVisible && hist.length > 0 && (
@@ -1501,41 +1536,60 @@ export default function CajaJazminePage() {
                         {badgeEstadoVar(gasto.estado)}
                       </div>
                       {/* Toggle pagado */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                        title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
-                        onClick={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
+                      <ConfirmAction
+                        title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                        description={`${gasto.nombre} · ${formatCurrency(gasto.monto)}`}
+                        confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
+                        onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
                       >
-                        {esPagado
-                          ? <CheckCircle2 className="h-4 w-4" />
-                          : <Circle className="h-4 w-4" />
-                        }
-                        <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                          title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
+                        >
+                          {esPagado
+                            ? <CheckCircle2 className="h-4 w-4" />
+                            : <Circle className="h-4 w-4" />
+                          }
+                          <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                        </Button>
+                      </ConfirmAction>
                       {/* Archivar */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-purple-600"
-                        title="Archivar gasto"
-                        onClick={() => archivarVariable(gasto)}
+                      <ConfirmAction
+                        title="¿Archivar gasto?"
+                        description={`Se registra el pago de "${gasto.nombre}" (${formatCurrency(gasto.monto)}) en el archivo.`}
+                        confirmLabel="Sí, archivar"
+                        onConfirm={() => archivarVariable(gasto)}
                       >
-                        <Archive className="h-3.5 w-3.5" />
-                        <span className="sr-only">Archivar gasto variable</span>
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-purple-600"
+                          title="Archivar gasto"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                          <span className="sr-only">Archivar gasto variable</span>
+                        </Button>
+                      </ConfirmAction>
                       {/* Eliminar */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Eliminar"
-                        onClick={() => deleteCostoOperativo(gasto.id)}
+                      <ConfirmAction
+                        title="¿Eliminar gasto?"
+                        description={`Se elimina "${gasto.nombre}" de forma permanente. Esta acción no se puede deshacer.`}
+                        confirmLabel="Sí, eliminar"
+                        destructive
+                        onConfirm={() => deleteCostoOperativo(gasto.id)}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span className="sr-only">Eliminar gasto variable</span>
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span className="sr-only">Eliminar gasto variable</span>
+                        </Button>
+                      </ConfirmAction>
                     </div>
                   </div>
                 )

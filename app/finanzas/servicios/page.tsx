@@ -224,7 +224,7 @@ export default function FinanzasServiciosPage() {
     toast({ title: "Servicio eliminado" })
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────��───
   return (
     <div className="flex flex-col h-full min-h-0 p-6 gap-4">
 
@@ -393,7 +393,12 @@ export default function FinanzasServiciosPage() {
                       value={venta > 0 ? venta.toString() : ""}
                       placeholder="0"
                       numeric
-                      onCommit={(v) => update(s.id, { precioVenta: parseARS(v) })}
+                      onCommit={(v) => {
+                        const nuevo = parseARS(v)
+                        if (nuevo === venta) return
+                        if (!confirm(`¿Establecer el precio de venta de "${s.nombre}" en ${formatARS(nuevo)}?`)) return
+                        update(s.id, { precioVenta: nuevo })
+                      }}
                     />
                     {venta > 0 && (
                       <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
@@ -408,7 +413,12 @@ export default function FinanzasServiciosPage() {
                       value={costo > 0 ? costo.toString() : ""}
                       placeholder="0"
                       numeric
-                      onCommit={(v) => update(s.id, { costoParaCajaEventos: parseARS(v) })}
+                      onCommit={(v) => {
+                        const nuevo = parseARS(v)
+                        if (nuevo === costo) return
+                        if (!confirm(`¿Establecer el costo (Caja Eventos) de "${s.nombre}" en ${formatARS(nuevo)}?`)) return
+                        update(s.id, { costoParaCajaEventos: nuevo })
+                      }}
                     />
                     {costo > 0 && (
                       <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
@@ -429,6 +439,8 @@ export default function FinanzasServiciosPage() {
                         const montoSeña = parseARS(v)
                         const base = s.costoParaCajaEventos ?? 0
                         const pct = base > 0 ? Math.round((montoSeña / base) * 100) : 30
+                        if (pct === (s.porcentajeSeña ?? 30)) return
+                        if (!confirm(`¿Establecer la seña de "${s.nombre}" en ${formatARS(montoSeña)} (${pct}%)?`)) return
                         update(s.id, { porcentajeSeña: pct })
                       }}
                     />

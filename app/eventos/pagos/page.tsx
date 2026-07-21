@@ -928,7 +928,15 @@ function PagosPageContent() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleMarcarCuotaPagada(item.evento.id, item.numeroCuota, item.monto)}
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `¿Registrar el pago de la cuota ${item.numeroCuota} por ${formatCurrency(item.monto)}?`,
+                                )
+                              ) {
+                                handleMarcarCuotaPagada(item.evento.id, item.numeroCuota, item.monto)
+                              }
+                            }}
                           >
                             Marcar Pagada
                           </Button>
@@ -937,7 +945,11 @@ function PagosPageContent() {
                             size="sm"
                             variant="ghost"
                             className="text-muted-foreground hover:text-destructive"
-                            onClick={() => handleRevertirCuotaPagada(item.evento.id, item.numeroCuota)}
+                            onClick={() => {
+                              if (confirm(`¿Marcar la cuota ${item.numeroCuota} como impaga? El cliente la volverá a adeudar.`)) {
+                                handleRevertirCuotaPagada(item.evento.id, item.numeroCuota)
+                              }
+                            }}
                           >
                             Marcar Impaga
                           </Button>
