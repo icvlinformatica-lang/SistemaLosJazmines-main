@@ -748,6 +748,45 @@ export default function CajaJazminePage() {
     deleteCostoOperativo(gasto.id)
   }
 
+  // ── Pagar directo desde la tarjeta de alertas ──────────────────────────
+  // Dispara la animación de desvanecido y, al terminar, archiva el gasto en
+  // el Archivo Histórico (fijo: avanza vencimiento / variable: se elimina).
+  const [alertasPagando, setAlertasPagando] = useState<Set<string>>(new Set())
+
+  function pagarDesdeAlerta(alerta: { id: string; concepto: string; monto: number }) {
+    const costo = state.costosOperativos?.find((c) => c.id === alerta.id)
+    if (!costo) return
+    setAlertasPagando((prev) => new Set(prev).add(alerta.id))
+    setTimeout(() => {
+      if (costo.esVariable) {
+        archivarVariable({
+          id: costo.id,
+          nombre: costo.concepto,
+          salon: costo.salon || "",
+          fecha: costo.fechaVencimiento || hoyStr,
+          monto: costo.monto,
+        })
+      } else {
+        archivarFijo({
+          id: costo.id,
+          concepto: costo.concepto,
+          monto: costo.monto,
+          salon: costo.salon,
+          frecuencia: costo.frecuencia,
+        } as GastoFijoMes)
+      }
+      toast({
+        title: "Pago registrado",
+        description: `"${costo.concepto}" se movió al Archivo Histórico.`,
+      })
+      setAlertasPagando((prev) => {
+        const next = new Set(prev)
+        next.delete(alerta.id)
+        return next
+      })
+    }, 650)
+  }
+
   const {
     saldoActual,
     gastosPróximos30Dias,
@@ -759,6 +798,32 @@ export default function CajaJazminePage() {
     ingresosProyectados30Dias,
     cuotasPorCobrar,
   } = data
+
+  // ── Proyección: gastos fijos del 1 al 10 del mes siguiente ──────────────
+  // Los gastos fijos agendados se repiten el mes que viene; acá se proyecta
+  // cuáles caen entre el día 1 y el 10 del próximo mes para anticipar pagos.
+  const [subcarpetaProximoMes, setSubcarpetaProximoMes] = useState(false)
+  const proxMesDate = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1)
+  const proxMesISO = `${proxMesDate.getFullYear()}-${String(proxMesDate.getMonth() + 1).padStart(2, "0")}`
+  const tituloProxMes = proxMesDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+
+  const gastosProximoMes1al10 = [...data.gastosFijosMes, ...data.gastosFijosCubiertos]
+    .map((g) => {
+      if (!g.fechaVencimiento) return null
+      const [vy, vm, vd] = g.fechaVencimiento.split("-").map(Number)
+      if (vd < 1 || vd > 10) return null
+      if (g.frecuencia === "Anual") {
+        // Solo si el aniversario cae exactamente en el mes próximo
+        if (vm !== proxMesDate.getMonth() + 1) return null
+        return { ...g, fechaProyectada: `${proxMesISO}-${String(vd).padStart(2, "0")}` }
+      }
+      // Mensual: se repite todos los meses el mismo día
+      return { ...g, fechaProyectada: `${proxMesISO}-${String(vd).padStart(2, "0")}` }
+    })
+    .filter((g): g is GastoFijoMes & { fechaProyectada: string } => g !== null)
+    .sort((a, b) => a.fechaProyectada.localeCompare(b.fechaProyectada))
+
+  const totalProximoMes1al10 = gastosProximoMes1al10.reduce((s, g) => s + g.monto, 0)
 
   // ── Revelado progresivo de cuotas por cobrar (de 5 en 5 con la rueda) ────
   const CUOTAS_POR_PAGINA = 5
@@ -1127,7 +1192,9 @@ export default function CajaJazminePage() {
               {alertasVencimiento.map((alerta) => (
                 <div
                   key={alerta.id}
-                  className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+                  className={`flex items-start gap-3 rounded-lg border border-border bg-card p-3 ${
+                    alertasPagando.has(alerta.id) ? "fade-out-paid" : ""
+                  }`}
                 >
                   {puntoPrioridad(alerta.estado)}
                   <div className="flex-1 min-w-0">
@@ -1146,6 +1213,22 @@ export default function CajaJazminePage() {
                   <span className="text-sm font-bold text-red-600 shrink-0">
                     {formatCurrency(alerta.monto)}
                   </span>
+                  <ConfirmAction
+                    title="¿Marcar como pagado?"
+                    description={`Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`}
+                    confirmLabel="Sí, marcar pagado"
+                    onConfirm={() => pagarDesdeAlerta(alerta)}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
+                      title="Marcar como pagado"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
+                    </Button>
+                  </ConfirmAction>
                 </div>
               ))}
               <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
@@ -1164,6 +1247,68 @@ export default function CajaJazminePage() {
               </div>
             </>
           )}
+
+          {/* ── Subcarpeta: proyección del 1 al 10 del mes siguiente ────── */}
+          <div className="mt-2 rounded-lg border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSubcarpetaProximoMes((v) => !v)}
+              className="w-full flex items-center gap-2 bg-muted/50 hover:bg-muted px-3 py-2 text-left transition-colors"
+              aria-expanded={subcarpetaProximoMes}
+            >
+              {subcarpetaProximoMes
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+              <Calendar className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span className="text-xs font-semibold text-foreground capitalize flex-1">
+                Del 1 al 10 de {tituloProxMes}
+              </span>
+              {gastosProximoMes1al10.length > 0 && (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+                  {gastosProximoMes1al10.length}
+                </Badge>
+              )}
+              <span className="text-xs font-bold text-red-600 tabular-nums">
+                {formatCurrency(totalProximoMes1al10)}
+              </span>
+            </button>
+            {subcarpetaProximoMes && (
+              <div className="space-y-2 bg-card p-2 reveal-stagger">
+                {gastosProximoMes1al10.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-3 text-center">
+                    No hay gastos fijos agendados del 1 al 10 del mes próximo.
+                  </p>
+                ) : (
+                  gastosProximoMes1al10.map((g) => (
+                    <div
+                      key={`prox-${g.id}`}
+                      className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+                    >
+                      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{g.concepto}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Vence el {formatFecha(g.fechaProyectada)}
+                          {g.salon && (
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              {" · "}
+                              <SalonDot salon={g.salon} size={7} />
+                              {salonLabel(g.salon)}
+                            </span>
+                          )}
+                          {" · "}
+                          {g.frecuencia}
+                        </p>
+                      </div>
+                      <span className="text-sm font-bold text-red-600 shrink-0">
+                        {formatCurrency(g.monto)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </CardContent>
         )}
       </Card>
