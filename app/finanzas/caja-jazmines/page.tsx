@@ -320,7 +320,7 @@ function CarpetaGastos({
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`} />
       </button>
-      {abierta && <div className="space-y-2 bg-card p-2">{children}</div>}
+      {abierta && <div className="space-y-2 bg-card p-2 reveal-stagger">{children}</div>}
     </div>
   )
 }
@@ -685,7 +685,14 @@ export default function CajaJazminePage() {
   const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
-  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({ fijos: true, variables: true })
+  // Al entrar, todas las tarjetas arrancan plegadas.
+  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({
+    alertas: true,
+    cuotas: true,
+    fijos: true,
+    variables: true,
+    proyeccion: true,
+  })
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
   const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({})
@@ -1094,7 +1101,7 @@ export default function CajaJazminePage() {
           </div>
         </CardHeader>
         {!colapsadas.alertas && (
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2 reveal-stagger">
           {alertasVencimiento.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
               No hay vencimientos en los próximos 30 días.
@@ -1177,7 +1184,7 @@ export default function CajaJazminePage() {
                 No hay cuotas pendientes de cobro.
               </p>
             ) : (
-              <div ref={cuotasListaRef} className="space-y-2">
+              <div ref={cuotasListaRef} className="space-y-2 reveal-stagger">
                 {cuotasPorCobrar.slice(0, cuotasVisibles).map((cuota) => (
                   <button
                     key={cuota.id}
@@ -1256,7 +1263,7 @@ export default function CajaJazminePage() {
             </div>
           </CardHeader>
           {!colapsadas.fijos && (
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 reveal-stagger">
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 No hay gastos fijos configurados.
@@ -1460,7 +1467,7 @@ export default function CajaJazminePage() {
             </div>
           </CardHeader>
           {!colapsadas.variables && (
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 reveal-stagger">
             {gastosVariablesCombinados.length === 0 ? (
               <p className="text-sm text-muted-foreground py-3 text-center">
                 Sin gastos variables registrados.
@@ -1562,7 +1569,7 @@ export default function CajaJazminePage() {
           </div>
         </CardHeader>
         {!colapsadas.proyeccion && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 reveal-stagger">
           <div className="flex items-end justify-around gap-3 sm:gap-6 h-56 pt-2">
             {[
               { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
@@ -1818,7 +1825,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ────────────────────────────────── */}
+      {/* ── Dialog: Agendar gasto variable ─────��──────────────────────────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
