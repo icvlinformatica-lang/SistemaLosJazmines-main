@@ -56,6 +56,8 @@ import {
   History,
   ArrowUp,
   ArrowDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -364,6 +366,256 @@ function HistorialMontos({ historial }: { historial: RegistroMonto[] }) {
         )
       })}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CALENDARIO DE GASTOS POR SALÓN
+// ---------------------------------------------------------------------------
+
+interface ItemCalendario {
+  id: string
+  concepto: string
+  monto: number
+  salon: string | null | undefined
+  fecha: string // YYYY-MM-DD
+  estado: string
+  tipo: "fijo" | "variable"
+}
+
+/** Formato compacto de moneda para las celdas del calendario. */
+function montoCompacto(monto: number): string {
+  if (monto >= 1_000_000) return `$${(monto / 1_000_000).toFixed(1).replace(".", ",").replace(",0", "")}M`
+  if (monto >= 1_000) return `$${Math.round(monto / 1_000)}k`
+  return `$${monto}`
+}
+
+/**
+ * Calendario mensual con los gastos (fijos y variables) por fecha de
+ * vencimiento, coloreados según el salón. Respeta el filtro de salón de la
+ * página porque recibe las listas ya filtradas por el hook.
+ */
+function CalendarioGastosSalones({
+  fijos,
+  cubiertos,
+  variables,
+  ahora,
+}: {
+  fijos: GastoFijoMes[]
+  cubiertos: GastoFijoMes[]
+  variables: { id: string; nombre: string; salon: string; fecha: string; monto: number; estado: string }[]
+  ahora: Date
+}) {
+  const { configuracionCajas } = useStore()
+  const [mesVista, setMesVista] = useState(() => new Date(ahora.getFullYear(), ahora.getMonth(), 1))
+  const [diaSel, setDiaSel] = useState<string | null>(null)
+
+  // Unificar todos los gastos con fecha en una sola lista
+  const items: ItemCalendario[] = [
+    ...fijos
+      .filter((g) => g.fechaVencimiento)
+      .map((g) => ({
+        id: `f-${g.id}`,
+        concepto: g.concepto,
+        monto: g.monto,
+        salon: g.salon,
+        fecha: g.fechaVencimiento!,
+        estado: g.estado,
+        tipo: "fijo" as const,
+      })),
+    ...cubiertos
+      .filter((g) => g.fechaVencimiento)
+      .map((g) => ({
+        id: `fc-${g.id}`,
+        concepto: g.concepto,
+        monto: g.monto,
+        salon: g.salon,
+        fecha: g.fechaVencimiento!,
+        estado: "pagado",
+        tipo: "fijo" as const,
+      })),
+    ...variables
+      .filter((g) => g.fecha)
+      .map((g) => ({
+        id: `v-${g.id}`,
+        concepto: g.nombre,
+        monto: g.monto,
+        salon: g.salon || null,
+        fecha: g.fecha,
+        estado: g.estado,
+        tipo: "variable" as const,
+      })),
+  ]
+
+  const anio = mesVista.getFullYear()
+  const mes = mesVista.getMonth()
+  const mesISO = `${anio}-${String(mes + 1).padStart(2, "0")}`
+  const itemsMes = items.filter((it) => it.fecha.startsWith(mesISO))
+
+  // Agrupar por día del mes
+  const porDia = new Map<string, ItemCalendario[]>()
+  for (const it of itemsMes) {
+    if (!porDia.has(it.fecha)) porDia.set(it.fecha, [])
+    porDia.get(it.fecha)!.push(it)
+  }
+
+  const totalMes = itemsMes.reduce((s, it) => s + it.monto, 0)
+
+  // Subtotales por salón del mes visible
+  const porSalon = new Map<string, number>()
+  for (const it of itemsMes) {
+    const key = it.salon || "General"
+    porSalon.set(key, (porSalon.get(key) || 0) + it.monto)
+  }
+  const ordenSalones = [...SALONES, "General"]
+  const resumenSalones = Array.from(porSalon.entries()).sort(
+    (a, b) => ordenSalones.indexOf(a[0] as any) - ordenSalones.indexOf(b[0] as any),
+  )
+
+  // Construcción de la grilla (semana empieza lunes)
+  const primerDia = new Date(anio, mes, 1)
+  const offset = (primerDia.getDay() + 6) % 7 // lunes=0
+  const diasEnMes = new Date(anio, mes + 1, 0).getDate()
+  const celdas: (number | null)[] = [
+    ...Array.from({ length: offset }, () => null),
+    ...Array.from({ length: diasEnMes }, (_, i) => i + 1),
+  ]
+  while (celdas.length % 7 !== 0) celdas.push(null)
+
+  const hoyISO = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`
+
+  const tituloMes = mesVista.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+  const itemsDiaSel = diaSel ? porDia.get(diaSel) || [] : []
+
+  function colorDe(salon: string | null | undefined): string {
+    return salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
+  }
+
+  function cambiarMes(delta: number) {
+    setMesVista((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1))
+    setDiaSel(null)
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Calendar className="h-4 w-4 text-purple-600" />
+            Calendario de gastos
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="min-w-[130px] text-center text-sm font-semibold capitalize">{tituloMes}</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => cambiarMes(1)} aria-label="Mes siguiente">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        {resumenSalones.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
+            {resumenSalones.map(([salon, subtotal]) => (
+              <span key={salon} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: colorDe(salon) }} />
+                {salonLabel(salon)}: <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
+              </span>
+            ))}
+            <span className="ml-auto text-xs text-muted-foreground">
+              Total mes: <span className="font-bold text-red-600">{formatCurrency(totalMes)}</span>
+            </span>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-7 gap-1">
+          {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+            <div key={d} className="pb-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {d}
+            </div>
+          ))}
+          {celdas.map((dia, idx) => {
+            if (dia === null) return <div key={`x-${idx}`} className="min-h-[64px] rounded-md bg-muted/20" />
+            const fechaISO = `${mesISO}-${String(dia).padStart(2, "0")}`
+            const delDia = porDia.get(fechaISO) || []
+            const esHoy = fechaISO === hoyISO
+            const seleccionado = fechaISO === diaSel
+            const totalDia = delDia.reduce((s, it) => s + it.monto, 0)
+            return (
+              <button
+                key={fechaISO}
+                type="button"
+                onClick={() => setDiaSel(seleccionado ? null : fechaISO)}
+                className={`flex min-h-[64px] flex-col items-stretch gap-0.5 rounded-md border p-1 text-left transition-colors ${
+                  seleccionado
+                    ? "border-purple-400 bg-purple-50"
+                    : esHoy
+                      ? "border-purple-300 bg-card"
+                      : "border-border bg-card hover:bg-muted/40"
+                }`}
+                aria-label={`Día ${dia}${delDia.length > 0 ? `, ${delDia.length} gastos por ${formatCurrency(totalDia)}` : ""}`}
+              >
+                <span className={`text-[11px] font-semibold leading-none ${esHoy ? "text-purple-700" : "text-muted-foreground"}`}>
+                  {dia}
+                </span>
+                {delDia.slice(0, 2).map((it) => (
+                  <span
+                    key={it.id}
+                    className="flex items-center gap-1 truncate rounded px-1 py-px text-[10px] leading-tight"
+                    style={{ backgroundColor: `${colorDe(it.salon)}1f`, color: colorDe(it.salon) }}
+                    title={`${it.concepto} · ${salonLabel(it.salon || "General")} · ${formatCurrency(it.monto)}`}
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colorDe(it.salon) }} />
+                    <span className={`truncate font-medium ${it.estado === "pagado" ? "line-through opacity-60" : ""}`}>
+                      {montoCompacto(it.monto)}
+                    </span>
+                  </span>
+                ))}
+                {delDia.length > 2 && (
+                  <span className="px-1 text-[10px] font-medium text-muted-foreground">+{delDia.length - 2} más</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {diaSel && (
+          <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-3 space-y-2">
+            <p className="text-xs font-semibold text-purple-800">
+              {formatFecha(diaSel)} · {itemsDiaSel.length} {itemsDiaSel.length === 1 ? "gasto" : "gastos"}
+            </p>
+            {itemsDiaSel.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin gastos este día.</p>
+            ) : (
+              itemsDiaSel.map((it) => (
+                <div key={it.id} className="flex items-center gap-2.5 rounded-md border border-border bg-card p-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colorDe(it.salon) }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{it.concepto}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {salonLabel(it.salon || "General")} · {it.tipo === "fijo" ? "Gasto fijo" : "Gasto variable"}
+                    </p>
+                  </div>
+                  {it.estado === "pagado" ? (
+                    <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[11px] shrink-0">pagado</Badge>
+                  ) : it.estado === "vencido" ? (
+                    <Badge className="bg-red-100 text-red-700 border-red-200 text-[11px] shrink-0">vencido</Badge>
+                  ) : null}
+                  <span className="shrink-0 text-sm font-bold text-red-600">−{formatCurrency(it.monto)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {itemsMes.length === 0 && (
+          <p className="py-2 text-center text-sm text-muted-foreground">
+            No hay gastos con fecha en este mes para el filtro seleccionado.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1336,6 +1588,14 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
+      {/* ── Calendario de gastos por salón ─────────────────────────────────── */}
+      <CalendarioGastosSalones
+        fijos={gastosFijosMes}
+        cubiertos={gastosFijosCubiertos}
+        variables={gastosVariablesCombinados}
+        ahora={ahora}
+      />
+
       {/* ── Dialog: Agregar gasto fijo ────────────────────────────────────── */}
       <Dialog open={modalFijoAbierto} onOpenChange={setModalFijoAbierto}>
         <DialogContent className="sm:max-w-md">
@@ -1442,7 +1702,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Editar gasto fijo ──────────────────────────────────────── */}
+      {/* ── Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
       <Dialog open={!!editandoFijo} onOpenChange={(open) => !open && setEditandoFijo(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
