@@ -444,6 +444,18 @@ export default function CajaEventosPage() {
               <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
             </div>
             <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(porCobrarEsteMes)}</p>
+            {(() => {
+              const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+              const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
+              const eventosMes = new Set(cuotasMes.map((c) => c.eventoId)).size
+              if (cuotasMes.length === 0) return null
+              return (
+                <p className="text-xs text-emerald-700 mt-1">
+                  {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"} de {eventosMes}{" "}
+                  {eventosMes === 1 ? "evento" : "eventos"} vienen a pagar este mes
+                </p>
+              )
+            })()}
           </CardContent>
         </Card>
 
