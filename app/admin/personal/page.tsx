@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import { useStore } from "@/lib/store-context"
 import { useToast } from "@/hooks/use-toast"
-import { generateId, generarMovimientoEgreso, FUNCIONES_PERSONAL } from "@/lib/store"
+import { generarMovimientoEgreso, FUNCIONES_PERSONAL } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -107,12 +107,6 @@ export default function PersonalPage() {
     monto: 0,
     descripcion: "",
   })
-
-  // Dialogo de tarifas
-  const [dialogoTarifaAbierto, setDialogoTarifaAbierto] = useState(false)
-  const [personaTarifaId, setPersonaTarifaId] = useState<string | null>(null)
-  const [tarifaEditando, setTarifaEditando] = useState<Tarifa | null>(null)
-  const [tarifaForm, setTarifaForm] = useState({ descripcion: "", monto: 0 })
 
   // Sheet de historial
   const [sheetHistorialAbierto, setSheetHistorialAbierto] = useState(false)
@@ -286,51 +280,6 @@ export default function PersonalPage() {
     }
   }
 
-  // === TARIFAS ===
-  const handleAbrirDialogoTarifa = (personaId: string, tarifa?: Tarifa) => {
-    setPersonaTarifaId(personaId)
-    if (tarifa) {
-      setTarifaEditando(tarifa)
-      setTarifaForm({ descripcion: tarifa.descripcion, monto: tarifa.monto })
-    } else {
-      setTarifaEditando(null)
-      setTarifaForm({ descripcion: "", monto: 0 })
-    }
-    setDialogoTarifaAbierto(true)
-  }
-
-  const handleGuardarTarifa = () => {
-    if (!personaTarifaId || !tarifaForm.descripcion) return
-    const persona = personal.find(p => p.id === personaTarifaId)
-    if (!persona) return
-
-    const tarifasActuales = persona.tarifas || []
-    let nuevasTarifas: Tarifa[]
-
-    if (tarifaEditando) {
-      nuevasTarifas = tarifasActuales.map(t => 
-        t.id === tarifaEditando.id 
-          ? { ...t, descripcion: tarifaForm.descripcion, monto: tarifaForm.monto }
-          : t
-      )
-    } else {
-      nuevasTarifas = [...tarifasActuales, { id: generateId(), descripcion: tarifaForm.descripcion, monto: tarifaForm.monto }]
-    }
-
-    updatePersonal(personaTarifaId, { tarifas: nuevasTarifas })
-    toast({ title: tarifaEditando ? "Tarifa actualizada" : "Tarifa agregada" })
-    setDialogoTarifaAbierto(false)
-  }
-
-  const handleEliminarTarifa = (personaId: string, tarifaId: string) => {
-    const persona = personal.find(p => p.id === personaId)
-    if (!persona) return
-
-    const nuevasTarifas = (persona.tarifas || []).filter(t => t.id !== tarifaId)
-    updatePersonal(personaId, { tarifas: nuevasTarifas })
-    toast({ title: "Tarifa eliminada", variant: "destructive" })
-  }
-
   // === ASIGNAR COMPROMISO MANUAL (evento + tarifa) ===
   const handleAbrirDialogoCompromiso = (personaId: string) => {
     const persona = personal.find(p => p.id === personaId)
@@ -350,9 +299,6 @@ export default function PersonalPage() {
     let monto = compromisoForm.monto
     if (tarifaId === "base") {
       monto = persona.tarifaBase || 0
-    } else if (tarifaId !== "manual") {
-      const tarifa = (persona.tarifas || []).find(t => t.id === tarifaId)
-      if (tarifa) monto = tarifa.monto
     }
     setCompromisoForm(prev => ({ ...prev, tarifaId, monto }))
   }
@@ -380,21 +326,16 @@ export default function PersonalPage() {
       return
     }
 
-    const tarifaSeleccionada = compromisoForm.tarifaId !== "base" && compromisoForm.tarifaId !== "manual"
-      ? (persona.tarifas || []).find(t => t.id === compromisoForm.tarifaId)
-      : null
-
     addPagoPersonal({
       personalId: persona.id,
       eventoId: evento.id,
       nombrePersonal: `${persona.nombre} ${persona.apellido}`.trim(),
-      servicioNombre: compromisoForm.descripcion || tarifaSeleccionada?.descripcion || persona.funcion,
+      servicioNombre: compromisoForm.descripcion || persona.funcion,
       montoTotal: compromisoForm.monto,
       fechaEvento: evento.fecha,
       // Vence el mismo dia del evento
       fechaLimitePago: evento.fecha,
       estado: "pendiente",
-      tarifaId: tarifaSeleccionada?.id,
     })
 
     toast({
@@ -539,7 +480,7 @@ export default function PersonalPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Gestion de Personal</h1>
           <p className="text-sm text-muted-foreground">
-            Administra el personal, tarifas y compromisos por evento
+            Administra el personal, su tarifa y compromisos por evento
           </p>
         </div>
         <Button onClick={() => handleAbrirDialogo()}>
@@ -590,10 +531,9 @@ export default function PersonalPage() {
               <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[130px]">
                 <span className="flex items-center justify-end gap-1 text-emerald-700">
                   <DollarSign className="h-3.5 w-3.5" />
-                  Tarifa base
+                  Tarifa
                 </span>
               </th>
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Tarifas</th>
               <th className="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wide w-[240px]">
                 <span className="flex items-center gap-1 text-amber-700">
                   <Banknote className="h-3.5 w-3.5" />
@@ -606,7 +546,7 @@ export default function PersonalPage() {
           <tbody>
             {personalFiltrado.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-16 text-muted-foreground">
+                <td colSpan={6} className="text-center py-16 text-muted-foreground">
                   {busqueda || filtroFuncion !== "todas" ? (
                     "No se encontro personal con esos filtros."
                   ) : (
@@ -625,7 +565,6 @@ export default function PersonalPage() {
 
             {personalFiltrado.map((persona, idx) => {
               const compromisos = getCompromisosPersona(persona.id)
-              const tarifas = persona.tarifas || []
               return (
                 <tr
                   key={persona.id}
@@ -657,40 +596,13 @@ export default function PersonalPage() {
                     </Badge>
                   </td>
 
-                  {/* Tarifa base */}
+                  {/* Tarifa */}
                   <td className="px-3 py-2 text-right tabular-nums">
                     {persona.tarifaBase > 0 ? (
                       <span className="font-semibold text-emerald-700">{formatearPrecio(persona.tarifaBase)}</span>
                     ) : (
                       <span className="text-muted-foreground/40">—</span>
                     )}
-                  </td>
-
-                  {/* Tarifas adicionales */}
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-1">
-                      {tarifas.map(tarifa => (
-                        <button
-                          key={tarifa.id}
-                          type="button"
-                          onClick={() => handleAbrirDialogoTarifa(persona.id, tarifa)}
-                          className="inline-flex items-center gap-1 rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[11px] hover:bg-muted transition-colors"
-                          title={`Editar tarifa: ${tarifa.descripcion}`}
-                        >
-                          <span className="max-w-[90px] truncate">{tarifa.descripcion}</span>
-                          <span className="font-semibold text-emerald-700">{formatearPrecio(tarifa.monto)}</span>
-                        </button>
-                      ))}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => handleAbrirDialogoTarifa(persona.id)}
-                        title="Agregar tarifa"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
                   </td>
 
                   {/* Compromisos activos (click para gestionar) */}
@@ -917,13 +829,8 @@ export default function PersonalPage() {
                     return (
                       <>
                         <SelectItem value="base">
-                          Tarifa base {p && p.tarifaBase > 0 ? `(${formatearPrecio(p.tarifaBase)})` : ""}
+                          Tarifa {p && p.tarifaBase > 0 ? `(${formatearPrecio(p.tarifaBase)})` : ""}
                         </SelectItem>
-                        {(p?.tarifas || []).map(t => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.descripcion} ({formatearPrecio(t.monto)})
-                          </SelectItem>
-                        ))}
                         <SelectItem value="manual">Monto manual</SelectItem>
                       </>
                     )
@@ -1058,13 +965,13 @@ export default function PersonalPage() {
                 </div>
 
                 <div>
-                  <Label>Tarifa Base (referencia)</Label>
+                  <Label>Tarifa</Label>
                   <MoneyInput
                     value={formData.tarifaBase}
                     onValueChange={(v) => setFormData({ ...formData, tarifaBase: v })}
                     placeholder="0"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Puedes agregar tarifas especificas desde la ficha de persona</p>
+                  <p className="text-xs text-muted-foreground mt-1">Tarifa unica de esta persona por evento</p>
                 </div>
               </CardContent>
             </Card>
@@ -1131,44 +1038,6 @@ export default function PersonalPage() {
             </Button>
             <Button onClick={handleGuardar}>
               {personalEditando ? "Guardar Cambios" : "Crear Personal"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialogo de Tarifa */}
-      <Dialog open={dialogoTarifaAbierto} onOpenChange={setDialogoTarifaAbierto}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{tarifaEditando ? "Editar Tarifa" : "Agregar Tarifa"}</DialogTitle>
-            <DialogDescription>
-              {tarifaEditando ? "Modifica los datos de la tarifa." : "Crea una nueva tarifa para esta persona."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label>Descripcion *</Label>
-              <Input
-                value={tarifaForm.descripcion}
-                onChange={(e) => setTarifaForm({ ...tarifaForm, descripcion: e.target.value })}
-                placeholder="Ej: Evento chico, Con video incluido"
-              />
-            </div>
-            <div>
-              <Label>Monto *</Label>
-              <MoneyInput
-                value={tarifaForm.monto}
-                onValueChange={(v) => setTarifaForm({ ...tarifaForm, monto: v })}
-                placeholder="500.000"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogoTarifaAbierto(false)}>Cancelar</Button>
-            <Button onClick={handleGuardarTarifa} disabled={!tarifaForm.descripcion || !tarifaForm.monto}>
-              {tarifaEditando ? "Guardar" : "Agregar"}
             </Button>
           </DialogFooter>
         </DialogContent>
