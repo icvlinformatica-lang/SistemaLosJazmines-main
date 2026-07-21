@@ -496,6 +496,13 @@ function CalendarioGastosSalones({
     setDiaSel(null)
   }
 
+  const esMesActual = anio === ahora.getFullYear() && mes === ahora.getMonth()
+
+  function irAHoy() {
+    setMesVista(new Date(ahora.getFullYear(), ahora.getMonth(), 1))
+    setDiaSel(hoyISO)
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -505,6 +512,16 @@ function CalendarioGastosSalones({
             Calendario de gastos
           </CardTitle>
           <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-xs mr-1 bg-transparent"
+              onClick={irAHoy}
+              disabled={esMesActual}
+              aria-label="Ir al mes de hoy"
+            >
+              Hoy
+            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
