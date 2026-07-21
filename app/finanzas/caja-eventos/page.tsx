@@ -449,7 +449,7 @@ export default function CajaEventosPage() {
               const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
               if (cuotasMes.length === 0) return null
               return (
-                <p className="text-sm font-semibold text-emerald-700 mt-1">
+                <p className="text-lg font-semibold text-emerald-700 mt-1">
                   {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
                 </p>
               )
