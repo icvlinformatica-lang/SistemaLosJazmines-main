@@ -1447,6 +1447,62 @@ export default function CajaEventosPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Editar fecha de vencimiento (cuotas por cobrar y gastos por pagar) */}
+      <Dialog open={!!editVenc} onOpenChange={(open) => !open && setEditVenc(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-muted-foreground" />
+              Cambiar fecha de vencimiento
+            </DialogTitle>
+            <DialogDescription>
+              {editVenc?.kind === "cuota"
+                ? `Cuota ${editVenc.ingreso.numeroCuota}/${editVenc.ingreso.totalCuotas} · ${editVenc.ingreso.eventoNombre} · ${formatCurrency(editVenc.ingreso.monto)}`
+                : editVenc
+                  ? `${editVenc.egreso.servicioNombre} · ${editVenc.egreso.eventoNombre} · ${formatCurrency(editVenc.egreso.monto)}`
+                  : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="venc-fecha">Nueva fecha de vencimiento</Label>
+              <Input
+                id="venc-fecha"
+                type="date"
+                value={nuevaFechaVenc}
+                onChange={(e) => setNuevaFechaVenc(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Impacta en alertas, calendario y balances generales.
+              </p>
+            </div>
+            {editVenc?.kind === "cuota" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="venc-justif">Justificación del cambio (opcional)</Label>
+                <Textarea
+                  id="venc-justif"
+                  placeholder="Ej: el cliente pidió postergar el pago..."
+                  value={justificacionVenc}
+                  onChange={(e) => setJustificacionVenc(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              El cambio queda registrado en Configuración &gt; Registro de actividad.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => setEditVenc(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={guardarNuevaFechaVenc} disabled={!nuevaFechaVenc}>
+              Guardar fecha
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Animación de check verde al confirmar */}
       {pagoExito && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 pointer-events-none">
