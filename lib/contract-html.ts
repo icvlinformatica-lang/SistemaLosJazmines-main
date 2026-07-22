@@ -385,12 +385,15 @@ export function generateContractHTML(
 
     ${anexoLinea("Mesa dulce", menu.mesaDulce.join(", "))}
 
-    ${anexoLinea("Observaciones", evento.descripcionPersonalizada || "")}
+    <div class="seccion">
+    <p class="anexo-title">Observaciones:</p>
+    ${evento.descripcionPersonalizada ? `<p class="anexo-value">${evento.descripcionPersonalizada}</p>` : `<p class="anexo-value anexo-empty">&nbsp;</p>`}
 
     <div class="firma-row">
       <div>FIRMA:<div class="firma-line">&nbsp;</div></div>
       <div>ACLARACI\u00d3N:<div class="firma-line">${contrato.nombreCompleto || "&nbsp;"}</div></div>
       <div>DNI:<div class="firma-line">${contrato.dni || "&nbsp;"}</div></div>
+    </div>
     </div>
   </div>
 
