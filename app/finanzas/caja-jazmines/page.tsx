@@ -652,6 +652,7 @@ export default function CajaJazminePage() {
     archivarGasto,
     updateEvento,
     addMovimientosCaja,
+    updateVendedor,
   } = useStore()
   const { ahora } = useClock()
   const { toast } = useToast()
@@ -903,6 +904,29 @@ export default function CajaJazminePage() {
     return () => el.removeEventListener("wheel", onWheel)
   }, [cuotasVisibles, totalCuotas])
 
+  // ── Edición de fecha de pago de sueldos de vendedores ───────────────────
+  // Solo se edita la fecha acá: los montos se manejan desde Eventos > Vendedores.
+  const [editandoSueldoVendedor, setEditandoSueldoVendedor] = useState<GastoFijoMes | null>(null)
+  const [fechaPagoSueldo, setFechaPagoSueldo] = useState("")
+
+  function abrirEdicionSueldo(gasto: GastoFijoMes) {
+    setFechaPagoSueldo(gasto.fechaVencimiento || "")
+    setEditandoSueldoVendedor(gasto)
+  }
+
+  function guardarFechaSueldo() {
+    if (!editandoSueldoVendedor) return
+    const vendedorId = editandoSueldoVendedor.id.replace("sueldo-vendedor-", "")
+    updateVendedor(vendedorId, { sueldoFechaPago: fechaPagoSueldo || undefined })
+    toast({
+      title: "Fecha de pago actualizada",
+      description: fechaPagoSueldo
+        ? `${editandoSueldoVendedor.concepto} · vence ${formatFecha(fechaPagoSueldo)}`
+        : `${editandoSueldoVendedor.concepto} · sin fecha de pago`,
+    })
+    setEditandoSueldoVendedor(null)
+  }
+
   // ── Edición de gastos fijos ──────────────────────────────────────────────
   const [editandoFijo, setEditandoFijo] = useState<GastoFijoMes | null>(null)
   const [editFijo, setEditFijo] = useState({
@@ -994,7 +1018,7 @@ export default function CajaJazminePage() {
     setRegistrandoMonto(null)
   }
 
-  // ── Agregar gasto fijo ───────────────────────────────────────────────────
+  // ── Agregar gasto fijo ────────────────��──────────────────────────────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
   const [nuevoFijo, setNuevoFijo] = useState({
     concepto: "",
@@ -1625,6 +1649,18 @@ export default function CajaJazminePage() {
                             {badgeEstadoFijo(gasto.estado)}
                           </div>
                         </div>
+                        {gasto.esSueldoVendedor && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            title="Editar fecha de pago"
+                            onClick={() => abrirEdicionSueldo(gasto)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span className="sr-only">Editar fecha de pago</span>
+                          </Button>
+                        )}
                         {!gasto.esSueldoVendedor && (<>
                         {/* Registrar monto pagado (seguir aumentos) */}
                         <Button
@@ -2087,6 +2123,45 @@ export default function CajaJazminePage() {
       </Dialog>
 
       {/* ── Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
+      {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────────── */}
+      <Dialog
+        open={!!editandoSueldoVendedor}
+        onOpenChange={(open) => !open && setEditandoSueldoVendedor(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar fecha de pago</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <p className="text-sm font-medium">{editandoSueldoVendedor?.concepto}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {editandoSueldoVendedor ? formatCurrency(editandoSueldoVendedor.monto) : ""} · el
+                monto se maneja desde Eventos &gt; Vendedores
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sv-fecha">Fecha de pago</Label>
+              <Input
+                id="sv-fecha"
+                type="date"
+                value={fechaPagoSueldo}
+                onChange={(e) => setFechaPagoSueldo(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Esta fecha impacta en las alertas de vencimiento.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditandoSueldoVendedor(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={guardarFechaSueldo}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!editandoFijo} onOpenChange={(open) => !open && setEditandoFijo(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -2281,7 +2356,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: marcar cuota como cobrada ───────────────���─────────────── */}
+      {/* ── Dialog: marcar cuota como cobrada ─────────��─────���─────────────── */}
       <Dialog
         open={!!cuotaSel}
         onOpenChange={(open) => {

@@ -276,6 +276,32 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     if (!salonSel) {
       for (const v of state.vendedores || []) {
         if (!v.sueldo || v.sueldo <= 0) continue
+
+        // Si tiene fecha de pago, calcular estado y emitir alerta de vencimiento.
+        let estadoSueldo: EstadoAlerta = "ok"
+        if (v.sueldoFechaPago) {
+          const fechaVenc = parseLocalDate(v.sueldoFechaPago)
+          const diasRestantes = Math.ceil(
+            (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
+          )
+          if (diasRestantes < 0) estadoSueldo = "vencido"
+          else if (diasRestantes <= 3) estadoSueldo = "urgente"
+          else if (diasRestantes <= 7) estadoSueldo = "proximo"
+
+          if (diasRestantes <= 30) {
+            alertasVencimiento.push({
+              id: `sueldo-vendedor-${v.id}`,
+              concepto: `Sueldo vendedor · ${v.emoji ? `${v.emoji} ` : ""}${v.nombre}`,
+              salon: null,
+              monto: v.sueldo,
+              fechaVencimiento: v.sueldoFechaPago,
+              diasRestantes,
+              estado: estadoSueldo,
+            })
+            gastosPróximos30Dias += v.sueldo
+          }
+        }
+
         gastosFijosMes.push({
           id: `sueldo-vendedor-${v.id}`,
           concepto: `Sueldo vendedor · ${v.emoji ? `${v.emoji} ` : ""}${v.nombre}`,
@@ -283,7 +309,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           frecuencia: "Mensual",
           salon: null,
           monto: v.sueldo,
-          estado: "ok",
+          estado: estadoSueldo,
+          fechaVencimiento: v.sueldoFechaPago,
           esSueldoVendedor: true,
         })
       }

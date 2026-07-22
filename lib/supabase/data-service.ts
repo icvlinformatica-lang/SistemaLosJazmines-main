@@ -871,6 +871,7 @@ export async function fetchVendedores(): Promise<Vendedor[]> {
     emoji: v.emoji || "",
     sueldo: Number(v.sueldo) || 0,
     comisionPct: Number(v.comision_pct) || 0,
+    sueldoFechaPago: v.sueldo_fecha_pago || undefined,
   }))
 }
 
@@ -881,6 +882,7 @@ export async function upsertVendedor(vendedor: Vendedor): Promise<boolean> {
     emoji: vendedor.emoji || "",
     sueldo: vendedor.sueldo || 0,
     comision_pct: vendedor.comisionPct || 0,
+    sueldo_fecha_pago: vendedor.sueldoFechaPago || null,
     updated_at: new Date().toISOString(),
   })
 
