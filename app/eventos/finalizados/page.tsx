@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useEventos } from "@/lib/use-eventos"
-import { formatCurrency, type EventoGuardado, SALONES } from "@/lib/store"
+import { SALONES } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -93,10 +93,6 @@ export default function EventosFinalizadosPage() {
     }
   }
 
-  const getTotalInvitados = (evento: EventoGuardado) => {
-    return (evento.numeroAdultos ?? 0) + (evento.numeroNinos ?? 0)
-  }
-
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -171,15 +167,11 @@ export default function EventosFinalizadosPage() {
                         </button>
                       </TableHead>
                       <TableHead>Salón</TableHead>
-                      <TableHead className="text-right">Invitados</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {eventosFiltrados.map((evento) => {
-                      const totalInvitados = getTotalInvitados(evento)
-
                       return (
                         <TableRow key={evento.id} className="opacity-75">
                           <TableCell>
@@ -195,10 +187,6 @@ export default function EventosFinalizadosPage() {
                             <Badge variant="outline" className="text-xs">
                               {evento.salon || "Sin salón"}
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-right text-sm">{totalInvitados}</TableCell>
-                          <TableCell className="text-right font-medium text-sm">
-                            {formatCurrency(evento.precioTotal ?? 0)}
                           </TableCell>
                           <TableCell>
                             <DropdownMenu>
