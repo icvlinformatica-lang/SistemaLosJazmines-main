@@ -385,6 +385,8 @@ export function ContratoPanel({
   const [saving, setSaving] = useState(false)
   // Borrado de versiones del contrato (protegido por contraseña)
   const [versionAEliminar, setVersionAEliminar] = useState<number | null>(null)
+  // Borrado de generaciones del contrato (misma contraseña)
+  const [generacionAEliminar, setGeneracionAEliminar] = useState<{ id: string; numero: number } | null>(null)
   const [passwordBorrado, setPasswordBorrado] = useState("")
   const [errorPassword, setErrorPassword] = useState(false)
   const [borrandoVersion, setBorrandoVersion] = useState(false)
@@ -505,33 +507,51 @@ export function ContratoPanel({
     }
   }
 
-  // Borra una versión del contrato tras validar la contraseña.
+  // Borra una versión o una generación del contrato tras validar la contraseña.
   // Deja registro en el historial de actividad (Configuración > Actividad).
   const handleConfirmDeleteVersion = async () => {
-    if (!selectedEvento || versionAEliminar === null) return
+    if (!selectedEvento || (versionAEliminar === null && generacionAEliminar === null)) return
     if (passwordBorrado !== "1234") {
       setErrorPassword(true)
       return
     }
     setBorrandoVersion(true)
     try {
-      const version = selectedEvento.versionesContrato?.find((v) => v.version === versionAEliminar)
-      const restantes = (selectedEvento.versionesContrato || []).filter((v) => v.version !== versionAEliminar)
-      await updateEvento(selectedEvento.id, { versionesContrato: restantes })
-      // Registrar en el historial de actividad
-      fetch("/api/activity-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo: "contrato",
-          accion: "eliminado",
-          nombre: `Versión ${versionAEliminar} del contrato de ${selectedEvento.nombrePareja || selectedEvento.nombre || "evento"}`,
-          detalle: version?.motivo
-            ? `Motivo original de la versión: ${version.motivo}`
-            : "Modificación del contrato eliminada con autorización",
-        }),
-      }).catch(() => {})
+      const nombreEvento = selectedEvento.nombrePareja || selectedEvento.nombre || "evento"
+      if (versionAEliminar !== null) {
+        const version = selectedEvento.versionesContrato?.find((v) => v.version === versionAEliminar)
+        const restantes = (selectedEvento.versionesContrato || []).filter((v) => v.version !== versionAEliminar)
+        await updateEvento(selectedEvento.id, { versionesContrato: restantes })
+        // Registrar en el historial de actividad
+        fetch("/api/activity-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: "contrato",
+            accion: "eliminado",
+            nombre: `Versión ${versionAEliminar} del contrato de ${nombreEvento}`,
+            detalle: version?.motivo
+              ? `Motivo original de la versión: ${version.motivo}`
+              : "Modificación del contrato eliminada con autorización",
+          }),
+        }).catch(() => {})
+      } else if (generacionAEliminar !== null) {
+        const restantes = (selectedEvento.generacionesContrato || []).filter((g) => g.id !== generacionAEliminar.id)
+        await updateEvento(selectedEvento.id, { generacionesContrato: restantes })
+        // Registrar en el historial de actividad
+        fetch("/api/activity-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: "contrato",
+            accion: "eliminado",
+            nombre: `Generación #${generacionAEliminar.numero} del contrato de ${nombreEvento}`,
+            detalle: "Registro de generación del contrato eliminado con autorización",
+          }),
+        }).catch(() => {})
+      }
       setVersionAEliminar(null)
+      setGeneracionAEliminar(null)
       setPasswordBorrado("")
       setErrorPassword(false)
     } finally {
@@ -914,6 +934,18 @@ export function ContratoPanel({
                             {gen.montoTotal ? ` · ${formatCurrency(gen.montoTotal)}` : ""}
                           </p>
                         </div>
+                        <button
+                          type="button"
+                          aria-label={`Eliminar generación ${arr.length - idx}`}
+                          className="mt-0.5 shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => {
+                            setGeneracionAEliminar({ id: gen.id, numero: arr.length - idx })
+                            setPasswordBorrado("")
+                            setErrorPassword(false)
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </li>
                     ))}
                 </ol>
@@ -951,22 +983,25 @@ export function ContratoPanel({
           onClose={() => setShowPreviewSync(false)}
         />
 
-        {/* Diálogo de contraseña para borrar una versión del contrato */}
-        {versionAEliminar !== null && (
+        {/* Diálogo de contraseña para borrar una versión o generación del contrato */}
+        {(versionAEliminar !== null || generacionAEliminar !== null) && (
           <div
             className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
             role="dialog"
             aria-modal="true"
-            aria-label="Confirmar eliminación de versión"
+            aria-label="Confirmar eliminación"
           >
             <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-lg space-y-4">
               <div className="space-y-1">
                 <h3 className="text-base font-semibold text-foreground">
-                  Eliminar Versión {versionAEliminar}
+                  {versionAEliminar !== null
+                    ? `Eliminar Versión ${versionAEliminar}`
+                    : `Eliminar Generación #${generacionAEliminar?.numero}`}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Esta acción borra la modificación del contrato de forma permanente y quedará
-                  registrada en el historial de actividad. Ingresá la contraseña para confirmar.
+                  {versionAEliminar !== null
+                    ? "Esta acción borra la modificación del contrato de forma permanente y quedará registrada en el historial de actividad. Ingresá la contraseña para confirmar."
+                    : "Esta acción borra el registro de generación del contrato de forma permanente y quedará registrada en el historial de actividad. Ingresá la contraseña para confirmar."}
                 </p>
               </div>
               <div className="space-y-1.5">
@@ -1000,6 +1035,7 @@ export function ContratoPanel({
                   disabled={borrandoVersion}
                   onClick={() => {
                     setVersionAEliminar(null)
+                    setGeneracionAEliminar(null)
                     setPasswordBorrado("")
                     setErrorPassword(false)
                   }}
