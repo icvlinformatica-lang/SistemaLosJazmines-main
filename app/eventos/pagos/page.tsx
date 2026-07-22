@@ -883,7 +883,7 @@ function PagosPageContent() {
                         </div>
                         {!item.pagada ? (
                           <Button size="sm" variant="outline" onClick={() => handleSelectEvento(item.evento)}>
-                            Marcar Pagada
+                            Ir al evento
                           </Button>
                         ) : (
                           <Button
