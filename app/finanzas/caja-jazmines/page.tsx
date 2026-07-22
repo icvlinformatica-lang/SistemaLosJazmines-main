@@ -1257,7 +1257,7 @@ export default function CajaJazminePage() {
             </>
           )}
 
-          {/* ── Subcarpeta: proyección del 1 al 10 del mes siguiente ────── */}
+          {/* ── Subcarpeta: proyección del 1 al 10 del mes siguiente ───��── */}
           <div className="mt-2 rounded-lg border border-border overflow-hidden">
             <button
               type="button"
@@ -1484,6 +1484,7 @@ export default function CajaJazminePage() {
                             {badgeEstadoFijo(gasto.estado)}
                           </div>
                         </div>
+                        {!gasto.esSueldoVendedor && (<>
                         {/* Registrar monto pagado (seguir aumentos) */}
                         <Button
                           variant="ghost"
@@ -1530,7 +1531,7 @@ export default function CajaJazminePage() {
                         </ConfirmAction>
                         {/* Archivar */}
                         <ConfirmAction
-                          title="¿Archivar pago de este período?"
+                          title="¿Archivar pago de este per��odo?"
                           description={`Se registra el pago de "${gasto.concepto}" (${formatCurrency(gasto.monto)}) y el vencimiento avanza al próximo período.`}
                           confirmLabel="Sí, archivar"
                           onConfirm={() => archivarFijo(gasto)}
@@ -1574,6 +1575,7 @@ export default function CajaJazminePage() {
                             <span className="sr-only">Eliminar gasto fijo</span>
                           </Button>
                         </ConfirmAction>
+                        </>)}
                       </div>
                     </div>
                     {histVisible && hist.length > 0 && (
@@ -1674,13 +1676,20 @@ export default function CajaJazminePage() {
                 return (
                   <div
                     key={gasto.id}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                    className={`flex items-center gap-3 rounded-lg border p-3 ${gasto.esComision ? "border-amber-300 bg-amber-50/60" : "border-border bg-card"}`}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{gasto.nombre}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatFecha(gasto.fecha)}
-                      </p>
+                      {gasto.esComision && gasto.comisionDetalle ? (
+                        <p className="text-xs text-amber-800/80 mt-0.5">
+                          {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
+                          {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatFecha(gasto.fecha)}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <div className="flex flex-col items-end gap-1 mr-1">
@@ -1689,6 +1698,7 @@ export default function CajaJazminePage() {
                         </span>
                         {badgeEstadoVar(gasto.estado)}
                       </div>
+                      {!gasto.esComision && (<>
                       {/* Toggle pagado */}
                       <ConfirmAction
                         title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
@@ -1744,6 +1754,7 @@ export default function CajaJazminePage() {
                           <span className="sr-only">Eliminar gasto variable</span>
                         </Button>
                       </ConfirmAction>
+                      </>)}
                     </div>
                   </div>
                 )
@@ -2149,7 +2160,7 @@ export default function CajaJazminePage() {
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-emerald-700">
-                    Cuota {cuotaSel.numeroCuota}/{cuotaSel.totalCuotas} · vence {formatFecha(cuotaSel.fechaVencimiento)}
+                    Cuota {cuotaSel.numeroCuota}/{cuotaSel.totalCuotas} �� vence {formatFecha(cuotaSel.fechaVencimiento)}
                   </span>
                   <span className="text-lg font-bold text-emerald-800">
                     {formatCurrency(cuotaSel.montoCuota)}
