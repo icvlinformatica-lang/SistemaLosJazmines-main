@@ -39,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/hooks/use-toast"
 import {
   ArrowLeft,
   Search,
@@ -223,6 +224,7 @@ function PagosPageContent() {
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get("evento") || ""
   const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
+  const { toast } = useToast()
   const [showContractPreview, setShowContractPreview] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
@@ -996,7 +998,24 @@ function PagosPageContent() {
                 </div>
                 {selectedEvento.notasInternas && (
                   <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <p className="text-xs font-semibold text-amber-800 mb-1">Observaciones del evento</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-amber-800 mb-1">Observaciones del evento</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 gap-1 text-destructive hover:text-destructive shrink-0"
+                        onClick={async () => {
+                          if (!confirm("¿Seguro que queres borrar la observacion del evento? Esta accion no se puede deshacer.")) return
+                          await updateEvento(selectedEvento.id, { notasInternas: "" })
+                          setSelectedEvento({ ...selectedEvento, notasInternas: "" })
+                          toast({ title: "Observacion borrada", description: "La observacion del evento fue eliminada" })
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Borrar
+                      </Button>
+                    </div>
                     <p className="text-sm text-amber-900 whitespace-pre-line">{selectedEvento.notasInternas}</p>
                   </div>
                 )}

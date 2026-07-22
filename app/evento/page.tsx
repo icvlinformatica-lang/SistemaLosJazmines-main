@@ -510,7 +510,8 @@ function EventoPageContent() {
       multipliersNinos: evento.multipliersNinos,
       multipliersDietasEspeciales: evento.multipliersDietasEspeciales,
       descripcionPersonalizada: evento.descripcionPersonalizada,
-      notasInternas: localObservacionesEvento.trim() || undefined,
+      // Enviar siempre el valor (aunque sea "") para que el borrado persista al guardar
+      notasInternas: localObservacionesEvento.trim(),
       barras: evento.barras,
       servicios: evento.servicios,
       paquetesSeleccionados: evento.paquetesSeleccionados,
@@ -2404,9 +2405,31 @@ function EventoPageContent() {
 
         {/* ==================== OBSERVACIONES DEL EVENTO ==================== */}
         <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-          <Label htmlFor="observacionesEvento" className="text-base font-semibold">
-            Observaciones del evento
-          </Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="observacionesEvento" className="text-base font-semibold">
+              Observaciones del evento
+            </Label>
+            {localObservacionesEvento.trim() && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-destructive hover:text-destructive"
+                onClick={async () => {
+                  if (!confirm("¿Seguro que queres borrar la observacion del evento? Esta accion no se puede deshacer.")) return
+                  setLocalObservacionesEvento("")
+                  // Si estamos editando un evento existente, persistir el borrado de inmediato
+                  if (isEditing && editingEventoId) {
+                    await updateEvento(editingEventoId, { notasInternas: "" })
+                    toast({ title: "Observacion borrada", description: "La observacion del evento fue eliminada" })
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Borrar
+              </Button>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             Notas internas del evento. Se muestran en el perfil del evento dentro de Cobrar Cuota.
           </p>
