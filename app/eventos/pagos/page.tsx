@@ -747,7 +747,7 @@ function PagosPageContent() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
         {/* Search - hidden when event is selected */}
         {!selectedEvento && (
           <Card>
@@ -1018,6 +1018,9 @@ function PagosPageContent() {
               Buscar otro evento
             </Button>
 
+            <div className="grid gap-6 items-start lg:grid-cols-2">
+            {/* Left column: Event info, plan de cuotas y próximo pago */}
+            <div className="space-y-6">
             {/* Event Info Card */}
             <Card>
               <CardHeader>
@@ -1295,7 +1298,10 @@ function PagosPageContent() {
 
               return null
             })()}
+            </div>
 
+            {/* Right column: registrar pagos / pagos registrados */}
+            <div className="space-y-6">
             {/* Payments List */}
             <Card>
               <CardHeader>
@@ -1394,6 +1400,8 @@ function PagosPageContent() {
                 )}
               </CardContent>
             </Card>
+            </div>
+            </div>
           </>
         )}
 
