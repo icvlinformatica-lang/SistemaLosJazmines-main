@@ -1164,7 +1164,7 @@ function PagosPageContent() {
                     <CardContent>
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-muted-foreground font-bold">
                             Cuota {proximaCuota.numeroCuota} de {calendarioCuotas.length}
                           </p>
                           <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
