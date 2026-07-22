@@ -224,16 +224,16 @@ export function generateContractHTML(
 }
 
 // =====================================================================
-// HELPER: Imprime la ultima version del contrato de un evento.
+// HELPER: Genera el HTML de la ultima version del contrato de un evento.
 // Usa el snapshot de la version mas reciente si existe; si no, cae al
 // estado actual del evento.
 // =====================================================================
-export function imprimirUltimaVersionContrato(
+export function buildUltimaVersionContratoHTML(
   evento: EventoGuardado,
   recetas: Receta[],
   catalogoServicios: { id: string; nombre: string }[],
   pagosPersonal: PagoPersonal[] = [],
-) {
+): string {
   const versiones = evento.versionesContrato || []
   let eventoParaImprimir = evento
   let serviciosNombres: string[]
@@ -262,7 +262,19 @@ export function imprimirUltimaVersionContrato(
   }
 
   const personalAsignado = buildPersonalContrato(evento, pagosPersonal)
-  const html = generateContractHTML(eventoParaImprimir, recetas, serviciosNombres, 0, personalAsignado)
+  return generateContractHTML(eventoParaImprimir, recetas, serviciosNombres, 0, personalAsignado)
+}
+
+// =====================================================================
+// HELPER: Imprime la ultima version del contrato de un evento.
+// =====================================================================
+export function imprimirUltimaVersionContrato(
+  evento: EventoGuardado,
+  recetas: Receta[],
+  catalogoServicios: { id: string; nombre: string }[],
+  pagosPersonal: PagoPersonal[] = [],
+) {
+  const html = buildUltimaVersionContratoHTML(evento, recetas, catalogoServicios, pagosPersonal)
   const win = window.open("", "_blank")
   if (win) {
     win.document.write(html)

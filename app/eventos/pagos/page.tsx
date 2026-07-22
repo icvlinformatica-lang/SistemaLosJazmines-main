@@ -15,6 +15,7 @@ import {
   type PagoEvento,
   type HistorialIPCEntry,
 } from "@/lib/store"
+import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -221,7 +222,8 @@ function PaymentReceipt({
 function PagosPageContent() {
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get("evento") || ""
-  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC } = useStore()
+  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
+  const [showContractPreview, setShowContractPreview] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
@@ -944,12 +946,15 @@ function PagosPageContent() {
                     <Badge variant="outline" className={ESTADO_CONFIG[selectedEvento.estado]?.className || ""}>
                       {ESTADO_CONFIG[selectedEvento.estado]?.label || selectedEvento.estado}
                     </Badge>
-                    <Link href="/eventos/contratos">
-                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 bg-transparent">
-                        <FileText className="h-3 w-3" />
-                        Contrato
-                      </Button>
-                    </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 bg-transparent"
+                      onClick={() => setShowContractPreview(true)}
+                    >
+                      <FileText className="h-3 w-3" />
+                      Contrato
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -1310,6 +1315,39 @@ function PagosPageContent() {
             </Card>
             </div>
             </div>
+
+            {/* Vista previa del contrato (modal) */}
+            {showContractPreview && (
+              <div
+                className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
+                onClick={() => setShowContractPreview(false)}
+              >
+                <div
+                  className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-primary" />
+                      <span className="font-semibold">Vista Previa del Contrato</span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setShowContractPreview(false)}>
+                      Cerrar
+                    </Button>
+                  </div>
+                  <iframe
+                    srcDoc={buildUltimaVersionContratoHTML(
+                      selectedEvento,
+                      state.recetas || [],
+                      state.servicios || [],
+                      state.pagosPersonal || [],
+                    )}
+                    className="flex-1 w-full"
+                    title="Vista previa del contrato"
+                  />
+                </div>
+              </div>
+            )}
           </>
         )}
 
