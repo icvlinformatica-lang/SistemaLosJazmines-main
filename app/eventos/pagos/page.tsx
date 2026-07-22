@@ -40,7 +40,6 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  ArrowLeft,
   Search,
   CreditCard,
   Plus,
@@ -660,11 +659,8 @@ function PagosPageContent() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background px-6 py-4">
         <div className="mx-auto max-w-4xl flex items-center gap-4">
-          <Link href="/eventos/calendario" className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-6 w-6" />
-          </Link>
           <CreditCard className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-semibold">Pagos de Eventos</h1>
+          <h1 className="text-xl font-semibold">PERFIL DEL EVENTO</h1>
         </div>
       </header>
 
