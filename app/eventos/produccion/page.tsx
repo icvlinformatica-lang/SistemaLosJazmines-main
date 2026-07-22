@@ -30,6 +30,10 @@ import {
   ChefHat,
   Eye,
   Printer,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  List,
 } from "lucide-react"
 import { type EventoGuardado } from "@/lib/store"
 
@@ -64,16 +68,36 @@ export default function ProduccionPage() {
   const [selectedEvento, setSelectedEvento] = useState<EventoGuardado | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
-  // Filtrar eventos que tienen recetas (tienen guía de producción)
+  // Vista calendario (por defecto) o lista
+  const [vista, setVista] = useState<"calendario" | "lista">("calendario")
+  const hoy = new Date()
+  const [mesActual, setMesActual] = useState(new Date(hoy.getFullYear(), hoy.getMonth(), 1))
+
+  // Filtrar eventos que tienen recetas (tienen guía de producción),
+  // ordenados por fecha más cercana a hoy (los sin fecha van al final)
   const eventosConRecetas = useMemo(() => {
-    return eventos.filter((e) => {
-      const tieneRecetas =
-        (e.recetasAdultos?.length || 0) > 0 ||
-        (e.recetasAdolescentes?.length || 0) > 0 ||
-        (e.recetasNinos?.length || 0) > 0 ||
-        (e.recetasDietasEspeciales?.length || 0) > 0
-      return tieneRecetas
-    })
+    const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`
+    return eventos
+      .filter((e) => {
+        const tieneRecetas =
+          (e.recetasAdultos?.length || 0) > 0 ||
+          (e.recetasAdolescentes?.length || 0) > 0 ||
+          (e.recetasNinos?.length || 0) > 0 ||
+          (e.recetasDietasEspeciales?.length || 0) > 0
+        return tieneRecetas
+      })
+      .sort((a, b) => {
+        if (!a.fecha && !b.fecha) return 0
+        if (!a.fecha) return 1
+        if (!b.fecha) return -1
+        const aFuturo = a.fecha >= hoyISO
+        const bFuturo = b.fecha >= hoyISO
+        // Primero los próximos (ascendente: el más cercano arriba), luego los pasados (el más reciente arriba)
+        if (aFuturo && bFuturo) return a.fecha.localeCompare(b.fecha)
+        if (aFuturo) return -1
+        if (bFuturo) return 1
+        return b.fecha.localeCompare(a.fecha)
+      })
   }, [eventos])
 
   // Filtrar por búsqueda
@@ -96,6 +120,45 @@ export default function ProduccionPage() {
       year: "numeric",
     })
   }
+
+  // ── Calendario: eventos agrupados por día del mes visible ────────────────
+  const { celdas, eventosSinFecha, mesLabel } = useMemo(() => {
+    const anio = mesActual.getFullYear()
+    const mes = mesActual.getMonth()
+    const mesKey = `${anio}-${String(mes + 1).padStart(2, "0")}`
+
+    // Mapa día (1-31) → eventos de ese día, ordenados por nombre
+    const porDia = new Map<number, EventoGuardado[]>()
+    const sinFecha: EventoGuardado[] = []
+    for (const e of eventosFiltrados) {
+      if (!e.fecha) {
+        sinFecha.push(e)
+        continue
+      }
+      if (e.fecha.slice(0, 7) !== mesKey) continue
+      const dia = Number.parseInt(e.fecha.slice(8, 10), 10)
+      if (!porDia.has(dia)) porDia.set(dia, [])
+      porDia.get(dia)!.push(e)
+    }
+
+    // Grilla lunes a domingo
+    const primerDia = new Date(anio, mes, 1)
+    const diasEnMes = new Date(anio, mes + 1, 0).getDate()
+    const offsetLunes = (primerDia.getDay() + 6) % 7 // 0 = lunes
+    const items: ({ dia: number; eventos: EventoGuardado[] } | null)[] = []
+    for (let i = 0; i < offsetLunes; i++) items.push(null)
+    for (let d = 1; d <= diasEnMes; d++) items.push({ dia: d, eventos: porDia.get(d) || [] })
+    while (items.length % 7 !== 0) items.push(null)
+
+    const label = mesActual.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+    return { celdas: items, eventosSinFecha: sinFecha, mesLabel: label.charAt(0).toUpperCase() + label.slice(1) }
+  }, [eventosFiltrados, mesActual])
+
+  const esHoy = (dia: number) =>
+    hoy.getFullYear() === mesActual.getFullYear() && hoy.getMonth() === mesActual.getMonth() && hoy.getDate() === dia
+
+  const cambiarMes = (delta: number) =>
+    setMesActual((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1))
 
   const getTotalInvitados = (e: EventoGuardado) =>
     (e.adultos || 0) + (e.adolescentes || 0) + (e.ninos || 0) + (e.personasDietasEspeciales || 0)
@@ -179,19 +242,141 @@ export default function ProduccionPage() {
         </div>
       </div>
 
-      {/* Buscador */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar evento..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9"
-        />
+      {/* Buscador + selector de vista */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar evento..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border p-1 self-start">
+          <Button
+            variant={vista === "calendario" ? "default" : "ghost"}
+            size="sm"
+            className="gap-1.5 h-8"
+            onClick={() => setVista("calendario")}
+          >
+            <CalendarDays className="h-4 w-4" />
+            Calendario
+          </Button>
+          <Button
+            variant={vista === "lista" ? "default" : "ghost"}
+            size="sm"
+            className="gap-1.5 h-8"
+            onClick={() => setVista("lista")}
+          >
+            <List className="h-4 w-4" />
+            Lista
+          </Button>
+        </div>
       </div>
 
-      {/* Lista de eventos */}
-      {eventosFiltrados.length === 0 ? (
+      {/* ── VISTA CALENDARIO ─────────────────────────────────────────── */}
+      {vista === "calendario" && (
+        <Card>
+          <CardContent className="p-4 space-y-4">
+            {/* Navegación de mes */}
+            <div className="flex items-center justify-between">
+              <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold">{mesLabel}</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => setMesActual(new Date(hoy.getFullYear(), hoy.getMonth(), 1))}
+                >
+                  Hoy
+                </Button>
+              </div>
+              <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent" onClick={() => cambiarMes(1)} aria-label="Mes siguiente">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Encabezado de días */}
+            <div className="grid grid-cols-7 gap-1">
+              {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+                <div key={d} className="text-center text-xs font-semibold text-muted-foreground py-1">
+                  {d}
+                </div>
+              ))}
+
+              {/* Celdas */}
+              {celdas.map((celda, i) =>
+                celda === null ? (
+                  <div key={`v-${i}`} className="min-h-24 rounded-md bg-muted/30" />
+                ) : (
+                  <div
+                    key={`d-${celda.dia}`}
+                    className={`min-h-24 rounded-md border p-1.5 flex flex-col gap-1 ${
+                      esHoy(celda.dia) ? "border-orange-400 bg-orange-50" : "border-border bg-card"
+                    }`}
+                  >
+                    <span
+                      className={`text-xs font-semibold ${
+                        esHoy(celda.dia) ? "text-orange-700" : "text-muted-foreground"
+                      }`}
+                    >
+                      {celda.dia}
+                    </span>
+                    {celda.eventos.map((ev) => (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        onClick={() => handleVerGuia(ev)}
+                        className="w-full rounded bg-orange-100 hover:bg-orange-200 border border-orange-300 px-1.5 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+                        title={`Ver guía de ${ev.nombrePareja || ev.nombre || "evento"}`}
+                      >
+                        <span className="block text-[11px] font-medium text-orange-900 truncate leading-tight">
+                          {ev.nombrePareja || ev.nombre || "Sin nombre"}
+                        </span>
+                        <span className="block text-[10px] text-orange-700/80 truncate leading-tight">
+                          {getTotalInvitados(ev)} pax{ev.salon ? ` · ${ev.salon}` : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ),
+              )}
+            </div>
+
+            {/* Eventos sin fecha */}
+            {eventosSinFecha.length > 0 && (
+              <div className="rounded-lg border border-dashed p-3">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">Sin fecha asignada</p>
+                <div className="flex flex-wrap gap-2">
+                  {eventosSinFecha.map((ev) => (
+                    <button
+                      key={ev.id}
+                      type="button"
+                      onClick={() => handleVerGuia(ev)}
+                      className="rounded-full border border-orange-300 bg-orange-50 hover:bg-orange-100 px-3 py-1 text-xs font-medium text-orange-900 transition-colors"
+                    >
+                      {ev.nombrePareja || ev.nombre || "Sin nombre"} · {getTotalInvitados(ev)} pax
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {eventosFiltrados.length === 0 && (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                {searchQuery ? "No se encontraron eventos." : "No hay eventos con recetas."}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── VISTA LISTA ──────────────────────────────────────────────── */}
+      {vista === "lista" && (eventosFiltrados.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <ClipboardList className="mb-4 h-12 w-12 text-muted-foreground/50" />
@@ -272,7 +457,7 @@ export default function ProduccionPage() {
             </Table>
           </div>
         </Card>
-      )}
+      ))}
 
       {/* Dialog guia de produccion - mise en place */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -31,6 +31,8 @@ export interface GastoFijoMes {
   fechaVencimiento?: string
   /** Historial de montos pagados mes a mes (seguimiento de aumentos). */
   historialMontos?: RegistroMonto[]
+  /** true si es el sueldo de un vendedor (generado automáticamente, no editable acá) */
+  esSueldoVendedor?: boolean
 }
 
 export interface GastoVariable {
@@ -40,6 +42,15 @@ export interface GastoVariable {
   fecha: string
   monto: number
   estado: "pendiente" | "pagado" | "vencido"
+  /** true si es una comisión de vendedor (generada automáticamente desde los eventos) */
+  esComision?: boolean
+  /** Detalle de la comisión: quién comisionó, sobre qué evento y con qué % */
+  comisionDetalle?: {
+    vendedor: string
+    eventoNombre: string
+    totalEvento: number
+    porcentaje: number
+  }
 }
 
 export interface CuotaPorCobrar {
@@ -259,6 +270,26 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       })
 
     // ----------------------------------------------------------
+    // SUELDOS DE VENDEDORES → gasto fijo mensual automático.
+    // Son generales (sin salón), así que solo aparecen sin filtro de salón.
+    // ----------------------------------------------------------
+    if (!salonSel) {
+      for (const v of state.vendedores || []) {
+        if (!v.sueldo || v.sueldo <= 0) continue
+        gastosFijosMes.push({
+          id: `sueldo-vendedor-${v.id}`,
+          concepto: `Sueldo vendedor · ${v.emoji ? `${v.emoji} ` : ""}${v.nombre}`,
+          tipo: "Personal Fijo",
+          frecuencia: "Mensual",
+          salon: null,
+          monto: v.sueldo,
+          estado: "ok",
+          esSueldoVendedor: true,
+        })
+      }
+    }
+
+    // ----------------------------------------------------------
     // Gastos variables agendados: sumar a gastosPróximos30Dias
     // y emitir alerta si vencen dentro de 15 días (no pagados)
     // ----------------------------------------------------------
@@ -365,9 +396,48 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           fecha: c.fechaVencimiento ?? "",
           monto: c.monto,
           estado,
-        }
+        } as GastoVariable
       })
-      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+
+    // ----------------------------------------------------------
+    // COMISIONES DE VENDEDORES → gasto variable automático por evento vendido.
+    // Muestra el total del evento, el % del vendedor y el nombre de ambos.
+    // ----------------------------------------------------------
+    const vendedoresPorNombre = new Map(
+      (state.vendedores || []).map((v) => [v.nombre.toLowerCase(), v]),
+    )
+    for (const evento of eventos) {
+      if (evento.estado === "cancelado") continue
+      const nombreVendedor = evento.contrato?.vendedor
+      if (!nombreVendedor) continue
+      const vendedor = vendedoresPorNombre.get(nombreVendedor.toLowerCase())
+      if (!vendedor || !vendedor.comisionPct || vendedor.comisionPct <= 0) continue
+
+      const totalEvento =
+        evento.planDeCuotas && evento.planDeCuotas.montoTotal > 0
+          ? evento.planDeCuotas.montoTotal
+          : evento.precioVenta || 0
+      if (totalEvento <= 0) continue
+
+      const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
+      gastosVariables.push({
+        id: `comision-${vendedor.id}-${evento.id}`,
+        nombre: `Comisión ${vendedor.emoji ? `${vendedor.emoji} ` : ""}${vendedor.nombre} · ${eventoNombre}`,
+        salon: evento.salon || "",
+        fecha: evento.fecha || "",
+        monto: Math.round((totalEvento * vendedor.comisionPct) / 100),
+        estado: "pendiente",
+        esComision: true,
+        comisionDetalle: {
+          vendedor: vendedor.nombre,
+          eventoNombre,
+          totalEvento,
+          porcentaje: vendedor.comisionPct,
+        },
+      })
+    }
+
+    gastosVariables.sort((a, b) => a.fecha.localeCompare(b.fecha))
 
     return {
       saldoActual,
@@ -380,5 +450,5 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       ingresosProyectados30Dias,
       cuotasPorCobrar,
     }
-  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, salonFiltro, ahoraMs])
+  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, state.vendedores, salonFiltro, ahoraMs])
 }
