@@ -975,17 +975,23 @@ function ContratosPageContent() {
                   )}
                 </div>
 
-                {/* Toolbar: editar (lapiz) + imprimir */}
-                <div className="mt-3 flex items-center gap-2">
+                {/* Toolbar: vista previa + imprimir + editar en el planificador */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button
-                    variant={isEditing ? "secondary" : "outline"}
+                    variant="outline"
                     size="sm"
-                    onClick={() => (isEditing ? handleCancelEdit() : setIsEditing(true))}
+                    onPointerDown={(e) => {
+                      // Actualizar ref síncronamente y parar la propagación
+                      // para que el listener de Radix en el documento no
+                      // interprete este pointer-down como "fuera del Sheet"
+                      showPreviewRef.current = true
+                      e.stopPropagation()
+                    }}
+                    onClick={() => setShowPreviewSync(true)}
                     className="gap-2 bg-transparent"
-                    aria-pressed={isEditing}
                   >
-                    <Pencil className="h-4 w-4" />
-                    {isEditing ? "Cancelar edicion" : "Editar"}
+                    <Eye className="h-4 w-4" />
+                    Vista Previa
                   </Button>
                   <Button
                     variant="outline"
@@ -996,6 +1002,12 @@ function ContratosPageContent() {
                     <Printer className="h-4 w-4" />
                     Imprimir
                   </Button>
+                  <Link href={`/evento?id=${selectedEvento.id}&from=contratos`}>
+                    <Button variant="outline" size="sm" className="gap-2 bg-transparent">
+                      <Pencil className="h-4 w-4" />
+                      Editar en el planificador
+                    </Button>
+                  </Link>
                 </div>
                 </div>
 
@@ -1240,9 +1252,9 @@ function ContratosPageContent() {
                 </div>
               </ScrollArea>
 
-              {/* Actions */}
-              <div className="border-t border-border p-4">
-                {isEditing ? (
+              {/* Actions (solo en modo edicion) */}
+              {isEditing && (
+                <div className="border-t border-border p-4">
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={handleCancelEdit} disabled={saving} className="flex-1 gap-2 bg-transparent">
                       <X className="h-4 w-4" />
@@ -1253,38 +1265,8 @@ function ContratosPageContent() {
                       {saving ? "Guardando..." : "Guardar cambios"}
                     </Button>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onPointerDown={(e) => {
-                          // Actualizar ref síncronamente y parar la propagación
-                          // para que el listener de Radix en el documento no
-                          // interprete este pointer-down como "fuera del Sheet"
-                          showPreviewRef.current = true
-                          e.stopPropagation()
-                        }}
-                        onClick={() => setShowPreviewSync(true)}
-                        className="flex-1 gap-2 bg-transparent"
-                      >
-                        <Eye className="h-4 w-4" />
-                        Vista Previa
-                      </Button>
-                      <Button variant="outline" onClick={handlePrint} className="flex-1 gap-2 bg-transparent">
-                        <Printer className="h-4 w-4" />
-                        Imprimir
-                      </Button>
-                    </div>
-                    <Link href={`/evento?id=${selectedEvento.id}&from=contratos`} className="mt-2 block">
-                      <Button variant="ghost" className="w-full gap-2 text-muted-foreground">
-                        <Pencil className="h-4 w-4" />
-                        Editar en el planificador
-                      </Button>
-                    </Link>
-                  </>
-                )}
-              </div>
+                </div>
+              )}
             </>
           )}
 
