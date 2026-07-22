@@ -21,6 +21,9 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -63,6 +66,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Pencil,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -127,6 +131,109 @@ export default function CajaEventosPage() {
 
   // Desplegable de "Cuotas por cobrar" (cerrado por defecto)
   const [cuotasAbierto, setCuotasAbierto] = useState(false)
+
+  // ── Edición de fechas de vencimiento (cuotas por cobrar y gastos por pagar) ──
+  const [editVenc, setEditVenc] = useState<
+    | { kind: "cuota"; ingreso: IngresoPendiente }
+    | { kind: "egreso"; egreso: EgresoPendienteServicio }
+    | null
+  >(null)
+  const [nuevaFechaVenc, setNuevaFechaVenc] = useState("")
+  const [justificacionVenc, setJustificacionVenc] = useState("")
+
+  // Todo cambio de vencimiento deja rastro en Configuración > Actividad.
+  function logVencimiento(nombre: string, detalle: string) {
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "vencimiento", accion: "modificado", nombre, detalle }),
+    }).catch(() => {})
+  }
+
+  function abrirEdicionCuota(ingreso: IngresoPendiente) {
+    setNuevaFechaVenc(ingreso.fechaVencimiento)
+    setJustificacionVenc("")
+    setEditVenc({ kind: "cuota", ingreso })
+  }
+
+  function abrirEdicionEgreso(egreso: EgresoPendienteServicio) {
+    setNuevaFechaVenc(egreso.fechaVencimiento)
+    setJustificacionVenc("")
+    setEditVenc({ kind: "egreso", egreso })
+  }
+
+  function guardarNuevaFechaVenc() {
+    if (!editVenc || !nuevaFechaVenc) return
+
+    if (editVenc.kind === "cuota") {
+      // Cuota por cobrar: se edita la fecha dentro del plan de cuotas del evento.
+      const ing = editVenc.ingreso
+      const evento = (state.eventos || []).find((e) => e.id === ing.eventoId)
+      const plan = evento?.planDeCuotas
+      if (!evento || !plan?.cuotas) {
+        setEditVenc(null)
+        return
+      }
+      const cuotas = plan.cuotas.map((c) =>
+        c.numero === ing.numeroCuota ? { ...c, fechaVencimiento: nuevaFechaVenc } : c,
+      )
+      updateEvento(evento.id, { planDeCuotas: { ...plan, cuotas } })
+      logVencimiento(
+        `Cuota ${ing.numeroCuota}/${ing.totalCuotas} · ${ing.eventoNombre}`,
+        `Vencimiento: ${ing.fechaVencimiento} → ${nuevaFechaVenc}${
+          justificacionVenc.trim() ? ` | Motivo: ${justificacionVenc.trim()}` : " | Sin justificación"
+        }`,
+      )
+      toast({
+        title: "Vencimiento actualizado",
+        description: `Cuota ${ing.numeroCuota}/${ing.totalCuotas} de ${ing.eventoNombre} ahora vence el ${formatFecha(nuevaFechaVenc)}.`,
+      })
+    } else {
+      // Gasto por pagar: la fuente depende del tipo de egreso.
+      const eg = editVenc.egreso
+      const evento = (state.eventos || []).find((e) => e.id === eg.eventoId)
+      if (!evento) {
+        setEditVenc(null)
+        return
+      }
+      if (eg.id.endsWith("-menu")) {
+        updateEvento(evento.id, { fechaPagoMenu: nuevaFechaVenc })
+      } else if (eg.id.endsWith("-barra")) {
+        updateEvento(evento.id, { fechaPagoBarra: nuevaFechaVenc })
+      } else if (eg.id.includes("-compromiso-") && eg.servicioId) {
+        updatePagoPersonal(eg.servicioId, { fechaLimitePago: nuevaFechaVenc })
+      } else if (eg.id.includes("-sueldo-") && eg.servicioId) {
+        const personalEvento = (evento.personalEvento || []).map((pe) =>
+          pe.id === eg.servicioId ? { ...pe, fechaPago: nuevaFechaVenc } : pe,
+        )
+        updateEvento(evento.id, { personalEvento })
+      } else if (eg.tipo === "seña" && eg.servicioId) {
+        const servicios = (evento.servicios || []).map((s) =>
+          s.servicioId === eg.servicioId ? { ...s, fechaSeña: nuevaFechaVenc } : s,
+        )
+        updateEvento(evento.id, { servicios })
+      } else if (eg.servicioId) {
+        const servicios = (evento.servicios || []).map((s) =>
+          s.servicioId === eg.servicioId ? { ...s, fechaLimitePago: nuevaFechaVenc } : s,
+        )
+        updateEvento(evento.id, { servicios })
+      } else {
+        setEditVenc(null)
+        return
+      }
+      logVencimiento(
+        `${eg.servicioNombre} · ${eg.eventoNombre}`,
+        `Vencimiento: ${eg.fechaVencimiento} → ${nuevaFechaVenc}${
+          justificacionVenc.trim() ? ` | Motivo: ${justificacionVenc.trim()}` : ""
+        }`,
+      )
+      toast({
+        title: "Vencimiento actualizado",
+        description: `${eg.servicioNombre} ahora vence el ${formatFecha(nuevaFechaVenc)}.`,
+      })
+    }
+    setEditVenc(null)
+  }
 
   // Resume la composición de egresos por tipo: "3 menú · 2 señas · 1 saldo"
   const componerEgresos = (egresos: EgresoPendienteServicio[]): string => {
@@ -218,6 +325,9 @@ export default function CajaEventosPage() {
   const [mesCalendario, setMesCalendario] = useState(() => {
     return new Date(ahora.getFullYear(), ahora.getMonth(), 1)
   })
+
+  // Día del calendario seleccionado para ver el detalle de cobros/pagos (fecha YYYY-MM-DD)
+  const [diaDetalle, setDiaDetalle] = useState<string | null>(null)
 
   const {
     saldoActual,
@@ -422,6 +532,14 @@ export default function CajaEventosPage() {
 
   const cambiarMes = (delta: number) =>
     setMesCalendario((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
+
+  // Movimientos del día seleccionado en el calendario
+  const detalleDia = useMemo(() => {
+    if (!diaDetalle) return null
+    const cobros = ingresosPendientes.filter((i) => i.fechaVencimiento === diaDetalle)
+    const pagos = egresosPendientes.filter((e) => e.fechaVencimiento === diaDetalle)
+    return { cobros, pagos }
+  }, [diaDetalle, ingresosPendientes, egresosPendientes])
 
   const hoyNum = ahora.getDate()
   const esMesActualCal =
@@ -785,6 +903,36 @@ export default function CajaEventosPage() {
             {calendario.celdas.map((celda, i) => {
               const esHoy = esMesActualCal && celda.dia === hoyNum
               const tieneMov = celda.cobrar > 0 || celda.pagar > 0
+              const fechaCelda =
+                celda.dia !== null
+                  ? `${mesCalendario.getFullYear()}-${String(mesCalendario.getMonth() + 1).padStart(2, "0")}-${String(celda.dia).padStart(2, "0")}`
+                  : null
+              const contenido = celda.dia !== null && (
+                <>
+                  <div className={`font-medium ${esHoy ? "text-teal-700" : "text-foreground"}`}>{celda.dia}</div>
+                  {celda.cobrar > 0 && (
+                    <div className="text-emerald-700 font-medium truncate">+{formatCurrency(celda.cobrar)}</div>
+                  )}
+                  {celda.pagar > 0 && (
+                    <div className="text-red-600 font-medium truncate">−{formatCurrency(celda.pagar)}</div>
+                  )}
+                </>
+              )
+              if (tieneMov && fechaCelda) {
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    title="Ver detalle del día"
+                    onClick={() => setDiaDetalle(fechaCelda)}
+                    className={`min-h-[58px] rounded-md border p-1 text-[10px] text-left cursor-pointer transition-colors hover:border-teal-400 hover:bg-teal-50/60 ${
+                      esHoy ? "border-teal-400 bg-teal-50" : "border-border bg-muted/30"
+                    }`}
+                  >
+                    {contenido}
+                  </button>
+                )
+              }
               return (
                 <div
                   key={i}
@@ -793,22 +941,10 @@ export default function CajaEventosPage() {
                       ? "border-transparent"
                       : esHoy
                       ? "border-teal-400 bg-teal-50"
-                      : tieneMov
-                      ? "border-border bg-muted/30"
                       : "border-border"
                   }`}
                 >
-                  {celda.dia !== null && (
-                    <>
-                      <div className={`font-medium ${esHoy ? "text-teal-700" : "text-foreground"}`}>{celda.dia}</div>
-                      {celda.cobrar > 0 && (
-                        <div className="text-emerald-700 font-medium truncate">+{formatCurrency(celda.cobrar)}</div>
-                      )}
-                      {celda.pagar > 0 && (
-                        <div className="text-red-600 font-medium truncate">−{formatCurrency(celda.pagar)}</div>
-                      )}
-                    </>
-                  )}
+                  {contenido}
                 </div>
               )
             })}
@@ -880,10 +1016,21 @@ export default function CajaEventosPage() {
                           {ing.numeroCuota}/{ing.totalCuotas}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{formatFecha(ing.fechaVencimiento)}</span>
+                          <button
+                            type="button"
+                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+                            title="Cambiar fecha de vencimiento"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              abrirEdicionCuota(ing)
+                            }}
+                          >
+                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+                              {formatFecha(ing.fechaVencimiento)}
+                            </span>
                             {vencBadge(ing.diasRestantes)}
-                          </div>
+                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
                         </TableCell>
                         <TableCell className="text-right pr-6 font-bold text-emerald-700">
                           +{formatCurrency(ing.monto)}
@@ -961,10 +1108,18 @@ export default function CajaEventosPage() {
                           </p>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{formatFecha(eg.fechaVencimiento)}</span>
+                          <button
+                            type="button"
+                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+                            title="Cambiar fecha de vencimiento"
+                            onClick={() => abrirEdicionEgreso(eg)}
+                          >
+                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+                              {formatFecha(eg.fechaVencimiento)}
+                            </span>
                             {vencBadge(eg.diasRestantes)}
-                          </div>
+                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
                         </TableCell>
                         <TableCell className="text-right font-bold text-red-600">
                           −{formatCurrency(eg.monto)}
@@ -1049,12 +1204,20 @@ export default function CajaEventosPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{formatFecha(eg.fechaVencimiento)}</span>
+                          <button
+                            type="button"
+                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+                            title="Cambiar fecha de vencimiento"
+                            onClick={() => abrirEdicionEgreso(eg)}
+                          >
+                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+                              {formatFecha(eg.fechaVencimiento)}
+                            </span>
                             <Badge variant="outline" className="text-[11px] text-muted-foreground">
                               faltan {eg.diasRestantes}d
                             </Badge>
-                          </div>
+                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
                         </TableCell>
                         <TableCell className="text-right pr-6 font-medium text-muted-foreground">
                           {formatCurrency(eg.monto)}
@@ -1308,6 +1471,145 @@ export default function CajaEventosPage() {
               onClick={confirmarMarcarPagado}
             >
               <CheckCircle2 className="h-4 w-4 mr-1" /> Sí, marcar pagado
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detalle del día del calendario: qué se cobra y qué se paga */}
+      <Dialog open={!!diaDetalle} onOpenChange={(open) => !open && setDiaDetalle(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 capitalize">
+              <CalendarDays className="h-4 w-4 text-teal-600" />
+              {diaDetalle ? formatFecha(diaDetalle) : ""}
+            </DialogTitle>
+            <DialogDescription>Movimientos pendientes de este día.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {detalleDia && detalleDia.cobros.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <ArrowDownToLine className="h-3.5 w-3.5" /> A cobrar
+                </p>
+                {detalleDia.cobros.map((ing) => (
+                  <div
+                    key={ing.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{ing.eventoNombre}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Cuota {ing.numeroCuota}/{ing.totalCuotas} ·{" "}
+                        <span className="font-bold text-emerald-700">+{formatCurrency(ing.monto)}</span>
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                      onClick={() => {
+                        confirmarCobroCuota(ing)
+                        setDiaDetalle(null)
+                      }}
+                    >
+                      Marcar cobrada
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {detalleDia && detalleDia.pagos.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-red-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <ArrowUpFromLine className="h-3.5 w-3.5" /> A pagar
+                </p>
+                {detalleDia.pagos.map((eg) => (
+                  <div
+                    key={eg.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50/40 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{eg.servicioNombre}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {eg.eventoNombre} ·{" "}
+                        <span className="font-bold text-red-600">−{formatCurrency(eg.monto)}</span>
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 shrink-0 bg-transparent"
+                      onClick={() => {
+                        setDiaDetalle(null)
+                        setPagoConfirmar(eg)
+                      }}
+                    >
+                      Marcar pagado
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {detalleDia && detalleDia.cobros.length === 0 && detalleDia.pagos.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No quedan movimientos pendientes para este día.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar fecha de vencimiento (cuotas por cobrar y gastos por pagar) */}
+      <Dialog open={!!editVenc} onOpenChange={(open) => !open && setEditVenc(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-muted-foreground" />
+              Cambiar fecha de vencimiento
+            </DialogTitle>
+            <DialogDescription>
+              {editVenc?.kind === "cuota"
+                ? `Cuota ${editVenc.ingreso.numeroCuota}/${editVenc.ingreso.totalCuotas} · ${editVenc.ingreso.eventoNombre} · ${formatCurrency(editVenc.ingreso.monto)}`
+                : editVenc
+                  ? `${editVenc.egreso.servicioNombre} · ${editVenc.egreso.eventoNombre} · ${formatCurrency(editVenc.egreso.monto)}`
+                  : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="venc-fecha">Nueva fecha de vencimiento</Label>
+              <Input
+                id="venc-fecha"
+                type="date"
+                value={nuevaFechaVenc}
+                onChange={(e) => setNuevaFechaVenc(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Impacta en alertas, calendario y balances generales.
+              </p>
+            </div>
+            {editVenc?.kind === "cuota" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="venc-justif">Justificación del cambio (opcional)</Label>
+                <Textarea
+                  id="venc-justif"
+                  placeholder="Ej: el cliente pidió postergar el pago..."
+                  value={justificacionVenc}
+                  onChange={(e) => setJustificacionVenc(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              El cambio queda registrado en Configuración &gt; Registro de actividad.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => setEditVenc(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={guardarNuevaFechaVenc} disabled={!nuevaFechaVenc}>
+              Guardar fecha
             </Button>
           </div>
         </DialogContent>

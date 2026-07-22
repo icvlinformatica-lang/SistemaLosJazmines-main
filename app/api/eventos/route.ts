@@ -118,6 +118,8 @@ function fromRow(r: Record<string, any>) {
     serviciosLibresContrato: parseJsonField(r.servicios_libres_contrato, undefined),
     cocinaPagada: r.cocina_pagada ?? false,
     barraPagada: r.barra_pagada ?? false,
+    fechaPagoMenu: r.fecha_pago_menu ?? undefined,
+    fechaPagoBarra: r.fecha_pago_barra ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -148,7 +150,7 @@ export async function GET() {
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at,
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, created_at, updated_at,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos
       WHERE deleted_at IS NULL

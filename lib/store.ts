@@ -496,6 +496,10 @@ export interface EventoGuardado extends Evento {
   cocinaPagada?: boolean
   /** true si ya se pagó el costo de la barra */
   barraPagada?: boolean
+  /** Fecha de pago del menú (YYYY-MM-DD). Si no está, se calcula: evento - 14 días */
+  fechaPagoMenu?: string
+  /** Fecha de pago de la barra (YYYY-MM-DD). Si no está, se calcula: evento - 14 días */
+  fechaPagoBarra?: string
 
   // --- Servicios seleccionados para el contrato ---
   /** IDs de servicios del catálogo (/finanzas/servicios) a incluir en el contrato */
@@ -805,6 +809,8 @@ export interface PersonalDelEvento {
   funcion: string
   monto: number
   pagado?: boolean
+  /** Fecha de pago del sueldo (YYYY-MM-DD). Si no está, vence el día del evento */
+  fechaPago?: string
 }
 
 export interface PersonalEvento {
@@ -2593,7 +2599,8 @@ export function generarPagosPendientesAutomaticos(state: AppState): void {
   en15Dias.setDate(en15Dias.getDate() + 15)
 
   state.eventos.forEach((evento) => {
-    const fechaEvento = new Date(evento.fecha)
+    // Anclar a mediodía local para evitar corrimientos de día por zona horaria
+    const fechaEvento = new Date(evento.fecha + "T12:00:00")
 
     // Solo eventos entre 7 y 15 días en el futuro, no cancelados/completados
     if (fechaEvento < en7Dias || fechaEvento > en15Dias) return
@@ -2633,7 +2640,7 @@ export function generarPagosPendientesAutomaticos(state: AppState): void {
             servicioNombre,
             montoTotal: asignacion.costoReal,
             fechaEvento: evento.fecha,
-            fechaLimitePago: fechaLimite.toISOString().split("T")[0],
+            fechaLimitePago: `${fechaLimite.getFullYear()}-${String(fechaLimite.getMonth() + 1).padStart(2, "0")}-${String(fechaLimite.getDate()).padStart(2, "0")}`,
             estado: fechaLimite < hoy ? "vencido" : "pendiente",
             asignacionId: asignacion.id,
           }
@@ -2670,7 +2677,7 @@ export function generarPagosPendientesAutomaticos(state: AppState): void {
               servicioNombre: servicioEvento.nombre,
               montoTotal: personal.tarifaBase,
               fechaEvento: evento.fecha,
-              fechaLimitePago: fechaLimite.toISOString().split("T")[0],
+              fechaLimitePago: `${fechaLimite.getFullYear()}-${String(fechaLimite.getMonth() + 1).padStart(2, "0")}-${String(fechaLimite.getDate()).padStart(2, "0")}`,
               estado: fechaLimite < hoy ? "vencido" : "pendiente",
             }
 
@@ -2714,7 +2721,8 @@ export function sincronizarPagosConAsignaciones(state: AppState): {
       )
 
       if (!pagoExistente) {
-        const fechaEvento = new Date(evento.fecha)
+        // Anclar a mediodía local para evitar corrimientos de día por zona horaria
+        const fechaEvento = new Date(evento.fecha + "T12:00:00")
         const fechaLimite = new Date(fechaEvento)
         fechaLimite.setDate(fechaLimite.getDate() - 7)
 
@@ -2733,7 +2741,7 @@ export function sincronizarPagosConAsignaciones(state: AppState): {
           servicioNombre,
           montoTotal: asignacion.costoReal,
           fechaEvento: evento.fecha,
-          fechaLimitePago: fechaLimite.toISOString().split("T")[0],
+          fechaLimitePago: `${fechaLimite.getFullYear()}-${String(fechaLimite.getMonth() + 1).padStart(2, "0")}-${String(fechaLimite.getDate()).padStart(2, "0")}`,
           estado: fechaLimite < hoy ? "vencido" : "pendiente",
           asignacionId: asignacion.id,
         }

@@ -1716,6 +1716,10 @@ function EventoPageContent() {
                         const fechaSaldoDate = new Date(fechaEvento)
                         fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
 
+                        // Formatear en hora local para evitar corrimientos de día por zona horaria
+                        const toYMD = (d: Date) =>
+                          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+
                         const nuevoServicio: ServicioEvento = {
                           servicioId: servicio.id,
                           nombre: servicio.nombre,
@@ -1724,8 +1728,8 @@ function EventoPageContent() {
                           estadoPago: "sin_seña",
                           montoSeña,
                           saldoPendiente,
-                          fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
-                          fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                          fechaSeña: toYMD(fechaSeñaDate),
+                          fechaLimitePago: toYMD(fechaSaldoDate),
                         }
                         updateEventoActual({ servicios: [...serviciosEvento, nuevoServicio] })
                       }
@@ -1756,6 +1760,10 @@ function EventoPageContent() {
                       const fechaSaldoDate = new Date(fechaEvento)
                       fechaSaldoDate.setDate(fechaEvento.getDate() - diasSaldo)
 
+                      // Formatear en hora local para evitar corrimientos de día por zona horaria
+                      const toYMD2 = (d: Date) =>
+                        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+
                       updateEventoActual({
                         servicios: serviciosEvento.map(se =>
                           se.servicioId === servicio.id
@@ -1764,8 +1772,8 @@ function EventoPageContent() {
                                 cantidad: nuevasHoras,
                                 montoSeña: nuevaSeñaCosto,
                                 saldoPendiente: (nuevoCosto - nuevaSeñaCosto),
-                                fechaSeña: fechaSeñaDate.toISOString().split("T")[0],
-                                fechaLimitePago: fechaSaldoDate.toISOString().split("T")[0],
+                                fechaSeña: toYMD2(fechaSeñaDate),
+                                fechaLimitePago: toYMD2(fechaSaldoDate),
                               }
                             : se
                         ),
