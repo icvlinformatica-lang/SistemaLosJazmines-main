@@ -10,6 +10,7 @@ import {
   formatCurrency,
   salonColor,
   salonLabel,
+  SALONES,
   type EventoGuardado,
   type EstadoEvento,
   type PagoEvento,
@@ -218,12 +219,25 @@ function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEv
 
 export default function CalendarioPage() {
   const router = useRouter()
-  const { state, eventos, updateEvento, deleteEvento, setEventoActual, configuracionCajas } = useStore()
+  const { state, eventos: eventosTodos, updateEvento, deleteEvento, setEventoActual, configuracionCajas } = useStore()
 
   const today = new Date()
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
-  const [viewMode, setViewMode] = useState<ViewMode>("mes")
+  const [viewMode, setViewMode] = useState<ViewMode>("anual")
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+
+  // Filtro por salón: vacío = mostrar todos
+  const [salonesFiltrados, setSalonesFiltrados] = useState<string[]>([])
+  const eventos = useMemo(() => {
+    if (salonesFiltrados.length === 0) return eventosTodos
+    return eventosTodos.filter((e) => e.salon && salonesFiltrados.includes(e.salon))
+  }, [eventosTodos, salonesFiltrados])
+
+  const toggleSalonFiltro = (salon: string) => {
+    setSalonesFiltrados((prev) =>
+      prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon],
+    )
+  }
 
   // Search
   const [searchTerm, setSearchTerm] = useState("")
@@ -769,22 +783,36 @@ export default function CalendarioPage() {
                   {Array.from({ length: daysInMonth }, (_, i) => {
                     const day = i + 1
                     const date = new Date(year, monthIdx, day)
-                    const hasEvents = monthEventos.some((e) => {
+                    const eventoDelDia = monthEventos.find((e) => {
                       const ed = parseEventDate(e.fecha)
                       return ed.getDate() === day
                     })
+                    const hasEvents = !!eventoDelDia
                     const isToday2 = isSameDay(date, today)
+                    // Color del salón del evento de ese día (para que coincida con el filtro)
+                    const colorDia = eventoDelDia?.salon
+                      ? salonColor(eventoDelDia.salon, configuracionCajas)
+                      : undefined
 
                     return (
                       <span
                         key={day}
                         className={`text-[9px] leading-4 rounded-sm ${
                           isToday2
-                            ? "bg-primary text-primary-foreground font-bold"
+                            ? "font-bold text-white"
                             : hasEvents
-                              ? "bg-primary/20 text-primary font-semibold"
+                              ? "font-semibold"
                               : "text-muted-foreground"
-                        }`}
+                        } ${isToday2 && !colorDia ? "bg-primary" : ""} ${hasEvents && !isToday2 && !colorDia ? "bg-primary/20 text-primary" : ""}`}
+                        style={
+                          isToday2
+                            ? colorDia
+                              ? { backgroundColor: colorDia }
+                              : undefined
+                            : hasEvents && colorDia
+                              ? { backgroundColor: `${colorDia}33`, color: colorDia }
+                              : undefined
+                        }
                       >
                         {day}
                       </span>
@@ -1140,21 +1168,42 @@ export default function CalendarioPage() {
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-muted-foreground font-medium">Tipo:</span>
-          {Object.entries(TIPO_COLORES).map(([tipo, cls]) => (
-            <span key={tipo} className={`border-l-4 rounded-sm px-2 py-0.5 ${cls}`}>
-              {tipo === "Cumpleanos de 15" ? "15 anos" : tipo}
-            </span>
-          ))}
-          <span className="text-muted-foreground font-medium ml-2">Estado:</span>
-          {Object.entries(ESTADO_CONFIG).map(([, cfg]) => (
-            <span key={cfg.label} className="flex items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${cfg.dotColor}`} />
-              {cfg.label}
-            </span>
-          ))}
+        {/* Filtro por salón */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground font-medium">Salones:</span>
+          {SALONES.map((salon) => {
+            const color = salonColor(salon, configuracionCajas)
+            const activo = salonesFiltrados.length === 0 || salonesFiltrados.includes(salon)
+            return (
+              <button
+                key={salon}
+                type="button"
+                onClick={() => toggleSalonFiltro(salon)}
+                aria-pressed={salonesFiltrados.includes(salon)}
+                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition-all ${
+                  activo
+                    ? "border-transparent text-white"
+                    : "border-border bg-muted text-muted-foreground opacity-50"
+                }`}
+                style={activo ? { backgroundColor: color } : undefined}
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: activo ? "rgba(255,255,255,0.9)" : color }}
+                />
+                {salonLabel(salon)}
+              </button>
+            )
+          })}
+          {salonesFiltrados.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSalonesFiltrados([])}
+              className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Ver todos
+            </button>
+          )}
         </div>
 
         {/* Calendar View */}
