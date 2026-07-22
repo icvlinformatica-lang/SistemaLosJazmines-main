@@ -62,6 +62,7 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -123,6 +124,9 @@ export default function CajaEventosPage() {
 
   // ── Carrusel del dashboard: vista "Este mes" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = mes, 1 = semana
+
+  // Desplegable de "Cuotas por cobrar" (cerrado por defecto)
+  const [cuotasAbierto, setCuotasAbierto] = useState(false)
 
   // Resume la composición de egresos por tipo: "3 menú · 2 señas · 1 saldo"
   const componerEgresos = (egresos: EgresoPendienteServicio[]): string => {
@@ -640,23 +644,34 @@ export default function CajaEventosPage() {
 
       {/* Vienen esta semana a pagar (L-V 09-20hs) */}
       <Card className="border-amber-200 bg-amber-50/40">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-amber-600" />
-            Cuotas por cobrar:
-            {vienenEstaSemana.length > 0 && (
-              <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
-                {vienenEstaSemana.length}
-              </Badge>
-            )}
-            {vencidasCount > 0 && (
-              <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 ml-1 gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                {vencidasCount} pendiente{vencidasCount !== 1 ? "s" : ""}
-              </Badge>
-            )}
-          </CardTitle>
+        <CardHeader className={cuotasAbierto ? "pb-3" : "pb-4"}>
+          <button
+            type="button"
+            onClick={() => setCuotasAbierto((v) => !v)}
+            aria-expanded={cuotasAbierto}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-amber-600" />
+              Cuotas por cobrar:
+              {vienenEstaSemana.length > 0 && (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
+                  {vienenEstaSemana.length}
+                </Badge>
+              )}
+              {vencidasCount > 0 && (
+                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 ml-1 gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {vencidasCount} pendiente{vencidasCount !== 1 ? "s" : ""}
+                </Badge>
+              )}
+            </CardTitle>
+            <ChevronDown
+              className={`h-4 w-4 text-amber-600 shrink-0 transition-transform ${cuotasAbierto ? "rotate-180" : ""}`}
+            />
+          </button>
         </CardHeader>
+        {cuotasAbierto && (
         <CardContent>
           {vienenEstaSemana.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">No hay cuotas por cobrar esta semana ni cuotas vencidas.</p>
@@ -702,6 +717,7 @@ export default function CajaEventosPage() {
             </div>
           )}
         </CardContent>
+        )}
       </Card>
 
       {/* PROYECCIÓN MENSUAL — tabla */}
