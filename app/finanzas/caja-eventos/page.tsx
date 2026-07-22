@@ -326,6 +326,9 @@ export default function CajaEventosPage() {
     return new Date(ahora.getFullYear(), ahora.getMonth(), 1)
   })
 
+  // Día del calendario seleccionado para ver el detalle de cobros/pagos (fecha YYYY-MM-DD)
+  const [diaDetalle, setDiaDetalle] = useState<string | null>(null)
+
   const {
     saldoActual,
     porCobrarEsteMes,
@@ -529,6 +532,14 @@ export default function CajaEventosPage() {
 
   const cambiarMes = (delta: number) =>
     setMesCalendario((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
+
+  // Movimientos del día seleccionado en el calendario
+  const detalleDia = useMemo(() => {
+    if (!diaDetalle) return null
+    const cobros = ingresosPendientes.filter((i) => i.fechaVencimiento === diaDetalle)
+    const pagos = egresosPendientes.filter((e) => e.fechaVencimiento === diaDetalle)
+    return { cobros, pagos }
+  }, [diaDetalle, ingresosPendientes, egresosPendientes])
 
   const hoyNum = ahora.getDate()
   const esMesActualCal =
@@ -892,6 +903,36 @@ export default function CajaEventosPage() {
             {calendario.celdas.map((celda, i) => {
               const esHoy = esMesActualCal && celda.dia === hoyNum
               const tieneMov = celda.cobrar > 0 || celda.pagar > 0
+              const fechaCelda =
+                celda.dia !== null
+                  ? `${mesCalendario.getFullYear()}-${String(mesCalendario.getMonth() + 1).padStart(2, "0")}-${String(celda.dia).padStart(2, "0")}`
+                  : null
+              const contenido = celda.dia !== null && (
+                <>
+                  <div className={`font-medium ${esHoy ? "text-teal-700" : "text-foreground"}`}>{celda.dia}</div>
+                  {celda.cobrar > 0 && (
+                    <div className="text-emerald-700 font-medium truncate">+{formatCurrency(celda.cobrar)}</div>
+                  )}
+                  {celda.pagar > 0 && (
+                    <div className="text-red-600 font-medium truncate">−{formatCurrency(celda.pagar)}</div>
+                  )}
+                </>
+              )
+              if (tieneMov && fechaCelda) {
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    title="Ver detalle del día"
+                    onClick={() => setDiaDetalle(fechaCelda)}
+                    className={`min-h-[58px] rounded-md border p-1 text-[10px] text-left cursor-pointer transition-colors hover:border-teal-400 hover:bg-teal-50/60 ${
+                      esHoy ? "border-teal-400 bg-teal-50" : "border-border bg-muted/30"
+                    }`}
+                  >
+                    {contenido}
+                  </button>
+                )
+              }
               return (
                 <div
                   key={i}
@@ -900,22 +941,10 @@ export default function CajaEventosPage() {
                       ? "border-transparent"
                       : esHoy
                       ? "border-teal-400 bg-teal-50"
-                      : tieneMov
-                      ? "border-border bg-muted/30"
                       : "border-border"
                   }`}
                 >
-                  {celda.dia !== null && (
-                    <>
-                      <div className={`font-medium ${esHoy ? "text-teal-700" : "text-foreground"}`}>{celda.dia}</div>
-                      {celda.cobrar > 0 && (
-                        <div className="text-emerald-700 font-medium truncate">+{formatCurrency(celda.cobrar)}</div>
-                      )}
-                      {celda.pagar > 0 && (
-                        <div className="text-red-600 font-medium truncate">−{formatCurrency(celda.pagar)}</div>
-                      )}
-                    </>
-                  )}
+                  {contenido}
                 </div>
               )
             })}
@@ -1443,6 +1472,89 @@ export default function CajaEventosPage() {
             >
               <CheckCircle2 className="h-4 w-4 mr-1" /> Sí, marcar pagado
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detalle del día del calendario: qué se cobra y qué se paga */}
+      <Dialog open={!!diaDetalle} onOpenChange={(open) => !open && setDiaDetalle(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 capitalize">
+              <CalendarDays className="h-4 w-4 text-teal-600" />
+              {diaDetalle ? formatFecha(diaDetalle) : ""}
+            </DialogTitle>
+            <DialogDescription>Movimientos pendientes de este día.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {detalleDia && detalleDia.cobros.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <ArrowDownToLine className="h-3.5 w-3.5" /> A cobrar
+                </p>
+                {detalleDia.cobros.map((ing) => (
+                  <div
+                    key={ing.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{ing.eventoNombre}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Cuota {ing.numeroCuota}/{ing.totalCuotas} ·{" "}
+                        <span className="font-bold text-emerald-700">+{formatCurrency(ing.monto)}</span>
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                      onClick={() => {
+                        confirmarCobroCuota(ing)
+                        setDiaDetalle(null)
+                      }}
+                    >
+                      Marcar cobrada
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {detalleDia && detalleDia.pagos.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-red-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <ArrowUpFromLine className="h-3.5 w-3.5" /> A pagar
+                </p>
+                {detalleDia.pagos.map((eg) => (
+                  <div
+                    key={eg.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50/40 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{eg.servicioNombre}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {eg.eventoNombre} ·{" "}
+                        <span className="font-bold text-red-600">−{formatCurrency(eg.monto)}</span>
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 shrink-0 bg-transparent"
+                      onClick={() => {
+                        setDiaDetalle(null)
+                        setPagoConfirmar(eg)
+                      }}
+                    >
+                      Marcar pagado
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {detalleDia && detalleDia.cobros.length === 0 && detalleDia.pagos.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No quedan movimientos pendientes para este día.
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
