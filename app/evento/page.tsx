@@ -589,16 +589,20 @@ function EventoPageContent() {
     }
     
     if (isEditing && editingEventoId) {
-      // When coming from contratos: auto-create a new VersionContrato snapshot
+      // Toda edicion de un evento genera una nueva VersionContrato si hubo
+      // cambios que impactan al contrato (desde contratos siempre se versiona).
       let versionesContrato = evento?.versionesContrato || []
-      if (fromContratos) {
+      let seCreoNuevaVersion = false
+      {
         const serviciosIds = (eventData.servicios || []).map((se: ServicioEvento) => se.servicioId).filter(Boolean) as string[]
         const versionAnterior =
           versionesContrato.length > 0
             ? versionesContrato.reduce((a, b) => (a.version >= b.version ? a : b))
             : undefined
         const snapshotBase = {
-          motivo: observacionContrato.trim() || undefined,
+          motivo:
+            observacionContrato.trim() ||
+            (fromContratos ? undefined : "Actualizacion desde el planificador de eventos"),
           snapshotContrato: {
             nombreCompleto: eventData.contrato?.nombreCompleto,
             dni: eventData.contrato?.dni,
@@ -624,24 +628,30 @@ function EventoPageContent() {
             dietasEspeciales: eventData.personasDietasEspeciales || 0,
           },
         }
-        const nuevaVersion: VersionContrato = {
-          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
-          fechaGuardado: new Date().toISOString(),
-          ...snapshotBase,
-          impactos: detectarImpactosContrato(versionAnterior, snapshotBase),
+        const impactos = detectarImpactosContrato(versionAnterior, snapshotBase)
+        const hayCambios = !(impactos.length === 1 && impactos[0] === "sin_cambios" && versionAnterior)
+        // Desde contratos siempre se guarda una version; desde otras vias solo si hubo cambios reales
+        if (fromContratos || hayCambios) {
+          const nuevaVersion: VersionContrato = {
+            version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
+            fechaGuardado: new Date().toISOString(),
+            ...snapshotBase,
+            impactos,
+          }
+          versionesContrato = [...versionesContrato, nuevaVersion]
+          seCreoNuevaVersion = true
         }
-        versionesContrato = [...versionesContrato, nuevaVersion]
       }
 
       // Actualizar evento existente — await para garantizar persistencia antes de navegar
       await updateEvento(editingEventoId, {
         ...eventData,
-        ...(fromContratos ? { versionesContrato } : {}),
+        ...(seCreoNuevaVersion ? { versionesContrato } : {}),
       })
       toast({
         title: fromContratos ? "Contrato actualizado" : "Evento actualizado",
-        description: fromContratos
-          ? `Version ${versionesContrato.length} guardada correctamente`
+        description: seCreoNuevaVersion
+          ? `Los cambios se guardaron y se creo la version ${versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 1} del contrato`
           : "Los cambios se guardaron correctamente",
       })
       setIsSaving(false)
