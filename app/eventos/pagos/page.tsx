@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useRef, useEffect, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import {
@@ -223,7 +223,10 @@ function PaymentReceipt({
 
 function PagosPageContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const initialSearch = searchParams.get("evento") || ""
+  // Si llegó con ?evento= viene desde la Lista de Eventos: la flecha vuelve allá.
+  const vieneDeLista = Boolean(initialSearch)
   const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
   const { toast } = useToast()
   const [showContractPreview, setShowContractPreview] = useState(false)
@@ -920,12 +923,16 @@ function PagosPageContent() {
               size="sm"
               className="bg-transparent"
               onClick={() => {
-                setSelectedEvento(null)
-                setSearchTerm("")
+                if (vieneDeLista) {
+                  router.push("/eventos/lista")
+                } else {
+                  setSelectedEvento(null)
+                  setSearchTerm("")
+                }
               }}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Buscar otro evento
+              {vieneDeLista ? "Volver a lista de eventos" : "Buscar otro evento"}
             </Button>
 
             <div className="grid gap-6 items-start lg:grid-cols-2">
