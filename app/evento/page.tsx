@@ -1399,19 +1399,7 @@ function EventoPageContent() {
                     </p>
                   </div>
                 </div>
-              ) : (
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50">
-                  <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">
-                      No hay precio definido para {evento.salon} el {evento.fecha}
-                    </p>
-                    <p className="text-xs text-amber-600">
-                      Configura los precios desde Finanzas &gt; Precios
-                    </p>
-                  </div>
-                </div>
-              )
+              ) : null
             })()}
 
             {/* Fila 4: Comensales — 4 columnas en una sola fila */}
