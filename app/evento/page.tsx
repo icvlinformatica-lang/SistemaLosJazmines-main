@@ -118,7 +118,6 @@ function EventoPageContent() {
   const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showSaveSuccess, setShowSaveSuccess] = useState(false)
-  const [observacionContrato, setObservacionContrato] = useState("")
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
     barraCocteles: true,
@@ -609,7 +608,7 @@ function EventoPageContent() {
             : undefined
         const snapshotBase = {
           motivo:
-            observacionContrato.trim() ||
+            localContratoObservaciones.trim() ||
             (fromContratos ? undefined : "Actualizacion desde el planificador de eventos"),
           snapshotContrato: {
             nombreCompleto: eventData.contrato?.nombreCompleto,
@@ -2477,24 +2476,6 @@ function EventoPageContent() {
             </Button>
           ) : (
             <>
-              {/* Observacion field — only when coming from contratos */}
-              {fromContratos && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-                    <FileText className="h-4 w-4" />
-                    Observacion del contrato
-                    <span className="font-normal text-amber-700 ml-1">(opcional)</span>
-                  </label>
-                  <textarea
-                    value={observacionContrato}
-                    onChange={(e) => setObservacionContrato(e.target.value)}
-                    placeholder="Ej: Cliente solicito agregar servicio de DJ, se modifico el precio acordado..."
-                    rows={2}
-                    className="w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-              )}
-
               <Button
                 onClick={handleSaveEvento}
                 className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
