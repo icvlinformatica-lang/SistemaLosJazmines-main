@@ -31,6 +31,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -208,6 +209,7 @@ function EventoPageContent() {
   const [localContratoEmail, setLocalContratoEmail] = useState("")
   const [localContratoDireccion, setLocalContratoDireccion] = useState("")
   const [localContratoFechaNac, setLocalContratoFechaNac] = useState("")
+  const [localContratoObservaciones, setLocalContratoObservaciones] = useState("")
   const [localCondicionIVA, setLocalCondicionIVA] = useState<string>("Consumidor Final")
 
   // Plan de cuotas local state
@@ -243,6 +245,7 @@ function EventoPageContent() {
       setLocalContratoEmail(evento.contrato?.email || "")
       setLocalContratoDireccion(evento.contrato?.direccion || "")
       setLocalContratoFechaNac(evento.contrato?.fechaNacimiento || "")
+      setLocalContratoObservaciones(evento.contrato?.observaciones || "")
       setLocalCondicionIVA(evento.condicionIVA || "Consumidor Final")
       // Plan de cuotas
       setLocalMontoTotal(evento.planDeCuotas?.montoTotal || 0)
@@ -516,6 +519,7 @@ function EventoPageContent() {
         email: localContratoEmail || undefined,
         direccion: localContratoDireccion || undefined,
         fechaNacimiento: localContratoFechaNac || undefined,
+        observaciones: localContratoObservaciones.trim() || undefined,
         // El vendedor se elige en la sección "Vendedor" (vive en evento.contrato):
         // hay que arrastrarlo acá o se pierde al guardar.
         vendedor: evento.contrato?.vendedor || undefined,
@@ -1986,6 +1990,17 @@ function EventoPageContent() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contratoObservaciones">Observaciones del contrato</Label>
+                <Textarea
+                  id="contratoObservaciones"
+                  value={localContratoObservaciones}
+                  onChange={(e) => setLocalContratoObservaciones(e.target.value)}
+                  placeholder="Algo extra que quieras dejar asentado en el contrato (se imprime debajo de Datos del evento)..."
+                  rows={3}
+                />
               </div>
             </TabsContent>
 

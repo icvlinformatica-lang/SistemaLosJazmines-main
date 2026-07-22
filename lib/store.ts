@@ -182,6 +182,8 @@ export interface Evento {
   fechaNacimiento?: string
   /** Vendedor que cerró la venta del evento — impacta en el contrato impreso y en Eventos > Vendedores */
   vendedor?: string
+  /** Observaciones extra que se dejan asentadas en el contrato impreso, debajo de Datos del evento */
+  observaciones?: string
   }
 
   // Plan de cuotas

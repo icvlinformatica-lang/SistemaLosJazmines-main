@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -441,6 +442,7 @@ function ContratosPageContent() {
     direccion: "",
     email: "",
     condicionIVA: "Consumidor Final",
+    observaciones: "",
   })
 
   // Valid events (exclude cancelled + require name & date)
@@ -489,6 +491,7 @@ function ContratosPageContent() {
         direccion: c.direccion || "",
         email: c.email || "",
         condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
+        observaciones: c.observaciones || "",
       })
     }
   }, [selectedEvento])
@@ -581,6 +584,7 @@ function ContratosPageContent() {
           telefono: editForm.telefono.trim(),
           direccion: editForm.direccion.trim(),
           email: editForm.email.trim(),
+          observaciones: editForm.observaciones.trim(),
         },
         condicionIVA: editForm.condicionIVA as EventoGuardado["condicionIVA"],
       })
@@ -600,6 +604,7 @@ function ContratosPageContent() {
         direccion: c.direccion || "",
         email: c.email || "",
         condicionIVA: selectedEvento.condicionIVA || "Consumidor Final",
+        observaciones: c.observaciones || "",
       })
     }
     setIsEditing(false)
@@ -940,6 +945,16 @@ function ContratosPageContent() {
                             </SelectContent>
                           </Select>
                         </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-observaciones" className="text-xs text-muted-foreground">Observaciones del contrato</Label>
+                          <Textarea
+                            id="edit-observaciones"
+                            value={editForm.observaciones}
+                            onChange={(e) => setEditForm((f) => ({ ...f, observaciones: e.target.value }))}
+                            placeholder="Algo extra que quieras dejar asentado en el contrato..."
+                            rows={3}
+                          />
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -949,6 +964,9 @@ function ContratosPageContent() {
                         <DetailRow icon={<MapPin className="h-4 w-4" />} label="Direccion" value={contrato.direccion} />
                         <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={contrato.email} />
                         <DetailRow icon={<FileText className="h-4 w-4" />} label="Condicion IVA" value={selectedEvento.condicionIVA || "Consumidor Final"} />
+                        {contrato.observaciones && (
+                          <DetailRow icon={<FileText className="h-4 w-4" />} label="Observaciones" value={contrato.observaciones} />
+                        )}
                       </>
                     )}
                   </section>

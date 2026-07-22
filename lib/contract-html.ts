@@ -297,6 +297,13 @@ export function generateContractHTML(
   <p class="parrafo"><span class="campo">Precio:</span> El precio por el uso del sal\u00f3n y la prestaci\u00f3n detallada en el presente contrato y sus anexos es de (PESOS) ${precioEvento > 0 ? formatCurrency(precioEvento) : "$______________"}. tom\u00e1ndose como base un m\u00ednimo de ${totalPersonas || "___"} invitados.</p>
   </div>
 
+  ${contrato.observaciones ? `
+  <div class="seccion">
+  <h3 class="clausula"><span>Observaciones:</span></h3>
+  <p class="parrafo" style="white-space:pre-line;">${contrato.observaciones}</p>
+  </div>
+  ` : ""}
+
   <div class="seccion">
   <h3 class="clausula">3) <span>Forma de pago:</span></h3>
   <p class="parrafo">${formaPago || "A convenir entre las partes."}</p>
@@ -432,6 +439,8 @@ export function buildUltimaVersionContratoHTML(
         telefono: ultima.snapshotContrato.telefono,
         direccion: ultima.snapshotContrato.direccion,
         email: ultima.snapshotContrato.email,
+        // Las observaciones no forman parte del snapshot: usar las actuales del evento
+        observaciones: evento.contrato?.observaciones,
       },
       planDeCuotas: ultima.snapshotPlanCuotas || evento.planDeCuotas,
     }
