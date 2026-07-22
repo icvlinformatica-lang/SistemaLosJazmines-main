@@ -21,6 +21,9 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -63,6 +66,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Pencil,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -127,6 +131,109 @@ export default function CajaEventosPage() {
 
   // Desplegable de "Cuotas por cobrar" (cerrado por defecto)
   const [cuotasAbierto, setCuotasAbierto] = useState(false)
+
+  // ── Edición de fechas de vencimiento (cuotas por cobrar y gastos por pagar) ──
+  const [editVenc, setEditVenc] = useState<
+    | { kind: "cuota"; ingreso: IngresoPendiente }
+    | { kind: "egreso"; egreso: EgresoPendienteServicio }
+    | null
+  >(null)
+  const [nuevaFechaVenc, setNuevaFechaVenc] = useState("")
+  const [justificacionVenc, setJustificacionVenc] = useState("")
+
+  // Todo cambio de vencimiento deja rastro en Configuración > Actividad.
+  function logVencimiento(nombre: string, detalle: string) {
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "vencimiento", accion: "modificado", nombre, detalle }),
+    }).catch(() => {})
+  }
+
+  function abrirEdicionCuota(ingreso: IngresoPendiente) {
+    setNuevaFechaVenc(ingreso.fechaVencimiento)
+    setJustificacionVenc("")
+    setEditVenc({ kind: "cuota", ingreso })
+  }
+
+  function abrirEdicionEgreso(egreso: EgresoPendienteServicio) {
+    setNuevaFechaVenc(egreso.fechaVencimiento)
+    setJustificacionVenc("")
+    setEditVenc({ kind: "egreso", egreso })
+  }
+
+  function guardarNuevaFechaVenc() {
+    if (!editVenc || !nuevaFechaVenc) return
+
+    if (editVenc.kind === "cuota") {
+      // Cuota por cobrar: se edita la fecha dentro del plan de cuotas del evento.
+      const ing = editVenc.ingreso
+      const evento = (state.eventos || []).find((e) => e.id === ing.eventoId)
+      const plan = evento?.planDeCuotas
+      if (!evento || !plan?.cuotas) {
+        setEditVenc(null)
+        return
+      }
+      const cuotas = plan.cuotas.map((c) =>
+        c.numero === ing.numeroCuota ? { ...c, fechaVencimiento: nuevaFechaVenc } : c,
+      )
+      updateEvento(evento.id, { planDeCuotas: { ...plan, cuotas } })
+      logVencimiento(
+        `Cuota ${ing.numeroCuota}/${ing.totalCuotas} · ${ing.eventoNombre}`,
+        `Vencimiento: ${ing.fechaVencimiento} → ${nuevaFechaVenc}${
+          justificacionVenc.trim() ? ` | Motivo: ${justificacionVenc.trim()}` : " | Sin justificación"
+        }`,
+      )
+      toast({
+        title: "Vencimiento actualizado",
+        description: `Cuota ${ing.numeroCuota}/${ing.totalCuotas} de ${ing.eventoNombre} ahora vence el ${formatFecha(nuevaFechaVenc)}.`,
+      })
+    } else {
+      // Gasto por pagar: la fuente depende del tipo de egreso.
+      const eg = editVenc.egreso
+      const evento = (state.eventos || []).find((e) => e.id === eg.eventoId)
+      if (!evento) {
+        setEditVenc(null)
+        return
+      }
+      if (eg.id.endsWith("-menu")) {
+        updateEvento(evento.id, { fechaPagoMenu: nuevaFechaVenc })
+      } else if (eg.id.endsWith("-barra")) {
+        updateEvento(evento.id, { fechaPagoBarra: nuevaFechaVenc })
+      } else if (eg.id.includes("-compromiso-") && eg.servicioId) {
+        updatePagoPersonal(eg.servicioId, { fechaLimitePago: nuevaFechaVenc })
+      } else if (eg.id.includes("-sueldo-") && eg.servicioId) {
+        const personalEvento = (evento.personalEvento || []).map((pe) =>
+          pe.id === eg.servicioId ? { ...pe, fechaPago: nuevaFechaVenc } : pe,
+        )
+        updateEvento(evento.id, { personalEvento })
+      } else if (eg.tipo === "seña" && eg.servicioId) {
+        const servicios = (evento.servicios || []).map((s) =>
+          s.servicioId === eg.servicioId ? { ...s, fechaSeña: nuevaFechaVenc } : s,
+        )
+        updateEvento(evento.id, { servicios })
+      } else if (eg.servicioId) {
+        const servicios = (evento.servicios || []).map((s) =>
+          s.servicioId === eg.servicioId ? { ...s, fechaLimitePago: nuevaFechaVenc } : s,
+        )
+        updateEvento(evento.id, { servicios })
+      } else {
+        setEditVenc(null)
+        return
+      }
+      logVencimiento(
+        `${eg.servicioNombre} · ${eg.eventoNombre}`,
+        `Vencimiento: ${eg.fechaVencimiento} → ${nuevaFechaVenc}${
+          justificacionVenc.trim() ? ` | Motivo: ${justificacionVenc.trim()}` : ""
+        }`,
+      )
+      toast({
+        title: "Vencimiento actualizado",
+        description: `${eg.servicioNombre} ahora vence el ${formatFecha(nuevaFechaVenc)}.`,
+      })
+    }
+    setEditVenc(null)
+  }
 
   // Resume la composición de egresos por tipo: "3 menú · 2 señas · 1 saldo"
   const componerEgresos = (egresos: EgresoPendienteServicio[]): string => {
@@ -880,10 +987,21 @@ export default function CajaEventosPage() {
                           {ing.numeroCuota}/{ing.totalCuotas}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{formatFecha(ing.fechaVencimiento)}</span>
+                          <button
+                            type="button"
+                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+                            title="Cambiar fecha de vencimiento"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              abrirEdicionCuota(ing)
+                            }}
+                          >
+                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+                              {formatFecha(ing.fechaVencimiento)}
+                            </span>
                             {vencBadge(ing.diasRestantes)}
-                          </div>
+                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
                         </TableCell>
                         <TableCell className="text-right pr-6 font-bold text-emerald-700">
                           +{formatCurrency(ing.monto)}
@@ -961,10 +1079,18 @@ export default function CajaEventosPage() {
                           </p>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{formatFecha(eg.fechaVencimiento)}</span>
+                          <button
+                            type="button"
+                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+                            title="Cambiar fecha de vencimiento"
+                            onClick={() => abrirEdicionEgreso(eg)}
+                          >
+                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+                              {formatFecha(eg.fechaVencimiento)}
+                            </span>
                             {vencBadge(eg.diasRestantes)}
-                          </div>
+                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
                         </TableCell>
                         <TableCell className="text-right font-bold text-red-600">
                           −{formatCurrency(eg.monto)}
@@ -1049,12 +1175,20 @@ export default function CajaEventosPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{formatFecha(eg.fechaVencimiento)}</span>
+                          <button
+                            type="button"
+                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+                            title="Cambiar fecha de vencimiento"
+                            onClick={() => abrirEdicionEgreso(eg)}
+                          >
+                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+                              {formatFecha(eg.fechaVencimiento)}
+                            </span>
                             <Badge variant="outline" className="text-[11px] text-muted-foreground">
                               faltan {eg.diasRestantes}d
                             </Badge>
-                          </div>
+                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
                         </TableCell>
                         <TableCell className="text-right pr-6 font-medium text-muted-foreground">
                           {formatCurrency(eg.monto)}

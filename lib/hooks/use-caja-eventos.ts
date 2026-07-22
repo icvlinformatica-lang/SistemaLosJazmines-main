@@ -218,9 +218,17 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       const costoMenu = costoMenuLive > 0 ? costoMenuLive : (evento.costoInsumos ?? 0)
       if (costoMenu > 0 && evento.fecha) {
         const fechaEvento = parseLocalDate(evento.fecha)
-        const fechaPagoMenu = new Date(fechaEvento)
-        fechaPagoMenu.setDate(fechaEvento.getDate() - 14)
-        const fechaPagoMenuStr = `${fechaPagoMenu.getFullYear()}-${String(fechaPagoMenu.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoMenu.getDate()).padStart(2, "0")}`
+        // Fecha editada manualmente tiene prioridad; si no, evento - 14 días.
+        let fechaPagoMenuStr: string
+        let fechaPagoMenu: Date
+        if (evento.fechaPagoMenu) {
+          fechaPagoMenuStr = evento.fechaPagoMenu
+          fechaPagoMenu = parseLocalDate(evento.fechaPagoMenu)
+        } else {
+          fechaPagoMenu = new Date(fechaEvento)
+          fechaPagoMenu.setDate(fechaEvento.getDate() - 14)
+          fechaPagoMenuStr = `${fechaPagoMenu.getFullYear()}-${String(fechaPagoMenu.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoMenu.getDate()).padStart(2, "0")}`
+        }
 
         const menuPagado = evento.cocinaPagada === true
 
@@ -247,9 +255,17 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       const costoBarra = comprasBarra.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
       if (costoBarra > 0 && evento.fecha) {
         const fechaEvento = parseLocalDate(evento.fecha)
-        const fechaPagoBarra = new Date(fechaEvento)
-        fechaPagoBarra.setDate(fechaEvento.getDate() - 14)
-        const fechaPagoBarraStr = `${fechaPagoBarra.getFullYear()}-${String(fechaPagoBarra.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoBarra.getDate()).padStart(2, "0")}`
+        // Fecha editada manualmente tiene prioridad; si no, evento - 14 días.
+        let fechaPagoBarraStr: string
+        let fechaPagoBarra: Date
+        if (evento.fechaPagoBarra) {
+          fechaPagoBarraStr = evento.fechaPagoBarra
+          fechaPagoBarra = parseLocalDate(evento.fechaPagoBarra)
+        } else {
+          fechaPagoBarra = new Date(fechaEvento)
+          fechaPagoBarra.setDate(fechaEvento.getDate() - 14)
+          fechaPagoBarraStr = `${fechaPagoBarra.getFullYear()}-${String(fechaPagoBarra.getMonth() + 1).padStart(2, "0")}-${String(fechaPagoBarra.getDate()).padStart(2, "0")}`
+        }
 
         const barraPagada = evento.barraPagada === true
 
@@ -305,6 +321,9 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         for (const pe of personalDelEvento) {
           if (pe.pagado) continue
           if (!pe.monto || pe.monto <= 0) continue
+          // Fecha de pago editada manualmente tiene prioridad; si no, el día del evento.
+          const fechaVencSueldo = pe.fechaPago || fechaEventoStr
+          const fechaVencSueldoDate = pe.fechaPago ? parseLocalDate(pe.fechaPago) : fechaEvento
           egresosPendientes.push({
             id: `${evento.id}-sueldo-${pe.id}`,
             eventoId: evento.id,
@@ -314,8 +333,8 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             servicioId: pe.id,
             tipo: "sueldo",
             monto: pe.monto,
-            fechaVencimiento: fechaEventoStr,
-            diasRestantes: Math.ceil((fechaEvento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+            fechaVencimiento: fechaVencSueldo,
+            diasRestantes: Math.ceil((fechaVencSueldoDate.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
             estadoPago: "saldo_pendiente",
           })
         }

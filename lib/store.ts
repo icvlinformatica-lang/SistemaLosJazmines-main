@@ -496,6 +496,10 @@ export interface EventoGuardado extends Evento {
   cocinaPagada?: boolean
   /** true si ya se pagó el costo de la barra */
   barraPagada?: boolean
+  /** Fecha de pago del menú (YYYY-MM-DD). Si no está, se calcula: evento - 14 días */
+  fechaPagoMenu?: string
+  /** Fecha de pago de la barra (YYYY-MM-DD). Si no está, se calcula: evento - 14 días */
+  fechaPagoBarra?: string
 
   // --- Servicios seleccionados para el contrato ---
   /** IDs de servicios del catálogo (/finanzas/servicios) a incluir en el contrato */
@@ -805,6 +809,8 @@ export interface PersonalDelEvento {
   funcion: string
   monto: number
   pagado?: boolean
+  /** Fecha de pago del sueldo (YYYY-MM-DD). Si no está, vence el día del evento */
+  fechaPago?: string
 }
 
 export interface PersonalEvento {

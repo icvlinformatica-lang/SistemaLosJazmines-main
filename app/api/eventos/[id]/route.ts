@@ -64,6 +64,8 @@ function fromRow(r: Record<string, any>) {
     serviciosLibresContrato: parseJsonField(r.servicios_libres_contrato, undefined),
     cocinaPagada: r.cocina_pagada ?? false,
     barraPagada: r.barra_pagada ?? false,
+    fechaPagoMenu: r.fecha_pago_menu ?? undefined,
+    fechaPagoBarra: r.fecha_pago_barra ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -78,7 +80,7 @@ const SELECT_COLS = `
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
   precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
   notas_internas, pagos, asignaciones, costos_calculados,
-  stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at,
+  stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, created_at, updated_at, deleted_at,
   versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
 `
 
@@ -93,7 +95,7 @@ async function fetchEvento(id: string) {
       condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
       precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
       notas_internas, pagos, asignaciones, costos_calculados,
-      stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at,
+      stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, created_at, updated_at, deleted_at,
       versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
     FROM eventos WHERE id = ${id} AND deleted_at IS NULL
   `
@@ -140,6 +142,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       costosCalculados: "costos_calculados",
       stockDescontado: "stock_descontado", fechaImpresion: "fecha_impresion",
       cocinaPagada: "cocina_pagada", barraPagada: "barra_pagada",
+      fechaPagoMenu: "fecha_pago_menu", fechaPagoBarra: "fecha_pago_barra",
       versionesContrato: "versiones_contrato", generacionesContrato: "generaciones_contrato",
       serviciosContrato: "servicios_contrato", serviciosLibresContrato: "servicios_libres_contrato",
     }
