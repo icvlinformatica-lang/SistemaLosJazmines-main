@@ -73,16 +73,31 @@ export default function ProduccionPage() {
   const hoy = new Date()
   const [mesActual, setMesActual] = useState(new Date(hoy.getFullYear(), hoy.getMonth(), 1))
 
-  // Filtrar eventos que tienen recetas (tienen guía de producción)
+  // Filtrar eventos que tienen recetas (tienen guía de producción),
+  // ordenados por fecha más cercana a hoy (los sin fecha van al final)
   const eventosConRecetas = useMemo(() => {
-    return eventos.filter((e) => {
-      const tieneRecetas =
-        (e.recetasAdultos?.length || 0) > 0 ||
-        (e.recetasAdolescentes?.length || 0) > 0 ||
-        (e.recetasNinos?.length || 0) > 0 ||
-        (e.recetasDietasEspeciales?.length || 0) > 0
-      return tieneRecetas
-    })
+    const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`
+    return eventos
+      .filter((e) => {
+        const tieneRecetas =
+          (e.recetasAdultos?.length || 0) > 0 ||
+          (e.recetasAdolescentes?.length || 0) > 0 ||
+          (e.recetasNinos?.length || 0) > 0 ||
+          (e.recetasDietasEspeciales?.length || 0) > 0
+        return tieneRecetas
+      })
+      .sort((a, b) => {
+        if (!a.fecha && !b.fecha) return 0
+        if (!a.fecha) return 1
+        if (!b.fecha) return -1
+        const aFuturo = a.fecha >= hoyISO
+        const bFuturo = b.fecha >= hoyISO
+        // Primero los próximos (ascendente: el más cercano arriba), luego los pasados (el más reciente arriba)
+        if (aFuturo && bFuturo) return a.fecha.localeCompare(b.fecha)
+        if (aFuturo) return -1
+        if (bFuturo) return 1
+        return b.fecha.localeCompare(a.fecha)
+      })
   }, [eventos])
 
   // Filtrar por búsqueda
