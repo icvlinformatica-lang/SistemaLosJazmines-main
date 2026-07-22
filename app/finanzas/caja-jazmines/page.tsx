@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -58,6 +58,8 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from "lucide-react"
 import { ConfirmAction } from "@/components/confirm-action"
 import Link from "next/link"
@@ -799,6 +801,49 @@ export default function CajaJazminePage() {
     cuotasPorCobrar,
   } = data
 
+  // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
+  const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = 30 días, 1 = semana
+
+  const { cobroSemanaJaz, cuotasSemanaJazCount, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel } = useMemo(() => {
+    const diaSemana = ahora.getDay() // 0 = domingo
+    const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
+    const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
+    const toISO = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const desde = toISO(lunes)
+    const hasta = toISO(domingo)
+
+    // Ingresos de la semana: 50% de las cuotas que vencen entre lunes y domingo
+    const cuotasSemana = data.cuotasPorCobrar.filter(
+      (c) => c.fechaVencimiento >= desde && c.fechaVencimiento <= hasta,
+    )
+    const cobro = cuotasSemana.reduce((s, c) => s + c.montoJazmines, 0)
+
+    // Gastos de la semana: fijos y variables pendientes que vencen entre lunes y domingo
+    const fijosSemana = data.gastosFijosMes.filter(
+      (g) => g.fechaVencimiento && g.fechaVencimiento >= desde && g.fechaVencimiento <= hasta && g.estado !== "pagado",
+    )
+    const variablesSemana = data.gastosVariables.filter(
+      (g) => g.fecha && g.fecha >= desde && g.fecha <= hasta && g.estado !== "pagado",
+    )
+    const gastos = fijosSemana.reduce((s, g) => s + g.monto, 0) + variablesSemana.reduce((s, g) => s + g.monto, 0)
+
+    const partes: string[] = []
+    if (fijosSemana.length > 0) partes.push(`${fijosSemana.length} ${fijosSemana.length === 1 ? "fijo" : "fijos"}`)
+    if (variablesSemana.length > 0)
+      partes.push(`${variablesSemana.length} ${variablesSemana.length === 1 ? "variable" : "variables"}`)
+
+    const fmt = (d: Date) => d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })
+    return {
+      cobroSemanaJaz: cobro,
+      cuotasSemanaJazCount: cuotasSemana.length,
+      gastosSemanaJaz: gastos,
+      gastosSemanaJazDetalle: partes.join(" · "),
+      saldoFinSemanaJaz: data.saldoActual + cobro - gastos,
+      rangoSemanaJazLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
+    }
+  }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora])
+
   // ── Proyección: gastos fijos del 1 al 10 del mes siguiente ──────────────
   // Los gastos fijos agendados se repiten el mes que viene; acá se proyecta
   // cuáles caen entre el día 1 y el 10 del próximo mes para anticipar pagos.
@@ -1081,90 +1126,186 @@ export default function CajaJazminePage() {
         </p>
       )}
 
-      {/* Métricas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
-              <div className="flex items-center gap-1.5">
-                <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
-                <button
-                  type="button"
-                  onClick={() => toggleMonto("saldoActual")}
-                  style={{ color: "#0035db" }}
-                  className="hover:opacity-80"
-                  aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
-                  title={montosOcultos.saldoActual ? "Mostrar monto" : "Ocultar monto"}
-                >
-                  {montosOcultos.saldoActual ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
-              {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
-            </p>
-            <p className="text-xs mt-1" style={{ color: "#4010fa" }}>Ingresos − gastos</p>
-          </CardContent>
-        </Card>
+      {/* Métricas: carrusel con vista a 30 días y semanal */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-foreground">
+            {vistaDashboard === 0 ? "Próximos 30 días" : `Esta semana · ${rangoSemanaJazLabel}`}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 0 ? "w-4 bg-purple-600" : "w-1.5 bg-muted-foreground/30"}`} />
+            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 1 ? "w-4 bg-purple-600" : "w-1.5 bg-muted-foreground/30"}`} />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 ml-2 bg-transparent"
+              onClick={() => setVistaDashboard(0)}
+              disabled={vistaDashboard === 0}
+              aria-label="Ver próximos 30 días"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 bg-transparent"
+              onClick={() => setVistaDashboard(1)}
+              disabled={vistaDashboard === 1}
+              aria-label="Ver esta semana"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
-        <Card className="border-border">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Gastos A 30 días
-              </p>
-              <button
-                type="button"
-                onClick={() => toggleMonto("gastos30")}
-                className="text-muted-foreground hover:text-foreground"
-                aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
-                title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
-              >
-                {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <p className="text-3xl font-bold" style={{ color: "#b7933b" }}>
-              {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">Gastos pendientes</p>
-          </CardContent>
-        </Card>
+        <div className="overflow-hidden">
+          <div
+            className="flex transition-transform duration-300 ease-in-out"
+            style={{ transform: `translateX(-${vistaDashboard * 100}%)` }}
+          >
+            {/* ── Slide 1: A 30 DÍAS ────────────────────────────────── */}
+            <div className="w-full shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4 pr-0.5">
+              <Card style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}>
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
+                    <div className="flex items-center gap-1.5">
+                      <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
+                      <button
+                        type="button"
+                        onClick={() => toggleMonto("saldoActual")}
+                        style={{ color: "#0035db" }}
+                        className="hover:opacity-80"
+                        aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
+                        title={montosOcultos.saldoActual ? "Mostrar monto" : "Ocultar monto"}
+                      >
+                        {montosOcultos.saldoActual ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
+                    {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "#4010fa" }}>Ingresos − gastos</p>
+                </CardContent>
+              </Card>
 
-        <Card className={saldoProyectado30Dias >= 0 ? "border-teal-200 bg-teal-50" : "border-red-200 bg-red-50"}>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className={`text-xs font-medium uppercase tracking-wide ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"}`}>
-                Saldo a 30 días
-              </p>
-              <div className="flex items-center gap-1.5">
-                <TrendingUp className={`h-4 w-4 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`} />
-                <button
-                  type="button"
-                  onClick={() => toggleMonto("saldoProyectado")}
-                  className={saldoProyectado30Dias >= 0 ? "text-teal-600 hover:text-teal-800" : "text-red-600 hover:text-red-800"}
-                  aria-label={montosOcultos.saldoProyectado ? "Mostrar saldo proyectado" : "Ocultar saldo proyectado"}
-                  title={montosOcultos.saldoProyectado ? "Mostrar monto" : "Ocultar monto"}
-                >
-                  {montosOcultos.saldoProyectado ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
+              <Card className="border-border">
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Gastos A 30 días
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => toggleMonto("gastos30")}
+                      className="text-muted-foreground hover:text-foreground"
+                      aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
+                      title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
+                    >
+                      {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-3xl font-bold" style={{ color: "#b7933b" }}>
+                    {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Gastos pendientes</p>
+                </CardContent>
+              </Card>
+
+              <Card className={saldoProyectado30Dias >= 0 ? "border-teal-200 bg-teal-50" : "border-red-200 bg-red-50"}>
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className={`text-xs font-medium uppercase tracking-wide ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"}`}>
+                      Saldo a 30 días
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <TrendingUp className={`h-4 w-4 ${saldoProyectado30Dias >= 0 ? "text-teal-600" : "text-red-600"}`} />
+                      <button
+                        type="button"
+                        onClick={() => toggleMonto("saldoProyectado")}
+                        className={saldoProyectado30Dias >= 0 ? "text-teal-600 hover:text-teal-800" : "text-red-600 hover:text-red-800"}
+                        aria-label={montosOcultos.saldoProyectado ? "Mostrar saldo proyectado" : "Ocultar saldo proyectado"}
+                        title={montosOcultos.saldoProyectado ? "Mostrar monto" : "Ocultar monto"}
+                      >
+                        {montosOcultos.saldoProyectado ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
+                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
+                  </p>
+                  {(() => {
+                    const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+                    const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
+                    if (cuotasMes.length === 0) return null
+                    return (
+                      <p className={`text-sm font-semibold mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                        {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
+                      </p>
+                    )
+                  })()}
+                </CardContent>
+              </Card>
             </div>
-            <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
-              {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
-            </p>
-            {(() => {
-              const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
-              const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
-              if (cuotasMes.length === 0) return null
-              return (
-                <p className={`text-sm font-semibold mt-1 ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
-                  {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
-                </p>
-              )
-            })()}
-          </CardContent>
-        </Card>
+
+            {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
+            <div className="w-full shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4 pl-0.5" aria-hidden={vistaDashboard !== 1}>
+              <Card className="border-emerald-200 bg-emerald-50">
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-emerald-700 uppercase tracking-wide">Cobro esta semana</p>
+                    <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <p className="text-3xl font-bold text-emerald-800">
+                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
+                  </p>
+                  {cuotasSemanaJazCount > 0 ? (
+                    <p className="text-sm font-semibold text-emerald-700 mt-1">
+                      {cuotasSemanaJazCount} {cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (50%)
+                    </p>
+                  ) : (
+                    <p className="text-xs text-emerald-700/70 mt-1">Sin cuotas esta semana</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-red-700 uppercase tracking-wide">Gastos esta semana</p>
+                    <ArrowUpFromLine className="h-4 w-4 text-red-600" />
+                  </div>
+                  <p className="text-3xl font-bold text-red-700">
+                    {montosOcultos.gastos30 ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
+                  </p>
+                  {gastosSemanaJazDetalle ? (
+                    <p className="text-sm font-semibold text-red-600 mt-1">{gastosSemanaJazDetalle}</p>
+                  ) : (
+                    <p className="text-xs text-red-600/70 mt-1">Sin gastos esta semana</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className={saldoFinSemanaJaz >= 0 ? "border-teal-200 bg-teal-50" : "border-red-200 bg-red-50"}>
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className={`text-xs font-medium uppercase tracking-wide ${saldoFinSemanaJaz >= 0 ? "text-teal-700" : "text-red-700"}`}>
+                      Tengo a fin de semana
+                    </p>
+                    <TrendingUp className={`h-4 w-4 ${saldoFinSemanaJaz >= 0 ? "text-teal-600" : "text-red-600"}`} />
+                  </div>
+                  <p className={`text-3xl font-bold ${saldoFinSemanaJaz >= 0 ? "text-teal-800" : "text-red-700"}`}>
+                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoFinSemanaJaz)}
+                  </p>
+                  <p className={`text-xs mt-1 ${saldoFinSemanaJaz >= 0 ? "text-teal-600" : "text-red-600"}`}>
+                    Saldo actual + cobros − gastos
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Cuotas por cobrar (izquierda) + Vencimientos (derecha) */}
@@ -2140,7 +2281,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: marcar cuota como cobrada ─────────────────────────────── */}
+      {/* ── Dialog: marcar cuota como cobrada ───────────────���─────────────── */}
       <Dialog
         open={!!cuotaSel}
         onOpenChange={(open) => {
