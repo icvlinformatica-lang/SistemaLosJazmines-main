@@ -85,6 +85,7 @@ import {
   Printer,
   FileText,
   Trash2,
+  DollarSign,
   Calendar as CalendarIcon,
   Users,
   Building2,
@@ -1124,6 +1125,16 @@ export default function EventosListaPage() {
                           >
                             <Eye className="h-4 w-4" />
                             <span className="sr-only">Ver / Editar</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"
+                            title="Cobrar cuota"
+                            onClick={() => router.push(`/eventos/pagos?evento=${evento.id}`)}
+                          >
+                            <DollarSign className="h-4 w-4" />
+                            <span className="sr-only">Cobrar cuota</span>
                           </Button>
                           <Button
                             variant="ghost"
