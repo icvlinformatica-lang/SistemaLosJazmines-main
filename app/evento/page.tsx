@@ -210,6 +210,7 @@ function EventoPageContent() {
   const [localContratoDireccion, setLocalContratoDireccion] = useState("")
   const [localContratoFechaNac, setLocalContratoFechaNac] = useState("")
   const [localContratoObservaciones, setLocalContratoObservaciones] = useState("")
+  const [localObservacionesEvento, setLocalObservacionesEvento] = useState("")
   const [localCondicionIVA, setLocalCondicionIVA] = useState<string>("Consumidor Final")
 
   // Plan de cuotas local state
@@ -246,6 +247,7 @@ function EventoPageContent() {
       setLocalContratoDireccion(evento.contrato?.direccion || "")
       setLocalContratoFechaNac(evento.contrato?.fechaNacimiento || "")
       setLocalContratoObservaciones(evento.contrato?.observaciones || "")
+      setLocalObservacionesEvento(evento.notasInternas || "")
       setLocalCondicionIVA(evento.condicionIVA || "Consumidor Final")
       // Plan de cuotas
       setLocalMontoTotal(evento.planDeCuotas?.montoTotal || 0)
@@ -508,6 +510,7 @@ function EventoPageContent() {
       multipliersNinos: evento.multipliersNinos,
       multipliersDietasEspeciales: evento.multipliersDietasEspeciales,
       descripcionPersonalizada: evento.descripcionPersonalizada,
+      notasInternas: localObservacionesEvento.trim() || undefined,
       barras: evento.barras,
       servicios: evento.servicios,
       paquetesSeleccionados: evento.paquetesSeleccionados,
@@ -2398,6 +2401,23 @@ function EventoPageContent() {
         </div>{/* End of collapsible sections container */}
 
         {/* Service Dialog removed - now using package selection */}
+
+        {/* ==================== OBSERVACIONES DEL EVENTO ==================== */}
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+          <Label htmlFor="observacionesEvento" className="text-base font-semibold">
+            Observaciones del evento
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Notas internas del evento. Se muestran en el perfil del evento dentro de Cobrar Cuota.
+          </p>
+          <Textarea
+            id="observacionesEvento"
+            value={localObservacionesEvento}
+            onChange={(e) => setLocalObservacionesEvento(e.target.value)}
+            placeholder="Anota aca cualquier detalle a tener en cuenta para este evento..."
+            rows={3}
+          />
+        </div>
 
         {/* ==================== NUEVO FLUJO DE GUARDADO ==================== */}
         <div className="space-y-4 pb-8">

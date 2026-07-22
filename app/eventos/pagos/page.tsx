@@ -994,6 +994,12 @@ function PagosPageContent() {
                     </div>
                   )}
                 </div>
+                {selectedEvento.notasInternas && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-semibold text-amber-800 mb-1">Observaciones del evento</p>
+                    <p className="text-sm text-amber-900 whitespace-pre-line">{selectedEvento.notasInternas}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
