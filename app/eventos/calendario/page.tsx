@@ -783,22 +783,36 @@ export default function CalendarioPage() {
                   {Array.from({ length: daysInMonth }, (_, i) => {
                     const day = i + 1
                     const date = new Date(year, monthIdx, day)
-                    const hasEvents = monthEventos.some((e) => {
+                    const eventoDelDia = monthEventos.find((e) => {
                       const ed = parseEventDate(e.fecha)
                       return ed.getDate() === day
                     })
+                    const hasEvents = !!eventoDelDia
                     const isToday2 = isSameDay(date, today)
+                    // Color del salón del evento de ese día (para que coincida con el filtro)
+                    const colorDia = eventoDelDia?.salon
+                      ? salonColor(eventoDelDia.salon, configuracionCajas)
+                      : undefined
 
                     return (
                       <span
                         key={day}
                         className={`text-[9px] leading-4 rounded-sm ${
                           isToday2
-                            ? "bg-primary text-primary-foreground font-bold"
+                            ? "font-bold text-white"
                             : hasEvents
-                              ? "bg-primary/20 text-primary font-semibold"
+                              ? "font-semibold"
                               : "text-muted-foreground"
-                        }`}
+                        } ${isToday2 && !colorDia ? "bg-primary" : ""} ${hasEvents && !isToday2 && !colorDia ? "bg-primary/20 text-primary" : ""}`}
+                        style={
+                          isToday2
+                            ? colorDia
+                              ? { backgroundColor: colorDia }
+                              : undefined
+                            : hasEvents && colorDia
+                              ? { backgroundColor: `${colorDia}33`, color: colorDia }
+                              : undefined
+                        }
                       >
                         {day}
                       </span>
