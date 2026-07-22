@@ -1110,6 +1110,10 @@ function PagosPageContent() {
               </CardContent>
             </Card>
 
+            </div>
+
+            {/* Right column: próximo pago y pagos registrados */}
+            <div className="space-y-6">
             {/* Next Pending Payment Card */}
             {(() => {
               // Get the fresh event data from the store to compute next cuota
@@ -1205,10 +1209,7 @@ function PagosPageContent() {
 
               return null
             })()}
-            </div>
 
-            {/* Right column: registrar pagos / pagos registrados */}
-            <div className="space-y-6">
             {/* Payments List */}
             <Card>
               <CardHeader>
