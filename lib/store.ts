@@ -873,6 +873,8 @@ export interface Vendedor {
   sueldo: number
   /** Porcentaje de comisión sobre el total de cada evento vendido (ej: 5 = 5%) */
   comisionPct: number
+  /** Fecha de pago del sueldo (YYYY-MM-DD): alimenta las alertas de vencimiento de Caja Jazmines */
+  sueldoFechaPago?: string
 }
 
 /** Vendedores por defecto del equipo */
