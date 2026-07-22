@@ -15,6 +15,7 @@ import {
   type PagoEvento,
   type HistorialIPCEntry,
 } from "@/lib/store"
+import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -38,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/hooks/use-toast"
 import {
   ArrowLeft,
   Search,
@@ -221,7 +223,9 @@ function PaymentReceipt({
 function PagosPageContent() {
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get("evento") || ""
-  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC } = useStore()
+  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
+  const { toast } = useToast()
+  const [showContractPreview, setShowContractPreview] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
@@ -658,11 +662,8 @@ function PagosPageContent() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background px-6 py-4">
         <div className="mx-auto max-w-4xl flex items-center gap-4">
-          <Link href="/eventos/calendario" className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-6 w-6" />
-          </Link>
           <CreditCard className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-semibold">Pagos de Eventos</h1>
+          <h1 className="text-xl font-semibold">PERFIL DEL EVENTO</h1>
         </div>
       </header>
 
@@ -944,12 +945,15 @@ function PagosPageContent() {
                     <Badge variant="outline" className={ESTADO_CONFIG[selectedEvento.estado]?.className || ""}>
                       {ESTADO_CONFIG[selectedEvento.estado]?.label || selectedEvento.estado}
                     </Badge>
-                    <Link href="/eventos/contratos">
-                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 bg-transparent">
-                        <FileText className="h-3 w-3" />
-                        Contrato
-                      </Button>
-                    </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 bg-transparent"
+                      onClick={() => setShowContractPreview(true)}
+                    >
+                      <FileText className="h-3 w-3" />
+                      Contrato
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -992,6 +996,29 @@ function PagosPageContent() {
                     </div>
                   )}
                 </div>
+                {selectedEvento.notasInternas && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-amber-800 mb-1">Observaciones del evento</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 gap-1 text-destructive hover:text-destructive shrink-0"
+                        onClick={async () => {
+                          if (!confirm("¿Seguro que queres borrar la observacion del evento? Esta accion no se puede deshacer.")) return
+                          await updateEvento(selectedEvento.id, { notasInternas: "" })
+                          setSelectedEvento({ ...selectedEvento, notasInternas: "" })
+                          toast({ title: "Observacion borrada", description: "La observacion del evento fue eliminada" })
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Borrar
+                      </Button>
+                    </div>
+                    <p className="text-sm text-amber-900 whitespace-pre-line">{selectedEvento.notasInternas}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1310,6 +1337,41 @@ function PagosPageContent() {
             </Card>
             </div>
             </div>
+
+            {/* Vista previa del contrato (modal) */}
+            {showContractPreview && (
+              <div
+                className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
+                onClick={() => setShowContractPreview(false)}
+              >
+                <div
+                  className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background shadow-2xl overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-primary" />
+                      <span className="font-semibold">Vista Previa del Contrato</span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setShowContractPreview(false)}>
+                      Cerrar
+                    </Button>
+                  </div>
+                  <iframe
+                    srcDoc={buildUltimaVersionContratoHTML(
+                      selectedEvento,
+                      state.recetas || [],
+                      state.servicios || [],
+                      state.pagosPersonal || [],
+                      state.barrasTemplates || [],
+                      state.cocteles || [],
+                    )}
+                    className="flex-1 w-full"
+                    title="Vista previa del contrato"
+                  />
+                </div>
+              </div>
+            )}
           </>
         )}
 

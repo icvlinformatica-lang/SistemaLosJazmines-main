@@ -31,6 +31,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -117,7 +118,6 @@ function EventoPageContent() {
   const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showSaveSuccess, setShowSaveSuccess] = useState(false)
-  const [observacionContrato, setObservacionContrato] = useState("")
   const [docSections, setDocSections] = useState<DocumentSections>({
     listaCompras: true,
     barraCocteles: true,
@@ -208,6 +208,8 @@ function EventoPageContent() {
   const [localContratoEmail, setLocalContratoEmail] = useState("")
   const [localContratoDireccion, setLocalContratoDireccion] = useState("")
   const [localContratoFechaNac, setLocalContratoFechaNac] = useState("")
+  const [localContratoObservaciones, setLocalContratoObservaciones] = useState("")
+  const [localObservacionesEvento, setLocalObservacionesEvento] = useState("")
   const [localCondicionIVA, setLocalCondicionIVA] = useState<string>("Consumidor Final")
 
   // Plan de cuotas local state
@@ -243,6 +245,8 @@ function EventoPageContent() {
       setLocalContratoEmail(evento.contrato?.email || "")
       setLocalContratoDireccion(evento.contrato?.direccion || "")
       setLocalContratoFechaNac(evento.contrato?.fechaNacimiento || "")
+      setLocalContratoObservaciones(evento.contrato?.observaciones || "")
+      setLocalObservacionesEvento(evento.notasInternas || "")
       setLocalCondicionIVA(evento.condicionIVA || "Consumidor Final")
       // Plan de cuotas
       setLocalMontoTotal(evento.planDeCuotas?.montoTotal || 0)
@@ -505,6 +509,8 @@ function EventoPageContent() {
       multipliersNinos: evento.multipliersNinos,
       multipliersDietasEspeciales: evento.multipliersDietasEspeciales,
       descripcionPersonalizada: evento.descripcionPersonalizada,
+      // Enviar siempre el valor (aunque sea "") para que el borrado persista al guardar
+      notasInternas: localObservacionesEvento.trim(),
       barras: evento.barras,
       servicios: evento.servicios,
       paquetesSeleccionados: evento.paquetesSeleccionados,
@@ -516,6 +522,7 @@ function EventoPageContent() {
         email: localContratoEmail || undefined,
         direccion: localContratoDireccion || undefined,
         fechaNacimiento: localContratoFechaNac || undefined,
+        observaciones: localContratoObservaciones.trim() || undefined,
         // El vendedor se elige en la sección "Vendedor" (vive en evento.contrato):
         // hay que arrastrarlo acá o se pierde al guardar.
         vendedor: evento.contrato?.vendedor || undefined,
@@ -589,16 +596,20 @@ function EventoPageContent() {
     }
     
     if (isEditing && editingEventoId) {
-      // When coming from contratos: auto-create a new VersionContrato snapshot
+      // Toda edicion de un evento genera una nueva VersionContrato si hubo
+      // cambios que impactan al contrato (desde contratos siempre se versiona).
       let versionesContrato = evento?.versionesContrato || []
-      if (fromContratos) {
+      let seCreoNuevaVersion = false
+      {
         const serviciosIds = (eventData.servicios || []).map((se: ServicioEvento) => se.servicioId).filter(Boolean) as string[]
         const versionAnterior =
           versionesContrato.length > 0
             ? versionesContrato.reduce((a, b) => (a.version >= b.version ? a : b))
             : undefined
         const snapshotBase = {
-          motivo: observacionContrato.trim() || undefined,
+          motivo:
+            localContratoObservaciones.trim() ||
+            (fromContratos ? undefined : "Actualizacion desde el planificador de eventos"),
           snapshotContrato: {
             nombreCompleto: eventData.contrato?.nombreCompleto,
             dni: eventData.contrato?.dni,
@@ -624,24 +635,30 @@ function EventoPageContent() {
             dietasEspeciales: eventData.personasDietasEspeciales || 0,
           },
         }
-        const nuevaVersion: VersionContrato = {
-          version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
-          fechaGuardado: new Date().toISOString(),
-          ...snapshotBase,
-          impactos: detectarImpactosContrato(versionAnterior, snapshotBase),
+        const impactos = detectarImpactosContrato(versionAnterior, snapshotBase)
+        const hayCambios = !(impactos.length === 1 && impactos[0] === "sin_cambios" && versionAnterior)
+        // Desde contratos siempre se guarda una version; desde otras vias solo si hubo cambios reales
+        if (fromContratos || hayCambios) {
+          const nuevaVersion: VersionContrato = {
+            version: (versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 0) + 1,
+            fechaGuardado: new Date().toISOString(),
+            ...snapshotBase,
+            impactos,
+          }
+          versionesContrato = [...versionesContrato, nuevaVersion]
+          seCreoNuevaVersion = true
         }
-        versionesContrato = [...versionesContrato, nuevaVersion]
       }
 
       // Actualizar evento existente — await para garantizar persistencia antes de navegar
       await updateEvento(editingEventoId, {
         ...eventData,
-        ...(fromContratos ? { versionesContrato } : {}),
+        ...(seCreoNuevaVersion ? { versionesContrato } : {}),
       })
       toast({
         title: fromContratos ? "Contrato actualizado" : "Evento actualizado",
-        description: fromContratos
-          ? `Version ${versionesContrato.length} guardada correctamente`
+        description: seCreoNuevaVersion
+          ? `Los cambios se guardaron y se creo la version ${versionesContrato.length > 0 ? Math.max(...versionesContrato.map((v) => v.version)) : 1} del contrato`
           : "Los cambios se guardaron correctamente",
       })
       setIsSaving(false)
@@ -1399,19 +1416,7 @@ function EventoPageContent() {
                     </p>
                   </div>
                 </div>
-              ) : (
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50">
-                  <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">
-                      No hay precio definido para {evento.salon} el {evento.fecha}
-                    </p>
-                    <p className="text-xs text-amber-600">
-                      Configura los precios desde Finanzas &gt; Precios
-                    </p>
-                  </div>
-                </div>
-              )
+              ) : null
             })()}
 
             {/* Fila 4: Comensales — 4 columnas en una sola fila */}
@@ -1989,6 +1994,17 @@ function EventoPageContent() {
                   </Select>
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contratoObservaciones">Observaciones del contrato</Label>
+                <Textarea
+                  id="contratoObservaciones"
+                  value={localContratoObservaciones}
+                  onChange={(e) => setLocalContratoObservaciones(e.target.value)}
+                  placeholder="Algo extra que quieras dejar asentado en el contrato (se imprime debajo de Datos del evento)..."
+                  rows={3}
+                />
+              </div>
             </TabsContent>
 
             {/* TAB 2: PLAN DE CUOTAS */}
@@ -2386,6 +2402,23 @@ function EventoPageContent() {
 
         {/* Service Dialog removed - now using package selection */}
 
+        {/* ==================== OBSERVACIONES DEL EVENTO ==================== */}
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+          <Label htmlFor="observacionesEvento" className="text-base font-semibold">
+            Observaciones del evento
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Notas internas del evento. Se muestran en el perfil del evento dentro de Cobrar Cuota.
+          </p>
+          <Textarea
+            id="observacionesEvento"
+            value={localObservacionesEvento}
+            onChange={(e) => setLocalObservacionesEvento(e.target.value)}
+            placeholder="Anota aca cualquier detalle a tener en cuenta para este evento..."
+            rows={3}
+          />
+        </div>
+
         {/* ==================== NUEVO FLUJO DE GUARDADO ==================== */}
         <div className="space-y-4 pb-8">
           {/* Validation errors */}
@@ -2421,24 +2454,6 @@ function EventoPageContent() {
             </Button>
           ) : (
             <>
-              {/* Observacion field — only when coming from contratos */}
-              {fromContratos && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-                    <FileText className="h-4 w-4" />
-                    Observacion del contrato
-                    <span className="font-normal text-amber-700 ml-1">(opcional)</span>
-                  </label>
-                  <textarea
-                    value={observacionContrato}
-                    onChange={(e) => setObservacionContrato(e.target.value)}
-                    placeholder="Ej: Cliente solicito agregar servicio de DJ, se modifico el precio acordado..."
-                    rows={2}
-                    className="w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-              )}
-
               <Button
                 onClick={handleSaveEvento}
                 className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
