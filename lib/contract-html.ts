@@ -223,8 +223,10 @@ export function generateContractHTML(
     .join("")
 
   const anexoLinea = (titulo: string, valor: string) => `
+    <div class="seccion">
     <p class="anexo-title">${titulo}:</p>
-    ${valor ? `<p class="anexo-value">${valor}</p>` : `<p class="anexo-value anexo-empty">&nbsp;</p>`}`
+    ${valor ? `<p class="anexo-value">${valor}</p>` : `<p class="anexo-value anexo-empty">&nbsp;</p>`}
+    </div>`
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -242,6 +244,11 @@ export function generateContractHTML(
   .nombre-evento { text-align: center; font-size: 13px; margin: 14px 0 30px; }
   h3.clausula { font-size: 12.5px; margin: 22px 0 8px; }
   h3.clausula span { text-decoration: underline; }
+  /* Cada seccion del contrato se mantiene entera: si no entra en la hoja,
+     pasa completa a la siguiente en lugar de cortarse a mitad del texto */
+  .seccion { break-inside: avoid; page-break-inside: avoid; }
+  h3.clausula { break-after: avoid; page-break-after: avoid; }
+  p.parrafo { orphans: 3; widows: 3; }
   .datos-lista { margin-left: 16px; }
   .datos-lista div { margin-bottom: 2px; }
   .parrafo { text-align: justify; margin: 6px 0; }
@@ -251,7 +258,7 @@ export function generateContractHTML(
   .anexo-title { text-align: center; font-weight: bold; margin: 14px 0 2px; }
   .anexo-value { text-align: center; margin: 0 0 4px; }
   .anexo-empty { min-height: 14px; }
-  .firma-row { display: flex; gap: 40px; margin-top: 70px; font-weight: bold; }
+  .firma-row { display: flex; gap: 40px; margin-top: 70px; font-weight: bold; break-inside: avoid; page-break-inside: avoid; }
   .firma-row > div { flex: 1; }
   .firma-line { border-top: 1px solid #111; margin-top: 40px; padding-top: 4px; font-size: 11px; font-weight: normal; text-align: center; }
   @media print { body { -webkit-print-color-adjust: exact; } }
@@ -269,6 +276,7 @@ export function generateContractHTML(
   <p class="subtitulo">${direccion}&nbsp;&nbsp;Fecha ${fechaContrato}</p>
   <p class="nombre-evento">${tituloEvento}</p>
 
+  <div class="seccion">
   <h3 class="clausula">1) <span>Datos personales:</span></h3>
   <div class="datos-lista">
     <div>\u2022Nombre completo: ${contrato.nombreCompleto || ""}</div>
@@ -278,53 +286,82 @@ export function generateContractHTML(
     <div>\u2022Correo electronico: ${contrato.email || ""}</div>
     <div>\u2022IVA: ${condicionIVA}.</div>
   </div>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">2) <span>Datos del evento a contratar:</span></h3>
   <p class="parrafo">Los Jazmines hace cesi\u00f3n precaria del inmueble y sus instalaciones para la realizaci\u00f3n de eventos privados seg\u00fan las normas que aqu\u00ed se detallan:</p>
   <p class="parrafo"><span class="campo">Fecha:</span> ${fechaEvento}</p>
   <p class="parrafo"><span class="campo">Horario:</span> de las ${fechaEvento} ${horarioInicio} a las ${fechaFin} ${horarioFin} (Sujeto a protocolo vigente)</p>
   <p class="parrafo"><span class="campo">Cantidad de cubiertos/invitados:</span> ${totalPersonas || ""}</p>
   <p class="parrafo"><span class="campo">Precio:</span> El precio por el uso del sal\u00f3n y la prestaci\u00f3n detallada en el presente contrato y sus anexos es de (PESOS) ${precioEvento > 0 ? formatCurrency(precioEvento) : "$______________"}. tom\u00e1ndose como base un m\u00ednimo de ${totalPersonas || "___"} invitados.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">3) <span>Forma de pago:</span></h3>
   <p class="parrafo">${formaPago || "A convenir entre las partes."}</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">4) <span>Incumplimiento:</span></h3>
   <p class="parrafo">En caso de incumplimiento por parte del cliente respecto al pago de las cuotas pactadas dentro de los t\u00e9rminos estipulados en el inciso 3 del presente contrato Los Jazmines Eventos operar\u00e1 la mora del cliente en forma autom\u00e1tica al vencimiento de la fecha de pago pactada, deveng\u00e1ndose a partir de la misma una multa de 3000 pesos por cada d\u00eda de atraso en el cumplimiento de la obligaci\u00f3n respectiva.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">5) <span>Detalle del servicio a prestar por Los Jazmines:</span></h3>
   ${detalleServicioRows}
   ${personalRows ? `<p class="parrafo" style="margin-top:10px;"><strong>Personal asignado al evento:</strong></p><div class="datos-lista">${personalRows}</div>` : ""}
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">6) <span>Compromiso de pago SADAIC / AADICAPIF:</span></h3>
   <p class="parrafo">El precio convenido incluye los importes correspondientes a SADAIC y AADICAPIF.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">7) <span>N\u00famero m\u00e1ximo de participantes:</span></h3>
   <p class="parrafo">En aquellos eventos donde no se conoce el n\u00famero fijo de participantes (desfiles, recepciones, cocktail\u00b4s, congresos, seminarios, invitados despu\u00e9s del postre a una fiesta u otros) el cliente garantizar\u00e1 a Los Jazmines eventos la asistencia de una cantidad de personas acorde al tama\u00f1o del sal\u00f3n. El Cliente se har\u00e1 directamente responsable, en los t\u00e9rminos del art\u00edculo 1113, ante Los Jazmines eventos y ante los invitados que no puedan entrar por haberse excedido la capacidad del sal\u00f3n.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">8) <span>Pol\u00edtica de cancelaci\u00f3n:</span></h3>
   <p class="parrafo">En caso de que el evento sea cancelado por exclusiva culpa de El Cliente, Los Jazmines Eventos se encontrar\u00e1 facultado a retener los importes que hubiese recibido a la fecha de la cancelaci\u00f3n, en concepto de indemnizaci\u00f3n pactada. En ning\u00fan caso se admitir\u00e1 el cambio de fecha para el evento, ni la invocaci\u00f3n por el Cliente de causal alguna, incluso caso fortuito o fuerza mayor. Tampoco se admitir\u00e1 la anulaci\u00f3n, reducci\u00f3n y/o modificaci\u00f3n de la indemnizaci\u00f3n estipulada precedentemente. En caso que el evento se vea afectado por restricciones sanitarias, el evento ser\u00e1 reprogramado sin sufrir ning\u00fan incremento en el costo del sal\u00f3n ni de los servicios contratados dentro del periodo de un a\u00f1o desde la fecha de contrataci\u00f3n original.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">9) <span>Volumen de sonido:</span></h3>
   <p class="parrafo">El volumen del sonido en un evento con una presentaci\u00f3n, show o baile no deber\u00e1 exceder los 90 decibeles dentro del sal\u00f3n principal medidos frente a los parlantes. Por esta raz\u00f3n quedan expresamente prohibidas todas las presentaciones de comparsas, murgas y/o batucadas en vivo en cualquier \u00e1rea del predio, d\u00eda y horario. El Cliente se compromete a volver el sonido a este volumen a solicitud del coordinador del evento por parte de Los Jazmines Eventos. En caso contrario Los Jazmines eventos se reserva el derecho de hacer concluir el hecho generador del sonido inadecuado y aun el de dar por finalizado el evento, no haci\u00e9ndose responsable por eventuales da\u00f1os y perjuicios ni teniendo el cliente derecho a reclamar suma alguna en concepto de reintegro o indemnizaci\u00f3n.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">10) <span>Actividades en \u00e1reas descubiertas:</span></h3>
   <p class="parrafo">Queda prohibido realizar shows musicales, tandas de baile y toda actividad que generen sonido en los jardines del predio, excepto m\u00fasica funcional para recepciones a no m\u00e1s de 45 decibeles.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">11) <span>Consumo de bebidas alcoh\u00f3licas:</span></h3>
   <p class="parrafo">Queda prohibido el expendio y consumo de bebidas alcoh\u00f3licas por parte de menores de 18 a\u00f1os. Ley 24.788.-</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">12) <span>Responsabilidades:</span></h3>
   <p class="parrafo">Los Jazmines Eventos no se responsabiliza por eventuales da\u00f1os, robos, p\u00e9rdidas o extrav\u00edos sufridos por el cliente y/o terceros cualquiera fuere la causa, producidos antes, durante o despu\u00e9s del evento. Quedar\u00e1 a cargo del cliente la seguridad de bienes o mercader\u00edas, pudiendo contratar su propio servicio de seguridad. Los Jazmines Eventos podr\u00e1 brindar un servicio extra de seguridad a solicitud del Cliente, factur\u00e1ndolo de acuerdo a la cantidad de horas y de personal involucrado. Cualquier objeto que quede en Los Jazmines Eventos, con o sin previo conocimiento del mismo, ser\u00e1 considerado abandonado y Los Jazmines Eventos no se har\u00e1 responsable de roturas, p\u00e9rdida, ni ning\u00fan otro tipo de reclamo. Los Jazmines Eventos no tendr\u00e1 responsabilidad sobre los compromisos adquiridos con terceros por el cliente o un organizador (proveedores, expositores, servicio de catering, clientes, etc.) en relaci\u00f3n al evento. El Cliente asume entera responsabilidad por la conducta de todas las personas, sean concurrentes o que cumplan alg\u00fan servicio y por cualquier da\u00f1o causado a Los Jazmines Eventos y/o cualquier persona en ocasi\u00f3n o como consecuencia del evento. El Cliente acuerda reembolsar a Los Jazmines Eventos por el valor justo, por cualquier da\u00f1o o p\u00e9rdida causada a Los Jazmines Eventos \u00f3 a un tercero, sea por el propio cliente, su personal, los terceros por \u00e9l contratados o el p\u00fablico asistente al evento. A tales fines, el Cliente entregar\u00e1 a Los Jazmines Eventos, si este as\u00ed lo considerase, en concepto de dep\u00f3sito de garant\u00eda, un cheque o su equivalente en pesos igual al 10% del valor del alquiler del sal\u00f3n. Que ser\u00e1 restituido dentro de las 72hs de finalizado el evento siempre que no se hubiese producido ninguno de los supuestos comprendidos en la presente cl\u00e1usula. Caso contrario el cheque podr\u00e1 ser depositado al cobro por parte de Los Jazmines Eventos en concepto de indemnizaci\u00f3n por los da\u00f1os causados, sin perjuicios de mayores da\u00f1os por los que el cliente deber\u00e1 responder. Los Jazmines Eventos en ning\u00fan supuesto y bajo ninguna circunstancia ser\u00e1 responsable por hechos ajenos, caso fortuito o fuerza mayor, como as\u00ed tampoco por cuestiones ajenas a su \u00f3rbita de competencia, entendi\u00e9ndose como tales aquellas obligaciones y servicios no incorporados al presente y que dependen de la voluntad exclusiva del Cliente. Sin mengua de lo expuesto y en caso que el evento no pudiese realizarse por exclusiva responsabilidad de la firma Los Jazmines Eventos, esta responder\u00e1 exclusivamente hasta el valor de la suma que hubiese recibido del cliente; por lo que este \u00faltimo renuncia expresamente, en caso de corresponder, a reclamar cualquier suma adicional por cualquier concepto.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">13) <span>Derecho de imagenes:</span></h3>
   <p class="parrafo">Los Jazmines Eventos se reserva el derecho sobre las im\u00e1genes y contenido multimedia que surja de la filmaci\u00f3n y fotograf\u00edas del evento, pudiendo utilizar parcial o totalmente las im\u00e1genes para publicar en redes sociales o hacer marketing con las mismas.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">14) <span>Seguridad y Orden P\u00fablico:</span></h3>
   <p class="parrafo">Las partes acuerdan que, durante la ejecuci\u00f3n del presente contrato, se mantendr\u00e1 el orden y la seguridad en el evento. En caso de que se produzcan disturbios, actos de violencia, vandalismo o cualquier otra situaci\u00f3n que ponga en riesgo la integridad de los asistentes, el organizador se reserva el derecho de suspender el evento sin previo aviso. Asimismo, cualquier da\u00f1o causado a la propiedad, equipo o instalaciones debido a altercados ser\u00e1 responsabilidad de los involucrados, quienes deber\u00e1n asumir los costos de reparaci\u00f3n o reposici\u00f3n. La contrataci\u00f3n de personal de seguridad ser\u00e1 determinada por el organizador seg\u00fan la naturaleza del evento y las condiciones del lugar.</p>
+  </div>
 
+  <div class="seccion">
   <h3 class="clausula">15) <span>Prohibici\u00f3n de Suministro de Alcohol a Menores:</span></h3>
   <p class="parrafo">El organizador del evento establece como norma estricta la prohibici\u00f3n de suministro, de bebidas alcoh\u00f3licas a menores de edad, conforme a la legislaci\u00f3n vigente. En caso de detectarse que cualquier adulto proporciona alcohol a menores dentro del evento, el organizador se reserva el derecho de suspender inmediatamente la celebraci\u00f3n, sin derecho a reembolso para los asistentes ni para la parte contratante.</p>
+  </div>
 
   <div class="anexo">
     <h3 class="clausula"><span>Anexo I : Catering y bebidas</span></h3>
