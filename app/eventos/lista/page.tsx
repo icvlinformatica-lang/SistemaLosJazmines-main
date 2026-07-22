@@ -598,7 +598,7 @@ export default function EventosListaPage() {
       })
       return
     }
-    imprimirUltimaVersionContrato(evento, recetas, catalogoServicios || [], state.pagosPersonal || [])
+    imprimirUltimaVersionContrato(evento, recetas, catalogoServicios || [], state.pagosPersonal || [], state.barrasTemplates || [], state.cocteles || [])
 
     // Registrar la generacion en el historial del contrato
     const versionActual = evento.versionesContrato?.length

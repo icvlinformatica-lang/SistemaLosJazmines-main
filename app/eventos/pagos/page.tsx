@@ -1338,6 +1338,8 @@ function PagosPageContent() {
                       state.recetas || [],
                       state.servicios || [],
                       state.pagosPersonal || [],
+                      state.barrasTemplates || [],
+                      state.cocteles || [],
                     )}
                     className="flex-1 w-full"
                     title="Vista previa del contrato"
