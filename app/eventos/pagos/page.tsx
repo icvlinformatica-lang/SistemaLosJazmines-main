@@ -1240,26 +1240,10 @@ function PagosPageContent() {
             {/* Payments List */}
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Pagos Registrados
-                  </CardTitle>
-                  <Button size="sm" onClick={() => {
-                    setMontoCuotaBase(montoPorCuota)
-                    setPagoForm({
-                      monto: montoPorCuota,
-                      fecha: new Date().toISOString().split("T")[0],
-                      pagadoPor: "",
-                      porcentajeIPC: 0,
-                      notas: "",
-                      montoRecibido: 0,
-                    })
-                    setShowPagoDialog(true)
-                  }}>
-                    <Plus className="h-4 w-4 mr-1" /> Registrar Pago
-                  </Button>
-                </div>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Pagos Registrados
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {(selectedEvento.pagos || []).length === 0 ? (
