@@ -596,87 +596,6 @@ function PagosPageContent() {
     )
   }, [eventos])
 
-  const handleMarcarCuotaPagada = (eventoId: string, numeroCuota: number, montoCuotaItem?: number) => {
-    const evento = eventos.find(e => e.id === eventoId)
-    if (!evento || !evento.planDeCuotas) return
-
-    const cuotasPagadas = evento.planDeCuotas.cuotasPagadas || []
-    if (cuotasPagadas.includes(numeroCuota)) return
-
-    const montoCuota = montoCuotaItem ?? evento.planDeCuotas.montoCuota ?? 0
-
-    // Crear un registro de pago para que aparezca en "Pagos Registrados".
-    // Se etiqueta con "Cuota N" en notas para poder revertirlo luego.
-    const nuevoPago: PagoEvento = {
-      id: generateId(),
-      monto: montoCuota,
-      fecha: new Date().toISOString().split("T")[0],
-      pagadoPor: evento.contrato?.nombreCompleto || "Recordatorio de cuota",
-      porcentajeIPC: 0,
-      notas: `Cuota ${numeroCuota}`,
-    }
-    const updatedPagos = [...(evento.pagos || []), nuevoPago]
-
-    // Actualizar evento con cuota marcada y el pago registrado
-    updateEvento(eventoId, {
-      pagos: updatedPagos,
-      planDeCuotas: {
-        ...evento.planDeCuotas,
-        cuotasPagadas: [...cuotasPagadas, numeroCuota],
-      },
-    })
-
-    // Generar movimiento de caja si el evento tiene salón
-    if (evento.salon) {
-      const nombreEvento = evento.nombre || evento.nombrePareja || "Evento"
-      // Generar dos movimientos: 50% para cada caja específica
-      const mitad = montoCuota / 2
-      const fecha = new Date().toISOString()
-
-      // Calcular saldo resultante de caja_eventos (suma de ingresos previos con ese destino)
-      const saldoPrevEventos = movimientosCaja
-        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === evento.salon)
-        .reduce((sum: number, m: MovimientoCaja) => m.tipo === "ingreso" ? sum + m.monto : sum - m.monto, 0)
-
-      const saldoPrevJazmines = movimientosCaja
-        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
-        .reduce((sum: number, m: MovimientoCaja) => m.tipo === "ingreso" ? sum + m.monto : sum - m.monto, 0)
-
-      const movEventos: MovimientoCaja = {
-        id: generateId(),
-        fecha,
-        tipo: "ingreso",
-        concepto: `Cuota ${numeroCuota} - ${nombreEvento} (Caja Eventos)`,
-        monto: mitad,
-        salon: evento.salon,
-        eventoId,
-        cajaDestino: "caja_eventos",
-        saldoResultante: saldoPrevEventos + mitad,
-      }
-
-      const movJazmines: MovimientoCaja = {
-        id: generateId(),
-        fecha,
-        tipo: "ingreso",
-        concepto: `Cuota ${numeroCuota} - ${nombreEvento} (Caja Jazmines)`,
-        monto: mitad,
-        salon: evento.salon,
-        eventoId,
-        cajaDestino: "caja_jazmines",
-        saldoResultante: saldoPrevJazmines + mitad,
-      }
-
-      addMovimientosCaja([movEventos, movJazmines])
-
-      // Registrar en el historial de actividad (manejo de dinero)
-      logMoneyActivity(
-        "creado",
-        `Cuota ${numeroCuota} - ${nombreEvento}`,
-        `Cuota marcada como pagada por ${formatCurrency(montoCuota)} | Ingreso dividido 50/50 en Caja Eventos y Caja Jazmines`,
-      )
-    }
-  }
-
   // Revertir una cuota marcada como pagada desde los recordatorios:
   // quita la cuota de cuotasPagadas, elimina el pago registrado y los
   // movimientos de caja generados.
@@ -747,7 +666,7 @@ function PagosPageContent() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
         {/* Search - hidden when event is selected */}
         {!selectedEvento && (
           <Card>
@@ -963,20 +882,8 @@ function PagosPageContent() {
                           </div>
                         </div>
                         {!item.pagada ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  `¿Registrar el pago de la cuota ${item.numeroCuota} por ${formatCurrency(item.monto)}?`,
-                                )
-                              ) {
-                                handleMarcarCuotaPagada(item.evento.id, item.numeroCuota, item.monto)
-                              }
-                            }}
-                          >
-                            Marcar Pagada
+                          <Button size="sm" variant="outline" onClick={() => handleSelectEvento(item.evento)}>
+                            Ir al evento
                           </Button>
                         ) : (
                           <Button
@@ -1018,6 +925,9 @@ function PagosPageContent() {
               Buscar otro evento
             </Button>
 
+            <div className="grid gap-6 items-start lg:grid-cols-2">
+            {/* Left column: Event info, plan de cuotas y próximo pago */}
+            <div className="space-y-6">
             {/* Event Info Card */}
             <Card>
               <CardHeader>
@@ -1200,6 +1110,10 @@ function PagosPageContent() {
               </CardContent>
             </Card>
 
+            </div>
+
+            {/* Right column: próximo pago y pagos registrados */}
+            <div className="space-y-6">
             {/* Next Pending Payment Card */}
             {(() => {
               // Get the fresh event data from the store to compute next cuota
@@ -1394,6 +1308,8 @@ function PagosPageContent() {
                 )}
               </CardContent>
             </Card>
+            </div>
+            </div>
           </>
         )}
 
