@@ -1246,11 +1246,29 @@ function EventoPageContent() {
                   <button
                     key={v.id}
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      const anterior = evento.contrato?.vendedor
+                      const nuevo = seleccionado ? undefined : v.nombre
                       updateEventoActual({
-                        contrato: { ...(evento.contrato || {}), vendedor: seleccionado ? undefined : v.nombre },
+                        contrato: { ...(evento.contrato || {}), vendedor: nuevo },
                       })
-                    }
+                      // Dejar rastro en Configuración > Registro de actividad
+                      const nombreEvento = evento.nombre || evento.nombrePareja || "Evento sin nombre"
+                      fetch("/api/activity-log", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          tipo: "vendedor",
+                          accion: "modificado",
+                          nombre: `${nuevo || anterior || v.nombre} · ${nombreEvento}`,
+                          detalle: nuevo
+                            ? anterior
+                              ? `Vendedor cambiado: ${anterior} → ${nuevo} (desde Planificador)`
+                              : `Vendedor asignado: ${nuevo} (desde Planificador)`
+                            : `Vendedor quitado: ${anterior} (desde Planificador)`,
+                        }),
+                      }).catch(() => {})
+                    }}
                     aria-pressed={seleccionado}
                     className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
                       seleccionado
