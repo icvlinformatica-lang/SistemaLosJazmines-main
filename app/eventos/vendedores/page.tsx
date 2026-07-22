@@ -325,7 +325,7 @@ export default function VendedoresPage() {
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
@@ -347,7 +347,7 @@ export default function VendedoresPage() {
         </div>
 
         {/* Cards de vendedores */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 items-start md:grid-cols-2 lg:grid-cols-3">
           {vendedores.map((v) => (
             <VendedorCard key={v.id} vendedor={v} eventosAsignados={eventosPorVendedor(v.nombre)} />
           ))}
