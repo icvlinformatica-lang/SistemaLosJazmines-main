@@ -65,7 +65,10 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
       children: [
         { href: "/eventos/lista", label: "Lista", icon: List },
         { href: "/eventos/calendario", label: "Calendario", icon: Calendar, locked: !tieneAccesoTotal },
-        { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
+        // Contratos oculto del menú: el panel de contrato ahora se abre desde
+        // Perfil del Evento (Cobrar cuota) con el botón "Editar Contrato".
+        // La página /eventos/contratos sigue existiendo por URL directa.
+        // { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
         { href: "/eventos/vendedores", label: "Vendedores", icon: Users, locked: !tieneAccesoTotal },
         { href: "/eventos/finalizados", label: "Finalizados", icon: Archive },
       ],

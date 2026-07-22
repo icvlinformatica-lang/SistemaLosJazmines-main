@@ -16,6 +16,7 @@ import {
   type HistorialIPCEntry,
 } from "@/lib/store"
 import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
+import { ContratoPanel } from "@/components/contrato-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -226,6 +227,7 @@ function PagosPageContent() {
   const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
   const { toast } = useToast()
   const [showContractPreview, setShowContractPreview] = useState(false)
+  const [showContratoPanel, setShowContratoPanel] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
@@ -1027,11 +1029,14 @@ function PagosPageContent() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Plan de Cuotas</CardTitle>
-                  <Button asChild variant="outline" size="sm" className="bg-transparent">
-                    <Link href={`/eventos/contratos?eventoId=${selectedEvento.id}`}>
-                      <FileText className="h-4 w-4 mr-1.5" />
-                      Editar en Contratos
-                    </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-transparent"
+                    onClick={() => setShowContratoPanel(true)}
+                  >
+                    <FileText className="h-4 w-4 mr-1.5" />
+                    Editar Contrato
                   </Button>
                 </div>
                 {(() => {
@@ -1164,7 +1169,7 @@ function PagosPageContent() {
                     <CardContent>
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-muted-foreground font-bold">
                             Cuota {proximaCuota.numeroCuota} de {calendarioCuotas.length}
                           </p>
                           <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
@@ -1240,26 +1245,10 @@ function PagosPageContent() {
             {/* Payments List */}
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Pagos Registrados
-                  </CardTitle>
-                  <Button size="sm" onClick={() => {
-                    setMontoCuotaBase(montoPorCuota)
-                    setPagoForm({
-                      monto: montoPorCuota,
-                      fecha: new Date().toISOString().split("T")[0],
-                      pagadoPor: "",
-                      porcentajeIPC: 0,
-                      notas: "",
-                      montoRecibido: 0,
-                    })
-                    setShowPagoDialog(true)
-                  }}>
-                    <Plus className="h-4 w-4 mr-1" /> Registrar Pago
-                  </Button>
-                </div>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Pagos Registrados
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {(selectedEvento.pagos || []).length === 0 ? (
@@ -1372,6 +1361,13 @@ function PagosPageContent() {
                 </div>
               </div>
             )}
+
+            {/* Panel lateral de contrato (sin salir de esta pantalla) */}
+            <ContratoPanel
+              eventoId={selectedEvento.id}
+              open={showContratoPanel}
+              onClose={() => setShowContratoPanel(false)}
+            />
           </>
         )}
 
