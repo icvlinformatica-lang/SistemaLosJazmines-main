@@ -247,7 +247,7 @@ function CostosEventoContent() {
     estadoPago === "señado" || estadoPago === "saldo_pendiente" || estadoPago === "pagado_total"
 
   return (
-    <main className="container mx-auto max-w-4xl px-4 py-6 space-y-5">
+    <main className="container mx-auto max-w-6xl px-4 py-6 space-y-5">
       {/* Encabezado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -265,55 +265,8 @@ function CostosEventoContent() {
         </div>
       </div>
 
-      {/* Progreso de cuotas del cliente */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CreditCard className="h-4 w-4 text-teal-600" />
-            Cuotas cobradas al cliente
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {cuotas.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Este evento no tiene plan de cuotas.</p>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="font-medium">
-                  {cuotasPagadas.length}/{cuotas.length} cuotas pagadas
-                </span>
-                <span className="text-muted-foreground">
-                  <span className="font-semibold text-emerald-700">{formatCurrency(montoCobrado)}</span>
-                  {" de "}
-                  {formatCurrency(montoTotalCuotas)}
-                </span>
-              </div>
-              <Progress value={progresoCuotas} className="h-3" />
-              <div className="flex flex-wrap gap-1.5">
-                {cuotas.map((c) => (
-                  <span
-                    key={c.numeroCuota}
-                    title={`Cuota ${c.numeroCuota} · vence ${c.fechaVencimiento} · ${formatCurrency(c.monto)}`}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold ${
-                      c.pagada
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                        : "border-border bg-muted/40 text-muted-foreground"
-                    }`}
-                  >
-                    {c.numeroCuota}
-                  </span>
-                ))}
-              </div>
-              {progresoCuotas === 100 && (
-                <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" /> El cliente pagó todas las cuotas.
-                </p>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
+      {/* Grilla 2x2 de costos para escritorio */}
+      <div className="grid gap-5 lg:grid-cols-2 items-start">
       {/* Cocina */}
       <Card>
         <CardHeader className="pb-3">
@@ -512,6 +465,60 @@ function CostosEventoContent() {
                 </span>
               </label>
             ))
+          )}
+        </CardContent>
+      </Card>
+      </div>
+
+      {/* Progreso de cuotas del cliente: ancho completo, barra verde */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CreditCard className="h-4 w-4 text-emerald-600" />
+            Cuotas cobradas al cliente
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {cuotas.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Este evento no tiene plan de cuotas.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium">
+                  {cuotasPagadas.length}/{cuotas.length} cuotas pagadas
+                </span>
+                <span className="text-muted-foreground">
+                  <span className="font-semibold text-emerald-700">{formatCurrency(montoCobrado)}</span>
+                  {" de "}
+                  {formatCurrency(montoTotalCuotas)}
+                </span>
+              </div>
+              <Progress
+                value={progresoCuotas}
+                className="h-4 bg-emerald-100 [&>div]:bg-emerald-600"
+                aria-label={`${progresoCuotas}% de las cuotas cobradas`}
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {cuotas.map((c) => (
+                  <span
+                    key={c.numeroCuota}
+                    title={`Cuota ${c.numeroCuota} · vence ${c.fechaVencimiento} · ${formatCurrency(c.monto)}`}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold ${
+                      c.pagada
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                        : "border-border bg-muted/40 text-muted-foreground"
+                    }`}
+                  >
+                    {c.numeroCuota}
+                  </span>
+                ))}
+              </div>
+              {progresoCuotas === 100 && (
+                <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> El cliente pagó todas las cuotas.
+                </p>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
