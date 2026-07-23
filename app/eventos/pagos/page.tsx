@@ -1164,20 +1164,24 @@ function PagosPageContent() {
               const ajustaPorIPC = freshEvento.planDeCuotas?.ajustaPorIPC === true
               const cuotaFueAjustada = ajustaPorIPC && proximaCuota != null && montoCuotaOriginal > 0 && proximaCuota.monto > montoCuotaOriginal
 
+              const esPagoUnico = freshEvento.planDeCuotas?.modalidadPago === "completo"
+
               if (proximaCuota && proximaCuota.fechaVencimiento) {
                 return (
                   <Card className="border-2 border-primary/30 bg-primary/5">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg flex items-center gap-2">
                         <Clock className="h-5 w-5 text-primary" />
-                        Proximo Pago
+                        {esPagoUnico ? "Pago único" : "Proximo Pago"}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm text-muted-foreground font-bold">
-                            Cuota {proximaCuota.numeroCuota} de {calendarioCuotas.length}
+                            {esPagoUnico
+                              ? "Pago completo del evento"
+                              : `Cuota ${proximaCuota.numeroCuota} de ${calendarioCuotas.length}`}
                           </p>
                           <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
                             <CalendarIcon className="h-3.5 w-3.5" />
@@ -1212,13 +1216,15 @@ function PagosPageContent() {
                                 fecha: new Date().toISOString().split("T")[0],
                                 pagadoPor: "",
                                 porcentajeIPC: ipcAcumulado,
-                                notas: `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`,
+                                notas: esPagoUnico
+                                  ? "Pago único (pago completo)"
+                                  : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`,
                                 montoRecibido: 0,
                               })
                               setShowPagoDialog(true)
                             }}
                           >
-                            <Plus className="h-4 w-4 mr-1" /> Registrar este pago
+                            <Plus className="h-4 w-4 mr-1" /> {esPagoUnico ? "Registrar pago" : "Registrar este pago"}
                           </Button>
                         </div>
                       </div>
@@ -1237,8 +1243,12 @@ function PagosPageContent() {
                           <CreditCard className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="font-semibold text-emerald-800">Todas las cuotas estan pagadas</p>
-                          <p className="text-sm text-emerald-600">{calendarioCuotas.length} cuotas completadas</p>
+                          <p className="font-semibold text-emerald-800">
+                            {esPagoUnico ? "Pago completo registrado" : "Todas las cuotas estan pagadas"}
+                          </p>
+                          <p className="text-sm text-emerald-600">
+                            {esPagoUnico ? "El evento está totalmente pagado" : `${calendarioCuotas.length} cuotas completadas`}
+                          </p>
                         </div>
                       </div>
                     </CardContent>
