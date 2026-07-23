@@ -67,12 +67,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -1077,45 +1071,16 @@ export default function EventosListaPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {evento.estado !== "completado" && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-500 scale-110" : "text-emerald-500/40 hover:text-emerald-500 hover:bg-emerald-50"}`}
-                                title="Marcar como finalizado"
-                                disabled={estaFinalizando}
-                                onClick={() => handleFinalizar(evento.id)}
-                              >
-                                {estaAnimando ? (
-                                  <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
-                                ) : (
-                                  <CheckCircle2 className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                  title="Imprimir"
-                                >
-                                  <Printer className="h-4 w-4" />
-                                  <span className="sr-only">Imprimir</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
-                                  <Printer className="h-4 w-4 mr-2" />
-                                  Imprimir documento
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleImprimirContrato(evento.id)}>
-                                  <FileText className="h-4 w-4 mr-2" />
-                                  Imprimir última versión del contrato
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              title="Imprimir"
+                              onClick={() => handleImprimirDocumento(evento.id)}
+                            >
+                              <Printer className="h-4 w-4" />
+                              <span className="sr-only">Imprimir</span>
+                            </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1146,6 +1111,22 @@ export default function EventosListaPage() {
                             <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Eliminar</span>
                           </Button>
+                            {evento.estado !== "completado" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-500 scale-110" : "text-emerald-500/40 hover:text-emerald-500 hover:bg-emerald-50"}`}
+                                title="Marcar como finalizado"
+                                disabled={estaFinalizando}
+                                onClick={() => handleFinalizar(evento.id)}
+                              >
+                                {estaAnimando ? (
+                                  <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
+                                ) : (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1248,6 +1229,21 @@ export default function EventosListaPage() {
               <Label htmlFor="sec-hojaGastos" className="cursor-pointer text-sm font-medium leading-none">
                 Hoja de Gastos (Resumen Financiero)
               </Label>
+            </div>
+            <div className="border-t pt-4">
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-muted transition-colors text-left"
+                onClick={() => {
+                  if (imprimirEventoId) {
+                    setImprimirDialogOpen(false)
+                    handleImprimirContrato(imprimirEventoId)
+                  }
+                }}
+              >
+                <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span>Imprimir última versión del contrato</span>
+              </button>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
