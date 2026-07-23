@@ -1115,7 +1115,7 @@ export default function EventosListaPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-500 scale-110" : "text-emerald-500/40 hover:text-emerald-500 hover:bg-emerald-50"}`}
+                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-700 scale-110" : "text-emerald-700/60 hover:text-emerald-800 hover:bg-emerald-50"}`}
                                 title="Marcar como finalizado"
                                 disabled={estaFinalizando}
                                 onClick={() => handleFinalizar(evento.id)}
