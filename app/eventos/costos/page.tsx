@@ -388,7 +388,7 @@ function CostosEventoContent() {
     estadoPago === "señado" || estadoPago === "saldo_pendiente" || estadoPago === "pagado_total"
 
   return (
-    <main className="container mx-auto max-w-6xl px-4 py-6 space-y-5">
+    <main className="mx-auto w-full max-w-none px-4 py-6 space-y-5 xl:px-6">
       {/* Encabezado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -412,18 +412,20 @@ function CostosEventoContent() {
         </span>
       </div>
 
-      {/* Tarjetas de costos a la izquierda, gráfico circular a la derecha */}
-      <div className="grid gap-5 lg:grid-cols-3 items-start">
-      <div className="grid gap-5 md:grid-cols-2 items-start lg:col-span-2">
+      {/* En PC: las 4 tarjetas + gráfico una al lado de la otra; en pantallas medianas 2x2 + gráfico */}
+      <div className="grid gap-4 items-start xl:grid-cols-5">
+      <div className="grid gap-4 items-start md:grid-cols-2 xl:col-span-4 xl:grid-cols-4">
       {/* Cocina */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ChefHat className="h-4 w-4 text-teal-600" />
-              Cocina (menú e insumos)
+            <CardTitle className="flex min-w-0 items-center gap-2 text-base">
+              <ChefHat className="h-4 w-4 shrink-0 text-teal-600" />
+              <span className="truncate" title="Cocina (menú e insumos)">
+                Cocina
+              </span>
             </CardTitle>
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm font-medium">
               <Checkbox
                 checked={!!evento.cocinaPagada}
                 onCheckedChange={(v) => toggleCocina(v === true)}
@@ -433,7 +435,7 @@ function CostosEventoContent() {
               {evento.cocinaPagada ? (
                 <span className="text-emerald-700">Pagado</span>
               ) : (
-                <span className="text-muted-foreground">Marcar pagado</span>
+                <span className="text-muted-foreground">Pagado</span>
               )}
             </label>
           </div>
@@ -446,9 +448,9 @@ function CostosEventoContent() {
               <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
                 {comprasCocina.map((c) => (
                   <div key={c.insumoId} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="flex min-w-0 flex-col">
                       <span className="truncate text-muted-foreground">{c.insumo?.descripcion || c.insumoId}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground/60">
+                      <span className="text-xs text-muted-foreground/60">
                         {Number(c.cantidadNecesaria.toFixed(2))} {c.insumo?.unidad || ""}
                       </span>
                     </span>
@@ -508,11 +510,13 @@ function CostosEventoContent() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Wine className="h-4 w-4 text-teal-600" />
-              Barra (insumos de bebidas)
+            <CardTitle className="flex min-w-0 items-center gap-2 text-base">
+              <Wine className="h-4 w-4 shrink-0 text-teal-600" />
+              <span className="truncate" title="Barra (insumos de bebidas)">
+                Barra
+              </span>
             </CardTitle>
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm font-medium">
               <Checkbox
                 checked={!!evento.barraPagada}
                 onCheckedChange={(v) => toggleBarra(v === true)}
@@ -522,7 +526,7 @@ function CostosEventoContent() {
               {evento.barraPagada ? (
                 <span className="text-emerald-700">Pagado</span>
               ) : (
-                <span className="text-muted-foreground">Marcar pagado</span>
+                <span className="text-muted-foreground">Pagado</span>
               )}
             </label>
           </div>
@@ -535,11 +539,11 @@ function CostosEventoContent() {
               <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
                 {comprasBarra.map((c) => (
                   <div key={c.insumoBarraId} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="flex min-w-0 flex-col">
                       <span className="truncate text-muted-foreground">
                         {c.insumoBarra?.descripcion || c.insumoBarraId}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground/60">
+                      <span className="text-xs text-muted-foreground/60">
                         {Number(c.cantidadNecesaria.toFixed(2))} {c.insumoBarra?.unidad || ""}
                       </span>
                     </span>
@@ -561,12 +565,14 @@ function CostosEventoContent() {
       {/* Servicios */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <ConciergeBell className="h-4 w-4 text-teal-600" />
-            Servicios contratados (señas y saldos)
+          <CardTitle className="flex min-w-0 items-center gap-2 text-base">
+            <ConciergeBell className="h-4 w-4 shrink-0 text-teal-600" />
+            <span className="truncate" title="Servicios contratados (señas y saldos)">
+              Servicios contratados
+            </span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="max-h-[340px] space-y-3 overflow-y-auto pr-1">
           {servicios.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin servicios contratados.</p>
           ) : (
@@ -636,7 +642,7 @@ function CostosEventoContent() {
             Personal del evento
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
           {personal.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin personal asignado con costo.</p>
           ) : (
@@ -674,7 +680,7 @@ function CostosEventoContent() {
       </div>
 
       {/* Gráfico circular: porcentaje cubierto y costo total del evento */}
-      <Card className="lg:sticky lg:top-4">
+      <Card className="xl:sticky xl:top-4">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <PieChartIcon className="h-4 w-4 text-teal-600" />
@@ -686,7 +692,7 @@ function CostosEventoContent() {
             <p className="text-sm text-muted-foreground">Este evento no tiene costos calculados.</p>
           ) : (
             <>
-              <ChartContainer config={chartConfig} className="aspect-square w-full max-w-[260px]">
+              <ChartContainer config={chartConfig} className="aspect-square w-full max-w-[220px]">
                 <PieChart>
                   <ChartTooltip
                     cursor={false}
