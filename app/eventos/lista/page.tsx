@@ -762,7 +762,7 @@ export default function EventosListaPage() {
 
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-4 sm:px-6 sticky top-0 z-30">
-        <div className="mx-auto max-w-6xl flex items-center justify-between gap-2">
+        <div className="mx-auto w-full max-w-none flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <ClipboardList className="h-6 w-6 text-primary" />
             <div>
@@ -814,7 +814,7 @@ export default function EventosListaPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <main className="mx-auto w-full max-w-none px-4 py-6 sm:px-6">
         {/* Dashboard Toggle + Summary Cards */}
         <div className="mb-6">
           <button
