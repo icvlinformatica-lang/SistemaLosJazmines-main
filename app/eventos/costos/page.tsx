@@ -432,41 +432,47 @@ function CostosEventoContent() {
               return (
                 <div key={srv.servicioId} className="rounded-lg border border-border p-3">
                   <p className="mb-2 text-sm font-semibold">{srv.nombre}</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2">
                     {(srv.montoSeña || 0) > 0 && (
-                      <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
-                        <span className="flex items-center gap-2">
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
+                        <span className="flex min-w-0 items-center gap-2">
                           <Checkbox
                             checked={senaPagada}
                             onCheckedChange={(v) => toggleSena(srv.servicioId, v === true)}
                             disabled={saldoPagado}
                             aria-label={`Marcar seña de ${srv.nombre} como pagada`}
                           />
-                          Seña
+                          <span className="shrink-0">Seña</span>
                           {srv.fechaSeña && !senaPagada && (
-                            <span className="text-xs text-muted-foreground">vence {formatFecha(srv.fechaSeña)}</span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              vence {formatFecha(srv.fechaSeña)}
+                            </span>
                           )}
                         </span>
-                        <span className={`font-medium ${senaPagada ? "text-emerald-700" : "text-red-600"}`}>
+                        <span
+                          className={`shrink-0 font-medium ${senaPagada ? "text-emerald-700" : "text-red-600"}`}
+                        >
                           {formatCurrency(srv.montoSeña || 0)}
                         </span>
                       </label>
                     )}
-                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
-                      <span className="flex items-center gap-2">
+                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
+                      <span className="flex min-w-0 items-center gap-2">
                         <Checkbox
                           checked={saldoPagado}
                           onCheckedChange={(v) => toggleSaldo(srv.servicioId, v === true)}
                           aria-label={`Marcar saldo de ${srv.nombre} como pagado`}
                         />
-                        Saldo
+                        <span className="shrink-0">Saldo</span>
                         {srv.fechaLimitePago && !saldoPagado && (
-                          <span className="text-xs text-muted-foreground">
+                          <span className="truncate text-xs text-muted-foreground">
                             vence {formatFecha(srv.fechaLimitePago)}
                           </span>
                         )}
                       </span>
-                      <span className={`font-medium ${saldoPagado ? "text-emerald-700" : "text-red-600"}`}>
+                      <span
+                        className={`shrink-0 font-medium ${saldoPagado ? "text-emerald-700" : "text-red-600"}`}
+                      >
                         {saldoPagado ? "Pagado" : formatCurrency(srv.saldoPendiente || 0)}
                       </span>
                     </label>
