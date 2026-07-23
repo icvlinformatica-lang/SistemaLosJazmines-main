@@ -227,6 +227,17 @@ function CostosEventoContent() {
     { key: "personal", nombre: "Personal", total: totalPersonal, pagado: pagadoPersonal },
   ].filter((d) => d.total > 0)
 
+  // Cada categoría se divide en dos porciones: lo pagado (color pleno) y lo
+  // pendiente (mismo color atenuado). Así el anillo solo se "llena" de color
+  // a medida que se van cubriendo los costos.
+  const datosAnillo = datosGrafico.flatMap((d) => {
+    const slices = []
+    if (d.pagado > 0) slices.push({ ...d, sliceKey: `${d.key}-pagado`, valor: d.pagado, esPagado: true })
+    if (d.total - d.pagado > 0)
+      slices.push({ ...d, sliceKey: `${d.key}-pendiente`, valor: d.total - d.pagado, esPagado: false })
+    return slices
+  })
+
   const chartConfig = {
     cocina: { label: "Cocina", color: "var(--chart-1)" },
     barra: { label: "Barra", color: "var(--chart-2)" },
@@ -698,7 +709,7 @@ function CostosEventoContent() {
                     cursor={false}
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null
-                      const d = payload[0].payload as (typeof datosGrafico)[number]
+                      const d = payload[0].payload as (typeof datosAnillo)[number]
                       return (
                         <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
                           <p className="font-semibold">{d.nombre}</p>
@@ -716,15 +727,19 @@ function CostosEventoContent() {
                     }}
                   />
                   <Pie
-                    data={datosGrafico}
-                    dataKey="total"
+                    data={datosAnillo}
+                    dataKey="valor"
                     nameKey="nombre"
                     innerRadius={62}
                     outerRadius={90}
                     strokeWidth={2}
                   >
-                    {datosGrafico.map((d) => (
-                      <Cell key={d.key} fill={`var(--color-${d.key})`} />
+                    {datosAnillo.map((d) => (
+                      <Cell
+                        key={d.sliceKey}
+                        fill={`var(--color-${d.key})`}
+                        fillOpacity={d.esPagado ? 1 : 0.18}
+                      />
                     ))}
                     <Label
                       content={({ viewBox }) => {
@@ -761,16 +776,21 @@ function CostosEventoContent() {
                   </span>
                 </div>
               </div>
-              <div className="flex w-full flex-wrap gap-x-4 gap-y-1 border-t pt-2">
-                {datosGrafico.map((d) => (
-                  <span key={d.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span
-                      className="h-2.5 w-2.5 rounded-sm"
-                      style={{ backgroundColor: chartConfig[d.key as keyof typeof chartConfig].color }}
-                    />
-                    {d.nombre}
-                  </span>
-                ))}
+              <div className="w-full space-y-1.5 border-t pt-2">
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {datosGrafico.map((d) => (
+                    <span key={d.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span
+                        className="h-2.5 w-2.5 rounded-sm"
+                        style={{ backgroundColor: chartConfig[d.key as keyof typeof chartConfig].color }}
+                      />
+                      {d.nombre}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground/70">
+                  Color pleno = pagado · color tenue = pendiente de pago
+                </p>
               </div>
             </>
           )}
