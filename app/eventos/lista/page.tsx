@@ -111,6 +111,8 @@ type CoberturaItem = {
   detalle: string
   /** Estado intermedio: seña pagada pero saldo pendiente */
   senaPagada?: boolean
+  /** Estado amarillo: seleccionado/asignado pero pendiente de pago (Personal) */
+  pendienteAmarillo?: boolean
 }
 
 // Calcula el estado de cobertura (pagado al proveedor) de cocina, barra y servicios
@@ -153,6 +155,12 @@ function calcularCobertura(evento: EventoGuardado): {
     (s) => s.estadoPago === "señado" || s.estadoPago === "saldo_pendiente"
   ).length
 
+  // Personal: aplica si hay personal asignado al evento (con monto)
+  const personal = (evento.personalEvento || []).filter((pe) => (pe.monto || 0) > 0)
+  const tienePersonal = personal.length > 0
+  const personalPagadoCount = personal.filter((pe) => pe.pagado).length
+  const personalTodoPagado = tienePersonal && personalPagadoCount === personal.length
+
   const items: CoberturaItem[] = [
     {
       icon: ChefHat,
@@ -189,6 +197,18 @@ function calcularCobertura(evento: EventoGuardado): {
           : serviciosConSena
             ? `Seña pagada (${senadosCount + pagadosTotalCount}/${servicios.length}) — saldo pendiente`
             : `${pagadosTotalCount}/${servicios.length} servicios pagados`,
+    },
+    {
+      icon: Users,
+      label: "Personal",
+      aplica: tienePersonal,
+      cubierto: personalTodoPagado,
+      pendienteAmarillo: tienePersonal && !personalTodoPagado,
+      detalle: !tienePersonal
+        ? "Sin personal asignado"
+        : personalTodoPagado
+          ? "Todo el personal pagado"
+          : `Personal seleccionado — ${personalPagadoCount}/${personal.length} pagados`,
     },
   ]
 
@@ -1040,9 +1060,11 @@ export default function EventosListaPage() {
                                                 ? "border-dashed border-border bg-transparent text-muted-foreground/30"
                                                 : item.cubierto
                                                   ? "border-emerald-300 bg-emerald-50 text-emerald-600"
-                                                  : item.senaPagada
-                                                    ? "border-orange-300 bg-orange-50 text-orange-500"
-                                                    : "border-rose-200 bg-rose-50 text-rose-500"
+                                                  : item.pendienteAmarillo
+                                                    ? "border-yellow-300 bg-yellow-50 text-yellow-600"
+                                                    : item.senaPagada
+                                                      ? "border-orange-300 bg-orange-50 text-orange-500"
+                                                      : "border-rose-200 bg-rose-50 text-rose-500"
                                             }`}
                                             aria-label={`${item.label}: ${item.detalle}`}
                                           >
