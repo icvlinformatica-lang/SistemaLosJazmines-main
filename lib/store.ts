@@ -517,11 +517,13 @@ export interface EventoGuardado extends Evento {
   /** Resumen de costos calculados automáticamente */
   costosCalculados?: {
     /** Suma de costos planeados (según servicios) */
-    costoPlaneado: number
+    costoPlaneado?: number
     /** Suma de costos reales (según personal asignado) */
-    costoReal: number
+    costoReal?: number
     /** Diferencia entre planeado y real (positivo = ahorro, negativo = exceso) */
-    diferencia: number
+    diferencia?: number
+    /** Observación libre dejada en la vista de Costos del evento */
+    observacionCostos?: string
   }
 }
 

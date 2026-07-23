@@ -1054,8 +1054,10 @@ export default function EventosListaPage() {
                                     return (
                                       <Tooltip key={item.label}>
                                         <TooltipTrigger asChild>
-                                          <span
-                                            className={`flex h-7 w-7 items-center justify-center rounded-md border ${
+                                          <button
+                                            type="button"
+                                            onClick={() => router.push(`/eventos/costos?id=${evento.id}`)}
+                                            className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-transform hover:scale-110 ${
                                               !item.aplica
                                                 ? "border-dashed border-border bg-transparent text-muted-foreground/30"
                                                 : item.cubierto
@@ -1066,14 +1068,15 @@ export default function EventosListaPage() {
                                                       ? "border-orange-300 bg-orange-50 text-orange-500"
                                                       : "border-rose-200 bg-rose-50 text-rose-500"
                                             }`}
-                                            aria-label={`${item.label}: ${item.detalle}`}
+                                            aria-label={`${item.label}: ${item.detalle} — ver costos del evento`}
                                           >
                                             <Icon className="h-3.5 w-3.5" />
-                                          </span>
+                                          </button>
                                         </TooltipTrigger>
                                         <TooltipContent>
                                           <p className="text-xs font-medium">{item.label}</p>
                                           <p className="text-xs text-muted-foreground">{item.detalle}</p>
+                                          <p className="text-xs text-teal-600">Clic para ver costos del evento</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     )
