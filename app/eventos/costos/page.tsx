@@ -349,7 +349,12 @@ function CostosEventoContent() {
               <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
                 {comprasCocina.map((c) => (
                   <div key={c.insumoId} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate text-muted-foreground">{c.insumo?.descripcion || c.insumoId}</span>
+                    <span className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate text-muted-foreground">{c.insumo?.descripcion || c.insumoId}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground/60">
+                        {Number(c.cantidadNecesaria.toFixed(2))} {c.insumo?.unidad || ""}
+                      </span>
+                    </span>
                     <span className="shrink-0 font-medium">{formatCurrency(c.costoMateriaPrima)}</span>
                   </div>
                 ))}
@@ -396,8 +401,13 @@ function CostosEventoContent() {
               <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
                 {comprasBarra.map((c) => (
                   <div key={c.insumoBarraId} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate text-muted-foreground">
-                      {c.insumoBarra?.descripcion || c.insumoBarraId}
+                    <span className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate text-muted-foreground">
+                        {c.insumoBarra?.descripcion || c.insumoBarraId}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground/60">
+                        {Number(c.cantidadNecesaria.toFixed(2))} {c.insumoBarra?.unidad || ""}
+                      </span>
                     </span>
                     <span className="shrink-0 font-medium">{formatCurrency(c.costoMateriaPrima)}</span>
                   </div>
