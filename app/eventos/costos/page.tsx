@@ -30,7 +30,10 @@ import {
   StickyNote,
   CheckCircle2,
   CalendarDays,
+  PieChart as PieChartIcon,
 } from "lucide-react"
+import { PieChart, Pie, Cell, Label } from "recharts"
+import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 
 function formatFecha(dateStr?: string): string {
   if (!dateStr) return "—"
@@ -92,6 +95,53 @@ function CostosEventoContent() {
   const montoTotalCuotas = cuotas.reduce((s, c) => s + c.monto, 0)
   const montoCobrado = cuotasPagadas.reduce((s, c) => s + c.monto, 0)
   const progresoCuotas = montoTotalCuotas > 0 ? Math.round((montoCobrado / montoTotalCuotas) * 100) : 0
+
+  // --- Totales por tarjeta para el gráfico circular ---
+  // Monto de saldo pagado se recupera del movimiento registrado en Caja Eventos
+  const montoSaldoPagado = (nombreServicio: string): number => {
+    const mov = [...(state.movimientosCaja ?? [])]
+      .reverse()
+      .find(
+        (m) =>
+          m.tipo === "egreso" &&
+          m.cajaDestino === "caja_eventos" &&
+          m.eventoId === evento.id &&
+          m.concepto === `Pago saldo ${nombreServicio} - ${evento.nombre || evento.nombrePareja || "Evento sin nombre"}`,
+      )
+    return mov?.monto || 0
+  }
+  const totalServicios = servicios.reduce((s, srv) => {
+    const saldo = srv.estadoPago === "pagado_total" ? montoSaldoPagado(srv.nombre) : srv.saldoPendiente || 0
+    return s + (srv.montoSeña || 0) + saldo
+  }, 0)
+  const pagadoServicios = servicios.reduce((s, srv) => {
+    const senaOk = srv.estadoPago === "señado" || srv.estadoPago === "saldo_pendiente" || srv.estadoPago === "pagado_total"
+    const sena = senaOk ? srv.montoSeña || 0 : 0
+    const saldo = srv.estadoPago === "pagado_total" ? montoSaldoPagado(srv.nombre) : 0
+    return s + sena + saldo
+  }, 0)
+  const totalPersonal = personal.reduce((s, pe) => s + pe.monto, 0)
+  const pagadoPersonal = personal.filter((pe) => pe.pagado).reduce((s, pe) => s + pe.monto, 0)
+  const pagadoCocina = evento.cocinaPagada ? costoCocina : 0
+  const pagadoBarra = evento.barraPagada ? costoBarra : 0
+
+  const costoTotalEvento = costoCocina + costoBarra + totalServicios + totalPersonal
+  const totalCubierto = pagadoCocina + pagadoBarra + pagadoServicios + pagadoPersonal
+  const porcentajeCubierto = costoTotalEvento > 0 ? Math.round((totalCubierto / costoTotalEvento) * 100) : 0
+
+  const datosGrafico = [
+    { key: "cocina", nombre: "Cocina", total: costoCocina, pagado: pagadoCocina },
+    { key: "barra", nombre: "Barra", total: costoBarra, pagado: pagadoBarra },
+    { key: "servicios", nombre: "Servicios", total: totalServicios, pagado: pagadoServicios },
+    { key: "personal", nombre: "Personal", total: totalPersonal, pagado: pagadoPersonal },
+  ].filter((d) => d.total > 0)
+
+  const chartConfig = {
+    cocina: { label: "Cocina", color: "var(--chart-1)" },
+    barra: { label: "Barra", color: "var(--chart-2)" },
+    servicios: { label: "Servicios", color: "var(--chart-3)" },
+    personal: { label: "Personal", color: "var(--chart-4)" },
+  } satisfies ChartConfig
 
   // ------------------------------------------------------------------
   // Registro/eliminación de egresos reales en Caja Eventos
@@ -265,8 +315,9 @@ function CostosEventoContent() {
         </div>
       </div>
 
-      {/* Grilla 2x2 de costos para escritorio */}
-      <div className="grid gap-5 lg:grid-cols-2 items-start">
+      {/* Tarjetas de costos a la izquierda, gráfico circular a la derecha */}
+      <div className="grid gap-5 lg:grid-cols-3 items-start">
+      <div className="grid gap-5 md:grid-cols-2 items-start lg:col-span-2">
       {/* Cocina */}
       <Card>
         <CardHeader className="pb-3">
@@ -465,6 +516,105 @@ function CostosEventoContent() {
                 </span>
               </label>
             ))
+          )}
+        </CardContent>
+      </Card>
+      </div>
+
+      {/* Gráfico circular: porcentaje cubierto y costo total del evento */}
+      <Card className="lg:sticky lg:top-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <PieChartIcon className="h-4 w-4 text-teal-600" />
+            Cobertura de costos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center gap-3">
+          {datosGrafico.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Este evento no tiene costos calculados.</p>
+          ) : (
+            <>
+              <ChartContainer config={chartConfig} className="aspect-square w-full max-w-[260px]">
+                <PieChart>
+                  <ChartTooltip
+                    cursor={false}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null
+                      const d = payload[0].payload as (typeof datosGrafico)[number]
+                      return (
+                        <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+                          <p className="font-semibold">{d.nombre}</p>
+                          <p>
+                            Costo total: <span className="font-medium">{formatCurrency(d.total)}</span>
+                          </p>
+                          <p className="text-emerald-700">
+                            Pagado: <span className="font-medium">{formatCurrency(d.pagado)}</span>
+                          </p>
+                          <p className="text-muted-foreground">
+                            Pendiente: {formatCurrency(d.total - d.pagado)}
+                          </p>
+                        </div>
+                      )
+                    }}
+                  />
+                  <Pie
+                    data={datosGrafico}
+                    dataKey="total"
+                    nameKey="nombre"
+                    innerRadius={62}
+                    outerRadius={90}
+                    strokeWidth={2}
+                  >
+                    {datosGrafico.map((d) => (
+                      <Cell key={d.key} fill={`var(--color-${d.key})`} />
+                    ))}
+                    <Label
+                      content={({ viewBox }) => {
+                        if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null
+                        const { cx, cy } = viewBox as { cx: number; cy: number }
+                        return (
+                          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
+                            <tspan x={cx} y={cy - 8} className="fill-foreground text-2xl font-bold">
+                              {porcentajeCubierto}%
+                            </tspan>
+                            <tspan x={cx} y={cy + 14} className="fill-muted-foreground text-xs">
+                              cubierto
+                            </tspan>
+                          </text>
+                        )
+                      }}
+                    />
+                  </Pie>
+                </PieChart>
+              </ChartContainer>
+              <div className="w-full space-y-1.5 text-sm">
+                <div className="flex items-center justify-between border-t pt-2">
+                  <span className="text-muted-foreground">Costo total del evento</span>
+                  <span className="font-semibold">{formatCurrency(costoTotalEvento)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Cubierto</span>
+                  <span className="font-semibold text-emerald-700">{formatCurrency(totalCubierto)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Pendiente</span>
+                  <span className="font-semibold text-red-600">
+                    {formatCurrency(costoTotalEvento - totalCubierto)}
+                  </span>
+                </div>
+              </div>
+              <div className="flex w-full flex-wrap gap-x-4 gap-y-1 border-t pt-2">
+                {datosGrafico.map((d) => (
+                  <span key={d.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span
+                      className="h-2.5 w-2.5 rounded-sm"
+                      style={{ backgroundColor: chartConfig[d.key as keyof typeof chartConfig].color }}
+                    />
+                    {d.nombre}
+                  </span>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
