@@ -2318,12 +2318,17 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
   monto: number
   pagada: boolean
 }> {
-  if (
-    !evento.planDeCuotas ||
-    !evento.planDeCuotas.numeroCuotas ||
-    evento.planDeCuotas.numeroCuotas <= 0 ||
-    !evento.planDeCuotas.fechaInicioPlan
-  ) {
+  if (!evento.planDeCuotas || !evento.planDeCuotas.numeroCuotas || evento.planDeCuotas.numeroCuotas <= 0) {
+    return []
+  }
+
+  // fechaInicioPlan puede venir vacía (p. ej. pago completo generado desde el
+  // contrato). Si el detalle de cuotas[] trae sus propias fechas pactadas,
+  // igual podemos generar el calendario a partir de ese detalle.
+  const tieneFechasEnDetalle = (evento.planDeCuotas.cuotas || []).some(
+    (c) => typeof c.fechaVencimiento === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.fechaVencimiento),
+  )
+  if (!evento.planDeCuotas.fechaInicioPlan && !tieneFechasEnDetalle) {
     return []
   }
 
