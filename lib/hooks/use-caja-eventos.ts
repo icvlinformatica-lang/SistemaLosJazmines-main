@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { calcularComprasBarras, calcularCostoInsumosEvento, type AppState, type MovimientoCaja } from "../store"
+import { calcularComprasBarras, calcularComprasSegmentadas, type AppState, type MovimientoCaja } from "../store"
 
 // ============================================================
 // Tipos de salida
@@ -208,14 +208,17 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       // El costo se recalcula EN VIVO con los precios actuales del almacén, en
       // lugar de usar la foto guardada `evento.costoInsumos` (que puede quedar
       // desactualizada si los precios cambiaron desde que se creó el evento).
-      const costoMenuLive = calcularCostoInsumosEvento(
-        evento,
-        state.recetas || [],
-        state.insumos || [],
-        state.cocteles || [],
-        state.insumosBarra || [],
+      //
+      // IMPORTANTE: el menú es SOLO cocina. La barra tiene su propio ítem de
+      // egreso más abajo; incluirla acá duplicaría su costo en los pendientes.
+      const comprasCocina = calcularComprasSegmentadas(evento, state.recetas || [], state.insumos || [])
+      const costoMenuLive = comprasCocina.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
+      const barraLive = calcularComprasBarras(evento, state.cocteles || [], state.insumosBarra || []).reduce(
+        (sum, c) => sum + c.costoMateriaPrima,
+        0,
       )
-      const costoMenu = costoMenuLive > 0 ? costoMenuLive : (evento.costoInsumos ?? 0)
+      // Fallback a la foto guardada (que incluía cocina+barra) restándole la barra.
+      const costoMenu = costoMenuLive > 0 ? costoMenuLive : Math.max(0, (evento.costoInsumos ?? 0) - barraLive)
       if (costoMenu > 0 && evento.fecha) {
         const fechaEvento = parseLocalDate(evento.fecha)
         // Fecha editada manualmente tiene prioridad; si no, evento - 14 días.
