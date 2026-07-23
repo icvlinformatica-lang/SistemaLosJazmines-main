@@ -67,12 +67,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -117,6 +111,8 @@ type CoberturaItem = {
   detalle: string
   /** Estado intermedio: seña pagada pero saldo pendiente */
   senaPagada?: boolean
+  /** Estado amarillo: seleccionado/asignado pero pendiente de pago (Personal) */
+  pendienteAmarillo?: boolean
 }
 
 // Calcula el estado de cobertura (pagado al proveedor) de cocina, barra y servicios
@@ -159,6 +155,12 @@ function calcularCobertura(evento: EventoGuardado): {
     (s) => s.estadoPago === "señado" || s.estadoPago === "saldo_pendiente"
   ).length
 
+  // Personal: aplica si hay personal asignado al evento (con monto)
+  const personal = (evento.personalEvento || []).filter((pe) => (pe.monto || 0) > 0)
+  const tienePersonal = personal.length > 0
+  const personalPagadoCount = personal.filter((pe) => pe.pagado).length
+  const personalTodoPagado = tienePersonal && personalPagadoCount === personal.length
+
   const items: CoberturaItem[] = [
     {
       icon: ChefHat,
@@ -195,6 +197,18 @@ function calcularCobertura(evento: EventoGuardado): {
           : serviciosConSena
             ? `Seña pagada (${senadosCount + pagadosTotalCount}/${servicios.length}) — saldo pendiente`
             : `${pagadosTotalCount}/${servicios.length} servicios pagados`,
+    },
+    {
+      icon: Users,
+      label: "Personal",
+      aplica: tienePersonal,
+      cubierto: personalTodoPagado,
+      pendienteAmarillo: tienePersonal && !personalTodoPagado,
+      detalle: !tienePersonal
+        ? "Sin personal asignado"
+        : personalTodoPagado
+          ? "Todo el personal pagado"
+          : `Personal seleccionado — ${personalPagadoCount}/${personal.length} pagados`,
     },
   ]
 
@@ -1040,24 +1054,29 @@ export default function EventosListaPage() {
                                     return (
                                       <Tooltip key={item.label}>
                                         <TooltipTrigger asChild>
-                                          <span
-                                            className={`flex h-7 w-7 items-center justify-center rounded-md border ${
+                                          <button
+                                            type="button"
+                                            onClick={() => router.push(`/eventos/costos?id=${evento.id}`)}
+                                            className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-transform hover:scale-110 ${
                                               !item.aplica
                                                 ? "border-dashed border-border bg-transparent text-muted-foreground/30"
                                                 : item.cubierto
                                                   ? "border-emerald-300 bg-emerald-50 text-emerald-600"
-                                                  : item.senaPagada
-                                                    ? "border-orange-300 bg-orange-50 text-orange-500"
-                                                    : "border-rose-200 bg-rose-50 text-rose-500"
+                                                  : item.pendienteAmarillo
+                                                    ? "border-yellow-300 bg-yellow-50 text-yellow-600"
+                                                    : item.senaPagada
+                                                      ? "border-orange-300 bg-orange-50 text-orange-500"
+                                                      : "border-rose-200 bg-rose-50 text-rose-500"
                                             }`}
-                                            aria-label={`${item.label}: ${item.detalle}`}
+                                            aria-label={`${item.label}: ${item.detalle} — ver costos del evento`}
                                           >
                                             <Icon className="h-3.5 w-3.5" />
-                                          </span>
+                                          </button>
                                         </TooltipTrigger>
                                         <TooltipContent>
                                           <p className="text-xs font-medium">{item.label}</p>
                                           <p className="text-xs text-muted-foreground">{item.detalle}</p>
+                                          <p className="text-xs text-teal-600">Clic para ver costos del evento</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     )
@@ -1077,45 +1096,16 @@ export default function EventosListaPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {evento.estado !== "completado" && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-500 scale-110" : "text-emerald-500/40 hover:text-emerald-500 hover:bg-emerald-50"}`}
-                                title="Marcar como finalizado"
-                                disabled={estaFinalizando}
-                                onClick={() => handleFinalizar(evento.id)}
-                              >
-                                {estaAnimando ? (
-                                  <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
-                                ) : (
-                                  <CheckCircle2 className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                  title="Imprimir"
-                                >
-                                  <Printer className="h-4 w-4" />
-                                  <span className="sr-only">Imprimir</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuItem onClick={() => handleImprimirDocumento(evento.id)}>
-                                  <Printer className="h-4 w-4 mr-2" />
-                                  Imprimir documento
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleImprimirContrato(evento.id)}>
-                                  <FileText className="h-4 w-4 mr-2" />
-                                  Imprimir última versión del contrato
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              title="Imprimir"
+                              onClick={() => handleImprimirDocumento(evento.id)}
+                            >
+                              <Printer className="h-4 w-4" />
+                              <span className="sr-only">Imprimir</span>
+                            </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1146,6 +1136,22 @@ export default function EventosListaPage() {
                             <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Eliminar</span>
                           </Button>
+                            {evento.estado !== "completado" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-700 scale-110" : "text-emerald-700/60 hover:text-emerald-800 hover:bg-emerald-50"}`}
+                                title="Marcar como finalizado"
+                                disabled={estaFinalizando}
+                                onClick={() => handleFinalizar(evento.id)}
+                              >
+                                {estaAnimando ? (
+                                  <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
+                                ) : (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1248,6 +1254,21 @@ export default function EventosListaPage() {
               <Label htmlFor="sec-hojaGastos" className="cursor-pointer text-sm font-medium leading-none">
                 Hoja de Gastos (Resumen Financiero)
               </Label>
+            </div>
+            <div className="border-t pt-4">
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-muted transition-colors text-left"
+                onClick={() => {
+                  if (imprimirEventoId) {
+                    setImprimirDialogOpen(false)
+                    handleImprimirContrato(imprimirEventoId)
+                  }
+                }}
+              >
+                <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span>Imprimir última versión del contrato</span>
+              </button>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">

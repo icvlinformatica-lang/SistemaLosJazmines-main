@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard } from "lucide-react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
@@ -43,6 +43,7 @@ const TIPO_LABELS: Record<string, string> = {
   pago: "Pago",
   contrato: "Contrato",
   vencimiento: "Vencimiento",
+  vendedor: "Vendedor",
 }
 
 const ACCION_ICON: Record<string, React.ReactNode> = {
@@ -68,6 +69,7 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   pago: <CreditCard className="h-4 w-4 text-green-600" />,
   contrato: <ClipboardList className="h-4 w-4 text-orange-600" />,
   vencimiento: <CalendarCheck className="h-4 w-4 text-amber-600" />,
+  vendedor: <UserCheck className="h-4 w-4 text-teal-600" />,
 }
 
 export default function ConfiguracionPage() {

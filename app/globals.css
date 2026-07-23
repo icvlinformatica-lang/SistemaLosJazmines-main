@@ -194,7 +194,8 @@
   
   /* Ensure minimum touch targets of 44px (h-12 = 48px) */
   /* Exclude tab triggers: they live inside a fixed-height list and would overflow it */
-  button:not([data-slot="tabs-trigger"]), 
+  /* Exclude checkboxes/radios/switches: son cuadraditos/controles chicos y la regla los estira */
+  button:not([data-slot="tabs-trigger"]):not([data-slot="checkbox"]):not([role="checkbox"]):not([role="radio"]):not([role="switch"]),
   [role="button"]:not([data-slot="tabs-trigger"]),
   input[type="submit"],
   input[type="button"] {
