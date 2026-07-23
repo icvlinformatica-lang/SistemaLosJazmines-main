@@ -1,11 +1,17 @@
 "use client"
 
-import { Suspense, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
@@ -31,6 +37,8 @@ import {
   CheckCircle2,
   CalendarDays,
   PieChart as PieChartIcon,
+  BookOpen,
+  RefreshCw,
 } from "lucide-react"
 import { PieChart, Pie, Cell, Label } from "recharts"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
@@ -49,10 +57,75 @@ function formatFecha(dateStr?: string): string {
 function CostosEventoContent() {
   const searchParams = useSearchParams()
   const eventoId = searchParams.get("id") || ""
-  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja } = useStore()
+  const {
+    state,
+    updateEvento,
+    addMovimientosCaja,
+    deleteMovimientoCaja,
+    setInsumos,
+    setInsumosBarra,
+    setRecetas,
+    setCocteles,
+    setEventos,
+  } = useStore()
   const { toast } = useToast()
 
   const evento = state.eventos.find((e) => e.id === eventoId)
+
+  // ------------------------------------------------------------------
+  // Sincronización en tiempo real: refresca precios de almacén (insumos
+  // cocina/barra), recetas, cócteles y el contrato del evento (servicios,
+  // personal, menú) cada 15 segundos y al volver a la pestaña. Así los
+  // costos siempre reflejan la última versión del contrato y los últimos
+  // precios cargados en la web.
+  // ------------------------------------------------------------------
+  const [ultimaSync, setUltimaSync] = useState<Date | null>(null)
+  const sincronizando = useRef(false)
+
+  useEffect(() => {
+    const refrescar = async () => {
+      if (sincronizando.current) return
+      sincronizando.current = true
+      try {
+        const fetchSafe = async (url: string) => {
+          try {
+            const r = await fetch(url, { cache: "no-store" })
+            if (!r.ok) return null
+            const data = await r.json()
+            return Array.isArray(data) ? data : null
+          } catch {
+            return null
+          }
+        }
+        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, eventosRes] = await Promise.all([
+          fetchSafe("/api/insumos"),
+          fetchSafe("/api/insumos-barra"),
+          fetchSafe("/api/recetas"),
+          fetchSafe("/api/cocteles"),
+          fetchSafe("/api/eventos"),
+        ])
+        if (insumosRes) setInsumos(insumosRes)
+        if (insumosBarraRes) setInsumosBarra(insumosBarraRes)
+        if (recetasRes) setRecetas(recetasRes)
+        if (coctelesRes) setCocteles(coctelesRes)
+        if (eventosRes) setEventos(eventosRes)
+        setUltimaSync(new Date())
+      } finally {
+        sincronizando.current = false
+      }
+    }
+
+    const interval = setInterval(refrescar, 15000)
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refrescar()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Observación guardada dentro de costosCalculados (JSON ya persistido del evento)
   const observacionGuardada =
@@ -89,6 +162,24 @@ function CostosEventoContent() {
   const costoBarra = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
   const servicios = evento.servicios || []
   const personal = (evento.personalEvento || []).filter((pe) => (pe.monto || 0) > 0)
+
+  // --- Menú completo elegido por la familia (recetas por segmento, en vivo) ---
+  const nombreReceta = (id: string) => state.recetas?.find((r) => r.id === id)?.nombre || null
+  const menuPorSegmento = [
+    { segmento: "Adultos", pax: evento.adultos || 0, recetas: evento.recetasAdultos || [] },
+    { segmento: "Adolescentes", pax: evento.adolescentes || 0, recetas: evento.recetasAdolescentes || [] },
+    { segmento: "Niños", pax: evento.ninos || 0, recetas: evento.recetasNinos || [] },
+    {
+      segmento: "Dietas especiales",
+      pax: evento.personasDietasEspeciales || 0,
+      recetas: evento.recetasDietasEspeciales || [],
+    },
+  ]
+    .map((s) => ({
+      ...s,
+      platos: s.recetas.map(nombreReceta).filter((n): n is string => !!n),
+    }))
+    .filter((s) => s.platos.length > 0)
 
   // --- Progreso de cuotas del cliente ---
   const cuotasPagadas = cuotas.filter((c) => c.pagada)
@@ -313,6 +404,12 @@ function CostosEventoContent() {
             </p>
           </div>
         </div>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <RefreshCw className="h-3 w-3" />
+          {ultimaSync
+            ? `Precios y contrato actualizados ${ultimaSync.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+            : "Sincronización en tiempo real activa"}
+        </span>
       </div>
 
       {/* Tarjetas de costos a la izquierda, gráfico circular a la derecha */}
@@ -365,6 +462,43 @@ function CostosEventoContent() {
                   {formatCurrency(costoCocina)}
                 </span>
               </div>
+              {menuPorSegmento.length > 0 && (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full bg-transparent">
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Ver menú completo
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <ChefHat className="h-4 w-4 text-teal-600" />
+                        Menú elegido — {nombreEvento}
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      {menuPorSegmento.map((seg) => (
+                        <div key={seg.segmento}>
+                          <p className="mb-1.5 flex items-center justify-between text-sm font-semibold">
+                            {seg.segmento}
+                            <span className="text-xs font-normal text-muted-foreground">
+                              {seg.pax} {seg.pax === 1 ? "invitado" : "invitados"}
+                            </span>
+                          </p>
+                          <ul className="space-y-1 rounded-md border border-border p-3">
+                            {seg.platos.map((plato) => (
+                              <li key={plato} className="text-sm text-muted-foreground">
+                                {plato}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
             </>
           )}
         </CardContent>
@@ -509,25 +643,27 @@ function CostosEventoContent() {
             personal.map((pe) => (
               <label
                 key={pe.id}
-                className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
               >
-                <span className="flex items-center gap-2">
+                <span className="flex min-w-0 items-center gap-2">
                   <Checkbox
                     checked={!!pe.pagado}
                     onCheckedChange={(v) => togglePersonal(pe.id, v === true)}
                     aria-label={`Marcar sueldo de ${pe.nombre} como pagado`}
                   />
-                  <span className="font-medium">{pe.nombre}</span>
-                  <Badge variant="outline" className="text-[11px]">
-                    {pe.funcion}
-                  </Badge>
-                  {pe.fechaPago && !pe.pagado && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <CalendarDays className="h-3 w-3" /> {formatFecha(pe.fechaPago)}
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium">{pe.nombre}</span>
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="truncate">{pe.funcion}</span>
+                      {pe.fechaPago && !pe.pagado && (
+                        <span className="flex shrink-0 items-center gap-1">
+                          <CalendarDays className="h-3 w-3" /> {formatFecha(pe.fechaPago)}
+                        </span>
+                      )}
                     </span>
-                  )}
+                  </span>
                 </span>
-                <span className={`font-medium ${pe.pagado ? "text-emerald-700" : "text-red-600"}`}>
+                <span className={`shrink-0 font-medium ${pe.pagado ? "text-emerald-700" : "text-red-600"}`}>
                   {formatCurrency(pe.monto)}
                 </span>
               </label>
