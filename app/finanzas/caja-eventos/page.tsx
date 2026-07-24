@@ -1272,6 +1272,7 @@ useStore()
                           <p className="font-medium text-sm">{eg.servicioNombre}</p>
                           <p className="text-xs text-muted-foreground">
                             {eg.eventoNombre}
+                            {eg.eventoFecha && <span> · {formatFecha(eg.eventoFecha)}</span>}
                             {eg.salon && (
                               <span className="inline-flex items-center gap-1 align-middle">
                                 {" · "}
@@ -1350,6 +1351,7 @@ useStore()
                           <p className="font-medium text-sm">{eg.servicioNombre}</p>
                           <p className="text-xs text-muted-foreground">
                             {eg.eventoNombre}
+                            {eg.eventoFecha && <span> · {formatFecha(eg.eventoFecha)}</span>}
                             {eg.salon && (
                               <span className="inline-flex items-center gap-1 align-middle">
                                 {" · "}
