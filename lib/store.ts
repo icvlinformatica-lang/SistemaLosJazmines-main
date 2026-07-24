@@ -319,6 +319,13 @@ export interface ServicioEvento {
   estadoPago?: 'sin_seña' | 'señado' | 'saldo_pendiente' | 'pagado_total'
   fechaPagoSeña?: string
   fechaPagoSaldo?: string
+  /**
+   * Overrides manuales de vencimiento (editados desde Caja Eventos).
+   * Si existen, tienen prioridad sobre el cálculo automático en vivo
+   * (fecha del evento − días de anticipación del catálogo).
+   */
+  fechaSeñaManual?: string
+  fechaSaldoManual?: string
 }
 
 // --- Costos Operativos ---

@@ -277,13 +277,17 @@ export default function CajaEventosPage() {
         )
         updateEvento(evento.id, { personalEvento })
       } else if (eg.tipo === "seña" && eg.servicioId) {
+        // Override manual: tiene prioridad sobre el cálculo automático en vivo
+        // (que corre la fecha si el evento se reprograma).
         const servicios = (evento.servicios || []).map((s) =>
-          s.servicioId === eg.servicioId ? { ...s, fechaSeña: nuevaFechaVenc } : s,
+          s.servicioId === eg.servicioId ? { ...s, fechaSeñaManual: nuevaFechaVenc, fechaSeña: nuevaFechaVenc } : s,
         )
         updateEvento(evento.id, { servicios })
       } else if (eg.servicioId) {
         const servicios = (evento.servicios || []).map((s) =>
-          s.servicioId === eg.servicioId ? { ...s, fechaLimitePago: nuevaFechaVenc } : s,
+          s.servicioId === eg.servicioId
+            ? { ...s, fechaSaldoManual: nuevaFechaVenc, fechaLimitePago: nuevaFechaVenc }
+            : s,
         )
         updateEvento(evento.id, { servicios })
       } else {
