@@ -2569,8 +2569,9 @@ export default function CajaJazminePage() {
                   </span>
                 </div>
                 <p className="text-xs text-emerald-700/80">
-                  Se reparte 50% a Caja Eventos ({formatCurrency(cuotaSel.montoJazmines)}) y 50% a Caja Jazmines (
-                  {formatCurrency(cuotaSel.montoJazmines)}).
+                  Se reparte según la regla del evento: {formatCurrency(cuotaSel.montoCuota - cuotaSel.montoJazmines)}{" "}
+                  a Caja Eventos (proporcional del costo del evento + 5%) y {formatCurrency(cuotaSel.montoJazmines)} a
+                  Caja Jazmines (el resto).
                 </p>
               </div>
 
