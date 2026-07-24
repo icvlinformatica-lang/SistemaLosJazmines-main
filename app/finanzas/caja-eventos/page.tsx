@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -126,6 +127,11 @@ export default function CajaEventosPage() {
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
 
+  // ── Extracción de dinero de la caja (retiro con justificación) ──────────
+  const [extraerOpen, setExtraerOpen] = useState(false)
+  const [extraerMonto, setExtraerMonto] = useState(0)
+  const [extraerConcepto, setExtraerConcepto] = useState("")
+
   // ── Carrusel del dashboard: vista "Este mes" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = mes, 1 = semana
 
@@ -148,6 +154,69 @@ export default function CajaEventosPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tipo: "vencimiento", accion: "modificado", nombre, detalle }),
     }).catch(() => {})
+  }
+
+  // Registra una extracción de dinero de Caja Eventos: genera el egreso en la
+  // caja (baja el saldo), lo archiva en el Archivo Histórico y deja rastro en
+  // Configuración > Actividad, siempre con el concepto que justifica el retiro.
+  function confirmarExtraccion() {
+    const monto = extraerMonto
+    const concepto = extraerConcepto.trim()
+    if (!monto || monto <= 0 || !concepto) return
+
+    const hoyISO = new Date().toISOString()
+    const fechaCorta = hoyISO.slice(0, 10)
+    const conceptoMov = `Extracción - ${concepto}`
+
+    const saldoPrev = (state.movimientosCaja ?? [])
+      .filter((m) => m.cajaDestino === "caja_eventos")
+      .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+
+    const movimiento: MovimientoCaja = {
+      id: generateId(),
+      fecha: hoyISO,
+      tipo: "egreso",
+      concepto: conceptoMov,
+      monto,
+      salon: "",
+      cajaDestino: "caja_eventos",
+      saldoResultante: saldoPrev - monto,
+    }
+    addMovimientosCaja([movimiento])
+
+    // Archivo Histórico
+    archivarGasto({
+      fecha: fechaCorta,
+      concepto: conceptoMov,
+      monto,
+      salon: null,
+      origen: "caja_eventos",
+      categoria: "extracción",
+      eventoId: null,
+      eventoNombre: null,
+      refId: movimiento.id,
+    })
+
+    // Configuración > Actividad
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "caja",
+        accion: "extracción",
+        nombre: `Caja Eventos · ${formatCurrency(monto)}`,
+        detalle: `Extracción de ${formatCurrency(monto)} | Motivo: ${concepto}`,
+      }),
+    }).catch(() => {})
+
+    toast({
+      title: "Extracción registrada",
+      description: `Se retiraron ${formatCurrency(monto)} de Caja Eventos.`,
+    })
+    setExtraerMonto(0)
+    setExtraerConcepto("")
+    setExtraerOpen(false)
+    setDesgloseOpen(false)
   }
 
   function abrirEdicionCuota(ingreso: IngresoPendiente) {
@@ -1444,6 +1513,75 @@ export default function CajaEventosPage() {
               <span className="text-sm font-semibold">Total</span>
               <span className="text-base font-bold text-teal-700 tabular-nums">{formatCurrency(totalPatrimonio)}</span>
             </div>
+          </div>
+          <Button
+            variant="outline"
+            className="mt-2 w-full gap-2 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+            onClick={() => {
+              setExtraerMonto(0)
+              setExtraerConcepto("")
+              setExtraerOpen(true)
+            }}
+          >
+            <ArrowUpFromLine className="h-4 w-4" />
+            Extraer dinero
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: extracción de dinero de Caja Eventos */}
+      <Dialog open={extraerOpen} onOpenChange={setExtraerOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowUpFromLine className="h-4 w-4 text-red-600" />
+              Extraer dinero — Caja Eventos
+            </DialogTitle>
+            <DialogDescription>
+              Registra un retiro de efectivo. Queda en el Archivo Histórico y en Configuración → Actividad.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Efectivo en caja</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(saldoActual)}</span>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="extraer-monto">Monto a extraer</Label>
+              <MoneyInput
+                id="extraer-monto"
+                value={extraerMonto}
+                onValueChange={setExtraerMonto}
+                placeholder="0"
+              />
+              {extraerMonto > saldoActual && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> El monto supera el efectivo disponible. La caja quedará en negativo.
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="extraer-concepto">Concepto / justificación</Label>
+              <Textarea
+                id="extraer-concepto"
+                value={extraerConcepto}
+                onChange={(e) => setExtraerConcepto(e.target.value)}
+                placeholder="Ej: Retiro para pago de proveedor en efectivo"
+                rows={3}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setExtraerOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={extraerMonto <= 0 || !extraerConcepto.trim()}
+              onClick={confirmarExtraccion}
+            >
+              <ArrowUpFromLine className="h-4 w-4 mr-1" /> Confirmar extracción
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
