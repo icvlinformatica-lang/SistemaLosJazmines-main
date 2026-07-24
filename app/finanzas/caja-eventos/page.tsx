@@ -138,6 +138,9 @@ useStore()
   const [extraerOpen, setExtraerOpen] = useState(false)
   const [extraerMonto, setExtraerMonto] = useState(0)
   const [extraerConcepto, setExtraerConcepto] = useState("")
+  // Modo del diálogo: "extraer" (retiro clásico) o "fijar" (colocar el monto
+  // real contado y que el sistema registre la diferencia como ajuste).
+  const [extraerModo, setExtraerModo] = useState<"extraer" | "fijar">("extraer")
 
   // ── Carrusel del dashboard: vista "Este mes" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = mes, 1 = semana
@@ -219,6 +222,81 @@ useStore()
     toast({
       title: "Extracción registrada",
       description: `Se retiraron ${formatCurrency(monto)} de Caja Eventos.`,
+    })
+    setExtraerMonto(0)
+    setExtraerConcepto("")
+    setExtraerOpen(false)
+    setDesgloseOpen(false)
+  }
+
+  // "Colocar monto actual": el usuario indica cuánto dinero REAL hay en la
+  // caja y el sistema registra la diferencia contra el saldo del sistema como
+  // un ajuste (egreso si falta, ingreso si sobra). Requiere nota obligatoria
+  // que queda en el Archivo Histórico y en Configuración > Actividad.
+  function confirmarAjusteSaldo() {
+    const montoReal = extraerMonto
+    const concepto = extraerConcepto.trim()
+    if (montoReal < 0 || !concepto) return
+
+    const saldoPrev = (state.movimientosCaja ?? [])
+      .filter((m) => m.cajaDestino === "caja_eventos")
+      .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+
+    const diferencia = montoReal - saldoPrev
+    if (diferencia === 0) {
+      toast({ title: "Sin diferencia", description: "El saldo del sistema ya coincide con el monto indicado." })
+      setExtraerOpen(false)
+      return
+    }
+
+    const hoyISO = new Date().toISOString()
+    const fechaCorta = hoyISO.slice(0, 10)
+    const esFaltante = diferencia < 0
+    const montoAjuste = Math.abs(diferencia)
+    const conceptoMov = `Ajuste de saldo - ${concepto}`
+
+    const movimiento: MovimientoCaja = {
+      id: generateId(),
+      fecha: hoyISO,
+      tipo: esFaltante ? "egreso" : "ingreso",
+      concepto: conceptoMov,
+      monto: montoAjuste,
+      salon: "",
+      cajaDestino: "caja_eventos",
+      saldoResultante: montoReal,
+    }
+    addMovimientosCaja([movimiento])
+
+    // Archivo Histórico: solo los faltantes son un gasto real
+    if (esFaltante) {
+      archivarGasto({
+        fecha: fechaCorta,
+        concepto: conceptoMov,
+        monto: montoAjuste,
+        salon: null,
+        origen: "caja_eventos",
+        categoria: "extracción",
+        eventoId: null,
+        eventoNombre: null,
+        refId: movimiento.id,
+      })
+    }
+
+    // Configuración > Actividad
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "caja",
+        accion: "ajuste de saldo",
+        nombre: `Caja Eventos · saldo fijado en ${formatCurrency(montoReal)}`,
+        detalle: `Saldo del sistema: ${formatCurrency(saldoPrev)} → saldo real: ${formatCurrency(montoReal)} (${esFaltante ? "faltante" : "sobrante"} de ${formatCurrency(montoAjuste)}) | Nota: ${concepto}`,
+      }),
+    }).catch(() => {})
+
+    toast({
+      title: "Saldo actualizado",
+      description: `Caja Eventos quedó en ${formatCurrency(montoReal)} (${esFaltante ? "se descontó" : "se sumó"} ${formatCurrency(montoAjuste)}).`,
     })
     setExtraerMonto(0)
     setExtraerConcepto("")
@@ -1547,53 +1625,93 @@ useStore()
             onClick={() => {
               setExtraerMonto(0)
               setExtraerConcepto("")
+              setExtraerModo("extraer")
               setExtraerOpen(true)
             }}
           >
             <ArrowUpFromLine className="h-4 w-4" />
-            Extraer dinero
+            Extraer / ajustar dinero
           </Button>
         </DialogContent>
       </Dialog>
 
-      {/* DIALOG: extracción de dinero de Caja Eventos */}
+      {/* DIALOG: extracción / ajuste de saldo de Caja Eventos */}
       <Dialog open={extraerOpen} onOpenChange={setExtraerOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowUpFromLine className="h-4 w-4 text-red-600" />
-              Extraer dinero — Caja Eventos
+              {extraerModo === "extraer" ? "Extraer dinero — Caja Eventos" : "Colocar monto actual — Caja Eventos"}
             </DialogTitle>
             <DialogDescription>
-              Registra un retiro de efectivo. Queda en el Archivo Histórico y en Configuración → Actividad.
+              {extraerModo === "extraer"
+                ? "Registra un retiro de efectivo. Queda en el Archivo Histórico y en Configuración → Actividad."
+                : "Contá el dinero real y colocá el monto: el sistema registra la diferencia automáticamente. Queda en Configuración → Actividad."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-1">
+            {/* Selector de modo */}
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1">
+              <button
+                type="button"
+                className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                  extraerModo === "extraer" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
+                }`}
+                onClick={() => setExtraerModo("extraer")}
+              >
+                Extraer monto
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                  extraerModo === "fijar" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
+                }`}
+                onClick={() => setExtraerModo("fijar")}
+              >
+                Colocar monto actual
+              </button>
+            </div>
             <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Efectivo en caja</span>
+              <span className="text-xs text-muted-foreground">Efectivo en caja (sistema)</span>
               <span className="text-sm font-semibold tabular-nums">{formatCurrency(saldoActual)}</span>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="extraer-monto">Monto a extraer</Label>
+              <Label htmlFor="extraer-monto">
+                {extraerModo === "extraer" ? "Monto a extraer" : "¿Cuánto dinero hay realmente?"}
+              </Label>
               <MoneyInput
                 id="extraer-monto"
                 value={extraerMonto}
                 onValueChange={setExtraerMonto}
                 placeholder="0"
               />
-              {extraerMonto > saldoActual && (
+              {extraerModo === "extraer" && extraerMonto > saldoActual && (
                 <p className="text-xs text-amber-600 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" /> El monto supera el efectivo disponible. La caja quedará en negativo.
                 </p>
               )}
+              {extraerModo === "fijar" && extraerMonto !== saldoActual && (
+                <p className={`text-xs flex items-center gap-1 ${extraerMonto < saldoActual ? "text-red-600" : "text-emerald-700"}`}>
+                  {extraerMonto < saldoActual
+                    ? `Se registrará un egreso de ${formatCurrency(saldoActual - extraerMonto)} (faltante).`
+                    : `Se registrará un ingreso de ${formatCurrency(extraerMonto - saldoActual)} (sobrante).`}
+                </p>
+              )}
+              {extraerModo === "fijar" && extraerMonto === saldoActual && (
+                <p className="text-xs text-muted-foreground">El saldo del sistema ya coincide con ese monto.</p>
+              )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="extraer-concepto">Concepto / justificación</Label>
+              <Label htmlFor="extraer-concepto">Nota / justificación</Label>
               <Textarea
                 id="extraer-concepto"
                 value={extraerConcepto}
                 onChange={(e) => setExtraerConcepto(e.target.value)}
-                placeholder="Ej: Retiro para pago de proveedor en efectivo"
+                placeholder={
+                  extraerModo === "extraer"
+                    ? "Ej: Retiro para pago de proveedor en efectivo"
+                    : "Ej: Conteo de caja del cierre del día"
+                }
                 rows={3}
               />
             </div>
@@ -1602,13 +1720,23 @@ useStore()
             <Button variant="outline" onClick={() => setExtraerOpen(false)}>
               Cancelar
             </Button>
-            <Button
-              className="bg-red-600 hover:bg-red-700 text-white"
-              disabled={extraerMonto <= 0 || !extraerConcepto.trim()}
-              onClick={confirmarExtraccion}
-            >
-              <ArrowUpFromLine className="h-4 w-4 mr-1" /> Confirmar extracción
-            </Button>
+            {extraerModo === "extraer" ? (
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white"
+                disabled={extraerMonto <= 0 || !extraerConcepto.trim()}
+                onClick={confirmarExtraccion}
+              >
+                <ArrowUpFromLine className="h-4 w-4 mr-1" /> Confirmar extracción
+              </Button>
+            ) : (
+              <Button
+                className="bg-teal-600 hover:bg-teal-700 text-white"
+                disabled={extraerMonto < 0 || extraerMonto === saldoActual || !extraerConcepto.trim()}
+                onClick={confirmarAjusteSaldo}
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1" /> Fijar saldo real
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
