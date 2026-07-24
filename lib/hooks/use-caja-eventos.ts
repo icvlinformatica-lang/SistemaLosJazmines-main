@@ -63,6 +63,8 @@ export interface MesProyeccion {
   aCobrar: number
   aPagar: number
   balance: number
+  /** Saldo acumulado: saldo actual de la caja + balances de los meses hasta este inclusive */
+  saldoProyectado: number
   esActual: boolean
 }
 
@@ -432,6 +434,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         aCobrar: 0,
         aPagar: 0,
         balance: 0,
+        saldoProyectado: 0,
         esActual: key === mesActualKey,
       })
     }
@@ -446,8 +449,13 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       const idx = indexPorKey[key]
       if (idx !== undefined) meses[idx].aPagar += eg.monto
     }
+    // Balance de cada mes + saldo acumulado partiendo del saldo ACTUAL de la
+    // caja: si se extrae/ingresa dinero hoy, toda la proyección se corre sola.
+    let saldoAcumulado = saldoActual
     meses.forEach((m) => {
       m.balance = m.aCobrar - m.aPagar
+      saldoAcumulado += m.balance
+      m.saldoProyectado = saldoAcumulado
     })
 
     const porCobrarEsteMes = meses[0]?.aCobrar ?? 0

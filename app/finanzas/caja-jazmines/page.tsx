@@ -1459,6 +1459,11 @@ export default function CajaJazminePage() {
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
           </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1 text-pretty">
+            A cobrar: la parte de cada cuota que queda para Caja Jazmines después de cubrir el costo del evento + 5%
+            (la ganancia real de cada evento). A pagar: gastos fijos, sueldos y variables agendados. El saldo parte
+            del saldo actual de la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
+          </p>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
@@ -1467,7 +1472,8 @@ export default function CajaJazminePage() {
                 <TableHead className="pl-6 font-bold">Mes</TableHead>
                 <TableHead className="text-center font-bold">A cobrar</TableHead>
                 <TableHead className="text-center font-bold">A pagar</TableHead>
-                <TableHead className="text-right pr-6 font-bold">Balance</TableHead>
+                <TableHead className="text-center font-bold">Balance</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1483,8 +1489,11 @@ export default function CajaJazminePage() {
                   <TableCell className="text-center text-[var(--accent)] font-medium">
                     {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
                   </TableCell>
-                  <TableCell className={`text-right pr-6 font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
+                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
                     {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
+                  </TableCell>
+                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(m.saldoProyectado)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -2019,10 +2028,19 @@ export default function CajaJazminePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{gasto.nombre}</p>
                       {gasto.esComision && gasto.comisionDetalle ? (
-                        <p className="text-xs text-amber-800/80 mt-0.5">
-                          {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
-                          {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
-                        </p>
+                        <>
+                          <p className="text-xs text-amber-800/80 mt-0.5">
+                            {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
+                            {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
+                          </p>
+                          {gasto.listaParaPagar && (
+                            <p className="text-xs text-emerald-700 mt-0.5">
+                              {gasto.motivoLista === "la seña cobrada la cubre"
+                                ? "La seña cobrada ya cubre esta comisión."
+                                : `Ya se pagaron ${gasto.motivoLista}.`}
+                            </p>
+                          )}
+                        </>
                       ) : (
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {formatFecha(gasto.fecha)}
@@ -2034,7 +2052,14 @@ export default function CajaJazminePage() {
                         <span className="text-sm font-bold text-foreground">
                           {formatCurrency(gasto.monto)}
                         </span>
-                        {badgeEstadoVar(gasto.estado)}
+                        {gasto.esComision && gasto.listaParaPagar ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Lista para pagar
+                          </Badge>
+                        ) : (
+                          badgeEstadoVar(gasto.estado)
+                        )}
                       </div>
                       {!gasto.esComision && (<>
                       {/* Toggle pagado */}

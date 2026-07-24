@@ -52,6 +52,13 @@ export interface GastoVariable {
     totalEvento: number
     porcentaje: number
   }
+  /**
+   * Solo comisiones: true si ya se puede pagar. Se cumple cuando el evento
+   * tiene 4+ cuotas pagadas, o cuando la seña cobrada ya cubre la comisión.
+   */
+  listaParaPagar?: boolean
+  /** Explicación de por qué está lista ("4 cuotas pagadas" / "la seña la cubre") */
+  motivoLista?: string
 }
 
 export interface CuotaPorCobrar {
@@ -73,6 +80,8 @@ export interface MesProyeccionJaz {
   aCobrar: number
   aPagar: number
   balance: number
+  /** Saldo acumulado: saldo actual de la caja + balances de los meses hasta este inclusive */
+  saldoProyectado: number
   esActual: boolean
 }
 
@@ -470,12 +479,39 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       if (totalEvento <= 0) continue
 
       const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
+      const montoComision = Math.round((totalEvento * vendedor.comisionPct) / 100)
+
+      // ¿Lista para pagar? Se cumple con 4+ cuotas pagadas del evento,
+      // o si la seña ya cobrada (movimiento real en cajas) cubre la comisión.
+      const plan = evento.planDeCuotas
+      const cuotasPagadasCount = Math.max(
+        plan?.cuotasPagadas?.length ?? 0,
+        (plan?.cuotas ?? []).filter((c) => c.pagada).length,
+      )
+      const señaCobrada = (state.movimientosCaja || [])
+        .filter(
+          (m) =>
+            m.eventoId === evento.id &&
+            m.tipo === "ingreso" &&
+            /^Seña/i.test(m.concepto || ""),
+        )
+        .reduce((s, m) => s + m.monto, 0)
+      let listaParaPagar = false
+      let motivoLista: string | undefined
+      if (cuotasPagadasCount >= 4) {
+        listaParaPagar = true
+        motivoLista = `${cuotasPagadasCount} cuotas pagadas`
+      } else if (señaCobrada > 0 && señaCobrada >= montoComision) {
+        listaParaPagar = true
+        motivoLista = "la seña cobrada la cubre"
+      }
+
       gastosVariables.push({
         id: `comision-${vendedor.id}-${evento.id}`,
         nombre: `Comisión ${vendedor.emoji ? `${vendedor.emoji} ` : ""}${vendedor.nombre} · ${eventoNombre}`,
         salon: evento.salon || "",
         fecha: evento.fecha || "",
-        monto: Math.round((totalEvento * vendedor.comisionPct) / 100),
+        monto: montoComision,
         estado: "pendiente",
         esComision: true,
         comisionDetalle: {
@@ -484,6 +520,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           totalEvento,
           porcentaje: vendedor.comisionPct,
         },
+        listaParaPagar,
+        motivoLista,
       })
     }
 
@@ -520,6 +558,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         aCobrar: 0,
         aPagar: recurrenteMensual,
         balance: 0,
+        saldoProyectado: 0,
         esActual: key === mesActualKeyJaz,
       })
     }
@@ -543,8 +582,13 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       const idx = idxPorKeyJaz[c.fechaVencimiento.slice(0, 7)]
       if (idx !== undefined) proyeccionMensual[idx].aPagar += c.monto
     }
+    // Balance de cada mes + saldo acumulado partiendo del saldo ACTUAL de la
+    // caja: si se extrae/ingresa dinero hoy, toda la proyección se corre sola.
+    let saldoAcumuladoJaz = saldoActual
     proyeccionMensual.forEach((m) => {
       m.balance = m.aCobrar - m.aPagar
+      saldoAcumuladoJaz += m.balance
+      m.saldoProyectado = saldoAcumuladoJaz
     })
 
     // Estimado de gastos fijos del MES QUE VIENE (tarjeta "a pagar de servicios"):

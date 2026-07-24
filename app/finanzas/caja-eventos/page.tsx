@@ -932,6 +932,11 @@ useStore()
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
           </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1 text-pretty">
+            A cobrar: solo la parte de cada cuota destinada a cubrir el costo del evento + 5% (insumos, servicios y
+            personal). A pagar: los pagos a proveedores y personal de cada evento. El saldo parte del saldo actual de
+            la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
+          </p>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
@@ -940,7 +945,8 @@ useStore()
                 <TableHead className="pl-6 font-bold">Mes</TableHead>
                 <TableHead className="text-center font-bold">A cobrar</TableHead>
                 <TableHead className="text-center font-bold">A pagar</TableHead>
-                <TableHead className="text-right pr-6 font-bold">Balance</TableHead>
+                <TableHead className="text-center font-bold">Balance</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -956,8 +962,11 @@ useStore()
                   <TableCell className="text-center text-[var(--accent)] font-medium">
                     {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
                   </TableCell>
-                  <TableCell className={`text-right pr-6 font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
+                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
                     {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
+                  </TableCell>
+                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                    {formatCurrency(m.saldoProyectado)}
                   </TableCell>
                 </TableRow>
               ))}
