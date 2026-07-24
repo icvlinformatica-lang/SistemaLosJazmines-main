@@ -515,6 +515,10 @@ export interface EventoGuardado extends Evento {
   fechaPagoMenu?: string
   /** Fecha de pago de la barra (YYYY-MM-DD). Si no está, se calcula: evento - 14 días */
   fechaPagoBarra?: string
+  /** true si la comisión del vendedor de este evento ya fue pagada */
+  comisionPagada?: boolean
+  /** Fecha (YYYY-MM-DD) en que se pagó la comisión del vendedor */
+  comisionPagadaFecha?: string
 
   // --- Servicios seleccionados para el contrato ---
   /** IDs de servicios del catálogo (/finanzas/servicios) a incluir en el contrato */

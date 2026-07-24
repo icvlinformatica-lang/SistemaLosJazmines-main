@@ -51,6 +51,8 @@ export interface GastoVariable {
     eventoNombre: string
     totalEvento: number
     porcentaje: number
+    /** ID del evento para poder marcar la comisión como pagada */
+    eventoId: string
   }
   /**
    * Solo comisiones: true si ya se puede pagar. Se cumple cuando el evento
@@ -512,13 +514,14 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         salon: evento.salon || "",
         fecha: evento.fecha || "",
         monto: montoComision,
-        estado: "pendiente",
+        estado: evento.comisionPagada ? "pagado" : "pendiente",
         esComision: true,
         comisionDetalle: {
           vendedor: vendedor.nombre,
           eventoNombre,
           totalEvento,
           porcentaje: vendedor.comisionPct,
+          eventoId: evento.id,
         },
         listaParaPagar,
         motivoLista,

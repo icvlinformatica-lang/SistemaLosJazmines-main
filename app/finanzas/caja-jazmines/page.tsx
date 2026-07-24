@@ -34,7 +34,7 @@ import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
-import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar } from "@/lib/hooks/use-caja-jazmines"
+import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
 import {
   Building,
   TrendingDown,
@@ -906,6 +906,35 @@ export default function CajaJazminePage() {
       refId: gasto.id,
     })
     deleteCostoOperativo(gasto.id)
+  }
+
+  // ── Marcar comisión de vendedor como pagada / pendiente ─────────────────
+  // Persiste en el evento (comisionPagada), por lo que también se ve en
+  // Eventos → Vendedores. Queda registrado en Configuración → Actividad.
+  function marcarComisionPagada(gasto: GastoVariable, pagada: boolean) {
+    const eventoId = gasto.comisionDetalle?.eventoId
+    if (!eventoId) return
+    const hoyISO = new Date()
+    const fechaCorta = `${hoyISO.getFullYear()}-${String(hoyISO.getMonth() + 1).padStart(2, "0")}-${String(hoyISO.getDate()).padStart(2, "0")}`
+    updateEvento(eventoId, {
+      comisionPagada: pagada,
+      // null (no undefined) para que el PATCH borre la fecha al desmarcar
+      comisionPagadaFecha: (pagada ? fechaCorta : null) as EventoGuardado["comisionPagadaFecha"],
+    })
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "caja",
+        accion: pagada ? "comisión pagada" : "comisión marcada pendiente",
+        nombre: gasto.nombre,
+        detalle: `${formatCurrency(gasto.monto)} (${gasto.comisionDetalle?.porcentaje}% de ${formatCurrency(gasto.comisionDetalle?.totalEvento ?? 0)}) · evento ${gasto.comisionDetalle?.eventoNombre}`,
+      }),
+    }).catch(() => {})
+    toast({
+      title: pagada ? "Comisión pagada" : "Comisión pendiente",
+      description: `${gasto.nombre} · ${formatCurrency(gasto.monto)}`,
+    })
   }
 
   // ── Pagar directo desde la tarjeta de alertas ──────────────────────────
@@ -2113,12 +2142,16 @@ export default function CajaJazminePage() {
                             {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
                             {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
                           </p>
-                          {gasto.listaParaPagar && (
-                            <p className="text-xs text-emerald-700 mt-0.5">
-                              {gasto.motivoLista === "la seña cobrada la cubre"
-                                ? "La seña cobrada ya cubre esta comisión."
-                                : `Ya se pagaron ${gasto.motivoLista}.`}
-                            </p>
+                          {esPagado ? (
+                            <p className="text-xs text-teal-700 mt-0.5">Comisión pagada al vendedor.</p>
+                          ) : (
+                            gasto.listaParaPagar && (
+                              <p className="text-xs text-emerald-700 mt-0.5">
+                                {gasto.motivoLista === "la seña cobrada la cubre"
+                                  ? "La seña cobrada ya cubre esta comisión."
+                                  : `Ya se pagaron ${gasto.motivoLista}.`}
+                              </p>
+                            )
                           )}
                         </>
                       ) : (
@@ -2132,7 +2165,7 @@ export default function CajaJazminePage() {
                         <span className="text-sm font-bold text-foreground">
                           {formatCurrency(gasto.monto)}
                         </span>
-                        {gasto.esComision && gasto.listaParaPagar ? (
+                        {gasto.esComision && gasto.listaParaPagar && !esPagado ? (
                           <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] gap-1">
                             <CheckCircle2 className="h-3 w-3" />
                             Lista para pagar
@@ -2141,6 +2174,24 @@ export default function CajaJazminePage() {
                           badgeEstadoVar(gasto.estado)
                         )}
                       </div>
+                      {gasto.esComision && gasto.comisionDetalle && (
+                        <ConfirmAction
+                          title={esPagado ? "¿Marcar comisión como pendiente?" : "¿Marcar comisión como pagada?"}
+                          description={`${gasto.nombre} · ${formatCurrency(gasto.monto)}. ${esPagado ? "Volverá a figurar como pendiente." : "Quedará registrada como pagada también en Vendedores."}`}
+                          confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagada"}
+                          onConfirm={() => marcarComisionPagada(gasto, !esPagado)}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                            title={esPagado ? "Marcar comisión como pendiente" : "Marcar comisión como pagada"}
+                          >
+                            {esPagado ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                            <span className="sr-only">{esPagado ? "Marcar comisión pendiente" : "Marcar comisión pagada"}</span>
+                          </Button>
+                        </ConfirmAction>
+                      )}
                       {!gasto.esComision && (<>
                       {/* Toggle pagado */}
                       <ConfirmAction
@@ -2526,7 +2577,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ─────��───────────────────��──────── */}
+      {/* ── Dialog: Agendar gasto variable ─────��────────���──────────��──────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
