@@ -9,10 +9,12 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -660,6 +662,74 @@ export default function CajaJazminePage() {
   const [cuotaSel, setCuotaSel] = useState<CuotaPorCobrar | null>(null)
   const [marcarCobrada, setMarcarCobrada] = useState(false)
 
+  // ── Extracción de dinero de Caja Jazmines (retiro con justificación) ─────
+  const [extraerOpen, setExtraerOpen] = useState(false)
+  const [extraerMonto, setExtraerMonto] = useState(0)
+  const [extraerConcepto, setExtraerConcepto] = useState("")
+
+  // Registra una extracción de dinero de Caja Jazmines: genera el egreso en la
+  // caja (baja el saldo), lo archiva en el Archivo Histórico y deja rastro en
+  // Configuración > Actividad, siempre con el concepto que justifica el retiro.
+  function confirmarExtraccion() {
+    const monto = extraerMonto
+    const concepto = extraerConcepto.trim()
+    if (!monto || monto <= 0 || !concepto) return
+
+    const hoyISO = new Date().toISOString()
+    const fechaCorta = hoyISO.slice(0, 10)
+    const conceptoMov = `Extracción - ${concepto}`
+
+    const saldoPrev = (state.movimientosCaja ?? [])
+      .filter((m) => m.cajaDestino === "caja_jazmines")
+      .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+
+    addMovimientosCaja([
+      {
+        id: generateId(),
+        fecha: hoyISO,
+        tipo: "egreso",
+        concepto: conceptoMov,
+        monto,
+        salon: "",
+        cajaDestino: "caja_jazmines",
+        saldoResultante: saldoPrev - monto,
+      },
+    ])
+
+    // Archivo Histórico (extracción de Jazmines = gasto variable)
+    archivarGasto({
+      fecha: fechaCorta,
+      concepto: conceptoMov,
+      monto,
+      salon: null,
+      origen: "caja_jazmines_variable",
+      categoria: "extracción",
+      eventoId: null,
+      eventoNombre: null,
+      refId: null,
+    })
+
+    // Configuración > Actividad
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "caja",
+        accion: "extracción",
+        nombre: `Caja Jazmines · ${formatCurrency(monto)}`,
+        detalle: `Extracción de ${formatCurrency(monto)} | Motivo: ${concepto}`,
+      }),
+    }).catch(() => {})
+
+    toast({
+      title: "Extracción registrada",
+      description: `Se retiraron ${formatCurrency(monto)} de Caja Jazmines.`,
+    })
+    setExtraerMonto(0)
+    setExtraerConcepto("")
+    setExtraerOpen(false)
+  }
+
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): genera el
   // ingreso 50/50 a Caja Eventos y Caja Jazmines, datado en el vencimiento.
   function confirmarCobroCuota(cuota: CuotaPorCobrar) {
@@ -1189,7 +1259,18 @@ export default function CajaJazminePage() {
           >
             {/* ── Slide 1: A 30 DÍAS ────────────────────────────────── */}
             <div className="w-full shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4 pr-0.5">
-              <Card style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}>
+              <Card
+                style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
+                className="cursor-pointer transition-colors hover:bg-white/40"
+                onClick={() => {
+                  setExtraerMonto(0)
+                  setExtraerConcepto("")
+                  setExtraerOpen(true)
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label="Extraer dinero de Caja Jazmines"
+              >
                 <CardContent className="pt-5 pb-5">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
@@ -1197,7 +1278,10 @@ export default function CajaJazminePage() {
                       <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
                       <button
                         type="button"
-                        onClick={() => toggleMonto("saldoActual")}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleMonto("saldoActual")
+                        }}
                         style={{ color: "#0035db" }}
                         className="hover:opacity-80"
                         aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
@@ -1210,7 +1294,9 @@ export default function CajaJazminePage() {
                   <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
                     {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "#4010fa" }}>Ingresos − gastos</p>
+                  <p className="text-xs mt-1 flex items-center gap-1" style={{ color: "#4010fa" }}>
+                    <ArrowUpFromLine className="h-3 w-3" /> Tocá para extraer dinero
+                  </p>
                 </CardContent>
               </Card>
 
@@ -2488,6 +2574,63 @@ export default function CajaJazminePage() {
               className="bg-amber-600 hover:bg-amber-700 text-white"
             >
               Guardar registro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: extracción de dinero de Caja Jazmines */}
+      <Dialog open={extraerOpen} onOpenChange={setExtraerOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowUpFromLine className="h-4 w-4 text-red-600" />
+              Extraer dinero — Caja Jazmines
+            </DialogTitle>
+            <DialogDescription>
+              Registra un retiro de efectivo. Queda en el Archivo Histórico y en Configuración → Actividad.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Saldo actual</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(saldoActual)}</span>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="extraer-monto-jaz">Monto a extraer</Label>
+              <MoneyInput
+                id="extraer-monto-jaz"
+                value={extraerMonto}
+                onValueChange={setExtraerMonto}
+                placeholder="0"
+              />
+              {extraerMonto > saldoActual && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" /> El monto supera el saldo disponible. La caja quedará en negativo.
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="extraer-concepto-jaz">Concepto / justificación</Label>
+              <Textarea
+                id="extraer-concepto-jaz"
+                value={extraerConcepto}
+                onChange={(e) => setExtraerConcepto(e.target.value)}
+                placeholder="Ej: Retiro de socios / pago en efectivo"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExtraerOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={extraerMonto <= 0 || !extraerConcepto.trim()}
+              onClick={confirmarExtraccion}
+            >
+              <ArrowUpFromLine className="h-4 w-4 mr-1" /> Confirmar extracción
             </Button>
           </DialogFooter>
         </DialogContent>

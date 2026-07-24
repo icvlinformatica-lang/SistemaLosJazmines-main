@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck } from "lucide-react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck, Wallet } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
@@ -44,6 +44,7 @@ const TIPO_LABELS: Record<string, string> = {
   contrato: "Contrato",
   vencimiento: "Vencimiento",
   vendedor: "Vendedor",
+  caja: "Caja",
 }
 
 const ACCION_ICON: Record<string, React.ReactNode> = {
@@ -51,6 +52,7 @@ const ACCION_ICON: Record<string, React.ReactNode> = {
   eliminado: <Minus className="h-3.5 w-3.5" />,
   modificado: <RefreshCw className="h-3.5 w-3.5" />,
   planificado: <CalendarCheck className="h-3.5 w-3.5" />,
+  "extracción": <Minus className="h-3.5 w-3.5" />,
 }
 
 const ACCION_COLOR: Record<string, string> = {
@@ -58,6 +60,7 @@ const ACCION_COLOR: Record<string, string> = {
   eliminado: "bg-red-100 text-red-700 border-red-200",
   modificado: "bg-blue-100 text-blue-700 border-blue-200",
   planificado: "bg-amber-100 text-amber-700 border-amber-200",
+  "extracción": "bg-red-100 text-red-700 border-red-200",
 }
 
 const TIPO_ICON: Record<string, React.ReactNode> = {
@@ -70,6 +73,7 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   contrato: <ClipboardList className="h-4 w-4 text-orange-600" />,
   vencimiento: <CalendarCheck className="h-4 w-4 text-amber-600" />,
   vendedor: <UserCheck className="h-4 w-4 text-teal-600" />,
+  caja: <Wallet className="h-4 w-4 text-red-600" />,
 }
 
 export default function ConfiguracionPage() {
