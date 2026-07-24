@@ -543,7 +543,16 @@ function PagosPageContent() {
         return acc
       }, 0)
     : 0
-  const saldoPendiente = montoTotal > 0 ? montoTotal - totalPagos : 0
+  // La seña se cobra al firmar el contrato y cubre un porcentaje del total, pero
+  // no figura en la lista de "pagos" (esos son solo las cuotas). Para que la barra
+  // de progreso y el saldo reflejen la realidad, la sumamos como monto ya cubierto.
+  // NO afecta el cálculo de cuotas (montoPorCuota / cuotasRestantes usan el plan).
+  const montoSenaPlan =
+    selectedEvento?.planDeCuotas?.modalidadPago === "sena"
+      ? selectedEvento.planDeCuotas.montoSena || 0
+      : 0
+  const totalCubierto = totalPagos + montoSenaPlan
+  const saldoPendiente = montoTotal > 0 ? montoTotal - totalCubierto : 0
   const cuotasPagadas = selectedEvento ? (selectedEvento.pagos || []).length : 0
   const cuotasRestantes = Math.max(0, cuotasTotal - cuotasPagadas)
   // Monto real de cada cuota: el del plan guardado en el contrato (incluye
@@ -1121,7 +1130,10 @@ function PagosPageContent() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Total Pagado</p>
-                        <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalPagos)}</p>
+                        <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalCubierto)}</p>
+                        {montoSenaPlan > 0 && (
+                          <p className="text-xs text-muted-foreground">Incluye seña de {formatCurrency(montoSenaPlan)}</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-muted-foreground">Saldo Pendiente</p>
@@ -1140,7 +1152,7 @@ function PagosPageContent() {
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
                         <div
                           className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-                          style={{ width: `${Math.min(100, (totalPagos / montoTotal) * 100)}%` }}
+                          style={{ width: `${Math.min(100, (totalCubierto / montoTotal) * 100)}%` }}
                         />
                       </div>
                     )}
