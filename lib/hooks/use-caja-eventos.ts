@@ -395,11 +395,11 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
     egresosPendientes.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))
 
     // ----------------------------------------------------------
-    // 4. PROYECCIÓN MENSUAL (próximos 6 meses incluyendo el actual)
+    // 4. PROYECCIÓN MENSUAL (próximos 12 meses incluyendo el actual)
     // ----------------------------------------------------------
     const meses: MesProyeccion[] = []
     const indexPorKey: Record<string, number> = {}
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 12; i++) {
       const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1)
       const key = mesKey(d)
       indexPorKey[key] = meses.length

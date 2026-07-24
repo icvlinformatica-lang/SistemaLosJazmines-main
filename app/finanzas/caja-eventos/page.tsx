@@ -919,7 +919,7 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
-            Proyección en 6 meses:
+            Proyección en 12 meses:
           </CardTitle>
         </CardHeader>
         <CardContent className="px-0">

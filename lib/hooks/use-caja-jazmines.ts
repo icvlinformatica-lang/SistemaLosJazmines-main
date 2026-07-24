@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import type { AppState, CostoOperativo, MovimientoCaja, RegistroMonto } from "../store"
 import { salonLabel } from "../store"
+import { calcularProporcionCajaEventos } from "../cobrar-cuota"
 
 // ============================================================
 // Tipos de salida
@@ -63,7 +64,16 @@ export interface CuotaPorCobrar {
   fechaVencimiento: string
   diasRestantes: number
   montoCuota: number // cuota completa
-  montoJazmines: number // 50% que va a Caja Jazmines
+  montoJazmines: number // parte que va a Caja Jazmines según la regla del evento
+}
+
+export interface MesProyeccionJaz {
+  key: string // YYYY-MM
+  label: string // "junio 2026"
+  aCobrar: number
+  aPagar: number
+  balance: number
+  esActual: boolean
 }
 
 export interface CajaJazminData {
@@ -78,6 +88,10 @@ export interface CajaJazminData {
   ingresosProyectados30Dias: number
   /** Todas las cuotas pendientes de cobro (para marcarlas como cobradas) */
   cuotasPorCobrar: CuotaPorCobrar[]
+  /** Proyección mes a mes (12 meses): parte Jazmines de cuotas vs gastos fijos+variables */
+  proyeccionMensual: MesProyeccionJaz[]
+  /** Estimado de gastos fijos a pagar el mes que viene (mensuales + sueldos + anuales que venzan) */
+  gastosFijosProximoMes: number
 }
 
 // ============================================================
@@ -351,9 +365,16 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     alertasVencimiento.sort((a, b) => a.diasRestantes - b.diasRestantes)
 
     // ----------------------------------------------------------
-    // 3. INGRESOS PROYECTADOS a 30 días (50% de cuotas pendientes)
+    // 3. INGRESOS PROYECTADOS a 30 días (parte Jazmines de cuotas pendientes,
+    //    según la regla del evento: resto después de costo+5%, o 50/50 legado)
     //    + lista completa de cuotas por cobrar (para marcarlas cobradas)
     // ----------------------------------------------------------
+    const datosCostos = {
+      insumos: state.insumos || [],
+      insumosBarra: state.insumosBarra || [],
+      recetas: state.recetas || [],
+      cocteles: state.cocteles || [],
+    }
     let ingresosProyectados30Dias = 0
     const cuotasPorCobrar: CuotaPorCobrar[] = []
 
@@ -365,6 +386,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       const cuotas = plan.cuotas ?? []
       const cuotasPagadasArr = plan.cuotasPagadas ?? []
       const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
+      // Proporción de cada cobro que va a Jazmines = 1 − proporción de Eventos.
+      const propJazmines = 1 - calcularProporcionCajaEventos(evento, datosCostos)
 
       for (const cuota of cuotas) {
         if (cuota.pagada) continue
@@ -373,7 +396,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
 
         const fechaVenc = parseLocalDate(cuota.fechaVencimiento)
         if (fechaVenc >= hoy && fechaVenc <= en30Dias) {
-          ingresosProyectados30Dias += cuota.montoCuota / 2
+          ingresosProyectados30Dias += cuota.montoCuota * propJazmines
         }
 
         cuotasPorCobrar.push({
@@ -386,7 +409,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           fechaVencimiento: cuota.fechaVencimiento,
           diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
           montoCuota: cuota.montoCuota,
-          montoJazmines: cuota.montoCuota / 2,
+          montoJazmines: cuota.montoCuota * propJazmines,
         })
       }
     }
@@ -466,6 +489,76 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
 
     gastosVariables.sort((a, b) => a.fecha.localeCompare(b.fecha))
 
+    // ----------------------------------------------------------
+    // 6. PROYECCIÓN MENSUAL (próximos 12 meses incluyendo el actual)
+    //    A cobrar: parte Jazmines de las cuotas pendientes por mes.
+    //    A pagar: fijos mensuales recurrentes + sueldos + anuales en su mes
+    //    + variables agendados en su mes.
+    // ----------------------------------------------------------
+    const mesKeyJaz = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const mesLabelJaz = (d: Date) => d.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+    const mesActualKeyJaz = mesKeyJaz(hoy)
+
+    // Recurrentes de todos los meses: fijos mensuales activos + sueldos de vendedores
+    const totalFijosMensuales = costosFijos
+      .filter((c) => c.frecuencia === "Mensual")
+      .reduce((s, c) => s + c.monto, 0)
+    const totalSueldosVendedores = !salonSel
+      ? (state.vendedores || []).reduce((s, v) => s + (v.sueldo && v.sueldo > 0 ? v.sueldo : 0), 0)
+      : 0
+    const recurrenteMensual = totalFijosMensuales + totalSueldosVendedores
+
+    const proyeccionMensual: MesProyeccionJaz[] = []
+    const idxPorKeyJaz: Record<string, number> = {}
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1)
+      const key = mesKeyJaz(d)
+      idxPorKeyJaz[key] = proyeccionMensual.length
+      proyeccionMensual.push({
+        key,
+        label: mesLabelJaz(d),
+        aCobrar: 0,
+        aPagar: recurrenteMensual,
+        balance: 0,
+        esActual: key === mesActualKeyJaz,
+      })
+    }
+
+    // A cobrar: cuotas pendientes (parte Jazmines) en su mes de vencimiento
+    for (const c of cuotasPorCobrar) {
+      const idx = idxPorKeyJaz[c.fechaVencimiento.slice(0, 7)]
+      if (idx !== undefined) proyeccionMensual[idx].aCobrar += c.montoJazmines
+    }
+    // Fijos anuales: pegan solo en el mes de su vencimiento (cada año dentro de la ventana)
+    for (const c of costosFijos) {
+      if (c.frecuencia !== "Anual" || !c.fechaVencimiento) continue
+      const [, mm] = c.fechaVencimiento.split("-").map(Number)
+      for (const mes of proyeccionMensual) {
+        if (Number(mes.key.slice(5, 7)) === mm) mes.aPagar += c.monto
+      }
+    }
+    // Variables agendados no pagados: en su mes de vencimiento
+    for (const c of costosVariablesStore) {
+      if (c.pagado || !c.fechaVencimiento) continue
+      const idx = idxPorKeyJaz[c.fechaVencimiento.slice(0, 7)]
+      if (idx !== undefined) proyeccionMensual[idx].aPagar += c.monto
+    }
+    proyeccionMensual.forEach((m) => {
+      m.balance = m.aCobrar - m.aPagar
+    })
+
+    // Estimado de gastos fijos del MES QUE VIENE (tarjeta "a pagar de servicios"):
+    // el aPagar del segundo mes de la proyección, sin los variables agendados
+    // (solo fijos mensuales + sueldos + anuales que venzan ese mes).
+    const mesProximo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)
+    const mesProximoKey = mesKeyJaz(mesProximo)
+    let gastosFijosProximoMes = recurrenteMensual
+    for (const c of costosFijos) {
+      if (c.frecuencia !== "Anual" || !c.fechaVencimiento) continue
+      const [, mm] = c.fechaVencimiento.split("-").map(Number)
+      if (Number(mesProximoKey.slice(5, 7)) === mm) gastosFijosProximoMes += c.monto
+    }
+
     return {
       saldoActual,
       gastosPróximos30Dias,
@@ -476,6 +569,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       gastosVariables,
       ingresosProyectados30Dias,
       cuotasPorCobrar,
+      proyeccionMensual,
+      gastosFijosProximoMes,
     }
-  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, state.vendedores, salonFiltro, ahoraMs])
+  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, state.vendedores, state.insumos, state.insumosBarra, state.recetas, state.cocteles, salonFiltro, ahoraMs])
 }
