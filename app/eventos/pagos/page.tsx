@@ -16,6 +16,7 @@ import {
   type HistorialIPCEntry,
 } from "@/lib/store"
 import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
+import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
 import { ContratoPanel } from "@/components/contrato-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -401,14 +402,22 @@ function PagosPageContent() {
       ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
     })
 
-    // Generar los movimientos de caja del ingreso (50% Caja Eventos + 50% Caja Jazmines).
-    // Antes solo se hacía desde los recordatorios de cuotas, por lo que un pago
-    // registrado desde este diálogo no aparecía en las cajas.
+    // Generar los movimientos de caja del ingreso, repartidos según la regla del
+    // evento: nuevos -> costo del evento + 5% a Caja Eventos y el resto a Caja
+    // Jazmines (proporcional en cada pago, costo recalculado en vivo); previos -> 50/50.
     if (selectedEvento.salon && pagoForm.monto > 0) {
       const nombreEvento = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
       const etiquetaCuota = cuotaPagadaNumero ? `Cuota ${cuotaPagadaNumero}` : "Pago"
-      const mitadEventos = Math.round((pagoForm.monto / 2) * 100) / 100
-      const mitadJazmines = Math.round((pagoForm.monto - mitadEventos) * 100) / 100
+      const proporcionEventos = calcularProporcionCajaEventos(selectedEvento, {
+        insumos: state.insumos || [],
+        insumosBarra: state.insumosBarra || [],
+        recetas: state.recetas || [],
+        cocteles: state.cocteles || [],
+      })
+      const { montoEventos: mitadEventos, montoJazmines: mitadJazmines } = repartirEntreCajas(
+        pagoForm.monto,
+        proporcionEventos,
+      )
       // Usar la fecha real de cobro elegida en el formulario (no la fecha de hoy),
       // así los pagos de cuotas atrasadas quedan asentados en el mes correcto.
       // Se fija el mediodía para evitar corrimientos de día por zona horaria.
@@ -454,7 +463,7 @@ function PagosPageContent() {
     logMoneyActivity(
       "creado",
       `${etiquetaLog} - ${nombreEventoLog}`,
-      `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""}${selectedEvento.salon ? ` | Ingreso dividido 50/50 en Caja Eventos y Caja Jazmines` : ""}`,
+      `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
     )
 
     setMontoCuotaBase(0)

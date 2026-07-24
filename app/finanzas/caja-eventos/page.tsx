@@ -358,7 +358,8 @@ export default function CajaEventosPage() {
   const { toast } = useToast()
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
-  // "por cobrar" y genera el ingreso 50/50 a Caja Eventos y Caja Jazmines,
+  // "por cobrar" y genera el ingreso repartido entre Caja Eventos y Caja Jazmines
+  // según la regla del evento (nuevos: costo + 5% a Eventos; previos: 50/50),
   // datado en la fecha de vencimiento de la cuota.
   function confirmarCobroCuota(ing: IngresoPendiente) {
     const evento = state.eventos?.find((e) => e.id === ing.eventoId) as EventoGuardado | undefined
@@ -369,6 +370,12 @@ export default function CajaEventosPage() {
       ing.montoTotal,
       ing.fechaVencimiento,
       state.movimientosCaja || [],
+      {
+        insumos: state.insumos || [],
+        insumosBarra: state.insumosBarra || [],
+        recetas: state.recetas || [],
+        cocteles: state.cocteles || [],
+      },
     )
     if (yaCobrada) {
       toast({ title: "Esta cuota ya figura como cobrada." })

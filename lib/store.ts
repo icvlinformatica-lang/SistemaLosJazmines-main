@@ -198,10 +198,18 @@ export interface Evento {
     montoSena?: number
     porcentajeRecargo?: number
     porcentajeIPC?: number
-    // Si es true (o undefined = default), las cuotas restantes se ajustan cada mes por IPC.
-    // Si es false, las cuotas son fijas y nunca se modifican por inflación.
-    ajustaPorIPC?: boolean
-    cuotas?: Array<{
+  // Si es true (o undefined = default), las cuotas restantes se ajustan cada mes por IPC.
+  // Si es false, las cuotas son fijas y nunca se modifican por inflación.
+  ajustaPorIPC?: boolean
+  /**
+   * Regla de división de cada cobro entre las cajas:
+   * - "costo_mas_5": a Caja Eventos va solo el costo del evento + 5% (proporcional
+   *   en cada pago); el resto va a Caja Jazmines. Eventos creados desde el
+   *   planificador a partir de esta regla.
+   * - undefined / "50_50": reparto histórico 50/50 (eventos previos).
+   */
+  repartoCajas?: "50_50" | "costo_mas_5"
+  cuotas?: Array<{
       numero: number
       montoCuota: number
       fechaVencimiento?: string

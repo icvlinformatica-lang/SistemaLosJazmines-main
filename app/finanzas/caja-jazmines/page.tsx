@@ -731,7 +731,8 @@ export default function CajaJazminePage() {
   }
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): genera el
-  // ingreso 50/50 a Caja Eventos y Caja Jazmines, datado en el vencimiento.
+  // ingreso repartido entre Caja Eventos y Caja Jazmines según la regla del
+  // evento (nuevos: costo + 5% a Eventos; previos: 50/50), datado en el vencimiento.
   function confirmarCobroCuota(cuota: CuotaPorCobrar) {
     const evento = state.eventos?.find((e) => e.id === cuota.eventoId) as EventoGuardado | undefined
     if (!evento) return
@@ -741,6 +742,12 @@ export default function CajaJazminePage() {
       cuota.montoCuota,
       cuota.fechaVencimiento,
       state.movimientosCaja || [],
+      {
+        insumos: state.insumos || [],
+        insumosBarra: state.insumosBarra || [],
+        recetas: state.recetas || [],
+        cocteles: state.cocteles || [],
+      },
     )
     if (yaCobrada) {
       toast({ title: "Esta cuota ya figura como cobrada." })
