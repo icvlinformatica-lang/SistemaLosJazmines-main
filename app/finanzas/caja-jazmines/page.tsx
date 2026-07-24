@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -877,6 +878,8 @@ export default function CajaJazminePage() {
     gastosVariables: gastosVariablesCombinados,
     ingresosProyectados30Dias,
     cuotasPorCobrar,
+    proyeccionMensual,
+    gastosFijosProximoMes,
   } = data
 
   // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
@@ -1379,7 +1382,7 @@ export default function CajaJazminePage() {
                   </p>
                   {cuotasSemanaJazCount > 0 ? (
                     <p className="text-sm font-semibold text-emerald-700 mt-1">
-                      {cuotasSemanaJazCount} {cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (50%)
+                      {cuotasSemanaJazCount} {cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (parte Jazmines)
                     </p>
                   ) : (
                     <p className="text-xs text-emerald-700/70 mt-1">Sin cuotas esta semana</p>
@@ -1424,6 +1427,80 @@ export default function CajaJazminePage() {
           </div>
         </div>
       </div>
+
+      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado de gastos fijos */}
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="pt-5 pb-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                <Receipt className="h-5 w-5 text-amber-700" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">
+                  Servicios a pagar el mes que viene
+                </p>
+                <p className="text-xs text-amber-700/70 mt-0.5">
+                  Estimado de gastos fijos ({tituloProxMes}): mensuales, sueldos y anuales que vencen ese mes.
+                </p>
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-amber-800 shrink-0">
+              {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(gastosFijosProximoMes)}`}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* PROYECCIÓN MENSUAL — tabla a 12 meses */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-teal-600" />
+            Proyección en 12 meses:
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1 text-pretty">
+            A cobrar: la parte de cada cuota que queda para Caja Jazmines después de cubrir el costo del evento + 5%
+            (la ganancia real de cada evento). A pagar: gastos fijos, sueldos y variables agendados. El saldo parte
+            del saldo actual de la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
+          </p>
+        </CardHeader>
+        <CardContent className="px-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-6 font-bold">Mes</TableHead>
+                <TableHead className="text-center font-bold">A cobrar</TableHead>
+                <TableHead className="text-center font-bold">A pagar</TableHead>
+                <TableHead className="text-center font-bold">Balance</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {proyeccionMensual.map((m) => (
+                <TableRow key={m.key} className={m.esActual ? "bg-teal-50/60" : ""}>
+                  <TableCell className="pl-6 capitalize font-medium">
+                    {m.label}
+                    {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
+                  </TableCell>
+                  <TableCell className="text-center text-emerald-700 font-medium">
+                    {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-center text-[var(--accent)] font-medium">
+                    {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
+                  </TableCell>
+                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
+                    {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
+                  </TableCell>
+                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(m.saldoProyectado)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {/* Cuotas por cobrar (izquierda) + Vencimientos (derecha) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
@@ -1951,10 +2028,19 @@ export default function CajaJazminePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{gasto.nombre}</p>
                       {gasto.esComision && gasto.comisionDetalle ? (
-                        <p className="text-xs text-amber-800/80 mt-0.5">
-                          {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
-                          {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
-                        </p>
+                        <>
+                          <p className="text-xs text-amber-800/80 mt-0.5">
+                            {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
+                            {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
+                          </p>
+                          {gasto.listaParaPagar && (
+                            <p className="text-xs text-emerald-700 mt-0.5">
+                              {gasto.motivoLista === "la seña cobrada la cubre"
+                                ? "La seña cobrada ya cubre esta comisión."
+                                : `Ya se pagaron ${gasto.motivoLista}.`}
+                            </p>
+                          )}
+                        </>
                       ) : (
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {formatFecha(gasto.fecha)}
@@ -1966,7 +2052,14 @@ export default function CajaJazminePage() {
                         <span className="text-sm font-bold text-foreground">
                           {formatCurrency(gasto.monto)}
                         </span>
-                        {badgeEstadoVar(gasto.estado)}
+                        {gasto.esComision && gasto.listaParaPagar ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Lista para pagar
+                          </Badge>
+                        ) : (
+                          badgeEstadoVar(gasto.estado)
+                        )}
                       </div>
                       {!gasto.esComision && (<>
                       {/* Toggle pagado */}
@@ -2063,7 +2156,7 @@ export default function CajaJazminePage() {
             {[
               { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
               { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−", colorStyle: { backgroundColor: "#90b203" }, textStyle: { color: "#788224" } },
-              { label: "Ingresos proyectados (50%)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+", textStyle: { color: "#0f7a14" } },
+              { label: "Ingresos proyectados (parte Jazmines)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+", textStyle: { color: "#0f7a14" } },
             ].map(({ label, value, color, textColor, signo, colorStyle, textStyle }) => {
               const pct = Math.round((value / barMax) * 100)
               return (
@@ -2353,7 +2446,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ─────��──────────────────────────── */}
+      {/* ── Dialog: Agendar gasto variable ─────��───────────────────��──────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -2476,8 +2569,9 @@ export default function CajaJazminePage() {
                   </span>
                 </div>
                 <p className="text-xs text-emerald-700/80">
-                  Se reparte 50% a Caja Eventos ({formatCurrency(cuotaSel.montoJazmines)}) y 50% a Caja Jazmines (
-                  {formatCurrency(cuotaSel.montoJazmines)}).
+                  Se reparte según la regla del evento: {formatCurrency(cuotaSel.montoCuota - cuotaSel.montoJazmines)}{" "}
+                  a Caja Eventos (proporcional del costo del evento + 5%) y {formatCurrency(cuotaSel.montoJazmines)} a
+                  Caja Jazmines (el resto).
                 </p>
               </div>
 

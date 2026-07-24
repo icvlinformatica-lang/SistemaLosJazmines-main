@@ -63,6 +63,8 @@ export interface MesProyeccion {
   aCobrar: number
   aPagar: number
   balance: number
+  /** Saldo acumulado: saldo actual de la caja + balances de los meses hasta este inclusive */
+  saldoProyectado: number
   esActual: boolean
 }
 
@@ -296,7 +298,9 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       for (const pp of compromisosEvento) {
         const montoPendiente = pp.montoTotal - (pp.montoSeña || 0)
         if (montoPendiente <= 0) continue
-        const fechaVenc = pp.fechaLimitePago || pp.fechaEvento || evento.fecha
+        // Prioridad: fecha límite editada > fecha ACTUAL del evento (en vivo,
+        // por si se reprogramó) > foto de la fecha guardada en el compromiso.
+        const fechaVenc = pp.fechaLimitePago || evento.fecha || pp.fechaEvento
         if (!fechaVenc) continue
         const fechaVencDate = parseLocalDate(fechaVenc)
         egresosPendientes.push({
@@ -346,13 +350,34 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       for (const srv of serviciosEvento) {
         const estadoPago = srv.estadoPago ?? "sin_seña"
 
+        // Vencimientos EN VIVO según la fecha ACTUAL del evento:
+        // si se reprograma el evento, la seña y el saldo se corren solos
+        // (fecha del evento − días de anticipación del catálogo).
+        // Prioridad: override manual > cálculo en vivo > foto guardada.
+        const catalogoSrv = (state.servicios || []).find((s) => s.id === srv.servicioId)
+        const toYMDLocal = (d: Date) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+        let fechaSeñaLive: string | undefined
+        let fechaSaldoLive: string | undefined
+        if (evento.fecha) {
+          const fechaEvento = parseLocalDate(evento.fecha)
+          const dSeña = new Date(fechaEvento)
+          dSeña.setDate(fechaEvento.getDate() - (catalogoSrv?.diasAnticipacionSeña ?? 30))
+          fechaSeñaLive = toYMDLocal(dSeña)
+          const dSaldo = new Date(fechaEvento)
+          dSaldo.setDate(fechaEvento.getDate() - (catalogoSrv?.diasAnticipacionSaldo ?? 7))
+          fechaSaldoLive = toYMDLocal(dSaldo)
+        }
+        const fechaSeñaFinal = srv.fechaSeñaManual || fechaSeñaLive || srv.fechaSeña
+        const fechaSaldoFinal = srv.fechaSaldoManual || fechaSaldoLive || srv.fechaLimitePago
+
         if (
           estadoPago === "sin_seña" &&
           srv.montoSeña &&
           srv.montoSeña > 0 &&
-          srv.fechaSeña
+          fechaSeñaFinal
         ) {
-          const fechaVenc = parseLocalDate(srv.fechaSeña)
+          const fechaVenc = parseLocalDate(fechaSeñaFinal)
           egresosPendientes.push({
             id: `${evento.id}-${srv.servicioId}-seña`,
             eventoId: evento.id,
@@ -362,7 +387,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             servicioId: srv.servicioId,
             tipo: "seña",
             monto: srv.montoSeña,
-            fechaVencimiento: srv.fechaSeña,
+            fechaVencimiento: fechaSeñaFinal,
             diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
             estadoPago,
           })
@@ -372,9 +397,9 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           estadoPago !== "pagado_total" &&
           srv.saldoPendiente &&
           srv.saldoPendiente > 0 &&
-          srv.fechaLimitePago
+          fechaSaldoFinal
         ) {
-          const fechaVenc = parseLocalDate(srv.fechaLimitePago)
+          const fechaVenc = parseLocalDate(fechaSaldoFinal)
           egresosPendientes.push({
             id: `${evento.id}-${srv.servicioId}-saldo`,
             eventoId: evento.id,
@@ -384,7 +409,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             servicioId: srv.servicioId,
             tipo: "saldo",
             monto: srv.saldoPendiente,
-            fechaVencimiento: srv.fechaLimitePago,
+            fechaVencimiento: fechaSaldoFinal,
             diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
             estadoPago,
           })
@@ -395,11 +420,11 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
     egresosPendientes.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))
 
     // ----------------------------------------------------------
-    // 4. PROYECCIÓN MENSUAL (próximos 6 meses incluyendo el actual)
+    // 4. PROYECCIÓN MENSUAL (próximos 12 meses incluyendo el actual)
     // ----------------------------------------------------------
     const meses: MesProyeccion[] = []
     const indexPorKey: Record<string, number> = {}
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 12; i++) {
       const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1)
       const key = mesKey(d)
       indexPorKey[key] = meses.length
@@ -409,6 +434,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         aCobrar: 0,
         aPagar: 0,
         balance: 0,
+        saldoProyectado: 0,
         esActual: key === mesActualKey,
       })
     }
@@ -423,8 +449,13 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       const idx = indexPorKey[key]
       if (idx !== undefined) meses[idx].aPagar += eg.monto
     }
+    // Balance de cada mes + saldo acumulado partiendo del saldo ACTUAL de la
+    // caja: si se extrae/ingresa dinero hoy, toda la proyección se corre sola.
+    let saldoAcumulado = saldoActual
     meses.forEach((m) => {
       m.balance = m.aCobrar - m.aPagar
+      saldoAcumulado += m.balance
+      m.saldoProyectado = saldoAcumulado
     })
 
     const porCobrarEsteMes = meses[0]?.aCobrar ?? 0
@@ -502,5 +533,5 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       totalPorPagar,
       mesActualLabel,
     }
-  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra, salonFiltro, ahoraMs])
+  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra, state.recetas, state.insumos, state.servicios, state.pagosPersonal, salonFiltro, ahoraMs])
 }

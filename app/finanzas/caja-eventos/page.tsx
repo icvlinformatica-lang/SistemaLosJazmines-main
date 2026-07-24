@@ -40,6 +40,7 @@ import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
+import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
   EgresoPendienteServicio,
   IngresoPendiente,
@@ -99,7 +100,13 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
   const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal } =
-    useStore()
+useStore()
+
+  // Sincronización constante: refresca eventos (fechas), servicios y precios
+  // cada 15s y al volver a la pestaña, para que "Por pagar" siempre refleje
+  // las fechas actuales de los eventos (si se reprograma uno, los vencimientos
+  // se corren solos).
+  useSyncTiempoReal()
 
   // Ids de pagos ya archivados (para ocultarlos del historial activo sin tocar el saldo)
   const pagosArchivadosIds = new Set(
@@ -277,13 +284,17 @@ export default function CajaEventosPage() {
         )
         updateEvento(evento.id, { personalEvento })
       } else if (eg.tipo === "seña" && eg.servicioId) {
+        // Override manual: tiene prioridad sobre el cálculo automático en vivo
+        // (que corre la fecha si el evento se reprograma).
         const servicios = (evento.servicios || []).map((s) =>
-          s.servicioId === eg.servicioId ? { ...s, fechaSeña: nuevaFechaVenc } : s,
+          s.servicioId === eg.servicioId ? { ...s, fechaSeñaManual: nuevaFechaVenc, fechaSeña: nuevaFechaVenc } : s,
         )
         updateEvento(evento.id, { servicios })
       } else if (eg.servicioId) {
         const servicios = (evento.servicios || []).map((s) =>
-          s.servicioId === eg.servicioId ? { ...s, fechaLimitePago: nuevaFechaVenc } : s,
+          s.servicioId === eg.servicioId
+            ? { ...s, fechaSaldoManual: nuevaFechaVenc, fechaLimitePago: nuevaFechaVenc }
+            : s,
         )
         updateEvento(evento.id, { servicios })
       } else {
@@ -919,8 +930,13 @@ export default function CajaEventosPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
-            Proyección en 6 meses:
+            Proyección en 12 meses:
           </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1 text-pretty">
+            A cobrar: solo la parte de cada cuota destinada a cubrir el costo del evento + 5% (insumos, servicios y
+            personal). A pagar: los pagos a proveedores y personal de cada evento. El saldo parte del saldo actual de
+            la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
+          </p>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
@@ -929,7 +945,8 @@ export default function CajaEventosPage() {
                 <TableHead className="pl-6 font-bold">Mes</TableHead>
                 <TableHead className="text-center font-bold">A cobrar</TableHead>
                 <TableHead className="text-center font-bold">A pagar</TableHead>
-                <TableHead className="text-right pr-6 font-bold">Balance</TableHead>
+                <TableHead className="text-center font-bold">Balance</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -945,8 +962,11 @@ export default function CajaEventosPage() {
                   <TableCell className="text-center text-[var(--accent)] font-medium">
                     {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
                   </TableCell>
-                  <TableCell className={`text-right pr-6 font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
+                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
                     {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
+                  </TableCell>
+                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                    {formatCurrency(m.saldoProyectado)}
                   </TableCell>
                 </TableRow>
               ))}

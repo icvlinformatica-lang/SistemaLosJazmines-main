@@ -260,6 +260,11 @@ function CostosEventoContent() {
   const totalCubierto = pagadoCocina + pagadoBarra + pagadoServicios + pagadoPersonal
   const porcentajeCubierto = costoTotalEvento > 0 ? Math.round((totalCubierto / costoTotalEvento) * 100) : 0
 
+  // Precio de venta del evento (monto total del plan de pago) y proporción
+  // del costo del evento frente a ese precio de venta.
+  const precioVentaEvento = evento.planDeCuotas?.montoTotal ?? 0
+  const proporcionCostoVenta = precioVentaEvento > 0 ? (costoTotalEvento / precioVentaEvento) * 100 : null
+
   const datosGrafico = [
     { key: "cocina", nombre: "Cocina", total: costoCocina, pagado: pagadoCocina },
     { key: "barra", nombre: "Barra", total: costoBarra, pagado: pagadoBarra },
@@ -809,6 +814,23 @@ function CostosEventoContent() {
                     {formatCurrency(costoTotalEvento - totalCubierto)}
                   </span>
                 </div>
+                {precioVentaEvento > 0 && (
+                  <>
+                    <div className="flex items-center justify-between border-t pt-2">
+                      <span className="text-muted-foreground">Vendido en</span>
+                      <span className="font-semibold text-teal-700">{formatCurrency(precioVentaEvento)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Costo / venta</span>
+                      <span className="font-semibold">
+                        {proporcionCostoVenta !== null ? `${proporcionCostoVenta.toFixed(1)}%` : "—"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground/70">
+                      El costo del evento representa el {proporcionCostoVenta?.toFixed(1)}% del precio de venta.
+                    </p>
+                  </>
+                )}
               </div>
               <div className="w-full space-y-1.5 border-t pt-2">
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
