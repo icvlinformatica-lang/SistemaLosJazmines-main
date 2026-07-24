@@ -809,16 +809,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const updateServicio = async (id: string, updates: Partial<Servicio>) => {
-    setState((prev) => ({
-      ...prev,
-      servicios: (prev.servicios || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
-    }))
-    // Sync to Supabase
+    // Capturar el servicio YA MERGEADO dentro del setState para no usar estado
+    // viejo del closure: si el usuario hace dos ediciones seguidas (ej. costo y
+    // después % de seña), la segunda persistía sobre una base desactualizada y
+    // pisaba la primera en Supabase (el precio "volvía" al valor anterior).
+    let merged: Servicio | undefined
+    setState((prev) => {
+      const servicios = (prev.servicios || []).map((s) => {
+        if (s.id !== id) return s
+        merged = { ...s, ...updates }
+        return merged
+      })
+      return { ...prev, servicios }
+    })
+    // Sync to Supabase con el registro completo ya actualizado
     try {
-      const existing = state.servicios?.find(s => s.id === id)
-      if (existing) {
+      if (merged) {
         const { upsertServicio } = await import("./supabase/data-service")
-        await upsertServicio({ ...existing, ...updates })
+        await upsertServicio(merged)
       }
     } catch (error) {
       console.error("[v0] Error syncing servicio update to Supabase:", error)
