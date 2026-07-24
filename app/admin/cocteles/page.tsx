@@ -10,6 +10,8 @@ import {
   type CategoriaCoctel,
   getCompatibleRecipeUnits,
   getDefaultRecipeUnit,
+  normalizeToStockUnit,
+  formatCurrency,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -148,6 +150,20 @@ export default function CoctelesPage() {
 
   const getInsumoBarraById = (id: string) => state.insumosBarra.find((i) => i.id === id)
 
+  // Insumos de barra SIEMPRE en orden alfabético para los selectores
+  const insumosBarraOrdenados = [...state.insumosBarra].sort((a, b) =>
+    a.descripcion.localeCompare(b.descripcion, "es", { sensitivity: "base" }),
+  )
+
+  // Costo del coctel por persona: suma de (cantidad convertida a unidad de stock) x precio unitario de cada insumo
+  const getCostoCoctel = (coctel: Coctel) =>
+    coctel.insumos.reduce((total, ing) => {
+      const insumo = getInsumoBarraById(ing.insumoBarraId)
+      if (!insumo) return total
+      const qtyEnStock = normalizeToStockUnit(ing.cantidadPorCoctel, ing.unidadCoctel, insumo.unidad)
+      return total + qtyEnStock * (insumo.precioUnitario || 0)
+    }, 0)
+
   // --- Convertir un insumo de barra en un coctel (para que aparezca en el evento) ---
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false)
   const [convertInsumoId, setConvertInsumoId] = useState("")
@@ -230,7 +246,7 @@ export default function CoctelesPage() {
                         <SelectValue placeholder="Elegí un insumo..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {state.insumosBarra.map((i) => (
+                        {insumosBarraOrdenados.map((i) => (
                           <SelectItem key={i.id} value={i.id}>
                             {i.descripcion} ({i.categoria})
                           </SelectItem>
@@ -393,7 +409,7 @@ export default function CoctelesPage() {
                               <SelectValue placeholder="Seleccionar insumo..." />
                             </SelectTrigger>
                             <SelectContent>
-                              {state.insumosBarra.map((insumo) => (
+                              {insumosBarraOrdenados.map((insumo) => (
                                 <SelectItem key={insumo.id} value={insumo.id}>
                                   {insumo.descripcion} ({insumo.unidad})
                                 </SelectItem>
@@ -507,13 +523,20 @@ export default function CoctelesPage() {
                     : "border-border hover:bg-muted/50",
                 )}
               >
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">{coctel.nombre}</p>
-                  {(coctel.categoria || "Con Alcohol") === "Sin Alcohol" && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Sin Alcohol</Badge>
-                  )}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="font-medium truncate">{coctel.nombre}</p>
+                    {(coctel.categoria || "Con Alcohol") === "Sin Alcohol" && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Sin Alcohol</Badge>
+                    )}
+                  </div>
+                  <span className="text-sm font-semibold text-teal-600 tabular-nums shrink-0">
+                    {formatCurrency(getCostoCoctel(coctel))}
+                  </span>
                 </div>
-                <p className="text-sm text-muted-foreground">{coctel.insumos.length} insumos</p>
+                <p className="text-sm text-muted-foreground">
+                  {coctel.insumos.length} insumos · costo por persona
+                </p>
               </button>
             ))}
             {filteredCocteles.length === 0 && (
@@ -535,6 +558,9 @@ export default function CoctelesPage() {
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant={(selectedCoctel.categoria || "Con Alcohol") === "Sin Alcohol" ? "secondary" : "outline"}>
                           {selectedCoctel.categoria || "Con Alcohol"}
+                        </Badge>
+                        <Badge className="bg-teal-100 text-teal-700 border-teal-200 tabular-nums">
+                          {formatCurrency(getCostoCoctel(selectedCoctel))} por persona
                         </Badge>
                       </div>
                       <CardDescription className="mt-1">{selectedCoctel.descripcion}</CardDescription>
