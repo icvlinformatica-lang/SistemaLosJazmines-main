@@ -120,6 +120,10 @@ function fromRow(r: Record<string, any>) {
     barraPagada: r.barra_pagada ?? false,
     fechaPagoMenu: r.fecha_pago_menu ?? undefined,
     fechaPagoBarra: r.fecha_pago_barra ?? undefined,
+    comisionPagada: r.comision_pagada ?? false,
+    comisionPagadaFecha: r.comision_pagada_fecha
+      ? new Date(r.comision_pagada_fecha).toISOString().slice(0, 10)
+      : undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -150,7 +154,7 @@ export async function GET() {
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, created_at, updated_at,
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos
       WHERE deleted_at IS NULL

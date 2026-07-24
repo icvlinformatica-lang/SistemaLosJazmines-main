@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Calendar, Percent, Banknote, ChevronDown, ChevronUp, UserCheck, Eye, EyeOff, TrendingUp } from "lucide-react"
+import { ArrowLeft, Calendar, Percent, Banknote, ChevronDown, ChevronUp, UserCheck, Eye, EyeOff, TrendingUp, BadgeCheck } from "lucide-react"
 
 // Emojis disponibles como foto de perfil
 const EMOJIS_PERFIL = [
@@ -301,6 +301,16 @@ function VendedorCard({
                         <p className="text-xs text-teal-700 tabular-nums">
                           Comisión: {monto((total * pct) / 100)}
                         </p>
+                        {e.comisionPagada ? (
+                          <Badge className="mt-1 bg-teal-100 text-teal-700 border-teal-200 text-[10px] gap-1">
+                            <BadgeCheck className="h-3 w-3" />
+                            Pagada{e.comisionPagadaFecha ? ` el ${formatFecha(e.comisionPagadaFecha)}` : ""}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="mt-1 text-[10px] text-muted-foreground">
+                            Comisión pendiente
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   )

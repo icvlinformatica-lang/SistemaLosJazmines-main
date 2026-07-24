@@ -51,6 +51,8 @@ export interface GastoVariable {
     eventoNombre: string
     totalEvento: number
     porcentaje: number
+    /** ID del evento para poder marcar la comisión como pagada */
+    eventoId: string
   }
   /**
    * Solo comisiones: true si ya se puede pagar. Se cumple cuando el evento
@@ -72,6 +74,21 @@ export interface CuotaPorCobrar {
   diasRestantes: number
   montoCuota: number // cuota completa
   montoJazmines: number // parte que va a Caja Jazmines según la regla del evento
+}
+
+/** Estimación por servicio de cuánto se pagará el mes que viene, según el historial de montos. */
+export interface EstimacionProximoMes {
+  id: string
+  concepto: string
+  /** Último monto pagado / vigente del servicio */
+  montoActual: number
+  /** Monto estimado para el mes próximo (montoActual + tendencia de aumentos) */
+  estimado: number
+  /** Variación % promedio aplicada (últimos aumentos registrados) */
+  variacionPct: number
+  /** Cantidad de registros históricos del servicio */
+  registros: number
+  tipo: "mensual" | "sueldos" | "anual"
 }
 
 export interface MesProyeccionJaz {
@@ -101,6 +118,8 @@ export interface CajaJazminData {
   proyeccionMensual: MesProyeccionJaz[]
   /** Estimado de gastos fijos a pagar el mes que viene (mensuales + sueldos + anuales que venzan) */
   gastosFijosProximoMes: number
+  /** Desglose por servicio del estimado del mes que viene, según el historial de montos pagados */
+  estimacionesProximoMes: EstimacionProximoMes[]
 }
 
 // ============================================================
@@ -512,13 +531,14 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         salon: evento.salon || "",
         fecha: evento.fecha || "",
         monto: montoComision,
-        estado: "pendiente",
+        estado: evento.comisionPagada ? "pagado" : "pendiente",
         esComision: true,
         comisionDetalle: {
           vendedor: vendedor.nombre,
           eventoNombre,
           totalEvento,
           porcentaje: vendedor.comisionPct,
+          eventoId: evento.id,
         },
         listaParaPagar,
         motivoLista,
@@ -591,17 +611,67 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       m.saldoProyectado = saldoAcumuladoJaz
     })
 
-    // Estimado de gastos fijos del MES QUE VIENE (tarjeta "a pagar de servicios"):
-    // el aPagar del segundo mes de la proyección, sin los variables agendados
-    // (solo fijos mensuales + sueldos + anuales que venzan ese mes).
+    // Estimado de gastos fijos del MES QUE VIENE (tarjeta "a pagar de servicios").
+    // Se calcula servicio por servicio usando el HISTORIAL de montos pagados
+    // (registrados en "Registrar monto pagado"): el último monto pagado se
+    // proyecta con el promedio de los últimos aumentos de ese servicio.
     const mesProximo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)
     const mesProximoKey = mesKeyJaz(mesProximo)
-    let gastosFijosProximoMes = recurrenteMensual
+    const estimacionesProximoMes: EstimacionProximoMes[] = []
+    let gastosFijosProximoMes = 0
+    for (const c of costosFijos) {
+      if (c.frecuencia !== "Mensual") continue
+      const hist = (c.historialMontos || []).slice().sort((a, b) => a.mes.localeCompare(b.mes))
+      // Variaciones % entre pagos consecutivos registrados (solo cambios reales)
+      const cambios: number[] = []
+      for (let i = 1; i < hist.length; i++) {
+        const prev = hist[i - 1].monto
+        if (prev > 0 && hist[i].monto !== prev) cambios.push((hist[i].monto - prev) / prev)
+      }
+      // Promedio de los últimos 3 aumentos como tendencia del servicio
+      const ultimos = cambios.slice(-3)
+      const variacion = ultimos.length > 0 ? ultimos.reduce((s, x) => s + x, 0) / ultimos.length : 0
+      const estimado = Math.round(c.monto * (1 + variacion))
+      estimacionesProximoMes.push({
+        id: c.id,
+        concepto: c.concepto,
+        montoActual: c.monto,
+        estimado,
+        variacionPct: Math.round(variacion * 1000) / 10,
+        registros: hist.length,
+        tipo: "mensual",
+      })
+      gastosFijosProximoMes += estimado
+    }
+    if (totalSueldosVendedores > 0) {
+      estimacionesProximoMes.push({
+        id: "sueldos-vendedores",
+        concepto: "Sueldos vendedores",
+        montoActual: totalSueldosVendedores,
+        estimado: totalSueldosVendedores,
+        variacionPct: 0,
+        registros: 0,
+        tipo: "sueldos",
+      })
+      gastosFijosProximoMes += totalSueldosVendedores
+    }
     for (const c of costosFijos) {
       if (c.frecuencia !== "Anual" || !c.fechaVencimiento) continue
       const [, mm] = c.fechaVencimiento.split("-").map(Number)
-      if (Number(mesProximoKey.slice(5, 7)) === mm) gastosFijosProximoMes += c.monto
+      if (Number(mesProximoKey.slice(5, 7)) === mm) {
+        estimacionesProximoMes.push({
+          id: c.id,
+          concepto: `${c.concepto} (anual)`,
+          montoActual: c.monto,
+          estimado: c.monto,
+          variacionPct: 0,
+          registros: (c.historialMontos || []).length,
+          tipo: "anual",
+        })
+        gastosFijosProximoMes += c.monto
+      }
     }
+    estimacionesProximoMes.sort((a, b) => b.estimado - a.estimado)
 
     return {
       saldoActual,
@@ -615,6 +685,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       cuotasPorCobrar,
       proyeccionMensual,
       gastosFijosProximoMes,
+      estimacionesProximoMes,
     }
   }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, state.vendedores, state.insumos, state.insumosBarra, state.recetas, state.cocteles, salonFiltro, ahoraMs])
 }

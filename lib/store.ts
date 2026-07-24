@@ -515,6 +515,10 @@ export interface EventoGuardado extends Evento {
   fechaPagoMenu?: string
   /** Fecha de pago de la barra (YYYY-MM-DD). Si no está, se calcula: evento - 14 días */
   fechaPagoBarra?: string
+  /** true si la comisión del vendedor de este evento ya fue pagada */
+  comisionPagada?: boolean
+  /** Fecha (YYYY-MM-DD) en que se pagó la comisión del vendedor */
+  comisionPagadaFecha?: string
 
   // --- Servicios seleccionados para el contrato ---
   /** IDs de servicios del catálogo (/finanzas/servicios) a incluir en el contrato */
@@ -2214,15 +2218,20 @@ export function calcularComprasBarras(
   const comprasMap: Record<string, { cantidadNecesaria: number }> = {}
 
   barras.forEach((barra) => {
-    const personas = evento.adultos + evento.adolescentes
-    const totalTragos = personas * barra.tragosPorPersona
-    const coctelesCount = barra.coctelesIncluidos.length
-    if (coctelesCount === 0) return
-    const tragosPorCoctel = totalTragos / coctelesCount
+    if (barra.coctelesIncluidos.length === 0) return
 
     barra.coctelesIncluidos.forEach((coctelId) => {
       const coctel = cocteles.find((c) => c.id === coctelId)
       if (!coctel) return
+
+      // Regla de cálculo de la barra:
+      // - Cóctel CON alcohol: 1 trago por ADULTO de cada cóctel alcohólico.
+      // - Cóctel SIN alcohol: 1 trago por ADOLESCENTE y NIÑO de cada cóctel sin alcohol.
+      const esSinAlcohol = (coctel.categoria || "Con Alcohol") === "Sin Alcohol"
+      const tragosPorCoctel = esSinAlcohol
+        ? (evento.adolescentes || 0) + (evento.ninos || 0)
+        : evento.adultos || 0
+      if (tragosPorCoctel <= 0) return
 
       coctel.insumos.forEach((insumoCoctel) => {
         const insumo = insumosBarra.find((i) => i.id === insumoCoctel.insumoBarraId)

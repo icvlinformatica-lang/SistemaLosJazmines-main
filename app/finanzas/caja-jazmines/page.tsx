@@ -34,7 +34,7 @@ import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
-import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar } from "@/lib/hooks/use-caja-jazmines"
+import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
 import {
   Building,
   TrendingDown,
@@ -908,6 +908,35 @@ export default function CajaJazminePage() {
     deleteCostoOperativo(gasto.id)
   }
 
+  // ── Marcar comisión de vendedor como pagada / pendiente ─────────────────
+  // Persiste en el evento (comisionPagada), por lo que también se ve en
+  // Eventos → Vendedores. Queda registrado en Configuración → Actividad.
+  function marcarComisionPagada(gasto: GastoVariable, pagada: boolean) {
+    const eventoId = gasto.comisionDetalle?.eventoId
+    if (!eventoId) return
+    const hoyISO = new Date()
+    const fechaCorta = `${hoyISO.getFullYear()}-${String(hoyISO.getMonth() + 1).padStart(2, "0")}-${String(hoyISO.getDate()).padStart(2, "0")}`
+    updateEvento(eventoId, {
+      comisionPagada: pagada,
+      // null (no undefined) para que el PATCH borre la fecha al desmarcar
+      comisionPagadaFecha: (pagada ? fechaCorta : null) as EventoGuardado["comisionPagadaFecha"],
+    })
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "caja",
+        accion: pagada ? "comisión pagada" : "comisión marcada pendiente",
+        nombre: gasto.nombre,
+        detalle: `${formatCurrency(gasto.monto)} (${gasto.comisionDetalle?.porcentaje}% de ${formatCurrency(gasto.comisionDetalle?.totalEvento ?? 0)}) · evento ${gasto.comisionDetalle?.eventoNombre}`,
+      }),
+    }).catch(() => {})
+    toast({
+      title: pagada ? "Comisión pagada" : "Comisión pendiente",
+      description: `${gasto.nombre} · ${formatCurrency(gasto.monto)}`,
+    })
+  }
+
   // ── Pagar directo desde la tarjeta de alertas ──────────────────────────
   // Dispara la animación de desvanecido y, al terminar, archiva el gasto en
   // el Archivo Histórico (fijo: avanza vencimiento / variable: se elimina).
@@ -959,6 +988,7 @@ export default function CajaJazminePage() {
     cuotasPorCobrar,
     proyeccionMensual,
     gastosFijosProximoMes,
+    estimacionesProximoMes,
   } = data
 
   // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
@@ -1133,6 +1163,9 @@ export default function CajaJazminePage() {
     })
     setEditandoFijo(null)
   }
+
+  // ── Detalle expandible de la tarjeta "servicios a pagar el mes que viene" ─
+  const [detalleProxAbierto, setDetalleProxAbierto] = useState(false)
 
   // ── Registro de montos pagados (seguimiento de aumentos) ─────────────────
   const [historialAbierto, setHistorialAbierto] = useState<Record<string, boolean>>({})
@@ -1508,7 +1541,7 @@ export default function CajaJazminePage() {
         </div>
       </div>
 
-      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado de gastos fijos */}
+      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos */}
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="pt-5 pb-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1520,8 +1553,9 @@ export default function CajaJazminePage() {
                 <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">
                   Servicios a pagar el mes que viene
                 </p>
-                <p className="text-xs text-amber-700/70 mt-0.5">
-                  Estimado de gastos fijos ({tituloProxMes}): mensuales, sueldos y anuales que vencen ese mes.
+                <p className="text-xs text-amber-700/70 mt-0.5 text-pretty">
+                  Estimado para {tituloProxMes}, calculado con el último monto pagado de cada servicio (registrado en
+                  &quot;Registrar monto pagado&quot;) más la tendencia de sus últimos aumentos.
                 </p>
               </div>
             </div>
@@ -1529,6 +1563,58 @@ export default function CajaJazminePage() {
               {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
+          {estimacionesProximoMes.length > 0 && (
+            <div className="mt-3">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 transition-colors"
+                onClick={() => setDetalleProxAbierto((v) => !v)}
+                aria-expanded={detalleProxAbierto}
+              >
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detalleProxAbierto ? "rotate-180" : ""}`} />
+                {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
+              </button>
+              {detalleProxAbierto && (
+                <div className="mt-2 divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                  {estimacionesProximoMes.map((est) => (
+                    <div key={est.id} className="flex items-center gap-3 px-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{est.concepto}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {est.tipo === "sueldos"
+                            ? "Sueldos del equipo de ventas"
+                            : est.tipo === "anual"
+                              ? "Vence el mes que viene"
+                              : est.registros >= 2
+                                ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
+                                : est.registros === 1
+                                  ? `Último pagado: ${formatCurrency(est.montoActual)} · 1 pago registrado`
+                                  : "Sin historial: se usa el monto agendado"}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-semibold tabular-nums">
+                          {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
+                        </p>
+                        {est.variacionPct !== 0 && (
+                          <Badge
+                            className={`mt-0.5 text-[10px] tabular-nums ${
+                              est.variacionPct > 0
+                                ? "bg-red-100 text-red-700 border-red-200"
+                                : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                            }`}
+                          >
+                            {est.variacionPct > 0 ? "+" : ""}
+                            {est.variacionPct}% tendencia
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -2113,12 +2199,16 @@ export default function CajaJazminePage() {
                             {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
                             {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
                           </p>
-                          {gasto.listaParaPagar && (
-                            <p className="text-xs text-emerald-700 mt-0.5">
-                              {gasto.motivoLista === "la seña cobrada la cubre"
-                                ? "La seña cobrada ya cubre esta comisión."
-                                : `Ya se pagaron ${gasto.motivoLista}.`}
-                            </p>
+                          {esPagado ? (
+                            <p className="text-xs text-teal-700 mt-0.5">Comisión pagada al vendedor.</p>
+                          ) : (
+                            gasto.listaParaPagar && (
+                              <p className="text-xs text-emerald-700 mt-0.5">
+                                {gasto.motivoLista === "la seña cobrada la cubre"
+                                  ? "La seña cobrada ya cubre esta comisión."
+                                  : `Ya se pagaron ${gasto.motivoLista}.`}
+                              </p>
+                            )
                           )}
                         </>
                       ) : (
@@ -2132,7 +2222,7 @@ export default function CajaJazminePage() {
                         <span className="text-sm font-bold text-foreground">
                           {formatCurrency(gasto.monto)}
                         </span>
-                        {gasto.esComision && gasto.listaParaPagar ? (
+                        {gasto.esComision && gasto.listaParaPagar && !esPagado ? (
                           <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] gap-1">
                             <CheckCircle2 className="h-3 w-3" />
                             Lista para pagar
@@ -2141,6 +2231,24 @@ export default function CajaJazminePage() {
                           badgeEstadoVar(gasto.estado)
                         )}
                       </div>
+                      {gasto.esComision && gasto.comisionDetalle && (
+                        <ConfirmAction
+                          title={esPagado ? "¿Marcar comisión como pendiente?" : "¿Marcar comisión como pagada?"}
+                          description={`${gasto.nombre} · ${formatCurrency(gasto.monto)}. ${esPagado ? "Volverá a figurar como pendiente." : "Quedará registrada como pagada también en Vendedores."}`}
+                          confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagada"}
+                          onConfirm={() => marcarComisionPagada(gasto, !esPagado)}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                            title={esPagado ? "Marcar comisión como pendiente" : "Marcar comisión como pagada"}
+                          >
+                            {esPagado ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                            <span className="sr-only">{esPagado ? "Marcar comisión pendiente" : "Marcar comisión pagada"}</span>
+                          </Button>
+                        </ConfirmAction>
+                      )}
                       {!gasto.esComision && (<>
                       {/* Toggle pagado */}
                       <ConfirmAction
@@ -2274,7 +2382,7 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-      {/* ── Calendario de gastos por salón ─────────────────────────────────── */}
+      {/* ── Calendario de gastos por salón ────────────────���────────────────── */}
       <CalendarioGastosSalones
         fijos={gastosFijosMes}
         cubiertos={gastosFijosCubiertos}
@@ -2526,7 +2634,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ─────��───────────────────��──────── */}
+      {/* ── Dialog: Agendar gasto variable ─────��────────���──────────��──────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
