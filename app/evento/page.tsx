@@ -1595,6 +1595,29 @@ function EventoPageContent() {
             esBloqueado={esBloqueado}
             onToggle={toggleCoctelEvento}
           />
+          <div className="mt-4 rounded-lg border border-violet-200 bg-violet-500/5 px-4 py-3">
+            <p className="text-sm font-medium text-violet-700 flex items-center gap-2">
+              <Wine className="h-4 w-4 shrink-0" />
+              ¿Cómo se calcula el costo de la barra?
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed text-pretty">
+              El costo se obtiene combinando los invitados con los cocteles seleccionados: se calcula{" "}
+              <span className="font-medium text-foreground">1 trago por adulto de cada coctel con alcohol</span> y{" "}
+              <span className="font-medium text-foreground">
+                1 trago por adolescente y niño de cada coctel sin alcohol
+              </span>
+              . Con esas cantidades se suman los insumos de cada receta a precio actual del almacén de barra.
+            </p>
+            {coctelesEventoSeleccionados.length > 0 && (
+              <p className="text-xs mt-2 text-violet-700">
+                {`${evento.adultos || 0} adulto${(evento.adultos || 0) === 1 ? "" : "s"} · ${(evento.adolescentes || 0) + (evento.ninos || 0)} adolescente${(evento.adolescentes || 0) + (evento.ninos || 0) === 1 ? "" : "s"}/niño${(evento.adolescentes || 0) + (evento.ninos || 0) === 1 ? "" : "s"} → costo de barra: `}
+                <span className="font-semibold tabular-nums">
+                  {formatCurrency(comprasBarras.reduce((sum, c) => sum + c.costoMateriaPrima, 0))}
+                </span>
+                {" — este monto se suma automáticamente a los costos del evento."}
+              </p>
+            )}
+          </div>
         </SectionCard>
 
         {/* ==================== PERSONAL DEL EVENTO ==================== */}
