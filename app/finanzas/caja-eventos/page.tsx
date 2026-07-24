@@ -40,6 +40,7 @@ import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
+import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
   EgresoPendienteServicio,
   IngresoPendiente,
@@ -99,7 +100,13 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
   const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal } =
-    useStore()
+useStore()
+
+  // Sincronización constante: refresca eventos (fechas), servicios y precios
+  // cada 15s y al volver a la pestaña, para que "Por pagar" siempre refleje
+  // las fechas actuales de los eventos (si se reprograma uno, los vencimientos
+  // se corren solos).
+  useSyncTiempoReal()
 
   // Ids de pagos ya archivados (para ocultarlos del historial activo sin tocar el saldo)
   const pagosArchivadosIds = new Set(
