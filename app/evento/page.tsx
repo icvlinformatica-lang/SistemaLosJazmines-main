@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
+import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
 import {
   formatCurrency,
   calcularComprasSegmentadas,
@@ -544,7 +545,8 @@ function EventoPageContent() {
 
         // Generar el detalle de cuotas con fechas de vencimiento.
         // Esto es lo que consumen las cajas (caja_eventos / caja_jazmines) para
-        // proyectar ingresos: cada cuota se divide 50/50 entre ambas cajas.
+        // proyectar ingresos: cada cuota se reparte según la regla del evento
+        // (nuevos: costo + 5% a Eventos y resto a Jazmines; previos: 50/50).
         const [planYear, planMonth, planDay] = (localFechaInicioPlan || new Date().toISOString().split("T")[0])
           .split("-")
           .map(Number)
@@ -583,6 +585,11 @@ function EventoPageContent() {
           porcentajeRecargo: recargoEfectivo > 0 ? recargoEfectivo : undefined,
           // IPC solo cuando corresponde (Seña+Cuotas siempre; Solo Cuotas si se eligió IPC)
           ajustaPorIPC: usaIPC,
+          // División de cajas: los eventos NUEVOS usan la regla "costo del evento
+          // + 5% a Caja Eventos, el resto a Caja Jazmines" (prorrateada en cada
+          // pago). Al editar un evento existente se conserva su regla original
+          // para no cambiar el reparto de cuotas ya en curso.
+          repartoCajas: isEditing ? evento.planDeCuotas?.repartoCajas : ("costo_mas_5" as const),
           cuotas: cuotasDetalle,
         }
       })() : undefined,
@@ -711,7 +718,9 @@ function EventoPageContent() {
         versionesContrato: [primeraVersion],
       } as any)
 
-      // 2) Registrar automaticamente la seña en las cajas (50/50 entre Caja Eventos y Caja Jazmines)
+      // 2) Registrar automaticamente la seña en las cajas.
+      // Regla nueva (eventos creados desde ahora): a Caja Eventos va solo la parte
+      // proporcional del costo del evento + 5%; el resto va a Caja Jazmines.
       if (localModalidadPago === "sena" && localMontoSena > 0 && eventData.salon) {
         const nombreEvento = eventData.nombrePareja || eventData.nombre || "Evento"
 
@@ -725,7 +734,11 @@ function EventoPageContent() {
           nuevoEventoId,
         )
 
-        const mitad = Math.round((localMontoSena / 2) * 100) / 100
+        // Proporción según la regla del evento recién creado (costo + 5%).
+        // eventData ya lleva los costos calculados al guardar (insumos, servicios
+        // y operativos) y el planDeCuotas con repartoCajas = "costo_mas_5".
+        const proporcionEventos = calcularProporcionCajaEventos(eventData as unknown as EventoGuardado)
+        const { montoEventos, montoJazmines } = repartirEntreCajas(localMontoSena, proporcionEventos)
         const fecha = new Date().toISOString()
 
         const saldoPrevEventos = (movimientosCaja || [])
@@ -735,30 +748,35 @@ function EventoPageContent() {
           .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
           .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
 
-        const movEventos: MovimientoCaja = {
-          id: generateId(),
-          fecha,
-          tipo: "ingreso",
-          concepto: `Seña - ${nombreEvento} (Caja Eventos)`,
-          monto: mitad,
-          salon: eventData.salon,
-          eventoId: nuevoEventoId,
-          cajaDestino: "caja_eventos",
-          saldoResultante: saldoPrevEventos + mitad,
+        const movsSena: MovimientoCaja[] = []
+        if (montoEventos > 0) {
+          movsSena.push({
+            id: generateId(),
+            fecha,
+            tipo: "ingreso",
+            concepto: `Seña - ${nombreEvento} (Caja Eventos)`,
+            monto: montoEventos,
+            salon: eventData.salon,
+            eventoId: nuevoEventoId,
+            cajaDestino: "caja_eventos",
+            saldoResultante: saldoPrevEventos + montoEventos,
+          })
         }
-        const movJazmines: MovimientoCaja = {
-          id: generateId(),
-          fecha,
-          tipo: "ingreso",
-          concepto: `Seña - ${nombreEvento} (Caja Jazmines)`,
-          monto: mitad,
-          salon: eventData.salon,
-          eventoId: nuevoEventoId,
-          cajaDestino: "caja_jazmines",
-          saldoResultante: saldoPrevJazmines + mitad,
+        if (montoJazmines > 0) {
+          movsSena.push({
+            id: generateId(),
+            fecha,
+            tipo: "ingreso",
+            concepto: `Seña - ${nombreEvento} (Caja Jazmines)`,
+            monto: montoJazmines,
+            salon: eventData.salon,
+            eventoId: nuevoEventoId,
+            cajaDestino: "caja_jazmines",
+            saldoResultante: saldoPrevJazmines + montoJazmines,
+          })
         }
 
-        await addMovimientosCaja([...movimientosSalon, movEventos, movJazmines])
+        await addMovimientosCaja([...movimientosSalon, ...movsSena])
       }
 
       // Log activity

@@ -67,6 +67,7 @@ function CostosEventoContent() {
     setRecetas,
     setCocteles,
     setEventos,
+    setServicios,
   } = useStore()
   const { toast } = useToast()
 
@@ -97,18 +98,31 @@ function CostosEventoContent() {
             return null
           }
         }
-        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, eventosRes] = await Promise.all([
+        // El catálogo de servicios (precios, % de seña) vive en Supabase vía
+        // data-service, no en un endpoint HTTP; lo traemos con fetchServicios().
+        const fetchServiciosSafe = async () => {
+          try {
+            const { fetchServicios } = await import("@/lib/supabase/data-service")
+            const data = await fetchServicios()
+            return Array.isArray(data) ? data : null
+          } catch {
+            return null
+          }
+        }
+        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, eventosRes, serviciosRes] = await Promise.all([
           fetchSafe("/api/insumos"),
           fetchSafe("/api/insumos-barra"),
           fetchSafe("/api/recetas"),
           fetchSafe("/api/cocteles"),
           fetchSafe("/api/eventos"),
+          fetchServiciosSafe(),
         ])
         if (insumosRes) setInsumos(insumosRes)
         if (insumosBarraRes) setInsumosBarra(insumosBarraRes)
         if (recetasRes) setRecetas(recetasRes)
         if (coctelesRes) setCocteles(coctelesRes)
         if (eventosRes) setEventos(eventosRes)
+        if (serviciosRes) setServicios(serviciosRes)
         setUltimaSync(new Date())
       } finally {
         sincronizando.current = false
@@ -201,16 +215,42 @@ function CostosEventoContent() {
       )
     return mov?.monto || 0
   }
-  const totalServicios = servicios.reduce((s, srv) => {
-    const saldo = srv.estadoPago === "pagado_total" ? montoSaldoPagado(srv.nombre) : srv.saldoPendiente || 0
-    return s + (srv.montoSeña || 0) + saldo
-  }, 0)
-  const pagadoServicios = servicios.reduce((s, srv) => {
-    const senaOk = srv.estadoPago === "señado" || srv.estadoPago === "saldo_pendiente" || srv.estadoPago === "pagado_total"
-    const sena = senaOk ? srv.montoSeña || 0 : 0
-    const saldo = srv.estadoPago === "pagado_total" ? montoSaldoPagado(srv.nombre) : 0
-    return s + sena + saldo
-  }, 0)
+  // Cada servicio contratado recalcula su seña y saldo EN VIVO a partir del
+  // catálogo global (state.servicios): si en Producción → Servicios se edita el
+  // costo o el % de seña, el costo del servicio acá se actualiza al instante.
+  // Las porciones YA PAGADAS conservan el monto real que movió la caja (histórico);
+  // solo las porciones pendientes reflejan el precio vigente. Si el servicio fue
+  // eliminado del catálogo, se usa el valor guardado en el contrato como respaldo.
+  const serviciosCalc = servicios.map((srv) => {
+    const senaPagada =
+      srv.estadoPago === "señado" || srv.estadoPago === "saldo_pendiente" || srv.estadoPago === "pagado_total"
+    const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
+
+    const catalogo = (state.servicios ?? []).find((s) => s.id === srv.servicioId)
+    const cantidad = srv.cantidad || 1
+
+    let montoSeñaLive = srv.montoSeña || 0
+    let saldoLive = srv.saldoPendiente || 0
+    if (catalogo) {
+      const costoBaseLive = Math.max(0, (catalogo.costoParaCajaEventos ?? 0) * cantidad)
+      const pct = catalogo.porcentajeSeña ?? 30
+      // La seña nunca puede superar el costo base (evita saldos negativos si el % es atípico).
+      montoSeñaLive = Math.min(Math.round((costoBaseLive * pct) / 100), costoBaseLive)
+      saldoLive = costoBaseLive - montoSeñaLive
+    }
+
+    // Preservar lo ya pagado; recalcular en vivo lo pendiente.
+    const montoSeña = senaPagada ? srv.montoSeña || 0 : montoSeñaLive
+    const saldo = saldoPagado ? montoSaldoPagado(srv.nombre) : saldoLive
+
+    return { srv, senaPagada, saldoPagado, montoSeña, saldo }
+  })
+
+  const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)
+  const pagadoServicios = serviciosCalc.reduce(
+    (s, c) => s + (c.senaPagada ? c.montoSeña : 0) + (c.saldoPagado ? c.saldo : 0),
+    0,
+  )
   const totalPersonal = personal.reduce((s, pe) => s + pe.monto, 0)
   const pagadoPersonal = personal.filter((pe) => pe.pagado).reduce((s, pe) => s + pe.monto, 0)
   const pagadoCocina = evento.cocinaPagada ? costoCocina : 0
@@ -393,10 +433,6 @@ function CostosEventoContent() {
     setTimeout(() => setGuardandoObs(false), 600)
     toast({ title: "Observación guardada" })
   }
-
-  // Estado de seña de un servicio
-  const senaEstaPagada = (estadoPago?: string) =>
-    estadoPago === "señado" || estadoPago === "saldo_pendiente" || estadoPago === "pagado_total"
 
   return (
     <main className="mx-auto w-full max-w-none px-4 py-6 space-y-5 xl:px-6">
@@ -587,14 +623,12 @@ function CostosEventoContent() {
           {servicios.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin servicios contratados.</p>
           ) : (
-            servicios.map((srv) => {
-              const senaPagada = senaEstaPagada(srv.estadoPago)
-              const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
+            serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo }) => {
               return (
                 <div key={srv.servicioId} className="rounded-lg border border-border p-3">
                   <p className="mb-2 text-sm font-semibold">{srv.nombre}</p>
                   <div className="flex flex-col gap-2">
-                    {(srv.montoSeña || 0) > 0 && (
+                    {montoSeña > 0 && (
                       <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
                         <span className="flex min-w-0 items-center gap-2">
                           <Checkbox
@@ -613,7 +647,7 @@ function CostosEventoContent() {
                         <span
                           className={`shrink-0 font-medium ${senaPagada ? "text-emerald-700" : "text-red-600"}`}
                         >
-                          {formatCurrency(srv.montoSeña || 0)}
+                          {formatCurrency(montoSeña)}
                         </span>
                       </label>
                     )}
@@ -634,7 +668,7 @@ function CostosEventoContent() {
                       <span
                         className={`shrink-0 font-medium ${saldoPagado ? "text-emerald-700" : "text-red-600"}`}
                       >
-                        {saldoPagado ? "Pagado" : formatCurrency(srv.saldoPendiente || 0)}
+                        {saldoPagado ? "Pagado" : formatCurrency(saldo)}
                       </span>
                     </label>
                   </div>
