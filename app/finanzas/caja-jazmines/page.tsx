@@ -1188,7 +1188,7 @@ export default function CajaJazminePage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Jazmines</h1>
   <p className="text-sm text-muted-foreground mt-0.5">
-    50% de cada cobro de cuota.
+    Lo que queda de cada cobro después de cubrir el costo del evento + 5%.
   </p>
           </div>
         </div>
