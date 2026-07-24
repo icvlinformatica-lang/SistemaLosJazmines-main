@@ -35,6 +35,8 @@ export interface EgresoPendienteServicio {
   id: string
   eventoId: string
   eventoNombre: string
+  /** Fecha ACTUAL del evento (YYYY-MM-DD) para mostrar junto al nombre */
+  eventoFecha?: string
   salon: string
   servicioNombre: string
   servicioId?: string // presente para egresos de servicios (no menú/barra); para sueldos es el id de la entrada de personal
@@ -241,9 +243,10 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           egresosPendientes.push({
             id: `${evento.id}-menu`,
             eventoId: evento.id,
-            eventoNombre,
-            salon: evento.salon || "",
-            servicioNombre: "Menú del evento",
+          eventoNombre,
+          eventoFecha: evento.fecha || undefined,
+          salon: evento.salon || "",
+          servicioNombre: "Menú del evento",
             tipo: "menu",
             monto: costoMenu,
             fechaVencimiento: fechaPagoMenuStr,
@@ -278,9 +281,10 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           egresosPendientes.push({
             id: `${evento.id}-barra`,
             eventoId: evento.id,
-            eventoNombre,
-            salon: evento.salon || "",
-            servicioNombre: "Barra del evento",
+          eventoNombre,
+          eventoFecha: evento.fecha || undefined,
+          salon: evento.salon || "",
+          servicioNombre: "Barra del evento",
             tipo: "barra",
             monto: costoBarra,
             fechaVencimiento: fechaPagoBarraStr,
@@ -307,6 +311,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           id: `${evento.id}-compromiso-${pp.id}`,
           eventoId: evento.id,
           eventoNombre,
+          eventoFecha: evento.fecha || undefined,
           salon: evento.salon || "",
           servicioNombre: `${pp.nombrePersonal} (${pp.servicioNombre})`,
           servicioId: pp.id,
@@ -334,9 +339,10 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           egresosPendientes.push({
             id: `${evento.id}-sueldo-${pe.id}`,
             eventoId: evento.id,
-            eventoNombre,
-            salon: evento.salon || "",
-            servicioNombre: `${pe.nombre} (${pe.funcion})`,
+          eventoNombre,
+          eventoFecha: evento.fecha || undefined,
+          salon: evento.salon || "",
+          servicioNombre: `${pe.nombre} (${pe.funcion})`,
             servicioId: pe.id,
             tipo: "sueldo",
             monto: pe.monto,
@@ -382,6 +388,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             id: `${evento.id}-${srv.servicioId}-seña`,
             eventoId: evento.id,
             eventoNombre,
+            eventoFecha: evento.fecha || undefined,
             salon: evento.salon || "",
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
@@ -404,6 +411,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             id: `${evento.id}-${srv.servicioId}-saldo`,
             eventoId: evento.id,
             eventoNombre,
+            eventoFecha: evento.fecha || undefined,
             salon: evento.salon || "",
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
