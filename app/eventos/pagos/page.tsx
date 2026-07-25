@@ -1144,6 +1144,14 @@ function PagosPageContent() {
                     {selectedEvento.nombrePareja && (
                       <CardDescription className="text-base mt-1">{selectedEvento.nombrePareja}</CardDescription>
                     )}
+                    {selectedEvento.createdAt && (
+                      <Badge
+                        variant="outline"
+                        className="mt-2 border-border bg-muted/50 text-xs font-normal text-muted-foreground"
+                      >
+                        Creado el {new Date(selectedEvento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className={ESTADO_CONFIG[selectedEvento.estado]?.className || ""}>

@@ -1014,6 +1014,14 @@ export default function EventosListaPage() {
                             {evento.tipoEvento && (
                               <p className="text-xs text-muted-foreground">{evento.tipoEvento}</p>
                             )}
+                            {evento.createdAt && (
+                              <Badge
+                                variant="outline"
+                                className="mt-1 border-border bg-muted/50 px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                              >
+                                Creado: {new Date(evento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">

@@ -144,6 +144,8 @@ export interface Evento {
   id: string
   nombre: string
   fecha: string
+  /** Fecha de creación del registro (la asigna la base de datos automáticamente) */
+  createdAt?: string
   horario?: string
   salon?: string
   tipoEvento?: "Casamiento" | "Cumpleaños de 15" | "Empresarial" | "Cumpleaños" | "Bautismo" | "Otro"
