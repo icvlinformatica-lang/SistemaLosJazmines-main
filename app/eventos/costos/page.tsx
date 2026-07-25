@@ -23,6 +23,8 @@ import {
   generarCalendarioCuotas,
   calcularComprasSegmentadas,
   calcularComprasBarras,
+  calcularMontoPersonalDelEvento,
+  calcularSeñaSaldoServicio,
   salonLabel,
   type MovimientoCaja,
 } from "@/lib/store"
@@ -175,7 +177,11 @@ function CostosEventoContent() {
   const costoCocina = comprasCocina.reduce((s, c) => s + c.costoMateriaPrima, 0)
   const costoBarra = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
   const servicios = evento.servicios || []
-  const personal = (evento.personalEvento || []).filter((pe) => (pe.monto || 0) > 0)
+  // Sueldos EN VIVO desde el roster (Finanzas → Personal): siguen la tarifa
+  // vigente salvo que estén pagados o con monto personalizado por evento.
+  const personal = (evento.personalEvento || [])
+    .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, state.personal) }))
+    .filter((pe) => (pe.monto || 0) > 0)
 
   // --- Menú completo elegido por la familia (recetas por segmento, en vivo) ---
   const nombreReceta = (id: string) => state.recetas?.find((r) => r.id === id)?.nombre || null
@@ -226,22 +232,14 @@ function CostosEventoContent() {
       srv.estadoPago === "señado" || srv.estadoPago === "saldo_pendiente" || srv.estadoPago === "pagado_total"
     const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
 
-    const catalogo = (state.servicios ?? []).find((s) => s.id === srv.servicioId)
-    const cantidad = srv.cantidad || 1
-
-    let montoSeñaLive = srv.montoSeña || 0
-    let saldoLive = srv.saldoPendiente || 0
-    if (catalogo) {
-      const costoBaseLive = Math.max(0, (catalogo.costoParaCajaEventos ?? 0) * cantidad)
-      const pct = catalogo.porcentajeSeña ?? 30
-      // La seña nunca puede superar el costo base (evita saldos negativos si el % es atípico).
-      montoSeñaLive = Math.min(Math.round((costoBaseLive * pct) / 100), costoBaseLive)
-      saldoLive = costoBaseLive - montoSeñaLive
-    }
+    // Cálculo centralizado en vivo (mismo criterio que Caja Eventos, Cashflow y Balance).
+    const { montoSeña: montoSeñaCalc, saldoPendiente: saldoCalc } = calcularSeñaSaldoServicio(srv, {
+      servicios: state.servicios ?? [],
+    })
 
     // Preservar lo ya pagado; recalcular en vivo lo pendiente.
-    const montoSeña = senaPagada ? srv.montoSeña || 0 : montoSeñaLive
-    const saldo = saldoPagado ? montoSaldoPagado(srv.nombre) : saldoLive
+    const montoSeña = montoSeñaCalc
+    const saldo = saldoPagado ? montoSaldoPagado(srv.nombre) : saldoCalc
 
     return { srv, senaPagada, saldoPagado, montoSeña, saldo }
   })
@@ -360,15 +358,22 @@ function CostosEventoContent() {
     const srv = servicios.find((s) => s.servicioId === servicioId)
     if (!srv) return
     const concepto = `Pago seña ${srv.nombre} - ${nombreEvento}`
+    // Monto EN VIVO desde el catálogo: lo que se registra en caja es lo que
+    // se está mostrando en pantalla, no la foto guardada al contratar.
+    const { montoSeña: montoSeñaLive } = calcularSeñaSaldoServicio(
+      { ...srv, estadoPago: "sin_seña" },
+      { servicios: state.servicios ?? [] },
+    )
     const nuevosServicios = servicios.map((s) => {
       if (s.servicioId !== servicioId) return s
-      if (checked) return { ...s, estadoPago: "señado" as const, fechaPagoSeña: hoyStr }
+      // Al pagar, fijar el monto pagado como histórico del servicio.
+      if (checked) return { ...s, estadoPago: "señado" as const, fechaPagoSeña: hoyStr, montoSeña: montoSeñaLive }
       return { ...s, estadoPago: "sin_seña" as const, fechaPagoSeña: undefined }
     })
     updateEvento(evento.id, { servicios: nuevosServicios })
     if (checked) {
-      registrarEgreso(concepto, srv.montoSeña || 0)
-      toast({ title: `Seña de ${srv.nombre} pagada`, description: formatCurrency(srv.montoSeña || 0) })
+      registrarEgreso(concepto, montoSeñaLive)
+      toast({ title: `Seña de ${srv.nombre} pagada`, description: formatCurrency(montoSeñaLive) })
     } else {
       quitarEgreso(concepto)
       toast({ title: `Seña de ${srv.nombre} revertida` })
@@ -381,7 +386,9 @@ function CostosEventoContent() {
     if (!srv) return
     const concepto = `Pago saldo ${srv.nombre} - ${nombreEvento}`
     if (checked) {
-      const monto = srv.saldoPendiente || 0
+      // Saldo EN VIVO desde el catálogo (costo actual − seña pagada).
+      const { saldoPendiente: saldoLive } = calcularSeñaSaldoServicio(srv, { servicios: state.servicios ?? [] })
+      const monto = saldoLive
       const nuevosServicios = servicios.map((s) =>
         s.servicioId === servicioId
           ? { ...s, pagado: true, estadoPago: "pagado_total" as const, saldoPendiente: 0, fechaPagoSaldo: hoyStr }
@@ -414,13 +421,16 @@ function CostosEventoContent() {
     const pe = (evento.personalEvento || []).find((p) => p.id === peId)
     if (!pe) return
     const concepto = `Pago sueldo ${pe.nombre} (${pe.funcion}) - ${nombreEvento}`
+    // Monto EN VIVO desde el roster: lo que se registra en caja es lo que se
+    // muestra en pantalla. Al pagar, ese monto queda fijado como histórico.
+    const montoLive = calcularMontoPersonalDelEvento(pe, state.personal)
     const nuevoPersonal = (evento.personalEvento || []).map((p) =>
-      p.id === peId ? { ...p, pagado: checked } : p,
+      p.id === peId ? (checked ? { ...p, pagado: true, monto: montoLive } : { ...p, pagado: false }) : p,
     )
     updateEvento(evento.id, { personalEvento: nuevoPersonal })
     if (checked) {
-      registrarEgreso(concepto, pe.monto)
-      toast({ title: `Sueldo de ${pe.nombre} pagado`, description: formatCurrency(pe.monto) })
+      registrarEgreso(concepto, montoLive)
+      toast({ title: `Sueldo de ${pe.nombre} pagado`, description: formatCurrency(montoLive) })
     } else {
       quitarEgreso(concepto)
       toast({ title: `Sueldo de ${pe.nombre} revertido` })

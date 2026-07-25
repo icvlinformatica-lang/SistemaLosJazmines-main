@@ -27,6 +27,7 @@ import {
   type VersionContrato,
   type MovimientoCaja,
   type PersonalDelEvento,
+  calcularMontoPersonalDelEvento,
   detectarImpactosContrato,
   SALONES,
 } from "@/lib/store"
@@ -1103,7 +1104,11 @@ function EventoPageContent() {
   // Roster activo cargado en Finanzas → Personal
   const personalActivoRoster = (personal || []).filter((p) => p.activo)
   const personalDelEvento = evento.personalEvento || []
-  const totalSueldosEvento = personalDelEvento.reduce((sum, pe) => sum + (pe.monto || 0), 0)
+  // Sueldos EN VIVO: siguen la tarifa vigente del roster salvo pagados o personalizados
+  const totalSueldosEvento = personalDelEvento.reduce(
+    (sum, pe) => sum + calcularMontoPersonalDelEvento(pe, personal),
+    0,
+  )
 
   const togglePersonalEvento = (personalId: string) => {
     const existente = personalDelEvento.find((pe) => pe.personalId === personalId)
@@ -1127,9 +1132,14 @@ function EventoPageContent() {
 
   const updateMontoPersonalEvento = (personalId: string, monto: number) => {
     updateEventoActual({
-      personalEvento: personalDelEvento.map((pe) =>
-        pe.personalId === personalId ? { ...pe, monto } : pe
-      ),
+      personalEvento: personalDelEvento.map((pe) => {
+        if (pe.personalId !== personalId) return pe
+        const persona = (personal || []).find((p) => p.id === personalId)
+        // Si coincide con la tarifa vigente del roster, no es un monto personalizado:
+        // el sueldo seguirá los cambios futuros de la carpeta Personal.
+        const esPersonalizado = persona ? monto !== (persona.tarifaBase || 0) : true
+        return { ...pe, monto, montoPersonalizado: esPersonalizado }
+      }),
     })
   }
 

@@ -9,6 +9,7 @@ import {
   Trash2,
   Search,
   ChevronDown,
+  ChevronUp,
   Check,
   X,
   Tag,
@@ -76,9 +77,16 @@ function formatARS(value: number | undefined): string {
 }
 
 function parseARS(raw: string): number {
-  const clean = raw.replace(/[^0-9.,]/g, "").replace(",", ".")
-  const n = parseFloat(clean)
+  // Los puntos son separadores de miles (formato es-AR): solo cuentan los dígitos.
+  const digits = raw.replace(/\D/g, "")
+  const n = parseInt(digits, 10)
   return isNaN(n) ? 0 : n
+}
+
+/** Formatea un número con puntos de miles (es-AR), sin símbolo de moneda. */
+function formatMiles(n: number): string {
+  if (!n) return ""
+  return n.toLocaleString("es-AR")
 }
 
 function margenColor(margen: number): string {
@@ -119,6 +127,36 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
   }
 
   if (editing) {
+    if (numeric) {
+      // Input numérico con símbolo $ visual (meramente estético)
+      return (
+        <div className="relative w-full">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[15px] pointer-events-none select-none">
+            $
+          </span>
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => {
+              // Formatear con puntos de miles mientras se escribe
+              const digits = e.target.value.replace(/\D/g, "")
+              setDraft(digits ? Number(digits).toLocaleString("es-AR") : "")
+            }}
+            onBlur={commit}
+            inputMode="numeric"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit()
+              if (e.key === "Escape") cancel()
+            }}
+            className={cn(
+              "w-full h-8 pl-6 pr-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white text-right tabular-nums",
+              className
+            )}
+            autoFocus
+          />
+        </div>
+      )
+    }
     return (
       <input
         ref={inputRef}
@@ -130,8 +168,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
           if (e.key === "Escape") cancel()
         }}
         className={cn(
-          "w-full h-8 px-2 text-sm border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white",
-          numeric && "text-right tabular-nums",
+          "w-full h-8 px-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white",
           className
         )}
         autoFocus
@@ -143,14 +180,14 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
     <div
       onClick={startEdit}
       className={cn(
-        "group relative h-8 flex items-center px-2 rounded cursor-pointer hover:bg-muted/70 transition-colors text-sm",
+        "group relative h-8 flex items-center px-2.5 rounded cursor-pointer hover:bg-muted/70 transition-colors text-[15px]",
         !value && "text-muted-foreground/50 italic",
         numeric && "justify-end tabular-nums",
         className
       )}
       title="Clic para editar"
     >
-      {value || placeholder}
+      {numeric && value ? `$ ${value}` : value || placeholder}
       <span className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px] text-muted-foreground">
         ✎
       </span>
@@ -161,15 +198,21 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function FinanzasServiciosPage() {
-  const { servicios, addServicio, updateServicio, deleteServicio } = useStore()
+  const { servicios, addServicio, updateServicio, deleteServicio, setServicios } = useStore()
   const { toast } = useToast()
 
   const [busqueda, setBusqueda] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaServicio | "todas">("todas")
   const [idEliminar, setIdEliminar] = useState<string | null>(null)
 
+  // ── Servicios ordenados (orden manual tipo Excel) ─────────────────────────
+  const serviciosOrdenados = servicios
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => (a.s.orden ?? a.i) - (b.s.orden ?? b.i) || a.i - b.i)
+    .map((x) => x.s)
+
   // ── Servicios filtrados ────────────────────────────────────────────────────
-  const serviciosFiltrados = servicios.filter((s) => {
+  const serviciosFiltrados = serviciosOrdenados.filter((s) => {
     if (!s.activo) return false
     if (categoriaFiltro !== "todas" && s.categoria !== categoriaFiltro) return false
     if (busqueda) {
@@ -183,6 +226,38 @@ export default function FinanzasServiciosPage() {
     }
     return true
   })
+
+  // ── Mover fila arriba/abajo (persiste el orden en la base) ────────────────
+  const moverServicio = async (id: string, dir: -1 | 1) => {
+    const idx = serviciosFiltrados.findIndex((s) => s.id === id)
+    const vecino = serviciosFiltrados[idx + dir]
+    if (idx === -1 || !vecino) return
+    // Normalizar: asignar orden secuencial según la lista completa actual
+    const ordenes = new Map(serviciosOrdenados.map((s, i) => [s.id, i]))
+    // Intercambiar las posiciones de la fila y su vecina
+    const a = ordenes.get(id)!
+    const b = ordenes.get(vecino.id)!
+    ordenes.set(id, b)
+    ordenes.set(vecino.id, a)
+    // Actualizar el estado local en una sola pasada
+    const cambiados: Servicio[] = []
+    const nuevos = servicios.map((s) => {
+      const nuevoOrden = ordenes.get(s.id)
+      if (nuevoOrden === undefined || s.orden === nuevoOrden) return s
+      const actualizado = { ...s, orden: nuevoOrden }
+      cambiados.push(actualizado)
+      return actualizado
+    })
+    setServicios(nuevos)
+    // Persistir en Supabase solo los servicios cuyo orden cambió
+    try {
+      const { upsertServicio } = await import("@/lib/supabase/data-service")
+      await Promise.all(cambiados.map((s) => upsertServicio(s)))
+    } catch (error) {
+      console.error("[v0] Error persistiendo orden de servicios:", error)
+      toast({ title: "Error al guardar el orden", description: "Revisá tu conexión e intentá de nuevo.", variant: "destructive" })
+    }
+  }
 
   // ── Totales pie de tabla ───────────────────────────────────────────────────
   const totalVenta = serviciosFiltrados.reduce((sum, s) => sum + (s.precioVenta ?? 0), 0)
@@ -274,34 +349,34 @@ export default function FinanzasServiciosPage() {
 
       {/* Tabla estilo spreadsheet */}
       <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-card shadow-sm">
-        <table className="w-full text-sm border-collapse min-w-[860px]">
+        <table className="w-full text-[15px] border-collapse min-w-[920px]">
           <thead>
             <tr className="bg-muted/80 border-b border-border sticky top-0 z-10">
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground w-[52px] text-xs uppercase tracking-wide">#</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Nombre</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[160px]">Categoria</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[120px]">Unidad</th>
-              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[160px]">
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground w-[58px] text-[13px] uppercase tracking-wide">#</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Nombre</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[165px]">Categoria</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[125px]">Unidad</th>
+              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
                 <span className="flex items-center justify-end gap-1 text-emerald-700">
-                  <ShoppingBag className="h-3.5 w-3.5" />
+                  <ShoppingBag className="h-4 w-4" />
                   Precio Venta
                 </span>
               </th>
-              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[160px]">
+              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
                 <span className="flex items-center justify-end gap-1 text-rose-600">
-                  <DollarSign className="h-3.5 w-3.5" />
+                  <DollarSign className="h-4 w-4" />
                   Costo Caja Eventos
                 </span>
               </th>
-              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[140px]">
+              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[150px]">
                 <span className="flex items-center justify-end gap-1 text-amber-600">
-                  <Tag className="h-3.5 w-3.5" />
+                  <Tag className="h-4 w-4" />
                   Seña por evento
                 </span>
               </th>
-              <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[90px]">Margen</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Descripcion</th>
-              <th className="px-2 py-2.5 w-10" />
+              <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion</th>
+              <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
 
@@ -330,13 +405,37 @@ export default function FinanzasServiciosPage() {
                     idx % 2 === 0 ? "bg-card" : "bg-muted/10"
                   )}
                 >
-                  {/* Nro fila */}
-                  <td className="px-3 py-1 text-muted-foreground/50 text-xs tabular-nums select-none">
-                    {idx + 1}
+                  {/* Nro fila + mover */}
+                  <td className="px-1.5 py-0 select-none">
+                    <div className="flex items-center gap-1">
+                      <div className="flex flex-col">
+                        <button
+                          type="button"
+                          onClick={() => moverServicio(s.id, -1)}
+                          disabled={idx === 0}
+                          className="min-h-0 p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          title="Subir fila"
+                          aria-label={`Subir ${s.nombre}`}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moverServicio(s.id, 1)}
+                          disabled={idx === serviciosFiltrados.length - 1}
+                          className="min-h-0 p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          title="Bajar fila"
+                          aria-label={`Bajar ${s.nombre}`}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <span className="text-muted-foreground/50 text-[13px] tabular-nums">{idx + 1}</span>
+                    </div>
                   </td>
 
                   {/* Nombre */}
-                  <td className="px-1 py-1 min-w-[180px]">
+                  <td className="px-1.5 py-0 min-w-[180px]">
                     <EditableCell
                       value={s.nombre}
                       placeholder="Nombre del servicio"
@@ -345,15 +444,15 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Categoria */}
-                  <td className="px-2 py-1">
+                  <td className="px-2 py-0">
                     <Select
                       value={s.categoria}
                       onValueChange={(v) => update(s.id, { categoria: v as CategoriaServicio })}
                     >
-                      <SelectTrigger className="h-8 border-0 bg-transparent shadow-none px-1 hover:bg-muted/70 focus:ring-0 gap-1 text-sm">
+                      <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 gap-1 text-[15px]">
                         <Badge
                           variant="outline"
-                          className={cn("text-[11px] font-medium px-1.5 py-0 border", CATEGORIA_COLORS[s.categoria])}
+                          className={cn("text-[13px] font-medium px-2 py-0.5 border", CATEGORIA_COLORS[s.categoria])}
                         >
                           {s.categoria}
                         </Badge>
@@ -361,7 +460,7 @@ export default function FinanzasServiciosPage() {
                       <SelectContent>
                         {CATEGORIAS.map((cat) => (
                           <SelectItem key={cat} value={cat}>
-                            <Badge variant="outline" className={cn("text-[11px] font-medium", CATEGORIA_COLORS[cat])}>
+                            <Badge variant="outline" className={cn("text-[13px] font-medium", CATEGORIA_COLORS[cat])}>
                               {cat}
                             </Badge>
                           </SelectItem>
@@ -371,12 +470,12 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Unidad */}
-                  <td className="px-2 py-1">
+                  <td className="px-2 py-0">
                     <Select
                       value={s.unidad}
                       onValueChange={(v) => update(s.id, { unidad: v as Servicio["unidad"] })}
                     >
-                      <SelectTrigger className="h-8 border-0 bg-transparent shadow-none px-1 hover:bg-muted/70 focus:ring-0 text-sm">
+                      <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 text-[15px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -388,9 +487,9 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Precio Venta */}
-                  <td className="px-1 py-1">
+                  <td className="px-1.5 py-0">
                     <EditableCell
-                      value={venta > 0 ? venta.toString() : ""}
+                      value={formatMiles(venta)}
                       placeholder="0"
                       numeric
                       onCommit={(v) => {
@@ -400,17 +499,12 @@ export default function FinanzasServiciosPage() {
                         update(s.id, { precioVenta: nuevo })
                       }}
                     />
-                    {venta > 0 && (
-                      <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
-                        {formatARS(venta)}
-                      </div>
-                    )}
                   </td>
 
                   {/* Costo Caja Eventos */}
-                  <td className="px-1 py-1">
+                  <td className="px-1.5 py-0">
                     <EditableCell
-                      value={costo > 0 ? costo.toString() : ""}
+                      value={formatMiles(costo)}
                       placeholder="0"
                       numeric
                       onCommit={(v) => {
@@ -420,18 +514,13 @@ export default function FinanzasServiciosPage() {
                         update(s.id, { costoParaCajaEventos: nuevo })
                       }}
                     />
-                    {costo > 0 && (
-                      <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
-                        {formatARS(costo)}
-                      </div>
-                    )}
                   </td>
 
                   {/* Seña por evento */}
-                  <td className="px-1 py-1">
+                  <td className="px-1.5 py-0">
                     <EditableCell
                       value={s.costoParaCajaEventos && s.porcentajeSeña
-                        ? Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100).toString()
+                        ? formatMiles(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))
                         : ""}
                       placeholder="0"
                       numeric
@@ -444,17 +533,12 @@ export default function FinanzasServiciosPage() {
                         update(s.id, { porcentajeSeña: pct })
                       }}
                     />
-                    {s.costoParaCajaEventos && s.costoParaCajaEventos > 0 && (
-                      <div className="text-[11px] text-muted-foreground text-right px-2 leading-none pb-0.5">
-                        {formatARS(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))}
-                      </div>
-                    )}
                   </td>
 
                   {/* Margen */}
-                  <td className="px-3 py-1 text-right tabular-nums">
+                  <td className="px-3 py-0 text-right tabular-nums">
                     {venta > 0 && costo > 0 ? (
-                      <span className={cn("font-semibold text-sm", margenColor(margen))}>
+                      <span className={cn("font-semibold text-[15px]", margenColor(margen))}>
                         {margen.toFixed(0)}%
                       </span>
                     ) : (
@@ -463,7 +547,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Descripcion */}
-                  <td className="px-1 py-1 max-w-[220px]">
+                  <td className="px-1.5 py-0 max-w-[220px]">
                     <EditableCell
                       value={s.descripcion ?? ""}
                       placeholder="Descripcion opcional"
@@ -472,11 +556,11 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Eliminar */}
-                  <td className="px-2 py-1">
+                  <td className="px-2 py-0">
                     <button
                       type="button"
                       onClick={() => setIdEliminar(s.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      className="min-h-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                       title="Eliminar servicio"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

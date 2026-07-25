@@ -302,6 +302,8 @@ export interface Servicio {
   proveedor?: string
   notas?: string
   activo: boolean
+  /** Posición de la fila en la tabla de Finanzas → Servicios (orden manual). */
+  orden?: number
 }
 
 export interface ServicioEvento {
@@ -830,9 +832,32 @@ export interface PersonalDelEvento {
   nombre: string
   funcion: string
   monto: number
+  /**
+   * true si el monto fue editado a mano para este evento. En ese caso NO se
+   * actualiza automáticamente cuando cambia la tarifa base del roster.
+   */
+  montoPersonalizado?: boolean
   pagado?: boolean
   /** Fecha de pago del sueldo (YYYY-MM-DD). Si no está, vence el día del evento */
   fechaPago?: string
+}
+
+/**
+ * Calcula el monto de una persona asignada a un evento EN VIVO desde el
+ * roster (Finanzas → Personal):
+ * - Si ya fue pagada, el monto guardado es histórico y se respeta.
+ * - Si el monto fue personalizado a mano para el evento, se respeta.
+ * - En cualquier otro caso, sigue la tarifa base VIGENTE del roster.
+ * - Si la persona ya no existe en el roster, se usa el monto guardado.
+ */
+export function calcularMontoPersonalDelEvento(
+  pe: PersonalDelEvento,
+  roster: PersonalEvento[] | undefined | null,
+): number {
+  if (pe.pagado || pe.montoPersonalizado) return pe.monto || 0
+  const persona = (roster ?? []).find((p) => p.id === pe.personalId)
+  if (!persona) return pe.monto || 0
+  return persona.tarifaBase || pe.monto || 0
 }
 
 export interface PersonalEvento {
@@ -857,6 +882,8 @@ export interface PersonalEvento {
   }
   activo: boolean
   notas?: string
+  /** Posición de la fila en la tabla de Gestión de Personal (orden manual). */
+  orden?: number
 }
 
 export type TipoPago = "transferencia" | "efectivo" | "otro"
@@ -1936,6 +1963,46 @@ export function calcularCostoServicios(servicios: ServicioEvento[], state?: AppS
     const { precioOficial } = obtenerPreciosServicio(servicioCatalogo, state)
     return sum + precioOficial * s.cantidad
   }, 0)
+}
+
+/**
+ * Calcula la seña y el saldo de un servicio contratado EN VIVO desde el
+ * catálogo de servicios (Finanzas → Servicios), en lugar de usar la foto
+ * guardada al momento de contratar.
+ *
+ * Reglas:
+ * - Costo total = costoParaCajaEventos actual × cantidad.
+ * - Seña = % de seña actual del catálogo sobre ese costo (nunca supera el costo).
+ * - Si la seña YA fue pagada, se respeta el monto pagado (histórico) y el
+ *   saldo se recalcula como costo actual − seña pagada.
+ * - Si el servicio está pagado en su totalidad, el saldo es 0.
+ * - Si el servicio no existe más en el catálogo, se usa la foto guardada.
+ */
+export function calcularSeñaSaldoServicio(
+  srv: ServicioEvento,
+  state: Pick<AppState, "servicios">,
+): { costoTotal: number; montoSeña: number; saldoPendiente: number } {
+  const catalogo = (state.servicios ?? []).find((s) => s.id === srv.servicioId)
+  const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
+  const señaPagada = estadoPago === "señado" || estadoPago === "saldo_pendiente" || estadoPago === "pagado_total"
+
+  if (!catalogo) {
+    // Servicio eliminado del catálogo: usar la foto guardada.
+    const montoSeña = srv.montoSeña ?? 0
+    const saldoPendiente = estadoPago === "pagado_total" ? 0 : (srv.saldoPendiente ?? 0)
+    return { costoTotal: montoSeña + saldoPendiente, montoSeña, saldoPendiente }
+  }
+
+  const cantidad = srv.cantidad || 1
+  const costoTotal = Math.max(0, (catalogo.costoParaCajaEventos ?? 0) * cantidad)
+  const pct = catalogo.porcentajeSeña ?? 30
+  const señaLive = Math.min(Math.round((costoTotal * pct) / 100), costoTotal)
+
+  // Si la seña ya se pagó, ese monto es un hecho histórico; si no, se calcula en vivo.
+  const montoSeña = señaPagada ? (srv.montoSeña ?? señaLive) : señaLive
+  const saldoPendiente = estadoPago === "pagado_total" ? 0 : Math.max(0, costoTotal - montoSeña)
+
+  return { costoTotal, montoSeña, saldoPendiente }
 }
 
 export function calcularCostosOperativos(

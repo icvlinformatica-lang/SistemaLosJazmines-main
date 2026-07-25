@@ -7,7 +7,9 @@ import type {
   EventoGuardado,
   CostoOperativo,
   ServicioEvento,
+  Servicio,
 } from "@/lib/store"
+import { calcularSeñaSaldoServicio } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -114,7 +116,7 @@ interface ResumenBalance {
 // Hooks de cálculo
 // ─────────────────────────────────────────────
 
-function useDatosBalance(mes: number, anio: number, eventos: EventoGuardado[], costosOperativos: CostoOperativo[]) {
+function useDatosBalance(mes: number, anio: number, eventos: EventoGuardado[], costosOperativos: CostoOperativo[], servicios: Servicio[] = []) {
 
   // ── INGRESOS ──────────────────────────────
   const filasIngresos = useMemo<FilaIngreso[]>(() => {
@@ -173,7 +175,8 @@ function useDatosBalance(mes: number, anio: number, eventos: EventoGuardado[], c
           const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
           if (estadoPago === "sin_seña") return // sin movimiento financiero
 
-          const montoSeña = srv.montoSeña ?? 0
+          // Montos EN VIVO desde el catálogo (Finanzas → Servicios)
+          const { montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(srv, { servicios })
           if (montoSeña === 0 && estadoPago !== "pagado_total") return
 
           filas.push({
@@ -185,14 +188,14 @@ function useDatosBalance(mes: number, anio: number, eventos: EventoGuardado[], c
             montoSeña,
             estadoPago,
             fechaSeña: srv.fechaSeña,
-            saldoPendiente: srv.saldoPendiente,
+            saldoPendiente,
             fechaLimitePago: srv.fechaLimitePago,
           })
         })
       })
 
     return filas.sort((a, b) => a.eventoFecha.localeCompare(b.eventoFecha))
-  }, [eventos, mes, anio])
+  }, [eventos, mes, anio, servicios])
 
   // ── COSTOS OPERATIVOS ─────────────────────
   const filasCostos = useMemo<FilaCostoOperativo[]>(() => {
@@ -570,7 +573,7 @@ function ResultadoVisual({ resumen }: { resumen: ResumenBalance }) {
 // ─────────────────────────────────────────────
 
 export default function BalanceMensualPage() {
-  const { eventos, costosOperativos } = useStore()
+  const { eventos, costosOperativos, servicios } = useStore()
 
   // Inicializar en null para evitar mismatch de hidratación servidor/cliente
   const [mesSeleccionado, setMesSeleccionado] = useState<number | null>(null)
@@ -590,6 +593,7 @@ export default function BalanceMensualPage() {
     anio,
     eventos,
     costosOperativos,
+    servicios,
   )
 
   // Opciones de año: desde el año más antiguo de eventos hasta +1

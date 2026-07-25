@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useStore } from "@/lib/store-context"
-import { SALONES, calcularSaldoCaja, type EventoGuardado, type CostoOperativo, type PagoPersonal } from "@/lib/store"
+import { SALONES, calcularSaldoCaja, calcularSeñaSaldoServicio, type EventoGuardado, type CostoOperativo, type PagoPersonal, type Servicio } from "@/lib/store"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -69,7 +69,7 @@ interface EventoResumen {
 }
 
 function useCashflowData(salon: string, horizonte: Horizonte) {
-  const { eventos, costosOperativos, pagosPersonal, configuracionCajas, movimientosCaja } = useStore()
+  const { eventos, costosOperativos, pagosPersonal, configuracionCajas, movimientosCaja, servicios } = useStore()
 
   return useMemo(() => {
     const hoy = new Date()
@@ -182,7 +182,9 @@ function useCashflowData(salon: string, horizonte: Horizonte) {
         const fechaLimitePago = parseLocalDate(srv.fechaLimitePago)
         if (!fechaLimitePago || fechaLimitePago < hoy || fechaLimitePago > fechaLimite) continue
 
-        const monto = srv.saldoPendiente ?? srv.montoSeña ?? 0
+        // Monto EN VIVO desde el catálogo de servicios
+        const { montoSeña: señaLive, saldoPendiente: saldoLive } = calcularSeñaSaldoServicio(srv, { servicios })
+        const monto = saldoLive > 0 ? saldoLive : señaLive
         if (monto <= 0) continue
 
         egresosPendientes.push({
@@ -246,7 +248,7 @@ function useCashflowData(salon: string, horizonte: Horizonte) {
       egresosPendientes: egresosPendientes.sort((a, b) => a.fecha.localeCompare(b.fecha)),
       eventosResumen: eventosResumen.sort((a, b) => a.fecha.localeCompare(b.fecha)),
     }
-  }, [salon, horizonte, eventos, costosOperativos, pagosPersonal, configuracionCajas, movimientosCaja])
+  }, [salon, horizonte, eventos, costosOperativos, pagosPersonal, configuracionCajas, movimientosCaja, servicios])
 }
 
 function SalonCashflowCard({ salon, horizonte }: { salon: string; horizonte: Horizonte }) {
@@ -413,7 +415,7 @@ export default function CashflowPage() {
   const [horizonte, setHorizonte] = useState<Horizonte>(30)
 
   // Calcular resumen global
-  const { configuracionCajas, movimientosCaja, eventos, costosOperativos, pagosPersonal } = useStore()
+  const { configuracionCajas, movimientosCaja, eventos, costosOperativos, pagosPersonal, servicios } = useStore()
 
   const resumenGlobal = useMemo(() => {
     let saldoTotal = 0
@@ -428,7 +430,8 @@ export default function CashflowPage() {
         costosOperativos || [],
         pagosPersonal || [],
         configuracionCajas,
-        movimientosCaja || []
+        movimientosCaja || [],
+        servicios || []
       )
       saldoTotal += data.saldoActual
       totalEntra += data.totalEntra
@@ -443,7 +446,8 @@ export default function CashflowPage() {
       costosOperativos || [],
       pagosPersonal || [],
       configuracionCajas,
-      movimientosCaja || []
+      movimientosCaja || [],
+      servicios || []
     )
     saldoTotal += adminData.saldoActual
     totalEntra += adminData.totalEntra
@@ -455,7 +459,7 @@ export default function CashflowPage() {
       totalSale,
       proyectado: saldoTotal + totalEntra - totalSale,
     }
-  }, [horizonte, configuracionCajas, movimientosCaja, eventos, costosOperativos, pagosPersonal])
+  }, [horizonte, configuracionCajas, movimientosCaja, eventos, costosOperativos, pagosPersonal, servicios])
 
   return (
     <div className="space-y-6">
@@ -530,7 +534,8 @@ function useCashflowDataPure(
   costosOperativos: CostoOperativo[],
   pagosPersonal: PagoPersonal[],
   configuracionCajas: ReturnType<typeof useStore>["configuracionCajas"],
-  movimientosCaja: ReturnType<typeof useStore>["movimientosCaja"]
+  movimientosCaja: ReturnType<typeof useStore>["movimientosCaja"],
+  servicios: Servicio[] = []
 ) {
   const hoy = new Date()
   const fechaLimite = new Date(hoy)
@@ -577,7 +582,9 @@ function useCashflowDataPure(
       if (srv.estadoPago === "pagado_total") continue
       const fechaLimitePago = parseLocalDate(srv.fechaLimitePago)
       if (!fechaLimitePago || fechaLimitePago < hoy || fechaLimitePago > fechaLimite) continue
-      const monto = srv.saldoPendiente ?? srv.montoSeña ?? 0
+      // Monto EN VIVO desde el catálogo de servicios
+      const { montoSeña: señaLive, saldoPendiente: saldoLive } = calcularSeñaSaldoServicio(srv, { servicios })
+      const monto = saldoLive > 0 ? saldoLive : señaLive
       if (monto > 0) totalSale += monto
     }
   }
