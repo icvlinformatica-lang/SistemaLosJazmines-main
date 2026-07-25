@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
+import { sendEventNotification } from "@/lib/event-notifications"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -258,6 +259,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       nombre,
       `Invitados: ${totalInvitados} (A:${ev.adultos||0} Adol:${ev.adolescentes||0} N:${ev.ninos||0}) | Platos: ${totalPlatos} | Estado: ${ev.estado}`
     )
+    await sendEventNotification("modificado", {
+      nombre,
+      fecha: ev.fecha,
+      horario: ev.horario,
+      salon: ev.salon,
+      tipoEvento: ev.tipoEvento,
+      estado: ev.estado,
+      adultos: ev.adultos,
+      adolescentes: ev.adolescentes,
+      ninos: ev.ninos,
+    })
     return NextResponse.json(fromRow(updated))
   } catch (err) {
     console.error("[API] Error updating evento:", err)
@@ -308,6 +320,17 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
     await sql`UPDATE eventos SET deleted_at=NOW() WHERE id=${id}`
     await logActivity("evento", "eliminado", row.nombre || "Sin nombre")
+    await sendEventNotification("eliminado", {
+      nombre: row.nombre,
+      fecha: row.fecha,
+      horario: row.horario,
+      salon: row.salon,
+      tipoEvento: row.tipo_evento,
+      estado: row.estado,
+      adultos: row.adultos,
+      adolescentes: row.adolescentes,
+      ninos: row.ninos,
+    })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[API] Error deleting evento:", err)

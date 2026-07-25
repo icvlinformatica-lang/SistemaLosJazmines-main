@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
+import { sendEventNotification } from "@/lib/event-notifications"
 
 // camelCase → snake_case for DB insert/update
 function toRow(ev: Record<string, unknown>) {
@@ -222,6 +223,17 @@ export async function POST(req: Request) {
     `
     const created = rows2[0]
     await logActivity("evento", "creado", nombre, `Fecha: ${r.fecha || "sin fecha"} | Salon: ${r.salon || "sin salon"}`)
+    await sendEventNotification("creado", {
+      nombre,
+      fecha: r.fecha,
+      horario: r.horario,
+      salon: r.salon,
+      tipoEvento: r.tipo_evento,
+      estado: r.estado,
+      adultos: r.adultos,
+      adolescentes: r.adolescentes,
+      ninos: r.ninos,
+    })
     return NextResponse.json(fromRow(created), { status: 201 })
   } catch (err) {
     console.error("[API] Error creating evento:", err)
