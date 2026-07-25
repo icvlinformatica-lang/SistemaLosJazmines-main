@@ -1705,11 +1705,12 @@ export default function CajaJazminePage() {
       </Card>
       </div>
 
-      {/* Cuotas por cobrar (izquierda) + Vencimientos (derecha) */}
+      {/* Cuotas + Fijos (columna izquierda) y Vencimientos + Variables (columna derecha).
+          Columnas independientes: al plegar una tarjeta, la de abajo sube al instante. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
-      {/* Alertas de vencimiento (columna derecha) */}
-      <Card className="order-2" style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
+      {/* Alertas de vencimiento (columna derecha, fila 1) */}
+      <Card className="md:col-start-2 md:row-start-1" style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -1860,8 +1861,9 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-      {/* ── Cuotas por cobrar (columna izquierda) ─────────────────────── */}
-      <Card className="order-1" style={{ backgroundColor: "#cdf7c6" }}>
+      {/* ── Columna izquierda: cuotas por cobrar + gastos fijos apilados ── */}
+      <div className="flex min-w-0 flex-col gap-4 md:col-start-1 md:row-start-1 md:row-span-2 md:order-first">
+      <Card style={{ backgroundColor: "#cdf7c6" }}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -1933,11 +1935,6 @@ export default function CajaJazminePage() {
           </CardContent>
         )}
       </Card>
-
-      </div>
-
-      {/* Gastos fijos + Gastos variables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* ���─ Gastos fijos del mes ─────────────────────────────────────── */}
         <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
@@ -2175,9 +2172,10 @@ export default function CajaJazminePage() {
           </CardContent>
           )}
         </Card>
+      </div>
 
-        {/* ── Gastos variables ──────────��──────��─���───��─────��─����───────── */}
-        <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
+        {/* Gastos variables (columna derecha, fila 2) */}
+        <Card className="md:col-start-2 md:row-start-2" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
