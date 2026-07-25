@@ -112,7 +112,7 @@ function PaymentReceipt({
   // Valores por defecto del recibo, autocompletados desde el evento y el pago.
   const buildDefaults = () => ({
     nombreApellido: pago.pagadoPor || evento.nombrePareja || evento.nombre || "",
-    dni: evento.dniNovio1 || "",
+    dni: pago.dni || evento.dniNovio1 || "",
     fechaPago: pago.fecha || new Date().toISOString().split("T")[0],
     fechaEvento: evento.fecha || "",
     valor: formatCurrency(pago.monto),
@@ -137,94 +137,105 @@ function PaymentReceipt({
       return m ? [m[3], m[2], m[1]] : ["", "", ""]
     })()
 
+    // Una copia del recibo (talon + recibo). Se imprimen dos copias identicas
+    // apiladas en vertical, que juntas ocupan 3/4 de la hoja A4.
+    const copiaHtml = `
+      <div class="copia">
+        <!-- Talon para Los Jazmines -->
+        <div class="talon">
+          <div class="talon-tabla">
+            <div class="talon-header"><span class="script">Los Jazmines</span></div>
+            <div class="talon-fila">Nombre y Apellido:<div class="dato">${datos.nombreApellido}</div></div>
+            <div class="talon-fila">${datos.concepto ? `<div class="dato" style="margin-top:0;">${datos.concepto}</div>` : ""}</div>
+            <div class="talon-fila">Fecha Evento:<div class="dato">${fmtFecha(datos.fechaEvento)}</div></div>
+            <div class="talon-fila">Valor:<div class="dato">${datos.valor}</div></div>
+            <div class="talon-fila">Espacio: <span class="dato" style="display:inline;margin-left:1mm;">${datos.espacio}</span></div>
+            <div class="talon-fila">Fecha de Pago:<div class="dato">${fmtFecha(datos.fechaPago)}</div></div>
+          </div>
+        </div>
+
+        <div class="separador"></div>
+
+        <!-- Recibo para el cliente -->
+        <div class="recibo">
+          <div class="recibo-top">
+            <span class="script">Los Jazmines</span>
+            <div class="fecha-grupo">
+              <span class="fecha-label">Fecha</span>
+              <div class="fecha-cajas">
+                <div class="fecha-caja">${dia}</div>
+                <div class="fecha-caja">${mes}</div>
+                <div class="fecha-caja">${anio}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="linea"><span class="label">Recib&iacute; de:</span><span class="relleno">${datos.nombreApellido}</span></div>
+          <div class="linea"><span class="label">D.N.I.:</span><span class="relleno">${datos.dni}</span></div>
+          <div class="linea"><span class="label">La suma de pesos</span><span class="relleno">${datos.sumaPesos}</span></div>
+          <div class="linea"><span class="relleno" style="margin-left:0;">${datos.concepto}</span></div>
+          <div class="concepto">en concepto de alquiler del salon ubicado en <b>${datos.espacio}</b></div>
+          <div class="linea"><span class="label">para el d&iacute;a:</span><span class="relleno">${fmtFecha(datos.fechaEvento)}</span></div>
+
+          <div class="firmas">
+            <div class="campo"><span>Firma:</span><span class="relleno"></span></div>
+            <div class="campo"><span>Aclaraci&oacute;n:</span><span class="relleno"></span></div>
+          </div>
+        </div>
+      </div>
+    `
+
     printWindow.document.write(`
       <html>
         <head>
           <title>Recibo - Los Jazmines</title>
           <style>
-            @page { size: A4 landscape; margin: 10mm; }
+            @page { size: A4 portrait; margin: 8mm; }
             * { box-sizing: border-box; }
             html, body { margin: 0; padding: 0; }
             body { font-family: Arial, sans-serif; color: #111; }
-            .hoja { display: flex; width: 100%; height: 186mm; }
             .script { font-family: 'Brush Script MT', 'Segoe Script', 'Lucida Handwriting', cursive; font-weight: normal; }
 
+            /* Cada copia ocupa ~3/8 de la hoja: las dos juntas suman 3/4 */
+            .copia { display: flex; width: 100%; height: 104mm; overflow: hidden; page-break-inside: avoid; }
+            .cut-line { border: none; border-top: 2px dashed #999; margin: 2mm 0; position: relative; }
+            .cut-line::after { content: "\\2702 cortar aqui"; position: absolute; top: -3mm; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 6px; font-size: 9px; color: #999; }
+
             /* ===== Talon izquierdo (Los Jazmines) ===== */
-            .talon { width: 34%; padding: 6mm 5mm 6mm 2mm; }
-            .talon-tabla { border: 2px solid #111; width: 100%; }
-            .talon-fila { border-bottom: 1.5px solid #111; padding: 5mm 4mm; min-height: 16mm; font-size: 13px; font-style: italic; }
+            .talon { width: 33%; padding: 2mm 3mm 2mm 0; }
+            .talon-tabla { border: 1.5px solid #111; width: 100%; }
+            .talon-fila { border-bottom: 1px solid #111; padding: 1.6mm 2.5mm; min-height: 10mm; font-size: 10px; font-style: italic; }
             .talon-fila:last-child { border-bottom: none; }
-            .talon-fila .dato { font-style: normal; font-weight: bold; margin-top: 2mm; font-size: 13.5px; }
-            .talon-header { text-align: center; padding: 4mm; border-bottom: 1.5px solid #111; }
-            .talon-header .script { font-size: 30px; }
+            .talon-fila .dato { font-style: normal; font-weight: bold; margin-top: 0.8mm; font-size: 10.5px; }
+            .talon-header { text-align: center; padding: 2mm; border-bottom: 1px solid #111; }
+            .talon-header .script { font-size: 19px; }
 
             /* ===== Separador troquelado ===== */
-            .separador { width: 0; border-left: 2px dashed #999; margin: 4mm 0; }
+            .separador { width: 0; border-left: 1.5px dashed #999; margin: 2mm 0; }
 
             /* ===== Recibo derecho (Cliente) ===== */
-            .recibo { flex: 1; padding: 8mm 4mm 8mm 8mm; display: flex; flex-direction: column; }
-            .recibo-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10mm; }
-            .recibo-top .script { font-size: 40px; }
-            .fecha-grupo { display: flex; align-items: center; gap: 3mm; margin-top: 6mm; }
-            .fecha-grupo .fecha-label { font-size: 13px; }
-            .fecha-cajas { display: flex; border: 1.5px solid #111; }
-            .fecha-caja { width: 20mm; height: 10mm; border-right: 1.5px solid #111; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; }
+            .recibo { flex: 1; padding: 3mm 2mm 3mm 5mm; display: flex; flex-direction: column; }
+            .recibo-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4mm; }
+            .recibo-top .script { font-size: 26px; }
+            .fecha-grupo { display: flex; align-items: center; gap: 2mm; margin-top: 2.5mm; }
+            .fecha-grupo .fecha-label { font-size: 10px; }
+            .fecha-cajas { display: flex; border: 1px solid #111; }
+            .fecha-caja { width: 13mm; height: 7mm; border-right: 1px solid #111; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
             .fecha-caja:last-child { border-right: none; }
-            .linea { font-size: 14px; line-height: 2.3; display: flex; align-items: baseline; }
+            .linea { font-size: 11px; line-height: 1.9; display: flex; align-items: baseline; }
             .linea .label { white-space: nowrap; }
-            .linea .relleno { flex: 1; border-bottom: 1.5px dotted #444; margin-left: 2mm; padding: 0 2mm 1px; font-weight: bold; min-height: 6mm; }
-            .concepto { font-size: 14px; line-height: 2.3; }
+            .linea .relleno { flex: 1; border-bottom: 1px dotted #444; margin-left: 1.5mm; padding: 0 1.5mm 1px; font-weight: bold; min-height: 4.5mm; }
+            .concepto { font-size: 11px; line-height: 1.9; }
             .concepto b { font-weight: bold; }
-            .firmas { display: flex; gap: 10mm; margin-top: auto; padding-top: 14mm; font-size: 13px; }
+            .firmas { display: flex; gap: 8mm; margin-top: auto; padding-top: 6mm; font-size: 10px; }
             .firmas .campo { display: flex; align-items: baseline; flex: 1; }
-            .firmas .relleno { flex: 1; border-bottom: 1.5px dotted #444; margin-left: 2mm; min-height: 6mm; }
+            .firmas .relleno { flex: 1; border-bottom: 1px dotted #444; margin-left: 1.5mm; min-height: 4.5mm; }
           </style>
         </head>
         <body>
-          <div class="hoja">
-            <!-- Talon para Los Jazmines -->
-            <div class="talon">
-              <div class="talon-tabla">
-                <div class="talon-header"><span class="script">Los Jazmines</span></div>
-                <div class="talon-fila">Nombre y Apellido:<div class="dato">${datos.nombreApellido}</div></div>
-                <div class="talon-fila">${datos.concepto ? `<div class="dato" style="margin-top:0;">${datos.concepto}</div>` : ""}</div>
-                <div class="talon-fila">Fecha Evento:<div class="dato">${fmtFecha(datos.fechaEvento)}</div></div>
-                <div class="talon-fila">Valor:<div class="dato">${datos.valor}</div></div>
-                <div class="talon-fila">Espacio: <span class="dato" style="display:inline;margin-left:2mm;">${datos.espacio}</span></div>
-                <div class="talon-fila">Fecha de Pago:<div class="dato">${fmtFecha(datos.fechaPago)}</div></div>
-                <div class="talon-fila"></div>
-              </div>
-            </div>
-
-            <div class="separador"></div>
-
-            <!-- Recibo para el cliente -->
-            <div class="recibo">
-              <div class="recibo-top">
-                <span class="script">Los Jazmines</span>
-                <div class="fecha-grupo">
-                  <span class="fecha-label">Fecha</span>
-                  <div class="fecha-cajas">
-                    <div class="fecha-caja">${dia}</div>
-                    <div class="fecha-caja">${mes}</div>
-                    <div class="fecha-caja">${anio}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="linea"><span class="label">Recib&iacute; de:</span><span class="relleno">${datos.nombreApellido}</span></div>
-              <div class="linea"><span class="label">D.N.I.:</span><span class="relleno">${datos.dni}</span></div>
-              <div class="linea"><span class="label">La suma de pesos</span><span class="relleno">${datos.sumaPesos}</span></div>
-              <div class="linea"><span class="relleno" style="margin-left:0;">${datos.concepto}</span></div>
-              <div class="concepto">en concepto de alquiler del salon ubicado en <b>${datos.espacio}</b></div>
-              <div class="linea"><span class="label">para el d&iacute;a:</span><span class="relleno">${fmtFecha(datos.fechaEvento)}</span></div>
-
-              <div class="firmas">
-                <div class="campo"><span>Firma:</span><span class="relleno"></span></div>
-                <div class="campo"><span>Aclaraci&oacute;n:</span><span class="relleno"></span></div>
-              </div>
-            </div>
-          </div>
+          ${copiaHtml}
+          <hr class="cut-line" />
+          ${copiaHtml}
         </body>
       </html>
     `)
@@ -420,6 +431,7 @@ function PagosPageContent() {
     monto: 0,
     fecha: new Date().toISOString().split("T")[0],
     pagadoPor: "",
+    dni: "",
     porcentajeIPC: 0,
     notas: "",
     montoRecibido: 0,
@@ -523,6 +535,7 @@ function PagosPageContent() {
       monto: pagoForm.monto,
       fecha: pagoForm.fecha,
       pagadoPor: pagoForm.pagadoPor,
+      dni: pagoForm.dni || undefined,
       porcentajeIPC: pagoForm.porcentajeIPC,
       notas: pagoForm.notas || undefined,
       montoRecibido: pagoForm.montoRecibido > 0 ? pagoForm.montoRecibido : undefined,
@@ -631,6 +644,7 @@ function PagosPageContent() {
       monto: 0,
       fecha: new Date().toISOString().split("T")[0],
       pagadoPor: "",
+      dni: "",
       porcentajeIPC: 0,
       notas: "",
       montoRecibido: 0,
@@ -1396,6 +1410,7 @@ function PagosPageContent() {
                                 monto: proximaCuota.monto,
                                 fecha: new Date().toISOString().split("T")[0],
                                 pagadoPor: "",
+                                dni: selectedEvento?.dniNovio1 || "",
                                 porcentajeIPC: ipcAcumulado,
                                 notas: esPagoUnico
                                   ? "Pago único (pago completo)"
@@ -1629,15 +1644,27 @@ function PagosPageContent() {
                 />
               </div>
 
-              {/* Pagado por */}
-              <div className="grid gap-1">
-                <Label className="text-xs">Pagado por</Label>
-                <Input
-                  value={pagoForm.pagadoPor}
-                  onChange={(e) => setPagoForm({ ...pagoForm, pagadoPor: e.target.value })}
-                  placeholder="Nombre de quien paga"
-                  className="h-9"
-                />
+              {/* Pagado por + DNI */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1">
+                  <Label className="text-xs">Pagado por</Label>
+                  <Input
+                    value={pagoForm.pagadoPor}
+                    onChange={(e) => setPagoForm({ ...pagoForm, pagadoPor: e.target.value })}
+                    placeholder="Nombre de quien paga"
+                    className="h-9"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <Label className="text-xs">D.N.I.</Label>
+                  <Input
+                    value={pagoForm.dni}
+                    onChange={(e) => setPagoForm({ ...pagoForm, dni: e.target.value })}
+                    placeholder="DNI de quien paga"
+                    inputMode="numeric"
+                    className="h-9"
+                  />
+                </div>
               </div>
 
               {/* Notas */}
