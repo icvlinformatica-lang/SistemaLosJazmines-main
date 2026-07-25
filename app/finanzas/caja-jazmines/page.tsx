@@ -1714,7 +1714,7 @@ export default function CajaJazminePage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-amber-500" />
-              Alertas de vencimiento
+              Proximos vencimientos
             </CardTitle>
             <Button
               variant="ghost"
@@ -2176,7 +2176,7 @@ export default function CajaJazminePage() {
           )}
         </Card>
 
-        {/* ── Gastos variables ──────────��──────��─���───��─────��──��───────── */}
+        {/* ── Gastos variables ──────────��──────��─���───��─────��─����───────── */}
         <Card style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
