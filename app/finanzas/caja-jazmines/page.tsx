@@ -1293,7 +1293,7 @@ export default function CajaJazminePage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-start gap-3 flex-1">
@@ -1342,45 +1342,10 @@ export default function CajaJazminePage() {
         </p>
       )}
 
-      {/* Métricas: carrusel con vista a 30 días y semanal */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-foreground">
-            {vistaDashboard === 0 ? "Próximos 30 días" : `Esta semana · ${rangoSemanaJazLabel}`}
-          </p>
-          <div className="flex items-center gap-1.5">
-            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 0 ? "w-4 bg-purple-600" : "w-1.5 bg-muted-foreground/30"}`} />
-            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 1 ? "w-4 bg-purple-600" : "w-1.5 bg-muted-foreground/30"}`} />
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 ml-2 bg-transparent"
-              onClick={() => setVistaDashboard(0)}
-              disabled={vistaDashboard === 0}
-              aria-label="Ver próximos 30 días"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 bg-transparent"
-              onClick={() => setVistaDashboard(1)}
-              disabled={vistaDashboard === 1}
-              aria-label="Ver esta semana"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="overflow-hidden">
-          <div
-            className="flex transition-transform duration-300 ease-in-out"
-            style={{ transform: `translateX(-${vistaDashboard * 100}%)` }}
-          >
+      {/* Métricas: 6 indicadores compactos (30 días + esta semana) en una sola fila */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
             {/* ── Slide 1: A 30 DÍAS ────────────────────────────────── */}
-            <div className="w-full shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4 pr-0.5">
+            <div className="contents">
               <Card
                 style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
                 className="cursor-pointer transition-colors hover:bg-white/40"
@@ -1394,7 +1359,7 @@ export default function CajaJazminePage() {
                 tabIndex={0}
                 aria-label="Extraer o ajustar dinero de Caja Jazmines"
               >
-                <CardContent className="pt-5 pb-5">
+                <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
                     <div className="flex items-center gap-1.5">
@@ -1414,7 +1379,7 @@ export default function CajaJazminePage() {
                       </button>
                     </div>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#3c4ce8" }}>
+                  <p className="text-2xl font-bold" style={{ color: "#3c4ce8" }}>
                     {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
                   </p>
                   <p className="text-xs mt-1 flex items-center gap-1" style={{ color: "#4010fa" }}>
@@ -1424,7 +1389,7 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card className="border-border">
-                <CardContent className="pt-5 pb-5">
+                <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Gastos A 30 días
@@ -1439,7 +1404,7 @@ export default function CajaJazminePage() {
                       {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  <p className="text-3xl font-bold" style={{ color: "#b7933b" }}>
+                  <p className="text-2xl font-bold" style={{ color: "#b7933b" }}>
                     {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Gastos pendientes</p>
@@ -1447,7 +1412,7 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card className={saldoProyectado30Dias >= 0 ? "border-teal-200 bg-teal-50" : "border-red-200 bg-red-50"}>
-                <CardContent className="pt-5 pb-5">
+                <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className={`text-xs font-medium uppercase tracking-wide ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-700"}`}>
                       Saldo a 30 días
@@ -1465,7 +1430,7 @@ export default function CajaJazminePage() {
                       </button>
                     </div>
                   </div>
-                  <p className={`text-3xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
+                  <p className={`text-2xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-700"}`}>
                     {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
                   </p>
                   {(() => {
@@ -1483,14 +1448,16 @@ export default function CajaJazminePage() {
             </div>
 
             {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
-            <div className="w-full shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4 pl-0.5" aria-hidden={vistaDashboard !== 1}>
+            <div className="contents">
               <Card className="border-emerald-200 bg-emerald-50">
-                <CardContent className="pt-5 pb-5">
+                <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-emerald-700 uppercase tracking-wide">Cobro esta semana</p>
+                    <p className="text-xs font-medium text-emerald-700 uppercase tracking-wide" title={rangoSemanaJazLabel}>
+                      Cobro esta semana
+                    </p>
                     <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
                   </div>
-                  <p className="text-3xl font-bold text-emerald-800">
+                  <p className="text-2xl font-bold text-emerald-800">
                     {montosOcultos.saldoProyectado ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
                   </p>
                   {cuotasSemanaJazCount > 0 ? (
@@ -1504,12 +1471,12 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card className="border-red-200 bg-red-50">
-                <CardContent className="pt-5 pb-5">
+                <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium text-red-700 uppercase tracking-wide">Gastos esta semana</p>
                     <ArrowUpFromLine className="h-4 w-4 text-red-600" />
                   </div>
-                  <p className="text-3xl font-bold text-red-700">
+                  <p className="text-2xl font-bold text-red-700">
                     {montosOcultos.gastos30 ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
                   </p>
                   {gastosSemanaJazDetalle ? (
@@ -1521,14 +1488,14 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card className={saldoFinSemanaJaz >= 0 ? "border-teal-200 bg-teal-50" : "border-red-200 bg-red-50"}>
-                <CardContent className="pt-5 pb-5">
+                <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className={`text-xs font-medium uppercase tracking-wide ${saldoFinSemanaJaz >= 0 ? "text-teal-700" : "text-red-700"}`}>
                       Tengo a fin de semana
                     </p>
                     <TrendingUp className={`h-4 w-4 ${saldoFinSemanaJaz >= 0 ? "text-teal-600" : "text-red-600"}`} />
                   </div>
-                  <p className={`text-3xl font-bold ${saldoFinSemanaJaz >= 0 ? "text-teal-800" : "text-red-700"}`}>
+                  <p className={`text-2xl font-bold ${saldoFinSemanaJaz >= 0 ? "text-teal-800" : "text-red-700"}`}>
                     {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoFinSemanaJaz)}
                   </p>
                   <p className={`text-xs mt-1 ${saldoFinSemanaJaz >= 0 ? "text-teal-600" : "text-red-600"}`}>
@@ -1537,13 +1504,14 @@ export default function CajaJazminePage() {
                 </CardContent>
               </Card>
             </div>
-          </div>
-        </div>
       </div>
 
+      {/* Fila principal: proyección a 12 meses + columna lateral (servicios y gráfico) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <div className="space-y-4 lg:col-span-5 2xl:col-span-4 lg:order-2">
       {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos */}
       <Card className="border-amber-200 bg-amber-50">
-        <CardContent className="pt-5 pb-5">
+        <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
@@ -1554,12 +1522,11 @@ export default function CajaJazminePage() {
                   Servicios a pagar el mes que viene
                 </p>
                 <p className="text-xs text-amber-700/70 mt-0.5 text-pretty">
-                  Estimado para {tituloProxMes}, calculado con el último monto pagado de cada servicio (registrado en
-                  &quot;Registrar monto pagado&quot;) más la tendencia de sus últimos aumentos.
+                  Estimado para {tituloProxMes} según los últimos montos pagados y su tendencia.
                 </p>
               </div>
             </div>
-            <p className="text-3xl font-bold text-amber-800 shrink-0">
+            <p className="text-2xl font-bold text-amber-800 shrink-0">
               {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
@@ -1618,17 +1585,81 @@ export default function CajaJazminePage() {
         </CardContent>
       </Card>
 
-      {/* PROYECCIÓN MENSUAL — tabla a 12 meses */}
+      {/* Proyección visual del saldo a 30 días (columna lateral) */}
       <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-purple-600" />
+              Proyección del saldo a 30 días
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => toggleColapsada("proyeccion")}
+              aria-label={colapsadas.proyeccion ? "Expandir proyección" : "Minimizar proyección"}
+              title={colapsadas.proyeccion ? "Expandir" : "Minimizar"}
+            >
+              {colapsadas.proyeccion ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+        </CardHeader>
+        {!colapsadas.proyeccion && (
+        <CardContent className="space-y-4 reveal-stagger">
+          <div className="flex items-end justify-around gap-3 sm:gap-6 h-44 pt-2">
+            {[
+              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
+              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−", colorStyle: { backgroundColor: "#90b203" }, textStyle: { color: "#788224" } },
+              { label: "Ingresos proyectados (parte Jazmines)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+", textStyle: { color: "#0f7a14" } },
+            ].map(({ label, value, color, textColor, signo, colorStyle, textStyle }) => {
+              const pct = Math.round((value / barMax) * 100)
+              return (
+                <div key={label} className="flex h-full flex-1 flex-col items-center gap-2">
+                  <span className="text-xs font-semibold whitespace-nowrap" style={textStyle || {}}>
+                    {signo ? `${signo} ` : ""}{formatCurrency(value)}
+                  </span>
+                  <div className="flex w-full flex-1 items-end justify-center">
+                    <div className="relative flex h-full w-10 items-end overflow-hidden rounded-t-md bg-muted sm:w-14">
+                      <div
+                        className="w-full rounded-t-md transition-all duration-500"
+                        style={{ height: `${Math.max(pct, 2)}%`, ...colorStyle }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-center text-xs font-medium leading-tight text-foreground">
+                    {label}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="pt-3 border-t border-border">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">Saldo proyectado resultante</span>
+              <span className={`text-xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                {formatCurrency(saldoProyectado30Dias)}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Saldo actual + ingresos proyectados − gastos proyectados
+            </p>
+          </div>
+        </CardContent>
+        )}
+      </Card>
+      </div>
+
+      {/* PROYECCIÓN MENSUAL — tabla a 12 meses */}
+      <Card className="lg:col-span-7 2xl:col-span-8 lg:order-1">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1 text-pretty">
-            A cobrar: la parte de cada cuota que queda para Caja Jazmines después de cubrir el costo del evento + 5%
-            (la ganancia real de cada evento). A pagar: gastos fijos, sueldos y variables agendados. El saldo parte
-            del saldo actual de la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
+            A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
+            El saldo parte del saldo actual de la caja.
           </p>
         </CardHeader>
         <CardContent className="px-0">
@@ -1667,6 +1698,7 @@ export default function CajaJazminePage() {
           </Table>
         </CardContent>
       </Card>
+      </div>
 
       {/* Cuotas por cobrar (izquierda) + Vencimientos (derecha) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
@@ -2317,70 +2349,6 @@ export default function CajaJazminePage() {
           )}
         </Card>
       </div>
-
-      {/* Proyección visual */}
-      <Card style={{ backgroundColor: "#ffffff" }}>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-purple-600" />
-              Proyección del saldo a 30 días
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => toggleColapsada("proyeccion")}
-              aria-label={colapsadas.proyeccion ? "Expandir proyección" : "Minimizar proyección"}
-              title={colapsadas.proyeccion ? "Expandir" : "Minimizar"}
-            >
-              {colapsadas.proyeccion ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-        </CardHeader>
-        {!colapsadas.proyeccion && (
-        <CardContent className="space-y-4 reveal-stagger">
-          <div className="flex items-end justify-around gap-3 sm:gap-6 h-56 pt-2">
-            {[
-              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
-              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−", colorStyle: { backgroundColor: "#90b203" }, textStyle: { color: "#788224" } },
-              { label: "Ingresos proyectados (parte Jazmines)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+", textStyle: { color: "#0f7a14" } },
-            ].map(({ label, value, color, textColor, signo, colorStyle, textStyle }) => {
-              const pct = Math.round((value / barMax) * 100)
-              return (
-                <div key={label} className="flex h-full flex-1 flex-col items-center gap-2">
-                  <span className="text-xs font-semibold whitespace-nowrap" style={textStyle || {}}>
-                    {signo ? `${signo} ` : ""}{formatCurrency(value)}
-                  </span>
-                  <div className="flex w-full flex-1 items-end justify-center">
-                    <div className="relative flex h-full w-10 items-end overflow-hidden rounded-t-md bg-muted sm:w-16">
-                      <div
-                        className="w-full rounded-t-md transition-all duration-500"
-                        style={{ height: `${Math.max(pct, 2)}%`, ...colorStyle }}
-                      />
-                    </div>
-                  </div>
-                  <span className="text-center text-xs font-medium leading-tight text-foreground">
-                    {label}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-          <div className="pt-3 border-t border-border">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-foreground">Saldo proyectado resultante</span>
-              <span className={`text-xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
-                {formatCurrency(saldoProyectado30Dias)}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Saldo actual + ingresos proyectados − gastos proyectados
-            </p>
-          </div>
-        </CardContent>
-        )}
-      </Card>
 
       {/* ── Calendario de gastos por salón ────────────────���────────────────── */}
       <CalendarioGastosSalones
