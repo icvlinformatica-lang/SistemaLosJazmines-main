@@ -302,6 +302,8 @@ export interface Servicio {
   proveedor?: string
   notas?: string
   activo: boolean
+  /** Posición de la fila en la tabla de Finanzas → Servicios (orden manual). */
+  orden?: number
 }
 
 export interface ServicioEvento {

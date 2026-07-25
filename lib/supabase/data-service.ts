@@ -20,6 +20,7 @@ export async function fetchServicios(): Promise<Servicio[]> {
   const { data, error } = await supabase
     .from("servicios")
     .select("*")
+    .order("orden", { ascending: true, nullsFirst: false })
     .order("nombre")
   
   if (error) {
@@ -43,6 +44,7 @@ export async function fetchServicios(): Promise<Servicio[]> {
     diasAnticipacionSaldo: Number(s.dias_anticipacion_saldo) || 7,
     proveedor: s.proveedor || undefined,
     notas: s.notas || undefined,
+    orden: s.orden ?? undefined,
   }))
 }
 
@@ -63,6 +65,7 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
     dias_anticipacion_saldo: servicio.diasAnticipacionSaldo ?? 7,
     proveedor: servicio.proveedor || null,
     notas: servicio.notas || null,
+    orden: servicio.orden ?? null,
     updated_at: new Date().toISOString(),
   }
 
@@ -93,6 +96,7 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
     diasAnticipacionSaldo: Number(data.dias_anticipacion_saldo) || 7,
     proveedor: data.proveedor || undefined,
     notas: data.notas || undefined,
+    orden: data.orden ?? undefined,
   } : null
 }
 
