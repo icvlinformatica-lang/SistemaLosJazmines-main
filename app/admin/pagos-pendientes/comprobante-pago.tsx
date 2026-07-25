@@ -21,6 +21,7 @@ export default function ComprobantePago({ open, onOpenChange, pago, personal }: 
       style: "currency",
       currency: "ARS",
       minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(precio)
   }
 

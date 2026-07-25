@@ -1766,7 +1766,7 @@ function EventoPageContent() {
                     const costoSeña = Math.round((servicio.costoParaCajaEventos ?? 0) * (servicio.porcentajeSeña ?? 30) / 100)
 
                     const fmt = (n: number) =>
-                      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
+                      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
                     const toggleServicio = () => {
                       if (seleccionado) {
@@ -1941,7 +1941,7 @@ function EventoPageContent() {
                         {serviciosEvento.length} servicio{serviciosEvento.length !== 1 ? "s" : ""} seleccionado{serviciosEvento.length !== 1 ? "s" : ""}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-emerald-700">
-                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
+                        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
                           serviciosEvento.reduce((sum, se) => {
                             const cat = catalogoServicios.find(s => s.id === se.servicioId)
                             const precio = cat?.precioVenta ?? 0
