@@ -149,7 +149,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
               if (e.key === "Escape") cancel()
             }}
             className={cn(
-              "w-full h-10 pl-6 pr-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white text-right tabular-nums",
+              "w-full h-8 pl-6 pr-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white text-right tabular-nums",
               className
             )}
             autoFocus
@@ -168,7 +168,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
           if (e.key === "Escape") cancel()
         }}
         className={cn(
-          "w-full h-10 px-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white",
+          "w-full h-8 px-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white",
           className
         )}
         autoFocus
@@ -180,7 +180,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
     <div
       onClick={startEdit}
       className={cn(
-        "group relative h-10 flex items-center px-2.5 rounded cursor-pointer hover:bg-muted/70 transition-colors text-[15px]",
+        "group relative h-8 flex items-center px-2.5 rounded cursor-pointer hover:bg-muted/70 transition-colors text-[15px]",
         !value && "text-muted-foreground/50 italic",
         numeric && "justify-end tabular-nums",
         className
@@ -352,31 +352,31 @@ export default function FinanzasServiciosPage() {
         <table className="w-full text-[15px] border-collapse min-w-[920px]">
           <thead>
             <tr className="bg-muted/80 border-b border-border sticky top-0 z-10">
-              <th className="px-3 py-3 text-left font-semibold text-muted-foreground w-[58px] text-[13px] uppercase tracking-wide">#</th>
-              <th className="px-3 py-3 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Nombre</th>
-              <th className="px-3 py-3 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[165px]">Categoria</th>
-              <th className="px-3 py-3 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[125px]">Unidad</th>
-              <th className="px-3 py-3 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground w-[58px] text-[13px] uppercase tracking-wide">#</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Nombre</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[165px]">Categoria</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[125px]">Unidad</th>
+              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
                 <span className="flex items-center justify-end gap-1 text-emerald-700">
                   <ShoppingBag className="h-4 w-4" />
                   Precio Venta
                 </span>
               </th>
-              <th className="px-3 py-3 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
+              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
                 <span className="flex items-center justify-end gap-1 text-rose-600">
                   <DollarSign className="h-4 w-4" />
                   Costo Caja Eventos
                 </span>
               </th>
-              <th className="px-3 py-3 text-right font-semibold text-[13px] uppercase tracking-wide w-[150px]">
+              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[150px]">
                 <span className="flex items-center justify-end gap-1 text-amber-600">
                   <Tag className="h-4 w-4" />
                   Seña por evento
                 </span>
               </th>
-              <th className="px-3 py-3 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
-              <th className="px-3 py-3 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion</th>
-              <th className="px-2 py-3 w-10" />
+              <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion</th>
+              <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
 
@@ -406,14 +406,14 @@ export default function FinanzasServiciosPage() {
                   )}
                 >
                   {/* Nro fila + mover */}
-                  <td className="px-1.5 py-2 select-none">
+                  <td className="px-1.5 py-0 select-none">
                     <div className="flex items-center gap-1">
                       <div className="flex flex-col">
                         <button
                           type="button"
                           onClick={() => moverServicio(s.id, -1)}
                           disabled={idx === 0}
-                          className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          className="min-h-0 p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
                           title="Subir fila"
                           aria-label={`Subir ${s.nombre}`}
                         >
@@ -423,7 +423,7 @@ export default function FinanzasServiciosPage() {
                           type="button"
                           onClick={() => moverServicio(s.id, 1)}
                           disabled={idx === serviciosFiltrados.length - 1}
-                          className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          className="min-h-0 p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
                           title="Bajar fila"
                           aria-label={`Bajar ${s.nombre}`}
                         >
@@ -435,7 +435,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Nombre */}
-                  <td className="px-1.5 py-2 min-w-[180px]">
+                  <td className="px-1.5 py-0 min-w-[180px]">
                     <EditableCell
                       value={s.nombre}
                       placeholder="Nombre del servicio"
@@ -444,12 +444,12 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Categoria */}
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-0">
                     <Select
                       value={s.categoria}
                       onValueChange={(v) => update(s.id, { categoria: v as CategoriaServicio })}
                     >
-                      <SelectTrigger className="h-10 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 gap-1 text-[15px]">
+                      <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 gap-1 text-[15px]">
                         <Badge
                           variant="outline"
                           className={cn("text-[13px] font-medium px-2 py-0.5 border", CATEGORIA_COLORS[s.categoria])}
@@ -470,12 +470,12 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Unidad */}
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-0">
                     <Select
                       value={s.unidad}
                       onValueChange={(v) => update(s.id, { unidad: v as Servicio["unidad"] })}
                     >
-                      <SelectTrigger className="h-10 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 text-[15px]">
+                      <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 text-[15px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -487,7 +487,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Precio Venta */}
-                  <td className="px-1.5 py-2">
+                  <td className="px-1.5 py-0">
                     <EditableCell
                       value={formatMiles(venta)}
                       placeholder="0"
@@ -502,7 +502,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Costo Caja Eventos */}
-                  <td className="px-1.5 py-2">
+                  <td className="px-1.5 py-0">
                     <EditableCell
                       value={formatMiles(costo)}
                       placeholder="0"
@@ -517,7 +517,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Seña por evento */}
-                  <td className="px-1.5 py-2">
+                  <td className="px-1.5 py-0">
                     <EditableCell
                       value={s.costoParaCajaEventos && s.porcentajeSeña
                         ? formatMiles(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))
@@ -536,7 +536,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Margen */}
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="px-3 py-0 text-right tabular-nums">
                     {venta > 0 && costo > 0 ? (
                       <span className={cn("font-semibold text-[15px]", margenColor(margen))}>
                         {margen.toFixed(0)}%
@@ -547,7 +547,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Descripcion */}
-                  <td className="px-1.5 py-2 max-w-[220px]">
+                  <td className="px-1.5 py-0 max-w-[220px]">
                     <EditableCell
                       value={s.descripcion ?? ""}
                       placeholder="Descripcion opcional"
@@ -556,11 +556,11 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Eliminar */}
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-0">
                     <button
                       type="button"
                       onClick={() => setIdEliminar(s.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      className="min-h-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                       title="Eliminar servicio"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
