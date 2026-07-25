@@ -81,9 +81,13 @@ function buildHtml(action: EventAction, ev: EventInfo): string {
  */
 export async function sendEventNotification(action: EventAction, ev: EventInfo): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY
-  const to = process.env.NOTIFICATION_EMAIL
+  // Acepta uno o varios emails separados por coma, normalizados a minusculas.
+  const to = (process.env.NOTIFICATION_EMAIL || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
 
-  if (!apiKey || !to) {
+  if (!apiKey || to.length === 0) {
     console.warn("[Notificaciones] RESEND_API_KEY o NOTIFICATION_EMAIL no configurados, se omite el envio")
     return
   }
@@ -99,7 +103,7 @@ export async function sendEventNotification(action: EventAction, ev: EventInfo):
       },
       body: JSON.stringify({
         from: "Sistema Los Jazmines <onboarding@resend.dev>",
-        to: [to],
+        to,
         subject: `${subject}: ${ev.nombre || "Sin nombre"} (${formatFecha(ev.fecha)})`,
         html: buildHtml(action, ev),
       }),
