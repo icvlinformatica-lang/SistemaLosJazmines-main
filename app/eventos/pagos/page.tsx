@@ -658,8 +658,11 @@ function PagosPageContent() {
     if (!pago) return
 
     // 1) Determinar a qué cuota corresponde el pago (para revertirla y hallar sus movimientos)
+    // Un "Pago único (pago completo)" corresponde siempre a la cuota 1: si no se
+    // detecta, la cuota quedaría marcada como pagada para siempre tras eliminar el pago.
     const matchCuota = /Cuota\s+(\d+)/i.exec(pago.notas || "")
-    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : null
+    const esPagoUnicoNota = /pago\s+(único|unico|completo)/i.test(pago.notas || "")
+    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : esPagoUnicoNota ? 1 : null
     const etiquetaCuota = numeroCuota ? `Cuota ${numeroCuota}` : "Pago"
 
     // 2) Revertir los movimientos de caja que se habían sumado por este pago.
@@ -1140,6 +1143,14 @@ function PagosPageContent() {
                     </CardTitle>
                     {selectedEvento.nombrePareja && (
                       <CardDescription className="text-base mt-1">{selectedEvento.nombrePareja}</CardDescription>
+                    )}
+                    {selectedEvento.createdAt && (
+                      <Badge
+                        variant="outline"
+                        className="mt-2 border-border bg-muted/50 text-xs font-normal text-muted-foreground"
+                      >
+                        Creado el {new Date(selectedEvento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      </Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
