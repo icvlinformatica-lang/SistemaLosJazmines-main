@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { calcularComprasBarras, calcularComprasSegmentadas, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
+import { calcularComprasBarras, calcularComprasSegmentadas, calcularMontoPersonalDelEvento, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
 
 // ============================================================
 // Tipos de salida
@@ -332,7 +332,11 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         const fechaEventoStr = evento.fecha
         for (const pe of personalDelEvento) {
           if (pe.pagado) continue
-          if (!pe.monto || pe.monto <= 0) continue
+          // Sueldo EN VIVO desde el roster (Finanzas → Personal): si cambia la
+          // tarifa base, los sueldos pendientes de todos los eventos se
+          // actualizan solos (salvo montos personalizados por evento).
+          const montoSueldoLive = calcularMontoPersonalDelEvento(pe, state.personal)
+          if (!montoSueldoLive || montoSueldoLive <= 0) continue
           // Fecha de pago editada manualmente tiene prioridad; si no, el día del evento.
           const fechaVencSueldo = pe.fechaPago || fechaEventoStr
           const fechaVencSueldoDate = pe.fechaPago ? parseLocalDate(pe.fechaPago) : fechaEvento
@@ -345,7 +349,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           servicioNombre: `${pe.nombre} (${pe.funcion})`,
             servicioId: pe.id,
             tipo: "sueldo",
-            monto: pe.monto,
+            monto: montoSueldoLive,
             fechaVencimiento: fechaVencSueldo,
             diasRestantes: Math.ceil((fechaVencSueldoDate.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
             estadoPago: "saldo_pendiente",

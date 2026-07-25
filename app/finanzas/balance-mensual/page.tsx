@@ -593,6 +593,7 @@ export default function BalanceMensualPage() {
     anio,
     eventos,
     costosOperativos,
+    servicios,
   )
 
   // Opciones de año: desde el año más antiguo de eventos hasta +1

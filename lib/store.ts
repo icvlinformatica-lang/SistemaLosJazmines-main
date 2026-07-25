@@ -830,9 +830,32 @@ export interface PersonalDelEvento {
   nombre: string
   funcion: string
   monto: number
+  /**
+   * true si el monto fue editado a mano para este evento. En ese caso NO se
+   * actualiza automáticamente cuando cambia la tarifa base del roster.
+   */
+  montoPersonalizado?: boolean
   pagado?: boolean
   /** Fecha de pago del sueldo (YYYY-MM-DD). Si no está, vence el día del evento */
   fechaPago?: string
+}
+
+/**
+ * Calcula el monto de una persona asignada a un evento EN VIVO desde el
+ * roster (Finanzas → Personal):
+ * - Si ya fue pagada, el monto guardado es histórico y se respeta.
+ * - Si el monto fue personalizado a mano para el evento, se respeta.
+ * - En cualquier otro caso, sigue la tarifa base VIGENTE del roster.
+ * - Si la persona ya no existe en el roster, se usa el monto guardado.
+ */
+export function calcularMontoPersonalDelEvento(
+  pe: PersonalDelEvento,
+  roster: PersonalEvento[] | undefined | null,
+): number {
+  if (pe.pagado || pe.montoPersonalizado) return pe.monto || 0
+  const persona = (roster ?? []).find((p) => p.id === pe.personalId)
+  if (!persona) return pe.monto || 0
+  return persona.tarifaBase || pe.monto || 0
 }
 
 export interface PersonalEvento {
