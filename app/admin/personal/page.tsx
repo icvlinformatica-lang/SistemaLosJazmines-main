@@ -42,6 +42,8 @@ import {
   CheckCircle2,
   XCircle,
   Search,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { PersonalEvento, PagoPersonal } from "@/lib/store"
@@ -64,6 +66,86 @@ const FUNCION_COLORS: Record<string, string> = {
 
 function funcionColor(funcion: string): string {
   return FUNCION_COLORS[funcion] || "bg-gray-50 text-gray-700 border-gray-200"
+}
+
+function parseARS(raw: string): number {
+  // Los puntos son separadores de miles (formato es-AR): solo cuentan los dígitos.
+  const digits = raw.replace(/\D/g, "")
+  const n = parseInt(digits, 10)
+  return isNaN(n) ? 0 : n
+}
+
+/** Formatea un número con puntos de miles (es-AR), sin símbolo de moneda. */
+function formatMiles(n: number): string {
+  if (!n) return ""
+  return n.toLocaleString("es-AR")
+}
+
+// ─── Celda editable numérica (mismo diseño que Finanzas → Servicios) ─────────
+function EditableCellMonto({
+  value,
+  onCommit,
+}: {
+  value: number
+  onCommit: (v: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState("")
+
+  const startEdit = () => {
+    setDraft(formatMiles(value))
+    setEditing(true)
+  }
+
+  const commit = () => {
+    setEditing(false)
+    onCommit(parseARS(draft))
+  }
+
+  if (editing) {
+    return (
+      <div className="relative w-full">
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[15px] pointer-events-none select-none">
+          $
+        </span>
+        <input
+          value={draft}
+          onChange={(e) => {
+            const digits = e.target.value.replace(/\D/g, "")
+            setDraft(digits ? Number(digits).toLocaleString("es-AR") : "")
+          }}
+          onBlur={commit}
+          inputMode="numeric"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit()
+            if (e.key === "Escape") setEditing(false)
+          }}
+          className="w-full h-8 pl-6 pr-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white text-right tabular-nums"
+          autoFocus
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      onClick={startEdit}
+      className={cn(
+        "group/cell relative h-8 flex items-center justify-end px-2.5 rounded cursor-pointer hover:bg-muted/70 transition-colors text-[15px] tabular-nums",
+        !value && "text-muted-foreground/50 italic",
+      )}
+      title="Clic para editar"
+    >
+      {value ? (
+        <span className="font-semibold text-emerald-700">{`$ ${formatMiles(value)}`}</span>
+      ) : (
+        "0"
+      )}
+      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-40 transition-opacity text-[10px] text-muted-foreground">
+        ✎
+      </span>
+    </div>
+  )
 }
 
 type Tarifa = { id: string; descripcion: string; monto: number }
@@ -118,7 +200,14 @@ export default function PersonalPage() {
   })
 
   const funciones = Array.from(new Set(personal.map(p => p.funcion))).filter(Boolean)
-  const personalActivo = personal.filter(p => p.activo)
+
+  // ── Personal ordenado (orden manual tipo Excel, igual que Servicios) ──────
+  const personalOrdenado = personal
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => (a.p.orden ?? a.i) - (b.p.orden ?? b.i) || a.i - b.i)
+    .map((x) => x.p)
+
+  const personalActivo = personalOrdenado.filter(p => p.activo)
   const personalFiltrado = personalActivo.filter(p => {
     if (filtroFuncion !== "todas" && p.funcion !== filtroFuncion) return false
     if (busqueda) {
@@ -131,6 +220,25 @@ export default function PersonalPage() {
     }
     return true
   })
+
+  // ── Mover fila arriba/abajo (persiste el orden en la base) ────────────────
+  const moverPersona = (id: string, dir: -1 | 1) => {
+    const idx = personalFiltrado.findIndex((p) => p.id === id)
+    const vecino = personalFiltrado[idx + dir]
+    if (idx === -1 || !vecino) return
+    // Normalizar: asignar orden secuencial según la lista completa actual
+    const ordenes = new Map(personalOrdenado.map((p, i) => [p.id, i]))
+    // Intercambiar las posiciones de la fila y su vecina
+    const a = ordenes.get(id)!
+    const b = ordenes.get(vecino.id)!
+    ordenes.set(id, b)
+    ordenes.set(vecino.id, a)
+    // Persistir solo las personas cuyo orden cambió
+    for (const p of personalOrdenado) {
+      const nuevo = ordenes.get(p.id)!
+      if (p.orden !== nuevo) updatePersonal(p.id, { orden: nuevo })
+    }
+  }
 
   const handleAbrirDialogo = (p?: PersonalEvento) => {
     if (p) {
@@ -335,19 +443,19 @@ export default function PersonalPage() {
 
       {/* Tabla de Personal (estilo Servicios) */}
       <div className="rounded-lg border border-border bg-card overflow-x-auto">
-        <table className="w-full text-sm min-w-[980px]">
+        <table className="w-full text-[15px] border-collapse min-w-[980px]">
           <thead>
-            <tr className="border-b border-border bg-muted/60">
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground w-[44px] text-xs uppercase tracking-wide">#</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide">Nombre</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-xs uppercase tracking-wide w-[160px]">Funcion</th>
-              <th className="px-3 py-2.5 text-right font-semibold text-xs uppercase tracking-wide w-[130px]">
+            <tr className="bg-muted/80 border-b border-border sticky top-0 z-10">
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground w-[58px] text-[13px] uppercase tracking-wide">#</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Nombre</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[165px]">Funcion</th>
+              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
                 <span className="flex items-center justify-end gap-1 text-emerald-700">
-                  <DollarSign className="h-3.5 w-3.5" />
+                  <DollarSign className="h-4 w-4" />
                   Tarifa
                 </span>
               </th>
-              <th className="px-2 py-2.5 w-[160px]" />
+              <th className="px-2 py-1.5 w-[160px]" />
             </tr>
           </thead>
           <tbody>
@@ -379,16 +487,40 @@ export default function PersonalPage() {
                     idx % 2 === 0 ? "bg-card" : "bg-muted/10"
                   )}
                 >
-                  {/* Nro fila */}
-                  <td className="px-3 py-2 text-muted-foreground/50 text-xs tabular-nums select-none">
-                    {idx + 1}
+                  {/* Nro fila + mover */}
+                  <td className="px-1.5 py-0 select-none">
+                    <div className="flex items-center gap-1">
+                      <div className="flex flex-col">
+                        <button
+                          type="button"
+                          onClick={() => moverPersona(persona.id, -1)}
+                          disabled={idx === 0}
+                          className="min-h-0 p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          title="Subir fila"
+                          aria-label={`Subir ${persona.nombre} ${persona.apellido}`}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moverPersona(persona.id, 1)}
+                          disabled={idx === personalFiltrado.length - 1}
+                          className="min-h-0 p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-muted disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          title="Bajar fila"
+                          aria-label={`Bajar ${persona.nombre} ${persona.apellido}`}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <span className="text-muted-foreground/50 text-[13px] tabular-nums">{idx + 1}</span>
+                    </div>
                   </td>
 
                   {/* Nombre + telefono */}
-                  <td className="px-3 py-2 min-w-[180px]">
-                    <p className="font-medium leading-tight">{persona.nombre} {persona.apellido}</p>
+                  <td className="px-3 py-0 min-w-[180px]">
+                    <p className="font-medium leading-tight text-[15px]">{persona.nombre} {persona.apellido}</p>
                     {persona.telefono && (
-                      <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <p className="text-[12px] text-muted-foreground flex items-center gap-1">
                         <Phone className="h-3 w-3" />
                         {persona.telefono}
                       </p>
@@ -396,28 +528,31 @@ export default function PersonalPage() {
                   </td>
 
                   {/* Funcion */}
-                  <td className="px-3 py-2">
-                    <Badge variant="outline" className={cn("text-[11px] font-medium px-1.5 py-0 border", funcionColor(persona.funcion))}>
+                  <td className="px-3 py-0">
+                    <Badge variant="outline" className={cn("text-[13px] font-medium px-2 py-0.5 border", funcionColor(persona.funcion))}>
                       {persona.funcion}
                     </Badge>
                   </td>
 
-                  {/* Tarifa */}
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {persona.tarifaBase > 0 ? (
-                      <span className="font-semibold text-emerald-700">{formatearPrecio(persona.tarifaBase)}</span>
-                    ) : (
-                      <span className="text-muted-foreground/40">—</span>
-                    )}
+                  {/* Tarifa (editable con $ y puntos de miles) */}
+                  <td className="px-1.5 py-0">
+                    <EditableCellMonto
+                      value={persona.tarifaBase}
+                      onCommit={(nuevo) => {
+                        if (nuevo === persona.tarifaBase) return
+                        if (!confirm(`¿Establecer la tarifa de ${persona.nombre} ${persona.apellido} en ${formatearPrecio(nuevo)}?`)) return
+                        updatePersonal(persona.id, { tarifaBase: nuevo })
+                      }}
+                    />
                   </td>
 
                   {/* Acciones */}
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-0">
                     <div className="flex items-center justify-end gap-0.5">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-7 w-7 min-h-0"
                         onClick={() => handleAbrirHistorial(persona.id)}
                         title="Ver historial de eventos"
                       >
@@ -426,7 +561,7 @@ export default function PersonalPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-7 w-7 min-h-0"
                         onClick={() => handleAbrirDialogo(persona)}
                         title="Editar"
                       >
@@ -435,7 +570,7 @@ export default function PersonalPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-7 w-7 min-h-0"
                         onClick={() => handleEliminar(persona.id)}
                         title="Eliminar"
                       >

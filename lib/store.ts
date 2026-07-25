@@ -882,6 +882,8 @@ export interface PersonalEvento {
   }
   activo: boolean
   notas?: string
+  /** Posición de la fila en la tabla de Gestión de Personal (orden manual). */
+  orden?: number
 }
 
 export type TipoPago = "transferencia" | "efectivo" | "otro"

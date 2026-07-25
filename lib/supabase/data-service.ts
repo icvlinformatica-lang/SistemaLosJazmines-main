@@ -114,6 +114,7 @@ export async function fetchPersonal(): Promise<PersonalEvento[]> {
   const { data, error } = await supabase
     .from("personal")
     .select("*")
+    .order("orden", { ascending: true, nullsFirst: false })
     .order("apellido")
   
   if (error) {
@@ -135,6 +136,7 @@ export async function fetchPersonal(): Promise<PersonalEvento[]> {
     cuentaBancaria: p.cuenta_bancaria,
     activo: p.activo ?? true,
     notas: p.notas,
+    orden: p.orden ?? undefined,
   }))
 }
 
@@ -153,6 +155,7 @@ export async function upsertPersonal(persona: Partial<PersonalEvento>): Promise<
     cuenta_bancaria: persona.cuentaBancaria,
     activo: persona.activo,
     notas: persona.notas,
+    orden: persona.orden ?? null,
     updated_at: new Date().toISOString(),
   }
   
@@ -181,6 +184,7 @@ export async function upsertPersonal(persona: Partial<PersonalEvento>): Promise<
     cuentaBancaria: data.cuenta_bancaria,
     activo: data.activo ?? true,
     notas: data.notas,
+    orden: data.orden ?? undefined,
   } : null
 }
 
