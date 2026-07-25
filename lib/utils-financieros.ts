@@ -26,7 +26,7 @@ export function formatCurrency(value: number): string {
     style: "currency",
     currency: "ARS",
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(value)
 }
 

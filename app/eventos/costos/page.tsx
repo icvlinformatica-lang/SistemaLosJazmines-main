@@ -202,9 +202,14 @@ function CostosEventoContent() {
     .filter((s) => s.platos.length > 0)
 
   // --- Progreso de cuotas del cliente ---
+  // La seña se cobra al firmar el contrato y cubre un porcentaje del total, pero
+  // no figura como cuota. Para que la barra refleje lo realmente cobrado, se suma
+  // como monto ya cubierto (misma lógica que en la página de pagos del evento).
   const cuotasPagadas = cuotas.filter((c) => c.pagada)
-  const montoTotalCuotas = cuotas.reduce((s, c) => s + c.monto, 0)
-  const montoCobrado = cuotasPagadas.reduce((s, c) => s + c.monto, 0)
+  const montoSenaCobrada =
+    evento.planDeCuotas?.modalidadPago === "sena" ? evento.planDeCuotas.montoSena || 0 : 0
+  const montoTotalCuotas = cuotas.reduce((s, c) => s + c.monto, 0) + montoSenaCobrada
+  const montoCobrado = cuotasPagadas.reduce((s, c) => s + c.monto, 0) + montoSenaCobrada
   const progresoCuotas = montoTotalCuotas > 0 ? Math.round((montoCobrado / montoTotalCuotas) * 100) : 0
 
   // --- Totales por tarjeta para el gráfico circular ---
@@ -880,11 +885,19 @@ function CostosEventoContent() {
               <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="font-medium">
                   {cuotasPagadas.length}/{cuotas.length} cuotas pagadas
+                  {montoSenaCobrada > 0 && (
+                    <span className="ml-2 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                      Seña cobrada: {formatCurrency(montoSenaCobrada)}
+                    </span>
+                  )}
                 </span>
                 <span className="text-muted-foreground">
                   <span className="font-semibold text-emerald-700">{formatCurrency(montoCobrado)}</span>
                   {" de "}
                   {formatCurrency(montoTotalCuotas)}
+                  {montoSenaCobrada > 0 && (
+                    <span className="ml-1 text-xs text-muted-foreground/70">(incluye seña)</span>
+                  )}
                 </span>
               </div>
               <Progress

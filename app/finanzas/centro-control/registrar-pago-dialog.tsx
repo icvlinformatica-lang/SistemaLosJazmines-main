@@ -25,8 +25,16 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DollarSign, Save } from "lucide-react"
 import type { EgresoUnificado } from "@/lib/tipos-financieros"
-import { formatCurrency } from "@/lib/utils-financieros"
 import { toast } from "sonner"
+
+// En comprobantes/pagos al cliente se muestran los centavos
+const formatCurrencyConCentavos = (monto: number) =>
+  new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(monto)
 
 interface RegistrarPagoDialogProps {
   open: boolean
@@ -172,7 +180,7 @@ export default function RegistrarPagoDialog({
             <div className="font-medium">{egreso.concepto}</div>
             
             <div className="text-muted-foreground">Monto:</div>
-            <div className="font-bold text-lg">{formatCurrency(egreso.monto)}</div>
+            <div className="font-bold text-lg">{formatCurrencyConCentavos(egreso.monto)}</div>
             
             {egreso.tipo === "personal" && egreso.detalles.nombrePersonal && (
               <>

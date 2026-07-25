@@ -866,13 +866,13 @@ function DialogoServicio({
                   <span>
                     Seña:{" "}
                     <span className="font-semibold text-amber-600">
-                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(montoSeña)}
+                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(montoSeña)}
                     </span>
                   </span>
                   <span>
                     Saldo:{" "}
                     <span className="font-semibold text-orange-600">
-                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(montoSaldo)}
+                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(montoSaldo)}
                     </span>
                   </span>
                 </div>

@@ -242,6 +242,7 @@ export default function PagosPendientesPage() {
       style: "currency",
       currency: "ARS",
       minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(precio)
   }
 

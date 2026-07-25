@@ -1831,7 +1831,7 @@ export function formatCurrency(value: number): string {
     style: "currency",
     currency: "ARS",
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(value)
 }
 
@@ -1966,7 +1966,7 @@ export function calcularCostoServicios(servicios: ServicioEvento[], state?: AppS
 }
 
 /**
- * Calcula la seña y el saldo de un servicio contratado EN VIVO desde el
+ * Calcula la se��a y el saldo de un servicio contratado EN VIVO desde el
  * catálogo de servicios (Finanzas → Servicios), en lugar de usar la foto
  * guardada al momento de contratar.
  *
