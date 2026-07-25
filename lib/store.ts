@@ -1938,6 +1938,46 @@ export function calcularCostoServicios(servicios: ServicioEvento[], state?: AppS
   }, 0)
 }
 
+/**
+ * Calcula la seña y el saldo de un servicio contratado EN VIVO desde el
+ * catálogo de servicios (Finanzas → Servicios), en lugar de usar la foto
+ * guardada al momento de contratar.
+ *
+ * Reglas:
+ * - Costo total = costoParaCajaEventos actual × cantidad.
+ * - Seña = % de seña actual del catálogo sobre ese costo (nunca supera el costo).
+ * - Si la seña YA fue pagada, se respeta el monto pagado (histórico) y el
+ *   saldo se recalcula como costo actual − seña pagada.
+ * - Si el servicio está pagado en su totalidad, el saldo es 0.
+ * - Si el servicio no existe más en el catálogo, se usa la foto guardada.
+ */
+export function calcularSeñaSaldoServicio(
+  srv: ServicioEvento,
+  state: Pick<AppState, "servicios">,
+): { costoTotal: number; montoSeña: number; saldoPendiente: number } {
+  const catalogo = (state.servicios ?? []).find((s) => s.id === srv.servicioId)
+  const estadoPago = srv.estadoPago ?? (srv.pagado ? "pagado_total" : "sin_seña")
+  const señaPagada = estadoPago === "señado" || estadoPago === "saldo_pendiente" || estadoPago === "pagado_total"
+
+  if (!catalogo) {
+    // Servicio eliminado del catálogo: usar la foto guardada.
+    const montoSeña = srv.montoSeña ?? 0
+    const saldoPendiente = estadoPago === "pagado_total" ? 0 : (srv.saldoPendiente ?? 0)
+    return { costoTotal: montoSeña + saldoPendiente, montoSeña, saldoPendiente }
+  }
+
+  const cantidad = srv.cantidad || 1
+  const costoTotal = Math.max(0, (catalogo.costoParaCajaEventos ?? 0) * cantidad)
+  const pct = catalogo.porcentajeSeña ?? 30
+  const señaLive = Math.min(Math.round((costoTotal * pct) / 100), costoTotal)
+
+  // Si la seña ya se pagó, ese monto es un hecho histórico; si no, se calcula en vivo.
+  const montoSeña = señaPagada ? (srv.montoSeña ?? señaLive) : señaLive
+  const saldoPendiente = estadoPago === "pagado_total" ? 0 : Math.max(0, costoTotal - montoSeña)
+
+  return { costoTotal, montoSeña, saldoPendiente }
+}
+
 export function calcularCostosOperativos(
   evento: Evento,
   costosOperativos: CostoOperativo[],

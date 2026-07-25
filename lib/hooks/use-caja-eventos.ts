@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { calcularComprasBarras, calcularComprasSegmentadas, type AppState, type MovimientoCaja } from "../store"
+import { calcularComprasBarras, calcularComprasSegmentadas, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
 
 // ============================================================
 // Tipos de salida
@@ -377,10 +377,14 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         const fechaSeñaFinal = srv.fechaSeñaManual || fechaSeñaLive || srv.fechaSeña
         const fechaSaldoFinal = srv.fechaSaldoManual || fechaSaldoLive || srv.fechaLimitePago
 
+        // Montos EN VIVO desde el catálogo (Finanzas → Servicios): si cambia
+        // el costo o el % de seña, los eventos se actualizan solos.
+        const { montoSeña: montoSeñaLive, saldoPendiente: saldoPendienteLive } =
+          calcularSeñaSaldoServicio(srv, state)
+
         if (
           estadoPago === "sin_seña" &&
-          srv.montoSeña &&
-          srv.montoSeña > 0 &&
+          montoSeñaLive > 0 &&
           fechaSeñaFinal
         ) {
           const fechaVenc = parseLocalDate(fechaSeñaFinal)
@@ -393,7 +397,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
             tipo: "seña",
-            monto: srv.montoSeña,
+            monto: montoSeñaLive,
             fechaVencimiento: fechaSeñaFinal,
             diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
             estadoPago,
@@ -402,8 +406,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
 
         if (
           estadoPago !== "pagado_total" &&
-          srv.saldoPendiente &&
-          srv.saldoPendiente > 0 &&
+          saldoPendienteLive > 0 &&
           fechaSaldoFinal
         ) {
           const fechaVenc = parseLocalDate(fechaSaldoFinal)
@@ -416,7 +419,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
             tipo: "saldo",
-            monto: srv.saldoPendiente,
+            monto: saldoPendienteLive,
             fechaVencimiento: fechaSaldoFinal,
             diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
             estadoPago,
