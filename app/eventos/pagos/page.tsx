@@ -49,6 +49,7 @@ import {
   Plus,
   Trash2,
   Printer,
+  Pencil,
   Users,
   Calendar as CalendarIcon,
   Building2,
@@ -108,105 +109,133 @@ function PaymentReceipt({
     return ref ? `${MESES_RECIBO[ref.mes]} ${ref.anio}` : ""
   })()
 
-  const handlePrint = () => {
+  // Valores por defecto del recibo, autocompletados desde el evento y el pago.
+  const buildDefaults = () => ({
+    nombreApellido: pago.pagadoPor || evento.nombrePareja || evento.nombre || "",
+    dni: pago.dni || evento.dniNovio1 || "",
+    fechaPago: pago.fecha || new Date().toISOString().split("T")[0],
+    fechaEvento: evento.fecha || "",
+    valor: formatCurrency(pago.monto),
+    sumaPesos: `${numeroALetras(Math.round(pago.monto))} (${formatCurrency(pago.monto)})`,
+    espacio: "CENTENERA 1789, DEL VISO",
+    concepto: `Cuota ${cuotaActual}${totalCuotas > 0 ? ` de ${totalCuotas}` : ""}${pago.porcentajeIPC > 0 ? ` - incluye IPC ${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}` : ""}`,
+  })
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [campos, setCampos] = useState(buildDefaults)
+
+  const imprimirRecibo = (datos: ReturnType<typeof buildDefaults>) => {
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
+
+    const fmtFecha = (iso: string) => {
+      const m = (iso || "").match(/(\d{4})-(\d{2})-(\d{2})/)
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : iso || ""
+    }
+    const [dia, mes, anio] = (() => {
+      const m = (datos.fechaPago || "").match(/(\d{4})-(\d{2})-(\d{2})/)
+      return m ? [m[3], m[2], m[1]] : ["", "", ""]
+    })()
+
+    // Una copia del recibo (talon + recibo). Se imprimen dos copias identicas
+    // apiladas en vertical, que juntas ocupan 3/4 de la hoja A4.
+    const copiaHtml = `
+      <div class="copia">
+        <!-- Talon para Los Jazmines -->
+        <div class="talon">
+          <div class="talon-tabla">
+            <div class="talon-header"><span class="script">Los Jazmines</span></div>
+            <div class="talon-fila">Nombre y Apellido:<div class="dato">${datos.nombreApellido}</div></div>
+            <div class="talon-fila">${datos.concepto ? `<div class="dato" style="margin-top:0;">${datos.concepto}</div>` : ""}</div>
+            <div class="talon-fila">Fecha Evento:<div class="dato">${fmtFecha(datos.fechaEvento)}</div></div>
+            <div class="talon-fila">Valor:<div class="dato">${datos.valor}</div></div>
+            <div class="talon-fila">Espacio: <span class="dato" style="display:inline;margin-left:1mm;">${datos.espacio}</span></div>
+            <div class="talon-fila">Fecha de Pago:<div class="dato">${fmtFecha(datos.fechaPago)}</div></div>
+          </div>
+        </div>
+
+        <div class="separador"></div>
+
+        <!-- Recibo para el cliente -->
+        <div class="recibo">
+          <div class="recibo-top">
+            <span class="script">Los Jazmines</span>
+            <div class="fecha-grupo">
+              <span class="fecha-label">Fecha</span>
+              <div class="fecha-cajas">
+                <div class="fecha-caja">${dia}</div>
+                <div class="fecha-caja">${mes}</div>
+                <div class="fecha-caja">${anio}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="linea"><span class="label">Recib&iacute; de:</span><span class="relleno">${datos.nombreApellido}</span></div>
+          <div class="linea"><span class="label">D.N.I.:</span><span class="relleno">${datos.dni}</span></div>
+          <div class="linea"><span class="label">La suma de pesos</span><span class="relleno">${datos.sumaPesos}</span></div>
+          <div class="linea"><span class="relleno" style="margin-left:0;">${datos.concepto}</span></div>
+          <div class="concepto">en concepto de alquiler del salon ubicado en <b>${datos.espacio}</b></div>
+          <div class="linea"><span class="label">para el d&iacute;a:</span><span class="relleno">${fmtFecha(datos.fechaEvento)}</span></div>
+
+          <div class="firmas">
+            <div class="campo"><span>Firma:</span><span class="relleno"></span></div>
+            <div class="campo"><span>Aclaraci&oacute;n:</span><span class="relleno"></span></div>
+          </div>
+        </div>
+      </div>
+    `
+
     printWindow.document.write(`
       <html>
         <head>
-          <title>Comprobante de Pago - Los Jazmines</title>
+          <title>Recibo - Los Jazmines</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #2d5a3d; padding-bottom: 15px; }
-            .header h1 { color: #2d5a3d; font-size: 24px; margin: 0 0 5px 0; }
-            .header p { color: #666; margin: 0; font-size: 12px; }
-            .section { margin-bottom: 20px; }
-            .section h3 { font-size: 14px; color: #2d5a3d; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
-            .row .label { color: #666; }
-            .row .value { font-weight: bold; }
-            .amount { text-align: center; margin: 25px 0; padding: 15px; background: #f5f5f5; border-radius: 8px; }
-            .amount .value { font-size: 28px; font-weight: bold; color: #2d5a3d; }
-            .amount .label { font-size: 12px; color: #666; }
-            .signatures { display: flex; justify-content: space-between; margin-top: 60px; }
-            .signature-line { text-align: center; width: 45%; }
-            .signature-line .line { border-top: 1px solid #333; margin-bottom: 5px; }
-            .signature-line .name { font-size: 12px; color: #666; }
-            .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #999; }
+            @page { size: A4 portrait; margin: 8mm; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; }
+            body { font-family: Arial, sans-serif; color: #111; }
+            .script { font-family: 'Brush Script MT', 'Segoe Script', 'Lucida Handwriting', cursive; font-weight: normal; }
+
+            /* Cada copia ocupa ~3/8 de la hoja: las dos juntas suman 3/4 */
+            .copia { display: flex; width: 100%; height: 104mm; overflow: hidden; page-break-inside: avoid; }
+            .cut-line { border: none; border-top: 2px dashed #999; margin: 2mm 0; position: relative; }
+            .cut-line::after { content: "\\2702 cortar aqui"; position: absolute; top: -3mm; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 6px; font-size: 9px; color: #999; }
+
+            /* ===== Talon izquierdo (Los Jazmines) ===== */
+            .talon { width: 33%; padding: 2mm 3mm 2mm 0; }
+            .talon-tabla { border: 1.5px solid #111; width: 100%; }
+            .talon-fila { border-bottom: 1px solid #111; padding: 1.6mm 2.5mm; min-height: 10mm; font-size: 10px; font-style: italic; }
+            .talon-fila:last-child { border-bottom: none; }
+            .talon-fila .dato { font-style: normal; font-weight: bold; margin-top: 0.8mm; font-size: 10.5px; }
+            .talon-header { text-align: center; padding: 2mm; border-bottom: 1px solid #111; }
+            .talon-header .script { font-size: 19px; }
+
+            /* ===== Separador troquelado ===== */
+            .separador { width: 0; border-left: 1.5px dashed #999; margin: 2mm 0; }
+
+            /* ===== Recibo derecho (Cliente) ===== */
+            .recibo { flex: 1; padding: 3mm 2mm 3mm 5mm; display: flex; flex-direction: column; }
+            .recibo-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4mm; }
+            .recibo-top .script { font-size: 26px; }
+            .fecha-grupo { display: flex; align-items: center; gap: 2mm; margin-top: 2.5mm; }
+            .fecha-grupo .fecha-label { font-size: 10px; }
+            .fecha-cajas { display: flex; border: 1px solid #111; }
+            .fecha-caja { width: 13mm; height: 7mm; border-right: 1px solid #111; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
+            .fecha-caja:last-child { border-right: none; }
+            .linea { font-size: 11px; line-height: 1.9; display: flex; align-items: baseline; }
+            .linea .label { white-space: nowrap; }
+            .linea .relleno { flex: 1; border-bottom: 1px dotted #444; margin-left: 1.5mm; padding: 0 1.5mm 1px; font-weight: bold; min-height: 4.5mm; }
+            .concepto { font-size: 11px; line-height: 1.9; }
+            .concepto b { font-weight: bold; }
+            .firmas { display: flex; gap: 8mm; margin-top: auto; padding-top: 6mm; font-size: 10px; }
+            .firmas .campo { display: flex; align-items: baseline; flex: 1; }
+            .firmas .relleno { flex: 1; border-bottom: 1px dotted #444; margin-left: 1.5mm; min-height: 4.5mm; }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Los Jazmines</h1>
-            <p>Comprobante de Pago</p>
-          </div>
-          <div class="section">
-            <h3>Datos del Evento</h3>
-            <div class="row"><span class="label">Evento:</span><span class="value">${evento.nombre || evento.tipoEvento || "Evento"}</span></div>
-            <div class="row"><span class="label">Festejados:</span><span class="value">${evento.nombrePareja || "-"}</span></div>
-            <div class="row"><span class="label">Fecha del evento:</span><span class="value">${evento.fecha}</span></div>
-            <div class="row"><span class="label">Salon:</span><span class="value">${evento.salon || "-"}</span></div>
-            ${evento.dniNovio1 ? `<div class="row"><span class="label">DNI 1:</span><span class="value">${evento.dniNovio1}</span></div>` : ""}
-            ${evento.dniNovio2 ? `<div class="row"><span class="label">DNI 2:</span><span class="value">${evento.dniNovio2}</span></div>` : ""}
-          </div>
-          ${(() => {
-            if (pago.porcentajeIPC > 0) {
-              const montoBase = pago.monto / (1 + pago.porcentajeIPC / 100)
-              const ipcMonto = pago.monto - montoBase
-              return `
-                <div class="section" style="background:#f9fafb;border-radius:8px;padding:15px;margin:20px 0;border:1px solid #e5e7eb;">
-                  <div class="row"><span class="label">Monto original de la cuota</span><span class="value">${formatCurrency(montoBase)}</span></div>
-                  <div class="row"><span class="label">IPC aplicado (${pago.porcentajeIPC}%)${ipcMesLabel ? ` - corresponde a ${ipcMesLabel}` : ""}</span><span class="value" style="color:#b45309;">+ ${formatCurrency(ipcMonto)}</span></div>
-                  <div style="border-top:2px solid #2d5a3d;margin-top:10px;padding-top:10px;">
-                    <div class="row"><span class="label" style="font-weight:bold;font-size:14px;">Monto final a pagar</span><span class="value" style="font-size:22px;color:#2d5a3d;">${formatCurrency(pago.monto)}</span></div>
-                  </div>
-                </div>
-              `
-            } else {
-              return `
-                <div class="amount">
-                  <div class="label">Monto del Pago</div>
-                  <div class="value">${formatCurrency(pago.monto)}</div>
-                </div>
-              `
-            }
-          })()}
-          <div class="section">
-            <h3>Datos del Pago</h3>
-            <div class="row"><span class="label">Fecha de pago:</span><span class="value">${pago.fecha}</span></div>
-            <div class="row"><span class="label">Pagado por:</span><span class="value">${pago.pagadoPor}</span></div>
-            ${pago.porcentajeIPC > 0 ? `<div class="row"><span class="label">IPC aplicado:</span><span class="value">${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}</span></div>` : ""}
-            ${pago.notas ? `<div class="row"><span class="label">Notas:</span><span class="value">${pago.notas}</span></div>` : ""}
-          </div>
-          ${totalCuotas > 0 ? `
-          <div class="section" style="background:#eff6ff;border-radius:8px;padding:15px;margin:10px 0;border:1px solid #bfdbfe;">
-            <div class="row"><span class="label">Cuota N:</span><span class="value">${cuotaActual} de ${totalCuotas}</span></div>
-            <div class="row"><span class="label">Cuotas restantes:</span><span class="value" style="font-size:16px;color:${cuotasFaltantes === 0 ? '#15803d' : '#1d4ed8'};">${cuotasFaltantes === 0 ? 'Ninguna - PAGADO EN SU TOTALIDAD' : cuotasFaltantes}</span></div>
-          </div>
-          ` : ""}
-          ${pago.montoRecibido && pago.montoRecibido > 0 ? `
-          <div class="section" style="background:#f0fdf4;border-radius:8px;padding:15px;margin:10px 0;border:1px solid #bbf7d0;">
-            <h3 style="color:#15803d;">Detalle de Efectivo</h3>
-            <div class="row"><span class="label">Monto recibido del cliente:</span><span class="value">${formatCurrency(pago.montoRecibido)}</span></div>
-            <div class="row"><span class="label">Monto a pagar:</span><span class="value">${formatCurrency(pago.monto)}</span></div>
-            <div style="border-top:2px solid #15803d;margin-top:8px;padding-top:8px;">
-              <div class="row"><span class="label" style="font-weight:bold;font-size:14px;">Vuelto entregado:</span><span class="value" style="font-size:20px;color:#15803d;">${formatCurrency(pago.vuelto || 0)}</span></div>
-            </div>
-          </div>
-          ` : ""}
-          <div class="signatures">
-            <div class="signature-line">
-              <div class="line"></div>
-              <div class="name">Firma del Cliente</div>
-            </div>
-            <div class="signature-line">
-              <div class="line"></div>
-              <div class="name">Firma Los Jazmines</div>
-            </div>
-          </div>
-          <div class="footer">
-            <p>Este comprobante es valido como constancia de pago.</p>
-          </div>
+          ${copiaHtml}
+          <hr class="cut-line" />
+          ${copiaHtml}
         </body>
       </html>
     `)
@@ -216,10 +245,152 @@ function PaymentReceipt({
   }
 
   return (
-    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handlePrint}>
-      <Printer className="h-3.5 w-3.5" />
-    </Button>
+    <>
+      {/* Imprimir directo con datos autocompletados */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2"
+        title="Imprimir recibo"
+        onClick={() => imprimirRecibo(buildDefaults())}
+      >
+        <Printer className="h-3.5 w-3.5" />
+      </Button>
+
+      {/* Editar los datos del recibo antes de imprimir */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2"
+        title="Editar recibo antes de imprimir"
+        onClick={() => {
+          setCampos(buildDefaults())
+          setEditOpen(true)
+        }}
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4" />
+              Editar recibo
+            </DialogTitle>
+            <DialogDescription>
+              Ajusta los datos antes de imprimir. Los campos vienen autocompletados con la informaci&oacute;n del pago.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 max-h-[55vh] overflow-y-auto pr-1">
+            <div className="space-y-1.5">
+              <Label>Recib&iacute; de (Nombre y Apellido)</Label>
+              <Input
+                value={campos.nombreApellido}
+                onChange={(e) => setCampos((p) => ({ ...p, nombreApellido: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>D.N.I.</Label>
+                <Input value={campos.dni} onChange={(e) => setCampos((p) => ({ ...p, dni: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Fecha de pago</Label>
+                <Input
+                  type="date"
+                  value={campos.fechaPago}
+                  onChange={(e) => setCampos((p) => ({ ...p, fechaPago: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>La suma de pesos</Label>
+              <Textarea
+                rows={2}
+                value={campos.sumaPesos}
+                onChange={(e) => setCampos((p) => ({ ...p, sumaPesos: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Detalle (cuota / concepto)</Label>
+              <Input value={campos.concepto} onChange={(e) => setCampos((p) => ({ ...p, concepto: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Valor (tal&oacute;n)</Label>
+                <Input value={campos.valor} onChange={(e) => setCampos((p) => ({ ...p, valor: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Fecha del evento</Label>
+                <Input
+                  type="date"
+                  value={campos.fechaEvento}
+                  onChange={(e) => setCampos((p) => ({ ...p, fechaEvento: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Espacio / Sal&oacute;n</Label>
+              <Input value={campos.espacio} onChange={(e) => setCampos((p) => ({ ...p, espacio: e.target.value }))} />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                imprimirRecibo(campos)
+                setEditOpen(false)
+              }}
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              Imprimir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
+}
+
+// Convierte un numero entero a letras en espanol (para "La suma de pesos ...").
+function numeroALetras(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return ""
+  if (n === 0) return "Cero"
+  const UNIDADES = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"]
+  const DIECIS = ["diez", "once", "doce", "trece", "catorce", "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve"]
+  const DECENAS = ["", "", "veinte", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"]
+  const CENTENAS = ["", "ciento", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos"]
+
+  const tresDigitos = (num: number): string => {
+    if (num === 0) return ""
+    if (num === 100) return "cien"
+    const c = Math.floor(num / 100)
+    const resto = num % 100
+    let out = c > 0 ? CENTENAS[c] : ""
+    if (resto === 0) return out
+    if (out) out += " "
+    if (resto < 10) return out + UNIDADES[resto]
+    if (resto < 20) return out + DIECIS[resto - 10]
+    const d = Math.floor(resto / 10)
+    const u = resto % 10
+    if (d === 2 && u > 0) return out + "veinti" + UNIDADES[u]
+    return out + DECENAS[d] + (u > 0 ? " y " + UNIDADES[u] : "")
+  }
+
+  const millones = Math.floor(n / 1_000_000)
+  const miles = Math.floor((n % 1_000_000) / 1000)
+  const resto = n % 1000
+  const partes: string[] = []
+  if (millones > 0) partes.push(millones === 1 ? "un millon" : `${tresDigitos(millones)} millones`)
+  if (miles > 0) partes.push(miles === 1 ? "mil" : `${tresDigitos(miles)} mil`)
+  if (resto > 0) partes.push(tresDigitos(resto))
+  const texto = partes.join(" ").replace(/\buno mil\b/g, "un mil").trim()
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
 }
 
 function PagosPageContent() {
@@ -260,6 +431,7 @@ function PagosPageContent() {
     monto: 0,
     fecha: new Date().toISOString().split("T")[0],
     pagadoPor: "",
+    dni: "",
     porcentajeIPC: 0,
     notas: "",
     montoRecibido: 0,
@@ -363,6 +535,7 @@ function PagosPageContent() {
       monto: pagoForm.monto,
       fecha: pagoForm.fecha,
       pagadoPor: pagoForm.pagadoPor,
+      dni: pagoForm.dni || undefined,
       porcentajeIPC: pagoForm.porcentajeIPC,
       notas: pagoForm.notas || undefined,
       montoRecibido: pagoForm.montoRecibido > 0 ? pagoForm.montoRecibido : undefined,
@@ -471,6 +644,7 @@ function PagosPageContent() {
       monto: 0,
       fecha: new Date().toISOString().split("T")[0],
       pagadoPor: "",
+      dni: "",
       porcentajeIPC: 0,
       notas: "",
       montoRecibido: 0,
@@ -1236,6 +1410,7 @@ function PagosPageContent() {
                                 monto: proximaCuota.monto,
                                 fecha: new Date().toISOString().split("T")[0],
                                 pagadoPor: "",
+                                dni: selectedEvento?.dniNovio1 || "",
                                 porcentajeIPC: ipcAcumulado,
                                 notas: esPagoUnico
                                   ? "Pago único (pago completo)"
@@ -1469,15 +1644,27 @@ function PagosPageContent() {
                 />
               </div>
 
-              {/* Pagado por */}
-              <div className="grid gap-1">
-                <Label className="text-xs">Pagado por</Label>
-                <Input
-                  value={pagoForm.pagadoPor}
-                  onChange={(e) => setPagoForm({ ...pagoForm, pagadoPor: e.target.value })}
-                  placeholder="Nombre de quien paga"
-                  className="h-9"
-                />
+              {/* Pagado por + DNI */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1">
+                  <Label className="text-xs">Pagado por</Label>
+                  <Input
+                    value={pagoForm.pagadoPor}
+                    onChange={(e) => setPagoForm({ ...pagoForm, pagadoPor: e.target.value })}
+                    placeholder="Nombre de quien paga"
+                    className="h-9"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <Label className="text-xs">D.N.I.</Label>
+                  <Input
+                    value={pagoForm.dni}
+                    onChange={(e) => setPagoForm({ ...pagoForm, dni: e.target.value })}
+                    placeholder="DNI de quien paga"
+                    inputMode="numeric"
+                    className="h-9"
+                  />
+                </div>
               </div>
 
               {/* Notas */}

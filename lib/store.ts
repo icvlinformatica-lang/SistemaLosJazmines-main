@@ -225,6 +225,7 @@ export interface PagoEvento {
   monto: number
   fecha: string
   pagadoPor: string
+  dni?: string
   porcentajeIPC: number
   notas?: string
   montoRecibido?: number
