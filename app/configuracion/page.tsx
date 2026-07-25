@@ -89,6 +89,7 @@ export default function ConfiguracionPage() {
     insumosBarra: { count: 0, synced: true },
     recetas: { count: 0, synced: true },
     cocteles: { count: 0, synced: true },
+    eventos: { count: 0, synced: true },
   })
   const [isRestoring, setIsRestoring] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
@@ -102,11 +103,12 @@ export default function ConfiguracionPage() {
   useEffect(() => {
     const checkDataStatus = async () => {
       try {
-        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes] = await Promise.all([
+        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, eventosRes] = await Promise.all([
           fetch("/api/insumos").then(r => r.ok ? r.json() : []),
           fetch("/api/insumos-barra").then(r => r.ok ? r.json() : []),
           fetch("/api/recetas").then(r => r.ok ? r.json() : []),
           fetch("/api/cocteles").then(r => r.ok ? r.json() : []),
+          fetch("/api/eventos").then(r => r.ok ? r.json() : []),
         ])
         
         setSyncStatus({
@@ -114,6 +116,7 @@ export default function ConfiguracionPage() {
           insumosBarra: { count: Array.isArray(insumosBarraRes) ? insumosBarraRes.length : 0, synced: true },
           recetas: { count: Array.isArray(recetasRes) ? recetasRes.length : 0, synced: true },
           cocteles: { count: Array.isArray(coctelesRes) ? coctelesRes.length : 0, synced: true },
+          eventos: { count: Array.isArray(eventosRes) ? eventosRes.length : 0, synced: true },
         })
         
         // Get last save time from localStorage metadata
@@ -565,7 +568,7 @@ export default function ConfiguracionPage() {
             </div>
             
             {/* Data counts grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
               <div className="flex items-center gap-3 p-4 border rounded-lg">
                 <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
                   <Package className="h-5 w-5 text-amber-600" />
@@ -614,6 +617,19 @@ export default function ConfiguracionPage() {
                   <p className="text-sm text-muted-foreground">Cocteles</p>
                 </div>
                 {syncStatus.cocteles.synced && (
+                  <Check className="h-4 w-4 text-green-500 ml-auto" />
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
+                <div className="h-10 w-10 rounded-full bg-sky-100 flex items-center justify-center">
+                  <CalendarCheck className="h-5 w-5 text-sky-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{syncStatus.eventos.count}</p>
+                  <p className="text-sm text-muted-foreground">Eventos</p>
+                </div>
+                {syncStatus.eventos.synced && (
                   <Check className="h-4 w-4 text-green-500 ml-auto" />
                 )}
               </div>
