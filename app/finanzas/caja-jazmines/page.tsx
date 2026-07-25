@@ -1588,7 +1588,8 @@ export default function CajaJazminePage() {
         </CardContent>
       </Card>
 
-      {/* Proyección visual del saldo a 30 días (columna lateral) */}
+      {/* Proyección visual del saldo a 30 días (columna lateral) — oculta temporalmente */}
+      {false && (
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -1653,6 +1654,7 @@ export default function CajaJazminePage() {
         </CardContent>
         )}
       </Card>
+      )}
       </div>
 
       {/* PROYECCIÓN MENSUAL — tabla a 12 meses */}
@@ -2353,13 +2355,15 @@ export default function CajaJazminePage() {
         </Card>
       </div>
 
-      {/* ── Calendario de gastos por salón ────────────────���────────────────── */}
+      {/* ── Calendario de gastos por salón — oculto temporalmente ─────────────── */}
+      {false && (
       <CalendarioGastosSalones
         fijos={gastosFijosMes}
         cubiertos={gastosFijosCubiertos}
         variables={gastosVariablesCombinados}
         ahora={ahora}
       />
+      )}
 
       {/* ── Dialog: Agregar gasto fijo ────────────────────────────────────── */}
       <Dialog open={modalFijoAbierto} onOpenChange={setModalFijoAbierto}>
