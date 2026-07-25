@@ -1262,7 +1262,10 @@ export default function CajaJazminePage() {
   const variableRepartoInvalido = nuevoGasto.repartir && !repartoValido(nuevoGasto.distribucion)
 
   const totalGastosFijos = gastosFijosMes.reduce((s, g) => s + g.monto, 0)
-  const barMax = Math.max(saldoActual, ingresosProyectados30Dias, gastosPróximos30Dias, 1)
+  // Desglose del "Sale" a 30 días: fijos/sueldos pendientes vs. variables agendados.
+  // Los fijos pendientes son gastosFijosMes; el resto del total son los variables.
+  const gastosFijosPendientes30 = Math.min(totalGastosFijos, gastosPróximos30Dias)
+  const gastosVariablesPendientes30 = Math.max(0, gastosPróximos30Dias - gastosFijosPendientes30)
 
   function handleAgregarGasto() {
     if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.fecha) return
@@ -1606,44 +1609,46 @@ export default function CajaJazminePage() {
           </div>
         </CardHeader>
         {!colapsadas.proyeccion && (
-        <CardContent className="space-y-4 reveal-stagger">
-          <div className="flex items-end justify-around gap-3 sm:gap-6 h-44 pt-2">
-            {[
-              { label: "Saldo actual", value: saldoActual, color: "bg-purple-500", textColor: "text-purple-700", colorStyle: { backgroundColor: "#466cff" }, textStyle: { color: "#0200db" } },
-              { label: "Gastos proyectados", value: gastosPróximos30Dias, color: "bg-red-400", textColor: "text-red-600", signo: "−", colorStyle: { backgroundColor: "#90b203" }, textStyle: { color: "#788224" } },
-              { label: "Ingresos proyectados (parte Jazmines)", value: ingresosProyectados30Dias, color: "bg-purple-300", textColor: "text-purple-600", signo: "+", textStyle: { color: "#0f7a14" } },
-            ].map(({ label, value, color, textColor, signo, colorStyle, textStyle }) => {
-              const pct = Math.round((value / barMax) * 100)
-              return (
-                <div key={label} className="flex h-full flex-1 flex-col items-center gap-2">
-                  <span className="text-xs font-semibold whitespace-nowrap" style={textStyle || {}}>
-                    {signo ? `${signo} ` : ""}{formatCurrency(value)}
-                  </span>
-                  <div className="flex w-full flex-1 items-end justify-center">
-                    <div className="relative flex h-full w-10 items-end overflow-hidden rounded-t-md bg-muted sm:w-14">
-                      <div
-                        className="w-full rounded-t-md transition-all duration-500"
-                        style={{ height: `${Math.max(pct, 2)}%`, ...colorStyle }}
-                      />
-                    </div>
-                  </div>
-                  <span className="text-center text-xs font-medium leading-tight text-foreground">
-                    {label}
-                  </span>
-                </div>
-              )
-            })}
+        <CardContent className="space-y-1 reveal-stagger">
+          {/* Resumen tipo cuenta: tengo + entra − sale = me queda */}
+          <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/50">
+            <span className="text-sm text-muted-foreground">Tengo hoy</span>
+            <span className="text-base font-semibold text-foreground">{formatCurrency(saldoActual)}</span>
           </div>
-          <div className="pt-3 border-t border-border">
+
+          <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-emerald-50">
+            <span className="text-sm font-medium text-emerald-800">Entra (cuotas parte Jazmines)</span>
+            <span className="text-base font-bold text-emerald-700">+ {formatCurrency(ingresosProyectados30Dias)}</span>
+          </div>
+
+          <div className="rounded-lg bg-red-50 px-3 py-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-foreground">Saldo proyectado resultante</span>
-              <span className={`text-xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
-                {formatCurrency(saldoProyectado30Dias)}
-              </span>
+              <span className="text-sm font-medium text-red-800">Sale (gastos fijos + variables)</span>
+              <span className="text-base font-bold text-red-700">− {formatCurrency(gastosPróximos30Dias)}</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Saldo actual + ingresos proyectados − gastos proyectados
-            </p>
+            <div className="mt-1.5 flex flex-col gap-0.5 border-t border-red-100 pt-1.5">
+              <div className="flex items-center justify-between text-xs text-red-700/80">
+                <span>Fijos y sueldos pendientes</span>
+                <span>{formatCurrency(gastosFijosPendientes30)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-red-700/80">
+                <span>Variables agendados</span>
+                <span>{formatCurrency(gastosVariablesPendientes30)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className={`flex items-center justify-between rounded-lg px-3 py-3 border-2 ${
+              saldoProyectado30Dias >= 0 ? "border-teal-200 bg-teal-50" : "border-red-300 bg-red-50"
+            }`}
+          >
+            <span className={`text-sm font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-800"}`}>
+              Me queda
+            </span>
+            <span className={`text-2xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
+              {formatCurrency(saldoProyectado30Dias)}
+            </span>
           </div>
         </CardContent>
         )}
