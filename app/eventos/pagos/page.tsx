@@ -111,102 +111,125 @@ function PaymentReceipt({
   const handlePrint = () => {
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
+
+    // Bloque de monto (con o sin IPC)
+    const montoHtml = (() => {
+      if (pago.porcentajeIPC > 0) {
+        const montoBase = pago.monto / (1 + pago.porcentajeIPC / 100)
+        const ipcMonto = pago.monto - montoBase
+        return `
+          <div class="section box" style="background:#f9fafb;border:1px solid #e5e7eb;">
+            <div class="row"><span class="label">Monto original de la cuota</span><span class="value">${formatCurrency(montoBase)}</span></div>
+            <div class="row"><span class="label">IPC aplicado (${pago.porcentajeIPC}%)${ipcMesLabel ? ` - corresponde a ${ipcMesLabel}` : ""}</span><span class="value" style="color:#b45309;">+ ${formatCurrency(ipcMonto)}</span></div>
+            <div style="border-top:2px solid #2d5a3d;margin-top:6px;padding-top:6px;">
+              <div class="row"><span class="label" style="font-weight:bold;">Monto final a pagar</span><span class="value" style="font-size:16px;color:#2d5a3d;">${formatCurrency(pago.monto)}</span></div>
+            </div>
+          </div>
+        `
+      }
+      return `
+        <div class="amount">
+          <div class="label">Monto del Pago</div>
+          <div class="value">${formatCurrency(pago.monto)}</div>
+        </div>
+      `
+    })()
+
+    // Una copia completa del comprobante. Se imprime dos veces por hoja A4:
+    // una para el cliente y otra para Los Jazmines.
+    const copiaHtml = (destinatario: string) => `
+      <div class="copia">
+        <div class="copy-tag">${destinatario}</div>
+        <div class="header">
+          <h1>Los Jazmines</h1>
+          <p>Comprobante de Pago</p>
+        </div>
+        <div class="section">
+          <h3>Datos del Evento</h3>
+          <div class="row"><span class="label">Evento:</span><span class="value">${evento.nombre || evento.tipoEvento || "Evento"}</span></div>
+          <div class="row"><span class="label">Festejados:</span><span class="value">${evento.nombrePareja || "-"}</span></div>
+          <div class="row"><span class="label">Fecha del evento:</span><span class="value">${evento.fecha}</span></div>
+          <div class="row"><span class="label">Salon:</span><span class="value">${evento.salon || "-"}</span></div>
+          ${evento.dniNovio1 ? `<div class="row"><span class="label">DNI 1:</span><span class="value">${evento.dniNovio1}</span></div>` : ""}
+          ${evento.dniNovio2 ? `<div class="row"><span class="label">DNI 2:</span><span class="value">${evento.dniNovio2}</span></div>` : ""}
+        </div>
+        ${montoHtml}
+        <div class="section">
+          <h3>Datos del Pago</h3>
+          <div class="row"><span class="label">Fecha de pago:</span><span class="value">${pago.fecha}</span></div>
+          <div class="row"><span class="label">Pagado por:</span><span class="value">${pago.pagadoPor}</span></div>
+          ${pago.porcentajeIPC > 0 ? `<div class="row"><span class="label">IPC aplicado:</span><span class="value">${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}</span></div>` : ""}
+          ${pago.notas ? `<div class="row"><span class="label">Notas:</span><span class="value">${pago.notas}</span></div>` : ""}
+        </div>
+        ${totalCuotas > 0 ? `
+        <div class="section box" style="background:#eff6ff;border:1px solid #bfdbfe;">
+          <div class="row"><span class="label">Cuota N:</span><span class="value">${cuotaActual} de ${totalCuotas}</span></div>
+          <div class="row"><span class="label">Cuotas restantes:</span><span class="value" style="color:${cuotasFaltantes === 0 ? '#15803d' : '#1d4ed8'};">${cuotasFaltantes === 0 ? 'Ninguna - PAGADO EN SU TOTALIDAD' : cuotasFaltantes}</span></div>
+        </div>
+        ` : ""}
+        ${pago.montoRecibido && pago.montoRecibido > 0 ? `
+        <div class="section box" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+          <h3 style="color:#15803d;">Detalle de Efectivo</h3>
+          <div class="row"><span class="label">Monto recibido del cliente:</span><span class="value">${formatCurrency(pago.montoRecibido)}</span></div>
+          <div class="row"><span class="label">Monto a pagar:</span><span class="value">${formatCurrency(pago.monto)}</span></div>
+          <div style="border-top:2px solid #15803d;margin-top:5px;padding-top:5px;">
+            <div class="row"><span class="label" style="font-weight:bold;">Vuelto entregado:</span><span class="value" style="font-size:14px;color:#15803d;">${formatCurrency(pago.vuelto || 0)}</span></div>
+          </div>
+        </div>
+        ` : ""}
+        <div class="signatures">
+          <div class="signature-line">
+            <div class="line"></div>
+            <div class="name">Firma del Cliente</div>
+          </div>
+          <div class="signature-line">
+            <div class="line"></div>
+            <div class="name">Firma Los Jazmines</div>
+          </div>
+        </div>
+        <div class="footer">
+          <p>Este comprobante es valido como constancia de pago.</p>
+        </div>
+      </div>
+    `
+
     printWindow.document.write(`
       <html>
         <head>
           <title>Comprobante de Pago - Los Jazmines</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #2d5a3d; padding-bottom: 15px; }
-            .header h1 { color: #2d5a3d; font-size: 24px; margin: 0 0 5px 0; }
-            .header p { color: #666; margin: 0; font-size: 12px; }
-            .section { margin-bottom: 20px; }
-            .section h3 { font-size: 14px; color: #2d5a3d; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+            @page { size: A4 portrait; margin: 8mm; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; }
+            body { font-family: Arial, sans-serif; }
+            /* Dos copias por hoja A4: cada una ocupa media hoja */
+            .copia { height: 138mm; padding: 5mm 8mm; overflow: hidden; position: relative; page-break-inside: avoid; }
+            .cut-line { border: none; border-top: 2px dashed #999; margin: 2mm 0; position: relative; }
+            .cut-line::after { content: "\\2702 cortar aqui"; position: absolute; top: -3mm; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 6px; font-size: 9px; color: #999; }
+            .copy-tag { position: absolute; top: 5mm; right: 8mm; font-size: 10px; font-weight: bold; color: #2d5a3d; border: 1px solid #2d5a3d; border-radius: 4px; padding: 2px 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .header { text-align: center; margin-bottom: 8px; border-bottom: 2px solid #2d5a3d; padding-bottom: 6px; }
+            .header h1 { color: #2d5a3d; font-size: 17px; margin: 0 0 2px 0; }
+            .header p { color: #666; margin: 0; font-size: 10px; }
+            .section { margin-bottom: 7px; }
+            .section h3 { font-size: 11px; color: #2d5a3d; margin: 0 0 4px 0; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+            .box { border-radius: 6px; padding: 7px 10px; margin: 7px 0; }
+            .row { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10.5px; }
             .row .label { color: #666; }
             .row .value { font-weight: bold; }
-            .amount { text-align: center; margin: 25px 0; padding: 15px; background: #f5f5f5; border-radius: 8px; }
-            .amount .value { font-size: 28px; font-weight: bold; color: #2d5a3d; }
-            .amount .label { font-size: 12px; color: #666; }
-            .signatures { display: flex; justify-content: space-between; margin-top: 60px; }
+            .amount { text-align: center; margin: 8px 0; padding: 8px; background: #f5f5f5; border-radius: 6px; }
+            .amount .value { font-size: 20px; font-weight: bold; color: #2d5a3d; }
+            .amount .label { font-size: 10px; color: #666; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 22px; }
             .signature-line { text-align: center; width: 45%; }
-            .signature-line .line { border-top: 1px solid #333; margin-bottom: 5px; }
-            .signature-line .name { font-size: 12px; color: #666; }
-            .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #999; }
+            .signature-line .line { border-top: 1px solid #333; margin-bottom: 3px; }
+            .signature-line .name { font-size: 10px; color: #666; }
+            .footer { text-align: center; margin-top: 8px; font-size: 9px; color: #999; }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Los Jazmines</h1>
-            <p>Comprobante de Pago</p>
-          </div>
-          <div class="section">
-            <h3>Datos del Evento</h3>
-            <div class="row"><span class="label">Evento:</span><span class="value">${evento.nombre || evento.tipoEvento || "Evento"}</span></div>
-            <div class="row"><span class="label">Festejados:</span><span class="value">${evento.nombrePareja || "-"}</span></div>
-            <div class="row"><span class="label">Fecha del evento:</span><span class="value">${evento.fecha}</span></div>
-            <div class="row"><span class="label">Salon:</span><span class="value">${evento.salon || "-"}</span></div>
-            ${evento.dniNovio1 ? `<div class="row"><span class="label">DNI 1:</span><span class="value">${evento.dniNovio1}</span></div>` : ""}
-            ${evento.dniNovio2 ? `<div class="row"><span class="label">DNI 2:</span><span class="value">${evento.dniNovio2}</span></div>` : ""}
-          </div>
-          ${(() => {
-            if (pago.porcentajeIPC > 0) {
-              const montoBase = pago.monto / (1 + pago.porcentajeIPC / 100)
-              const ipcMonto = pago.monto - montoBase
-              return `
-                <div class="section" style="background:#f9fafb;border-radius:8px;padding:15px;margin:20px 0;border:1px solid #e5e7eb;">
-                  <div class="row"><span class="label">Monto original de la cuota</span><span class="value">${formatCurrency(montoBase)}</span></div>
-                  <div class="row"><span class="label">IPC aplicado (${pago.porcentajeIPC}%)${ipcMesLabel ? ` - corresponde a ${ipcMesLabel}` : ""}</span><span class="value" style="color:#b45309;">+ ${formatCurrency(ipcMonto)}</span></div>
-                  <div style="border-top:2px solid #2d5a3d;margin-top:10px;padding-top:10px;">
-                    <div class="row"><span class="label" style="font-weight:bold;font-size:14px;">Monto final a pagar</span><span class="value" style="font-size:22px;color:#2d5a3d;">${formatCurrency(pago.monto)}</span></div>
-                  </div>
-                </div>
-              `
-            } else {
-              return `
-                <div class="amount">
-                  <div class="label">Monto del Pago</div>
-                  <div class="value">${formatCurrency(pago.monto)}</div>
-                </div>
-              `
-            }
-          })()}
-          <div class="section">
-            <h3>Datos del Pago</h3>
-            <div class="row"><span class="label">Fecha de pago:</span><span class="value">${pago.fecha}</span></div>
-            <div class="row"><span class="label">Pagado por:</span><span class="value">${pago.pagadoPor}</span></div>
-            ${pago.porcentajeIPC > 0 ? `<div class="row"><span class="label">IPC aplicado:</span><span class="value">${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}</span></div>` : ""}
-            ${pago.notas ? `<div class="row"><span class="label">Notas:</span><span class="value">${pago.notas}</span></div>` : ""}
-          </div>
-          ${totalCuotas > 0 ? `
-          <div class="section" style="background:#eff6ff;border-radius:8px;padding:15px;margin:10px 0;border:1px solid #bfdbfe;">
-            <div class="row"><span class="label">Cuota N:</span><span class="value">${cuotaActual} de ${totalCuotas}</span></div>
-            <div class="row"><span class="label">Cuotas restantes:</span><span class="value" style="font-size:16px;color:${cuotasFaltantes === 0 ? '#15803d' : '#1d4ed8'};">${cuotasFaltantes === 0 ? 'Ninguna - PAGADO EN SU TOTALIDAD' : cuotasFaltantes}</span></div>
-          </div>
-          ` : ""}
-          ${pago.montoRecibido && pago.montoRecibido > 0 ? `
-          <div class="section" style="background:#f0fdf4;border-radius:8px;padding:15px;margin:10px 0;border:1px solid #bbf7d0;">
-            <h3 style="color:#15803d;">Detalle de Efectivo</h3>
-            <div class="row"><span class="label">Monto recibido del cliente:</span><span class="value">${formatCurrency(pago.montoRecibido)}</span></div>
-            <div class="row"><span class="label">Monto a pagar:</span><span class="value">${formatCurrency(pago.monto)}</span></div>
-            <div style="border-top:2px solid #15803d;margin-top:8px;padding-top:8px;">
-              <div class="row"><span class="label" style="font-weight:bold;font-size:14px;">Vuelto entregado:</span><span class="value" style="font-size:20px;color:#15803d;">${formatCurrency(pago.vuelto || 0)}</span></div>
-            </div>
-          </div>
-          ` : ""}
-          <div class="signatures">
-            <div class="signature-line">
-              <div class="line"></div>
-              <div class="name">Firma del Cliente</div>
-            </div>
-            <div class="signature-line">
-              <div class="line"></div>
-              <div class="name">Firma Los Jazmines</div>
-            </div>
-          </div>
-          <div class="footer">
-            <p>Este comprobante es valido como constancia de pago.</p>
-          </div>
+          ${copiaHtml("Copia Cliente")}
+          <hr class="cut-line" />
+          ${copiaHtml("Copia Los Jazmines")}
         </body>
       </html>
     `)
