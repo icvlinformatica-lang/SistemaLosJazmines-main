@@ -194,7 +194,7 @@ function PaymentReceipt({
             * { box-sizing: border-box; }
             html, body { margin: 0; padding: 0; }
             body { font-family: Arial, sans-serif; color: #111; }
-            .script { font-family: 'Brush Script MT', 'Segoe Script', 'Lucida Handwriting', cursive; font-weight: normal; }
+            .script { font-family: 'Times New Roman', Times, Georgia, serif; font-weight: normal; }
 
             /* Cada copia ocupa ~3/8 de la hoja: las dos juntas suman 3/4 */
             .copia { display: flex; width: 100%; height: 104mm; overflow: hidden; page-break-inside: avoid; }
