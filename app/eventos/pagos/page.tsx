@@ -658,8 +658,11 @@ function PagosPageContent() {
     if (!pago) return
 
     // 1) Determinar a qué cuota corresponde el pago (para revertirla y hallar sus movimientos)
+    // Un "Pago único (pago completo)" corresponde siempre a la cuota 1: si no se
+    // detecta, la cuota quedaría marcada como pagada para siempre tras eliminar el pago.
     const matchCuota = /Cuota\s+(\d+)/i.exec(pago.notas || "")
-    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : null
+    const esPagoUnicoNota = /pago\s+(único|unico|completo)/i.test(pago.notas || "")
+    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : esPagoUnicoNota ? 1 : null
     const etiquetaCuota = numeroCuota ? `Cuota ${numeroCuota}` : "Pago"
 
     // 2) Revertir los movimientos de caja que se habían sumado por este pago.

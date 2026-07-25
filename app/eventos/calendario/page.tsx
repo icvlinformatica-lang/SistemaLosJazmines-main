@@ -506,9 +506,31 @@ export default function CalendarioPage() {
 
   const handleDeletePago = (pagoId: string) => {
     if (!selectedEvento) return
+    const pago = (selectedEvento.pagos || []).find((p) => p.id === pagoId)
     const updatedPagos = (selectedEvento.pagos || []).filter((p) => p.id !== pagoId)
-    updateEvento(selectedEvento.id, { pagos: updatedPagos })
-    setSelectedEvento({ ...selectedEvento, pagos: updatedPagos })
+
+    // Desmarcar la cuota correspondiente para que vuelva a figurar como impaga
+    // (misma lógica que la página de pagos; un "Pago único" equivale a la cuota 1).
+    const matchCuota = /Cuota\s+(\d+)/i.exec(pago?.notas || "")
+    const esPagoUnicoNota = /pago\s+(único|unico|completo)/i.test(pago?.notas || "")
+    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : esPagoUnicoNota ? 1 : null
+    let updatedPlanDeCuotas = selectedEvento.planDeCuotas
+    if (updatedPlanDeCuotas && numeroCuota) {
+      updatedPlanDeCuotas = {
+        ...updatedPlanDeCuotas,
+        cuotasPagadas: (updatedPlanDeCuotas.cuotasPagadas || []).filter((n) => n !== numeroCuota),
+      }
+    }
+
+    updateEvento(selectedEvento.id, {
+      pagos: updatedPagos,
+      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
+    })
+    setSelectedEvento({
+      ...selectedEvento,
+      pagos: updatedPagos,
+      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
+    })
   }
 
   // --- Calendar Grid (Month) ---
