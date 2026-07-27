@@ -129,9 +129,15 @@ function AlmacenContent() {
 
   // Imprime la lista COMPLETA de insumos (sin filtro de búsqueda) con una
   // columna vacía "Precio nuevo" para anotar a mano en el supermercado.
+  // Usa un iframe oculto en vez de window.open: no lo bloquean los
+  // bloqueadores de popups y funciona igual en PC y celular.
   const handlePrint = () => {
     const hoy = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
     const todos = [...safeInsumos].sort((a, b) => a.descripcion.localeCompare(b.descripcion))
+    if (todos.length === 0) {
+      toast({ title: "No hay insumos para imprimir", variant: "destructive" })
+      return
+    }
     const filas = todos
       .map(
         (i) => `<tr>
@@ -145,10 +151,9 @@ function AlmacenContent() {
       )
       .join("")
 
-    const printWindow = window.open("", "_blank", "width=900,height=700")
-    if (!printWindow) return
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>Lista de Insumos - Los Jazmines</title>
+    const contenido = `<!DOCTYPE html><html><head><title>Lista de Insumos - Los Jazmines</title>
       <style>
+        @page { margin: 1cm; size: A4; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; padding: 16px; }
         h1 { font-size: 15px; margin-bottom: 2px; }
@@ -163,7 +168,7 @@ function AlmacenContent() {
         .right { text-align: right; white-space: nowrap; }
         .nuevo { width: 90px; }
         tr { page-break-inside: avoid; }
-        @media print { body { padding: 8px; } }
+        @media print { body { padding: 0; } }
       </style></head><body>
       <h1>Lista de Insumos de Cocina — Los Jazmines</h1>
       <div class="sub">Fecha: ${hoy} &nbsp;·&nbsp; ${todos.length} insumos &nbsp;·&nbsp; Anotar el precio nuevo en la última columna</div>
@@ -173,10 +178,45 @@ function AlmacenContent() {
         </tr></thead>
         <tbody>${filas}</tbody>
       </table>
-      </body></html>`)
-    printWindow.document.close()
-    printWindow.print()
-    printWindow.close()
+      </body></html>`
+
+    // Iframe oculto: se escribe el documento, se imprime y se elimina después.
+    const iframe = document.createElement("iframe")
+    iframe.style.position = "fixed"
+    iframe.style.right = "0"
+    iframe.style.bottom = "0"
+    iframe.style.width = "0"
+    iframe.style.height = "0"
+    iframe.style.border = "0"
+    iframe.setAttribute("aria-hidden", "true")
+    document.body.appendChild(iframe)
+
+    const doc = iframe.contentWindow?.document
+    if (!doc) {
+      document.body.removeChild(iframe)
+      toast({ title: "No se pudo preparar la impresión", description: "Intentá de nuevo.", variant: "destructive" })
+      return
+    }
+    doc.open()
+    doc.write(contenido)
+    doc.close()
+
+    // Esperar a que el iframe termine de renderizar antes de imprimir.
+    const imprimir = () => {
+      try {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+      } catch (error) {
+        console.error("[v0] Error al imprimir lista de insumos:", error)
+        toast({ title: "No se pudo abrir la impresión", description: "Intentá de nuevo.", variant: "destructive" })
+      }
+      // Eliminar el iframe después de un margen amplio para no cortar el
+      // diálogo de impresión en navegadores que no bloquean en print().
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe)
+      }, 60000)
+    }
+    setTimeout(imprimir, 300)
   }
 
   const handleDelete = async (id: string) => {
