@@ -812,7 +812,7 @@ export default function CajaJazminePage() {
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): genera el
   // ingreso repartido entre Caja Eventos y Caja Jazmines según la regla del
-  // evento (nuevos: costo + 5% a Eventos; previos: 50/50), datado en el vencimiento.
+  // evento (regla única: costo + 5% a Eventos, resto a Jazmines), datado en el vencimiento.
   function confirmarCobroCuota(cuota: CuotaPorCobrar) {
     const evento = state.eventos?.find((e) => e.id === cuota.eventoId) as EventoGuardado | undefined
     if (!evento) return

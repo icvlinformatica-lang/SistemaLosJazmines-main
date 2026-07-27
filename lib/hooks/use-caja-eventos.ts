@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import { calcularComprasBarras, calcularComprasSegmentadas, calcularMontoPersonalDelEvento, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
+import { calcularProporcionCajaEventos } from "../cobrar-cuota"
 
 // ============================================================
 // Tipos de salida
@@ -24,7 +25,7 @@ export interface IngresoPendiente {
   totalCuotas: number
   fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
-  monto: number // 50% que va a Caja Eventos
+  monto: number // parte proporcional de la cuota que va a Caja Eventos (costo + 5%)
   montoTotal: number // cuota completa
   contacto: ClienteContacto
   esEstaSemana: boolean
@@ -151,6 +152,14 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
 
       const cuotas = plan.cuotas ?? []
       const cuotasPagadasArr = plan.cuotasPagadas ?? []
+      // Proporción real de cada cuota que va a Caja Eventos (costo + 5%,
+      // recalculado con precios actuales). El 50/50 fue erradicado.
+      const proporcionEventos = calcularProporcionCajaEventos(evento, {
+        insumos: state.insumos || [],
+        insumosBarra: state.insumosBarra || [],
+        recetas: state.recetas || [],
+        cocteles: state.cocteles || [],
+      })
       const contacto: ClienteContacto = {
         nombre: evento.contrato?.nombreCompleto || evento.nombrePareja || evento.nombre || "Sin nombre",
         telefono: evento.contrato?.telefono,
@@ -183,7 +192,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           totalCuotas: plan.numeroCuotas,
           fechaVencimiento: cuota.fechaVencimiento,
           diasRestantes,
-          monto: cuota.montoCuota / 2,
+          monto: cuota.montoCuota * proporcionEventos,
           montoTotal: cuota.montoCuota,
           contacto,
           esEstaSemana,

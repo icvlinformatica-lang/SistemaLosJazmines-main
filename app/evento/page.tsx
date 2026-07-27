@@ -547,7 +547,7 @@ function EventoPageContent() {
         // Generar el detalle de cuotas con fechas de vencimiento.
         // Esto es lo que consumen las cajas (caja_eventos / caja_jazmines) para
         // proyectar ingresos: cada cuota se reparte según la regla del evento
-        // (nuevos: costo + 5% a Eventos y resto a Jazmines; previos: 50/50).
+        // (regla única: costo + 5% a Eventos y resto a Jazmines).
         const [planYear, planMonth, planDay] = (localFechaInicioPlan || new Date().toISOString().split("T")[0])
           .split("-")
           .map(Number)
@@ -586,11 +586,10 @@ function EventoPageContent() {
           porcentajeRecargo: recargoEfectivo > 0 ? recargoEfectivo : undefined,
           // IPC solo cuando corresponde (Seña+Cuotas siempre; Solo Cuotas si se eligió IPC)
           ajustaPorIPC: usaIPC,
-          // División de cajas: los eventos NUEVOS usan la regla "costo del evento
-          // + 5% a Caja Eventos, el resto a Caja Jazmines" (prorrateada en cada
-          // pago). Al editar un evento existente se conserva su regla original
-          // para no cambiar el reparto de cuotas ya en curso.
-          repartoCajas: isEditing ? evento.planDeCuotas?.repartoCajas : ("costo_mas_5" as const),
+          // División de cajas: regla proporcional única "costo del evento + 5%
+          // a Caja Eventos, el resto a Caja Jazmines" (prorrateada en cada pago).
+          // Se aplica SIEMPRE, incluso al editar eventos viejos: el 50/50 fue erradicado.
+          repartoCajas: "costo_mas_5" as const,
           cuotas: cuotasDetalle,
         }
       })() : undefined,
