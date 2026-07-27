@@ -1572,8 +1572,7 @@ useStore()
                   <span className="text-sm leading-snug">
                     Marcar esta cuota como <span className="font-medium">ya cobrada</span>
                     <span className="block text-xs text-muted-foreground">
-                      Registra el ingreso proporcional (costo + 5% a Eventos, resto a Jazmines) con fecha{" "}
-                      {formatFecha(clienteSel.fechaVencimiento)}.
+                      Registra el ingreso con fecha {formatFecha(clienteSel.fechaVencimiento)}.
                     </span>
                   </span>
                 </label>

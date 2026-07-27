@@ -667,7 +667,8 @@ function PagosPageContent() {
 
     // 2) Revertir los movimientos de caja que se habían sumado por este pago.
     //    Se buscan por evento + etiqueta de la cuota, tomando por cada caja el
-    //    movimiento cuyo monto más se acerca a la mitad del pago.
+    //    movimiento cuyo monto más se acerca a la parte proporcional que le
+    //    correspondió (costo + 5% a Eventos, resto a Jazmines).
     let cajasRevertidas = false
     const candidatos = movimientosCaja.filter(
       (m: MovimientoCaja) =>
@@ -676,12 +677,22 @@ function PagosPageContent() {
         typeof m.concepto === "string" &&
         m.concepto.startsWith(`${etiquetaCuota} - `),
     )
-    const mitadObjetivo = pago.monto / 2
+    const propEventos = calcularProporcionCajaEventos(selectedEvento, {
+      insumos: state.insumos || [],
+      insumosBarra: state.insumosBarra || [],
+      recetas: state.recetas || [],
+      cocteles: state.cocteles || [],
+    })
+    const objetivoPorCaja: Record<"caja_eventos" | "caja_jazmines", number> = {
+      caja_eventos: pago.monto * propEventos,
+      caja_jazmines: pago.monto * (1 - propEventos),
+    }
     ;(["caja_eventos", "caja_jazmines"] as const).forEach((caja) => {
       const delCaja = candidatos.filter((m) => m.cajaDestino === caja)
       if (delCaja.length === 0) return
+      const objetivo = objetivoPorCaja[caja]
       const elegido = delCaja.reduce((best, m) =>
-        Math.abs(m.monto - mitadObjetivo) < Math.abs(best.monto - mitadObjetivo) ? m : best,
+        Math.abs(m.monto - objetivo) < Math.abs(best.monto - objetivo) ? m : best,
       )
       deleteMovimientoCaja(elegido.id)
       cajasRevertidas = true
@@ -830,7 +841,9 @@ function PagosPageContent() {
       planDeCuotas: updatedPlanDeCuotas,
     })
 
-    // 3) Revertir los movimientos de caja de esta cuota
+    // 3) Revertir los movimientos de caja de esta cuota, estimando por caja la
+    //    parte proporcional que le correspondió (costo + 5% a Eventos, resto a
+    //    Jazmines). El 50/50 fue erradicado.
     let cajasRevertidas = false
     const candidatos = movimientosCaja.filter(
       (m: MovimientoCaja) =>
@@ -839,12 +852,23 @@ function PagosPageContent() {
         typeof m.concepto === "string" &&
         m.concepto.startsWith(`${etiquetaCuota} - `),
     )
-    const mitadObjetivo = (pagoRevertido?.monto ?? evento.planDeCuotas.montoCuota ?? 0) / 2
+    const montoBase = pagoRevertido?.monto ?? evento.planDeCuotas.montoCuota ?? 0
+    const propEventosRev = calcularProporcionCajaEventos(evento, {
+      insumos: state.insumos || [],
+      insumosBarra: state.insumosBarra || [],
+      recetas: state.recetas || [],
+      cocteles: state.cocteles || [],
+    })
+    const objetivoPorCajaRev: Record<"caja_eventos" | "caja_jazmines", number> = {
+      caja_eventos: montoBase * propEventosRev,
+      caja_jazmines: montoBase * (1 - propEventosRev),
+    }
     ;(["caja_eventos", "caja_jazmines"] as const).forEach((caja) => {
       const delCaja = candidatos.filter((m) => m.cajaDestino === caja)
       if (delCaja.length === 0) return
+      const objetivo = objetivoPorCajaRev[caja]
       const elegido = delCaja.reduce((best, m) =>
-        Math.abs(m.monto - mitadObjetivo) < Math.abs(best.monto - mitadObjetivo) ? m : best,
+        Math.abs(m.monto - objetivo) < Math.abs(best.monto - objetivo) ? m : best,
       )
       deleteMovimientoCaja(elegido.id)
       cajasRevertidas = true
