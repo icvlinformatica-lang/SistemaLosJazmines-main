@@ -448,7 +448,7 @@ useStore()
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
   // "por cobrar" y genera el ingreso repartido entre Caja Eventos y Caja Jazmines
-  // según la regla del evento (nuevos: costo + 5% a Eventos; previos: 50/50),
+  // según la regla proporcional única (costo + 5% a Eventos, resto a Jazmines),
   // datado en la fecha de vencimiento de la cuota.
   function confirmarCobroCuota(ing: IngresoPendiente) {
     const evento = state.eventos?.find((e) => e.id === ing.eventoId) as EventoGuardado | undefined
@@ -1572,7 +1572,7 @@ useStore()
                   <span className="text-sm leading-snug">
                     Marcar esta cuota como <span className="font-medium">ya cobrada</span>
                     <span className="block text-xs text-muted-foreground">
-                      Registra el ingreso 50/50 a Caja Eventos y Caja Jazmines con fecha{" "}
+                      Registra el ingreso proporcional (costo + 5% a Eventos, resto a Jazmines) con fecha{" "}
                       {formatFecha(clienteSel.fechaVencimiento)}.
                     </span>
                   </span>

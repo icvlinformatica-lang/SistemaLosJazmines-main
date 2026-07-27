@@ -29,28 +29,33 @@ export interface DatosCostosEvento {
 /**
  * Proporción de cada cobro que va a Caja Eventos (el resto va a Caja Jazmines).
  *
- * - Eventos con `planDeCuotas.repartoCajas === "costo_mas_5"` (creados en el
- *   planificador con la regla nueva): a Caja Eventos va SOLO el costo del evento
- *   + 5%, prorrateado proporcionalmente en cada pago (seña y cuotas). El costo se
- *   RECALCULA en cada cobro: insumos con precios actuales del almacén (si se
- *   pasan `datos`) + servicios + operativos guardados en el evento.
- * - Eventos anteriores (sin flag o "50_50"): reparto histórico 50/50.
+ * Regla ÚNICA (proporcional, "costo + 5%") para TODOS los eventos, sin importar
+ * cuándo fueron creados: a Caja Eventos va SOLO el costo del evento + 5%,
+ * prorrateado proporcionalmente en cada pago (seña y cuotas). El costo se
+ * RECALCULA en cada cobro: insumos con precios actuales del almacén (si se
+ * pasan `datos`) + servicios + operativos guardados en el evento.
  *
- * Si el evento no tiene datos de costo (> 0) o el monto total es inválido, se
- * cae al 50/50 para no dejar una caja en cero por un dato faltante.
+ * El reparto histórico 50/50 fue erradicado a pedido del negocio (jul 2026):
+ * el flag legado `repartoCajas` se ignora por completo.
+ *
+ * Casos borde (datos faltantes):
+ * - Costo del evento en 0: proporcionalmente a Eventos le corresponde $0,
+ *   así que toda la cuota va a Jazmines (0).
+ * - Monto total inválido (<= 0): no se puede prorratear; toda la cuota va a
+ *   Caja Eventos (1) para garantizar que los costos queden cubiertos hasta
+ *   que se corrija el plan de cuotas del evento.
  */
 export function calcularProporcionCajaEventos(evento: EventoGuardado, datos?: DatosCostosEvento): number {
   const plan = evento.planDeCuotas
-  if (plan?.repartoCajas !== "costo_mas_5") return 0.5
-
   const montoTotal = plan?.montoTotal ?? 0
-  if (montoTotal <= 0) return 0.5
 
   const costoInsumos = datos
     ? calcularCostoInsumosEvento(evento, datos.recetas, datos.insumos, datos.cocteles, datos.insumosBarra)
     : (evento.costoInsumos ?? 0)
   const costoEvento = costoInsumos + (evento.costoServicios ?? 0) + (evento.costoOperativo ?? 0)
-  if (costoEvento <= 0) return 0.5
+
+  if (montoTotal <= 0) return 1
+  if (costoEvento <= 0) return 0
 
   return Math.min(1, (costoEvento * 1.05) / montoTotal)
 }
@@ -72,9 +77,8 @@ export function repartirEntreCajas(
  * Construye la actualización necesaria para marcar una cuota como cobrada:
  * - agrega el número de cuota a `planDeCuotas.cuotasPagadas`
  * - genera dos movimientos de ingreso repartidos entre Caja Eventos y Caja
- *   Jazmines según la regla del evento (ver calcularProporcionCajaEventos):
- *   eventos nuevos -> costo del evento + 5% a Eventos y el resto a Jazmines;
- *   eventos previos -> 50/50.
+ *   Jazmines según la regla proporcional única (ver calcularProporcionCajaEventos):
+ *   costo del evento + 5% a Eventos y el resto a Jazmines, para TODOS los eventos.
  *
  * El movimiento se data en la fecha de vencimiento de la cuota cuando existe
  * (útil al cargar eventos viejos, para que el flujo de caja quede en su período

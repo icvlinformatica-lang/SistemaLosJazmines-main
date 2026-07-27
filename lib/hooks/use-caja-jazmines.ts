@@ -394,7 +394,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
 
     // ----------------------------------------------------------
     // 3. INGRESOS PROYECTADOS a 30 días (parte Jazmines de cuotas pendientes,
-    //    según la regla del evento: resto después de costo+5%, o 50/50 legado)
+    //    según la regla proporcional única: resto después de costo+5%)
     //    + lista completa de cuotas por cobrar (para marcarlas cobradas)
     // ----------------------------------------------------------
     const datosCostos = {
@@ -613,7 +613,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
 
     // Estimado de gastos fijos del MES QUE VIENE (tarjeta "a pagar de servicios").
     // Se calcula servicio por servicio usando el HISTORIAL de montos pagados
-    // (registrados en "Registrar monto pagado"): el último monto pagado se
+    // (registrados en "Registrar monto pagado"): el ��ltimo monto pagado se
     // proyecta con el promedio de los últimos aumentos de ese servicio.
     const mesProximo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)
     const mesProximoKey = mesKeyJaz(mesProximo)

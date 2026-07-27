@@ -204,11 +204,11 @@ export interface Evento {
   // Si es false, las cuotas son fijas y nunca se modifican por inflación.
   ajustaPorIPC?: boolean
   /**
-   * Regla de división de cada cobro entre las cajas:
-   * - "costo_mas_5": a Caja Eventos va solo el costo del evento + 5% (proporcional
-   *   en cada pago); el resto va a Caja Jazmines. Eventos creados desde el
-   *   planificador a partir de esta regla.
-   * - undefined / "50_50": reparto histórico 50/50 (eventos previos).
+   * Flag legado de la regla de división entre cajas. HOY SE IGNORA: todos los
+   * eventos usan la regla proporcional "costo + 5%" (a Caja Eventos va solo el
+   * costo del evento + 5%, prorrateado en cada pago; el resto va a Caja
+   * Jazmines). El reparto 50/50 fue erradicado (jul 2026). El campo se
+   * conserva solo para no romper datos guardados con el valor viejo.
    */
   repartoCajas?: "50_50" | "costo_mas_5"
   cuotas?: Array<{

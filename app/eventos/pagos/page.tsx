@@ -577,7 +577,7 @@ function PagosPageContent() {
 
     // Generar los movimientos de caja del ingreso, repartidos según la regla del
     // evento: nuevos -> costo del evento + 5% a Caja Eventos y el resto a Caja
-    // Jazmines (proporcional en cada pago, costo recalculado en vivo); previos -> 50/50.
+    // Jazmines (proporcional en cada pago, costo recalculado en vivo) para TODOS los eventos.
     if (selectedEvento.salon && pagoForm.monto > 0) {
       const nombreEvento = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
       const etiquetaCuota = cuotaPagadaNumero ? `Cuota ${cuotaPagadaNumero}` : "Pago"
