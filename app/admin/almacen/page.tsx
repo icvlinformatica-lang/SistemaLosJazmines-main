@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Plus, Search, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Printer } from "lucide-react"
 
 const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR"]
 
@@ -127,6 +127,58 @@ function AlmacenContent() {
     setIsAddDialogOpen(true)
   }
 
+  // Imprime la lista COMPLETA de insumos (sin filtro de búsqueda) con una
+  // columna vacía "Precio nuevo" para anotar a mano en el supermercado.
+  const handlePrint = () => {
+    const hoy = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+    const todos = [...safeInsumos].sort((a, b) => a.descripcion.localeCompare(b.descripcion))
+    const filas = todos
+      .map(
+        (i) => `<tr>
+          <td class="mono">${i.codigo}</td>
+          <td class="desc">${i.descripcion}</td>
+          <td class="center">${i.unidad}</td>
+          <td class="right">${i.stockActual.toLocaleString("es-AR")}</td>
+          <td class="right">${formatCurrency(i.precioUnitario)}</td>
+          <td class="nuevo"></td>
+        </tr>`,
+      )
+      .join("")
+
+    const printWindow = window.open("", "_blank", "width=900,height=700")
+    if (!printWindow) return
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>Lista de Insumos - Los Jazmines</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; padding: 16px; }
+        h1 { font-size: 15px; margin-bottom: 2px; }
+        .sub { font-size: 11px; color: #444; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #999; padding: 3px 5px; text-align: left; }
+        th { background: #eee; font-size: 10px; text-transform: uppercase; }
+        td { height: 18px; }
+        .mono { font-family: monospace; font-size: 10px; white-space: nowrap; }
+        .desc { font-weight: bold; }
+        .center { text-align: center; }
+        .right { text-align: right; white-space: nowrap; }
+        .nuevo { width: 90px; }
+        tr { page-break-inside: avoid; }
+        @media print { body { padding: 8px; } }
+      </style></head><body>
+      <h1>Lista de Insumos de Cocina — Los Jazmines</h1>
+      <div class="sub">Fecha: ${hoy} &nbsp;·&nbsp; ${todos.length} insumos &nbsp;·&nbsp; Anotar el precio nuevo en la última columna</div>
+      <table>
+        <thead><tr>
+          <th>Código</th><th>Descripción</th><th>Unidad</th><th>Stock</th><th>Precio actual</th><th>Precio nuevo</th>
+        </tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+      </body></html>`)
+    printWindow.document.close()
+    printWindow.print()
+    printWindow.close()
+  }
+
   const handleDelete = async (id: string) => {
     if (confirm("¿Estás seguro de eliminar este insumo?")) {
       try {
@@ -163,7 +215,7 @@ function AlmacenContent() {
               <CardDescription>{filteredInsumos.length} insumos encontrados</CardDescription>
             </div>
             <div className="flex flex-col gap-3 sm:items-end">
-              {/* Search + Add */}
+              {/* Search + Print + Add */}
               <div className="flex gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -174,6 +226,10 @@ function AlmacenContent() {
                     className="pl-9 w-[200px]"
                   />
                 </div>
+                <Button variant="outline" size="icon" onClick={handlePrint} title="Imprimir lista de insumos">
+                  <Printer className="h-4 w-4" />
+                  <span className="sr-only">Imprimir lista de insumos</span>
+                </Button>
                 <Dialog
                   open={isAddDialogOpen}
                   onOpenChange={(open) => {
