@@ -494,16 +494,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...insumo, codigo }),
       })
-      if (res.ok) {
-        const newInsumo = await res.json()
-        setState((prev) => ({
-          ...prev,
-          insumos: [...prev.insumos, newInsumo],
-        }))
+      if (!res.ok) {
+        const msg =
+          res.status === 401
+            ? "Tu sesión expiró. Volvé a iniciar sesión e intentá de nuevo."
+            : `El servidor rechazó el cambio (error ${res.status}). Intentá de nuevo.`
+        toast({ title: "No se pudo guardar", description: msg, variant: "destructive" })
+        throw new Error(`addInsumo failed: ${res.status}`)
       }
+      const newInsumo = await res.json()
+      setState((prev) => ({
+        ...prev,
+        insumos: [...prev.insumos, newInsumo],
+      }))
     } catch (error) {
       console.error("[v0] Error adding insumo:", error)
-      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      if (!(error instanceof Error && error.message.startsWith("addInsumo failed"))) {
+        toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      }
+      throw error
     }
   }
 
@@ -514,16 +523,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       })
-      if (res.ok) {
-        const updated = await res.json()
-        setState((prev) => ({
-          ...prev,
-          insumos: prev.insumos.map((i) => (i.id === id ? updated : i)),
-        }))
+      if (!res.ok) {
+        // La respuesta llegó pero el servidor la rechazó (4xx). Antes esto se
+        // ignoraba en silencio y el diálogo se cerraba como si hubiera guardado.
+        const msg =
+          res.status === 401
+            ? "Tu sesión expiró. Volvé a iniciar sesión e intentá de nuevo."
+            : `El servidor rechazó el cambio (error ${res.status}). Intentá de nuevo.`
+        toast({ title: "No se pudo guardar", description: msg, variant: "destructive" })
+        throw new Error(`updateInsumo failed: ${res.status}`)
       }
+      const updated = await res.json()
+      setState((prev) => ({
+        ...prev,
+        insumos: prev.insumos.map((i) => (i.id === id ? updated : i)),
+      }))
     } catch (error) {
       console.error("[v0] Error updating insumo:", error)
-      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      // Solo mostramos el toast de conexión si el fallo no fue una respuesta 4xx
+      // ya notificada arriba (esos errores llevan el prefijo "updateInsumo failed").
+      if (!(error instanceof Error && error.message.startsWith("updateInsumo failed"))) {
+        toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      }
+      throw error
     }
   }
 

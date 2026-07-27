@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react"
 
 import { useStore } from "@/lib/store-context"
+import { useToast } from "@/hooks/use-toast"
 import { type Insumo, type Unidad, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,6 +30,7 @@ type SortDir = "asc" | "desc"
 
 function AlmacenContent() {
   const { insumos, loading: isLoading, addInsumo, updateInsumo, deleteInsumo } = useStore()
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<SortField>("codigo")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -98,9 +100,14 @@ function AlmacenContent() {
       } else {
         await addInsumo(formData)
       }
+      // Solo llegamos acá si el guardado fue exitoso (las funciones del store
+      // ahora lanzan error si el servidor rechaza el cambio).
+      toast({ title: editingInsumo ? "Insumo actualizado" : "Insumo agregado", description: `${formData.descripcion} se guardó correctamente.` })
       resetForm()
       setIsAddDialogOpen(false)
     } catch (error) {
+      // El toast de error ya lo muestra el store; acá dejamos el diálogo abierto
+      // para que el usuario pueda reintentar sin perder lo que cargó.
       console.error("Error saving insumo:", error)
     } finally {
       setIsSubmitting(false)
