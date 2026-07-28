@@ -827,6 +827,7 @@ export default function CajaJazminePage() {
         insumosBarra: state.insumosBarra || [],
         recetas: state.recetas || [],
         cocteles: state.cocteles || [],
+        servicios: state.servicios || [],
       },
     )
     if (yaCobrada) {
