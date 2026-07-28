@@ -75,7 +75,7 @@ export default function LoginPage() {
       </div>
 
       {/* Grid de perfiles */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 w-full max-w-2xl">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 w-full max-w-4xl items-start">
         {PERFILES.map((perfil) => {
           const pinGuardado = pinsGuardados[perfil.id]
           const esSeleccionado = perfilSeleccionado === perfil.id && !pinGuardado
@@ -98,7 +98,7 @@ export default function LoginPage() {
               >
                 <div
                   className="relative w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow"
-                  style={{ backgroundColor: perfil.color }}
+                  style={{ backgroundColor: esDorado ? "#ffffff" : perfil.color }}
                 >
                   <span role="img" aria-label={perfil.nombre}>{perfil.emoji}</span>
                   {pinGuardado && (

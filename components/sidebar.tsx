@@ -56,6 +56,15 @@ const PERFILES_ACCESO_TOTAL = ["administracion", "soporte"]
 const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
   const tieneAccesoTotal = PERFILES_ACCESO_TOTAL.includes(perfilId ?? "")
 
+  // Perfil "Cobrar cuota": menú mínimo con acceso directo, sin la carpeta
+  // Finanzas bloqueada ni el resto de las secciones.
+  if (perfilId === "cobro") {
+    return [
+      { href: "/", label: "Inicio", icon: Home },
+      { href: "/eventos/pagos", label: "Cobrar cuota", icon: CreditCard },
+    ]
+  }
+
   return [
     { href: "/", label: "Inicio", icon: Home },
     {
@@ -342,7 +351,7 @@ export function Sidebar() {
         </nav>
 
         {/* Generar Contrato Button */}
-        {!["cocina", "barra"].includes(perfilActivo?.id ?? "") && (
+        {!["cocina", "barra", "cobro"].includes(perfilActivo?.id ?? "") && (
           <div className="px-3 pb-3 -mt-[10px]">
             <button
               type="button"

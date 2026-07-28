@@ -49,7 +49,7 @@ export const PERFILES: Perfil[] = [
     nombre: "Cobrar cuota",
     color: "#c9a227",
     emoji: "💰",
-    rutas: ["/eventos/pagos"],
+    rutas: ["/", "/eventos/pagos"],
   },
 ]
 
