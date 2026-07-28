@@ -404,6 +404,37 @@ function PagosPageContent() {
   const [showContractPreview, setShowContractPreview] = useState(false)
   const [showContratoPanel, setShowContratoPanel] = useState(false)
 
+  // Protección con PIN de administración para editar el contrato.
+  const [showPinContrato, setShowPinContrato] = useState(false)
+  const [pinContrato, setPinContrato] = useState("")
+  const [pinContratoError, setPinContratoError] = useState("")
+  const [verificandoPinContrato, setVerificandoPinContrato] = useState(false)
+
+  const handleVerificarPinContrato = async () => {
+    if (!pinContrato.trim() || verificandoPinContrato) return
+    setVerificandoPinContrato(true)
+    setPinContratoError("")
+    try {
+      const res = await fetch("/api/auth/verificar-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinContrato }),
+      })
+      const data = await res.json().catch(() => ({ ok: false }))
+      if (data.ok) {
+        setShowPinContrato(false)
+        setPinContrato("")
+        setShowContratoPanel(true)
+      } else {
+        setPinContratoError("PIN incorrecto")
+      }
+    } catch {
+      setPinContratoError("No se pudo verificar el PIN. Intentá de nuevo.")
+    } finally {
+      setVerificandoPinContrato(false)
+    }
+  }
+
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
   const [searchMode, setSearchMode] = useState<"texto" | "fechaSalon">("texto")
@@ -795,8 +826,9 @@ function PagosPageContent() {
         const mesActual = hoy.getMonth() + 1
         const añoActual = hoy.getFullYear()
 
-        // Si la cuota vence este mes
-        if (año === añoActual && mes === mesActual) {
+        // Si la cuota vence este mes y todavía no fue pagada.
+        // Las pagadas desaparecen del recordatorio.
+        if (año === añoActual && mes === mesActual && !cuota.pagada) {
           resultado.push({
             evento,
             ...cuota,
@@ -810,77 +842,6 @@ function PagosPageContent() {
       a.fechaVencimiento.localeCompare(b.fechaVencimiento)
     )
   }, [eventos])
-
-  // Revertir una cuota marcada como pagada desde los recordatorios:
-  // quita la cuota de cuotasPagadas, elimina el pago registrado y los
-  // movimientos de caja generados.
-  const handleRevertirCuotaPagada = (eventoId: string, numeroCuota: number) => {
-    const evento = eventos.find(e => e.id === eventoId)
-    if (!evento || !evento.planDeCuotas) return
-
-    const nombreEvento = evento.nombre || evento.nombrePareja || "Evento"
-    const etiquetaCuota = `Cuota ${numeroCuota}`
-
-    // 1) Quitar la cuota de cuotasPagadas
-    const updatedPlanDeCuotas = {
-      ...evento.planDeCuotas,
-      cuotasPagadas: (evento.planDeCuotas.cuotasPagadas || []).filter(n => n !== numeroCuota),
-    }
-
-    // 2) Quitar el pago registrado asociado a esta cuota (match por notas)
-    const pagoRevertido = (evento.pagos || []).find(p => {
-      const m = /Cuota\s+(\d+)/i.exec(p.notas || "")
-      return m ? parseInt(m[1], 10) === numeroCuota : false
-    })
-    const updatedPagos = pagoRevertido
-      ? (evento.pagos || []).filter(p => p.id !== pagoRevertido.id)
-      : (evento.pagos || [])
-
-    updateEvento(eventoId, {
-      pagos: updatedPagos,
-      planDeCuotas: updatedPlanDeCuotas,
-    })
-
-    // 3) Revertir los movimientos de caja de esta cuota, estimando por caja la
-    //    parte proporcional que le correspondió (costo + 5% a Eventos, resto a
-    //    Jazmines). El 50/50 fue erradicado.
-    let cajasRevertidas = false
-    const candidatos = movimientosCaja.filter(
-      (m: MovimientoCaja) =>
-        m.eventoId === eventoId &&
-        m.tipo === "ingreso" &&
-        typeof m.concepto === "string" &&
-        m.concepto.startsWith(`${etiquetaCuota} - `),
-    )
-    const montoBase = pagoRevertido?.monto ?? evento.planDeCuotas.montoCuota ?? 0
-    const propEventosRev = calcularProporcionCajaEventos(evento, {
-      insumos: state.insumos || [],
-      insumosBarra: state.insumosBarra || [],
-      recetas: state.recetas || [],
-      cocteles: state.cocteles || [],
-    })
-    const objetivoPorCajaRev: Record<"caja_eventos" | "caja_jazmines", number> = {
-      caja_eventos: montoBase * propEventosRev,
-      caja_jazmines: montoBase * (1 - propEventosRev),
-    }
-    ;(["caja_eventos", "caja_jazmines"] as const).forEach((caja) => {
-      const delCaja = candidatos.filter((m) => m.cajaDestino === caja)
-      if (delCaja.length === 0) return
-      const objetivo = objetivoPorCajaRev[caja]
-      const elegido = delCaja.reduce((best, m) =>
-        Math.abs(m.monto - objetivo) < Math.abs(best.monto - objetivo) ? m : best,
-      )
-      deleteMovimientoCaja(elegido.id)
-      cajasRevertidas = true
-    })
-
-    // 4) Registrar en el historial de actividad
-    logMoneyActivity(
-      "eliminado",
-      `${etiquetaCuota} - ${nombreEvento}`,
-      `Cuota marcada como impaga${cajasRevertidas ? " | Monto descontado de Caja Eventos y Caja Jazmines" : ""}`,
-    )
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -1053,11 +1014,9 @@ function PagosPageContent() {
                       key={`${item.evento.id}-${item.numeroCuota}`}
                       className={cn(
                         "flex items-center justify-between p-3 rounded-lg border",
-                        item.pagada
-                          ? "bg-emerald-50 border-emerald-200"
-                          : item.rangoRecordatorio
-                            ? "bg-amber-50 border-amber-300 shadow-sm"
-                            : "bg-background"
+                        item.rangoRecordatorio
+                          ? "bg-amber-50 border-amber-300 shadow-sm"
+                          : "bg-background"
                       )}
                     >
                       <div className="flex-1">
@@ -1068,12 +1027,7 @@ function PagosPageContent() {
                           <Badge variant="outline" className="text-xs">
                             Cuota {item.numeroCuota}/{item.evento.planDeCuotas!.numeroCuotas}
                           </Badge>
-                          {item.pagada && (
-                            <Badge variant="outline" className="text-emerald-700 border-emerald-600 text-xs">
-                              {"Pagada"}
-                            </Badge>
-                          )}
-                          {!item.pagada && item.rangoRecordatorio && (
+                          {item.rangoRecordatorio && (
                             <Badge variant="outline" className="text-amber-700 border-amber-600 text-xs">
                               {"Vence pronto"}
                             </Badge>
@@ -1106,24 +1060,9 @@ function PagosPageContent() {
                             {item.evento.tipoEvento || "Evento"}
                           </div>
                         </div>
-                        {!item.pagada ? (
-                          <Button size="sm" variant="outline" onClick={() => handleSelectEvento(item.evento)}>
-                            Ir al evento
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => {
-                              if (confirm(`¿Marcar la cuota ${item.numeroCuota} como impaga? El cliente la volverá a adeudar.`)) {
-                                handleRevertirCuotaPagada(item.evento.id, item.numeroCuota)
-                              }
-                            }}
-                          >
-                            Marcar Impaga
-                          </Button>
-                        )}
+                        <Button size="sm" variant="outline" onClick={() => handleSelectEvento(item.evento)}>
+                          Ir al evento
+                        </Button>
                       </div>
                     </div>
                   )
@@ -1267,7 +1206,11 @@ function PagosPageContent() {
                     variant="outline"
                     size="sm"
                     className="bg-transparent"
-                    onClick={() => setShowContratoPanel(true)}
+                    onClick={() => {
+                      setPinContrato("")
+                      setPinContratoError("")
+                      setShowPinContrato(true)
+                    }}
                   >
                     <FileText className="h-4 w-4 mr-1.5" />
                     Editar Contrato
@@ -1790,6 +1733,61 @@ function PagosPageContent() {
               onClick={() => pagoToDelete && handleDeletePago(pagoToDelete.id)}
             >
               Eliminar pago
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PIN de administración para editar el contrato */}
+      <Dialog
+        open={showPinContrato}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowPinContrato(false)
+            setPinContrato("")
+            setPinContratoError("")
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar contrato</DialogTitle>
+            <DialogDescription>
+              Ingres&aacute; el PIN de administraci&oacute;n para acceder a la edici&oacute;n del contrato.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              type="password"
+              inputMode="numeric"
+              placeholder="PIN"
+              value={pinContrato}
+              autoFocus
+              onChange={(e) => {
+                setPinContrato(e.target.value)
+                setPinContratoError("")
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                  handleVerificarPinContrato()
+                }
+              }}
+            />
+            {pinContratoError && <p className="text-sm text-destructive">{pinContratoError}</p>}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPinContrato(false)
+                setPinContrato("")
+                setPinContratoError("")
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleVerificarPinContrato} disabled={!pinContrato.trim() || verificandoPinContrato}>
+              {verificandoPinContrato ? "Verificando..." : "Acceder"}
             </Button>
           </DialogFooter>
         </DialogContent>

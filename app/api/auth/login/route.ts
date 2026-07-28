@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { verifyPin, verifyToken, signToken, signQuickToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/server"
 
-const PERFILES_VALIDOS = ["cocina", "barra", "administracion", "soporte"]
+const PERFILES_VALIDOS = ["cocina", "barra", "administracion", "soporte", "cobro"]
 
 // POST { perfilId, pin } — login con PIN
 // POST { perfilId, quickToken } — acceso rápido con token firmado previamente

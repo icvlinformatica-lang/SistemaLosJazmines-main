@@ -38,8 +38,8 @@ import {
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
 import { useUI } from "@/lib/ui-context"
-import { TimeTravelButton } from "@/components/time-travel-button"
 import { useProfile } from "@/lib/profile-context"
+import { useClock } from "@/lib/clock-context"
 import { generateId } from "@/lib/utils-client"
 
 interface MenuItem {
@@ -55,6 +55,15 @@ const PERFILES_ACCESO_TOTAL = ["administracion", "soporte"]
 
 const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
   const tieneAccesoTotal = PERFILES_ACCESO_TOTAL.includes(perfilId ?? "")
+
+  // Perfil "Cobrar cuota": menú mínimo con acceso directo, sin la carpeta
+  // Finanzas bloqueada ni el resto de las secciones.
+  if (perfilId === "cobro") {
+    return [
+      { href: "/", label: "Inicio", icon: Home },
+      { href: "/eventos/pagos", label: "Cobrar cuota", icon: CreditCard },
+    ]
+  }
 
   return [
     { href: "/", label: "Inicio", icon: Home },
@@ -128,6 +137,7 @@ export function Sidebar() {
   const { setEventoActual } = useStore()
   const { sidebarOpen, setSidebarOpen } = useUI()
   const { perfilActivo, cerrarSesion } = useProfile()
+  const { ahora: fechaActual } = useClock()
   const [expandedSections, setExpandedSections] = useState<string[]>([])
 
   // Construir items del menú según perfil activo
@@ -242,9 +252,17 @@ export function Sidebar() {
           </Link>
         </div>
 
-        {/* Botón de viaje en el tiempo (fecha del sistema) */}
+        {/* Fecha del sistema (solo lectura) */}
         <div className="px-3 pb-3">
-          <TimeTravelButton />
+          <div className="flex w-full items-center gap-2 rounded-lg bg-[#f5f0e8]/8 px-3 py-2 text-[#f5f0e8]/80">
+            <CalendarClock className="h-4 w-4 shrink-0" />
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="truncate text-xs font-semibold">
+                {fechaActual.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}
+              </span>
+              <span className="text-[10px] opacity-60">Fecha del sistema</span>
+            </span>
+          </div>
         </div>
 
         {/* Navigation Items */}
@@ -342,7 +360,7 @@ export function Sidebar() {
         </nav>
 
         {/* Generar Contrato Button */}
-        {!["cocina", "barra"].includes(perfilActivo?.id ?? "") && (
+        {!["cocina", "barra", "cobro"].includes(perfilActivo?.id ?? "") && (
           <div className="px-3 pb-3 -mt-[10px]">
             <button
               type="button"
@@ -359,10 +377,10 @@ export function Sidebar() {
         {perfilActivo && (
           <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3">
             <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[#f5f0e8]/8 hover:bg-[#f5f0e8]/12 transition-colors group">
-              {/* Avatar circular con color del perfil */}
+              {/* Avatar circular con color del perfil (blanco para "Cobrar cuota") */}
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 shadow-sm"
-                style={{ backgroundColor: perfilActivo.color }}
+                style={{ backgroundColor: perfilActivo.id === "cobro" ? "#ffffff" : perfilActivo.color }}
               >
                 {perfilActivo.emoji}
               </div>

@@ -75,15 +75,20 @@ export default function LoginPage() {
       </div>
 
       {/* Grid de perfiles */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 w-full max-w-2xl">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 w-full max-w-4xl items-start">
         {PERFILES.map((perfil) => {
           const pinGuardado = pinsGuardados[perfil.id]
           const esSeleccionado = perfilSeleccionado === perfil.id && !pinGuardado
+          const esDorado = perfil.id === "cobro"
 
           return (
             <div
               key={perfil.id}
-              className={`flex flex-col items-center bg-white rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 px-4 pt-6 pb-5 gap-3 ${esSeleccionado ? "ring-2 ring-[#1a3a2a]" : ""}`}
+              className={`flex flex-col items-center rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 px-4 pt-6 pb-5 gap-3 ${
+                esDorado
+                  ? "bg-gradient-to-b from-[#fdf6e3] to-[#f3e2a9] border border-[#d4af37]"
+                  : "bg-white"
+              } ${esSeleccionado ? (esDorado ? "ring-2 ring-[#c9a227]" : "ring-2 ring-[#1a3a2a]") : ""}`}
             >
               {/* Circulo con emoji */}
               <button
@@ -93,7 +98,7 @@ export default function LoginPage() {
               >
                 <div
                   className="relative w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow"
-                  style={{ backgroundColor: perfil.color }}
+                  style={{ backgroundColor: esDorado ? "#ffffff" : perfil.color }}
                 >
                   <span role="img" aria-label={perfil.nombre}>{perfil.emoji}</span>
                   {pinGuardado && (

@@ -1,7 +1,7 @@
 // Módulo de autenticación del lado del servidor.
 // Los PINs NUNCA deben estar en código del cliente: viven aquí (solo servidor)
 // y pueden sobreescribirse con variables de entorno (PIN_COCINA, PIN_BARRA,
-// PIN_ADMINISTRACION, PIN_SOPORTE) sin tocar el código.
+// PIN_ADMINISTRACION, PIN_SOPORTE, PIN_COBRO) sin tocar el código.
 // Usa Web Crypto (crypto.subtle) para que funcione tanto en Node como en Edge middleware.
 
 export const SESSION_COOKIE = "lj_session"
@@ -29,6 +29,7 @@ export function getPins(): Record<string, string> {
     barra: process.env.PIN_BARRA || "4321",
     administracion: process.env.PIN_ADMINISTRACION || "112233",
     soporte: process.env.PIN_SOPORTE || "5757",
+    cobro: process.env.PIN_COBRO || "2626",
   }
 }
 

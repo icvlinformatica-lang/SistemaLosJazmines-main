@@ -44,6 +44,13 @@ export const PERFILES: Perfil[] = [
     rutas: ["*"],
     rutasExcluidas: ["/eventos/produccion"],
   },
+  {
+    id: "cobro",
+    nombre: "Cobrar cuota",
+    color: "#c9a227",
+    emoji: "💰",
+    rutas: ["/", "/eventos/pagos"],
+  },
 ]
 
 interface ProfileContextType {
