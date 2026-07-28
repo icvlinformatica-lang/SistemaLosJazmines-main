@@ -37,7 +37,7 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import { calcularCostoInsumosEvento, generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
@@ -698,6 +698,38 @@ useStore()
   const cambiarMes = (delta: number) =>
     setMesCalendario((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
 
+  // Eventos del mes visible en el calendario, con su costo total (insumos
+  // recalculados a precios de hoy + servicios + operativo). Alimenta el panel
+  // lateral "Gastos del mes" pegado al calendario.
+  const eventosDelMes = useMemo(() => {
+    const monthKey = `${mesCalendario.getFullYear()}-${String(mesCalendario.getMonth() + 1).padStart(2, "0")}`
+    const eventos = (state.eventos ?? []).filter(
+      (ev) =>
+        ev.fecha?.slice(0, 7) === monthKey &&
+        ev.estado !== "cancelado" &&
+        (salonFiltro === "todos" || ev.salon === salonFiltro),
+    )
+    const lista = eventos
+      .map((ev) => {
+        const costoInsumos = calcularCostoInsumosEvento(
+          ev,
+          state.recetas ?? [],
+          insumos,
+          state.cocteles ?? [],
+          insumosBarra,
+        )
+        return {
+          id: ev.id,
+          nombre: ev.nombrePareja || ev.nombre || "Sin nombre",
+          fecha: ev.fecha,
+          salon: ev.salon,
+          costoTotal: costoInsumos + (ev.costoServicios ?? 0) + (ev.costoOperativo ?? 0),
+        }
+      })
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    return { lista, total: lista.reduce((s, e) => s + e.costoTotal, 0) }
+  }, [mesCalendario, state.eventos, state.recetas, state.cocteles, insumos, insumosBarra, salonFiltro])
+
   // Movimientos del día seleccionado en el calendario
   const detalleDia = useMemo(() => {
     if (!diaDetalle) return null
@@ -1053,7 +1085,8 @@ useStore()
         </CardContent>
       </Card>
 
-      {/* CALENDARIO mensual */}
+      {/* CALENDARIO mensual + panel lateral de gastos por evento */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -1129,6 +1162,43 @@ useStore()
           </div>
         </CardContent>
       </Card>
+
+      {/* Panel lateral: eventos del mes con su costo total */}
+      <Card className="lg:h-full">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Building className="h-4 w-4 text-teal-600" />
+            Gastos del mes por evento
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {eventosDelMes.lista.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Sin eventos este mes.</p>
+          ) : (
+            <>
+              {eventosDelMes.lista.map((ev) => (
+                <div key={ev.id} className="rounded-md border border-border bg-muted/30 p-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <SalonDot salon={ev.salon} />
+                    <span className="text-xs font-semibold truncate">{ev.nombre}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[11px] text-muted-foreground">{formatFecha(ev.fecha)}</span>
+                    <span className="text-xs font-bold text-red-600">−{formatCurrency(ev.costoTotal)}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t border-border pt-2 mt-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Total ({eventosDelMes.lista.length} {eventosDelMes.lista.length === 1 ? "evento" : "eventos"})
+                </span>
+                <span className="text-sm font-bold text-red-600">−{formatCurrency(eventosDelMes.total)}</span>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+      </div>
 
       {/* TABS: Cobros / Pagos */}
       <Tabs defaultValue="cobrar" className="w-full">
