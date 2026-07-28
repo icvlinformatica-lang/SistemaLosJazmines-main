@@ -37,8 +37,13 @@ export default function LoginPage() {
     }
     if (id !== "administracion") {
       setQuienIngresa(null)
-      // Limpiar la atribución de actividad si entra otro perfil
-      document.cookie = "lj_usuario=; path=/; max-age=0"
+      if (id === "soporte") {
+        // Soporte también deja registro con su nombre en la actividad
+        document.cookie = `lj_usuario=${encodeURIComponent("Soporte")}; path=/; max-age=${60 * 60 * 24 * 30}`
+      } else {
+        // Limpiar la atribución de actividad si entra otro perfil
+        document.cookie = "lj_usuario=; path=/; max-age=0"
+      }
     }
     if (pinsGuardados[id]) {
       setCargando(true)
