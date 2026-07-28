@@ -619,6 +619,7 @@ function PagosPageContent() {
         insumosBarra: state.insumosBarra || [],
         recetas: state.recetas || [],
         cocteles: state.cocteles || [],
+        servicios: state.servicios || [],
       })
       const { montoEventos: mitadEventos, montoJazmines: mitadJazmines } = repartirEntreCajas(
         pagoForm.monto,
@@ -743,6 +744,7 @@ function PagosPageContent() {
       insumosBarra: state.insumosBarra || [],
       recetas: state.recetas || [],
       cocteles: state.cocteles || [],
+      servicios: state.servicios || [],
     })
     const objetivoPorCaja: Record<"caja_eventos" | "caja_jazmines", number> = {
       caja_eventos: pago.monto * propEventos,

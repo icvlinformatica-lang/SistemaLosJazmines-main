@@ -1,12 +1,14 @@
 import {
   generateId,
   calcularCostoInsumosEvento,
+  calcularSeñaSaldoServicio,
   type EventoGuardado,
   type MovimientoCaja,
   type Insumo,
   type InsumoBarra,
   type Receta,
   type Coctel,
+  type Servicio,
 } from "./store"
 
 export interface CobroCuotaResultado {
@@ -24,6 +26,8 @@ export interface DatosCostosEvento {
   insumosBarra: InsumoBarra[]
   recetas: Receta[]
   cocteles: Coctel[]
+  /** Catálogo de servicios para recalcular su costo EN VIVO (opcional) */
+  servicios?: Servicio[]
 }
 
 /**
@@ -52,7 +56,14 @@ export function calcularProporcionCajaEventos(evento: EventoGuardado, datos?: Da
   const costoInsumos = datos
     ? calcularCostoInsumosEvento(evento, datos.recetas, datos.insumos, datos.cocteles, datos.insumosBarra)
     : (evento.costoInsumos ?? 0)
-  const costoEvento = costoInsumos + (evento.costoServicios ?? 0) + (evento.costoOperativo ?? 0)
+  // Servicios EN VIVO desde el catálogo si está disponible; si no, la foto guardada.
+  const costoServicios = datos?.servicios
+    ? (evento.servicios ?? []).reduce(
+        (s, srv) => s + calcularSeñaSaldoServicio(srv, { servicios: datos.servicios! }).costoTotal,
+        0,
+      )
+    : (evento.costoServicios ?? 0)
+  const costoEvento = costoInsumos + costoServicios + (evento.costoOperativo ?? 0)
 
   if (montoTotal <= 0) return 1
   if (costoEvento <= 0) return 0

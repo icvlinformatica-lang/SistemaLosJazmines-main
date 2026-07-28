@@ -38,7 +38,7 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { calcularCostoInsumosEvento, generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import { calcularCostoInsumosEvento, calcularSeñaSaldoServicio, generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
@@ -474,6 +474,7 @@ useStore()
         insumosBarra: state.insumosBarra || [],
         recetas: state.recetas || [],
         cocteles: state.cocteles || [],
+        servicios: state.servicios || [],
       },
     )
     if (yaCobrada) {
@@ -728,17 +729,23 @@ useStore()
           state.cocteles ?? [],
           insumosBarra,
         )
+        // Costo de servicios EN VIVO desde el catálogo (Finanzas → Servicios):
+        // si cambia un precio, los gastos del evento se actualizan solos.
+        const costoServiciosLive = (ev.servicios ?? []).reduce(
+          (s, srv) => s + calcularSeñaSaldoServicio(srv, state).costoTotal,
+          0,
+        )
         return {
           id: ev.id,
           nombre: ev.nombrePareja || ev.nombre || "Sin nombre",
           fecha: ev.fecha,
           salon: ev.salon,
-          costoTotal: costoInsumos + (ev.costoServicios ?? 0) + (ev.costoOperativo ?? 0),
+          costoTotal: costoInsumos + costoServiciosLive + (ev.costoOperativo ?? 0),
         }
       })
       .sort((a, b) => a.fecha.localeCompare(b.fecha))
     return { lista, total: lista.reduce((s, e) => s + e.costoTotal, 0) }
-  }, [mesCalendario, state.eventos, state.recetas, state.cocteles, insumos, insumosBarra, salonFiltro])
+  }, [mesCalendario, state.eventos, state.recetas, state.cocteles, state.servicios, insumos, insumosBarra, salonFiltro])
 
   // Movimientos del día seleccionado en el calendario
   const detalleDia = useMemo(() => {

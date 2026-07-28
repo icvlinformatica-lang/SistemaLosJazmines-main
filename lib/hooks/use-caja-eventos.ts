@@ -159,6 +159,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         insumosBarra: state.insumosBarra || [],
         recetas: state.recetas || [],
         cocteles: state.cocteles || [],
+        servicios: state.servicios || [],
       })
       const contacto: ClienteContacto = {
         nombre: evento.contrato?.nombreCompleto || evento.nombrePareja || evento.nombre || "Sin nombre",
