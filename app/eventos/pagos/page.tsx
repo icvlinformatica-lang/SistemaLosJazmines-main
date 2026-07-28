@@ -672,8 +672,9 @@ function PagosPageContent() {
       `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""} | Recibido por: ${pagoForm.recibidoPor.trim()}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
     )
 
-    // Enviar automáticamente el resumen del pago por WhatsApp al cliente:
-    // quién pagó, cuándo, cuánto, cuánto le resta y quién recibió el pago.
+    // Enviar automáticamente el comprobante por email (Resend) a los
+    // mails configurados: quién pagó, cuándo, cuánto, cuánto le resta
+    // y quién recibió el pago. Fire-and-forget: no bloquea el registro.
     const totalPagosNuevo = updatedPagos.reduce((s, p) => s + p.monto, 0)
     const senaCubierta =
       selectedEvento.planDeCuotas?.modalidadPago?.startsWith("sena")
@@ -684,24 +685,19 @@ function PagosPageContent() {
     const fechaLegible = pagoForm.fecha
       ? new Date(`${pagoForm.fecha}T12:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
       : new Date().toLocaleDateString("es-AR")
-    const lineas = [
-      `*Comprobante de pago - Los Jazmines*`,
-      ``,
-      `Evento: ${nombreEventoLog}`,
-      `Concepto: ${etiquetaLog}`,
-      `Pagado por: ${pagoForm.pagadoPor}`,
-      `Fecha: ${fechaLegible}`,
-      `Monto abonado: ${formatCurrency(pagoForm.monto)}`,
-      totalPlanResumen > 0 ? `Saldo restante: ${formatCurrency(restanteResumen)}` : null,
-      `Recibido por: ${pagoForm.recibidoPor.trim()}`,
-      ``,
-      `¡Gracias por su pago!`,
-    ].filter((l): l is string => l !== null)
-    const telefonoCliente = (selectedEvento.contrato?.telefono || "").replace(/\D/g, "")
-    const urlWhatsApp = telefonoCliente
-      ? `https://wa.me/54${telefonoCliente}?text=${encodeURIComponent(lineas.join("\n"))}`
-      : `https://wa.me/?text=${encodeURIComponent(lineas.join("\n"))}`
-    window.open(urlWhatsApp, "_blank", "noopener,noreferrer")
+    fetch("/api/comprobante-pago", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        evento: nombreEventoLog,
+        concepto: etiquetaLog,
+        pagadoPor: pagoForm.pagadoPor,
+        fecha: fechaLegible,
+        monto: formatCurrency(pagoForm.monto),
+        restante: totalPlanResumen > 0 ? formatCurrency(restanteResumen) : null,
+        recibidoPor: pagoForm.recibidoPor.trim(),
+      }),
+    }).catch(() => {})
 
     setMontoCuotaBase(0)
     setPagoForm({
