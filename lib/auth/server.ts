@@ -26,10 +26,10 @@ function getSecret(): string {
 export function getPins(): Record<string, string> {
   return {
     cocina: process.env.PIN_COCINA || "1234",
-    barra: process.env.PIN_BARRA || "4321",
+    barra: process.env.PIN_BARRA || "1234",
     administracion: process.env.PIN_ADMINISTRACION || "112233",
     soporte: process.env.PIN_SOPORTE || "5757",
-    cobro: process.env.PIN_COBRO || "2626",
+    cobro: process.env.PIN_COBRO || "4321",
   }
 }
 
