@@ -79,11 +79,16 @@ export default function LoginPage() {
         {PERFILES.map((perfil) => {
           const pinGuardado = pinsGuardados[perfil.id]
           const esSeleccionado = perfilSeleccionado === perfil.id && !pinGuardado
+          const esDorado = perfil.id === "cobro"
 
           return (
             <div
               key={perfil.id}
-              className={`flex flex-col items-center bg-white rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 px-4 pt-6 pb-5 gap-3 ${esSeleccionado ? "ring-2 ring-[#1a3a2a]" : ""}`}
+              className={`flex flex-col items-center rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 px-4 pt-6 pb-5 gap-3 ${
+                esDorado
+                  ? "bg-gradient-to-b from-[#fdf6e3] to-[#f3e2a9] border border-[#d4af37]"
+                  : "bg-white"
+              } ${esSeleccionado ? (esDorado ? "ring-2 ring-[#c9a227]" : "ring-2 ring-[#1a3a2a]") : ""}`}
             >
               {/* Circulo con emoji */}
               <button
