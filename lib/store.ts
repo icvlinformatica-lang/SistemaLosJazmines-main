@@ -232,6 +232,8 @@ export interface PagoEvento {
   notas?: string
   montoRecibido?: number
   vuelto?: number
+  /** Nombre de quien registró/recibió el pago (obligatorio al registrar) */
+  recibidoPor?: string
 }
 
 // --- Asignaciones de Personal ---

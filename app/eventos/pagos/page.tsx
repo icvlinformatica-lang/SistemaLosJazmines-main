@@ -466,6 +466,7 @@ function PagosPageContent() {
     porcentajeIPC: 0,
     notas: "",
     montoRecibido: 0,
+    recibidoPor: "",
   })
 
   // Cuotas config (solo lectura — se edita desde Contratos)
@@ -559,7 +560,7 @@ function PagosPageContent() {
   }
 
   const handleAddPago = () => {
-    if (!selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor) return
+    if (!selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()) return
     const vueltoCalculado = pagoForm.montoRecibido > pagoForm.monto ? Math.round((pagoForm.montoRecibido - pagoForm.monto) * 100) / 100 : 0
     const newPago: PagoEvento = {
       id: generateId(),
@@ -571,6 +572,7 @@ function PagosPageContent() {
       notas: pagoForm.notas || undefined,
       montoRecibido: pagoForm.montoRecibido > 0 ? pagoForm.montoRecibido : undefined,
       vuelto: vueltoCalculado > 0 ? vueltoCalculado : undefined,
+      recibidoPor: pagoForm.recibidoPor.trim(),
     }
     const currentPagos = selectedEvento.pagos || []
     const updatedPagos = [...currentPagos, newPago]
@@ -667,8 +669,35 @@ function PagosPageContent() {
     logMoneyActivity(
       "creado",
       `${etiquetaLog} - ${nombreEventoLog}`,
-      `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
+      `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""} | Recibido por: ${pagoForm.recibidoPor.trim()}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
     )
+
+    // Enviar automáticamente el comprobante por email (Resend) a los
+    // mails configurados: quién pagó, cuándo, cuánto, cuánto le resta
+    // y quién recibió el pago. Fire-and-forget: no bloquea el registro.
+    const totalPagosNuevo = updatedPagos.reduce((s, p) => s + p.monto, 0)
+    const senaCubierta =
+      selectedEvento.planDeCuotas?.modalidadPago?.startsWith("sena")
+        ? selectedEvento.planDeCuotas.montoSena || 0
+        : 0
+    const totalPlanResumen = montoTotal > 0 ? montoTotal : selectedEvento.montoTotalPlan || 0
+    const restanteResumen = Math.max(0, totalPlanResumen - (totalPagosNuevo + senaCubierta))
+    const fechaLegible = pagoForm.fecha
+      ? new Date(`${pagoForm.fecha}T12:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+      : new Date().toLocaleDateString("es-AR")
+    fetch("/api/comprobante-pago", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        evento: nombreEventoLog,
+        concepto: etiquetaLog,
+        pagadoPor: pagoForm.pagadoPor,
+        fecha: fechaLegible,
+        monto: formatCurrency(pagoForm.monto),
+        restante: totalPlanResumen > 0 ? formatCurrency(restanteResumen) : null,
+        recibidoPor: pagoForm.recibidoPor.trim(),
+      }),
+    }).catch(() => {})
 
     setMontoCuotaBase(0)
     setPagoForm({
@@ -679,6 +708,7 @@ function PagosPageContent() {
       porcentajeIPC: 0,
       notas: "",
       montoRecibido: 0,
+      recibidoPor: "",
     })
     setShowPagoDialog(false)
   }
@@ -1394,6 +1424,7 @@ function PagosPageContent() {
                                   ? "Pago único (pago completo)"
                                   : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`,
                                 montoRecibido: 0,
+                                recibidoPor: "",
                               })
                               setShowPagoDialog(true)
                             }}
@@ -1645,6 +1676,22 @@ function PagosPageContent() {
                 </div>
               </div>
 
+              {/* Quién registra/recibe el pago (obligatorio) */}
+              <div className="grid gap-1">
+                <Label className="text-xs">
+                  {"¿Quién registra el pago?"} <span className="text-red-600">*</span>
+                </Label>
+                <Input
+                  value={pagoForm.recibidoPor}
+                  onChange={(e) => setPagoForm({ ...pagoForm, recibidoPor: e.target.value })}
+                  placeholder="Nombre de quien recibe el pago"
+                  className={`h-9 ${!pagoForm.recibidoPor.trim() ? "border-red-300" : ""}`}
+                />
+                <p className="text-[11px] text-muted-foreground leading-tight">
+                  Obligatorio: queda asentado en el registro de actividad y en el comprobante.
+                </p>
+              </div>
+
               {/* Notas */}
               <div className="grid gap-1">
                 <Label className="text-xs">Notas (opcional)</Label>
@@ -1695,7 +1742,7 @@ function PagosPageContent() {
           </div>
           <DialogFooter className="px-5 pb-4 pt-2 border-t border-border">
             <Button variant="outline" size="sm" onClick={() => setShowPagoDialog(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleAddPago} disabled={pagoForm.monto <= 0 || !pagoForm.pagadoPor}>
+            <Button size="sm" onClick={handleAddPago} disabled={pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
               Registrar {formatCurrency(pagoForm.monto)}
             </Button>
           </DialogFooter>
