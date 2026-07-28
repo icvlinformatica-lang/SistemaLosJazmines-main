@@ -35,7 +35,11 @@ export default function LoginPage() {
       setError("")
       return
     }
-    if (id !== "administracion") setQuienIngresa(null)
+    if (id !== "administracion") {
+      setQuienIngresa(null)
+      // Limpiar la atribución de actividad si entra otro perfil
+      document.cookie = "lj_usuario=; path=/; max-age=0"
+    }
     if (pinsGuardados[id]) {
       setCargando(true)
       const ok = await seleccionarPerfilRapido(id)
@@ -63,6 +67,9 @@ export default function LoginPage() {
     try {
       sessionStorage.setItem("admin_usuario", nombre)
     } catch {}
+    // Cookie que el servidor lee para atribuir cada registro de actividad
+    // a la persona que ingresó (Diego o Leila). Dura 30 días.
+    document.cookie = `lj_usuario=${encodeURIComponent(nombre)}; path=/; max-age=${60 * 60 * 24 * 30}`
     if (pinsGuardados["administracion"]) {
       setCargando(true)
       const ok = await seleccionarPerfilRapido("administracion")

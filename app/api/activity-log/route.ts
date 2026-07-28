@@ -17,6 +17,20 @@ export async function GET() {
   }
 }
 
+// Lee la cookie lj_usuario (Diego o Leila) para atribuir el registro
+// a la persona que ingresó con el perfil Administración.
+function usuarioDesdeCookie(req: Request): string | null {
+  const raw = req.headers.get("cookie") || ""
+  const match = raw.match(/(?:^|;\s*)lj_usuario=([^;]+)/)
+  if (!match) return null
+  try {
+    const valor = decodeURIComponent(match[1]).trim()
+    return valor || null
+  } catch {
+    return null
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -26,9 +40,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
+    const usuario = usuarioDesdeCookie(req)
+    const detalleFinal = usuario
+      ? detalle
+        ? `${detalle} · Por ${usuario}`
+        : `Por ${usuario}`
+      : detalle || null
+
     const [row] = await sql`
       INSERT INTO activity_log (tipo, accion, nombre, detalle)
-      VALUES (${tipo}, ${accion}, ${nombre}, ${detalle || null})
+      VALUES (${tipo}, ${accion}, ${nombre}, ${detalleFinal})
       RETURNING id, tipo, accion, nombre, detalle, created_at
     `
     return NextResponse.json(row, { status: 201 })
