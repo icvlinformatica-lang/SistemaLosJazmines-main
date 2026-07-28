@@ -68,6 +68,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Pencil,
 } from "lucide-react"
 import Link from "next/link"
@@ -147,6 +148,12 @@ useStore()
 
   // Desplegable de "Cuotas por cobrar" (cerrado por defecto)
   const [cuotasAbierto, setCuotasAbierto] = useState(false)
+
+  // Límite de filas por tab. Cada lista muestra hasta 7 filas y un botón
+  // "Ver más" para expandir el resto (o "Ver menos" para volver a colapsar).
+  const LIMITE_FILAS = 7
+  const [expandido, setExpandido] = useState<Record<string, boolean>>({})
+  const toggleExpandido = (tab: string) => setExpandido((prev) => ({ ...prev, [tab]: !prev[tab] }))
 
   // ── Edición de fechas de vencimiento (cuotas por cobrar y gastos por pagar) ──
   const [editVenc, setEditVenc] = useState<
@@ -1196,7 +1203,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {ingresosPendientes.map((ing) => (
+                    {(expandido.cobrar ? ingresosPendientes : ingresosPendientes.slice(0, LIMITE_FILAS)).map((ing) => (
                       <TableRow
                         key={ing.id}
                         className="cursor-pointer"
@@ -1234,6 +1241,22 @@ useStore()
                   </TableBody>
                 </Table>
               )}
+              {ingresosPendientes.length > LIMITE_FILAS && (
+                <div className="px-6 pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleExpandido("cobrar")}
+                    className="w-full text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {expandido.cobrar ? (
+                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
+                    ) : (
+                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({ingresosPendientes.length - LIMITE_FILAS} más)</>
+                    )}
+                  </Button>
+                </div>
+              )}
               {ingresosPendientes.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">Total por cobrar</span>
@@ -1268,7 +1291,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {egresosProximos.map((eg) => (
+                    {(expandido.pagar ? egresosProximos : egresosProximos.slice(0, LIMITE_FILAS)).map((eg) => (
                       <TableRow key={eg.id}>
                         <TableCell className="pl-6">
                           <Badge
@@ -1334,6 +1357,22 @@ useStore()
                   </TableBody>
                 </Table>
               )}
+              {egresosProximos.length > LIMITE_FILAS && (
+                <div className="px-6 pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleExpandido("pagar")}
+                    className="w-full text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {expandido.pagar ? (
+                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
+                    ) : (
+                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosProximos.length - LIMITE_FILAS} más)</>
+                    )}
+                  </Button>
+                </div>
+              )}
               {egresosProximos.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">Total por pagar (30 días)</span>
@@ -1365,7 +1404,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {egresosFuturos.map((eg) => (
+                    {(expandido.futuros ? egresosFuturos : egresosFuturos.slice(0, LIMITE_FILAS)).map((eg) => (
                       <TableRow key={eg.id} className="opacity-80">
                         <TableCell className="pl-6">
                           <p className="font-medium text-sm">{eg.servicioNombre}</p>
@@ -1423,6 +1462,22 @@ useStore()
                   </TableBody>
                 </Table>
               )}
+              {egresosFuturos.length > LIMITE_FILAS && (
+                <div className="px-6 pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleExpandido("futuros")}
+                    className="w-full text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {expandido.futuros ? (
+                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
+                    ) : (
+                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosFuturos.length - LIMITE_FILAS} más)</>
+                    )}
+                  </Button>
+                </div>
+              )}
               {egresosFuturos.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">Total gastos futuros</span>
@@ -1453,7 +1508,10 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).map((pago) => (
+                    {(() => {
+                      const activos = pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id))
+                      return expandido.historial ? activos : activos.slice(0, LIMITE_FILAS)
+                    })().map((pago) => (
                       <TableRow key={pago.id}>
                         <TableCell className="pl-6">
                           <div className="flex items-center gap-2">
@@ -1501,6 +1559,22 @@ useStore()
                     ))}
                   </TableBody>
                 </Table>
+              )}
+              {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length > LIMITE_FILAS && (
+                <div className="px-6 pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleExpandido("historial")}
+                    className="w-full text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {expandido.historial ? (
+                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
+                    ) : (
+                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length - LIMITE_FILAS} más)</>
+                    )}
+                  </Button>
+                </div>
               )}
               {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
