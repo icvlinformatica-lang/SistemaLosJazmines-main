@@ -34,7 +34,7 @@ export const PERFILES: Perfil[] = [
     color: "#8e44ad",
     emoji: "📊",
     rutas: ["*"],
-    rutasExcluidas: ["/eventos/produccion", "/admin/almacen", "/admin/barra", "/admin/recetario", "/admin/cocteles"],
+    rutasExcluidas: ["/eventos/produccion"],
   },
   {
     id: "soporte",
@@ -224,7 +224,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     try {
       sessionStorage.removeItem("perfil_activo")
       sessionStorage.removeItem(SESSION_TOKEN_KEY)
+      sessionStorage.removeItem("admin_usuario")
     } catch {}
+    // Limpiar la atribución de actividad (Diego/Leila)
+    document.cookie = "lj_usuario=; path=/; max-age=0"
     fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
   }
 
