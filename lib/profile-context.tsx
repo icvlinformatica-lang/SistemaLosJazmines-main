@@ -34,7 +34,7 @@ export const PERFILES: Perfil[] = [
     color: "#8e44ad",
     emoji: "📊",
     rutas: ["*"],
-    rutasExcluidas: ["/eventos/produccion", "/admin/almacen", "/admin/barra", "/admin/recetario", "/admin/cocteles"],
+    rutasExcluidas: ["/eventos/produccion"],
   },
   {
     id: "soporte",

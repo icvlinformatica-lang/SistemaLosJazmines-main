@@ -14,6 +14,10 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [cargando, setCargando] = useState(false)
 
+  // Para Administración: primero se elige quién ingresa (Diego o Leila)
+  // y recién después se pide el PIN. Ambos usan el mismo PIN.
+  const [quienIngresa, setQuienIngresa] = useState<string | null>(null)
+
   useEffect(() => {
     const guardados: Record<string, boolean> = {}
     PERFILES.forEach((p) => {
@@ -23,6 +27,15 @@ export default function LoginPage() {
   }, [])
 
   const handleCardClick = async (id: string) => {
+    // Administración: preguntar quién ingresa antes de pedir el PIN o
+    // usar el acceso rápido.
+    if (id === "administracion" && !quienIngresa) {
+      setPerfilSeleccionado(id)
+      setPinInput("")
+      setError("")
+      return
+    }
+    if (id !== "administracion") setQuienIngresa(null)
     if (pinsGuardados[id]) {
       setCargando(true)
       const ok = await seleccionarPerfilRapido(id)
@@ -40,6 +53,27 @@ export default function LoginPage() {
       setPerfilSeleccionado(id)
       setPinInput("")
       setError("")
+    }
+  }
+
+  // Elegir Diego o Leila para el perfil Administración. Se guarda quién
+  // ingresó y luego sigue el flujo normal (acceso rápido o PIN).
+  const handleElegirQuien = async (nombre: string) => {
+    setQuienIngresa(nombre)
+    try {
+      sessionStorage.setItem("admin_usuario", nombre)
+    } catch {}
+    if (pinsGuardados["administracion"]) {
+      setCargando(true)
+      const ok = await seleccionarPerfilRapido("administracion")
+      setCargando(false)
+      if (ok) {
+        router.push("/")
+      } else {
+        setPinsGuardados((prev) => ({ ...prev, administracion: false }))
+        setPinInput("")
+        setError("")
+      }
     }
   }
 
@@ -61,6 +95,7 @@ export default function LoginPage() {
     setPerfilSeleccionado(null)
     setPinInput("")
     setError("")
+    setQuienIngresa(null)
   }
 
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
@@ -78,7 +113,9 @@ export default function LoginPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-5 w-full max-w-4xl items-start">
         {PERFILES.map((perfil) => {
           const pinGuardado = pinsGuardados[perfil.id]
-          const esSeleccionado = perfilSeleccionado === perfil.id && !pinGuardado
+          const esAdmin = perfil.id === "administracion"
+          const mostrarQuien = esAdmin && perfilSeleccionado === perfil.id && !quienIngresa
+          const esSeleccionado = perfilSeleccionado === perfil.id && !pinGuardado && (!esAdmin || !!quienIngresa)
           const esDorado = perfil.id === "cobro"
 
           return (
@@ -88,7 +125,7 @@ export default function LoginPage() {
                 esDorado
                   ? "bg-gradient-to-b from-[#fdf6e3] to-[#f3e2a9] border border-[#d4af37]"
                   : "bg-white"
-              } ${esSeleccionado ? (esDorado ? "ring-2 ring-[#c9a227]" : "ring-2 ring-[#1a3a2a]") : ""}`}
+              } ${esSeleccionado || mostrarQuien ? (esDorado ? "ring-2 ring-[#c9a227]" : "ring-2 ring-[#1a3a2a]") : ""}`}
             >
               {/* Circulo con emoji */}
               <button
@@ -119,9 +156,40 @@ export default function LoginPage() {
                 )}
               </button>
 
+              {/* Paso previo para Administración: elegir quién ingresa */}
+              {mostrarQuien && (
+                <div className="w-full flex flex-col items-center gap-2 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <p className="text-xs font-semibold text-[#1a3a2a] text-center">{"¿Quién ingresa?"}</p>
+                  <div className="w-full flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleElegirQuien("Diego")}
+                      disabled={cargando}
+                      className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
+                    >
+                      Diego
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleElegirQuien("Leila")}
+                      disabled={cargando}
+                      className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
+                    >
+                      Leila
+                    </button>
+                  </div>
+                  {cargando && <p className="text-xs text-gray-400">Verificando...</p>}
+                </div>
+              )}
+
               {/* Input PIN inline si seleccionado */}
               {esSeleccionado && (
                 <div className="w-full flex flex-col items-center gap-2 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                  {esAdmin && quienIngresa && (
+                    <p className="text-xs text-gray-500">
+                      Ingresa: <span className="font-semibold text-[#1a3a2a]">{quienIngresa}</span>
+                    </p>
+                  )}
                   <input
                     type="password"
                     maxLength={6}
