@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -145,6 +146,8 @@ useStore()
 
   // ── Carrusel del dashboard: vista "Este mes" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = mes, 1 = semana
+
+  const router = useRouter()
 
   // Desplegable de "Cuotas por cobrar" (cerrado por defecto)
   const [cuotasAbierto, setCuotasAbierto] = useState(false)
@@ -1134,16 +1137,23 @@ useStore()
           ) : (
             <>
               {eventosDelMes.lista.map((ev) => (
-                <div key={ev.id} className="rounded-md border border-border bg-muted/30 p-2.5">
+                <button
+                  key={ev.id}
+                  type="button"
+                  onClick={() => router.push(`/eventos/costos?id=${ev.id}`)}
+                  title="Ver el detalle de costos de este evento"
+                  className="w-full text-left rounded-md border border-border bg-muted/30 p-2.5 transition-colors hover:bg-muted hover:border-teal-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+                >
                   <div className="flex items-center gap-1.5 min-w-0">
                     <SalonDot salon={ev.salon} />
                     <span className="text-xs font-semibold truncate">{ev.nombre}</span>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0" />
                   </div>
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-[11px] text-muted-foreground">{formatFecha(ev.fecha)}</span>
                     <span className="text-xs font-bold text-red-600">−{formatCurrency(ev.costoTotal)}</span>
                   </div>
-                </div>
+                </button>
               ))}
               <div className="flex items-center justify-between border-t border-border pt-2 mt-2">
                 <span className="text-xs font-medium text-muted-foreground">
