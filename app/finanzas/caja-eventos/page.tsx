@@ -744,7 +744,7 @@ useStore()
     mesCalendario.getFullYear() === ahora.getFullYear()
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-start gap-3 flex-1">
@@ -1033,56 +1033,6 @@ useStore()
           )}
         </CardContent>
         )}
-      </Card>
-
-      {/* PROYECCIÓN MENSUAL — tabla */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-teal-600" />
-            Proyección en 12 meses:
-          </CardTitle>
-          <p className="text-xs text-muted-foreground mt-1 text-pretty">
-            A cobrar: solo la parte de cada cuota destinada a cubrir el costo del evento + 5% (insumos, servicios y
-            personal). A pagar: los pagos a proveedores y personal de cada evento. El saldo parte del saldo actual de
-            la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
-          </p>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6 font-bold">Mes</TableHead>
-                <TableHead className="text-center font-bold">A cobrar</TableHead>
-                <TableHead className="text-center font-bold">A pagar</TableHead>
-                <TableHead className="text-center font-bold">Balance</TableHead>
-                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {proyeccionMensual.map((m) => (
-                <TableRow key={m.key} className={m.esActual ? "bg-teal-50/60" : ""}>
-                  <TableCell className="pl-6 capitalize font-medium">
-                    {m.label}
-                    {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
-                  </TableCell>
-                  <TableCell className="text-center text-emerald-700 font-medium">
-                    {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
-                  </TableCell>
-                  <TableCell className="text-center text-[var(--accent)] font-medium">
-                    {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
-                  </TableCell>
-                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
-                    {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
-                  </TableCell>
-                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
-                    {formatCurrency(m.saldoProyectado)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
       </Card>
 
       {/* CALENDARIO mensual + panel lateral de gastos por evento */}
@@ -1569,6 +1519,56 @@ useStore()
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* PROYECCIÓN MENSUAL — tabla */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-teal-600" />
+            Proyección en 12 meses:
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1 text-pretty">
+            A cobrar: solo la parte de cada cuota destinada a cubrir el costo del evento + 5% (insumos, servicios y
+            personal). A pagar: los pagos a proveedores y personal de cada evento. El saldo parte del saldo actual de
+            la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
+          </p>
+        </CardHeader>
+        <CardContent className="px-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-6 font-bold">Mes</TableHead>
+                <TableHead className="text-center font-bold">A cobrar</TableHead>
+                <TableHead className="text-center font-bold">A pagar</TableHead>
+                <TableHead className="text-center font-bold">Balance</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {proyeccionMensual.map((m) => (
+                <TableRow key={m.key} className={m.esActual ? "bg-teal-50/60" : ""}>
+                  <TableCell className="pl-6 capitalize font-medium">
+                    {m.label}
+                    {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
+                  </TableCell>
+                  <TableCell className="text-center text-emerald-700 font-medium">
+                    {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-center text-[var(--accent)] font-medium">
+                    {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
+                  </TableCell>
+                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
+                    {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
+                  </TableCell>
+                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                    {formatCurrency(m.saldoProyectado)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {/* DIALOG: datos de contacto del cliente */}
       <Dialog
