@@ -404,6 +404,37 @@ function PagosPageContent() {
   const [showContractPreview, setShowContractPreview] = useState(false)
   const [showContratoPanel, setShowContratoPanel] = useState(false)
 
+  // Protección con PIN de administración para editar el contrato.
+  const [showPinContrato, setShowPinContrato] = useState(false)
+  const [pinContrato, setPinContrato] = useState("")
+  const [pinContratoError, setPinContratoError] = useState("")
+  const [verificandoPinContrato, setVerificandoPinContrato] = useState(false)
+
+  const handleVerificarPinContrato = async () => {
+    if (!pinContrato.trim() || verificandoPinContrato) return
+    setVerificandoPinContrato(true)
+    setPinContratoError("")
+    try {
+      const res = await fetch("/api/auth/verificar-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinContrato }),
+      })
+      const data = await res.json().catch(() => ({ ok: false }))
+      if (data.ok) {
+        setShowPinContrato(false)
+        setPinContrato("")
+        setShowContratoPanel(true)
+      } else {
+        setPinContratoError("PIN incorrecto")
+      }
+    } catch {
+      setPinContratoError("No se pudo verificar el PIN. Intentá de nuevo.")
+    } finally {
+      setVerificandoPinContrato(false)
+    }
+  }
+
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   // Modo de búsqueda: por texto (DNI/nombre) o por fecha y salón
   const [searchMode, setSearchMode] = useState<"texto" | "fechaSalon">("texto")
@@ -1175,7 +1206,11 @@ function PagosPageContent() {
                     variant="outline"
                     size="sm"
                     className="bg-transparent"
-                    onClick={() => setShowContratoPanel(true)}
+                    onClick={() => {
+                      setPinContrato("")
+                      setPinContratoError("")
+                      setShowPinContrato(true)
+                    }}
                   >
                     <FileText className="h-4 w-4 mr-1.5" />
                     Editar Contrato
@@ -1698,6 +1733,61 @@ function PagosPageContent() {
               onClick={() => pagoToDelete && handleDeletePago(pagoToDelete.id)}
             >
               Eliminar pago
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PIN de administración para editar el contrato */}
+      <Dialog
+        open={showPinContrato}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowPinContrato(false)
+            setPinContrato("")
+            setPinContratoError("")
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar contrato</DialogTitle>
+            <DialogDescription>
+              Ingres&aacute; el PIN de administraci&oacute;n para acceder a la edici&oacute;n del contrato.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              type="password"
+              inputMode="numeric"
+              placeholder="PIN"
+              value={pinContrato}
+              autoFocus
+              onChange={(e) => {
+                setPinContrato(e.target.value)
+                setPinContratoError("")
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                  handleVerificarPinContrato()
+                }
+              }}
+            />
+            {pinContratoError && <p className="text-sm text-destructive">{pinContratoError}</p>}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPinContrato(false)
+                setPinContrato("")
+                setPinContratoError("")
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleVerificarPinContrato} disabled={!pinContrato.trim() || verificandoPinContrato}>
+              {verificandoPinContrato ? "Verificando..." : "Acceder"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -38,7 +38,6 @@ import {
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
 import { useUI } from "@/lib/ui-context"
-import { TimeTravelButton } from "@/components/time-travel-button"
 import { useProfile } from "@/lib/profile-context"
 import { generateId } from "@/lib/utils-client"
 
@@ -251,11 +250,6 @@ export function Sidebar() {
           </Link>
         </div>
 
-        {/* Botón de viaje en el tiempo (fecha del sistema) */}
-        <div className="px-3 pb-3">
-          <TimeTravelButton />
-        </div>
-
         {/* Navigation Items */}
         <nav className="flex-1 px-3 py-2 flex flex-col gap-0.5 overflow-y-auto">
           {filteredMenuItems.map((item) => {
@@ -368,10 +362,10 @@ export function Sidebar() {
         {perfilActivo && (
           <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3">
             <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[#f5f0e8]/8 hover:bg-[#f5f0e8]/12 transition-colors group">
-              {/* Avatar circular con color del perfil */}
+              {/* Avatar circular con color del perfil (blanco para "Cobrar cuota") */}
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 shadow-sm"
-                style={{ backgroundColor: perfilActivo.color }}
+                style={{ backgroundColor: perfilActivo.id === "cobro" ? "#ffffff" : perfilActivo.color }}
               >
                 {perfilActivo.emoji}
               </div>
