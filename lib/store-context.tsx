@@ -836,14 +836,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // después % de seña), la segunda persistía sobre una base desactualizada y
     // pisaba la primera en Supabase (el precio "volvía" al valor anterior).
     let merged: Servicio | undefined
+    let anterior: Servicio | undefined
     setState((prev) => {
       const servicios = (prev.servicios || []).map((s) => {
         if (s.id !== id) return s
+        anterior = s
         merged = { ...s, ...updates }
         return merged
       })
       return { ...prev, servicios }
     })
+    // Registrar en Configuración → Actividad los cambios de precio/costo.
+    // Fire-and-forget: no bloquea la edición si falla.
+    if (anterior && merged) {
+      const fmt = (n: number) => `$ ${Math.round(n).toLocaleString("es-AR")}`
+      const cambios: string[] = []
+      if (updates.precioVenta !== undefined && anterior.precioVenta !== merged.precioVenta) {
+        cambios.push(`Precio de venta: ${fmt(anterior.precioVenta)} → ${fmt(merged.precioVenta)}`)
+      }
+      if (updates.costoParaCajaEventos !== undefined && anterior.costoParaCajaEventos !== merged.costoParaCajaEventos) {
+        cambios.push(`Costo real: ${fmt(anterior.costoParaCajaEventos)} → ${fmt(merged.costoParaCajaEventos)}`)
+      }
+      if (updates.porcentajeSeña !== undefined && anterior.porcentajeSeña !== merged.porcentajeSeña) {
+        cambios.push(`Seña: ${anterior.porcentajeSeña}% → ${merged.porcentajeSeña}%`)
+      }
+      if (cambios.length > 0) {
+        fetch("/api/activity-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: "servicio",
+            accion: "modificado",
+            nombre: merged.nombre || anterior.nombre || "Servicio",
+            detalle: cambios.join(" | "),
+          }),
+        }).catch(() => {})
+      }
+    }
     // Sync to Supabase con el registro completo ya actualizado
     try {
       if (merged) {

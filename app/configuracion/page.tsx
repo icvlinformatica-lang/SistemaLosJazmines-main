@@ -45,6 +45,7 @@ const TIPO_LABELS: Record<string, string> = {
   vencimiento: "Vencimiento",
   vendedor: "Vendedor",
   caja: "Caja",
+  servicio: "Servicio",
 }
 
 const ACCION_ICON: Record<string, React.ReactNode> = {
@@ -74,6 +75,7 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   vencimiento: <CalendarCheck className="h-4 w-4 text-amber-600" />,
   vendedor: <UserCheck className="h-4 w-4 text-teal-600" />,
   caja: <Wallet className="h-4 w-4 text-red-600" />,
+  servicio: <ClipboardList className="h-4 w-4 text-indigo-600" />,
 }
 
 export default function ConfiguracionPage() {
