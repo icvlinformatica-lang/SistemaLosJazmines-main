@@ -164,6 +164,13 @@ useStore()
   const LIMITE_FILAS = 7
   const [expandido, setExpandido] = useState<Record<string, boolean>>({})
   const toggleExpandido = (tab: string) => setExpandido((prev) => ({ ...prev, [tab]: !prev[tab] }))
+  // Expansión progresiva en "Por pagar": 7 iniciales → +10 → +15 → todo.
+  const [filasPagar, setFilasPagar] = useState(LIMITE_FILAS)
+  const siguientePasoPagar = (total: number) => {
+    if (filasPagar <= LIMITE_FILAS) return Math.min(filasPagar + 10, total)
+    if (filasPagar <= LIMITE_FILAS + 10) return Math.min(filasPagar + 15, total)
+    return total
+  }
 
   // ── Edición de fechas de vencimiento (cuotas por cobrar y gastos por pagar) ──
   const [editVenc, setEditVenc] = useState<
@@ -1302,7 +1309,14 @@ useStore()
               </p>
               {/* Filtros combinables: salón + tipo + sub-filtro + búsqueda */}
               {egresosProximos.length > 0 && (
-                <BarraFiltrosEgresos egresos={egresosProximos} filtro={filtroPagar} onChange={setFiltroPagar} />
+                <BarraFiltrosEgresos
+                  egresos={egresosProximos}
+                  filtro={filtroPagar}
+                  onChange={(f) => {
+                    setFiltroPagar(f)
+                    setFilasPagar(LIMITE_FILAS)
+                  }}
+                />
               )}
               {egresosProximos.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
@@ -1324,7 +1338,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(expandido.pagar ? egresosProximosFiltrados : egresosProximosFiltrados.slice(0, LIMITE_FILAS)).map((eg) => (
+                    {egresosProximosFiltrados.slice(0, filasPagar).map((eg) => (
                       <TableRow key={eg.id}>
                         <TableCell className="pl-6">
                           <Badge
@@ -1392,18 +1406,30 @@ useStore()
               )}
               {egresosProximosFiltrados.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpandido("pagar")}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {expandido.pagar ? (
-                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
-                    ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosProximosFiltrados.length - LIMITE_FILAS} más)</>
-                    )}
-                  </Button>
+                  {filasPagar < egresosProximosFiltrados.length ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasPagar(siguientePasoPagar(egresosProximosFiltrados.length))}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                      {filasPagar <= LIMITE_FILAS
+                        ? `Ver más (${Math.min(10, egresosProximosFiltrados.length - filasPagar)} más de ${egresosProximosFiltrados.length - filasPagar} pendientes)`
+                        : filasPagar <= LIMITE_FILAS + 10
+                          ? `Ver más (${Math.min(15, egresosProximosFiltrados.length - filasPagar)} más de ${egresosProximosFiltrados.length - filasPagar} pendientes)`
+                          : `Ver todo (${egresosProximosFiltrados.length - filasPagar} más)`}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasPagar(LIMITE_FILAS)}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos
+                    </Button>
+                  )}
                 </div>
               )}
               {egresosProximosFiltrados.length > 0 && (
