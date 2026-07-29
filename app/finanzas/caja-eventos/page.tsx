@@ -164,13 +164,21 @@ useStore()
   const LIMITE_FILAS = 7
   const [expandido, setExpandido] = useState<Record<string, boolean>>({})
   const toggleExpandido = (tab: string) => setExpandido((prev) => ({ ...prev, [tab]: !prev[tab] }))
-  // Expansión progresiva en "Por pagar": 7 iniciales → +10 → +15 → todo.
-  const [filasPagar, setFilasPagar] = useState(LIMITE_FILAS)
-  const siguientePasoPagar = (total: number) => {
-    if (filasPagar <= LIMITE_FILAS) return Math.min(filasPagar + 10, total)
-    if (filasPagar <= LIMITE_FILAS + 10) return Math.min(filasPagar + 15, total)
+  // Expansión progresiva en "Por pagar" y "Por cobrar": 7 iniciales → +10 → +15 → todo.
+  const siguientePasoFilas = (actual: number, total: number) => {
+    if (actual <= LIMITE_FILAS) return Math.min(actual + 10, total)
+    if (actual <= LIMITE_FILAS + 10) return Math.min(actual + 15, total)
     return total
   }
+  const etiquetaVerMas = (actual: number, total: number) => {
+    const restantes = total - actual
+    if (actual <= LIMITE_FILAS) return `Ver más (${Math.min(10, restantes)} más de ${restantes} pendientes)`
+    if (actual <= LIMITE_FILAS + 10) return `Ver más (${Math.min(15, restantes)} más de ${restantes} pendientes)`
+    return `Ver todo (${restantes} más)`
+  }
+  const [filasPagar, setFilasPagar] = useState(LIMITE_FILAS)
+  const siguientePasoPagar = (total: number) => siguientePasoFilas(filasPagar, total)
+  const [filasCobrar, setFilasCobrar] = useState(LIMITE_FILAS)
 
   // ── Edición de fechas de vencimiento (cuotas por cobrar y gastos por pagar) ──
   const [editVenc, setEditVenc] = useState<
@@ -1236,7 +1244,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(expandido.cobrar ? ingresosPendientes : ingresosPendientes.slice(0, LIMITE_FILAS)).map((ing) => (
+                    {ingresosPendientes.slice(0, filasCobrar).map((ing) => (
                       <TableRow
                         key={ing.id}
                         className="cursor-pointer"
@@ -1276,18 +1284,26 @@ useStore()
               )}
               {ingresosPendientes.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpandido("cobrar")}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {expandido.cobrar ? (
-                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
-                    ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({ingresosPendientes.length - LIMITE_FILAS} más)</>
-                    )}
-                  </Button>
+                  {filasCobrar < ingresosPendientes.length ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasCobrar(siguientePasoFilas(filasCobrar, ingresosPendientes.length))}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                      {etiquetaVerMas(filasCobrar, ingresosPendientes.length)}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasCobrar(LIMITE_FILAS)}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos
+                    </Button>
+                  )}
                 </div>
               )}
               {ingresosPendientes.length > 0 && (
@@ -1414,11 +1430,7 @@ useStore()
                       className="w-full text-xs text-muted-foreground hover:text-foreground"
                     >
                       <ChevronDown className="h-3.5 w-3.5 mr-1" />
-                      {filasPagar <= LIMITE_FILAS
-                        ? `Ver más (${Math.min(10, egresosProximosFiltrados.length - filasPagar)} más de ${egresosProximosFiltrados.length - filasPagar} pendientes)`
-                        : filasPagar <= LIMITE_FILAS + 10
-                          ? `Ver más (${Math.min(15, egresosProximosFiltrados.length - filasPagar)} más de ${egresosProximosFiltrados.length - filasPagar} pendientes)`
-                          : `Ver todo (${egresosProximosFiltrados.length - filasPagar} más)`}
+                      {etiquetaVerMas(filasPagar, egresosProximosFiltrados.length)}
                     </Button>
                   ) : (
                     <Button
