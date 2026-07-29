@@ -39,6 +39,13 @@ import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { calcularCostoInsumosEvento, calcularSeñaSaldoServicio, generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import {
+  BarraFiltrosEgresos,
+  FILTRO_EGRESOS_INICIAL,
+  filtrarEgresos,
+  esFiltroEgresosActivo,
+  type FiltroEgresos,
+} from "@/components/filtros-egresos"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
@@ -536,40 +543,23 @@ useStore()
     () => egresosPendientes.filter((e) => e.diasRestantes > DIAS_CORTE_PAGO),
     [egresosPendientes],
   )
-  // Filtro por tipo de pasivo en "Por pagar": todos, seña, saldo, menú,
-  // barra, sueldo o servicios (seña + saldo de servicios contratados).
-  const [filtroPagar, setFiltroPagar] = useState<string>("todos")
-  const egresosProximosFiltrados = useMemo(() => {
-    if (filtroPagar === "todos") return egresosProximos
-    if (filtroPagar === "servicios") return egresosProximos.filter((e) => e.tipo === "seña" || e.tipo === "saldo")
-    return egresosProximos.filter((e) => e.tipo === filtroPagar)
-  }, [egresosProximos, filtroPagar])
-  const conteoPorTipo = useMemo(() => {
-    const c: Record<string, number> = { todos: egresosProximos.length, servicios: 0 }
-    for (const e of egresosProximos) {
-      c[e.tipo] = (c[e.tipo] || 0) + 1
-      if (e.tipo === "seña" || e.tipo === "saldo") c.servicios++
-    }
-    return c
-  }, [egresosProximos])
+  // Filtros combinables en "Por pagar" y "Gastos futuros": salón (madre) +
+  // tipo de pasivo + sub-filtro (tipo de servicio o evento) + búsqueda (lupa).
+  const [filtroPagar, setFiltroPagar] = useState<FiltroEgresos>(FILTRO_EGRESOS_INICIAL)
+  const egresosProximosFiltrados = useMemo(
+    () => filtrarEgresos(egresosProximos, filtroPagar),
+    [egresosProximos, filtroPagar],
+  )
+  const filtroPagarActivo = esFiltroEgresosActivo(filtroPagar)
   const totalPorPagarProximos = egresosProximos.reduce((s, e) => s + e.monto, 0)
   const totalPorPagarFiltrado = egresosProximosFiltrados.reduce((s, e) => s + e.monto, 0)
   const totalPorPagarFuturos = egresosFuturos.reduce((s, e) => s + e.monto, 0)
-  // Mismo filtro por tipo de pasivo pero para la pestaña "Gastos futuros".
-  const [filtroFuturos, setFiltroFuturos] = useState<string>("todos")
-  const egresosFuturosFiltrados = useMemo(() => {
-    if (filtroFuturos === "todos") return egresosFuturos
-    if (filtroFuturos === "servicios") return egresosFuturos.filter((e) => e.tipo === "seña" || e.tipo === "saldo")
-    return egresosFuturos.filter((e) => e.tipo === filtroFuturos)
-  }, [egresosFuturos, filtroFuturos])
-  const conteoFuturosPorTipo = useMemo(() => {
-    const c: Record<string, number> = { todos: egresosFuturos.length, servicios: 0 }
-    for (const e of egresosFuturos) {
-      c[e.tipo] = (c[e.tipo] || 0) + 1
-      if (e.tipo === "seña" || e.tipo === "saldo") c.servicios++
-    }
-    return c
-  }, [egresosFuturos])
+  const [filtroFuturos, setFiltroFuturos] = useState<FiltroEgresos>(FILTRO_EGRESOS_INICIAL)
+  const egresosFuturosFiltrados = useMemo(
+    () => filtrarEgresos(egresosFuturos, filtroFuturos),
+    [egresosFuturos, filtroFuturos],
+  )
+  const filtroFuturosActivo = esFiltroEgresosActivo(filtroFuturos)
   const totalFuturosFiltrado = egresosFuturosFiltrados.reduce((s, e) => s + e.monto, 0)
 
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
@@ -1329,35 +1319,9 @@ useStore()
                 Pagos que vencen dentro de los próximos {DIAS_CORTE_PAGO} días. Lo que vence más adelante
                 está en la pestaña <span className="font-medium text-foreground">Gastos futuros</span>.
               </p>
-              {/* Filtros por tipo de pasivo */}
+              {/* Filtros combinables: salón + tipo + sub-filtro + búsqueda */}
               {egresosProximos.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 px-6 pb-3">
-                  {[
-                    { id: "todos", label: "Todos", activo: "bg-foreground text-background border-foreground", inactivo: "bg-muted/50 text-muted-foreground border-border hover:bg-muted" },
-                    { id: "seña", label: "Seña", activo: "bg-amber-500 text-white border-amber-500", inactivo: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" },
-                    { id: "saldo", label: "Saldo", activo: "bg-orange-500 text-white border-orange-500", inactivo: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100" },
-                    { id: "menu", label: "Menú", activo: "bg-sky-500 text-white border-sky-500", inactivo: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100" },
-                    { id: "barra", label: "Barra", activo: "bg-violet-500 text-white border-violet-500", inactivo: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" },
-                    { id: "sueldo", label: "Sueldos", activo: "bg-emerald-500 text-white border-emerald-500", inactivo: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
-                    { id: "servicios", label: "Servicios", activo: "bg-indigo-500 text-white border-indigo-500", inactivo: "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" },
-                  ]
-                    .filter((f) => (conteoPorTipo[f.id] || 0) > 0 || f.id === "todos")
-                    .map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setFiltroPagar(f.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                          filtroPagar === f.id ? f.activo : f.inactivo
-                        }`}
-                      >
-                        {f.label}
-                        <span className={`text-[10px] font-bold ${filtroPagar === f.id ? "opacity-80" : "opacity-60"}`}>
-                          {conteoPorTipo[f.id] || 0}
-                        </span>
-                      </button>
-                    ))}
-                </div>
+                <BarraFiltrosEgresos egresos={egresosProximos} filtro={filtroPagar} onChange={setFiltroPagar} />
               )}
               {egresosProximos.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
@@ -1464,10 +1428,10 @@ useStore()
               {egresosProximosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">
-                    {filtroPagar === "todos" ? `Total por pagar (${DIAS_CORTE_PAGO} días)` : "Total del filtro"}
+                    {!filtroPagarActivo ? `Total por pagar (${DIAS_CORTE_PAGO} días)` : "Total del filtro"}
                   </span>
                   <span className="text-base font-bold text-red-600">
-                    −{formatCurrency(filtroPagar === "todos" ? totalPorPagarProximos : totalPorPagarFiltrado)}
+                    −{formatCurrency(!filtroPagarActivo ? totalPorPagarProximos : totalPorPagarFiltrado)}
                   </span>
                 </div>
               )}
@@ -1483,35 +1447,9 @@ useStore()
                 Pagos que todavía no vencen: faltan más de {DIAS_CORTE_PAGO} días. Se listan solo como
                 referencia y no se cuentan en el total a pagar de ahora.
               </p>
-              {/* Filtros por tipo de pasivo (mismos que en Por pagar) */}
+              {/* Filtros combinables: salón + tipo + sub-filtro + búsqueda */}
               {egresosFuturos.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 px-6 pb-3">
-                  {[
-                    { id: "todos", label: "Todos", activo: "bg-foreground text-background border-foreground", inactivo: "bg-muted/50 text-muted-foreground border-border hover:bg-muted" },
-                    { id: "seña", label: "Seña", activo: "bg-amber-500 text-white border-amber-500", inactivo: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" },
-                    { id: "saldo", label: "Saldo", activo: "bg-orange-500 text-white border-orange-500", inactivo: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100" },
-                    { id: "menu", label: "Menú", activo: "bg-sky-500 text-white border-sky-500", inactivo: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100" },
-                    { id: "barra", label: "Barra", activo: "bg-violet-500 text-white border-violet-500", inactivo: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" },
-                    { id: "sueldo", label: "Sueldos", activo: "bg-emerald-500 text-white border-emerald-500", inactivo: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
-                    { id: "servicios", label: "Servicios", activo: "bg-indigo-500 text-white border-indigo-500", inactivo: "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" },
-                  ]
-                    .filter((f) => (conteoFuturosPorTipo[f.id] || 0) > 0 || f.id === "todos")
-                    .map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setFiltroFuturos(f.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                          filtroFuturos === f.id ? f.activo : f.inactivo
-                        }`}
-                      >
-                        {f.label}
-                        <span className={`text-[10px] font-bold ${filtroFuturos === f.id ? "opacity-80" : "opacity-60"}`}>
-                          {conteoFuturosPorTipo[f.id] || 0}
-                        </span>
-                      </button>
-                    ))}
-                </div>
+                <BarraFiltrosEgresos egresos={egresosFuturos} filtro={filtroFuturos} onChange={setFiltroFuturos} />
               )}
               {egresosFuturos.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">No hay gastos futuros registrados.</p>
@@ -1607,10 +1545,10 @@ useStore()
               {egresosFuturosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">
-                    {filtroFuturos === "todos" ? "Total gastos futuros" : "Total del filtro"}
+                    {!filtroFuturosActivo ? "Total gastos futuros" : "Total del filtro"}
                   </span>
                   <span className="text-base font-bold text-muted-foreground">
-                    {formatCurrency(filtroFuturos === "todos" ? totalPorPagarFuturos : totalFuturosFiltrado)}
+                    {formatCurrency(!filtroFuturosActivo ? totalPorPagarFuturos : totalFuturosFiltrado)}
                   </span>
                 </div>
               )}
