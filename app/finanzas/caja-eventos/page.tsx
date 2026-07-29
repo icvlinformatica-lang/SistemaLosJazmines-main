@@ -579,9 +579,11 @@ useStore()
           fechaPago: new Date().toISOString().split("T")[0],
         })
       } else {
-        // Sueldo del personal del evento (generador de contrato): marcar la entrada como pagada
+        // Sueldo del personal del evento (generador de contrato): marcar la
+        // entrada como pagada y FIJAR el monto realmente pagado (histórico),
+        // igual que hace Costos del evento, para que ambas pantallas coincidan.
         const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
-          pe.id === egreso.servicioId ? { ...pe, pagado: true } : pe
+          pe.id === egreso.servicioId ? { ...pe, pagado: true, monto: egreso.monto } : pe
         )
         updateEvento(egreso.eventoId, { personalEvento: nuevoPersonal })
       }
@@ -591,7 +593,9 @@ useStore()
       const nuevosServicios = (evento.servicios ?? []).map((srv) => {
         if (srv.servicioId !== egreso.servicioId) return srv
         if (egreso.tipo === "seña") {
-          return { ...srv, estadoPago: "señado" as const, fechaPagoSeña: fechaPago }
+          // Fijar el monto de seña realmente pagado como histórico: el saldo
+          // pendiente en Costos se calcula como costo actual − esta seña.
+          return { ...srv, estadoPago: "señado" as const, fechaPagoSeña: fechaPago, montoSeña: egreso.monto }
         }
         return {
           ...srv,
