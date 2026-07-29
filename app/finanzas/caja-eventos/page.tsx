@@ -536,7 +536,24 @@ useStore()
     () => egresosPendientes.filter((e) => e.diasRestantes > DIAS_CORTE_PAGO),
     [egresosPendientes],
   )
+  // Filtro por tipo de pasivo en "Por pagar": todos, seña, saldo, menú,
+  // barra, sueldo o servicios (seña + saldo de servicios contratados).
+  const [filtroPagar, setFiltroPagar] = useState<string>("todos")
+  const egresosProximosFiltrados = useMemo(() => {
+    if (filtroPagar === "todos") return egresosProximos
+    if (filtroPagar === "servicios") return egresosProximos.filter((e) => e.tipo === "seña" || e.tipo === "saldo")
+    return egresosProximos.filter((e) => e.tipo === filtroPagar)
+  }, [egresosProximos, filtroPagar])
+  const conteoPorTipo = useMemo(() => {
+    const c: Record<string, number> = { todos: egresosProximos.length, servicios: 0 }
+    for (const e of egresosProximos) {
+      c[e.tipo] = (c[e.tipo] || 0) + 1
+      if (e.tipo === "seña" || e.tipo === "saldo") c.servicios++
+    }
+    return c
+  }, [egresosProximos])
   const totalPorPagarProximos = egresosProximos.reduce((s, e) => s + e.monto, 0)
+  const totalPorPagarFiltrado = egresosProximosFiltrados.reduce((s, e) => s + e.monto, 0)
   const totalPorPagarFuturos = egresosFuturos.reduce((s, e) => s + e.monto, 0)
 
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
@@ -1292,9 +1309,43 @@ useStore()
                 Pagos que vencen dentro de los próximos {DIAS_CORTE_PAGO} días. Lo que vence más adelante
                 está en la pestaña <span className="font-medium text-foreground">Gastos futuros</span>.
               </p>
+              {/* Filtros por tipo de pasivo */}
+              {egresosProximos.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 px-6 pb-3">
+                  {[
+                    { id: "todos", label: "Todos", activo: "bg-foreground text-background border-foreground", inactivo: "bg-muted/50 text-muted-foreground border-border hover:bg-muted" },
+                    { id: "seña", label: "Seña", activo: "bg-amber-500 text-white border-amber-500", inactivo: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" },
+                    { id: "saldo", label: "Saldo", activo: "bg-orange-500 text-white border-orange-500", inactivo: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100" },
+                    { id: "menu", label: "Menú", activo: "bg-sky-500 text-white border-sky-500", inactivo: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100" },
+                    { id: "barra", label: "Barra", activo: "bg-violet-500 text-white border-violet-500", inactivo: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" },
+                    { id: "sueldo", label: "Sueldos", activo: "bg-emerald-500 text-white border-emerald-500", inactivo: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
+                    { id: "servicios", label: "Servicios", activo: "bg-indigo-500 text-white border-indigo-500", inactivo: "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" },
+                  ]
+                    .filter((f) => (conteoPorTipo[f.id] || 0) > 0 || f.id === "todos")
+                    .map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setFiltroPagar(f.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          filtroPagar === f.id ? f.activo : f.inactivo
+                        }`}
+                      >
+                        {f.label}
+                        <span className={`text-[10px] font-bold ${filtroPagar === f.id ? "opacity-80" : "opacity-60"}`}>
+                          {conteoPorTipo[f.id] || 0}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
               {egresosProximos.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos a proveedores en los próximos {DIAS_CORTE_PAGO} días.
+                </p>
+              ) : egresosProximosFiltrados.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  No hay pagos pendientes de este tipo en los próximos {DIAS_CORTE_PAGO} días.
                 </p>
               ) : (
                 <Table>
@@ -1308,7 +1359,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(expandido.pagar ? egresosProximos : egresosProximos.slice(0, LIMITE_FILAS)).map((eg) => (
+                    {(expandido.pagar ? egresosProximosFiltrados : egresosProximosFiltrados.slice(0, LIMITE_FILAS)).map((eg) => (
                       <TableRow key={eg.id}>
                         <TableCell className="pl-6">
                           <Badge
@@ -1374,7 +1425,7 @@ useStore()
                   </TableBody>
                 </Table>
               )}
-              {egresosProximos.length > LIMITE_FILAS && (
+              {egresosProximosFiltrados.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
                   <Button
                     variant="ghost"
@@ -1385,15 +1436,19 @@ useStore()
                     {expandido.pagar ? (
                       <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
                     ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosProximos.length - LIMITE_FILAS} más)</>
+                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosProximosFiltrados.length - LIMITE_FILAS} más)</>
                     )}
                   </Button>
                 </div>
               )}
-              {egresosProximos.length > 0 && (
+              {egresosProximosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
-                  <span className="text-sm font-medium text-muted-foreground">Total por pagar (30 días)</span>
-                  <span className="text-base font-bold text-red-600">−{formatCurrency(totalPorPagarProximos)}</span>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {filtroPagar === "todos" ? `Total por pagar (${DIAS_CORTE_PAGO} días)` : "Total del filtro"}
+                  </span>
+                  <span className="text-base font-bold text-red-600">
+                    −{formatCurrency(filtroPagar === "todos" ? totalPorPagarProximos : totalPorPagarFiltrado)}
+                  </span>
                 </div>
               )}
             </CardContent>
