@@ -198,7 +198,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function FinanzasServiciosPage() {
-  const { servicios, addServicio, updateServicio, deleteServicio, setServicios } = useStore()
+  const { servicios, addServicio, updateServicio, deleteServicio, setServicios, eventos } = useStore()
   const { toast } = useToast()
 
   const [busqueda, setBusqueda] = useState("")
@@ -298,6 +298,11 @@ export default function FinanzasServiciosPage() {
     setIdEliminar(null)
     toast({ title: "Servicio eliminado" })
   }
+
+  // Eventos que tienen contratado el servicio a eliminar (para avisar antes de borrar)
+  const eventosConServicio = idEliminar
+    ? (eventos || []).filter((ev) => (ev.servicios || []).some((s) => s.servicioId === idEliminar))
+    : []
 
   // ─── Render ───────────────────────────────────────────────────────────��───
   return (
@@ -624,8 +629,29 @@ export default function FinanzasServiciosPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar servicio</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta accion es permanente y no se puede deshacer. El servicio sera eliminado del catalogo.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>Esta accion es permanente y no se puede deshacer. El servicio sera eliminado del catalogo.</p>
+                {eventosConServicio.length > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-800">
+                    <p className="font-semibold">
+                      Este servicio esta contratado en {eventosConServicio.length}{" "}
+                      {eventosConServicio.length === 1 ? "evento" : "eventos"}:
+                    </p>
+                    <p className="text-xs mt-1">
+                      {eventosConServicio
+                        .slice(0, 5)
+                        .map((ev) => ev.nombrePareja || ev.nombre || "Sin nombre")
+                        .join(", ")}
+                      {eventosConServicio.length > 5 && ` y ${eventosConServicio.length - 5} mas`}
+                    </p>
+                    <p className="text-xs mt-2">
+                      Los montos de seña y saldo pendientes quedaran congelados con los precios actuales en cada
+                      evento, para que sus costos y pagos pendientes no se pierdan.
+                    </p>
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

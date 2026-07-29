@@ -31,6 +31,7 @@ import {
   sincronizarPagosConAsignaciones,
   migrarServiciosAPreciosDinamicos,
   obtenerPreciosServicio,
+  calcularSeñaSaldoServicio,
   actualizarCuotasIPC,
   revertirCuotasIPC,
   generateNextCodigo,
@@ -886,10 +887,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteServicio = async (id: string) => {
+    // Foto de precios ANTES de borrar del catálogo: en cada evento que tenga
+    // este servicio contratado se congelan montoSeña y saldoPendiente con los
+    // precios vigentes. Sin esto, el costo del servicio caería a $0 en Costos
+    // del evento y desaparecería de "Por pagar" en Caja Eventos.
+    const eventosAfectados = (state.eventos || [])
+      .filter((ev) => (ev.servicios || []).some((s) => s.servicioId === id))
+      .map((ev) => ({
+        id: ev.id,
+        servicios: (ev.servicios || []).map((s) => {
+          if (s.servicioId !== id) return s
+          const { montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(s, state)
+          return { ...s, montoSeña, saldoPendiente }
+        }),
+      }))
     setState((prev) => ({
       ...prev,
+      eventos: (prev.eventos || []).map((ev) => {
+        const afectado = eventosAfectados.find((a) => a.id === ev.id)
+        return afectado ? { ...ev, servicios: afectado.servicios } : ev
+      }),
       servicios: (prev.servicios || []).filter((s) => s.id !== id),
     }))
+    // Persistir la foto en cada evento afectado
+    for (const ev of eventosAfectados) {
+      try {
+        await fetchWithRetry(`/api/eventos/${ev.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ servicios: ev.servicios }),
+        })
+      } catch (error) {
+        console.error("[v0] Error guardando foto de precios del evento:", error)
+      }
+    }
     // Sync to Supabase
     try {
       const { deleteServicio: deleteServ } = await import("./supabase/data-service")
