@@ -39,6 +39,13 @@ import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { calcularCostoInsumosEvento, calcularSeñaSaldoServicio, generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import {
+  BarraFiltrosEgresos,
+  FILTRO_EGRESOS_INICIAL,
+  filtrarEgresos,
+  esFiltroEgresosActivo,
+  type FiltroEgresos,
+} from "@/components/filtros-egresos"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
@@ -157,6 +164,21 @@ useStore()
   const LIMITE_FILAS = 7
   const [expandido, setExpandido] = useState<Record<string, boolean>>({})
   const toggleExpandido = (tab: string) => setExpandido((prev) => ({ ...prev, [tab]: !prev[tab] }))
+  // Expansión progresiva en "Por pagar" y "Por cobrar": 7 iniciales → +10 → +15 → todo.
+  const siguientePasoFilas = (actual: number, total: number) => {
+    if (actual <= LIMITE_FILAS) return Math.min(actual + 10, total)
+    if (actual <= LIMITE_FILAS + 10) return Math.min(actual + 15, total)
+    return total
+  }
+  const etiquetaVerMas = (actual: number, total: number) => {
+    const restantes = total - actual
+    if (actual <= LIMITE_FILAS) return `Ver más (${Math.min(10, restantes)} más de ${restantes} pendientes)`
+    if (actual <= LIMITE_FILAS + 10) return `Ver más (${Math.min(15, restantes)} más de ${restantes} pendientes)`
+    return `Ver todo (${restantes} más)`
+  }
+  const [filasPagar, setFilasPagar] = useState(LIMITE_FILAS)
+  const siguientePasoPagar = (total: number) => siguientePasoFilas(filasPagar, total)
+  const [filasCobrar, setFilasCobrar] = useState(LIMITE_FILAS)
 
   // ── Edición de fechas de vencimiento (cuotas por cobrar y gastos por pagar) ──
   const [editVenc, setEditVenc] = useState<
@@ -524,37 +546,24 @@ useStore()
   // Cantidad de cuotas ya vencidas (que deberían haberse cobrado) para el aviso
   const vencidasCount = vienenEstaSemana.filter((i) => i.esVencida).length
 
-  // Corte de vencimiento: los pagos que vencen dentro de los próximos 30 días
-  // se muestran en "Por pagar" (activo). Lo que vence más adelante se aparta en
-  // "Gastos futuros" para no inflar lo que realmente hay que pagar ahora.
-  const DIAS_CORTE_PAGO = 30
-  const egresosProximos = useMemo(
-    () => egresosPendientes.filter((e) => e.diasRestantes <= DIAS_CORTE_PAGO),
+  // "Por pagar" unificado: muestra TODOS los vencimientos pendientes sin
+  // límite de fecha (antes se apartaban en "Gastos futuros" los de +30 días).
+  // El total del pie se calcula a 60 días para reflejar lo que viene pronto.
+  const DIAS_TOTAL_PAGO = 60
+  const egresosProximos = egresosPendientes
+  // Filtros combinables en "Por pagar": salón (madre) + tipo de pasivo +
+  // sub-filtro (tipo de servicio o evento) + búsqueda (lupa).
+  const [filtroPagar, setFiltroPagar] = useState<FiltroEgresos>(FILTRO_EGRESOS_INICIAL)
+  const egresosProximosFiltrados = useMemo(
+    () => filtrarEgresos(egresosProximos, filtroPagar),
+    [egresosProximos, filtroPagar],
+  )
+  const filtroPagarActivo = esFiltroEgresosActivo(filtroPagar)
+  const totalPorPagar60 = useMemo(
+    () => egresosPendientes.filter((e) => e.diasRestantes <= DIAS_TOTAL_PAGO).reduce((s, e) => s + e.monto, 0),
     [egresosPendientes],
   )
-  const egresosFuturos = useMemo(
-    () => egresosPendientes.filter((e) => e.diasRestantes > DIAS_CORTE_PAGO),
-    [egresosPendientes],
-  )
-  // Filtro por tipo de pasivo en "Por pagar": todos, seña, saldo, menú,
-  // barra, sueldo o servicios (seña + saldo de servicios contratados).
-  const [filtroPagar, setFiltroPagar] = useState<string>("todos")
-  const egresosProximosFiltrados = useMemo(() => {
-    if (filtroPagar === "todos") return egresosProximos
-    if (filtroPagar === "servicios") return egresosProximos.filter((e) => e.tipo === "seña" || e.tipo === "saldo")
-    return egresosProximos.filter((e) => e.tipo === filtroPagar)
-  }, [egresosProximos, filtroPagar])
-  const conteoPorTipo = useMemo(() => {
-    const c: Record<string, number> = { todos: egresosProximos.length, servicios: 0 }
-    for (const e of egresosProximos) {
-      c[e.tipo] = (c[e.tipo] || 0) + 1
-      if (e.tipo === "seña" || e.tipo === "saldo") c.servicios++
-    }
-    return c
-  }, [egresosProximos])
-  const totalPorPagarProximos = egresosProximos.reduce((s, e) => s + e.monto, 0)
   const totalPorPagarFiltrado = egresosProximosFiltrados.reduce((s, e) => s + e.monto, 0)
-  const totalPorPagarFuturos = egresosFuturos.reduce((s, e) => s + e.monto, 0)
 
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
@@ -1197,7 +1206,7 @@ useStore()
 
       {/* TABS: Cobros / Pagos */}
       <Tabs defaultValue="cobrar" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="cobrar" className="gap-1.5 bg-emerald-100/40">
             <ArrowDownToLine className="h-4 w-4" /> Por cobrar
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-1">
@@ -1208,12 +1217,6 @@ useStore()
             <ArrowUpFromLine className="h-4 w-4" /> Por pagar
             <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] ml-1">
               {egresosProximos.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="futuros" className="gap-1.5 bg-amber-100/30">
-            <CalendarDays className="h-4 w-4" /> Gastos futuros
-            <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px] ml-1">
-              {egresosFuturos.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="historial" className="gap-1.5 bg-slate-200/50">
@@ -1241,7 +1244,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(expandido.cobrar ? ingresosPendientes : ingresosPendientes.slice(0, LIMITE_FILAS)).map((ing) => (
+                    {ingresosPendientes.slice(0, filasCobrar).map((ing) => (
                       <TableRow
                         key={ing.id}
                         className="cursor-pointer"
@@ -1281,18 +1284,26 @@ useStore()
               )}
               {ingresosPendientes.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpandido("cobrar")}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {expandido.cobrar ? (
-                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
-                    ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({ingresosPendientes.length - LIMITE_FILAS} más)</>
-                    )}
-                  </Button>
+                  {filasCobrar < ingresosPendientes.length ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasCobrar(siguientePasoFilas(filasCobrar, ingresosPendientes.length))}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                      {etiquetaVerMas(filasCobrar, ingresosPendientes.length)}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasCobrar(LIMITE_FILAS)}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos
+                    </Button>
+                  )}
                 </div>
               )}
               {ingresosPendientes.length > 0 && (
@@ -1305,51 +1316,31 @@ useStore()
           </Card>
         </TabsContent>
 
-        {/* POR PAGAR (vence dentro de los próximos 30 días) */}
+        {/* POR PAGAR (todos los vencimientos pendientes, ordenados por fecha) */}
         <TabsContent value="pagar" className="mt-4">
           <Card>
             <CardContent className="px-0 py-2">
               <p className="text-xs text-muted-foreground px-6 pb-2">
-                Pagos que vencen dentro de los próximos {DIAS_CORTE_PAGO} días. Lo que vence más adelante
-                está en la pestaña <span className="font-medium text-foreground">Gastos futuros</span>.
+                Todos los pagos pendientes a proveedores, ordenados por fecha de vencimiento.
               </p>
-              {/* Filtros por tipo de pasivo */}
+              {/* Filtros combinables: salón + tipo + sub-filtro + búsqueda */}
               {egresosProximos.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 px-6 pb-3">
-                  {[
-                    { id: "todos", label: "Todos", activo: "bg-foreground text-background border-foreground", inactivo: "bg-muted/50 text-muted-foreground border-border hover:bg-muted" },
-                    { id: "seña", label: "Seña", activo: "bg-amber-500 text-white border-amber-500", inactivo: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" },
-                    { id: "saldo", label: "Saldo", activo: "bg-orange-500 text-white border-orange-500", inactivo: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100" },
-                    { id: "menu", label: "Menú", activo: "bg-sky-500 text-white border-sky-500", inactivo: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100" },
-                    { id: "barra", label: "Barra", activo: "bg-violet-500 text-white border-violet-500", inactivo: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" },
-                    { id: "sueldo", label: "Sueldos", activo: "bg-emerald-500 text-white border-emerald-500", inactivo: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
-                    { id: "servicios", label: "Servicios", activo: "bg-indigo-500 text-white border-indigo-500", inactivo: "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" },
-                  ]
-                    .filter((f) => (conteoPorTipo[f.id] || 0) > 0 || f.id === "todos")
-                    .map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setFiltroPagar(f.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                          filtroPagar === f.id ? f.activo : f.inactivo
-                        }`}
-                      >
-                        {f.label}
-                        <span className={`text-[10px] font-bold ${filtroPagar === f.id ? "opacity-80" : "opacity-60"}`}>
-                          {conteoPorTipo[f.id] || 0}
-                        </span>
-                      </button>
-                    ))}
-                </div>
+                <BarraFiltrosEgresos
+                  egresos={egresosProximos}
+                  filtro={filtroPagar}
+                  onChange={(f) => {
+                    setFiltroPagar(f)
+                    setFilasPagar(LIMITE_FILAS)
+                  }}
+                />
               )}
               {egresosProximos.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  No hay pagos a proveedores en los próximos {DIAS_CORTE_PAGO} días.
+                  No hay pagos a proveedores pendientes.
                 </p>
               ) : egresosProximosFiltrados.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  No hay pagos pendientes de este tipo en los próximos {DIAS_CORTE_PAGO} días.
+                  No hay pagos pendientes que coincidan con el filtro.
                 </p>
               ) : (
                 <Table>
@@ -1363,7 +1354,7 @@ useStore()
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(expandido.pagar ? egresosProximosFiltrados : egresosProximosFiltrados.slice(0, LIMITE_FILAS)).map((eg) => (
+                    {egresosProximosFiltrados.slice(0, filasPagar).map((eg) => (
                       <TableRow key={eg.id}>
                         <TableCell className="pl-6">
                           <Badge
@@ -1431,133 +1422,36 @@ useStore()
               )}
               {egresosProximosFiltrados.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpandido("pagar")}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {expandido.pagar ? (
-                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
-                    ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosProximosFiltrados.length - LIMITE_FILAS} más)</>
-                    )}
-                  </Button>
+                  {filasPagar < egresosProximosFiltrados.length ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasPagar(siguientePasoPagar(egresosProximosFiltrados.length))}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                      {etiquetaVerMas(filasPagar, egresosProximosFiltrados.length)}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilasPagar(LIMITE_FILAS)}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos
+                    </Button>
+                  )}
                 </div>
               )}
               {egresosProximosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">
-                    {filtroPagar === "todos" ? `Total por pagar (${DIAS_CORTE_PAGO} días)` : "Total del filtro"}
+                    {!filtroPagarActivo ? `Total por pagar (${DIAS_TOTAL_PAGO} días)` : "Total del filtro"}
                   </span>
                   <span className="text-base font-bold text-red-600">
-                    −{formatCurrency(filtroPagar === "todos" ? totalPorPagarProximos : totalPorPagarFiltrado)}
+                    −{formatCurrency(!filtroPagarActivo ? totalPorPagar60 : totalPorPagarFiltrado)}
                   </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* GASTOS FUTUROS (vencen a más de 30 días) */}
-        <TabsContent value="futuros" className="mt-4">
-          <Card>
-            <CardContent className="px-0 py-2">
-              <p className="text-xs text-muted-foreground px-6 pb-2">
-                Pagos que todavía no vencen: faltan más de {DIAS_CORTE_PAGO} días. Se listan solo como
-                referencia y no se cuentan en el total a pagar de ahora.
-              </p>
-              {egresosFuturos.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No hay gastos futuros registrados.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="pl-6">Evento / Servicio</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Vence</TableHead>
-                      <TableHead className="text-right pr-6">Monto</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(expandido.futuros ? egresosFuturos : egresosFuturos.slice(0, LIMITE_FILAS)).map((eg) => (
-                      <TableRow key={eg.id} className="opacity-80">
-                        <TableCell className="pl-6">
-                          <p className="font-medium text-sm">{eg.servicioNombre}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {eg.eventoNombre}
-                            {eg.eventoFecha && <span> · {formatFecha(eg.eventoFecha)}</span>}
-                            {eg.salon && (
-                              <span className="inline-flex items-center gap-1 align-middle">
-                                {" · "}
-                                <SalonDot salon={eg.salon} size={7} />
-                                {salonLabel(eg.salon)}
-                              </span>
-                            )}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              eg.tipo === "seña"
-                                ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
-                                : eg.tipo === "menu"
-                                  ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
-                                  : eg.tipo === "barra"
-                                    ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                                    : eg.tipo === "sueldo"
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
-                                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
-                            }
-                          >
-                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <button
-                            type="button"
-                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
-                            title="Cambiar fecha de vencimiento"
-                            onClick={() => abrirEdicionEgreso(eg)}
-                          >
-                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
-                              {formatFecha(eg.fechaVencimiento)}
-                            </span>
-                            <Badge variant="outline" className="text-[11px] text-muted-foreground">
-                              faltan {eg.diasRestantes}d
-                            </Badge>
-                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-right pr-6 font-medium text-muted-foreground">
-                          {formatCurrency(eg.monto)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              {egresosFuturos.length > LIMITE_FILAS && (
-                <div className="px-6 pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpandido("futuros")}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {expandido.futuros ? (
-                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
-                    ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosFuturos.length - LIMITE_FILAS} más)</>
-                    )}
-                  </Button>
-                </div>
-              )}
-              {egresosFuturos.length > 0 && (
-                <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
-                  <span className="text-sm font-medium text-muted-foreground">Total gastos futuros</span>
-                  <span className="text-base font-bold text-muted-foreground">{formatCurrency(totalPorPagarFuturos)}</span>
                 </div>
               )}
             </CardContent>
