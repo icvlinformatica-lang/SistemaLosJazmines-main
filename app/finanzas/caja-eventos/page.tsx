@@ -531,36 +531,24 @@ useStore()
   // Cantidad de cuotas ya vencidas (que deberían haberse cobrado) para el aviso
   const vencidasCount = vienenEstaSemana.filter((i) => i.esVencida).length
 
-  // Corte de vencimiento: los pagos que vencen dentro de los próximos 30 días
-  // se muestran en "Por pagar" (activo). Lo que vence más adelante se aparta en
-  // "Gastos futuros" para no inflar lo que realmente hay que pagar ahora.
-  const DIAS_CORTE_PAGO = 30
-  const egresosProximos = useMemo(
-    () => egresosPendientes.filter((e) => e.diasRestantes <= DIAS_CORTE_PAGO),
-    [egresosPendientes],
-  )
-  const egresosFuturos = useMemo(
-    () => egresosPendientes.filter((e) => e.diasRestantes > DIAS_CORTE_PAGO),
-    [egresosPendientes],
-  )
-  // Filtros combinables en "Por pagar" y "Gastos futuros": salón (madre) +
-  // tipo de pasivo + sub-filtro (tipo de servicio o evento) + búsqueda (lupa).
+  // "Por pagar" unificado: muestra TODOS los vencimientos pendientes sin
+  // límite de fecha (antes se apartaban en "Gastos futuros" los de +30 días).
+  // El total del pie se calcula a 60 días para reflejar lo que viene pronto.
+  const DIAS_TOTAL_PAGO = 60
+  const egresosProximos = egresosPendientes
+  // Filtros combinables en "Por pagar": salón (madre) + tipo de pasivo +
+  // sub-filtro (tipo de servicio o evento) + búsqueda (lupa).
   const [filtroPagar, setFiltroPagar] = useState<FiltroEgresos>(FILTRO_EGRESOS_INICIAL)
   const egresosProximosFiltrados = useMemo(
     () => filtrarEgresos(egresosProximos, filtroPagar),
     [egresosProximos, filtroPagar],
   )
   const filtroPagarActivo = esFiltroEgresosActivo(filtroPagar)
-  const totalPorPagarProximos = egresosProximos.reduce((s, e) => s + e.monto, 0)
-  const totalPorPagarFiltrado = egresosProximosFiltrados.reduce((s, e) => s + e.monto, 0)
-  const totalPorPagarFuturos = egresosFuturos.reduce((s, e) => s + e.monto, 0)
-  const [filtroFuturos, setFiltroFuturos] = useState<FiltroEgresos>(FILTRO_EGRESOS_INICIAL)
-  const egresosFuturosFiltrados = useMemo(
-    () => filtrarEgresos(egresosFuturos, filtroFuturos),
-    [egresosFuturos, filtroFuturos],
+  const totalPorPagar60 = useMemo(
+    () => egresosPendientes.filter((e) => e.diasRestantes <= DIAS_TOTAL_PAGO).reduce((s, e) => s + e.monto, 0),
+    [egresosPendientes],
   )
-  const filtroFuturosActivo = esFiltroEgresosActivo(filtroFuturos)
-  const totalFuturosFiltrado = egresosFuturosFiltrados.reduce((s, e) => s + e.monto, 0)
+  const totalPorPagarFiltrado = egresosProximosFiltrados.reduce((s, e) => s + e.monto, 0)
 
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
@@ -1203,7 +1191,7 @@ useStore()
 
       {/* TABS: Cobros / Pagos */}
       <Tabs defaultValue="cobrar" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="cobrar" className="gap-1.5 bg-emerald-100/40">
             <ArrowDownToLine className="h-4 w-4" /> Por cobrar
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-1">
@@ -1214,12 +1202,6 @@ useStore()
             <ArrowUpFromLine className="h-4 w-4" /> Por pagar
             <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] ml-1">
               {egresosProximos.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="futuros" className="gap-1.5 bg-amber-100/30">
-            <CalendarDays className="h-4 w-4" /> Gastos futuros
-            <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px] ml-1">
-              {egresosFuturos.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="historial" className="gap-1.5 bg-slate-200/50">
@@ -1311,13 +1293,12 @@ useStore()
           </Card>
         </TabsContent>
 
-        {/* POR PAGAR (vence dentro de los próximos 30 días) */}
+        {/* POR PAGAR (todos los vencimientos pendientes, ordenados por fecha) */}
         <TabsContent value="pagar" className="mt-4">
           <Card>
             <CardContent className="px-0 py-2">
               <p className="text-xs text-muted-foreground px-6 pb-2">
-                Pagos que vencen dentro de los próximos {DIAS_CORTE_PAGO} días. Lo que vence más adelante
-                está en la pestaña <span className="font-medium text-foreground">Gastos futuros</span>.
+                Todos los pagos pendientes a proveedores, ordenados por fecha de vencimiento.
               </p>
               {/* Filtros combinables: salón + tipo + sub-filtro + búsqueda */}
               {egresosProximos.length > 0 && (
@@ -1325,11 +1306,11 @@ useStore()
               )}
               {egresosProximos.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  No hay pagos a proveedores en los próximos {DIAS_CORTE_PAGO} días.
+                  No hay pagos a proveedores pendientes.
                 </p>
               ) : egresosProximosFiltrados.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  No hay pagos pendientes de este tipo en los próximos {DIAS_CORTE_PAGO} días.
+                  No hay pagos pendientes que coincidan con el filtro.
                 </p>
               ) : (
                 <Table>
@@ -1428,127 +1409,10 @@ useStore()
               {egresosProximosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">
-                    {!filtroPagarActivo ? `Total por pagar (${DIAS_CORTE_PAGO} días)` : "Total del filtro"}
+                    {!filtroPagarActivo ? `Total por pagar (${DIAS_TOTAL_PAGO} días)` : "Total del filtro"}
                   </span>
                   <span className="text-base font-bold text-red-600">
-                    −{formatCurrency(!filtroPagarActivo ? totalPorPagarProximos : totalPorPagarFiltrado)}
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* GASTOS FUTUROS (vencen a más de 30 días) */}
-        <TabsContent value="futuros" className="mt-4">
-          <Card>
-            <CardContent className="px-0 py-2">
-              <p className="text-xs text-muted-foreground px-6 pb-2">
-                Pagos que todavía no vencen: faltan más de {DIAS_CORTE_PAGO} días. Se listan solo como
-                referencia y no se cuentan en el total a pagar de ahora.
-              </p>
-              {/* Filtros combinables: salón + tipo + sub-filtro + búsqueda */}
-              {egresosFuturos.length > 0 && (
-                <BarraFiltrosEgresos egresos={egresosFuturos} filtro={filtroFuturos} onChange={setFiltroFuturos} />
-              )}
-              {egresosFuturos.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No hay gastos futuros registrados.</p>
-              ) : egresosFuturosFiltrados.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  No hay gastos futuros de este tipo.
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="pl-6">Evento / Servicio</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Vence</TableHead>
-                      <TableHead className="text-right pr-6">Monto</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(expandido.futuros ? egresosFuturosFiltrados : egresosFuturosFiltrados.slice(0, LIMITE_FILAS)).map((eg) => (
-                      <TableRow key={eg.id} className="opacity-80">
-                        <TableCell className="pl-6">
-                          <p className="font-medium text-sm">{eg.servicioNombre}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {eg.eventoNombre}
-                            {eg.eventoFecha && <span> · {formatFecha(eg.eventoFecha)}</span>}
-                            {eg.salon && (
-                              <span className="inline-flex items-center gap-1 align-middle">
-                                {" · "}
-                                <SalonDot salon={eg.salon} size={7} />
-                                {salonLabel(eg.salon)}
-                              </span>
-                            )}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              eg.tipo === "seña"
-                                ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
-                                : eg.tipo === "menu"
-                                  ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
-                                  : eg.tipo === "barra"
-                                    ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                                    : eg.tipo === "sueldo"
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
-                                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
-                            }
-                          >
-                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <button
-                            type="button"
-                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
-                            title="Cambiar fecha de vencimiento"
-                            onClick={() => abrirEdicionEgreso(eg)}
-                          >
-                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
-                              {formatFecha(eg.fechaVencimiento)}
-                            </span>
-                            <Badge variant="outline" className="text-[11px] text-muted-foreground">
-                              faltan {eg.diasRestantes}d
-                            </Badge>
-                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-right pr-6 font-medium text-muted-foreground">
-                          {formatCurrency(eg.monto)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              {egresosFuturosFiltrados.length > LIMITE_FILAS && (
-                <div className="px-6 pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpandido("futuros")}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {expandido.futuros ? (
-                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
-                    ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({egresosFuturosFiltrados.length - LIMITE_FILAS} más)</>
-                    )}
-                  </Button>
-                </div>
-              )}
-              {egresosFuturosFiltrados.length > 0 && (
-                <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    {!filtroFuturosActivo ? "Total gastos futuros" : "Total del filtro"}
-                  </span>
-                  <span className="text-base font-bold text-muted-foreground">
-                    {formatCurrency(!filtroFuturosActivo ? totalPorPagarFuturos : totalFuturosFiltrado)}
+                    −{formatCurrency(!filtroPagarActivo ? totalPorPagar60 : totalPorPagarFiltrado)}
                   </span>
                 </div>
               )}
