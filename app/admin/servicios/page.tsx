@@ -496,11 +496,18 @@ export default function ServiciosPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar el servicio "${servicio.nombre}"? Esta acción no se puede deshacer.`)) {
-                                    deleteServicio(servicio.id)
-                                  }
-                                }}
+                              onClick={() => {
+                                const afectados = (state.eventos || []).filter((ev) =>
+                                  (ev.servicios || []).some((s) => s.servicioId === servicio.id),
+                                )
+                                const aviso =
+                                  afectados.length > 0
+                                    ? `\n\nATENCION: esta contratado en ${afectados.length} ${afectados.length === 1 ? "evento" : "eventos"}. Los montos de seña y saldo pendientes quedaran congelados con los precios actuales.`
+                                    : ""
+                                if (confirm(`¿Eliminar el servicio "${servicio.nombre}"? Esta acción no se puede deshacer.${aviso}`)) {
+                                  deleteServicio(servicio.id)
+                                }
+                              }}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>

@@ -82,7 +82,7 @@ const CATEGORIA_COLORS: Record<CategoriaServicio, string> = {
 }
 
 export default function CatalogoServiciosPage() {
-  const { servicios, addServicio, updateServicio, deleteServicio, personal } = useStore()
+  const { servicios, addServicio, updateServicio, deleteServicio, personal, eventos } = useStore()
   const { toast } = useToast()
 
   const [busqueda, setBusqueda] = useState("")
@@ -181,7 +181,14 @@ export default function CatalogoServiciosPage() {
       })
       return
     }
-    if (!confirm(`¿Eliminar el servicio "${servicio.nombre}"? Esta acción no se puede deshacer.`)) return
+    const afectados = (eventos || []).filter((ev) =>
+      (ev.servicios || []).some((s) => s.servicioId === servicio.id),
+    )
+    const aviso =
+      afectados.length > 0
+        ? `\n\nATENCION: esta contratado en ${afectados.length} ${afectados.length === 1 ? "evento" : "eventos"}. Los montos de seña y saldo pendientes quedaran congelados con los precios actuales.`
+        : ""
+    if (!confirm(`¿Eliminar el servicio "${servicio.nombre}"? Esta acción no se puede deshacer.${aviso}`)) return
     deleteServicio(servicio.id)
     toast({ title: "Servicio eliminado" })
   }
