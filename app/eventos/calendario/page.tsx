@@ -1247,7 +1247,7 @@ export default function CalendarioPage() {
 
       {/* --- Detail / Edit Dialog --- */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl sm:max-w-4xl max-h-[92vh] overflow-y-auto">
           {selectedEvento && (
             <>
               <DialogHeader>
@@ -1342,9 +1342,9 @@ export default function CalendarioPage() {
                 </div>
               ) : (
                 /* --- Read mode --- */
-                <div className="space-y-4 py-2">
+                <div className="grid gap-3 py-2 md:grid-cols-2">
                   {/* Basic info */}
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm md:col-span-2 md:grid-cols-4">
                     <div>
                       <span className="text-muted-foreground">Fecha:</span>{" "}
                       <span className="font-medium">{selectedEvento.fecha}</span>
@@ -1430,7 +1430,12 @@ export default function CalendarioPage() {
                       <p className="text-sm text-muted-foreground text-center py-3">No hay pagos registrados</p>
                     ) : (
                       <div className="space-y-2">
-                        {(selectedEvento.pagos || []).map((pago) => (
+                        {(selectedEvento.pagos || []).length > 3 && (
+                          <p className="text-xs text-muted-foreground">
+                            Mostrando los últimos 3 de {(selectedEvento.pagos || []).length} pagos
+                          </p>
+                        )}
+                        {(selectedEvento.pagos || []).slice(-3).map((pago) => (
                           <div key={pago.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
@@ -1534,13 +1539,13 @@ export default function CalendarioPage() {
                     }
                     if (filas.length === 0) return null
                     return (
-                      <div className="rounded-lg border border-border divide-y divide-border">
+                      <div className="grid gap-2 md:col-span-2 md:grid-cols-2">
                         {filas.map((fila) => (
                           <button
                             key={fila.titulo}
                             type="button"
                             onClick={() => irA(fila.ruta)}
-                            className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted transition-colors"
+                            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors"
                           >
                             <span className="text-muted-foreground shrink-0">{fila.icono}</span>
                             <span className="min-w-0 flex-1">
