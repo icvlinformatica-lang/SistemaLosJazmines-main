@@ -1467,198 +1467,92 @@ export default function CalendarioPage() {
                     )}
                   </div>
 
-                  {/* Recipes summary */}
-                  {(selectedEvento.recetasAdultos.length > 0 ||
-                    selectedEvento.recetasAdolescentes.length > 0 ||
-                    selectedEvento.recetasNinos.length > 0 ||
-                    selectedEvento.recetasDietasEspeciales.length > 0) && (
-                    <div className="rounded-lg border border-border p-3">
-                      <h4 className="text-sm font-semibold mb-2">Menu Configurado</h4>
-                      <div className="text-sm space-y-1">
-                        {selectedEvento.recetasAdultos.length > 0 && (
-                          <p>
-                            <span className="text-muted-foreground">Adultos:</span>{" "}
-                            {selectedEvento.recetasAdultos
-                              .map((id) => state.recetas.find((r) => r.id === id)?.nombre)
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
-                        {selectedEvento.recetasAdolescentes.length > 0 && (
-                          <p>
-                            <span className="text-muted-foreground">Adolescentes:</span>{" "}
-                            {selectedEvento.recetasAdolescentes
-                              .map((id) => state.recetas.find((r) => r.id === id)?.nombre)
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
-                        {selectedEvento.recetasNinos.length > 0 && (
-                          <p>
-                            <span className="text-muted-foreground">Ninos:</span>{" "}
-                            {selectedEvento.recetasNinos
-                              .map((id) => state.recetas.find((r) => r.id === id)?.nombre)
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
-                        {selectedEvento.recetasDietasEspeciales.length > 0 && (
-                          <p>
-                            <span className="text-muted-foreground">Dietas Esp.:</span>{" "}
-                            {selectedEvento.recetasDietasEspeciales
-                              .map((id) => state.recetas.find((r) => r.id === id)?.nombre)
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Servicios contratados */}
-                  {(selectedEvento.servicios || []).length > 0 && (
-                    <div className="rounded-lg border border-border p-3">
-                      <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                        <Briefcase className="h-4 w-4" /> Servicios Contratados ({(selectedEvento.servicios || []).length})
-                      </h4>
-                      <div className="space-y-1.5 text-sm">
-                        {(selectedEvento.servicios || []).map((srv) => {
-                          const { montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(srv, state)
-                          const señaPagada = srv.estadoPago === "señado" || srv.estadoPago === "saldo_pendiente" || srv.estadoPago === "pagado_total"
-                          const saldoPagado = srv.estadoPago === "pagado_total"
-                          return (
-                            <div key={srv.servicioId} className="flex items-center justify-between gap-2">
-                              <span className="min-w-0 truncate">{srv.nombre}</span>
-                              <span className="shrink-0 text-xs text-muted-foreground">
-                                {señaPagada ? (
-                                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] mr-1">Seña pagada</Badge>
-                                ) : (
-                                  <span className="mr-2">Seña {formatCurrency(montoSeña)}</span>
-                                )}
-                                {saldoPagado ? (
-                                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Saldo pagado</Badge>
-                                ) : (
-                                  <span>Saldo {formatCurrency(saldoPendiente)}</span>
-                                )}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Barras y personal */}
-                  {((selectedEvento.barras || []).length > 0 || (selectedEvento.personalEvento || []).length > 0) && (
-                    <div className="rounded-lg border border-border p-3 text-sm space-y-1">
-                      {(selectedEvento.barras || []).length > 0 && (
-                        <p>
-                          <span className="text-muted-foreground">Barras:</span>{" "}
-                          <span className="font-medium">
-                            {(selectedEvento.barras || [])
-                              .map((b) => (state.barrasTemplates || []).find((t) => t.id === b.barraTemplateId)?.nombre)
-                              .filter(Boolean)
-                              .join(", ") || `${(selectedEvento.barras || []).length} configuradas`}
-                          </span>
-                        </p>
-                      )}
-                      {(selectedEvento.personalEvento || []).length > 0 && (
-                        <p>
-                          <span className="text-muted-foreground">Personal asignado:</span>{" "}
-                          <span className="font-medium">{(selectedEvento.personalEvento || []).length} personas</span>
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Plan de cuotas y resumen financiero */}
-                  {selectedEvento.planDeCuotas && selectedEvento.planDeCuotas.montoTotal > 0 && (() => {
+                  {/* Resumen compacto por sección, con acceso directo a cada área */}
+                  {(() => {
+                    const irA = (ruta: string) => {
+                      setShowDetailDialog(false)
+                      router.push(ruta)
+                    }
+                    const totalPlatos =
+                      selectedEvento.recetasAdultos.length +
+                      selectedEvento.recetasAdolescentes.length +
+                      selectedEvento.recetasNinos.length +
+                      selectedEvento.recetasDietasEspeciales.length
+                    const servicios = selectedEvento.servicios || []
+                    const serviciosPendientes = servicios.filter((s) => s.estadoPago !== "pagado_total").length
                     const plan = selectedEvento.planDeCuotas
-                    const calendario = generarCalendarioCuotas(selectedEvento)
+                    const calendario = plan && plan.montoTotal > 0 ? generarCalendarioCuotas(selectedEvento) : []
                     const pagadas = calendario.filter((c) => c.pagada).length
                     const proxima = calendario.find((c) => !c.pagada)
-                    const saldoRestante = Math.max(0, plan.montoTotal - totalPagos)
+                    const saldoRestante = plan ? Math.max(0, plan.montoTotal - totalPagos) : 0
+                    const contrato = selectedEvento.contrato
+                    const filas: { icono: React.ReactNode; titulo: string; resumen: string; ruta: string }[] = []
+                    if (totalPlatos > 0) {
+                      filas.push({
+                        icono: <FileText className="h-4 w-4" />,
+                        titulo: "Menú",
+                        resumen: `${totalPlatos} platos (Adultos ${selectedEvento.recetasAdultos.length}${selectedEvento.recetasAdolescentes.length ? `, Adol. ${selectedEvento.recetasAdolescentes.length}` : ""}${selectedEvento.recetasNinos.length ? `, Niños ${selectedEvento.recetasNinos.length}` : ""}${selectedEvento.recetasDietasEspeciales.length ? `, Dietas ${selectedEvento.recetasDietasEspeciales.length}` : ""})`,
+                        ruta: `/evento?id=${selectedEvento.id}`,
+                      })
+                    }
+                    if (servicios.length > 0) {
+                      filas.push({
+                        icono: <Briefcase className="h-4 w-4" />,
+                        titulo: "Servicios",
+                        resumen: `${servicios.length} contratados${serviciosPendientes > 0 ? ` · ${serviciosPendientes} con pagos pendientes` : " · todos pagados"}`,
+                        ruta: `/eventos/costos?id=${selectedEvento.id}`,
+                      })
+                    }
+                    if ((selectedEvento.barras || []).length > 0 || (selectedEvento.personalEvento || []).length > 0) {
+                      const partes = []
+                      if ((selectedEvento.barras || []).length > 0) partes.push(`${(selectedEvento.barras || []).length} ${(selectedEvento.barras || []).length === 1 ? "barra" : "barras"}`)
+                      if ((selectedEvento.personalEvento || []).length > 0) partes.push(`${(selectedEvento.personalEvento || []).length} personas asignadas`)
+                      filas.push({
+                        icono: <Users className="h-4 w-4" />,
+                        titulo: "Barras y personal",
+                        resumen: partes.join(" · "),
+                        ruta: `/eventos/${selectedEvento.id}/asignaciones`,
+                      })
+                    }
+                    if (plan && plan.montoTotal > 0) {
+                      filas.push({
+                        icono: <DollarSign className="h-4 w-4" />,
+                        titulo: "Plan de pago",
+                        resumen: `Total ${formatCurrency(plan.montoTotal)} · resta ${formatCurrency(saldoRestante)}${calendario.length > 0 ? ` · cuotas ${pagadas}/${calendario.length}` : ""}${proxima ? ` · próx. vence ${proxima.fechaVencimiento}` : ""}`,
+                        ruta: `/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`,
+                      })
+                    }
+                    if (contrato && (contrato.nombreCompleto || contrato.telefono || contrato.vendedor)) {
+                      filas.push({
+                        icono: <FileText className="h-4 w-4" />,
+                        titulo: "Contrato",
+                        resumen: [contrato.nombreCompleto, contrato.telefono, contrato.vendedor && `Vend. ${contrato.vendedor}`]
+                          .filter(Boolean)
+                          .join(" · "),
+                        ruta: `/eventos/contratos?eventoId=${selectedEvento.id}`,
+                      })
+                    }
+                    if (filas.length === 0) return null
                     return (
-                      <div className="rounded-lg border border-border p-3">
-                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                          <FileText className="h-4 w-4" /> Plan de Pago
-                        </h4>
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Total del evento:</span>{" "}
-                            <span className="font-bold">{formatCurrency(plan.montoTotal)}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Saldo restante:</span>{" "}
-                            <span className={`font-bold ${saldoRestante > 0 ? "text-red-600" : "text-emerald-600"}`}>
-                              {formatCurrency(saldoRestante)}
+                      <div className="rounded-lg border border-border divide-y divide-border">
+                        {filas.map((fila) => (
+                          <button
+                            key={fila.titulo}
+                            type="button"
+                            onClick={() => irA(fila.ruta)}
+                            className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted transition-colors"
+                          >
+                            <span className="text-muted-foreground shrink-0">{fila.icono}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium">{fila.titulo}</span>
+                              <span className="block text-xs text-muted-foreground truncate">{fila.resumen}</span>
                             </span>
-                          </div>
-                          {plan.numeroCuotas > 0 && (
-                            <div>
-                              <span className="text-muted-foreground">Cuotas:</span>{" "}
-                              <span className="font-medium">
-                                {pagadas}/{calendario.length || plan.numeroCuotas} pagadas
-                              </span>
-                            </div>
-                          )}
-                          {proxima && (
-                            <div>
-                              <span className="text-muted-foreground">Próxima cuota:</span>{" "}
-                              <span className="font-medium">
-                                #{proxima.numeroCuota} · {formatCurrency(proxima.monto)} · vence {proxima.fechaVencimiento}
-                              </span>
-                            </div>
-                          )}
-                          {plan.modalidadPago && (
-                            <div>
-                              <span className="text-muted-foreground">Modalidad:</span>{" "}
-                              <span className="font-medium capitalize">{plan.modalidadPago.replace(/_/g, " + ")}</span>
-                            </div>
-                          )}
-                        </div>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                          </button>
+                        ))}
                       </div>
                     )
                   })()}
-
-                  {/* Datos del contrato */}
-                  {selectedEvento.contrato && (selectedEvento.contrato.nombreCompleto || selectedEvento.contrato.telefono || selectedEvento.contrato.vendedor) && (
-                    <div className="rounded-lg border border-border p-3">
-                      <h4 className="text-sm font-semibold mb-2">Datos del Contrato</h4>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                        {selectedEvento.contrato.nombreCompleto && (
-                          <div>
-                            <span className="text-muted-foreground">Cliente:</span>{" "}
-                            <span className="font-medium">{selectedEvento.contrato.nombreCompleto}</span>
-                          </div>
-                        )}
-                        {selectedEvento.contrato.telefono && (
-                          <div>
-                            <span className="text-muted-foreground">Teléfono:</span>{" "}
-                            <span className="font-medium">{selectedEvento.contrato.telefono}</span>
-                          </div>
-                        )}
-                        {selectedEvento.contrato.email && (
-                          <div>
-                            <span className="text-muted-foreground">Email:</span>{" "}
-                            <span className="font-medium">{selectedEvento.contrato.email}</span>
-                          </div>
-                        )}
-                        {selectedEvento.contrato.dni && (
-                          <div>
-                            <span className="text-muted-foreground">DNI:</span>{" "}
-                            <span className="font-medium">{selectedEvento.contrato.dni}</span>
-                          </div>
-                        )}
-                        {selectedEvento.contrato.vendedor && (
-                          <div>
-                            <span className="text-muted-foreground">Vendedor:</span>{" "}
-                            <span className="font-medium">{selectedEvento.contrato.vendedor}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Notes */}
                   {selectedEvento.notasInternas && (
