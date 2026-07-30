@@ -11,10 +11,14 @@ import {
   salonColor,
   salonLabel,
   SALONES,
+  generarCalendarioCuotas,
+  calcularSeñaSaldoServicio,
   type EventoGuardado,
   type EstadoEvento,
   type PagoEvento,
 } from "@/lib/store"
+import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
+import { useToast } from "@/hooks/use-toast"
 import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -59,6 +63,10 @@ import {
   Printer,
   Eye,
   EyeOff,
+  DollarSign,
+  CheckCircle2,
+  Briefcase,
+  FileText,
 } from "lucide-react"
 
 // --- Helpers ---
@@ -220,6 +228,7 @@ function PaymentReceipt({ evento, pago }: { evento: EventoGuardado; pago: PagoEv
 export default function CalendarioPage() {
   const router = useRouter()
   const { state, eventos: eventosTodos, updateEvento, deleteEvento, setEventoActual, configuracionCajas } = useStore()
+  const { toast } = useToast()
 
   const today = new Date()
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
@@ -1238,7 +1247,7 @@ export default function CalendarioPage() {
 
       {/* --- Detail / Edit Dialog --- */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl sm:max-w-4xl max-h-[92vh] overflow-y-auto">
           {selectedEvento && (
             <>
               <DialogHeader>
@@ -1333,9 +1342,9 @@ export default function CalendarioPage() {
                 </div>
               ) : (
                 /* --- Read mode --- */
-                <div className="space-y-4 py-2">
+                <div className="grid gap-3 py-2 md:grid-cols-2">
                   {/* Basic info */}
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm md:col-span-2 md:grid-cols-4">
                     <div>
                       <span className="text-muted-foreground">Fecha:</span>{" "}
                       <span className="font-medium">{selectedEvento.fecha}</span>
@@ -1421,7 +1430,12 @@ export default function CalendarioPage() {
                       <p className="text-sm text-muted-foreground text-center py-3">No hay pagos registrados</p>
                     ) : (
                       <div className="space-y-2">
-                        {(selectedEvento.pagos || []).map((pago) => (
+                        {(selectedEvento.pagos || []).length > 3 && (
+                          <p className="text-xs text-muted-foreground">
+                            Mostrando los últimos 3 de {(selectedEvento.pagos || []).length} pagos
+                          </p>
+                        )}
+                        {(selectedEvento.pagos || []).slice(-3).map((pago) => (
                           <div key={pago.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
@@ -1458,35 +1472,92 @@ export default function CalendarioPage() {
                     )}
                   </div>
 
-                  {/* Recipes summary */}
-                  {(selectedEvento.recetasAdultos.length > 0 ||
-                    selectedEvento.recetasAdolescentes.length > 0 ||
-                    selectedEvento.recetasNinos.length > 0 ||
-                    selectedEvento.recetasDietasEspeciales.length > 0) && (
-                    <div className="rounded-lg border border-border p-3">
-                      <h4 className="text-sm font-semibold mb-2">Menu Configurado</h4>
-                      <div className="text-sm space-y-1">
-                        {selectedEvento.recetasAdultos.length > 0 && (
-                          <p>
-                            <span className="text-muted-foreground">Adultos:</span>{" "}
-                            {selectedEvento.recetasAdultos
-                              .map((id) => state.recetas.find((r) => r.id === id)?.nombre)
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
-                        {selectedEvento.recetasNinos.length > 0 && (
-                          <p>
-                            <span className="text-muted-foreground">Ninos:</span>{" "}
-                            {selectedEvento.recetasNinos
-                              .map((id) => state.recetas.find((r) => r.id === id)?.nombre)
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
+                  {/* Resumen compacto por sección, con acceso directo a cada área */}
+                  {(() => {
+                    const irA = (ruta: string) => {
+                      setShowDetailDialog(false)
+                      router.push(ruta)
+                    }
+                    const totalPlatos =
+                      selectedEvento.recetasAdultos.length +
+                      selectedEvento.recetasAdolescentes.length +
+                      selectedEvento.recetasNinos.length +
+                      selectedEvento.recetasDietasEspeciales.length
+                    const servicios = selectedEvento.servicios || []
+                    const serviciosPendientes = servicios.filter((s) => s.estadoPago !== "pagado_total").length
+                    const plan = selectedEvento.planDeCuotas
+                    const calendario = plan && plan.montoTotal > 0 ? generarCalendarioCuotas(selectedEvento) : []
+                    const pagadas = calendario.filter((c) => c.pagada).length
+                    const proxima = calendario.find((c) => !c.pagada)
+                    const saldoRestante = plan ? Math.max(0, plan.montoTotal - totalPagos) : 0
+                    const contrato = selectedEvento.contrato
+                    const filas: { icono: React.ReactNode; titulo: string; resumen: string; ruta: string }[] = []
+                    if (totalPlatos > 0) {
+                      filas.push({
+                        icono: <FileText className="h-4 w-4" />,
+                        titulo: "Menú",
+                        resumen: `${totalPlatos} platos (Adultos ${selectedEvento.recetasAdultos.length}${selectedEvento.recetasAdolescentes.length ? `, Adol. ${selectedEvento.recetasAdolescentes.length}` : ""}${selectedEvento.recetasNinos.length ? `, Niños ${selectedEvento.recetasNinos.length}` : ""}${selectedEvento.recetasDietasEspeciales.length ? `, Dietas ${selectedEvento.recetasDietasEspeciales.length}` : ""})`,
+                        ruta: `/evento?id=${selectedEvento.id}`,
+                      })
+                    }
+                    if (servicios.length > 0) {
+                      filas.push({
+                        icono: <Briefcase className="h-4 w-4" />,
+                        titulo: "Servicios",
+                        resumen: `${servicios.length} contratados${serviciosPendientes > 0 ? ` · ${serviciosPendientes} con pagos pendientes` : " · todos pagados"}`,
+                        ruta: `/eventos/costos?id=${selectedEvento.id}`,
+                      })
+                    }
+                    if ((selectedEvento.barras || []).length > 0 || (selectedEvento.personalEvento || []).length > 0) {
+                      const partes = []
+                      if ((selectedEvento.barras || []).length > 0) partes.push(`${(selectedEvento.barras || []).length} ${(selectedEvento.barras || []).length === 1 ? "barra" : "barras"}`)
+                      if ((selectedEvento.personalEvento || []).length > 0) partes.push(`${(selectedEvento.personalEvento || []).length} personas asignadas`)
+                      filas.push({
+                        icono: <Users className="h-4 w-4" />,
+                        titulo: "Barras y personal",
+                        resumen: partes.join(" · "),
+                        ruta: `/eventos/${selectedEvento.id}/asignaciones`,
+                      })
+                    }
+                    if (plan && plan.montoTotal > 0) {
+                      filas.push({
+                        icono: <DollarSign className="h-4 w-4" />,
+                        titulo: "Plan de pago",
+                        resumen: `Total ${formatCurrency(plan.montoTotal)} · resta ${formatCurrency(saldoRestante)}${calendario.length > 0 ? ` · cuotas ${pagadas}/${calendario.length}` : ""}${proxima ? ` · próx. vence ${proxima.fechaVencimiento}` : ""}`,
+                        ruta: `/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`,
+                      })
+                    }
+                    if (contrato && (contrato.nombreCompleto || contrato.telefono || contrato.vendedor)) {
+                      filas.push({
+                        icono: <FileText className="h-4 w-4" />,
+                        titulo: "Contrato",
+                        resumen: [contrato.nombreCompleto, contrato.telefono, contrato.vendedor && `Vend. ${contrato.vendedor}`]
+                          .filter(Boolean)
+                          .join(" · "),
+                        ruta: `/eventos/contratos?eventoId=${selectedEvento.id}`,
+                      })
+                    }
+                    if (filas.length === 0) return null
+                    return (
+                      <div className="grid gap-2 md:col-span-2 md:grid-cols-2">
+                        {filas.map((fila) => (
+                          <button
+                            key={fila.titulo}
+                            type="button"
+                            onClick={() => irA(fila.ruta)}
+                            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors"
+                          >
+                            <span className="text-muted-foreground shrink-0">{fila.icono}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium">{fila.titulo}</span>
+                              <span className="block text-xs text-muted-foreground truncate">{fila.resumen}</span>
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                          </button>
+                        ))}
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Notes */}
                   {selectedEvento.notasInternas && (
@@ -1507,7 +1578,7 @@ export default function CalendarioPage() {
                     <Button onClick={handleUpdate}>Guardar Cambios</Button>
                   </>
                 ) : (
-                  <>
+                  <div className="flex flex-wrap items-center gap-2 w-full">
                     <Button
                       variant="outline"
                       size="sm"
@@ -1519,8 +1590,67 @@ export default function CalendarioPage() {
                     <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
                       <Pencil className="h-4 w-4 mr-1" /> Editar
                     </Button>
-                    <div className="flex-1" />
-                  </>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (!selectedEvento.contrato && !(selectedEvento as EventoGuardado & { versionesContrato?: unknown[] }).versionesContrato?.length) {
+                          toast({
+                            title: "Sin contrato",
+                            description: "Este evento todavía no tiene datos de contrato cargados.",
+                            variant: "destructive",
+                          })
+                          return
+                        }
+                        imprimirUltimaVersionContrato(
+                          selectedEvento,
+                          state.recetas,
+                          state.servicios || [],
+                          state.pagosPersonal || [],
+                          state.barrasTemplates || [],
+                          state.cocteles || [],
+                        )
+                      }}
+                    >
+                      <Printer className="h-4 w-4 mr-1" /> Imprimir
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEventoActual(selectedEvento)
+                        setShowDetailDialog(false)
+                        router.push(`/evento?id=${selectedEvento.id}`)
+                      }}
+                    >
+                      <Eye className="h-4 w-4 mr-1" /> Ver / Editar completo
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                      onClick={() => {
+                        setShowDetailDialog(false)
+                        router.push(`/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`)
+                      }}
+                    >
+                      <DollarSign className="h-4 w-4 mr-1" /> Cobrar cuota
+                    </Button>
+                    {selectedEvento.estado !== "completado" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                        onClick={async () => {
+                          await updateEvento(selectedEvento.id, { estado: "completado" })
+                          toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
+                          setShowDetailDialog(false)
+                        }}
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-1" /> Finalizar
+                      </Button>
+                    )}
+                  </div>
                 )}
               </DialogFooter>
             </>
