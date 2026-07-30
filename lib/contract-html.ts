@@ -140,8 +140,11 @@ export function generateContractHTML(
   const planCuotas = evento.planDeCuotas
   const menu = buildMenuDetails(evento, recetas)
   const fechaEvento = evento.fecha ? new Date(evento.fecha + "T12:00:00").toLocaleDateString("es-AR") : "___/___/______"
-  const fechaContrato = new Date().toLocaleDateString("es-AR")
-  const salon = evento.salon || "___________"
+const fechaContrato = new Date().toLocaleDateString("es-AR")
+// URL absoluta del logo: el contrato se abre en una ventana about:blank
+// (window.open + document.write), donde las rutas relativas no resuelven.
+const logoUrl = typeof window !== "undefined" ? `${window.location.origin}/images/logo-los-jazmines.png` : "/images/logo-los-jazmines.png"
+const salon = evento.salon || "___________"
   const direccion = SALON_DIRECCIONES[salon] || `${salon} \u2013 Del Viso \u2013 Bs. As.`
   const nombreEvento = evento.nombrePareja || evento.nombre || "Evento"
   const tipoEvento = evento.tipoEvento || ""
@@ -237,8 +240,7 @@ export function generateContractHTML(
   body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 0; padding: 0; line-height: 1.5; }
   .page { max-width: 780px; margin: 0 auto; padding: 40px 56px; }
   .logo { margin-bottom: 40px; }
-  .logo-script { font-family: 'Brush Script MT', 'Segoe Script', cursive; font-size: 44px; line-height: 1; }
-  .logo-sub { font-weight: bold; letter-spacing: 2px; font-size: 14px; margin-left: 56px; }
+  .logo img { width: 220px; height: auto; display: block; }
   .titulo { text-align: center; font-size: 16px; margin: 28px 0 2px; }
   .subtitulo { text-align: center; font-size: 14px; margin: 0; }
   .nombre-evento { text-align: center; font-size: 13px; margin: 14px 0 30px; }
@@ -268,8 +270,7 @@ export function generateContractHTML(
 <div class="page">
 
   <div class="logo">
-    <div class="logo-script">Los Jazmines</div>
-    <div class="logo-sub">EVENTOS</div>
+    <img src="${logoUrl}" alt="Los Jazmines Eventos" />
   </div>
 
   <p class="titulo">Convenio de realizaci\u00f3n de eventos</p>
