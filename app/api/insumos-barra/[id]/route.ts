@@ -50,7 +50,7 @@ export async function PUT(
       UPDATE insumos_barra SET
         codigo = COALESCE(${body.codigo}, codigo),
         descripcion = COALESCE(${body.descripcion}, descripcion),
-        unidad = COALESCE(${body.unidad}, unidad),
+        unidad = COALESCE(${body.unidad ? String(body.unidad).toUpperCase().trim() : null}, unidad),
         stock_actual = COALESCE(${body.stockActual}, stock_actual),
         precio_unitario = COALESCE(${body.precioUnitario}, precio_unitario),
         proveedor = COALESCE(${body.proveedor}, proveedor),
