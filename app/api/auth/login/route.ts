@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { verifyPin, verifyToken, signToken, signQuickToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/server"
+import { chequearLimite, registrarFallo, registrarExito, obtenerIp } from "@/lib/auth/rate-limit"
 
 const PERFILES_VALIDOS = ["cocina", "barra", "administracion", "soporte", "cobro"]
 
@@ -17,6 +18,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Perfil inválido" }, { status: 400 })
     }
 
+    // Límite de intentos por IP+perfil para frenar fuerza bruta sobre el PIN.
+    // Los quickToken firmados no cuentan: no son adivinables por fuerza bruta.
+    const claveLimite = `login:${obtenerIp(req)}:${perfilId}`
+    if (pin) {
+      const { permitido, esperaSegundos } = chequearLimite(claveLimite)
+      if (!permitido) {
+        return NextResponse.json(
+          { ok: false, error: `Demasiados intentos. Esperá ${Math.ceil(esperaSegundos / 60)} min.` },
+          { status: 429 },
+        )
+      }
+    }
+
     let autorizado = false
     if (pin) {
       autorizado = verifyPin(perfilId, pin)
@@ -26,8 +40,11 @@ export async function POST(req: Request) {
     }
 
     if (!autorizado) {
+      if (pin) registrarFallo(claveLimite)
       return NextResponse.json({ ok: false, error: "PIN incorrecto" }, { status: 401 })
     }
+
+    if (pin) registrarExito(claveLimite)
 
     const sessionToken = await signToken(perfilId)
     const nuevoQuickToken = await signQuickToken(perfilId)
