@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         ${id},
         ${body.codigo},
         ${body.descripcion},
-        ${body.unidad},
+        ${String(body.unidad || "UN").toUpperCase().trim()},
         ${body.stockActual ?? 0},
         ${body.precioUnitario ?? 0},
         ${body.proveedor || null},

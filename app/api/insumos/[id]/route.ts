@@ -44,7 +44,7 @@ export async function PATCH(
       UPDATE insumos SET
         codigo          = COALESCE(${body.codigo ?? null}, codigo),
         descripcion     = COALESCE(${body.descripcion ?? null}, descripcion),
-        unidad          = COALESCE(${body.unidad ?? null}, unidad),
+        unidad          = COALESCE(${body.unidad ? String(body.unidad).toUpperCase().trim() : null}, unidad),
         stock_actual    = COALESCE(${body.stockActual ?? null}, stock_actual),
         precio_unitario = COALESCE(${body.precioUnitario ?? null}, precio_unitario),
         proveedor       = COALESCE(${body.proveedor ?? null}, proveedor),
