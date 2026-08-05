@@ -211,7 +211,7 @@ function puntoPrioridad(estado: EstadoAlerta) {
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence ma����ana"
+  if (diasRestantes === 1) return "vence ma������ana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -943,6 +943,10 @@ export default function CajaJazminePage() {
     variables: true,
     proyeccion: true,
   })
+
+  // Proyección: se muestran 3 meses y "Ver más" agrega de a 3 hasta los 12.
+  // Siempre parte del mes corriente, así se va actualizando mes a mes solo.
+  const [mesesProyeccionVisibles, setMesesProyeccionVisibles] = useState(3)
 
   useEffect(() => {
     // "cuotas" y "alertas" (próximos vencimientos) quedan SIEMPRE colapsadas
@@ -1862,7 +1866,7 @@ export default function CajaJazminePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {proyeccionMensual.map((m) => (
+              {proyeccionMensual.slice(0, mesesProyeccionVisibles).map((m) => (
                 <TableRow key={m.key} className={m.esActual ? "bg-teal-50/60" : ""}>
                   <TableCell className="pl-6 capitalize font-medium">
                     {m.label}
@@ -1884,6 +1888,34 @@ export default function CajaJazminePage() {
               ))}
             </TableBody>
           </Table>
+          {(mesesProyeccionVisibles < proyeccionMensual.length || mesesProyeccionVisibles > 3) && (
+            <div className="flex items-center justify-center gap-2 px-6 pt-3">
+              {mesesProyeccionVisibles < proyeccionMensual.length && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-teal-700 border-teal-200 hover:bg-teal-50 bg-transparent"
+                  onClick={() =>
+                    setMesesProyeccionVisibles((v) => Math.min(v + 3, proyeccionMensual.length))
+                  }
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  {`Ver 3 meses más (${Math.min(3, proyeccionMensual.length - mesesProyeccionVisibles)} de ${proyeccionMensual.length - mesesProyeccionVisibles} restantes)`}
+                </Button>
+              )}
+              {mesesProyeccionVisibles > 3 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => setMesesProyeccionVisibles(3)}
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  Ver menos
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
       </div>
