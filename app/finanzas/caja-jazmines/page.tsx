@@ -236,7 +236,7 @@ function totalReparto(dist: DistribucionSalon[]): number {
   return dist.reduce((s, d) => s + (Number(d.porcentaje) || 0), 0)
 }
 
-/** Un reparto es válido si tiene al menos un salón y los porcentajes suman 100. */
+/** Un reparto es v��lido si tiene al menos un salón y los porcentajes suman 100. */
 function repartoValido(dist: DistribucionSalon[]): boolean {
   const activos = dist.filter((d) => d.salon && (Number(d.porcentaje) || 0) > 0)
   return activos.length > 0 && totalReparto(activos) === 100
@@ -1733,7 +1733,7 @@ export default function CajaJazminePage() {
         </CardContent>
       </Card>
 
-      {/* Proyección visual del saldo a 30 días (columna lateral) — oculta temporalmente */}
+      {/* Proyección visual del saldo a 30 d��as (columna lateral) — oculta temporalmente */}
       {false && (
       <Card>
         <CardHeader className="pb-3">
@@ -2165,9 +2165,6 @@ export default function CajaJazminePage() {
                   const esPagado = gasto.estado === "pagado"
                   const hist = gasto.historialMontos || []
                   const ultimoRegistro = hist.length > 0 ? hist[hist.length - 1] : null
-                  const variacion = ultimoRegistro
-                    ? calcularVariacion(ultimoRegistro.montoAnterior, ultimoRegistro.monto)
-                    : null
                   // Períodos anteriores que quedaron adeudados al cargar un monto nuevo
                   // sin pagarlos: cada uno muestra su propio check hasta que se pague.
                   const deudasAnteriores = hist.filter(
@@ -2202,10 +2199,7 @@ export default function CajaJazminePage() {
                           <span className="text-sm font-bold text-foreground">
                             {formatCurrency(gasto.monto)}
                           </span>
-                          <div className="flex items-center gap-1">
-                            <DeltaMonto variacion={variacion} />
-                            {badgeEstadoFijo(gasto.estado)}
-                          </div>
+                          {badgeEstadoFijo(gasto.estado)}
                         </div>
                         {!gasto.esSueldoVendedor && (
                           <ConfirmAction
@@ -2655,7 +2649,7 @@ export default function CajaJazminePage() {
       </Dialog>
 
       {/* ── Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
-      {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────────── */}
+      {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────��───── */}
       <Dialog
         open={!!editandoSueldoVendedor}
         onOpenChange={(open) => !open && setEditandoSueldoVendedor(null)}
