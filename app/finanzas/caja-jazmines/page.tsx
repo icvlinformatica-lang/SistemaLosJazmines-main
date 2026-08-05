@@ -2798,6 +2798,7 @@ export default function CajaJazminePage() {
         onOpenChange={setEvolucionAbierta}
         costos={costosFijosParaEvolucion}
         initialCostoId={evolucionCostoId}
+        updateCostoOperativo={updateCostoOperativo}
       />
 
       {/* ── Confirmación de eliminación del menú "⋯" de gastos fijos ─────── */}
