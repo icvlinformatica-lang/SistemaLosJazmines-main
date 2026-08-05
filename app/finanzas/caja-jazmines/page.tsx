@@ -2153,7 +2153,7 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-        {/* ���─ Gastos fijos del mes ──────────────────────────���──────────── */}
+        {/* ����� Gastos fijos del mes ──────────────────────────���──────────── */}
         <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -2629,11 +2629,11 @@ export default function CajaJazminePage() {
 
       {/* ── Dialog: Agregar gasto fijo ────────────────────────────────────── */}
       <Dialog open={modalFijoAbierto} onOpenChange={setModalFijoAbierto}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Agregar gasto fijo</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto flex-1 min-h-0 pr-1">
             <div className="space-y-1.5">
               <Label htmlFor="nf-concepto">Nombre</Label>
               <Input
