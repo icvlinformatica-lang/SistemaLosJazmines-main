@@ -414,7 +414,7 @@ export function EvolucionGastosFijosDialog({
             )}
             {!costoSeleccionado && (
               <div className="border-t border-border px-4 py-2.5">
-                <p className="text-center text-xs text-muted-foreground">
+                <p className="text-center text-xs font-medium text-purple-600">
                   Elegí un servicio para hacer su carga histórica 2026.
                 </p>
               </div>
