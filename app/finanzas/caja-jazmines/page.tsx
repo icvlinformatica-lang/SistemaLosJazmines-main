@@ -144,10 +144,12 @@ function periodoQueSePaga(fechaVencimiento: string): string {
 }
 
 /**
- * Mes que corresponde cargar para un gasto. Se toma el más avanzado entre:
- * - el siguiente al último período registrado en su historial, y
- * - el siguiente al mes de su fecha de vencimiento vigente (si julio está
- *   vencido sin pagar y sin historial, corresponde cargar agosto).
+ * Mes que corresponde cargar para un gasto, atado al PERÍODO al que
+ * corresponde el monto (no al vencimiento): si el gasto corresponde a julio,
+ * se carga agosto; si corresponde a agosto, se carga septiembre.
+ * Como el período es el mes anterior al del vencimiento vigente, el mes a
+ * cargar es el mismo mes del vencimiento. Si el historial ya tiene ese mes
+ * (o uno posterior) cargado, se ofrece el siguiente al último registrado.
  * Sin historial ni vencimiento, el mes próximo del calendario.
  */
 function mesQueCorrespondeCargar(
@@ -158,7 +160,9 @@ function mesQueCorrespondeCargar(
   const ultimo = historial && historial.length > 0 ? historial[historial.length - 1] : null
   if (ultimo?.mes) candidatos.push(mesSiguienteA(ultimo.mes))
   if (fechaVencimiento && fechaVencimiento.length >= 7) {
-    candidatos.push(mesSiguienteA(fechaVencimiento.slice(0, 7)))
+    // Período del gasto = mes anterior al vencimiento → mes a cargar = período + 1
+    // = mes del vencimiento vigente.
+    candidatos.push(fechaVencimiento.slice(0, 7))
   }
   if (candidatos.length === 0) return mesProximoISO()
   // YYYY-MM ordena lexicográficamente: el mayor es el más avanzado.
@@ -2892,7 +2896,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: marcar cuota como cobrada ─────────��─────���─────────────── */}
+      {/* ── Dialog: marcar cuota como cobrada ───────���─��─────���─────────────── */}
       <Dialog
         open={!!cuotaSel}
         onOpenChange={(open) => {
