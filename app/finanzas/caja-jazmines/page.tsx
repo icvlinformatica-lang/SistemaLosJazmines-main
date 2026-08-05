@@ -1367,6 +1367,32 @@ export default function CajaJazminePage() {
   const fijosSinCargarMesActual = costosFijosParaEvolucion.filter(
     (c) => !(c.historialMontos || []).some((r) => r.mes === mesActualISO()),
   )
+
+  // Cuota que le corresponde a cada salón de los gastos fijos repartidos.
+  // En la vista "todos los salones" la línea completa vive en la carpeta
+  // General, y además cada carpeta de salón muestra su parte prorrateada
+  // (informativa: el pago se gestiona desde la línea de General).
+  const cuotasRepartoFijos = new Map<
+    string,
+    { id: string; concepto: string; monto: number; porcentaje: number; estado: GastoFijoMes["estado"] }[]
+  >()
+  if (salonFiltro === "todos") {
+    for (const g of gastosFijosMes) {
+      const orig = state.costosOperativos?.find((c) => c.id === g.id)
+      const dist = (orig?.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+      for (const d of dist) {
+        const arr = cuotasRepartoFijos.get(d.salon) || []
+        arr.push({
+          id: g.id,
+          concepto: orig!.concepto,
+          monto: Math.round((orig!.monto * d.porcentaje) / 100),
+          porcentaje: d.porcentaje,
+          estado: g.estado,
+        })
+        cuotasRepartoFijos.set(d.salon, arr)
+      }
+    }
+  }
   function abrirEvolucion(costoId?: string) {
     setEvolucionCostoId(costoId ?? null)
     setEvolucionAbierta(true)
@@ -2153,7 +2179,7 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-        {/* ����� Gastos fijos del mes ──────────────────────────���──────────── */}
+        {/* ������ Gastos fijos del mes ──────────────────────────���──────────── */}
         <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -2222,13 +2248,56 @@ export default function CajaJazminePage() {
                     No hay gastos fijos pendientes este mes.
                   </p>
                 )}
-                {agruparPorSalon(gastosFijosMes).map((carpeta) => (
+                {(() => {
+                  const carpetas = agruparPorSalon(gastosFijosMes)
+                  // Salones que solo reciben cuota de un gasto repartido
+                  // igual necesitan su carpeta para mostrarla.
+                  for (const salon of cuotasRepartoFijos.keys()) {
+                    if (!carpetas.some((c) => c.salon === salon)) {
+                      carpetas.push({ salon, items: [], subtotal: 0 })
+                    }
+                  }
+                  const ordenCarpetas = [...SALONES, "General"]
+                  carpetas.sort(
+                    (a, b) => ordenCarpetas.indexOf(a.salon as any) - ordenCarpetas.indexOf(b.salon as any),
+                  )
+                  return carpetas.map((carpeta) => {
+                    const cuotasReparto =
+                      carpeta.salon === "General" ? [] : cuotasRepartoFijos.get(carpeta.salon) || []
+                    return (
                   <CarpetaGastos
                     key={`fijo-${carpeta.salon}`}
                     salon={carpeta.salon}
-                    count={carpeta.items.length}
-                    subtotal={carpeta.subtotal}
+                    count={carpeta.items.length + cuotasReparto.length}
+                    subtotal={carpeta.subtotal + cuotasReparto.reduce((s, c) => s + c.monto, 0)}
                   >
+                    {/* Cuotas de gastos repartidos: parte de este salón, se paga desde General */}
+                    {cuotasReparto.map((cuota) => (
+                      <div
+                        key={`reparto-${cuota.id}`}
+                        className="rounded-lg border border-dashed border-border bg-muted/40"
+                      >
+                        <div className="flex items-center gap-3 p-3">
+                          <button
+                            type="button"
+                            className="flex-1 min-w-0 text-left"
+                            onClick={() => abrirEvolucion(cuota.id)}
+                            title="Ver evolución mes a mes"
+                          >
+                            <p className="text-sm font-medium truncate">{cuota.concepto}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {`Parte de este salón (${cuota.porcentaje}%) · se paga desde General`}
+                            </p>
+                          </button>
+                          <div className="flex flex-col items-end gap-1 mr-1 shrink-0">
+                            <span className="text-sm font-bold text-foreground">
+                              {formatCurrency(cuota.monto)}
+                            </span>
+                            {badgeEstadoFijo(cuota.estado)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                     {carpeta.items.map((gasto) => {
                   const esPagado = gasto.estado === "pagado"
                   const hist = gasto.historialMontos || []
@@ -2398,7 +2467,9 @@ export default function CajaJazminePage() {
                   )
                     })}
                   </CarpetaGastos>
-                ))}
+                    )
+                  })
+                })()}
 
                 {/* Cubiertos este mes: tilde verde */}
                 {gastosFijosCubiertos.map((gasto) => (
