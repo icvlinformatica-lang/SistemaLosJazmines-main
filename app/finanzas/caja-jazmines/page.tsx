@@ -927,7 +927,9 @@ export default function CajaJazminePage() {
   })
 
   useEffect(() => {
-    const orden = ["cuotas", "alertas", "fijos", "variables", "proyeccion"]
+    // "cuotas" y "alertas" (próximos vencimientos) quedan SIEMPRE colapsadas
+    // al entrar; el resto se abre solo con la animación escalonada.
+    const orden = ["fijos", "variables", "proyeccion"]
     const timers = orden.map((key, i) =>
       setTimeout(() => {
         setColapsadas((prev) => ({ ...prev, [key]: false }))
@@ -1390,7 +1392,7 @@ export default function CajaJazminePage() {
     setModalFijoAbierto(false)
   }
 
-  // ── Gastos variables ──────────────────────────���──────────────────────────
+  // ── Gastos variables ────────────���─────────────���──────────────────────────
   const [modalVariableAbierto, setModalVariableAbierto] = useState(false)
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
@@ -1854,8 +1856,8 @@ export default function CajaJazminePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
       {/* Alertas de vencimiento (columna derecha, fila 1) */}
-      <Card className="md:col-start-2 md:row-start-1" style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
-        <CardHeader className="pb-3">
+      <Card className={`md:col-start-2 md:row-start-1 ${colapsadas.alertas ? "py-3 gap-0" : ""}`} style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
+        <CardHeader className={colapsadas.alertas ? "pb-0" : "pb-3"}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-amber-500" />
@@ -2007,8 +2009,8 @@ export default function CajaJazminePage() {
 
       {/* ── Columna izquierda: cuotas por cobrar + gastos fijos apilados ── */}
       <div className="flex min-w-0 flex-col gap-4 md:col-start-1 md:row-start-1 md:row-span-2 md:order-first">
-      <Card style={{ backgroundColor: "#cdf7c6" }}>
-        <CardHeader className="pb-3">
+      <Card className={colapsadas.cuotas ? "py-3 gap-0" : ""} style={{ backgroundColor: "#cdf7c6" }}>
+        <CardHeader className={colapsadas.cuotas ? "pb-0" : "pb-3"}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <HandCoins className="h-4 w-4 text-emerald-600" />
@@ -2787,7 +2789,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ─────��────────���──────────��──────── */}
+      {/* ── Dialog: Agendar gasto variable ─────��─────��──���──────────��──────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
