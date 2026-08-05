@@ -131,12 +131,25 @@ function nombreDeMes(mes: string): string {
 }
 
 /**
- * Mes que corresponde cargar para un gasto: el siguiente al último período
- * registrado en su historial. Sin historial, el mes próximo del calendario.
+ * Mes que corresponde cargar para un gasto. Se toma el más avanzado entre:
+ * - el siguiente al último período registrado en su historial, y
+ * - el siguiente al mes de su fecha de vencimiento vigente (si julio está
+ *   vencido sin pagar y sin historial, corresponde cargar agosto).
+ * Sin historial ni vencimiento, el mes próximo del calendario.
  */
-function mesQueCorrespondeCargar(historial: RegistroMonto[] | undefined): string {
+function mesQueCorrespondeCargar(
+  historial: RegistroMonto[] | undefined,
+  fechaVencimiento?: string | null,
+): string {
+  const candidatos: string[] = []
   const ultimo = historial && historial.length > 0 ? historial[historial.length - 1] : null
-  return ultimo?.mes ? mesSiguienteA(ultimo.mes) : mesProximoISO()
+  if (ultimo?.mes) candidatos.push(mesSiguienteA(ultimo.mes))
+  if (fechaVencimiento && fechaVencimiento.length >= 7) {
+    candidatos.push(mesSiguienteA(fechaVencimiento.slice(0, 7)))
+  }
+  if (candidatos.length === 0) return mesProximoISO()
+  // YYYY-MM ordena lexicográficamente: el mayor es el más avanzado.
+  return candidatos.sort()[candidatos.length - 1]
 }
 
 /** Formatea un mes YYYY-MM a algo legible, ej. "jul 2026". */
@@ -1256,7 +1269,7 @@ export default function CajaJazminePage() {
     // el siguiente al último período registrado en el historial del gasto.
     setFormRegistro({
       monto: String(original?.monto ?? gasto.monto),
-      mes: mesQueCorrespondeCargar(original?.historialMontos),
+      mes: mesQueCorrespondeCargar(original?.historialMontos, original?.fechaVencimiento ?? gasto.fechaVencimiento),
       nota: "",
     })
   }
@@ -1291,7 +1304,7 @@ export default function CajaJazminePage() {
     }
     const nuevoRegistro: RegistroMonto = {
       id: generateId(),
-      mes: formRegistro.mes || mesQueCorrespondeCargar(original.historialMontos),
+      mes: formRegistro.mes || mesQueCorrespondeCargar(original.historialMontos, original.fechaVencimiento),
       monto: montoNum,
       montoAnterior: original.monto,
       fecha: new Date().toISOString(),
@@ -2232,7 +2245,7 @@ export default function CajaJazminePage() {
                               <>
                                 <DropdownMenuItem onSelect={() => abrirRegistroMonto(gasto)}>
                                   <Receipt className="h-3.5 w-3.5" />
-                                  {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(hist))})`}
+                                  {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(hist, gasto.fechaVencimiento))})`}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => abrirEditFijo(gasto)}>
                                   <Pencil className="h-3.5 w-3.5" />
