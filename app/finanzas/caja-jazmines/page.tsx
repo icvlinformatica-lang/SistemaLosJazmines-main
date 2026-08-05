@@ -211,7 +211,7 @@ function puntoPrioridad(estado: EstadoAlerta) {
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence ma��ana"
+  if (diasRestantes === 1) return "vence ma����ana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -2242,6 +2242,18 @@ export default function CajaJazminePage() {
                           </span>
                           {badgeEstadoFijo(gasto.estado)}
                         </div>
+                        {!gasto.esSueldoVendedor && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-purple-600 hover:text-purple-700"
+                            title={`Ver evolución mes a mes de ${gasto.concepto}`}
+                            onClick={() => abrirEvolucion(gasto.id)}
+                          >
+                            <TrendingUp className="h-4 w-4" />
+                            <span className="sr-only">{`Ver evolución mes a mes de ${gasto.concepto}`}</span>
+                          </Button>
+                        )}
                         {!gasto.esSueldoVendedor && (
                           <ConfirmAction
                             title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
