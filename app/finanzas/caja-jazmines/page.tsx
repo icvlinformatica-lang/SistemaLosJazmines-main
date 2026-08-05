@@ -1327,6 +1327,11 @@ export default function CajaJazminePage() {
   const costosFijosParaEvolucion = (state.costosOperativos || []).filter(
     (c) => c.activo && !c.esVariable,
   )
+  // Gastos fijos que aún no tienen monto cargado para el mes corriente:
+  // ningún registro del historial pertenece al mes actual.
+  const fijosSinCargarMesActual = costosFijosParaEvolucion.filter(
+    (c) => !(c.historialMontos || []).some((r) => r.mes === mesActualISO()),
+  )
   function abrirEvolucion(costoId?: string) {
     setEvolucionCostoId(costoId ?? null)
     setEvolucionAbierta(true)
@@ -2106,6 +2111,20 @@ export default function CajaJazminePage() {
           </CardHeader>
           {!colapsadas.fijos && (
           <CardContent className="space-y-2 reveal-stagger">
+            {fijosSinCargarMesActual.length > 0 && (
+              <div className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+                <span className="font-semibold">
+                  {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
+                </span>
+                {fijosSinCargarMesActual
+                  .slice(0, 4)
+                  .map((c) => c.concepto)
+                  .join(", ")}
+                {fijosSinCargarMesActual.length > 4
+                  ? ` y ${fijosSinCargarMesActual.length - 4} más`
+                  : ""}
+              </div>
+            )}
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 No hay gastos fijos configurados.
