@@ -56,14 +56,31 @@ import {
   Folder,
   FolderOpen,
   Receipt,
-  History,
   ArrowUp,
   ArrowDown,
   ChevronLeft,
   ChevronRight,
   ArrowDownToLine,
   ArrowUpFromLine,
+  MoreVertical,
 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import Link from "next/link"
@@ -890,9 +907,30 @@ export default function CajaJazminePage() {
       frecuencia: gasto.frecuencia,
       refId: gasto.id,
     })
+    // El historial de evolución se genera solo: cada pago archivado deja
+    // registrado cuánto se pagó ese mes (si el mes aún no tiene registro).
+    const historial = costo?.historialMontos || []
+    const mes = mesActualISO()
+    const yaRegistrado = historial.some((r) => r.mes === mes)
+    const ultimo = historial.length > 0 ? historial[historial.length - 1] : null
     updateCostoOperativo(gasto.id, {
       pagado: false,
       fechaVencimiento: siguienteVencimiento(costo?.fechaVencimiento, gasto.frecuencia),
+      ...(yaRegistrado
+        ? {}
+        : {
+            historialMontos: [
+              ...historial,
+              {
+                id: generateId(),
+                mes,
+                monto: gasto.monto,
+                montoAnterior: ultimo?.monto ?? gasto.monto,
+                fecha: new Date().toISOString(),
+                nota: "Pago archivado",
+              },
+            ],
+          }),
     })
   }
 
@@ -1170,13 +1208,8 @@ export default function CajaJazminePage() {
   const [detalleProxAbierto, setDetalleProxAbierto] = useState(false)
 
   // ── Registro de montos pagados (seguimiento de aumentos) ─────────────────
-  const [historialAbierto, setHistorialAbierto] = useState<Record<string, boolean>>({})
   const [registrandoMonto, setRegistrandoMonto] = useState<GastoFijoMes | null>(null)
   const [formRegistro, setFormRegistro] = useState({ monto: "", mes: "", nota: "" })
-
-  function toggleHistorial(id: string) {
-    setHistorialAbierto((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
 
   function abrirRegistroMonto(gasto: GastoFijoMes) {
     const original = state.costosOperativos?.find((c) => c.id === gasto.id)
@@ -1212,11 +1245,18 @@ export default function CajaJazminePage() {
     setRegistrandoMonto(null)
   }
 
-  // ── Evolución de gastos fijos (timeline mes a mes) ───────────────────────
+  // ── Evolución de gastos fijos (ventana automática de historial) ──────────
   const [evolucionAbierta, setEvolucionAbierta] = useState(false)
+  const [evolucionCostoId, setEvolucionCostoId] = useState<string | null>(null)
   const costosFijosParaEvolucion = (state.costosOperativos || []).filter(
     (c) => c.activo && !c.esVariable,
   )
+  function abrirEvolucion(costoId?: string) {
+    setEvolucionCostoId(costoId ?? null)
+    setEvolucionAbierta(true)
+  }
+  // Confirmación de acciones lanzadas desde el menú "⋯" de cada gasto fijo
+  const [accionMenu, setAccionMenu] = useState<{ tipo: "archivar" | "eliminar"; gasto: GastoFijoMes } | null>(null)
 
   // ── Agregar gasto fijo ────────────────��──────────────────────────────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
@@ -1955,14 +1995,14 @@ export default function CajaJazminePage() {
               </CardTitle>
               <div className="flex items-center gap-1">
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1.5 text-xs border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800"
-                  onClick={() => setEvolucionAbierta(true)}
-                  title="Cargar y ver la evolución mes a mes de cada gasto fijo"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                  onClick={() => abrirEvolucion()}
+                  title="Ver evolución mes a mes"
                 >
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  Evolución
+                  <TrendingUp className="h-4 w-4" />
+                  <span className="sr-only">Ver evolución mes a mes de los gastos fijos</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -2014,21 +2054,24 @@ export default function CajaJazminePage() {
                   const variacion = ultimoRegistro
                     ? calcularVariacion(ultimoRegistro.montoAnterior, ultimoRegistro.monto)
                     : null
-                  const histVisible = historialAbierto[gasto.id]
                   return (
                     <div
                       key={gasto.id}
-                      className="rounded-lg border border-border bg-card"
+                      className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
                     >
-                    <div className="flex items-center gap-3 p-3">
-                      <div className="flex-1 min-w-0">
+                      {/* Un click sobre el gasto abre su historial automático */}
+                      <button
+                        type="button"
+                        className="flex-1 min-w-0 text-left"
+                        onClick={() => abrirEvolucion(gasto.id)}
+                        title="Ver evolución mes a mes"
+                      >
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {gasto.frecuencia}
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
-                          {ultimoRegistro ? ` · últ. pago ${formatMes(ultimoRegistro.mes)}` : ""}
                         </p>
-                      </div>
+                      </button>
                       <div className="flex items-center gap-1 shrink-0">
                         <div className="flex flex-col items-end gap-1 mr-1">
                           <span className="text-sm font-bold text-foreground">
@@ -2039,117 +2082,72 @@ export default function CajaJazminePage() {
                             {badgeEstadoFijo(gasto.estado)}
                           </div>
                         </div>
-                        {gasto.esSueldoVendedor && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            title="Editar fecha de pago"
-                            onClick={() => abrirEdicionSueldo(gasto)}
+                        {!gasto.esSueldoVendedor && (
+                          <ConfirmAction
+                            title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                            description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}`}
+                            confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
+                            onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
                           >
-                            <Pencil className="h-3.5 w-3.5" />
-                            <span className="sr-only">Editar fecha de pago</span>
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                              title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
+                            >
+                              {esPagado
+                                ? <CheckCircle2 className="h-4 w-4" />
+                                : <Circle className="h-4 w-4" />
+                              }
+                              <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
+                            </Button>
+                          </ConfirmAction>
                         )}
-                        {!gasto.esSueldoVendedor && (<>
-                        {/* Registrar monto pagado (seguir aumentos) */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-amber-600"
-                          title="Registrar monto pagado este mes"
-                          onClick={() => abrirRegistroMonto(gasto)}
-                        >
-                          <Receipt className="h-3.5 w-3.5" />
-                          <span className="sr-only">Registrar monto pagado</span>
-                        </Button>
-                        {/* Ver historial de aumentos */}
-                        {hist.length > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={`h-7 w-7 ${histVisible ? "text-purple-600" : "text-muted-foreground hover:text-purple-600"}`}
-                            title="Ver historial de montos"
-                            onClick={() => toggleHistorial(gasto.id)}
-                          >
-                            <History className="h-3.5 w-3.5" />
-                            <span className="sr-only">Ver historial de montos</span>
-                          </Button>
-                        )}
-                        {/* Toggle pagado */}
-                        <ConfirmAction
-                          title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                          description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}`}
-                          confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
-                          onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
-                        >
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                            title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
-                          >
-                            {esPagado
-                              ? <CheckCircle2 className="h-4 w-4" />
-                              : <Circle className="h-4 w-4" />
-                            }
-                            <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                          </Button>
-                        </ConfirmAction>
-                        {/* Archivar */}
-                        <ConfirmAction
-                          title="¿Archivar pago de este per��odo?"
-                          description={`Se registra el pago de "${gasto.concepto}" (${formatCurrency(gasto.monto)}) y el vencimiento avanza al próximo período.`}
-                          confirmLabel="Sí, archivar"
-                          onConfirm={() => archivarFijo(gasto)}
-                        >
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-purple-600"
-                            title="Archivar pago de este período"
-                          >
-                            <Archive className="h-3.5 w-3.5" />
-                            <span className="sr-only">Archivar gasto fijo</span>
-                          </Button>
-                        </ConfirmAction>
-                        {/* Editar */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                          onClick={() => abrirEditFijo(gasto)}
-                          title="Editar"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          <span className="sr-only">Editar gasto fijo</span>
-                        </Button>
-                        {/* Eliminar */}
-                        <ConfirmAction
-                          title="¿Eliminar gasto fijo?"
-                          description={`Se elimina "${gasto.concepto}" de forma permanente. Esta acción no se puede deshacer.`}
-                          confirmLabel="Sí, eliminar"
-                          destructive
-                          onConfirm={() => deleteCostoOperativo(gasto.id)}
-                        >
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            <span className="sr-only">Eliminar gasto fijo</span>
-                          </Button>
-                        </ConfirmAction>
-                        </>)}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              title="Más acciones"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              <span className="sr-only">Más acciones para {gasto.concepto}</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            {gasto.esSueldoVendedor ? (
+                              <DropdownMenuItem onSelect={() => abrirEdicionSueldo(gasto)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                                Editar fecha de pago
+                              </DropdownMenuItem>
+                            ) : (
+                              <>
+                                <DropdownMenuItem onSelect={() => setAccionMenu({ tipo: "archivar", gasto })}>
+                                  <Archive className="h-3.5 w-3.5" />
+                                  Archivar pago del período
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => abrirRegistroMonto(gasto)}>
+                                  <Receipt className="h-3.5 w-3.5" />
+                                  Registrar otro monto
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => abrirEditFijo(gasto)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onSelect={() => setAccionMenu({ tipo: "eliminar", gasto })}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                    </div>
-                    {histVisible && hist.length > 0 && (
-                      <div className="px-3 pb-3">
-                        <HistorialMontos historial={hist} />
-                      </div>
-                    )}
                     </div>
                   )
                     })}
@@ -2783,13 +2781,49 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Evolución de gastos fijos: timeline mes a mes ────────────────── */}
+      {/* ── Evolución de gastos fijos: ventana automática de historial ───── */}
       <EvolucionGastosFijosDialog
         open={evolucionAbierta}
         onOpenChange={setEvolucionAbierta}
         costos={costosFijosParaEvolucion}
-        updateCostoOperativo={updateCostoOperativo}
+        initialCostoId={evolucionCostoId}
       />
+
+      {/* ── Confirmación de acciones del menú "⋯" de gastos fijos ────────── */}
+      <AlertDialog open={!!accionMenu} onOpenChange={(open) => !open && setAccionMenu(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {accionMenu?.tipo === "eliminar" ? "¿Eliminar gasto fijo?" : "¿Archivar pago de este período?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {accionMenu?.tipo === "eliminar"
+                ? `Se elimina "${accionMenu.gasto.concepto}" de forma permanente. Esta acción no se puede deshacer.`
+                : accionMenu
+                  ? `Se registra el pago de "${accionMenu.gasto.concepto}" (${formatCurrency(accionMenu.gasto.monto)}), queda en el historial de evolución y el vencimiento avanza al próximo período.`
+                  : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                accionMenu?.tipo === "eliminar"
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined
+              }
+              onClick={() => {
+                if (!accionMenu) return
+                if (accionMenu.tipo === "eliminar") deleteCostoOperativo(accionMenu.gasto.id)
+                else archivarFijo(accionMenu.gasto)
+                setAccionMenu(null)
+              }}
+            >
+              {accionMenu?.tipo === "eliminar" ? "Sí, eliminar" : "Sí, archivar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Registrar monto pagado (seguimiento de aumentos) ─────────────── */}
       <Dialog open={!!registrandoMonto} onOpenChange={(open) => !open && setRegistrandoMonto(null)}>
