@@ -1283,12 +1283,16 @@ export default function CajaJazminePage() {
     setRegistrandoMonto(null)
   }
 
-  /** Marca como pagada una deuda de un período anterior (check ámbar de la fila). */
-  function pagarDeudaAnterior(gastoId: string, registroId: string) {
+  /**
+   * Marca como pagada (o vuelve a adeudar) una deuda de un período anterior
+   * (check ámbar de la fila). Con pagado=false se deshace un pago marcado
+   * por error y la franja de deuda reaparece.
+   */
+  function pagarDeudaAnterior(gastoId: string, registroId: string, pagado = true) {
     const original = state.costosOperativos?.find((c) => c.id === gastoId)
     if (!original) return
     const historial = (original.historialMontos || []).map((r) =>
-      r.id === registroId ? { ...r, pagado: true } : r,
+      r.id === registroId ? { ...r, pagado } : r,
     )
     updateCostoOperativo(gastoId, { historialMontos: historial })
   }
@@ -2108,6 +2112,11 @@ export default function CajaJazminePage() {
                   const deudasAnteriores = hist.filter(
                     (r, i) => r.pagado === false && i !== hist.length - 1,
                   )
+                  // Deudas anteriores ya pagadas: se pueden destildar desde el
+                  // menú "⋯" si se marcaron como pagadas por error.
+                  const deudasPagadas = hist.filter(
+                    (r, i) => r.pagado === true && i !== hist.length - 1,
+                  )
                   return (
                     <div
                       key={gasto.id}
@@ -2186,6 +2195,20 @@ export default function CajaJazminePage() {
                                   <Pencil className="h-3.5 w-3.5" />
                                   Editar
                                 </DropdownMenuItem>
+                                {deudasPagadas.length > 0 && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    {deudasPagadas.map((deuda) => (
+                                      <DropdownMenuItem
+                                        key={deuda.id}
+                                        onSelect={() => pagarDeudaAnterior(gasto.id, deuda.id, false)}
+                                      >
+                                        <Circle className="h-3.5 w-3.5" />
+                                        {`Destildar pago de ${formatMes(deuda.mes)}`}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </>
+                                )}
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   variant="destructive"
@@ -2864,7 +2887,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Evolución de gastos fijos: ventana automática de historial ───── */}
+      {/* ── Evolución de gastos fijos: ventana automática de historial ──��── */}
       <EvolucionGastosFijosDialog
         open={evolucionAbierta}
         onOpenChange={setEvolucionAbierta}
