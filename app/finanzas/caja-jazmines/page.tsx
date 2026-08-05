@@ -1217,7 +1217,6 @@ export default function CajaJazminePage() {
     monto: "",
     fechaVencimiento: "",
     salon: "",
-    pagado: false,
     repartir: false,
     distribucion: [] as DistribucionSalon[],
   })
@@ -1235,7 +1234,6 @@ export default function CajaJazminePage() {
       monto: String(original?.monto ?? gasto.monto),
       fechaVencimiento: original?.fechaVencimiento ?? "",
       salon: original?.salon ?? "",
-      pagado: gasto.estado === "pagado",
       repartir: dist.length > 0,
       distribucion: dist,
     })
@@ -1247,12 +1245,12 @@ export default function CajaJazminePage() {
     const dist = editFijo.repartir
       ? editFijo.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
+    // El estado de pago NO se toca desde acá: se maneja solo con el check de la fila.
     updateCostoOperativo(editandoFijo.id, {
       concepto: editFijo.concepto,
       monto: Number(editFijo.monto),
       fechaVencimiento: editFijo.fechaVencimiento || undefined,
       salon: dist.length > 0 ? null : editFijo.salon || null,
-      pagado: editFijo.pagado,
       distribucion: dist.length > 0 ? dist : undefined,
     })
     setEditandoFijo(null)
@@ -2617,6 +2615,9 @@ export default function CajaJazminePage() {
                 value={nuevoFijo.fechaVencimiento}
                 onChange={(e) => setNuevoFijo((p) => ({ ...p, fechaVencimiento: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground">
+                El día se repite cada período: si vence el 10, figura el 10 de cada mes.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nf-frecuencia">Frecuencia</Label>
@@ -2757,18 +2758,9 @@ export default function CajaJazminePage() {
                 value={editFijo.fechaVencimiento}
                 onChange={(e) => setEditFijo((p) => ({ ...p, fechaVencimiento: e.target.value }))}
               />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm font-medium">Marcado como pagado</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Cambia el estado a pagado en este mes
-                </p>
-              </div>
-              <Switch
-                checked={editFijo.pagado}
-                onCheckedChange={(checked) => setEditFijo((p) => ({ ...p, pagado: checked }))}
-              />
+              <p className="text-xs text-muted-foreground">
+                El día se repite cada período: si vence el 10, figura el 10 de cada mes.
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -2786,7 +2778,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ─────��─────��──���──────────��──────── */}
+      {/* ── Dialog: Agendar gasto variable ─────����─────��──���──────────��──────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

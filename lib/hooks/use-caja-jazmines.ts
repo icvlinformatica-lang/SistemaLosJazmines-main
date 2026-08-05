@@ -173,6 +173,34 @@ function resolverCostosPorSalon(
 }
 
 /**
+ * Vencimiento VIGENTE de un gasto fijo: la fecha cargada define solo el DÍA
+ * (y el mes, si es Anual); el período rota automáticamente con el calendario.
+ * Un gasto cargado "10 de julio" figura venciendo el 10 de agosto en agosto,
+ * el 10 de septiembre en septiembre, y así sucesivamente.
+ */
+function vencimientoVigente(
+  fechaStr: string,
+  frecuencia: CostoOperativo["frecuencia"],
+  hoy: Date,
+): string {
+  const [, m0, d0] = fechaStr.split("-").map(Number)
+  if (!m0 || !d0) return fechaStr
+  if (frecuencia === "Anual") {
+    // Rota el año: mismo día y mes, año en curso.
+    const ultimoDia = new Date(hoy.getFullYear(), m0, 0).getDate()
+    const dia = Math.min(d0, ultimoDia)
+    return `${hoy.getFullYear()}-${String(m0).padStart(2, "0")}-${String(dia).padStart(2, "0")}`
+  }
+  if (frecuencia === "Mensual") {
+    // Rota el mes: mismo día, mes y año en curso (con tope en el último día del mes).
+    const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate()
+    const dia = Math.min(d0, ultimoDia)
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`
+  }
+  return fechaStr
+}
+
+/**
  * Un gasto fijo se considera "cubierto este período" si existe un registro
  * archivado (origen caja_jazmines_fijo) para ese costo cuya fecha de archivo
  * cae en el mes actual (o el año actual, si es Anual).
@@ -250,13 +278,18 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
             salon: costo.salon,
             monto: costo.monto,
             estado: "pagado",
-            fechaVencimiento: costo.fechaVencimiento,
+            fechaVencimiento: costo.fechaVencimiento
+              ? vencimientoVigente(costo.fechaVencimiento, costo.frecuencia, hoy)
+              : costo.fechaVencimiento,
             historialMontos: costo.historialMontos,
           })
           return
         }
 
+        // El vencimiento vigente rota con el calendario: solo importa el DÍA cargado.
         const fechaVencStr = costo.fechaVencimiento
+          ? vencimientoVigente(costo.fechaVencimiento, costo.frecuencia, hoy)
+          : costo.fechaVencimiento
         if (!fechaVencStr) {
           gastosFijosMes.push({
             id: costo.id,
@@ -320,9 +353,13 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         if (!v.sueldo || v.sueldo <= 0) continue
 
         // Si tiene fecha de pago, calcular estado y emitir alerta de vencimiento.
+        // El día de pago rota mes a mes igual que los demás vencimientos.
+        const fechaPagoVigente = v.sueldoFechaPago
+          ? vencimientoVigente(v.sueldoFechaPago, "Mensual", hoy)
+          : v.sueldoFechaPago
         let estadoSueldo: EstadoAlerta = "ok"
-        if (v.sueldoFechaPago) {
-          const fechaVenc = parseLocalDate(v.sueldoFechaPago)
+        if (fechaPagoVigente) {
+          const fechaVenc = parseLocalDate(fechaPagoVigente)
           const diasRestantes = Math.ceil(
             (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
           )
@@ -336,7 +373,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
               concepto: `Sueldo vendedor · ${v.emoji ? `${v.emoji} ` : ""}${v.nombre}`,
               salon: null,
               monto: v.sueldo,
-              fechaVencimiento: v.sueldoFechaPago,
+              fechaVencimiento: fechaPagoVigente,
               diasRestantes,
               estado: estadoSueldo,
             })
@@ -352,7 +389,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           salon: null,
           monto: v.sueldo,
           estado: estadoSueldo,
-          fechaVencimiento: v.sueldoFechaPago,
+          fechaVencimiento: fechaPagoVigente,
           esSueldoVendedor: true,
         })
       }
