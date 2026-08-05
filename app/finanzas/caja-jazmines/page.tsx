@@ -101,6 +101,20 @@ function mesActualISO(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
 }
 
+/** Devuelve el mes próximo en formato YYYY-MM. */
+function mesProximoISO(): string {
+  const now = new Date()
+  const prox = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return `${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, "0")}`
+}
+
+/** Nombre del mes próximo en español, ej. "septiembre". */
+function nombreMesProximo(): string {
+  const now = new Date()
+  const prox = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return prox.toLocaleDateString("es-AR", { month: "long" })
+}
+
 /** Formatea un mes YYYY-MM a algo legible, ej. "jul 2026". */
 function formatMes(mes: string): string {
   const [y, m] = mes.split("-").map(Number)
@@ -1214,10 +1228,11 @@ export default function CajaJazminePage() {
   function abrirRegistroMonto(gasto: GastoFijoMes) {
     const original = state.costosOperativos?.find((c) => c.id === gasto.id)
     setRegistrandoMonto(gasto)
-    // Prefill con el último monto conocido para que solo ajusten la diferencia.
+    // Prefill con el último monto conocido y el MES PRÓXIMO: se carga el monto
+    // que corresponde pagar el mes entrante, no se corrige el de este mes.
     setFormRegistro({
       monto: String(original?.monto ?? gasto.monto),
-      mes: mesActualISO(),
+      mes: mesProximoISO(),
       nota: "",
     })
   }
@@ -1231,7 +1246,7 @@ export default function CajaJazminePage() {
     const historial = original.historialMontos || []
     const nuevoRegistro: RegistroMonto = {
       id: generateId(),
-      mes: formRegistro.mes || mesActualISO(),
+      mes: formRegistro.mes || mesProximoISO(),
       monto: montoNum,
       montoAnterior: original.monto,
       fecha: new Date().toISOString(),
@@ -2125,7 +2140,7 @@ export default function CajaJazminePage() {
                               <>
                                 <DropdownMenuItem onSelect={() => abrirRegistroMonto(gasto)}>
                                   <Receipt className="h-3.5 w-3.5" />
-                                  Cargar nuevo monto
+                                  {`Cargar nuevo monto (${nombreMesProximo()})`}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => abrirEditFijo(gasto)}>
                                   <Pencil className="h-3.5 w-3.5" />
@@ -2816,7 +2831,7 @@ export default function CajaJazminePage() {
       <Dialog open={!!registrandoMonto} onOpenChange={(open) => !open && setRegistrandoMonto(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Cargar nuevo monto</DialogTitle>
+            <DialogTitle>{`Cargar nuevo monto (${nombreMesProximo()})`}</DialogTitle>
           </DialogHeader>
           {registrandoMonto && (() => {
             const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
@@ -2827,8 +2842,7 @@ export default function CajaJazminePage() {
             return (
               <div className="space-y-4 py-2">
                 <p className="text-sm text-muted-foreground">
-                  {registrandoMonto.concepto}. Anotá cuánto pagaste este mes: el gasto se
-                  actualiza con ese valor y queda registrado en la evolución mes a mes.
+                  {`${registrandoMonto.concepto}. Cargá el monto que corresponde pagar en ${nombreMesProximo()}: el gasto se actualiza con ese valor y queda registrado en la evolución mes a mes.`}
                 </p>
                 <div className="space-y-1.5">
                   <Label htmlFor="rm-mes">Período</Label>
