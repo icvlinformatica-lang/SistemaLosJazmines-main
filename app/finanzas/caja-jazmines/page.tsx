@@ -115,6 +115,43 @@ function nombreMesProximo(): string {
   return prox.toLocaleDateString("es-AR", { month: "long" })
 }
 
+/** Mes siguiente a un YYYY-MM dado, en formato YYYY-MM. */
+function mesSiguienteA(mes: string): string {
+  const [y, m] = mes.split("-").map(Number)
+  if (!y || !m) return mesProximoISO()
+  const sig = new Date(y, m, 1) // m es 1-based: Date(y, m) ya es el mes siguiente
+  return `${sig.getFullYear()}-${String(sig.getMonth() + 1).padStart(2, "0")}`
+}
+
+/** Nombre en español de un mes YYYY-MM, ej. "septiembre". */
+function nombreDeMes(mes: string): string {
+  const [y, m] = mes.split("-").map(Number)
+  if (!y || !m) return mes
+  return new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "long" })
+}
+
+/**
+ * Mes que corresponde cargar para un gasto. Se toma el más avanzado entre:
+ * - el siguiente al último período registrado en su historial, y
+ * - el siguiente al mes de su fecha de vencimiento vigente (si julio está
+ *   vencido sin pagar y sin historial, corresponde cargar agosto).
+ * Sin historial ni vencimiento, el mes próximo del calendario.
+ */
+function mesQueCorrespondeCargar(
+  historial: RegistroMonto[] | undefined,
+  fechaVencimiento?: string | null,
+): string {
+  const candidatos: string[] = []
+  const ultimo = historial && historial.length > 0 ? historial[historial.length - 1] : null
+  if (ultimo?.mes) candidatos.push(mesSiguienteA(ultimo.mes))
+  if (fechaVencimiento && fechaVencimiento.length >= 7) {
+    candidatos.push(mesSiguienteA(fechaVencimiento.slice(0, 7)))
+  }
+  if (candidatos.length === 0) return mesProximoISO()
+  // YYYY-MM ordena lexicográficamente: el mayor es el más avanzado.
+  return candidatos.sort()[candidatos.length - 1]
+}
+
 /** Formatea un mes YYYY-MM a algo legible, ej. "jul 2026". */
 function formatMes(mes: string): string {
   const [y, m] = mes.split("-").map(Number)
@@ -1228,11 +1265,11 @@ export default function CajaJazminePage() {
   function abrirRegistroMonto(gasto: GastoFijoMes) {
     const original = state.costosOperativos?.find((c) => c.id === gasto.id)
     setRegistrandoMonto(gasto)
-    // Prefill con el último monto conocido y el MES PRÓXIMO: se carga el monto
-    // que corresponde pagar el mes entrante, no se corrige el de este mes.
+    // Prefill con el último monto conocido y el mes que CORRESPONDE cargar:
+    // el siguiente al último período registrado en el historial del gasto.
     setFormRegistro({
       monto: String(original?.monto ?? gasto.monto),
-      mes: mesProximoISO(),
+      mes: mesQueCorrespondeCargar(original?.historialMontos, original?.fechaVencimiento ?? gasto.fechaVencimiento),
       nota: "",
     })
   }
@@ -1267,7 +1304,7 @@ export default function CajaJazminePage() {
     }
     const nuevoRegistro: RegistroMonto = {
       id: generateId(),
-      mes: formRegistro.mes || mesProximoISO(),
+      mes: formRegistro.mes || mesQueCorrespondeCargar(original.historialMontos, original.fechaVencimiento),
       monto: montoNum,
       montoAnterior: original.monto,
       fecha: new Date().toISOString(),
@@ -1303,6 +1340,11 @@ export default function CajaJazminePage() {
   const costosFijosParaEvolucion = (state.costosOperativos || []).filter(
     (c) => c.activo && !c.esVariable,
   )
+  // Gastos fijos que aún no tienen monto cargado para el mes corriente:
+  // ningún registro del historial pertenece al mes actual.
+  const fijosSinCargarMesActual = costosFijosParaEvolucion.filter(
+    (c) => !(c.historialMontos || []).some((r) => r.mes === mesActualISO()),
+  )
   function abrirEvolucion(costoId?: string) {
     setEvolucionCostoId(costoId ?? null)
     setEvolucionAbierta(true)
@@ -1310,7 +1352,7 @@ export default function CajaJazminePage() {
   // Confirmación de eliminación lanzada desde el menú "⋯" de cada gasto fijo
   const [accionMenu, setAccionMenu] = useState<{ tipo: "eliminar"; gasto: GastoFijoMes } | null>(null)
 
-  // ── Agregar gasto fijo ────────────────��──────────────────────────────────
+  // ── Agregar gasto fijo ────────────────��─────────────────────────��────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
   const [nuevoFijo, setNuevoFijo] = useState({
     concepto: "",
@@ -2082,6 +2124,20 @@ export default function CajaJazminePage() {
           </CardHeader>
           {!colapsadas.fijos && (
           <CardContent className="space-y-2 reveal-stagger">
+            {fijosSinCargarMesActual.length > 0 && (
+              <div className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+                <span className="font-semibold">
+                  {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
+                </span>
+                {fijosSinCargarMesActual
+                  .slice(0, 4)
+                  .map((c) => c.concepto)
+                  .join(", ")}
+                {fijosSinCargarMesActual.length > 4
+                  ? ` y ${fijosSinCargarMesActual.length - 4} más`
+                  : ""}
+              </div>
+            )}
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 No hay gastos fijos configurados.
@@ -2189,7 +2245,7 @@ export default function CajaJazminePage() {
                               <>
                                 <DropdownMenuItem onSelect={() => abrirRegistroMonto(gasto)}>
                                   <Receipt className="h-3.5 w-3.5" />
-                                  {`Cargar nuevo monto (${nombreMesProximo()})`}
+                                  {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(hist, gasto.fechaVencimiento))})`}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => abrirEditFijo(gasto)}>
                                   <Pencil className="h-3.5 w-3.5" />
@@ -2927,7 +2983,7 @@ export default function CajaJazminePage() {
       <Dialog open={!!registrandoMonto} onOpenChange={(open) => !open && setRegistrandoMonto(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{`Cargar nuevo monto (${nombreMesProximo()})`}</DialogTitle>
+            <DialogTitle>{`Cargar nuevo monto (${formRegistro.mes ? nombreDeMes(formRegistro.mes) : nombreMesProximo()})`}</DialogTitle>
           </DialogHeader>
           {registrandoMonto && (() => {
             const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
@@ -2938,7 +2994,7 @@ export default function CajaJazminePage() {
             return (
               <div className="space-y-4 py-2">
                 <p className="text-sm text-muted-foreground">
-                  {`${registrandoMonto.concepto}. Cargá el monto que corresponde pagar en ${nombreMesProximo()}: el gasto se actualiza con ese valor y queda como pendiente de pago.`}
+                  {`${registrandoMonto.concepto}. Cargá el monto que corresponde pagar en ${formRegistro.mes ? nombreDeMes(formRegistro.mes) : nombreMesProximo()}: el gasto se actualiza con ese valor y queda como pendiente de pago.`}
                 </p>
                 {!original?.pagado && (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
