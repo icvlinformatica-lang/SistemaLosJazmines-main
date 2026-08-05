@@ -375,7 +375,8 @@ function CarpetaGastos({
   subtotal: number
   children: React.ReactNode
 }) {
-  const [abierta, setAbierta] = useState(true)
+  // Las carpetas arrancan SIEMPRE cerradas: se abren solo a pedido.
+  const [abierta, setAbierta] = useState(false)
   const { configuracionCajas } = useStore()
   const color = salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
   return (
@@ -1852,8 +1853,10 @@ export default function CajaJazminePage() {
       </div>
 
       {/* Cuotas + Fijos (columna izquierda) y Vencimientos + Variables (columna derecha).
-          Columnas independientes: al plegar una tarjeta, la de abajo sube al instante. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          Columnas independientes ancladas ARRIBA: la fila 1 mide solo el alto de su
+          tarjeta (grid-rows auto) y cada tarjeta se alinea a su tope (items-start),
+          así al plegar una tarjeta la de abajo sube al instante y nada queda flotando. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-[auto_1fr] gap-4 items-start">
 
       {/* Alertas de vencimiento (columna derecha, fila 1) */}
       <Card className={`md:col-start-2 md:row-start-1 ${colapsadas.alertas ? "py-3 gap-0" : ""}`} style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
