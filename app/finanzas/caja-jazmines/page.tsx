@@ -131,6 +131,19 @@ function nombreDeMes(mes: string): string {
 }
 
 /**
+ * Período al que corresponde el monto según su vencimiento: lo que vence en
+ * agosto paga el consumo de JULIO, lo que vence en septiembre paga agosto.
+ * Devuelve el nombre del mes ANTERIOR al del vencimiento, capitalizado.
+ */
+function periodoQueSePaga(fechaVencimiento: string): string {
+  const [y, m] = fechaVencimiento.split("-").map(Number)
+  if (!y || !m) return ""
+  const anterior = new Date(y, m - 2, 1) // m es 1-based: m-2 es el mes previo
+  const nombre = anterior.toLocaleDateString("es-AR", { month: "long" })
+  return nombre.charAt(0).toUpperCase() + nombre.slice(1)
+}
+
+/**
  * Mes que corresponde cargar para un gasto. Se toma el más avanzado entre:
  * - el siguiente al último período registrado en su historial, y
  * - el siguiente al mes de su fecha de vencimiento vigente (si julio está
@@ -2189,6 +2202,11 @@ export default function CajaJazminePage() {
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {gasto.frecuencia}
+                          {gasto.fechaVencimiento && gasto.frecuencia === "Mensual" ? (
+                            <span className="font-semibold text-purple-600">
+                              {` · ${periodoQueSePaga(gasto.fechaVencimiento)}`}
+                            </span>
+                          ) : null}
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </button>
@@ -2778,7 +2796,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Agendar gasto variable ─────����─────��──���──────────��──────── */}
+      {/* ── Dialog: Agendar gasto variable ─────����──���──��──���──────────��──────── */}
       <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
