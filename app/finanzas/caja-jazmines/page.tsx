@@ -65,6 +65,7 @@ import {
   ArrowUpFromLine,
 } from "lucide-react"
 import { ConfirmAction } from "@/components/confirm-action"
+import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import Link from "next/link"
 
 // ---------------------------------------------------------------------------
@@ -1211,6 +1212,12 @@ export default function CajaJazminePage() {
     setRegistrandoMonto(null)
   }
 
+  // ── Evolución de gastos fijos (timeline mes a mes) ───────────────────────
+  const [evolucionAbierta, setEvolucionAbierta] = useState(false)
+  const costosFijosParaEvolucion = (state.costosOperativos || []).filter(
+    (c) => c.activo && !c.esVariable,
+  )
+
   // ── Agregar gasto fijo ────────────────��──────────────────────────────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
   const [nuevoFijo, setNuevoFijo] = useState({
@@ -1947,6 +1954,16 @@ export default function CajaJazminePage() {
                 Gastos fijos
               </CardTitle>
               <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800"
+                  onClick={() => setEvolucionAbierta(true)}
+                  title="Cargar y ver la evolución mes a mes de cada gasto fijo"
+                >
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  Evolución
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -2765,6 +2782,14 @@ export default function CajaJazminePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Evolución de gastos fijos: timeline mes a mes ────────────────── */}
+      <EvolucionGastosFijosDialog
+        open={evolucionAbierta}
+        onOpenChange={setEvolucionAbierta}
+        costos={costosFijosParaEvolucion}
+        updateCostoOperativo={updateCostoOperativo}
+      />
 
       {/* ── Registrar monto pagado (seguimiento de aumentos) ─────────────── */}
       <Dialog open={!!registrandoMonto} onOpenChange={(open) => !open && setRegistrandoMonto(null)}>
