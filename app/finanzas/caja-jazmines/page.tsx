@@ -1255,8 +1255,8 @@ export default function CajaJazminePage() {
     setEvolucionCostoId(costoId ?? null)
     setEvolucionAbierta(true)
   }
-  // Confirmación de acciones lanzadas desde el menú "⋯" de cada gasto fijo
-  const [accionMenu, setAccionMenu] = useState<{ tipo: "archivar" | "eliminar"; gasto: GastoFijoMes } | null>(null)
+  // Confirmación de eliminación lanzada desde el menú "⋯" de cada gasto fijo
+  const [accionMenu, setAccionMenu] = useState<{ tipo: "eliminar"; gasto: GastoFijoMes } | null>(null)
 
   // ── Agregar gasto fijo ────────────────��──────────────────────────────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
@@ -1986,7 +1986,7 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-        {/* ���─ Gastos fijos del mes ─────────────────────────────────────── */}
+        {/* ���─ Gastos fijos del mes ──────────────────────────���──────────── */}
         <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -2123,13 +2123,9 @@ export default function CajaJazminePage() {
                               </DropdownMenuItem>
                             ) : (
                               <>
-                                <DropdownMenuItem onSelect={() => setAccionMenu({ tipo: "archivar", gasto })}>
-                                  <Archive className="h-3.5 w-3.5" />
-                                  Archivar pago del período
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => abrirRegistroMonto(gasto)}>
                                   <Receipt className="h-3.5 w-3.5" />
-                                  Registrar otro monto
+                                  Cargar nuevo monto
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => abrirEditFijo(gasto)}>
                                   <Pencil className="h-3.5 w-3.5" />
@@ -2789,47 +2785,38 @@ export default function CajaJazminePage() {
         initialCostoId={evolucionCostoId}
       />
 
-      {/* ── Confirmación de acciones del menú "⋯" de gastos fijos ────────── */}
+      {/* ── Confirmación de eliminación del menú "⋯" de gastos fijos ─────── */}
       <AlertDialog open={!!accionMenu} onOpenChange={(open) => !open && setAccionMenu(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {accionMenu?.tipo === "eliminar" ? "¿Eliminar gasto fijo?" : "¿Archivar pago de este período?"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar gasto fijo?</AlertDialogTitle>
             <AlertDialogDescription>
-              {accionMenu?.tipo === "eliminar"
+              {accionMenu
                 ? `Se elimina "${accionMenu.gasto.concepto}" de forma permanente. Esta acción no se puede deshacer.`
-                : accionMenu
-                  ? `Se registra el pago de "${accionMenu.gasto.concepto}" (${formatCurrency(accionMenu.gasto.monto)}), queda en el historial de evolución y el vencimiento avanza al próximo período.`
-                  : ""}
+                : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className={
-                accionMenu?.tipo === "eliminar"
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : undefined
-              }
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (!accionMenu) return
-                if (accionMenu.tipo === "eliminar") deleteCostoOperativo(accionMenu.gasto.id)
-                else archivarFijo(accionMenu.gasto)
+                deleteCostoOperativo(accionMenu.gasto.id)
                 setAccionMenu(null)
               }}
             >
-              {accionMenu?.tipo === "eliminar" ? "Sí, eliminar" : "Sí, archivar"}
+              Sí, eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Registrar monto pagado (seguimiento de aumentos) ─────────────── */}
+      {/* ── Cargar nuevo monto (actualiza el gasto y genera la evolución) ── */}
       <Dialog open={!!registrandoMonto} onOpenChange={(open) => !open && setRegistrandoMonto(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Registrar monto pagado</DialogTitle>
+            <DialogTitle>Cargar nuevo monto</DialogTitle>
           </DialogHeader>
           {registrandoMonto && (() => {
             const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
@@ -2840,8 +2827,8 @@ export default function CajaJazminePage() {
             return (
               <div className="space-y-4 py-2">
                 <p className="text-sm text-muted-foreground">
-                  {registrandoMonto.concepto}. Anotá cuánto pagaste realmente este mes.
-                  El monto de referencia se actualizará para el mes próximo.
+                  {registrandoMonto.concepto}. Anotá cuánto pagaste este mes: el gasto se
+                  actualiza con ese valor y queda registrado en la evolución mes a mes.
                 </p>
                 <div className="space-y-1.5">
                   <Label htmlFor="rm-mes">Período</Label>
@@ -2897,7 +2884,7 @@ export default function CajaJazminePage() {
               disabled={!formRegistro.monto || Number(formRegistro.monto) <= 0}
               className="bg-amber-600 hover:bg-amber-700 text-white"
             >
-              Guardar registro
+              Guardar monto
             </Button>
           </DialogFooter>
         </DialogContent>
