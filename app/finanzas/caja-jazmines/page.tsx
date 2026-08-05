@@ -211,7 +211,7 @@ function puntoPrioridad(estado: EstadoAlerta) {
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence mañana"
+  if (diasRestantes === 1) return "vence ma��ana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -1375,6 +1375,9 @@ export default function CajaJazminePage() {
   const [nuevoFijo, setNuevoFijo] = useState({
     concepto: "",
     monto: "",
+    // Mes al que corresponde el monto cargado: define desde qué período
+    // el gasto figura como pendiente de pago.
+    mesCorresponde: mesActualISO(),
     fechaVencimiento: "",
     salon: "",
     frecuencia: "Mensual" as "Mensual" | "Anual",
@@ -1387,7 +1390,13 @@ export default function CajaJazminePage() {
   function handleAgregarFijo() {
     if (!nuevoFijo.concepto || !nuevoFijo.monto) return
     if (fijoRepartoInvalido) return
-    if (!confirm(`¿Agendar el gasto fijo "${nuevoFijo.concepto}" por ${formatCurrency(Number(nuevoFijo.monto))}?`)) return
+    const mesInicial = nuevoFijo.mesCorresponde || mesActualISO()
+    if (
+      !confirm(
+        `¿Agendar el gasto fijo "${nuevoFijo.concepto}" por ${formatCurrency(Number(nuevoFijo.monto))}, correspondiente a ${formatMes(mesInicial)}?`,
+      )
+    )
+      return
     const dist = nuevoFijo.repartir
       ? nuevoFijo.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
@@ -1403,8 +1412,20 @@ export default function CajaJazminePage() {
       esVariable: false,
       pagado: false,
       distribucion: dist.length > 0 ? dist : undefined,
+      // El mes indicado queda como primer período del historial: desde ahí
+      // el gasto figura pendiente y "Cargar nuevo monto" ofrece el siguiente.
+      historialMontos: [
+        {
+          id: generateId(),
+          mes: mesInicial,
+          monto: Number(nuevoFijo.monto),
+          montoAnterior: Number(nuevoFijo.monto),
+          fecha: new Date().toISOString(),
+          nota: "Alta del gasto",
+        },
+      ],
     })
-    setNuevoFijo({ concepto: "", monto: "", fechaVencimiento: "", salon: "", frecuencia: "Mensual", repartir: false, distribucion: [] })
+    setNuevoFijo({ concepto: "", monto: "", mesCorresponde: mesActualISO(), fechaVencimiento: "", salon: "", frecuencia: "Mensual", repartir: false, distribucion: [] })
     setModalFijoAbierto(false)
   }
 
@@ -2630,6 +2651,18 @@ export default function CajaJazminePage() {
               )}
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="nf-mes">¿A qué mes corresponde el monto?</Label>
+              <Input
+                id="nf-mes"
+                type="month"
+                value={nuevoFijo.mesCorresponde}
+                onChange={(e) => setNuevoFijo((p) => ({ ...p, mesCorresponde: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Desde ese mes el gasto figura pendiente de pago y arranca su historial.
+              </p>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="nf-fecha">Fecha de vencimiento</Label>
               <Input
                 id="nf-fecha"
@@ -2671,7 +2704,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
+      {/* ─�� Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
       {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────��───── */}
       <Dialog
         open={!!editandoSueldoVendedor}
