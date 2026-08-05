@@ -2010,9 +2010,10 @@ export default function CajaJazminePage() {
               </CardTitle>
               <div className="flex items-center gap-1">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
-                  className="h-7 w-7 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                  style={{ backgroundColor: "#ffffff" }}
+                  className="h-7 w-7 text-purple-600 hover:text-purple-700"
                   onClick={() => abrirEvolucion()}
                   title="Ver evolución mes a mes"
                 >
