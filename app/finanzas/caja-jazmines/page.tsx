@@ -1243,7 +1243,28 @@ export default function CajaJazminePage() {
     if (!montoNum || montoNum <= 0) return
     const original = state.costosOperativos?.find((c) => c.id === registrandoMonto.id)
     if (!original) return
-    const historial = original.historialMontos || []
+    let historial = [...(original.historialMontos || [])]
+    // Si el monto vigente NO estaba pagado, queda como DEUDA del período anterior:
+    // se marca su registro con pagado=false para que muestre un check propio
+    // en la fila hasta que se lo pague.
+    if (!original.pagado) {
+      const ultimo = historial.length > 0 ? historial[historial.length - 1] : null
+      if (ultimo) {
+        historial = historial.map((r, i) =>
+          i === historial.length - 1 ? { ...r, pagado: false } : r,
+        )
+      } else {
+        historial.push({
+          id: generateId(),
+          mes: mesActualISO(),
+          monto: original.monto,
+          montoAnterior: original.monto,
+          fecha: new Date().toISOString(),
+          nota: "Quedó pendiente al cargar el monto siguiente",
+          pagado: false,
+        })
+      }
+    }
     const nuevoRegistro: RegistroMonto = {
       id: generateId(),
       mes: formRegistro.mes || mesProximoISO(),
@@ -1252,12 +1273,28 @@ export default function CajaJazminePage() {
       fecha: new Date().toISOString(),
       nota: formRegistro.nota.trim() || undefined,
     }
-    // El monto base se actualiza al último pagado: pasa a ser la referencia del mes próximo.
+    // El nuevo monto pasa a ser la referencia vigente y el gasto queda
+    // PENDIENTE de pago al instante (flujo: cargar monto nuevo → pagarlo).
     updateCostoOperativo(registrandoMonto.id, {
       monto: montoNum,
+      pagado: false,
       historialMontos: [...historial, nuevoRegistro],
     })
     setRegistrandoMonto(null)
+  }
+
+  /**
+   * Marca como pagada (o vuelve a adeudar) una deuda de un período anterior
+   * (check ámbar de la fila). Con pagado=false se deshace un pago marcado
+   * por error y la franja de deuda reaparece.
+   */
+  function pagarDeudaAnterior(gastoId: string, registroId: string, pagado = true) {
+    const original = state.costosOperativos?.find((c) => c.id === gastoId)
+    if (!original) return
+    const historial = (original.historialMontos || []).map((r) =>
+      r.id === registroId ? { ...r, pagado } : r,
+    )
+    updateCostoOperativo(gastoId, { historialMontos: historial })
   }
 
   // ── Evolución de gastos fijos (ventana automática de historial) ──────────
@@ -2070,11 +2107,22 @@ export default function CajaJazminePage() {
                   const variacion = ultimoRegistro
                     ? calcularVariacion(ultimoRegistro.montoAnterior, ultimoRegistro.monto)
                     : null
+                  // Períodos anteriores que quedaron adeudados al cargar un monto nuevo
+                  // sin pagarlos: cada uno muestra su propio check hasta que se pague.
+                  const deudasAnteriores = hist.filter(
+                    (r, i) => r.pagado === false && i !== hist.length - 1,
+                  )
+                  // Deudas anteriores ya pagadas: se pueden destildar desde el
+                  // menú "⋯" si se marcaron como pagadas por error.
+                  const deudasPagadas = hist.filter(
+                    (r, i) => r.pagado === true && i !== hist.length - 1,
+                  )
                   return (
                     <div
                       key={gasto.id}
-                      className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                      className="rounded-lg border border-border bg-card"
                     >
+                    <div className="flex items-center gap-3 p-3">
                       {/* Un click sobre el gasto abre su historial automático */}
                       <button
                         type="button"
@@ -2101,7 +2149,7 @@ export default function CajaJazminePage() {
                         {!gasto.esSueldoVendedor && (
                           <ConfirmAction
                             title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                            description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}`}
+                            description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}${ultimoRegistro ? ` · período ${formatMes(ultimoRegistro.mes)}` : ""}`}
                             confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
                             onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
                           >
@@ -2147,6 +2195,20 @@ export default function CajaJazminePage() {
                                   <Pencil className="h-3.5 w-3.5" />
                                   Editar
                                 </DropdownMenuItem>
+                                {deudasPagadas.length > 0 && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    {deudasPagadas.map((deuda) => (
+                                      <DropdownMenuItem
+                                        key={deuda.id}
+                                        onSelect={() => pagarDeudaAnterior(gasto.id, deuda.id, false)}
+                                      >
+                                        <Circle className="h-3.5 w-3.5" />
+                                        {`Destildar pago de ${formatMes(deuda.mes)}`}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </>
+                                )}
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   variant="destructive"
@@ -2160,6 +2222,38 @@ export default function CajaJazminePage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
+                    </div>
+                    {/* Deudas de períodos anteriores: check propio que desaparece al pagarse */}
+                    {deudasAnteriores.length > 0 && (
+                      <div className="border-t border-amber-200 bg-amber-50/60 rounded-b-lg">
+                        {deudasAnteriores.map((deuda) => (
+                          <div key={deuda.id} className="flex items-center gap-2 px-3 py-2">
+                            <span className="flex-1 min-w-0 text-xs text-amber-800">
+                              {`Debés ${formatMes(deuda.mes)}`}
+                            </span>
+                            <span className="text-xs font-bold text-amber-800 shrink-0">
+                              {formatCurrency(deuda.monto)}
+                            </span>
+                            <ConfirmAction
+                              title={`¿Pagar ${formatMes(deuda.mes)}?`}
+                              description={`${gasto.concepto} · ${formatCurrency(deuda.monto)} adeudado de ${formatMes(deuda.mes)}.`}
+                              confirmLabel="Sí, marcar pagado"
+                              onConfirm={() => pagarDeudaAnterior(gasto.id, deuda.id)}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-amber-600 hover:text-teal-600"
+                                title={`Marcar ${formatMes(deuda.mes)} como pagado`}
+                              >
+                                <Circle className="h-4 w-4" />
+                                <span className="sr-only">{`Marcar ${formatMes(deuda.mes)} de ${gasto.concepto} como pagado`}</span>
+                              </Button>
+                            </ConfirmAction>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     </div>
                   )
                     })}
@@ -2793,7 +2887,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Evolución de gastos fijos: ventana automática de historial ───── */}
+      {/* ── Evolución de gastos fijos: ventana automática de historial ──��── */}
       <EvolucionGastosFijosDialog
         open={evolucionAbierta}
         onOpenChange={setEvolucionAbierta}
@@ -2844,8 +2938,13 @@ export default function CajaJazminePage() {
             return (
               <div className="space-y-4 py-2">
                 <p className="text-sm text-muted-foreground">
-                  {`${registrandoMonto.concepto}. Cargá el monto que corresponde pagar en ${nombreMesProximo()}: el gasto se actualiza con ese valor y queda registrado en la evolución mes a mes.`}
+                  {`${registrandoMonto.concepto}. Cargá el monto que corresponde pagar en ${nombreMesProximo()}: el gasto se actualiza con ese valor y queda como pendiente de pago.`}
                 </p>
+                {!original?.pagado && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                    {`Ojo: todavía no pagaste el monto vigente (${formatCurrency(montoAnterior)}). Al guardar, quedará como deuda con su propio check en la fila del gasto hasta que lo marques pagado.`}
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label htmlFor="rm-mes">Período</Label>
                   <Input

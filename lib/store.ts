@@ -395,6 +395,12 @@ export interface RegistroMonto {
   fecha: string
   /** Nota opcional (ej. "aumento tarifa", "consumo alto verano"). */
   nota?: string
+  /**
+   * false = este período quedó adeudado al cargarse un monto más nuevo sin pagarlo.
+   * Muestra un check propio en la fila del gasto hasta que se lo marque pagado (true).
+   * undefined = período viejo sin seguimiento de deuda (comportamiento previo).
+   */
+  pagado?: boolean
 }
 
 // --- Gastos Archivados (historial consolidado de egresos) ---
@@ -1562,7 +1568,7 @@ const initialRecetas: Receta[] = [
     insumos: [],
   },
   { id: "K002", codigo: "K002", nombre: "Milanesitas", descripcion: "", categoria: "Menú para Niños", insumos: [] },
-  { id: "K003", codigo: "K003", nombre: "Ñoquis", descripcion: "", categoria: "Menú para Niños", insumos: [] },
+  { id: "K003", codigo: "K003", nombre: "��oquis", descripcion: "", categoria: "Menú para Niños", insumos: [] },
 ]
 
 const initialInsumosBarra: InsumoBarra[] = [
