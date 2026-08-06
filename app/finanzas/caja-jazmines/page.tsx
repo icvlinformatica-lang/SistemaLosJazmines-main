@@ -1134,11 +1134,13 @@ export default function CajaJazminePage() {
     const desde = toISO(lunes)
     const hasta = toISO(domingo)
 
-    // Ingresos de la semana: 50% de las cuotas que vencen entre lunes y domingo
+    // Ingresos de la semana: usa montoJazmines si es "todos los salones",
+    // o montoCuota si hay un salón específico filtrado
+    const usarMontoCompleto = salonFiltro && salonFiltro !== "todos"
     const cuotasSemana = data.cuotasPorCobrar.filter(
       (c) => c.fechaVencimiento >= desde && c.fechaVencimiento <= hasta,
     )
-    const cobro = cuotasSemana.reduce((s, c) => s + c.montoJazmines, 0)
+    const cobro = cuotasSemana.reduce((s, c) => s + (usarMontoCompleto ? c.montoCuota : c.montoJazmines), 0)
 
     // Gastos de la semana: fijos y variables pendientes que vencen entre lunes y domingo
     const fijosSemana = data.gastosFijosMes.filter(
@@ -1163,7 +1165,7 @@ export default function CajaJazminePage() {
       saldoFinSemanaJaz: data.saldoActual + cobro - gastos,
       rangoSemanaJazLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
     }
-  }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora])
+  }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora, salonFiltro])
 
   // ── Proyección: gastos fijos del 1 al 10 del mes siguiente ──────────────
   // Los gastos fijos agendados se repiten el mes que viene; acá se proyecta
