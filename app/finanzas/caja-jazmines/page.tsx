@@ -211,7 +211,7 @@ function puntoPrioridad(estado: EstadoAlerta) {
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence ma����������ana"
+  if (diasRestantes === 1) return "vence ma�����������ana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -1576,12 +1576,11 @@ export default function CajaJazminePage() {
             </span>
           </h1>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-purple-700">
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
             Cambiar salón
-            <ArrowRight className="h-5 w-5 animate-pulse" aria-hidden="true" />
+            <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
           </span>
-          <Building className="h-4 w-4 text-muted-foreground" />
           <Select value={salonFiltro} onValueChange={setSalonFiltro}>
             <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
               <SelectValue placeholder="Todos los salones" />
@@ -1626,7 +1625,7 @@ export default function CajaJazminePage() {
                 tabIndex={0}
                 aria-label="Extraer o ajustar dinero de Caja Jazmines"
               >
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
                     <div className="flex items-center gap-1.5">
@@ -1649,14 +1648,14 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#3c4ce8" }}>
                     {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
                   </p>
-                  <p className="text-xs mt-1 flex items-center gap-1" style={{ color: "#4010fa" }}>
+                  <p className="text-xs mt-auto pt-1 flex items-center gap-1" style={{ color: "#4010fa" }}>
                     <ArrowUpFromLine className="h-3 w-3" /> Tocá para extraer dinero
                   </p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Gastos A 30 días
@@ -1675,12 +1674,12 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "#000000" }}>Gastos pendientes</p>
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>Gastos pendientes</p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Saldo a 30 días
@@ -1705,10 +1704,11 @@ export default function CajaJazminePage() {
                   {(() => {
                     const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
                     const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
-                    if (cuotasMes.length === 0) return null
                     return (
-                      <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>
-                        {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
+                      <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                        {cuotasMes.length > 0
+                          ? `${cuotasMes.length} ${cuotasMes.length === 1 ? "cuota" : "cuotas"}`
+                          : "Sin cuotas este mes"}
                       </p>
                     )
                   })()}
@@ -1719,7 +1719,7 @@ export default function CajaJazminePage() {
             {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
             <div className="contents">
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaJazLabel}>
                       Cobro esta semana
@@ -1741,18 +1741,16 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
                   </p>
-                  {cuotasSemanaJazCount > 0 ? (
-                    <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>
-                      {cuotasSemanaJazCount} {cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (parte Jazmines)
-                    </p>
-                  ) : (
-                    <p className="text-xs mt-1" style={{ color: "#000000" }}>Sin cuotas esta semana</p>
-                  )}
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                    {cuotasSemanaJazCount > 0
+                      ? `${cuotasSemanaJazCount} ${cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (parte Jazmines)`
+                      : "Sin cuotas esta semana"}
+                  </p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>Gastos esta semana</p>
                     <div className="flex items-center gap-1.5">
@@ -1772,16 +1770,14 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.gastosSemana ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
                   </p>
-                  {gastosSemanaJazDetalle ? (
-                    <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>{gastosSemanaJazDetalle}</p>
-                  ) : (
-                    <p className="text-xs mt-1" style={{ color: "#000000" }}>Sin gastos esta semana</p>
-                  )}
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                    {gastosSemanaJazDetalle || "Sin gastos esta semana"}
+                  </p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Tengo a fin de semana
@@ -1791,7 +1787,7 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoFinSemanaJaz)}
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "#000000" }}>
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                     Saldo actual + cobros − gastos
                   </p>
                 </CardContent>
@@ -2321,7 +2317,7 @@ export default function CajaJazminePage() {
           {!colapsadas.fijos && (
           <CardContent className="space-y-2 reveal-stagger">
             {fijosSinCargarMesActual.length > 0 && (
-              <div className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+                <div className="rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-xs text-purple-950">
                 <span className="font-semibold">
                   {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
                 </span>
