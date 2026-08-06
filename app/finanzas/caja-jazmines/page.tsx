@@ -1186,6 +1186,12 @@ export default function CajaJazminePage() {
   const proxMesISO = `${proxMesDate.getFullYear()}-${String(proxMesDate.getMonth() + 1).padStart(2, "0")}`
   const tituloProxMes = proxMesDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
 
+  // Tarjeta "Servicios a pagar": hasta el día 19 muestra el mes VIGENTE;
+  // a partir del 20 pasa a estimar el mes siguiente (misma regla que el hook).
+  const estimacionEsProxMes = ahora.getDate() >= 20
+  const mesEstimacionDate = estimacionEsProxMes ? proxMesDate : new Date(ahora.getFullYear(), ahora.getMonth(), 1)
+  const tituloMesEstimacion = mesEstimacionDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+
   const gastosProximoMes1al10 = [...data.gastosFijosMes, ...data.gastosFijosCubiertos]
     .map((g) => {
       if (!g.fechaVencimiento) return null
@@ -1886,10 +1892,12 @@ export default function CajaJazminePage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">
-                  Servicios a pagar el mes que viene
+                  {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
                 </p>
                 <p className="text-xs text-amber-700/70 mt-0.5 text-pretty">
-                  Estimado para {tituloProxMes} según los últimos montos pagados y su tendencia.
+                  {estimacionEsProxMes
+                    ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
+                    : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
                 </p>
               </div>
             </div>
@@ -1918,7 +1926,9 @@ export default function CajaJazminePage() {
                           {est.tipo === "sueldos"
                             ? "Sueldos del equipo de ventas"
                             : est.tipo === "anual"
-                              ? "Vence el mes que viene"
+                              ? estimacionEsProxMes
+                                ? "Vence el mes que viene"
+                                : "Vence este mes"
                               : est.registros >= 2
                                 ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
                                 : est.registros === 1
@@ -3528,7 +3538,7 @@ export default function CajaJazminePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Confirmación archivar/eliminar del menú "⋯" de gastos variables ── */}
+      {/* ── Confirmación archivar/eliminar del menú "⋯" de gastos variables ���─ */}
       <AlertDialog open={!!accionVariable} onOpenChange={(open) => !open && setAccionVariable(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
