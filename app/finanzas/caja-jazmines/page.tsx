@@ -991,9 +991,10 @@ export default function CajaJazminePage() {
   }
 
   // Archivar un gasto VARIABLE (único): lo mueve al archivo y lo quita de la lista activa.
-  function archivarVariable(gasto: { id: string; nombre: string; salon: string; fecha: string; monto: number }) {
+  // La fecha del archivo es la fecha en que se HIZO el gasto (si se cargó); si no, el vencimiento.
+  function archivarVariable(gasto: { id: string; nombre: string; salon: string; fecha: string; fechaGasto?: string; monto: number }) {
     archivarGasto({
-      fecha: gasto.fecha || hoyStr,
+      fecha: gasto.fechaGasto || gasto.fecha || hoyStr,
       concepto: gasto.nombre,
       monto: gasto.monto,
       salon: gasto.salon || null,
@@ -1422,6 +1423,8 @@ export default function CajaJazminePage() {
   }
   // Confirmación de eliminación lanzada desde el menú "⋯" de cada gasto fijo
   const [accionMenu, setAccionMenu] = useState<{ tipo: "eliminar"; gasto: GastoFijoMes } | null>(null)
+  // Confirmación de archivar/eliminar lanzada desde el menú "⋯" de cada gasto variable
+  const [accionVariable, setAccionVariable] = useState<{ tipo: "archivar" | "eliminar"; gasto: GastoVariable } | null>(null)
 
   // ── Agregar gasto fijo ────────────────��─────────────────────────��────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
@@ -1489,9 +1492,12 @@ export default function CajaJazminePage() {
     monto: "",
     salon: "",
     fecha: "",
+    fechaGasto: "",
     repartir: false,
     distribucion: [] as DistribucionSalon[],
   })
+  // Si tiene valor, el modal de gasto variable está editando ese costo operativo.
+  const [editandoVariableId, setEditandoVariableId] = useState<string | null>(null)
 
   const variableRepartoInvalido = nuevoGasto.repartir && !repartoValido(nuevoGasto.distribucion)
 
@@ -1508,25 +1514,58 @@ export default function CajaJazminePage() {
     } else if (!nuevoGasto.salon) {
       return
     }
-    if (!confirm(`¿Agendar el gasto "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} con vencimiento el ${nuevoGasto.fecha}?`)) return
+    const esEdicion = !!editandoVariableId
+    if (!esEdicion && !confirm(`¿Agendar el gasto "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} con vencimiento el ${nuevoGasto.fecha}?`)) return
     const dist = nuevoGasto.repartir
       ? nuevoGasto.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
-    addCostoOperativo({
-      concepto: nuevoGasto.nombre,
-      tipo: "Gastos Generales" as any,
-      monto: Number(nuevoGasto.monto),
-      frecuencia: "Por Evento",
-      esPorPersona: false,
-      salon: dist.length > 0 ? null : nuevoGasto.salon,
-      activo: true,
-      fechaVencimiento: nuevoGasto.fecha,
-      esVariable: true,
-      pagado: false,
-      distribucion: dist.length > 0 ? dist : undefined,
-    })
-    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", repartir: false, distribucion: [] })
+    if (esEdicion) {
+      updateCostoOperativo(editandoVariableId, {
+        concepto: nuevoGasto.nombre,
+        monto: Number(nuevoGasto.monto),
+        salon: dist.length > 0 ? null : nuevoGasto.salon,
+        fechaVencimiento: nuevoGasto.fecha,
+        fechaGasto: nuevoGasto.fechaGasto || undefined,
+        distribucion: dist.length > 0 ? dist : undefined,
+      })
+      toast({ title: "Gasto actualizado", description: nuevoGasto.nombre })
+    } else {
+      addCostoOperativo({
+        concepto: nuevoGasto.nombre,
+        tipo: "Gastos Generales" as any,
+        monto: Number(nuevoGasto.monto),
+        frecuencia: "Por Evento",
+        esPorPersona: false,
+        salon: dist.length > 0 ? null : nuevoGasto.salon,
+        activo: true,
+        fechaVencimiento: nuevoGasto.fecha,
+        fechaGasto: nuevoGasto.fechaGasto || undefined,
+        esVariable: true,
+        pagado: false,
+        distribucion: dist.length > 0 ? dist : undefined,
+      })
+    }
+    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+    setEditandoVariableId(null)
     setModalVariableAbierto(false)
+  }
+
+  // Abre el modal de gasto variable en modo edición con los datos del gasto.
+  function abrirEdicionVariable(gasto: GastoVariable) {
+    const orig = state.costosOperativos?.find((c) => c.id === gasto.id)
+    if (!orig) return
+    const dist = (orig.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+    setNuevoGasto({
+      nombre: orig.concepto,
+      monto: String(orig.monto),
+      salon: orig.salon || "",
+      fecha: orig.fechaVencimiento || "",
+      fechaGasto: orig.fechaGasto || "",
+      repartir: dist.length > 0,
+      distribucion: dist,
+    })
+    setEditandoVariableId(gasto.id)
+    setModalVariableAbierto(true)
   }
 
   // Color del salón activo: tiñe el icono del header y el fondo del body.
@@ -2807,7 +2846,11 @@ export default function CajaJazminePage() {
                         </>
                       ) : (
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatFecha(gasto.fecha)}
+                          {gasto.fechaGasto ? (
+                            <span className="font-semibold text-purple-600">{`hecho el ${formatFecha(gasto.fechaGasto)}`}</span>
+                          ) : null}
+                          {gasto.fechaGasto && gasto.fecha ? " · " : ""}
+                          {gasto.fecha ? `vence ${formatFecha(gasto.fecha)}` : ""}
                         </p>
                       )}
                     </div>
@@ -2864,41 +2907,38 @@ export default function CajaJazminePage() {
                           <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
                         </Button>
                       </ConfirmAction>
-                      {/* Archivar */}
-                      <ConfirmAction
-                        title="¿Archivar gasto?"
-                        description={`Se registra el pago de "${gasto.nombre}" (${formatCurrency(gasto.monto)}) en el archivo.`}
-                        confirmLabel="Sí, archivar"
-                        onConfirm={() => archivarVariable(gasto)}
-                      >
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-purple-600"
-                          title="Archivar gasto"
-                        >
-                          <Archive className="h-3.5 w-3.5" />
-                          <span className="sr-only">Archivar gasto variable</span>
-                        </Button>
-                      </ConfirmAction>
-                      {/* Eliminar */}
-                      <ConfirmAction
-                        title="¿Eliminar gasto?"
-                        description={`Se elimina "${gasto.nombre}" de forma permanente. Esta acción no se puede deshacer.`}
-                        confirmLabel="Sí, eliminar"
-                        destructive
-                        onConfirm={() => deleteCostoOperativo(gasto.id)}
-                      >
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="sr-only">Eliminar gasto variable</span>
-                        </Button>
-                      </ConfirmAction>
+                      {/* Menú de acciones (igual que gastos fijos) */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            title="Más acciones"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                            <span className="sr-only">Más acciones para {gasto.nombre}</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem onSelect={() => abrirEdicionVariable(gasto)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setAccionVariable({ tipo: "archivar", gasto })}>
+                            <Archive className="h-3.5 w-3.5" />
+                            Archivar gasto
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => setAccionVariable({ tipo: "eliminar", gasto })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       </>)}
                     </div>
                   </div>
@@ -3173,10 +3213,19 @@ export default function CajaJazminePage() {
       </Dialog>
 
       {/* ── Dialog: Agendar gasto variable ─────����──���──��──���──────────��──────── */}
-      <Dialog open={modalVariableAbierto} onOpenChange={setModalVariableAbierto}>
+      <Dialog
+        open={modalVariableAbierto}
+        onOpenChange={(open) => {
+          setModalVariableAbierto(open)
+          if (!open) {
+            setEditandoVariableId(null)
+            setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Agendar gasto variable</DialogTitle>
+            <DialogTitle>{editandoVariableId ? "Editar gasto variable" : "Agendar gasto variable"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -3235,16 +3284,27 @@ export default function CajaJazminePage() {
                 </div>
               )}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="gv-fecha">Fecha del gasto</Label>
-              <Input
-                id="gv-fecha"
-                type="date"
-                value={nuevoGasto.fecha}
-                onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Podés agendar gastos futuros; se ordenan automáticamente por fecha.
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="gv-fecha-gasto">Fecha del gasto</Label>
+                <Input
+                  id="gv-fecha-gasto"
+                  type="date"
+                  value={nuevoGasto.fechaGasto}
+                  onChange={(e) => setNuevoGasto((p) => ({ ...p, fechaGasto: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="gv-fecha">Vencimiento</Label>
+                <Input
+                  id="gv-fecha"
+                  type="date"
+                  value={nuevoGasto.fecha}
+                  onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground col-span-2">
+                La fecha del gasto es opcional (cuándo se hizo). El vencimiento ordena la lista y dispara las alertas.
               </p>
             </div>
           </div>
@@ -3262,7 +3322,7 @@ export default function CajaJazminePage() {
               }
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
-              Agendar
+              {editandoVariableId ? "Guardar cambios" : "Agendar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3299,6 +3359,45 @@ export default function CajaJazminePage() {
               }}
             >
               Sí, eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Confirmación archivar/eliminar del menú "⋯" de gastos variables ── */}
+      <AlertDialog open={!!accionVariable} onOpenChange={(open) => !open && setAccionVariable(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {accionVariable?.tipo === "archivar" ? "¿Archivar gasto?" : "¿Eliminar gasto?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {accionVariable
+                ? accionVariable.tipo === "archivar"
+                  ? `Se registra el pago de "${accionVariable.gasto.nombre}" (${formatCurrency(accionVariable.gasto.monto)}) en el archivo.`
+                  : `Se elimina "${accionVariable.gasto.nombre}" de forma permanente. Esta acción no se puede deshacer.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                accionVariable?.tipo === "eliminar"
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : "bg-purple-600 text-white hover:bg-purple-700"
+              }
+              onClick={() => {
+                if (!accionVariable) return
+                if (accionVariable.tipo === "archivar") {
+                  archivarVariable(accionVariable.gasto)
+                } else {
+                  deleteCostoOperativo(accionVariable.gasto.id)
+                }
+                setAccionVariable(null)
+              }}
+            >
+              {accionVariable?.tipo === "archivar" ? "Sí, archivar" : "Sí, eliminar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
