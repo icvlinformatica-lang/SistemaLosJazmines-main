@@ -1132,19 +1132,17 @@ export default function CajaJazminePage() {
     const desde = toISO(lunes)
     const hasta = toISO(domingo)
 
-    // Ingresos de la semana: siempre la parte que REALMENTE entra a Caja
-    // Jazmines de cada cuota (montoJazmines). Al cobrar una cuota, el resto
-    // va a Caja Eventos, así que usar la cuota completa sobreestimaría.
-    // data.cuotasPorCobrar ya viene filtrado por salón desde el hook.
+    // "Cobro esta semana" = todo lo cobrable ya: la parte que REALMENTE entra a
+    // Caja Jazmines (montoJazmines; el resto va a Caja Eventos) de las cuotas
+    // que vencen entre lunes y domingo MÁS las vencidas de antes que siguen sin
+    // cobrarse. data.cuotasPorCobrar ya viene filtrado por salón desde el hook.
     const cuotasSemana = data.cuotasPorCobrar.filter(
       (c) => c.fechaVencimiento >= desde && c.fechaVencimiento <= hasta,
     )
-    const cobro = cuotasSemana.reduce((s, c) => s + c.montoJazmines, 0)
-
-    // Cuotas vencidas ANTES de esta semana que siguen sin cobrarse:
-    // son plata cobrable ya mismo, se informan aparte en la tarjeta.
     const cuotasVencidas = data.cuotasPorCobrar.filter((c) => c.fechaVencimiento < desde)
     const cobroVencidas = cuotasVencidas.reduce((s, c) => s + c.montoJazmines, 0)
+    // El número principal incluye lo de esta semana + lo vencido pendiente.
+    const cobro = cuotasSemana.reduce((s, c) => s + c.montoJazmines, 0) + cobroVencidas
 
     // Gastos de la semana: fijos y variables pendientes que vencen entre lunes y domingo
     const fijosSemana = data.gastosFijosMes.filter(
@@ -1799,12 +1797,15 @@ export default function CajaJazminePage() {
                     {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
                   </p>
                   <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
-                    {cuotasSemanaJazCount > 0
-                      ? `${cuotasSemanaJazCount} ${cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (parte Jazmines)`
-                      : "Sin cuotas esta semana"}
+                    {(() => {
+                      const total = cuotasSemanaJazCount + cuotasVencidasJazCount
+                      return total > 0
+                        ? `${total} ${total === 1 ? "cuota a cobrar" : "cuotas a cobrar"} (parte Jazmines)`
+                        : "Nada por cobrar esta semana"
+                    })()}
                     {cuotasVencidasJazCount > 0 && (
                       <span className="font-semibold text-red-700">
-                        {` · ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} sin cobrar (${montosOcultos.cobroSemana ? MONTO_OCULTO : formatCurrency(cobroVencidasJaz)})`}
+                        {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${montosOcultos.cobroSemana ? MONTO_OCULTO : formatCurrency(cobroVencidasJaz)})`}
                       </span>
                     )}
                   </p>
