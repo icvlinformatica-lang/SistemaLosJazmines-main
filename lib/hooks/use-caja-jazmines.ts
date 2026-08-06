@@ -528,6 +528,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     )
     for (const evento of eventos) {
       if (evento.estado === "cancelado") continue
+      // Comisión archivada o eliminada desde Caja Jazmines: no se lista más.
+      if (evento.contrato?.comisionOculta) continue
       const nombreVendedor = evento.contrato?.vendedor
       if (!nombreVendedor) continue
       const vendedor = vendedoresPorNombre.get(nombreVendedor.toLowerCase())

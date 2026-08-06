@@ -1005,6 +1005,38 @@ export default function CajaJazminePage() {
     deleteCostoOperativo(gasto.id)
   }
 
+  // Archivar una COMISIÓN: la registra en el archivo histórico y la oculta de
+  // la lista (persiste comisionOculta en el contrato del evento).
+  function archivarComision(gasto: GastoVariable) {
+    const eventoId = gasto.comisionDetalle?.eventoId
+    if (!eventoId) return
+    const evento = state.eventos?.find((e) => e.id === eventoId) as EventoGuardado | undefined
+    archivarGasto({
+      fecha: gasto.fecha || hoyStr,
+      concepto: gasto.nombre,
+      monto: gasto.monto,
+      salon: gasto.salon || null,
+      origen: "caja_jazmines_comision",
+      categoria: "Comisión vendedor",
+      refId: gasto.id,
+    })
+    updateEvento(eventoId, {
+      contrato: { ...(evento?.contrato || {}), comisionOculta: true },
+    })
+    toast({ title: "Comisión archivada", description: gasto.nombre })
+  }
+
+  // Eliminar una COMISIÓN de la lista: solo la oculta (no toca el archivo).
+  function eliminarComision(gasto: GastoVariable) {
+    const eventoId = gasto.comisionDetalle?.eventoId
+    if (!eventoId) return
+    const evento = state.eventos?.find((e) => e.id === eventoId) as EventoGuardado | undefined
+    updateEvento(eventoId, {
+      contrato: { ...(evento?.contrato || {}), comisionOculta: true },
+    })
+    toast({ title: "Comisión eliminada de la lista", description: gasto.nombre })
+  }
+
   // ── Marcar comisión de vendedor como pagada / pendiente ─────────────────
   // Persiste en el evento (comisionPagada), por lo que también se ve en
   // Eventos → Vendedores. Queda registrado en Configuración → Actividad.
@@ -2868,7 +2900,7 @@ export default function CajaJazminePage() {
                           badgeEstadoVar(gasto.estado)
                         )}
                       </div>
-                      {gasto.esComision && gasto.comisionDetalle && (
+                      {gasto.esComision && gasto.comisionDetalle && (<>
                         <ConfirmAction
                           title={esPagado ? "¿Marcar comisión como pendiente?" : "¿Marcar comisión como pagada?"}
                           description={`${gasto.nombre} · ${formatCurrency(gasto.monto)}. ${esPagado ? "Volverá a figurar como pendiente." : "Quedará registrada como pagada también en Vendedores."}`}
@@ -2885,7 +2917,35 @@ export default function CajaJazminePage() {
                             <span className="sr-only">{esPagado ? "Marcar comisión pendiente" : "Marcar comisión pagada"}</span>
                           </Button>
                         </ConfirmAction>
-                      )}
+                        {/* Menú de acciones de la comisión */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              title="Más acciones"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              <span className="sr-only">Más acciones para {gasto.nombre}</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem onSelect={() => setAccionVariable({ tipo: "archivar", gasto })}>
+                              <Archive className="h-3.5 w-3.5" />
+                              Archivar comisión
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => setAccionVariable({ tipo: "eliminar", gasto })}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>)}
                       {!gasto.esComision && (<>
                       {/* Toggle pagado */}
                       <ConfirmAction
@@ -3369,13 +3429,23 @@ export default function CajaJazminePage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {accionVariable?.tipo === "archivar" ? "¿Archivar gasto?" : "¿Eliminar gasto?"}
+              {accionVariable?.gasto.esComision
+                ? accionVariable?.tipo === "archivar"
+                  ? "¿Archivar comisión?"
+                  : "¿Eliminar comisión?"
+                : accionVariable?.tipo === "archivar"
+                  ? "¿Archivar gasto?"
+                  : "¿Eliminar gasto?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {accionVariable
-                ? accionVariable.tipo === "archivar"
-                  ? `Se registra el pago de "${accionVariable.gasto.nombre}" (${formatCurrency(accionVariable.gasto.monto)}) en el archivo.`
-                  : `Se elimina "${accionVariable.gasto.nombre}" de forma permanente. Esta acción no se puede deshacer.`
+                ? accionVariable.gasto.esComision
+                  ? accionVariable.tipo === "archivar"
+                    ? `Se registra "${accionVariable.gasto.nombre}" (${formatCurrency(accionVariable.gasto.monto)}) en el archivo y se quita de esta lista.`
+                    : `Se quita "${accionVariable.gasto.nombre}" de esta lista. No afecta al evento ni al vendedor.`
+                  : accionVariable.tipo === "archivar"
+                    ? `Se registra el pago de "${accionVariable.gasto.nombre}" (${formatCurrency(accionVariable.gasto.monto)}) en el archivo.`
+                    : `Se elimina "${accionVariable.gasto.nombre}" de forma permanente. Esta acción no se puede deshacer.`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -3389,7 +3459,10 @@ export default function CajaJazminePage() {
               }
               onClick={() => {
                 if (!accionVariable) return
-                if (accionVariable.tipo === "archivar") {
+                if (accionVariable.gasto.esComision) {
+                  if (accionVariable.tipo === "archivar") archivarComision(accionVariable.gasto)
+                  else eliminarComision(accionVariable.gasto)
+                } else if (accionVariable.tipo === "archivar") {
                   archivarVariable(accionVariable.gasto)
                 } else {
                   deleteCostoOperativo(accionVariable.gasto.id)

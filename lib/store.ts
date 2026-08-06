@@ -182,10 +182,12 @@ export interface Evento {
   email?: string
   dni?: string
   fechaNacimiento?: string
-  /** Vendedor que cerró la venta del evento — impacta en el contrato impreso y en Eventos > Vendedores */
-  vendedor?: string
-  /** Observaciones extra que se dejan asentadas en el contrato impreso, debajo de Datos del evento */
-  observaciones?: string
+    /** Vendedor que cerró la venta del evento — impacta en el contrato impreso y en Eventos > Vendedores */
+    vendedor?: string
+    /** Observaciones extra que se dejan asentadas en el contrato impreso, debajo de Datos del evento */
+    observaciones?: string
+    /** true si la comisión del vendedor se archivó/eliminó desde Caja Jazmines (no se lista más) */
+    comisionOculta?: boolean
   }
 
   // Plan de cuotas
@@ -412,6 +414,7 @@ export interface RegistroMonto {
 export type OrigenGastoArchivado =
   | "caja_jazmines_fijo"
   | "caja_jazmines_variable"
+  | "caja_jazmines_comision"
   | "caja_eventos"
 
 export interface GastoArchivado {

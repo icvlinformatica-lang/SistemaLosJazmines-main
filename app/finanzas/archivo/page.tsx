@@ -31,6 +31,7 @@ import { BarrasPorPeriodo, CircularDistribucion, type SerieItem } from "./archiv
 const ORIGEN_LABEL: Record<GastoArchivado["origen"], string> = {
   caja_jazmines_fijo: "Jazmines · Fijo",
   caja_jazmines_variable: "Jazmines · Variable",
+  caja_jazmines_comision: "Jazmines · Comisión",
   caja_eventos: "Eventos",
 }
 
@@ -162,7 +163,8 @@ export default function ArchivoPage() {
             <SelectContent>
               <SelectItem value="todos">Todas las cajas</SelectItem>
               <SelectItem value="caja_jazmines_fijo">Jazmines · Fijo</SelectItem>
-              <SelectItem value="caja_jazmines_variable">Jazmines · Variable</SelectItem>
+                <SelectItem value="caja_jazmines_variable">Jazmines · Variable</SelectItem>
+                <SelectItem value="caja_jazmines_comision">Jazmines · Comisión</SelectItem>
               <SelectItem value="caja_eventos">Eventos</SelectItem>
             </SelectContent>
           </Select>
