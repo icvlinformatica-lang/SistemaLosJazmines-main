@@ -668,6 +668,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     let gastosFijosProximoMes = 0
     for (const c of costosFijos) {
       if (c.frecuencia !== "Mensual") continue
+      // Solo entran los gastos fijos etiquetados como "Servicio".
+      if (!c.esServicio) continue
       const hist = (c.historialMontos || []).slice().sort((a, b) => a.mes.localeCompare(b.mes))
       // Variaciones % entre pagos consecutivos registrados (solo cambios reales)
       const cambios: number[] = []
@@ -705,6 +707,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     }
     for (const c of costosFijos) {
       if (c.frecuencia !== "Anual" || !c.fechaVencimiento) continue
+      // Solo entran los gastos fijos etiquetados como "Servicio".
+      if (!c.esServicio) continue
       const [, mm] = c.fechaVencimiento.split("-").map(Number)
       if (Number(mesProximoKey.slice(5, 7)) === mm) {
         estimacionesProximoMes.push({

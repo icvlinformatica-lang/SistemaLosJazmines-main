@@ -1275,6 +1275,7 @@ export default function CajaJazminePage() {
     salon: "",
     repartir: false,
     distribucion: [] as DistribucionSalon[],
+    esServicio: false,
   })
 
   const editRepartoInvalido = editFijo.repartir && !repartoValido(editFijo.distribucion)
@@ -1292,6 +1293,7 @@ export default function CajaJazminePage() {
       salon: original?.salon ?? "",
       repartir: dist.length > 0,
       distribucion: dist,
+      esServicio: original?.esServicio ?? false,
     })
   }
 
@@ -1308,6 +1310,7 @@ export default function CajaJazminePage() {
       fechaVencimiento: editFijo.fechaVencimiento || undefined,
       salon: dist.length > 0 ? null : editFijo.salon || null,
       distribucion: dist.length > 0 ? dist : undefined,
+      esServicio: editFijo.esServicio,
     })
     setEditandoFijo(null)
   }
@@ -1482,6 +1485,7 @@ export default function CajaJazminePage() {
     frecuencia: "Mensual" as "Mensual" | "Anual",
     repartir: false,
     distribucion: [] as DistribucionSalon[],
+    esServicio: false,
   })
 
   const fijoRepartoInvalido = nuevoFijo.repartir && !repartoValido(nuevoFijo.distribucion)
@@ -1509,6 +1513,7 @@ export default function CajaJazminePage() {
       activo: true,
       fechaVencimiento: nuevoFijo.fechaVencimiento || undefined,
       esVariable: false,
+      esServicio: nuevoFijo.esServicio,
       pagado: false,
       distribucion: dist.length > 0 ? dist : undefined,
       // El mes indicado queda como primer período del historial: desde ahí
@@ -1524,7 +1529,7 @@ export default function CajaJazminePage() {
         },
       ],
     })
-    setNuevoFijo({ concepto: "", monto: "", mesCorresponde: mesActualISO(), fechaVencimiento: "", salon: "", frecuencia: "Mensual", repartir: false, distribucion: [] })
+    setNuevoFijo({ concepto: "", monto: "", mesCorresponde: mesActualISO(), fechaVencimiento: "", salon: "", frecuencia: "Mensual", repartir: false, distribucion: [], esServicio: false })
     setModalFijoAbierto(false)
   }
 
@@ -3241,6 +3246,21 @@ export default function CajaJazminePage() {
                 <option value="Anual">Anual</option>
               </select>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="space-y-0.5 pr-3">
+                <Label htmlFor="nf-servicio" className="text-amber-800">
+                  Etiqueta &quot;Servicio&quot;
+                </Label>
+                <p className="text-xs text-amber-700/80">
+                  Los gastos con esta etiqueta aparecen en la tarjeta &quot;Servicios a pagar&quot;.
+                </p>
+              </div>
+              <Switch
+                id="nf-servicio"
+                checked={nuevoFijo.esServicio}
+                onCheckedChange={(checked) => setNuevoFijo((p) => ({ ...p, esServicio: checked }))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalFijoAbierto(false)}>
@@ -3369,6 +3389,21 @@ export default function CajaJazminePage() {
               <p className="text-xs text-muted-foreground">
                 El día se repite cada período: si vence el 10, figura el 10 de cada mes.
               </p>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="space-y-0.5 pr-3">
+                <Label htmlFor="ef-servicio" className="text-amber-800">
+                  Etiqueta &quot;Servicio&quot;
+                </Label>
+                <p className="text-xs text-amber-700/80">
+                  Los gastos con esta etiqueta aparecen en la tarjeta &quot;Servicios a pagar&quot;.
+                </p>
+              </div>
+              <Switch
+                id="ef-servicio"
+                checked={editFijo.esServicio}
+                onCheckedChange={(checked) => setEditFijo((p) => ({ ...p, esServicio: checked }))}
+              />
             </div>
           </div>
           <DialogFooter>
