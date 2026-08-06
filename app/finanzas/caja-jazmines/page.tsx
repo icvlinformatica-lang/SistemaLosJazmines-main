@@ -1819,7 +1819,7 @@ export default function CajaJazminePage() {
                         : "Nada por cobrar esta semana"
                     })()}
                     {cuotasVencidasJazCount > 0 && (
-                      <span className="font-semibold text-red-700">
+                      <span className="font-semibold" style={{ color: "#000000" }}>
                         {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${montosOcultos.cobroSemana ? MONTO_OCULTO : formatCurrency(cobroVencidasJaz)})`}
                       </span>
                     )}
