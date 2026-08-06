@@ -364,6 +364,8 @@ export interface CostoOperativo {
   fechaGasto?: string
   /** true para gastos variables agendados desde caja-jazmines */
   esVariable?: boolean
+  /** Etiqueta "Servicio": solo estos gastos fijos entran en la tarjeta "Servicios a pagar" */
+  esServicio?: boolean
   /** true si el gasto ya fue pagado */
   pagado?: boolean
   /**

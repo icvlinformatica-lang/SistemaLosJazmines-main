@@ -92,7 +92,9 @@ export interface EstimacionProximoMes {
   /** Cantidad de registros históricos del servicio */
   registros: number
   tipo: "mensual" | "sueldos" | "anual"
-}
+  /** Salón al que corresponde el servicio (null = general/repartido) */
+  salon?: string | null
+  }
 
 export interface MesProyeccionJaz {
   key: string // YYYY-MM
@@ -668,6 +670,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     let gastosFijosProximoMes = 0
     for (const c of costosFijos) {
       if (c.frecuencia !== "Mensual") continue
+      // Solo entran los gastos fijos etiquetados como "Servicio".
+      if (!c.esServicio) continue
       const hist = (c.historialMontos || []).slice().sort((a, b) => a.mes.localeCompare(b.mes))
       // Variaciones % entre pagos consecutivos registrados (solo cambios reales)
       const cambios: number[] = []
@@ -688,6 +692,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         variacionPct: estimarMesSiguiente ? Math.round(variacion * 1000) / 10 : 0,
         registros: hist.length,
         tipo: "mensual",
+        salon: c.salon ?? null,
       })
       gastosFijosProximoMes += estimado
     }
@@ -705,6 +710,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     }
     for (const c of costosFijos) {
       if (c.frecuencia !== "Anual" || !c.fechaVencimiento) continue
+      // Solo entran los gastos fijos etiquetados como "Servicio".
+      if (!c.esServicio) continue
       const [, mm] = c.fechaVencimiento.split("-").map(Number)
       if (Number(mesProximoKey.slice(5, 7)) === mm) {
         estimacionesProximoMes.push({
@@ -715,6 +722,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           variacionPct: 0,
           registros: (c.historialMontos || []).length,
           tipo: "anual",
+          salon: c.salon ?? null,
         })
         gastosFijosProximoMes += c.monto
       }

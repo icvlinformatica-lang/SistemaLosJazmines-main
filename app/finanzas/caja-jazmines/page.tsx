@@ -1275,6 +1275,7 @@ export default function CajaJazminePage() {
     salon: "",
     repartir: false,
     distribucion: [] as DistribucionSalon[],
+    esServicio: false,
   })
 
   const editRepartoInvalido = editFijo.repartir && !repartoValido(editFijo.distribucion)
@@ -1292,6 +1293,7 @@ export default function CajaJazminePage() {
       salon: original?.salon ?? "",
       repartir: dist.length > 0,
       distribucion: dist,
+      esServicio: original?.esServicio ?? false,
     })
   }
 
@@ -1308,6 +1310,7 @@ export default function CajaJazminePage() {
       fechaVencimiento: editFijo.fechaVencimiento || undefined,
       salon: dist.length > 0 ? null : editFijo.salon || null,
       distribucion: dist.length > 0 ? dist : undefined,
+      esServicio: editFijo.esServicio,
     })
     setEditandoFijo(null)
   }
@@ -1482,6 +1485,7 @@ export default function CajaJazminePage() {
     frecuencia: "Mensual" as "Mensual" | "Anual",
     repartir: false,
     distribucion: [] as DistribucionSalon[],
+    esServicio: false,
   })
 
   const fijoRepartoInvalido = nuevoFijo.repartir && !repartoValido(nuevoFijo.distribucion)
@@ -1509,6 +1513,7 @@ export default function CajaJazminePage() {
       activo: true,
       fechaVencimiento: nuevoFijo.fechaVencimiento || undefined,
       esVariable: false,
+      esServicio: nuevoFijo.esServicio,
       pagado: false,
       distribucion: dist.length > 0 ? dist : undefined,
       // El mes indicado queda como primer período del historial: desde ahí
@@ -1524,7 +1529,7 @@ export default function CajaJazminePage() {
         },
       ],
     })
-    setNuevoFijo({ concepto: "", monto: "", mesCorresponde: mesActualISO(), fechaVencimiento: "", salon: "", frecuencia: "Mensual", repartir: false, distribucion: [] })
+    setNuevoFijo({ concepto: "", monto: "", mesCorresponde: mesActualISO(), fechaVencimiento: "", salon: "", frecuencia: "Mensual", repartir: false, distribucion: [], esServicio: false })
     setModalFijoAbierto(false)
   }
 
@@ -1916,35 +1921,61 @@ export default function CajaJazminePage() {
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detalleProxAbierto ? "rotate-180" : ""}`} />
                 {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
               </button>
-              {detalleProxAbierto && (
-                <div className="mt-2 divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
-                  {estimacionesProximoMes.map((est) => (
-                    <div key={est.id} className="flex items-center gap-3 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{est.concepto}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {est.tipo === "sueldos"
-                            ? "Sueldos del equipo de ventas"
-                            : est.tipo === "anual"
-                              ? estimacionEsProxMes
-                                ? "Vence el mes que viene"
-                                : "Vence este mes"
-                              : est.registros >= 2
-                                ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
-                                : est.registros === 1
-                                  ? `Último pagado: ${formatCurrency(est.montoActual)} · 1 pago registrado`
-                                  : "Sin historial: se usa el monto agendado"}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold tabular-nums">
-                          {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
-                        </p>
-                      </div>
+              {detalleProxAbierto && (() => {
+                const renderEstimacion = (est: (typeof estimacionesProximoMes)[number]) => (
+                  <div key={est.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{est.concepto}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {est.tipo === "sueldos"
+                          ? "Sueldos del equipo de ventas"
+                          : est.tipo === "anual"
+                            ? estimacionEsProxMes
+                              ? "Vence el mes que viene"
+                              : "Vence este mes"
+                            : est.registros >= 2
+                              ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
+                              : est.registros === 1
+                                ? `Último pagado: ${formatCurrency(est.montoActual)} · 1 pago registrado`
+                                : "Sin historial: se usa el monto agendado"}
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold tabular-nums">
+                        {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
+                      </p>
+                    </div>
+                  </div>
+                )
+                // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
+                if (salonFiltro === "todos") {
+                  return (
+                    <div className="mt-2 space-y-2">
+                      {agruparPorSalon(
+                        estimacionesProximoMes.map((est) => ({ ...est, monto: est.estimado })),
+                      ).map((carpeta) => (
+                        <CarpetaGastos
+                          key={`serv-${carpeta.salon}`}
+                          salon={carpeta.salon}
+                          count={carpeta.items.length}
+                          subtotal={carpeta.subtotal}
+                          unidad="servicio"
+                        >
+                          <div className="divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                            {carpeta.items.map(renderEstimacion)}
+                          </div>
+                        </CarpetaGastos>
+                      ))}
+                    </div>
+                  )
+                }
+                // Vista de un salón: lista plana como siempre.
+                return (
+                  <div className="mt-2 divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                    {estimacionesProximoMes.map(renderEstimacion)}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </CardContent>
@@ -3241,6 +3272,21 @@ export default function CajaJazminePage() {
                 <option value="Anual">Anual</option>
               </select>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="space-y-0.5 pr-3">
+                <Label htmlFor="nf-servicio" className="text-amber-800">
+                  Etiqueta &quot;Servicio&quot;
+                </Label>
+                <p className="text-xs text-amber-700/80">
+                  Los gastos con esta etiqueta aparecen en la tarjeta &quot;Servicios a pagar&quot;.
+                </p>
+              </div>
+              <Switch
+                id="nf-servicio"
+                checked={nuevoFijo.esServicio}
+                onCheckedChange={(checked) => setNuevoFijo((p) => ({ ...p, esServicio: checked }))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalFijoAbierto(false)}>
@@ -3257,7 +3303,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ─�� Dialog: Editar gasto fijo ───────────────────────────────��──────���─ */}
+      {/* ─��� Dialog: Editar gasto fijo ───────────────────────────────��──────���─ */}
       {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────��───── */}
       <Dialog
         open={!!editandoSueldoVendedor}
@@ -3369,6 +3415,21 @@ export default function CajaJazminePage() {
               <p className="text-xs text-muted-foreground">
                 El día se repite cada período: si vence el 10, figura el 10 de cada mes.
               </p>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="space-y-0.5 pr-3">
+                <Label htmlFor="ef-servicio" className="text-amber-800">
+                  Etiqueta &quot;Servicio&quot;
+                </Label>
+                <p className="text-xs text-amber-700/80">
+                  Los gastos con esta etiqueta aparecen en la tarjeta &quot;Servicios a pagar&quot;.
+                </p>
+              </div>
+              <Switch
+                id="ef-servicio"
+                checked={editFijo.esServicio}
+                onCheckedChange={(checked) => setEditFijo((p) => ({ ...p, esServicio: checked }))}
+              />
             </div>
           </div>
           <DialogFooter>
