@@ -2329,7 +2329,7 @@ export default function CajaJazminePage() {
                   </p>
                 )}
                 {(() => {
-                  const carpetas = agruparPorSalon(gastosFijosMes)
+                  let carpetas = agruparPorSalon(gastosFijosMes)
                   // En la vista de todos los salones, TODOS los salones tienen
                   // su carpeta (incluso Salon 4 y 5 sin gastos propios), porque
                   // las cuotas de gastos repartidos se pagan desde cada salón.
@@ -2339,6 +2339,21 @@ export default function CajaJazminePage() {
                         carpetas.push({ salon, items: [], subtotal: 0 })
                       }
                     }
+                    // Los gastos repartidos NO se muestran en General: cada
+                    // salón ya tiene su cuota con monto y vencimiento propios.
+                    // General solo queda para gastos sin salón y sin reparto,
+                    // y se oculta por completo si no tiene ninguno.
+                    carpetas = carpetas
+                      .map((c) => {
+                        if (c.salon !== "General") return c
+                        const propios = c.items.filter((g) => {
+                          const orig = state.costosOperativos?.find((co) => co.id === g.id)
+                          const dist = (orig?.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+                          return dist.length === 0
+                        })
+                        return { ...c, items: propios, subtotal: propios.reduce((s, g) => s + g.monto, 0) }
+                      })
+                      .filter((c) => c.salon !== "General" || c.items.length > 0)
                   }
                   for (const salon of cuotasRepartoFijos.keys()) {
                     if (!carpetas.some((c) => c.salon === salon)) {
