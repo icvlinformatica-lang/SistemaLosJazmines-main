@@ -358,6 +358,8 @@ export interface CostoOperativo {
   activo: boolean
   notas?: string
   fechaVencimiento?: string // YYYY-MM-DD
+  /** Fecha en la que se hizo el gasto (solo gastos variables). YYYY-MM-DD */
+  fechaGasto?: string
   /** true para gastos variables agendados desde caja-jazmines */
   esVariable?: boolean
   /** true si el gasto ya fue pagado */

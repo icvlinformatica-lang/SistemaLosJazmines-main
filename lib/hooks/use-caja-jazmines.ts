@@ -40,7 +40,10 @@ export interface GastoVariable {
   id: string
   nombre: string
   salon: string
+  /** Fecha de vencimiento del gasto (YYYY-MM-DD) */
   fecha: string
+  /** Fecha en la que se hizo el gasto (YYYY-MM-DD), opcional */
+  fechaGasto?: string
   monto: number
   estado: "pendiente" | "pagado" | "vencido"
   /** true si es una comisión de vendedor (generada automáticamente desde los eventos) */
@@ -510,6 +513,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           nombre: c.concepto,
           salon: c.salon ?? "",
           fecha: c.fechaVencimiento ?? "",
+          fechaGasto: c.fechaGasto,
           monto: c.monto,
           estado,
         } as GastoVariable
