@@ -30,11 +30,10 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
-import { construirCobroCuota } from "@/lib/cobrar-cuota"
 import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
-import type { EstadoAlerta, GastoFijoMes, CuotaPorCobrar, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
+import type { EstadoAlerta, GastoFijoMes, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
 import {
   Building,
   TrendingDown,
@@ -211,7 +210,7 @@ function puntoPrioridad(estado: EstadoAlerta) {
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence ma����������ana"
+  if (diasRestantes === 1) return "vence ma�����������ana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -748,8 +747,6 @@ export default function CajaJazminePage() {
   const { ahora } = useClock()
   const { toast } = useToast()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
-  const [cuotaSel, setCuotaSel] = useState<CuotaPorCobrar | null>(null)
-  const [marcarCobrada, setMarcarCobrada] = useState(false)
 
   // ── Extracción de dinero de Caja Jazmines (retiro con justificación) ─────
   const [extraerOpen, setExtraerOpen] = useState(false)
@@ -898,38 +895,6 @@ export default function CajaJazminePage() {
     setExtraerOpen(false)
   }
 
-  // Marca una cuota como ya cobrada (útil al cargar eventos viejos): genera el
-  // ingreso repartido entre Caja Eventos y Caja Jazmines según la regla del
-  // evento (regla única: costo + 5% a Eventos, resto a Jazmines), datado en el vencimiento.
-  function confirmarCobroCuota(cuota: CuotaPorCobrar) {
-    const evento = state.eventos?.find((e) => e.id === cuota.eventoId) as EventoGuardado | undefined
-    if (!evento) return
-    const { yaCobrada, planUpdate, movimientos } = construirCobroCuota(
-      evento,
-      cuota.numeroCuota,
-      cuota.montoCuota,
-      cuota.fechaVencimiento,
-      state.movimientosCaja || [],
-      {
-        insumos: state.insumos || [],
-        insumosBarra: state.insumosBarra || [],
-        recetas: state.recetas || [],
-        cocteles: state.cocteles || [],
-        servicios: state.servicios || [],
-      },
-    )
-    if (yaCobrada) {
-      toast({ title: "Esta cuota ya figura como cobrada." })
-      return
-    }
-    if (planUpdate) updateEvento(cuota.eventoId, planUpdate)
-    if (movimientos.length > 0) addMovimientosCaja(movimientos)
-    toast({
-      title: "Cuota marcada como cobrada",
-      description: `Cuota ${cuota.numeroCuota}/${cuota.totalCuotas} · ${cuota.eventoNombre}`,
-    })
-    setCuotaSel(null)
-  }
   const data = useCajaJazmines(state, salonFiltro, ahora)
 
   const hoyStr = ahora.toISOString().slice(0, 10)
@@ -1125,7 +1090,7 @@ export default function CajaJazminePage() {
   // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = 30 días, 1 = semana
 
-  const { cobroSemanaJaz, cuotasSemanaJazCount, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel } = useMemo(() => {
+  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel } = useMemo(() => {
     const diaSemana = ahora.getDay() // 0 = domingo
     const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
     const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
@@ -1134,11 +1099,19 @@ export default function CajaJazminePage() {
     const desde = toISO(lunes)
     const hasta = toISO(domingo)
 
-    // Ingresos de la semana: 50% de las cuotas que vencen entre lunes y domingo
+    // Ingresos de la semana: siempre la parte que REALMENTE entra a Caja
+    // Jazmines de cada cuota (montoJazmines). Al cobrar una cuota, el resto
+    // va a Caja Eventos, así que usar la cuota completa sobreestimaría.
+    // data.cuotasPorCobrar ya viene filtrado por salón desde el hook.
     const cuotasSemana = data.cuotasPorCobrar.filter(
       (c) => c.fechaVencimiento >= desde && c.fechaVencimiento <= hasta,
     )
     const cobro = cuotasSemana.reduce((s, c) => s + c.montoJazmines, 0)
+
+    // Cuotas vencidas ANTES de esta semana que siguen sin cobrarse:
+    // son plata cobrable ya mismo, se informan aparte en la tarjeta.
+    const cuotasVencidas = data.cuotasPorCobrar.filter((c) => c.fechaVencimiento < desde)
+    const cobroVencidas = cuotasVencidas.reduce((s, c) => s + c.montoJazmines, 0)
 
     // Gastos de la semana: fijos y variables pendientes que vencen entre lunes y domingo
     const fijosSemana = data.gastosFijosMes.filter(
@@ -1158,6 +1131,8 @@ export default function CajaJazminePage() {
     return {
       cobroSemanaJaz: cobro,
       cuotasSemanaJazCount: cuotasSemana.length,
+      cuotasVencidasJazCount: cuotasVencidas.length,
+      cobroVencidasJaz: cobroVencidas,
       gastosSemanaJaz: gastos,
       gastosSemanaJazDetalle: partes.join(" · "),
       saldoFinSemanaJaz: data.saldoActual + cobro - gastos,
@@ -1576,12 +1551,11 @@ export default function CajaJazminePage() {
             </span>
           </h1>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-purple-700">
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
             Cambiar salón
-            <ArrowRight className="h-5 w-5 animate-pulse" aria-hidden="true" />
+            <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
           </span>
-          <Building className="h-4 w-4 text-muted-foreground" />
           <Select value={salonFiltro} onValueChange={setSalonFiltro}>
             <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
               <SelectValue placeholder="Todos los salones" />
@@ -1626,7 +1600,7 @@ export default function CajaJazminePage() {
                 tabIndex={0}
                 aria-label="Extraer o ajustar dinero de Caja Jazmines"
               >
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
                     <div className="flex items-center gap-1.5">
@@ -1649,14 +1623,14 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#3c4ce8" }}>
                     {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
                   </p>
-                  <p className="text-xs mt-1 flex items-center gap-1" style={{ color: "#4010fa" }}>
+                  <p className="text-xs mt-auto pt-1 flex items-center gap-1" style={{ color: "#4010fa" }}>
                     <ArrowUpFromLine className="h-3 w-3" /> Tocá para extraer dinero
                   </p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Gastos A 30 días
@@ -1675,12 +1649,12 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "#000000" }}>Gastos pendientes</p>
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>Gastos pendientes</p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Saldo a 30 días
@@ -1705,10 +1679,11 @@ export default function CajaJazminePage() {
                   {(() => {
                     const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
                     const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
-                    if (cuotasMes.length === 0) return null
                     return (
-                      <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>
-                        {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
+                      <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                        {cuotasMes.length > 0
+                          ? `${cuotasMes.length} ${cuotasMes.length === 1 ? "cuota" : "cuotas"}`
+                          : "Sin cuotas este mes"}
                       </p>
                     )
                   })()}
@@ -1719,7 +1694,7 @@ export default function CajaJazminePage() {
             {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
             <div className="contents">
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaJazLabel}>
                       Cobro esta semana
@@ -1741,18 +1716,21 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
                   </p>
-                  {cuotasSemanaJazCount > 0 ? (
-                    <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>
-                      {cuotasSemanaJazCount} {cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (parte Jazmines)
-                    </p>
-                  ) : (
-                    <p className="text-xs mt-1" style={{ color: "#000000" }}>Sin cuotas esta semana</p>
-                  )}
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                    {cuotasSemanaJazCount > 0
+                      ? `${cuotasSemanaJazCount} ${cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (parte Jazmines)`
+                      : "Sin cuotas esta semana"}
+                    {cuotasVencidasJazCount > 0 && (
+                      <span className="font-semibold text-red-700">
+                        {` · ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} sin cobrar (${montosOcultos.cobroSemana ? MONTO_OCULTO : formatCurrency(cobroVencidasJaz)})`}
+                      </span>
+                    )}
+                  </p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>Gastos esta semana</p>
                     <div className="flex items-center gap-1.5">
@@ -1772,16 +1750,14 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.gastosSemana ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
                   </p>
-                  {gastosSemanaJazDetalle ? (
-                    <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>{gastosSemanaJazDetalle}</p>
-                  ) : (
-                    <p className="text-xs mt-1" style={{ color: "#000000" }}>Sin gastos esta semana</p>
-                  )}
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                    {gastosSemanaJazDetalle || "Sin gastos esta semana"}
+                  </p>
                 </CardContent>
               </Card>
 
               <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
-                <CardContent className="p-4">
+                <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Tengo a fin de semana
@@ -1791,7 +1767,7 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
                     {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoFinSemanaJaz)}
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "#000000" }}>
+                  <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                     Saldo actual + cobros − gastos
                   </p>
                 </CardContent>
@@ -2234,13 +2210,9 @@ export default function CajaJazminePage() {
             ) : (
               <div ref={cuotasListaRef} className="space-y-2 reveal-stagger">
                 {cuotasPorCobrar.slice(0, cuotasVisibles).map((cuota) => (
-                  <button
+                  <div
                     key={cuota.id}
-                    onClick={() => {
-                      setCuotaSel(cuota)
-                      setMarcarCobrada(false)
-                    }}
-                    className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+                    className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left"
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
@@ -2258,7 +2230,7 @@ export default function CajaJazminePage() {
                     <span className="text-sm font-bold text-emerald-700 shrink-0">
                       +{formatCurrency(cuota.montoJazmines)}
                     </span>
-                  </button>
+                  </div>
                 ))}
                 {totalCuotas > CUOTAS_POR_PAGINA && (
                   <p className="text-[11px] text-emerald-700/70 text-center pt-1 select-none">
@@ -2321,7 +2293,7 @@ export default function CajaJazminePage() {
           {!colapsadas.fijos && (
           <CardContent className="space-y-2 reveal-stagger">
             {fijosSinCargarMesActual.length > 0 && (
-              <div className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+                <div className="rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-xs text-purple-950">
                 <span className="font-semibold">
                   {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
                 </span>
@@ -2489,6 +2461,13 @@ export default function CajaJazminePage() {
                   ).filter((d) => d.salon && d.porcentaje > 0)
                   const esRepartido = distGasto.length > 0
                   const partesPagadas = distGasto.filter((d) => d.pagado === true).length
+                  // Vista de un salón específico: el check paga la parte que le
+                  // corresponde a ESTE salón del gasto repartido.
+                  const parteSalon =
+                    esRepartido && salonFiltro !== "todos"
+                      ? distGasto.find((d) => d.salon === salonFiltro)
+                      : undefined
+                  const parteSalonPagada = parteSalon?.pagado === true
                   // Períodos anteriores que quedaron adeudados al cargar un monto nuevo
                   // sin pagarlos: cada uno muestra su propio check hasta que se pague.
                   const deudasAnteriores = hist.filter(
@@ -2546,10 +2525,33 @@ export default function CajaJazminePage() {
                           <Badge
                             variant="outline"
                             className={`text-[10px] shrink-0 ${partesPagadas === distGasto.length ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-muted text-muted-foreground"}`}
-                            title="Se paga desde la carpeta de cada salón"
+                            title={salonFiltro === "todos" ? "Se paga desde la carpeta de cada salón" : "Avance de pago entre salones"}
                           >
                             {`${partesPagadas}/${distGasto.length} salones`}
                           </Badge>
+                        )}
+                        {/* Gasto repartido visto desde UN salón: check para pagar
+                            la parte que le corresponde a este salón. */}
+                        {!gasto.esSueldoVendedor && esRepartido && parteSalon && (
+                          <ConfirmAction
+                            title={parteSalonPagada ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                            description={`${gasto.concepto} · ${salonLabel(salonFiltro)} · ${formatCurrency(gasto.monto)}`}
+                            confirmLabel={parteSalonPagada ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
+                            onConfirm={() => pagarCuotaSalon(gasto.id, salonFiltro, !parteSalonPagada)}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={`h-7 w-7 ${parteSalonPagada ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                              title={parteSalonPagada ? `Marcar la parte de ${salonLabel(salonFiltro)} como pendiente` : `Marcar la parte de ${salonLabel(salonFiltro)} como pagada`}
+                            >
+                              {parteSalonPagada
+                                ? <CheckCircle2 className="h-4 w-4" />
+                                : <Circle className="h-4 w-4" />
+                              }
+                              <span className="sr-only">{parteSalonPagada ? "Marcar pendiente" : "Marcar pagado"}</span>
+                            </Button>
+                          </ConfirmAction>
                         )}
                         {!gasto.esSueldoVendedor && !esRepartido && (
                           <ConfirmAction
@@ -3237,66 +3239,6 @@ export default function CajaJazminePage() {
               Agendar
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: marcar cuota como cobrada ───────���─��─────���─────────────── */}
-      <Dialog
-        open={!!cuotaSel}
-        onOpenChange={(open) => {
-          if (!open) setCuotaSel(null)
-          setMarcarCobrada(false)
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <HandCoins className="h-4 w-4 text-emerald-600" />
-              {cuotaSel?.eventoNombre}
-            </DialogTitle>
-          </DialogHeader>
-          {cuotaSel && (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-emerald-700">
-                    Cuota {cuotaSel.numeroCuota}/{cuotaSel.totalCuotas} �� vence {formatFecha(cuotaSel.fechaVencimiento)}
-                  </span>
-                  <span className="text-lg font-bold text-emerald-800">
-                    {formatCurrency(cuotaSel.montoCuota)}
-                  </span>
-                </div>
-                <p className="text-xs text-emerald-700/80">
-                  Se reparte según la regla del evento: {formatCurrency(cuotaSel.montoCuota - cuotaSel.montoJazmines)}{" "}
-                  a Caja Eventos (proporcional del costo del evento + 5%) y {formatCurrency(cuotaSel.montoJazmines)} a
-                  Caja Jazmines (el resto).
-                </p>
-              </div>
-
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <Checkbox
-                  checked={marcarCobrada}
-                  onCheckedChange={(v) => setMarcarCobrada(v === true)}
-                  className="mt-0.5"
-                />
-                <span className="text-sm leading-snug">
-                  Marcar esta cuota como <span className="font-medium">ya cobrada</span>
-                  <span className="block text-xs text-muted-foreground">
-                    Registra el ingreso en ambas cajas con fecha {formatFecha(cuotaSel.fechaVencimiento)}.
-                  </span>
-                </span>
-              </label>
-
-              <Button
-                className="w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                disabled={!marcarCobrada}
-                onClick={() => confirmarCobroCuota(cuotaSel)}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Confirmar cobro
-              </Button>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 
