@@ -2315,11 +2315,15 @@ export default function CajaJazminePage() {
                     count={carpeta.items.length + cuotasReparto.length}
                     subtotal={carpeta.subtotal + cuotasReparto.reduce((s, c) => s + c.monto, 0)}
                   >
-                    {/* Cuotas de gastos repartidos: cada salón paga su parte con su propio check */}
-                    {cuotasReparto.map((cuota) => (
+                    {/* Cuotas de gastos repartidos: misma tarjeta y acciones que
+                        un gasto normal; el check paga la parte de este salón. */}
+                    {cuotasReparto.map((cuota) => {
+                      const gastoRef = gastosFijosMes.find((g) => g.id === cuota.id)
+                      const histRef = gastoRef?.historialMontos || []
+                      return (
                       <div
                         key={`reparto-${cuota.id}`}
-                        className="rounded-lg border border-dashed border-border bg-muted/40"
+                        className="rounded-lg border border-border bg-card"
                       >
                         <div className="flex items-center gap-3 p-3">
                           <button
@@ -2330,8 +2334,14 @@ export default function CajaJazminePage() {
                           >
                             <p className="text-sm font-medium truncate">{cuota.concepto}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {`Parte de este salón (${cuota.porcentaje}%)`}
+                              {gastoRef?.frecuencia || "Mensual"}
+                              {cuota.fechaVencimiento && (gastoRef?.frecuencia || "Mensual") === "Mensual" ? (
+                                <span className="font-semibold text-purple-600">
+                                  {` · ${periodoQueSePaga(cuota.fechaVencimiento)}`}
+                                </span>
+                              ) : null}
                               {cuota.fechaVencimiento ? ` · vence ${formatFecha(cuota.fechaVencimiento)}` : ""}
+                              {` · ${cuota.porcentaje}%`}
                             </p>
                           </button>
                           <div className="flex items-center gap-1 shrink-0">
@@ -2341,26 +2351,72 @@ export default function CajaJazminePage() {
                               </span>
                               {badgeEstadoFijo(cuota.estado)}
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-purple-600 hover:text-purple-700"
+                              title={`Ver evolución mes a mes de ${cuota.concepto}`}
+                              onClick={() => abrirEvolucion(cuota.id)}
+                            >
+                              <TrendingUp className="h-4 w-4" />
+                              <span className="sr-only">{`Ver evolución mes a mes de ${cuota.concepto}`}</span>
+                            </Button>
                             <ConfirmAction
-                              title={cuota.pagado ? "¿Marcar parte como pendiente?" : "¿Pagar la parte de este salón?"}
-                              description={`${cuota.concepto} · ${carpeta.salon} (${cuota.porcentaje}%) · ${formatCurrency(cuota.monto)}. ${cuota.pagado ? "Volverá a figurar pendiente." : "Cuando todos los salones paguen su parte, el gasto completo queda pagado."}`}
-                              confirmLabel={cuota.pagado ? "Sí, marcar pendiente" : "Sí, pagar esta parte"}
+                              title={cuota.pagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                              description={`${cuota.concepto} · ${carpeta.salon} · ${formatCurrency(cuota.monto)}`}
+                              confirmLabel={cuota.pagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
                               onConfirm={() => pagarCuotaSalon(cuota.id, carpeta.salon, !cuota.pagado)}
                             >
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className={`h-7 w-7 ${cuota.pagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                                title={cuota.pagado ? `Marcar parte de ${carpeta.salon} como pendiente` : `Pagar parte de ${carpeta.salon}`}
+                                title={cuota.pagado ? `Marcar ${cuota.concepto} en ${carpeta.salon} como pendiente` : `Marcar ${cuota.concepto} en ${carpeta.salon} como pagado`}
                               >
                                 {cuota.pagado ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-                                <span className="sr-only">{cuota.pagado ? `Marcar parte de ${carpeta.salon} pendiente` : `Pagar parte de ${carpeta.salon}`}</span>
+                                <span className="sr-only">{cuota.pagado ? "Marcar pendiente" : "Marcar pagado"}</span>
                               </Button>
                             </ConfirmAction>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                  title="Más acciones"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                  <span className="sr-only">{`Más acciones para ${cuota.concepto} en ${carpeta.salon}`}</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-52">
+                                {gastoRef && (
+                                  <>
+                                    <DropdownMenuItem onSelect={() => abrirRegistroMonto(gastoRef)}>
+                                      <Receipt className="h-3.5 w-3.5" />
+                                      {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(histRef, gastoRef.fechaVencimiento))})`}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => abrirEditFijo(gastoRef)}>
+                                      <Pencil className="h-3.5 w-3.5" />
+                                      Editar
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onSelect={() => setAccionMenu({ tipo: "eliminar", gasto: gastoRef })}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Eliminar
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                     {carpeta.items.map((gasto) => {
                   const esPagado = gasto.estado === "pagado"
                   const hist = gasto.historialMontos || []
