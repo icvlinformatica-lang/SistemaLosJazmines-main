@@ -1529,24 +1529,35 @@ export default function CajaJazminePage() {
     setModalVariableAbierto(false)
   }
 
+  // Color del salón activo: tiñe el icono del header y el fondo del body.
+  const colorSalonActivo =
+    salonFiltro === "todos" ? SALON_COLOR_GENERAL : salonColor(salonFiltro, configuracionCajas)
+
   return (
-    <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 flex flex-col gap-4">
-      {/* Header: nav fijo, siempre visible al scrollear */}
-      <div className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 bg-background/95 backdrop-blur border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
+    <div
+      className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 flex flex-col gap-4 transition-colors duration-500"
+      style={{
+        backgroundColor:
+          salonFiltro === "todos"
+            ? undefined
+            : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
+      }}
+    >
+      {/* Header: nav fijo, siempre visible al scrollear, fondo siempre blanco */}
+      <div
+        className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3"
+        style={{ backgroundColor: "#ffffff" }}
+      >
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-            <Building className="h-5 w-5 text-purple-700" />
+          <div
+            className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-500"
+            style={{ backgroundColor: `color-mix(in srgb, ${colorSalonActivo} 16%, white)` }}
+          >
+            <Building className="h-5 w-5 transition-colors duration-500" style={{ color: colorSalonActivo }} />
           </div>
-          <h1 className="text-lg xl:text-2xl font-bold tracking-tight text-foreground truncate">
+          <h1 className="text-lg xl:text-2xl font-bold tracking-tight truncate" style={{ color: "#000000" }}>
             Caja Jazmines
-            <span
-              style={{
-                color:
-                  salonFiltro === "todos"
-                    ? SALON_COLOR_GENERAL
-                    : salonColor(salonFiltro, configuracionCajas),
-              }}
-            >
+            <span style={{ color: colorSalonActivo }}>
               {` · ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}`}
             </span>
           </h1>
@@ -2318,7 +2329,7 @@ export default function CajaJazminePage() {
                   </p>
                 )}
                 {(() => {
-                  const carpetas = agruparPorSalon(gastosFijosMes)
+                  let carpetas = agruparPorSalon(gastosFijosMes)
                   // En la vista de todos los salones, TODOS los salones tienen
                   // su carpeta (incluso Salon 4 y 5 sin gastos propios), porque
                   // las cuotas de gastos repartidos se pagan desde cada salón.
@@ -2328,6 +2339,21 @@ export default function CajaJazminePage() {
                         carpetas.push({ salon, items: [], subtotal: 0 })
                       }
                     }
+                    // Los gastos repartidos NO se muestran en General: cada
+                    // salón ya tiene su cuota con monto y vencimiento propios.
+                    // General solo queda para gastos sin salón y sin reparto,
+                    // y se oculta por completo si no tiene ninguno.
+                    carpetas = carpetas
+                      .map((c) => {
+                        if (c.salon !== "General") return c
+                        const propios = c.items.filter((g) => {
+                          const orig = state.costosOperativos?.find((co) => co.id === g.id)
+                          const dist = (orig?.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+                          return dist.length === 0
+                        })
+                        return { ...c, items: propios, subtotal: propios.reduce((s, g) => s + g.monto, 0) }
+                      })
+                      .filter((c) => c.salon !== "General" || c.items.length > 0)
                   }
                   for (const salon of cuotasRepartoFijos.keys()) {
                     if (!carpetas.some((c) => c.salon === salon)) {
@@ -3017,7 +3043,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ─�� Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
+      {/* ─�� Dialog: Editar gasto fijo ───────────────────────────────��──────���─ */}
       {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────��───── */}
       <Dialog
         open={!!editandoSueldoVendedor}
