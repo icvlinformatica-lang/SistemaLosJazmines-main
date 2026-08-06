@@ -737,6 +737,26 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       if (!c.esServicio) continue
       const [, mm] = c.fechaVencimiento.split("-").map(Number)
       if (Number(mesProximoKey.slice(5, 7)) === mm) {
+        // Gasto anual repartido en vista "todos": una entrada por salón con su parte.
+        const dist = (c.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+        if (!salonSel && dist.length > 0) {
+          const base = c.concepto.split(" · repartido")[0]
+          for (const d of dist) {
+            const parte = Math.round((c.monto * d.porcentaje) / 100)
+            estimacionesProximoMes.push({
+              id: `${c.id}-${d.salon}`,
+              concepto: `${base} (anual) · ${d.porcentaje}%`,
+              montoActual: parte,
+              estimado: parte,
+              variacionPct: 0,
+              registros: (c.historialMontos || []).length,
+              tipo: "anual",
+              salon: d.salon,
+            })
+            gastosFijosProximoMes += parte
+          }
+          continue
+        }
         estimacionesProximoMes.push({
           id: c.id,
           concepto: `${c.concepto} (anual)`,
