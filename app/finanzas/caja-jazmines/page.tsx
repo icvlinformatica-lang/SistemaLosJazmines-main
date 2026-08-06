@@ -1543,18 +1543,11 @@ export default function CajaJazminePage() {
             : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
       }}
     >
-      {/* Header: nav fijo, siempre visible al scrollear */}
-      <div className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 bg-background/95 backdrop-blur border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
-        <div
-          className="absolute inset-0 -z-10 pointer-events-none transition-colors duration-500"
-          style={{
-            backgroundColor:
-              salonFiltro === "todos"
-                ? undefined
-                : `color-mix(in srgb, ${colorSalonActivo} 10%, transparent)`,
-          }}
-          aria-hidden="true"
-        />
+      {/* Header: nav fijo, siempre visible al scrollear, fondo siempre blanco */}
+      <div
+        className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3"
+        style={{ backgroundColor: "#ffffff" }}
+      >
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div
             className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-500"
@@ -1562,7 +1555,7 @@ export default function CajaJazminePage() {
           >
             <Building className="h-5 w-5 transition-colors duration-500" style={{ color: colorSalonActivo }} />
           </div>
-          <h1 className="text-lg xl:text-2xl font-bold tracking-tight text-foreground truncate">
+          <h1 className="text-lg xl:text-2xl font-bold tracking-tight truncate" style={{ color: "#000000" }}>
             Caja Jazmines
             <span style={{ color: colorSalonActivo }}>
               {` · ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}`}
@@ -3035,7 +3028,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ─�� Dialog: Editar gasto fijo ───────────────────────────────��──────── */}
+      {/* ─�� Dialog: Editar gasto fijo ───────────────────────────────��──────���─ */}
       {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────��───── */}
       <Dialog
         open={!!editandoSueldoVendedor}
