@@ -1529,24 +1529,42 @@ export default function CajaJazminePage() {
     setModalVariableAbierto(false)
   }
 
+  // Color del salón activo: tiñe el icono del header y el fondo del body.
+  const colorSalonActivo =
+    salonFiltro === "todos" ? SALON_COLOR_GENERAL : salonColor(salonFiltro, configuracionCajas)
+
   return (
-    <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 flex flex-col gap-4">
+    <div
+      className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 flex flex-col gap-4 transition-colors duration-500"
+      style={{
+        backgroundColor:
+          salonFiltro === "todos"
+            ? undefined
+            : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
+      }}
+    >
       {/* Header: nav fijo, siempre visible al scrollear */}
       <div className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 bg-background/95 backdrop-blur border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
+        <div
+          className="absolute inset-0 -z-10 pointer-events-none transition-colors duration-500"
+          style={{
+            backgroundColor:
+              salonFiltro === "todos"
+                ? undefined
+                : `color-mix(in srgb, ${colorSalonActivo} 10%, transparent)`,
+          }}
+          aria-hidden="true"
+        />
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-            <Building className="h-5 w-5 text-purple-700" />
+          <div
+            className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-500"
+            style={{ backgroundColor: `color-mix(in srgb, ${colorSalonActivo} 16%, white)` }}
+          >
+            <Building className="h-5 w-5 transition-colors duration-500" style={{ color: colorSalonActivo }} />
           </div>
           <h1 className="text-lg xl:text-2xl font-bold tracking-tight text-foreground truncate">
             Caja Jazmines
-            <span
-              style={{
-                color:
-                  salonFiltro === "todos"
-                    ? SALON_COLOR_GENERAL
-                    : salonColor(salonFiltro, configuracionCajas),
-              }}
-            >
+            <span style={{ color: colorSalonActivo }}>
               {` · ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}`}
             </span>
           </h1>
