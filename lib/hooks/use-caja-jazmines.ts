@@ -655,11 +655,14 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       m.saldoProyectado = saldoAcumuladoJaz
     })
 
-    // Estimado de gastos fijos del MES QUE VIENE (tarjeta "a pagar de servicios").
-    // Se calcula servicio por servicio usando el HISTORIAL de montos pagados
-    // (registrados en "Registrar monto pagado"): el ��ltimo monto pagado se
-    // proyecta con el promedio de los últimos aumentos de ese servicio.
-    const mesProximo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)
+    // Estimado de gastos fijos para la tarjeta "servicios a pagar".
+    // Hasta el día 19 del mes corriente se muestra el MES VIGENTE (los montos
+    // agendados tal cual). A partir del día 20 se proyecta el MES SIGUIENTE:
+    // servicio por servicio, usando el HISTORIAL de montos pagados (registrados
+    // en "Registrar monto pagado"), el último monto se proyecta con el promedio
+    // de los últimos aumentos de ese servicio.
+    const estimarMesSiguiente = hoy.getDate() >= 20
+    const mesProximo = new Date(hoy.getFullYear(), hoy.getMonth() + (estimarMesSiguiente ? 1 : 0), 1)
     const mesProximoKey = mesKeyJaz(mesProximo)
     const estimacionesProximoMes: EstimacionProximoMes[] = []
     let gastosFijosProximoMes = 0
@@ -675,13 +678,14 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       // Promedio de los últimos 3 aumentos como tendencia del servicio
       const ultimos = cambios.slice(-3)
       const variacion = ultimos.length > 0 ? ultimos.reduce((s, x) => s + x, 0) / ultimos.length : 0
-      const estimado = Math.round(c.monto * (1 + variacion))
+      // Mes vigente: el monto agendado tal cual. Mes siguiente: monto + tendencia.
+      const estimado = estimarMesSiguiente ? Math.round(c.monto * (1 + variacion)) : c.monto
       estimacionesProximoMes.push({
         id: c.id,
         concepto: c.concepto,
         montoActual: c.monto,
         estimado,
-        variacionPct: Math.round(variacion * 1000) / 10,
+        variacionPct: estimarMesSiguiente ? Math.round(variacion * 1000) / 10 : 0,
         registros: hist.length,
         tipo: "mensual",
       })
