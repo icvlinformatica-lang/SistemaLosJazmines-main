@@ -62,6 +62,7 @@ import {
   ChevronRight,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ArrowRight,
   MoreVertical,
 } from "lucide-react"
 import {
@@ -83,7 +84,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
-import Link from "next/link"
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -963,7 +963,12 @@ export default function CajaJazminePage() {
 
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
-  const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({})
+  // Los montos del dashboard arrancan OCULTOS: se revelan con el ojito.
+  const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({
+    saldoActual: true,
+    gastos30: true,
+    saldoProyectado: true,
+  })
   const toggleMonto = (key: string) =>
     setMontosOcultos((p) => ({ ...p, [key]: !p[key] }))
 
@@ -1543,7 +1548,7 @@ export default function CajaJazminePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 space-y-4">
+    <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 flex flex-col gap-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-start gap-3 flex-1">
@@ -1558,12 +1563,10 @@ export default function CajaJazminePage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
-            <Link href="/finanzas/archivo">
-              <Archive className="h-4 w-4" />
-              Archivo Histórico
-            </Link>
-          </Button>
+          <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-purple-700">
+            Cambiar salón
+            <ArrowRight className="h-5 w-5 animate-pulse" aria-hidden="true" />
+          </span>
           <Building className="h-4 w-4 text-muted-foreground" />
           <Select value={salonFiltro} onValueChange={setSalonFiltro}>
             <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
@@ -1756,9 +1759,9 @@ export default function CajaJazminePage() {
             </div>
       </div>
 
-      {/* Fila principal: proyección a 12 meses + columna lateral (servicios y gráfico) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-      <div className="space-y-4 lg:col-span-5 2xl:col-span-4 lg:order-2">
+      {/* Última fila: proyección a 12 meses + servicios a pagar al lado */}
+      <div className="order-last grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+      <div className="space-y-4 md:col-span-5 2xl:col-span-4 md:order-2">
       {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos */}
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="p-4">
@@ -1893,7 +1896,7 @@ export default function CajaJazminePage() {
       </div>
 
       {/* PROYECCIÓN MENSUAL — tabla a 12 meses */}
-      <Card className="lg:col-span-7 2xl:col-span-8 lg:order-1">
+      <Card className="md:col-span-7 2xl:col-span-8 md:order-1">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
@@ -1976,8 +1979,8 @@ export default function CajaJazminePage() {
           así al plegar una tarjeta la de abajo sube al instante y nada queda flotando. */}
       <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-[auto_1fr] gap-4 items-start">
 
-      {/* Alertas de vencimiento (columna derecha, fila 1) */}
-      <Card className={`md:col-start-2 md:row-start-1 ${colapsadas.alertas ? "py-3 gap-0" : ""}`} style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
+      {/* Alertas de vencimiento (columna derecha, fila 2) */}
+      <Card className={`md:col-start-2 md:row-start-2 ${colapsadas.alertas ? "py-3 gap-0" : ""}`} style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
         <CardHeader className={colapsadas.alertas ? "pb-0" : "pb-3"}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -2203,8 +2206,8 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-        {/* ������ Gastos fijos del mes ──────────────────────────���───────���──── */}
-        <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
+        {/* Gastos fijos del mes: primero en la columna izquierda */}
+        <Card className="order-first" style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -2632,8 +2635,8 @@ export default function CajaJazminePage() {
         </Card>
       </div>
 
-        {/* Gastos variables (columna derecha, fila 2) */}
-        <Card className="md:col-start-2 md:row-start-2" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
+        {/* Gastos variables (columna derecha, fila 1) */}
+        <Card className="md:col-start-2 md:row-start-1" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
