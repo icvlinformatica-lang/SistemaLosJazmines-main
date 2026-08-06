@@ -1125,7 +1125,7 @@ export default function CajaJazminePage() {
   // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = 30 días, 1 = semana
 
-  const { cobroSemanaJaz, cuotasSemanaJazCount, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel } = useMemo(() => {
+  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel } = useMemo(() => {
     const diaSemana = ahora.getDay() // 0 = domingo
     const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
     const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
@@ -1134,13 +1134,19 @@ export default function CajaJazminePage() {
     const desde = toISO(lunes)
     const hasta = toISO(domingo)
 
-    // Ingresos de la semana: usa montoJazmines si es "todos los salones",
-    // o montoCuota si hay un salón específico filtrado
-    const usarMontoCompleto = salonFiltro && salonFiltro !== "todos"
+    // Ingresos de la semana: siempre la parte que REALMENTE entra a Caja
+    // Jazmines de cada cuota (montoJazmines). Al cobrar una cuota, el resto
+    // va a Caja Eventos, así que usar la cuota completa sobreestimaría.
+    // data.cuotasPorCobrar ya viene filtrado por salón desde el hook.
     const cuotasSemana = data.cuotasPorCobrar.filter(
       (c) => c.fechaVencimiento >= desde && c.fechaVencimiento <= hasta,
     )
-    const cobro = cuotasSemana.reduce((s, c) => s + (usarMontoCompleto ? c.montoCuota : c.montoJazmines), 0)
+    const cobro = cuotasSemana.reduce((s, c) => s + c.montoJazmines, 0)
+
+    // Cuotas vencidas ANTES de esta semana que siguen sin cobrarse:
+    // son plata cobrable ya mismo, se informan aparte en la tarjeta.
+    const cuotasVencidas = data.cuotasPorCobrar.filter((c) => c.fechaVencimiento < desde)
+    const cobroVencidas = cuotasVencidas.reduce((s, c) => s + c.montoJazmines, 0)
 
     // Gastos de la semana: fijos y variables pendientes que vencen entre lunes y domingo
     const fijosSemana = data.gastosFijosMes.filter(
@@ -1160,12 +1166,14 @@ export default function CajaJazminePage() {
     return {
       cobroSemanaJaz: cobro,
       cuotasSemanaJazCount: cuotasSemana.length,
+      cuotasVencidasJazCount: cuotasVencidas.length,
+      cobroVencidasJaz: cobroVencidas,
       gastosSemanaJaz: gastos,
       gastosSemanaJazDetalle: partes.join(" · "),
       saldoFinSemanaJaz: data.saldoActual + cobro - gastos,
       rangoSemanaJazLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
     }
-  }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora, salonFiltro])
+  }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora])
 
   // ── Proyección: gastos fijos del 1 al 10 del mes siguiente ──────────────
   // Los gastos fijos agendados se repiten el mes que viene; acá se proyecta
@@ -1747,6 +1755,11 @@ export default function CajaJazminePage() {
                     {cuotasSemanaJazCount > 0
                       ? `${cuotasSemanaJazCount} ${cuotasSemanaJazCount === 1 ? "cuota" : "cuotas"} (parte Jazmines)`
                       : "Sin cuotas esta semana"}
+                    {cuotasVencidasJazCount > 0 && (
+                      <span className="font-semibold text-red-700">
+                        {` · ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} sin cobrar (${montosOcultos.cobroSemana ? MONTO_OCULTO : formatCurrency(cobroVencidasJaz)})`}
+                      </span>
+                    )}
                   </p>
                 </CardContent>
               </Card>
