@@ -2461,6 +2461,13 @@ export default function CajaJazminePage() {
                   ).filter((d) => d.salon && d.porcentaje > 0)
                   const esRepartido = distGasto.length > 0
                   const partesPagadas = distGasto.filter((d) => d.pagado === true).length
+                  // Vista de un salón específico: el check paga la parte que le
+                  // corresponde a ESTE salón del gasto repartido.
+                  const parteSalon =
+                    esRepartido && salonFiltro !== "todos"
+                      ? distGasto.find((d) => d.salon === salonFiltro)
+                      : undefined
+                  const parteSalonPagada = parteSalon?.pagado === true
                   // Períodos anteriores que quedaron adeudados al cargar un monto nuevo
                   // sin pagarlos: cada uno muestra su propio check hasta que se pague.
                   const deudasAnteriores = hist.filter(
@@ -2518,10 +2525,33 @@ export default function CajaJazminePage() {
                           <Badge
                             variant="outline"
                             className={`text-[10px] shrink-0 ${partesPagadas === distGasto.length ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-muted text-muted-foreground"}`}
-                            title="Se paga desde la carpeta de cada salón"
+                            title={salonFiltro === "todos" ? "Se paga desde la carpeta de cada salón" : "Avance de pago entre salones"}
                           >
                             {`${partesPagadas}/${distGasto.length} salones`}
                           </Badge>
+                        )}
+                        {/* Gasto repartido visto desde UN salón: check para pagar
+                            la parte que le corresponde a este salón. */}
+                        {!gasto.esSueldoVendedor && esRepartido && parteSalon && (
+                          <ConfirmAction
+                            title={parteSalonPagada ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
+                            description={`${gasto.concepto} · ${salonLabel(salonFiltro)} · ${formatCurrency(gasto.monto)}`}
+                            confirmLabel={parteSalonPagada ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
+                            onConfirm={() => pagarCuotaSalon(gasto.id, salonFiltro, !parteSalonPagada)}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={`h-7 w-7 ${parteSalonPagada ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                              title={parteSalonPagada ? `Marcar la parte de ${salonLabel(salonFiltro)} como pendiente` : `Marcar la parte de ${salonLabel(salonFiltro)} como pagada`}
+                            >
+                              {parteSalonPagada
+                                ? <CheckCircle2 className="h-4 w-4" />
+                                : <Circle className="h-4 w-4" />
+                              }
+                              <span className="sr-only">{parteSalonPagada ? "Marcar pendiente" : "Marcar pagado"}</span>
+                            </Button>
+                          </ConfirmAction>
                         )}
                         {!gasto.esSueldoVendedor && !esRepartido && (
                           <ConfirmAction
