@@ -1921,35 +1921,61 @@ export default function CajaJazminePage() {
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detalleProxAbierto ? "rotate-180" : ""}`} />
                 {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
               </button>
-              {detalleProxAbierto && (
-                <div className="mt-2 divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
-                  {estimacionesProximoMes.map((est) => (
-                    <div key={est.id} className="flex items-center gap-3 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{est.concepto}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {est.tipo === "sueldos"
-                            ? "Sueldos del equipo de ventas"
-                            : est.tipo === "anual"
-                              ? estimacionEsProxMes
-                                ? "Vence el mes que viene"
-                                : "Vence este mes"
-                              : est.registros >= 2
-                                ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
-                                : est.registros === 1
-                                  ? `Último pagado: ${formatCurrency(est.montoActual)} · 1 pago registrado`
-                                  : "Sin historial: se usa el monto agendado"}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold tabular-nums">
-                          {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
-                        </p>
-                      </div>
+              {detalleProxAbierto && (() => {
+                const renderEstimacion = (est: (typeof estimacionesProximoMes)[number]) => (
+                  <div key={est.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{est.concepto}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {est.tipo === "sueldos"
+                          ? "Sueldos del equipo de ventas"
+                          : est.tipo === "anual"
+                            ? estimacionEsProxMes
+                              ? "Vence el mes que viene"
+                              : "Vence este mes"
+                            : est.registros >= 2
+                              ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
+                              : est.registros === 1
+                                ? `Último pagado: ${formatCurrency(est.montoActual)} · 1 pago registrado`
+                                : "Sin historial: se usa el monto agendado"}
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold tabular-nums">
+                        {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
+                      </p>
+                    </div>
+                  </div>
+                )
+                // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
+                if (salonFiltro === "todos") {
+                  return (
+                    <div className="mt-2 space-y-2">
+                      {agruparPorSalon(
+                        estimacionesProximoMes.map((est) => ({ ...est, monto: est.estimado })),
+                      ).map((carpeta) => (
+                        <CarpetaGastos
+                          key={`serv-${carpeta.salon}`}
+                          salon={carpeta.salon}
+                          count={carpeta.items.length}
+                          subtotal={carpeta.subtotal}
+                          unidad="servicio"
+                        >
+                          <div className="divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                            {carpeta.items.map(renderEstimacion)}
+                          </div>
+                        </CarpetaGastos>
+                      ))}
+                    </div>
+                  )
+                }
+                // Vista de un salón: lista plana como siempre.
+                return (
+                  <div className="mt-2 divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                    {estimacionesProximoMes.map(renderEstimacion)}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </CardContent>
@@ -3277,7 +3303,7 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ─�� Dialog: Editar gasto fijo ───────────────────────────────��──────���─ */}
+      {/* ─��� Dialog: Editar gasto fijo ───────────────────────────────��──────���─ */}
       {/* ── Dialog: Editar fecha de pago de sueldo de vendedor ─────────��───── */}
       <Dialog
         open={!!editandoSueldoVendedor}

@@ -92,7 +92,9 @@ export interface EstimacionProximoMes {
   /** Cantidad de registros históricos del servicio */
   registros: number
   tipo: "mensual" | "sueldos" | "anual"
-}
+  /** Salón al que corresponde el servicio (null = general/repartido) */
+  salon?: string | null
+  }
 
 export interface MesProyeccionJaz {
   key: string // YYYY-MM
@@ -690,6 +692,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         variacionPct: estimarMesSiguiente ? Math.round(variacion * 1000) / 10 : 0,
         registros: hist.length,
         tipo: "mensual",
+        salon: c.salon ?? null,
       })
       gastosFijosProximoMes += estimado
     }
@@ -719,6 +722,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           variacionPct: 0,
           registros: (c.historialMontos || []).length,
           tipo: "anual",
+          salon: c.salon ?? null,
         })
         gastosFijosProximoMes += c.monto
       }
