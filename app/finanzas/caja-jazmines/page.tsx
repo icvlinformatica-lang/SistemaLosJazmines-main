@@ -385,6 +385,7 @@ function CarpetaGastos({
   count,
   subtotal,
   unidad = "gasto",
+  resumen,
   children,
 }: {
   salon: string
@@ -392,6 +393,8 @@ function CarpetaGastos({
   subtotal: number
   /** Sustantivo singular para el contador ("gasto", "cuota", "vencimiento") */
   unidad?: string
+  /** Indicadores extra visibles con la carpeta cerrada (ej. puntos de prioridad) */
+  resumen?: React.ReactNode
   children: React.ReactNode
 }) {
   // Las carpetas arrancan SIEMPRE cerradas: se abren solo a pedido.
@@ -410,6 +413,7 @@ function CarpetaGastos({
         {abierta ? <FolderOpen className="h-4 w-4" style={{ color }} /> : <Folder className="h-4 w-4" style={{ color }} />}
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
         <span className="text-sm font-semibold flex-1 text-left">{salonLabel(salon)}</span>
+        {resumen}
         <span className="text-xs font-medium opacity-80">
           {count} {count === 1 ? unidad : `${unidad}s`} · {formatCurrency(subtotal)}
         </span>
@@ -2154,17 +2158,58 @@ export default function CajaJazminePage() {
                 )
                 // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
                 if (salonFiltro === "todos") {
-                  return agruparPorSalon(alertasVencimiento).map((carpeta) => (
-                    <CarpetaGastos
-                      key={`venc-${carpeta.salon}`}
-                      salon={carpeta.salon}
-                      count={carpeta.items.length}
-                      subtotal={carpeta.subtotal}
-                      unidad="vencimiento"
-                    >
-                      {carpeta.items.map(renderAlerta)}
-                    </CarpetaGastos>
-                  ))
+                  return agruparPorSalon(alertasVencimiento).map((carpeta) => {
+                    // Contadores por prioridad, visibles con la carpeta cerrada,
+                    // para saber a qué carpeta entrar primero.
+                    const rojos = carpeta.items.filter((a) => a.estado === "vencido" || a.estado === "urgente").length
+                    const ambar = carpeta.items.filter((a) => a.estado === "proximo").length
+                    const verdes = carpeta.items.length - rojos - ambar
+                    return (
+                      <CarpetaGastos
+                        key={`venc-${carpeta.salon}`}
+                        salon={carpeta.salon}
+                        count={carpeta.items.length}
+                        subtotal={carpeta.subtotal}
+                        unidad="vencimiento"
+                        resumen={
+                          <span className="flex items-center gap-2 shrink-0">
+                            {rojos > 0 && (
+                              <span
+                                className="flex items-center gap-1 text-[11px] font-bold text-red-600"
+                                title={`${rojos} urgente${rojos !== 1 ? "s" : ""} / vencido${rojos !== 1 ? "s" : ""}`}
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
+                                {rojos}
+                                <span className="sr-only">urgentes o vencidos</span>
+                              </span>
+                            )}
+                            {ambar > 0 && (
+                              <span
+                                className="flex items-center gap-1 text-[11px] font-bold text-amber-600"
+                                title={`${ambar} con menos de 7 días`}
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+                                {ambar}
+                                <span className="sr-only">con menos de 7 días</span>
+                              </span>
+                            )}
+                            {verdes > 0 && (
+                              <span
+                                className="flex items-center gap-1 text-[11px] font-bold text-teal-600"
+                                title={`${verdes} con más de 7 días`}
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full bg-teal-500" aria-hidden="true" />
+                                {verdes}
+                                <span className="sr-only">con más de 7 días</span>
+                              </span>
+                            )}
+                          </span>
+                        }
+                      >
+                        {carpeta.items.map(renderAlerta)}
+                      </CarpetaGastos>
+                    )
+                  })
                 }
                 // Vista de un salón: lista plana con paginado de a 5.
                 return (
