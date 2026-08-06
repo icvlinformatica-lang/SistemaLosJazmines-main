@@ -743,6 +743,7 @@ export default function CajaJazminePage() {
     updateEvento,
     addMovimientosCaja,
     updateVendedor,
+    configuracionCajas,
   } = useStore()
   const { ahora } = useClock()
   const { toast } = useToast()
@@ -1561,7 +1562,14 @@ export default function CajaJazminePage() {
           </div>
           <h1 className="text-lg xl:text-2xl font-bold tracking-tight text-foreground truncate">
             Caja Jazmines
-            <span className="text-purple-700">
+            <span
+              style={{
+                color:
+                  salonFiltro === "todos"
+                    ? SALON_COLOR_GENERAL
+                    : salonColor(salonFiltro, configuracionCajas),
+              }}
+            >
               {` · ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}`}
             </span>
           </h1>
