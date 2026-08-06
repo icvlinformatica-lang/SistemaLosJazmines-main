@@ -211,7 +211,7 @@ function puntoPrioridad(estado: EstadoAlerta) {
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence ma��������ana"
+  if (diasRestantes === 1) return "vence ma����������ana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -1813,18 +1813,6 @@ export default function CajaJazminePage() {
                         <p className="text-sm font-semibold tabular-nums">
                           {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
                         </p>
-                        {est.variacionPct !== 0 && (
-                          <Badge
-                            className={`mt-0.5 text-[10px] tabular-nums ${
-                              est.variacionPct > 0
-                                ? "bg-red-100 text-red-700 border-red-200"
-                                : "bg-emerald-100 text-emerald-700 border-emerald-200"
-                            }`}
-                          >
-                            {est.variacionPct > 0 ? "+" : ""}
-                            {est.variacionPct}% tendencia
-                          </Badge>
-                        )}
                       </div>
                     </div>
                   ))}
@@ -2215,7 +2203,7 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-        {/* ������ Gastos fijos del mes ──────────────────────────���──────────── */}
+        {/* ������ Gastos fijos del mes ──────────────────────────���───────���──── */}
         <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
