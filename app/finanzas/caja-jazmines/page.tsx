@@ -1710,8 +1710,16 @@ export default function CajaJazminePage() {
                   <p className="text-2xl font-bold" style={{ color: "#3c4ce8" }}>
                     {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
                   </p>
-                  <p className="text-xs mt-auto pt-1 flex items-center gap-1" style={{ color: "#4010fa" }}>
-                    <ArrowUpFromLine className="h-3 w-3" /> Tocá para extraer dinero
+                  <p
+                    className="text-xs mt-auto pt-1 flex items-center gap-1.5 font-semibold"
+                    style={{ color: colorSalonActivo }}
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: colorSalonActivo }}
+                      aria-hidden="true"
+                    />
+                    {salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}
                   </p>
                 </CardContent>
               </Card>
