@@ -973,6 +973,8 @@ export default function CajaJazminePage() {
     saldoActual: true,
     gastos30: true,
     saldoProyectado: true,
+    cobroSemana: true,
+    gastosSemana: true,
   })
   const toggleMonto = (key: string) =>
     setMontosOcultos((p) => ({ ...p, [key]: !p[key] }))
@@ -1722,10 +1724,22 @@ export default function CajaJazminePage() {
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaJazLabel}>
                       Cobro esta semana
                     </p>
-                    <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
+                    <div className="flex items-center gap-1.5">
+                      <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
+                      <button
+                        type="button"
+                        onClick={() => toggleMonto("cobroSemana")}
+                        className="hover:opacity-70"
+                        style={{ color: "#000000" }}
+                        aria-label={montosOcultos.cobroSemana ? "Mostrar cobro de esta semana" : "Ocultar cobro de esta semana"}
+                        title={montosOcultos.cobroSemana ? "Mostrar monto" : "Ocultar monto"}
+                      >
+                        {montosOcultos.cobroSemana ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
+                    {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
                   </p>
                   {cuotasSemanaJazCount > 0 ? (
                     <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>
@@ -1741,10 +1755,22 @@ export default function CajaJazminePage() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>Gastos esta semana</p>
-                    <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
+                    <div className="flex items-center gap-1.5">
+                      <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
+                      <button
+                        type="button"
+                        onClick={() => toggleMonto("gastosSemana")}
+                        className="hover:opacity-70"
+                        style={{ color: "#000000" }}
+                        aria-label={montosOcultos.gastosSemana ? "Mostrar gastos de esta semana" : "Ocultar gastos de esta semana"}
+                        title={montosOcultos.gastosSemana ? "Mostrar monto" : "Ocultar monto"}
+                      >
+                        {montosOcultos.gastosSemana ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                   <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                    {montosOcultos.gastos30 ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
+                    {montosOcultos.gastosSemana ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
                   </p>
                   {gastosSemanaJazDetalle ? (
                     <p className="text-sm font-semibold mt-1" style={{ color: "#000000" }}>{gastosSemanaJazDetalle}</p>
