@@ -948,6 +948,10 @@ export default function CajaJazminePage() {
   // Siempre parte del mes corriente, así se va actualizando mes a mes solo.
   const [mesesProyeccionVisibles, setMesesProyeccionVisibles] = useState(3)
 
+  // Próximos vencimientos: al abrir la tarjeta se muestran de a 5,
+  // con "Ver más" para ir agregando de a 5.
+  const [alertasVisibles, setAlertasVisibles] = useState(5)
+
   useEffect(() => {
     // "cuotas" y "alertas" (próximos vencimientos) quedan SIEMPRE colapsadas
     // al entrar; el resto se abre solo con la animación escalonada.
@@ -1979,7 +1983,7 @@ export default function CajaJazminePage() {
           Columnas independientes ancladas ARRIBA: la fila 1 mide solo el alto de su
           tarjeta (grid-rows auto) y cada tarjeta se alinea a su tope (items-start),
           así al plegar una tarjeta la de abajo sube al instante y nada queda flotando. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-[auto_1fr] gap-4 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-[auto_auto_1fr] gap-4 items-start">
 
       {/* Alertas de vencimiento (columna derecha, fila 2) */}
       <Card className={`md:col-start-2 md:row-start-2 ${colapsadas.alertas ? "py-3 gap-0" : ""}`} style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
@@ -2009,7 +2013,7 @@ export default function CajaJazminePage() {
             </p>
           ) : (
             <>
-              {alertasVencimiento.map((alerta) => (
+              {alertasVencimiento.slice(0, alertasVisibles).map((alerta) => (
                 <div
                   key={alerta.id}
                   className={`flex items-start gap-3 rounded-lg border border-border bg-card p-3 ${
@@ -2051,6 +2055,32 @@ export default function CajaJazminePage() {
                   </ConfirmAction>
                 </div>
               ))}
+              {(alertasVencimiento.length > alertasVisibles || alertasVisibles > 5) && (
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  {alertasVencimiento.length > alertasVisibles && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-transparent text-amber-700 border-amber-300 hover:bg-amber-50"
+                      onClick={() => setAlertasVisibles((v) => v + 5)}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      {`Ver 5 más (${alertasVencimiento.length - alertasVisibles} restantes)`}
+                    </Button>
+                  )}
+                  {alertasVisibles > 5 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={() => setAlertasVisibles(5)}
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                      Ver menos
+                    </Button>
+                  )}
+                </div>
+              )}
               <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
@@ -2133,9 +2163,11 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-      {/* ── Columna izquierda: cuotas por cobrar + gastos fijos apilados ── */}
-      <div className="flex min-w-0 flex-col gap-4 md:col-start-1 md:row-start-1 md:row-span-2 md:order-first">
-      <Card className={colapsadas.cuotas ? "py-3 gap-0" : ""} style={{ backgroundColor: "#cdf7c6" }}>
+      {/* Cuotas por cobrar: columna derecha, debajo de Próximos vencimientos */}
+      <Card
+        className={`md:col-start-2 md:row-start-3 ${colapsadas.cuotas ? "py-3 gap-0" : ""}`}
+        style={{ backgroundColor: "#cdf7c6" }}
+      >
         <CardHeader className={colapsadas.cuotas ? "pb-0" : "pb-3"}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -2208,8 +2240,10 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-        {/* Gastos fijos del mes: primero en la columna izquierda */}
-        <Card className="order-first" style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
+      {/* ── Columna izquierda: gastos fijos ── */}
+      <div className="flex min-w-0 flex-col gap-4 md:col-start-1 md:row-start-1 md:row-span-3 md:order-first">
+        {/* Gastos fijos del mes */}
+        <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
