@@ -684,12 +684,35 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       const variacion = ultimos.length > 0 ? ultimos.reduce((s, x) => s + x, 0) / ultimos.length : 0
       // Mes vigente: el monto agendado tal cual. Mes siguiente: monto + tendencia.
       const estimado = estimarMesSiguiente ? Math.round(c.monto * (1 + variacion)) : c.monto
+      const variacionPct = estimarMesSiguiente ? Math.round(variacion * 1000) / 10 : 0
+      // Gasto repartido en vista "todos": una entrada por salón con su parte,
+      // así cada servicio aparece en la carpeta del salón que corresponde
+      // en lugar de caer en "General".
+      const dist = (c.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+      if (!salonSel && dist.length > 0) {
+        const base = c.concepto.split(" · repartido")[0]
+        for (const d of dist) {
+          const parte = Math.round((estimado * d.porcentaje) / 100)
+          estimacionesProximoMes.push({
+            id: `${c.id}-${d.salon}`,
+            concepto: `${base} · ${d.porcentaje}%`,
+            montoActual: Math.round((c.monto * d.porcentaje) / 100),
+            estimado: parte,
+            variacionPct,
+            registros: hist.length,
+            tipo: "mensual",
+            salon: d.salon,
+          })
+          gastosFijosProximoMes += parte
+        }
+        continue
+      }
       estimacionesProximoMes.push({
         id: c.id,
         concepto: c.concepto,
         montoActual: c.monto,
         estimado,
-        variacionPct: estimarMesSiguiente ? Math.round(variacion * 1000) / 10 : 0,
+        variacionPct,
         registros: hist.length,
         tipo: "mensual",
         salon: c.salon ?? null,
