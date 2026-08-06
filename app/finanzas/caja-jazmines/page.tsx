@@ -384,11 +384,14 @@ function CarpetaGastos({
   salon,
   count,
   subtotal,
+  unidad = "gasto",
   children,
 }: {
   salon: string
   count: number
   subtotal: number
+  /** Sustantivo singular para el contador ("gasto", "cuota", "vencimiento") */
+  unidad?: string
   children: React.ReactNode
 }) {
   // Las carpetas arrancan SIEMPRE cerradas: se abren solo a pedido.
@@ -408,7 +411,7 @@ function CarpetaGastos({
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
         <span className="text-sm font-semibold flex-1 text-left">{salonLabel(salon)}</span>
         <span className="text-xs font-medium opacity-80">
-          {count} {count === 1 ? "gasto" : "gastos"} · {formatCurrency(subtotal)}
+          {count} {count === 1 ? unidad : `${unidad}s`} · {formatCurrency(subtotal)}
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`} />
       </button>
@@ -2106,74 +2109,96 @@ export default function CajaJazminePage() {
             </p>
           ) : (
             <>
-              {alertasVencimiento.slice(0, alertasVisibles).map((alerta) => (
-                <div
-                  key={alerta.id}
-                  className={`flex items-start gap-3 rounded-lg border border-border bg-card p-3 ${
-                    alertasPagando.has(alerta.id) ? "fade-out-paid" : ""
-                  }`}
-                >
-                  {puntoPrioridad(alerta.estado)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{alerta.concepto}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                            <span className="capitalize">{descripcionAlerta(alerta.diasRestantes, alerta.estado)}</span>
-                            {alerta.salon && (
-                              <span className="inline-flex items-center gap-1 align-middle">
-                                {" · "}
-                                <SalonDot salon={alerta.salon} size={7} />
-                                {salonLabel(alerta.salon)}
-                              </span>
-                            )}
-                    </p>
-                  </div>
-                  <span className="text-sm font-bold text-red-600 shrink-0">
-                    {formatCurrency(alerta.monto)}
-                  </span>
-                  <ConfirmAction
-                    title="¿Marcar como pagado?"
-                    description={`Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`}
-                    confirmLabel="Sí, marcar pagado"
-                    onConfirm={() => pagarDesdeAlerta(alerta)}
+              {(() => {
+                const renderAlerta = (alerta: (typeof alertasVencimiento)[number]) => (
+                  <div
+                    key={alerta.id}
+                    className={`flex items-start gap-3 rounded-lg border border-border bg-card p-3 ${
+                      alertasPagando.has(alerta.id) ? "fade-out-paid" : ""
+                    }`}
                   >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
-                      title="Marcar como pagado"
+                    {puntoPrioridad(alerta.estado)}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{alerta.concepto}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        <span className="capitalize">{descripcionAlerta(alerta.diasRestantes, alerta.estado)}</span>
+                        {alerta.salon && (
+                          <span className="inline-flex items-center gap-1 align-middle">
+                            {" · "}
+                            <SalonDot salon={alerta.salon} size={7} />
+                            {salonLabel(alerta.salon)}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-red-600 shrink-0">
+                      {formatCurrency(alerta.monto)}
+                    </span>
+                    <ConfirmAction
+                      title="¿Marcar como pagado?"
+                      description={`Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`}
+                      confirmLabel="Sí, marcar pagado"
+                      onConfirm={() => pagarDesdeAlerta(alerta)}
                     >
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
-                    </Button>
-                  </ConfirmAction>
-                </div>
-              ))}
-              {(alertasVencimiento.length > alertasVisibles || alertasVisibles > 5) && (
-                <div className="flex items-center justify-center gap-2 pt-1">
-                  {alertasVencimiento.length > alertasVisibles && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="bg-transparent text-amber-700 border-amber-300 hover:bg-amber-50"
-                      onClick={() => setAlertasVisibles((v) => v + 5)}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
+                        title="Marcar como pagado"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
+                      </Button>
+                    </ConfirmAction>
+                  </div>
+                )
+                // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
+                if (salonFiltro === "todos") {
+                  return agruparPorSalon(alertasVencimiento).map((carpeta) => (
+                    <CarpetaGastos
+                      key={`venc-${carpeta.salon}`}
+                      salon={carpeta.salon}
+                      count={carpeta.items.length}
+                      subtotal={carpeta.subtotal}
+                      unidad="vencimiento"
                     >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                      {`Ver 5 más (${alertasVencimiento.length - alertasVisibles} restantes)`}
-                    </Button>
-                  )}
-                  {alertasVisibles > 5 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground"
-                      onClick={() => setAlertasVisibles(5)}
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                      Ver menos
-                    </Button>
-                  )}
-                </div>
-              )}
+                      {carpeta.items.map(renderAlerta)}
+                    </CarpetaGastos>
+                  ))
+                }
+                // Vista de un salón: lista plana con paginado de a 5.
+                return (
+                  <>
+                    {alertasVencimiento.slice(0, alertasVisibles).map(renderAlerta)}
+                    {(alertasVencimiento.length > alertasVisibles || alertasVisibles > 5) && (
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        {alertasVencimiento.length > alertasVisibles && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-transparent text-amber-700 border-amber-300 hover:bg-amber-50"
+                            onClick={() => setAlertasVisibles((v) => v + 5)}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                            {`Ver 5 más (${alertasVencimiento.length - alertasVisibles} restantes)`}
+                          </Button>
+                        )}
+                        {alertasVisibles > 5 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground"
+                            onClick={() => setAlertasVisibles(5)}
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                            Ver menos
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
               <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
@@ -2292,37 +2317,62 @@ export default function CajaJazminePage() {
               </p>
             ) : (
               <div ref={cuotasListaRef} className="space-y-2 reveal-stagger">
-                {cuotasPorCobrar.slice(0, cuotasVisibles).map((cuota) => (
-                  <div
-                    key={cuota.id}
-                    className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                              Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
-                              {cuota.salon && (
-                                <span className="inline-flex items-center gap-1 align-middle">
-                                  {" · "}
-                                  <SalonDot salon={cuota.salon} size={7} />
-                                  {salonLabel(cuota.salon)}
-                                </span>
-                              )}
-                      </p>
+                {(() => {
+                  const renderCuota = (cuota: (typeof cuotasPorCobrar)[number]) => (
+                    <div
+                      key={cuota.id}
+                      className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
+                          {cuota.salon && (
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              {" · "}
+                              <SalonDot salon={cuota.salon} size={7} />
+                              {salonLabel(cuota.salon)}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <span className="text-sm font-bold text-emerald-700 shrink-0">
+                        +{formatCurrency(cuota.montoJazmines)}
+                      </span>
                     </div>
-                    <span className="text-sm font-bold text-emerald-700 shrink-0">
-                      +{formatCurrency(cuota.montoJazmines)}
-                    </span>
-                  </div>
-                ))}
-                {totalCuotas > CUOTAS_POR_PAGINA && (
-                  <p className="text-[11px] text-emerald-700/70 text-center pt-1 select-none">
-                    Mostrando {Math.min(cuotasVisibles, totalCuotas)} de {totalCuotas}
-                    {cuotasVisibles < totalCuotas
-                      ? " · usá la rueda del mouse para ver más"
-                      : " · rueda hacia arriba para ocultar"}
-                  </p>
-                )}
+                  )
+                  // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
+                  // El subtotal de cada carpeta es la parte Jazmines (lo que entra a esta caja).
+                  if (salonFiltro === "todos") {
+                    return agruparPorSalon(
+                      cuotasPorCobrar.map((c) => ({ ...c, monto: c.montoJazmines })),
+                    ).map((carpeta) => (
+                      <CarpetaGastos
+                        key={`cuota-${carpeta.salon}`}
+                        salon={carpeta.salon}
+                        count={carpeta.items.length}
+                        subtotal={carpeta.subtotal}
+                        unidad="cuota"
+                      >
+                        {carpeta.items.map(renderCuota)}
+                      </CarpetaGastos>
+                    ))
+                  }
+                  // Vista de un salón: lista plana con revelado por scroll.
+                  return (
+                    <>
+                      {cuotasPorCobrar.slice(0, cuotasVisibles).map(renderCuota)}
+                      {totalCuotas > CUOTAS_POR_PAGINA && (
+                        <p className="text-[11px] text-emerald-700/70 text-center pt-1 select-none">
+                          Mostrando {Math.min(cuotasVisibles, totalCuotas)} de {totalCuotas}
+                          {cuotasVisibles < totalCuotas
+                            ? " · usá la rueda del mouse para ver más"
+                            : " · rueda hacia arriba para ocultar"}
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )}
           </CardContent>
