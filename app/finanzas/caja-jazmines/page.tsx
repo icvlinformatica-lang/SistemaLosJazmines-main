@@ -211,7 +211,7 @@ function puntoPrioridad(estado: EstadoAlerta) {
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence ma������ana"
+  if (diasRestantes === 1) return "vence ma��������ana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -808,7 +808,7 @@ export default function CajaJazminePage() {
         tipo: "caja",
         accion: "extracción",
         nombre: `Caja Jazmines · ${formatCurrency(monto)}`,
-        detalle: `Extracción de ${formatCurrency(monto)} | Motivo: ${concepto}`,
+        detalle: `Extracci��n de ${formatCurrency(monto)} | Motivo: ${concepto}`,
       }),
     }).catch(() => {})
 
@@ -990,6 +990,10 @@ export default function CajaJazminePage() {
     const ultimo = historial.length > 0 ? historial[historial.length - 1] : null
     updateCostoOperativo(gasto.id, {
       pagado: false,
+      // Nuevo período: cada salón vuelve a deber su parte del reparto.
+      ...(costo?.distribucion && costo.distribucion.length > 0
+        ? { distribucion: costo.distribucion.map((d) => ({ ...d, pagado: false })) }
+        : {}),
       fechaVencimiento: siguienteVencimiento(costo?.fechaVencimiento, gasto.frecuencia),
       ...(yaRegistrado
         ? {}
@@ -1334,9 +1338,13 @@ export default function CajaJazminePage() {
     }
     // El nuevo monto pasa a ser la referencia vigente y el gasto queda
     // PENDIENTE de pago al instante (flujo: cargar monto nuevo → pagarlo).
+    // Si está repartido, cada salón vuelve a deber su parte del nuevo período.
     updateCostoOperativo(registrandoMonto.id, {
       monto: montoNum,
       pagado: false,
+      ...(original.distribucion && original.distribucion.length > 0
+        ? { distribucion: original.distribucion.map((d) => ({ ...d, pagado: false })) }
+        : {}),
       historialMontos: [...historial, nuevoRegistro],
     })
     setRegistrandoMonto(null)
@@ -1369,12 +1377,20 @@ export default function CajaJazminePage() {
   )
 
   // Cuota que le corresponde a cada salón de los gastos fijos repartidos.
-  // En la vista "todos los salones" la línea completa vive en la carpeta
-  // General, y además cada carpeta de salón muestra su parte prorrateada
-  // (informativa: el pago se gestiona desde la línea de General).
+  // El PAGO se hace desde cada salón: cada cuota tiene su propio check, y
+  // cuando todos los salones pagaron su parte el gasto completo queda pagado.
+  // La línea de la carpeta General es informativa (muestra el total y avance).
   const cuotasRepartoFijos = new Map<
     string,
-    { id: string; concepto: string; monto: number; porcentaje: number; estado: GastoFijoMes["estado"] }[]
+    {
+      id: string
+      concepto: string
+      monto: number
+      porcentaje: number
+      pagado: boolean
+      estado: GastoFijoMes["estado"]
+      fechaVencimiento?: string
+    }[]
   >()
   if (salonFiltro === "todos") {
     for (const g of gastosFijosMes) {
@@ -1387,11 +1403,31 @@ export default function CajaJazminePage() {
           concepto: orig!.concepto,
           monto: Math.round((orig!.monto * d.porcentaje) / 100),
           porcentaje: d.porcentaje,
-          estado: g.estado,
+          pagado: d.pagado === true,
+          estado: d.pagado === true ? "pagado" : g.estado,
+          fechaVencimiento: g.fechaVencimiento ?? undefined,
         })
         cuotasRepartoFijos.set(d.salon, arr)
       }
     }
+  }
+
+  /**
+   * Marca la parte de UN salón de un gasto repartido como pagada/pendiente.
+   * Si con este cambio todos los salones quedan pagos, el gasto completo pasa
+   * a pagado; si alguno queda pendiente, el gasto vuelve a pendiente.
+   */
+  function pagarCuotaSalon(gastoId: string, salon: string, pagado: boolean) {
+    const original = state.costosOperativos?.find((c) => c.id === gastoId)
+    if (!original) return
+    const distActualizada = (original.distribucion || []).map((d) =>
+      d.salon === salon ? { ...d, pagado } : d,
+    )
+    const todosPagados = distActualizada.every((d) => d.pagado === true)
+    updateCostoOperativo(gastoId, {
+      distribucion: distActualizada,
+      pagado: todosPagados,
+    })
   }
   function abrirEvolucion(costoId?: string) {
     setEvolucionCostoId(costoId ?? null)
@@ -2250,8 +2286,16 @@ export default function CajaJazminePage() {
                 )}
                 {(() => {
                   const carpetas = agruparPorSalon(gastosFijosMes)
-                  // Salones que solo reciben cuota de un gasto repartido
-                  // igual necesitan su carpeta para mostrarla.
+                  // En la vista de todos los salones, TODOS los salones tienen
+                  // su carpeta (incluso Salon 4 y 5 sin gastos propios), porque
+                  // las cuotas de gastos repartidos se pagan desde cada salón.
+                  if (salonFiltro === "todos") {
+                    for (const salon of SALONES) {
+                      if (!carpetas.some((c) => c.salon === salon)) {
+                        carpetas.push({ salon, items: [], subtotal: 0 })
+                      }
+                    }
+                  }
                   for (const salon of cuotasRepartoFijos.keys()) {
                     if (!carpetas.some((c) => c.salon === salon)) {
                       carpetas.push({ salon, items: [], subtotal: 0 })
@@ -2271,7 +2315,7 @@ export default function CajaJazminePage() {
                     count={carpeta.items.length + cuotasReparto.length}
                     subtotal={carpeta.subtotal + cuotasReparto.reduce((s, c) => s + c.monto, 0)}
                   >
-                    {/* Cuotas de gastos repartidos: parte de este salón, se paga desde General */}
+                    {/* Cuotas de gastos repartidos: cada salón paga su parte con su propio check */}
                     {cuotasReparto.map((cuota) => (
                       <div
                         key={`reparto-${cuota.id}`}
@@ -2286,14 +2330,33 @@ export default function CajaJazminePage() {
                           >
                             <p className="text-sm font-medium truncate">{cuota.concepto}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {`Parte de este salón (${cuota.porcentaje}%) · se paga desde General`}
+                              {`Parte de este salón (${cuota.porcentaje}%)`}
+                              {cuota.fechaVencimiento ? ` · vence ${formatFecha(cuota.fechaVencimiento)}` : ""}
                             </p>
                           </button>
-                          <div className="flex flex-col items-end gap-1 mr-1 shrink-0">
-                            <span className="text-sm font-bold text-foreground">
-                              {formatCurrency(cuota.monto)}
-                            </span>
-                            {badgeEstadoFijo(cuota.estado)}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <div className="flex flex-col items-end gap-1 mr-1">
+                              <span className="text-sm font-bold text-foreground">
+                                {formatCurrency(cuota.monto)}
+                              </span>
+                              {badgeEstadoFijo(cuota.estado)}
+                            </div>
+                            <ConfirmAction
+                              title={cuota.pagado ? "¿Marcar parte como pendiente?" : "¿Pagar la parte de este salón?"}
+                              description={`${cuota.concepto} · ${carpeta.salon} (${cuota.porcentaje}%) · ${formatCurrency(cuota.monto)}. ${cuota.pagado ? "Volverá a figurar pendiente." : "Cuando todos los salones paguen su parte, el gasto completo queda pagado."}`}
+                              confirmLabel={cuota.pagado ? "Sí, marcar pendiente" : "Sí, pagar esta parte"}
+                              onConfirm={() => pagarCuotaSalon(cuota.id, carpeta.salon, !cuota.pagado)}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-7 w-7 ${cuota.pagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+                                title={cuota.pagado ? `Marcar parte de ${carpeta.salon} como pendiente` : `Pagar parte de ${carpeta.salon}`}
+                              >
+                                {cuota.pagado ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                                <span className="sr-only">{cuota.pagado ? `Marcar parte de ${carpeta.salon} pendiente` : `Pagar parte de ${carpeta.salon}`}</span>
+                              </Button>
+                            </ConfirmAction>
                           </div>
                         </div>
                       </div>
@@ -2302,6 +2365,13 @@ export default function CajaJazminePage() {
                   const esPagado = gasto.estado === "pagado"
                   const hist = gasto.historialMontos || []
                   const ultimoRegistro = hist.length > 0 ? hist[hist.length - 1] : null
+                  // Gastos repartidos: el pago se hace desde la cuota de cada
+                  // salón; la línea de General solo muestra el avance.
+                  const distGasto = (
+                    state.costosOperativos?.find((c) => c.id === gasto.id)?.distribucion || []
+                  ).filter((d) => d.salon && d.porcentaje > 0)
+                  const esRepartido = distGasto.length > 0
+                  const partesPagadas = distGasto.filter((d) => d.pagado === true).length
                   // Períodos anteriores que quedaron adeudados al cargar un monto nuevo
                   // sin pagarlos: cada uno muestra su propio check hasta que se pague.
                   const deudasAnteriores = hist.filter(
@@ -2355,7 +2425,16 @@ export default function CajaJazminePage() {
                             <span className="sr-only">{`Ver evolución mes a mes de ${gasto.concepto}`}</span>
                           </Button>
                         )}
-                        {!gasto.esSueldoVendedor && (
+                        {!gasto.esSueldoVendedor && esRepartido && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] shrink-0 ${partesPagadas === distGasto.length ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-muted text-muted-foreground"}`}
+                            title="Se paga desde la carpeta de cada salón"
+                          >
+                            {`${partesPagadas}/${distGasto.length} salones`}
+                          </Badge>
+                        )}
+                        {!gasto.esSueldoVendedor && !esRepartido && (
                           <ConfirmAction
                             title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
                             description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}${ultimoRegistro ? ` · período ${formatMes(ultimoRegistro.mes)}` : ""}`}

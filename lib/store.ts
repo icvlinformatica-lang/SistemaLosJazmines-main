@@ -380,6 +380,8 @@ export interface CostoOperativo {
 export interface DistribucionSalon {
   salon: string
   porcentaje: number
+  /** true si este salón ya pagó su parte del período vigente. */
+  pagado?: boolean
 }
 
 /** Un registro puntual de cuánto se pagó de un gasto fijo en un período dado. */
