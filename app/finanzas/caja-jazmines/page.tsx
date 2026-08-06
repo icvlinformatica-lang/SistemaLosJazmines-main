@@ -1553,18 +1553,18 @@ export default function CajaJazminePage() {
 
   return (
     <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-start gap-3 flex-1">
+      {/* Header: nav fijo, siempre visible al scrollear */}
+      <div className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 bg-background/95 backdrop-blur border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
             <Building className="h-5 w-5 text-purple-700" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Jazmines</h1>
-  <p className="text-sm text-muted-foreground mt-0.5">
-    Lo que queda de cada cobro después de cubrir el costo del evento + 5%.
-  </p>
-          </div>
+          <h1 className="text-lg xl:text-2xl font-bold tracking-tight text-foreground truncate">
+            Caja Jazmines
+            <span className="text-purple-700">
+              {` · ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}`}
+            </span>
+          </h1>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-purple-700">
