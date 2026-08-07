@@ -399,8 +399,8 @@ export function SaldoHerramientas({ salonFiltro }: { salonFiltro: string }) {
           if (!v) setContado({})
         }}
       >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[85dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Conciliar caja</DialogTitle>
             <DialogDescription>
               Contá la plata que tenés hoy en mano por salón y cargala acá. El sistema
@@ -409,7 +409,7 @@ export function SaldoHerramientas({ salonFiltro }: { salonFiltro: string }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 overflow-y-auto min-h-0 flex-1 pr-1">
             {salonesAConciliar.map((s) => {
               const sistema = saldoPorSalon[s] ?? 0
               const real = contado[s]
@@ -464,7 +464,7 @@ export function SaldoHerramientas({ salonFiltro }: { salonFiltro: string }) {
             })}
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 shrink-0">
             <Button variant="outline" onClick={() => setConciliarAbierto(false)}>
               Cancelar
             </Button>
