@@ -254,10 +254,14 @@ useStore()
   // Tocar una tarjeta cerrada despliega todo su bloque.
   const [colapsadoMes, setColapsadoMes] = useState(false)
   const [colapsadoSemana, setColapsadoSemana] = useState(false)
+  // Evita que el primer click (antes o después del plegado automático) abra
+  // información: el primer click siempre despliega.
+  const [dashboardInteractivo, setDashboardInteractivo] = useState(false)
   useEffect(() => {
     const t = setTimeout(() => {
       setColapsadoMes(true)
       setColapsadoSemana(true)
+      setDashboardInteractivo(true)
     }, 1200)
     return () => clearTimeout(t)
   }, [])
@@ -1145,7 +1149,7 @@ useStore()
           style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
           className="cursor-pointer transition-colors hover:bg-white/40"
           onClick={() => {
-            if (colapsadoMes) {
+            if (!dashboardInteractivo || colapsadoMes) {
               setColapsadoMes(false)
               return
             }
