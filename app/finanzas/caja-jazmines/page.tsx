@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
-import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -965,25 +964,15 @@ export default function CajaJazminePage() {
   const { toast } = useToast()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
 
-  // ── Extracción de dinero de Caja Jazmines (retiro con justificación) ─────
-  const [extraerOpen, setExtraerOpen] = useState(false)
-  const [extraerMonto, setExtraerMonto] = useState(0)
-  const [extraerConcepto, setExtraerConcepto] = useState("")
-  // Modo del diálogo: "extraer" (retiro clásico) o "fijar" (colocar el monto
-  // real contado y que el sistema registre la diferencia como ajuste).
-  const [extraerModo, setExtraerModo] = useState<"extraer" | "fijar">("extraer")
-
-  // Registra una extracción de dinero de Caja Jazmines: genera el egreso en la
-  // caja (baja el saldo), lo archiva en el Archivo Histórico y deja rastro en
-  // Configuración > Actividad, siempre con el concepto que justifica el retiro.
-  function confirmarExtraccion() {
-    const monto = extraerMonto
-    const concepto = extraerConcepto.trim()
-    if (!monto || monto <= 0 || !concepto) return
+  // ── Retiro de dinero de Caja Jazmines ────────────────────────────────────
+  // Se registra desde "Gastos variables" (opción "Retiro") y SIEMPRE con un
+  // salón asignado, para que el saldo de cada salón refleje la extracción.
+  function registrarRetiro(concepto: string, monto: number, salon: string) {
+    if (!monto || monto <= 0 || !concepto || !salon) return
 
     const hoyISO = new Date().toISOString()
     const fechaCorta = hoyISO.slice(0, 10)
-    const conceptoMov = `Extracción - ${concepto}`
+    const conceptoMov = `Retiro - ${concepto}`
 
     const saldoPrev = (state.movimientosCaja ?? [])
       .filter((m) => m.cajaDestino === "caja_jazmines")
@@ -996,18 +985,18 @@ export default function CajaJazminePage() {
         tipo: "egreso",
         concepto: conceptoMov,
         monto,
-        salon: "",
+        salon,
         cajaDestino: "caja_jazmines",
         saldoResultante: saldoPrev - monto,
       },
     ])
 
-    // Archivo Histórico (extracción de Jazmines = gasto variable)
+    // Archivo Histórico (retiro de Jazmines = gasto variable)
     archivarGasto({
       fecha: fechaCorta,
       concepto: conceptoMov,
       monto,
-      salon: null,
+      salon,
       origen: "caja_jazmines_variable",
       categoria: "extracción",
       eventoId: null,
@@ -1022,94 +1011,15 @@ export default function CajaJazminePage() {
       body: JSON.stringify({
         tipo: "caja",
         accion: "extracción",
-        nombre: `Caja Jazmines · ${formatCurrency(monto)}`,
-        detalle: `Extracci��n de ${formatCurrency(monto)} | Motivo: ${concepto}`,
+        nombre: `Caja Jazmines · ${formatCurrency(monto)} (${salonLabel(salon)})`,
+        detalle: `Retiro de ${formatCurrency(monto)} del salón ${salonLabel(salon)} | Motivo: ${concepto}`,
       }),
     }).catch(() => {})
 
     toast({
-      title: "Extracción registrada",
-      description: `Se retiraron ${formatCurrency(monto)} de Caja Jazmines.`,
+      title: "Retiro registrado",
+      description: `Se retiraron ${formatCurrency(monto)} de Caja Jazmines (${salonLabel(salon)}).`,
     })
-    setExtraerMonto(0)
-    setExtraerConcepto("")
-    setExtraerOpen(false)
-  }
-
-  // "Colocar monto actual": el usuario indica cuánto dinero REAL hay en la
-  // caja y el sistema registra la diferencia contra el saldo del sistema como
-  // un ajuste (egreso si falta, ingreso si sobra). Requiere nota obligatoria
-  // que queda en el Archivo Histórico y en Configuración > Actividad.
-  function confirmarAjusteSaldo() {
-    const montoReal = extraerMonto
-    const concepto = extraerConcepto.trim()
-    if (montoReal < 0 || !concepto) return
-
-    const saldoPrev = (state.movimientosCaja ?? [])
-      .filter((m) => m.cajaDestino === "caja_jazmines")
-      .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
-
-    const diferencia = montoReal - saldoPrev
-    if (diferencia === 0) {
-      toast({ title: "Sin diferencia", description: "El saldo del sistema ya coincide con el monto indicado." })
-      setExtraerOpen(false)
-      return
-    }
-
-    const hoyISO = new Date().toISOString()
-    const fechaCorta = hoyISO.slice(0, 10)
-    const esFaltante = diferencia < 0
-    const montoAjuste = Math.abs(diferencia)
-    const conceptoMov = `Ajuste de saldo - ${concepto}`
-    const movId = generateId()
-
-    addMovimientosCaja([
-      {
-        id: movId,
-        fecha: hoyISO,
-        tipo: esFaltante ? "egreso" : "ingreso",
-        concepto: conceptoMov,
-        monto: montoAjuste,
-        salon: "",
-        cajaDestino: "caja_jazmines",
-        saldoResultante: montoReal,
-      },
-    ])
-
-    // Archivo Histórico: solo los faltantes son un gasto real
-    if (esFaltante) {
-      archivarGasto({
-        fecha: fechaCorta,
-        concepto: conceptoMov,
-        monto: montoAjuste,
-        salon: null,
-        origen: "caja_jazmines_variable",
-        categoria: "extracción",
-        eventoId: null,
-        eventoNombre: null,
-        refId: movId,
-      })
-    }
-
-    // Configuración > Actividad
-    fetch("/api/activity-log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tipo: "caja",
-        accion: "ajuste de saldo",
-        nombre: `Caja Jazmines · saldo fijado en ${formatCurrency(montoReal)}`,
-        detalle: `Saldo del sistema: ${formatCurrency(saldoPrev)} → saldo real: ${formatCurrency(montoReal)} (${esFaltante ? "faltante" : "sobrante"} de ${formatCurrency(montoAjuste)}) | Nota: ${concepto}`,
-      }),
-    }).catch(() => {})
-
-    toast({
-      title: "Saldo actualizado",
-      description: `Caja Jazmines quedó en ${formatCurrency(montoReal)} (${esFaltante ? "se descontó" : "se sumó"} ${formatCurrency(montoAjuste)}).`,
-    })
-    setExtraerMonto(0)
-    setExtraerConcepto("")
-    setExtraerOpen(false)
   }
 
   const data = useCajaJazmines(state, salonFiltro, ahora)
@@ -1756,6 +1666,9 @@ export default function CajaJazminePage() {
   })
   // Si tiene valor, el modal de gasto variable está editando ese costo operativo.
   const [editandoVariableId, setEditandoVariableId] = useState<string | null>(null)
+  // Modo del modal: "gasto" agenda un gasto variable; "retiro" extrae dinero
+  // de la caja ya mismo, siempre asignado a un salón.
+  const [modoVariable, setModoVariable] = useState<"gasto" | "retiro">("gasto")
 
   const variableRepartoInvalido = nuevoGasto.repartir && !repartoValido(nuevoGasto.distribucion)
 
@@ -1766,6 +1679,16 @@ export default function CajaJazminePage() {
   const gastosVariablesPendientes30 = Math.max(0, gastosPróximos30Dias - gastosFijosPendientes30)
 
   function handleAgregarGasto() {
+    // Modo retiro: extrae el dinero de la caja ahora mismo, con salón asignado.
+    if (modoVariable === "retiro" && !editandoVariableId) {
+      if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon) return
+      if (!confirm(`¿Registrar el retiro "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} del salón ${salonLabel(nuevoGasto.salon)}? Se descuenta del saldo ahora.`)) return
+      registrarRetiro(nuevoGasto.nombre, Number(nuevoGasto.monto), nuevoGasto.salon)
+      setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+      setModoVariable("gasto")
+      setModalVariableAbierto(false)
+      return
+    }
     if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.fecha) return
     if (nuevoGasto.repartir) {
       if (variableRepartoInvalido) return
@@ -1902,20 +1825,11 @@ export default function CajaJazminePage() {
             <div className="contents">
               <Card
                 style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
-                className="cursor-pointer transition-colors hover:bg-white/40"
-                onClick={() => {
-                  if (colapsado30) {
-                    setColapsado30(false)
-                    return
-                  }
-                  setExtraerMonto(0)
-                  setExtraerConcepto("")
-                  setExtraerModo("extraer")
-                  setExtraerOpen(true)
-                }}
+                className={`transition-colors ${colapsado30 ? "cursor-pointer hover:bg-white/40" : ""}`}
+                onClick={() => colapsado30 && setColapsado30(false)}
                 role="button"
                 tabIndex={0}
-                aria-label={colapsado30 ? "Desplegar tarjetas a 30 días" : "Extraer o ajustar dinero de Caja Jazmines"}
+                aria-label="Desplegar tarjetas a 30 días"
               >
                 <CardContent className="p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
@@ -3746,20 +3660,55 @@ export default function CajaJazminePage() {
           setModalVariableAbierto(open)
           if (!open) {
             setEditandoVariableId(null)
+            setModoVariable("gasto")
             setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
           }
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editandoVariableId ? "Editar gasto variable" : "Agendar gasto variable"}</DialogTitle>
+            <DialogTitle>
+              {editandoVariableId
+                ? "Editar gasto variable"
+                : modoVariable === "retiro"
+                  ? "Registrar retiro de caja"
+                  : "Agendar gasto variable"}
+            </DialogTitle>
+            {modoVariable === "retiro" && !editandoVariableId && (
+              <DialogDescription>
+                El retiro descuenta el dinero del saldo ahora mismo y queda asignado al salón que elijas. Se registra
+                en el Archivo Histórico y en Configuración → Actividad.
+              </DialogDescription>
+            )}
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {!editandoVariableId && (
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1">
+                <button
+                  type="button"
+                  className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                    modoVariable === "gasto" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
+                  }`}
+                  onClick={() => setModoVariable("gasto")}
+                >
+                  Gasto
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                    modoVariable === "retiro" ? "bg-background shadow-sm text-red-600" : "text-muted-foreground"
+                  }`}
+                  onClick={() => setModoVariable("retiro")}
+                >
+                  Retiro
+                </button>
+              </div>
+            )}
             <div className="space-y-1.5">
-              <Label htmlFor="gv-concepto">Concepto</Label>
+              <Label htmlFor="gv-concepto">{modoVariable === "retiro" ? "Motivo del retiro" : "Concepto"}</Label>
               <Input
                 id="gv-concepto"
-                placeholder="Ej: Reparación de heladera"
+                placeholder={modoVariable === "retiro" ? "Ej: Retiro de socios" : "Ej: Reparación de heladera"}
                 value={nuevoGasto.nombre}
                 onChange={(e) => setNuevoGasto((p) => ({ ...p, nombre: e.target.value }))}
               />
@@ -3774,22 +3723,24 @@ export default function CajaJazminePage() {
               />
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="gv-repartir">Repartir entre varios salones</Label>
-                <Switch
-                  id="gv-repartir"
-                  checked={nuevoGasto.repartir}
-                  onCheckedChange={(checked) => setNuevoGasto((p) => ({ ...p, repartir: checked }))}
-                />
-              </div>
-              {nuevoGasto.repartir ? (
+              {modoVariable !== "retiro" && (
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="gv-repartir">Repartir entre varios salones</Label>
+                  <Switch
+                    id="gv-repartir"
+                    checked={nuevoGasto.repartir}
+                    onCheckedChange={(checked) => setNuevoGasto((p) => ({ ...p, repartir: checked }))}
+                  />
+                </div>
+              )}
+              {modoVariable !== "retiro" && nuevoGasto.repartir ? (
                 <RepartoSalonesEditor
                   value={nuevoGasto.distribucion}
                   onChange={(v) => setNuevoGasto((p) => ({ ...p, distribucion: v }))}
                 />
               ) : (
                 <div className="space-y-1.5">
-                  <Label htmlFor="gv-salon">Salón</Label>
+                  <Label htmlFor="gv-salon">{modoVariable === "retiro" ? "Salón del que se retira" : "Salón"}</Label>
                   <Select
                     value={nuevoGasto.salon}
                     onValueChange={(v) => setNuevoGasto((p) => ({ ...p, salon: v }))}
@@ -3811,29 +3762,31 @@ export default function CajaJazminePage() {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="gv-fecha-gasto">Fecha del gasto</Label>
-                <Input
-                  id="gv-fecha-gasto"
-                  type="date"
-                  value={nuevoGasto.fechaGasto}
-                  onChange={(e) => setNuevoGasto((p) => ({ ...p, fechaGasto: e.target.value }))}
-                />
+            {modoVariable !== "retiro" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="gv-fecha-gasto">Fecha del gasto</Label>
+                  <Input
+                    id="gv-fecha-gasto"
+                    type="date"
+                    value={nuevoGasto.fechaGasto}
+                    onChange={(e) => setNuevoGasto((p) => ({ ...p, fechaGasto: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="gv-fecha">Vencimiento</Label>
+                  <Input
+                    id="gv-fecha"
+                    type="date"
+                    value={nuevoGasto.fecha}
+                    onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground col-span-2">
+                  La fecha del gasto es opcional (cuándo se hizo). El vencimiento ordena la lista y dispara las alertas.
+                </p>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="gv-fecha">Vencimiento</Label>
-                <Input
-                  id="gv-fecha"
-                  type="date"
-                  value={nuevoGasto.fecha}
-                  onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground col-span-2">
-                La fecha del gasto es opcional (cuándo se hizo). El vencimiento ordena la lista y dispara las alertas.
-              </p>
-            </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalVariableAbierto(false)}>
@@ -3842,14 +3795,24 @@ export default function CajaJazminePage() {
             <Button
               onClick={handleAgregarGasto}
               disabled={
-                !nuevoGasto.nombre ||
-                !nuevoGasto.monto ||
-                !nuevoGasto.fecha ||
-                (nuevoGasto.repartir ? variableRepartoInvalido : !nuevoGasto.salon)
+                modoVariable === "retiro" && !editandoVariableId
+                  ? !nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon
+                  : !nuevoGasto.nombre ||
+                    !nuevoGasto.monto ||
+                    !nuevoGasto.fecha ||
+                    (nuevoGasto.repartir ? variableRepartoInvalido : !nuevoGasto.salon)
               }
-              className="bg-purple-600 hover:bg-purple-700 text-white"
+              className={
+                modoVariable === "retiro" && !editandoVariableId
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-purple-600 hover:bg-purple-700 text-white"
+              }
             >
-              {editandoVariableId ? "Guardar cambios" : "Agendar"}
+              {editandoVariableId
+                ? "Guardar cambios"
+                : modoVariable === "retiro"
+                  ? "Registrar retiro"
+                  : "Agendar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4025,111 +3988,6 @@ export default function CajaJazminePage() {
         </DialogContent>
       </Dialog>
 
-      {/* DIALOG: extracción / ajuste de saldo de Caja Jazmines */}
-      <Dialog open={extraerOpen} onOpenChange={setExtraerOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowUpFromLine className="h-4 w-4 text-red-600" />
-              {extraerModo === "extraer" ? "Extraer dinero — Caja Jazmines" : "Colocar monto actual — Caja Jazmines"}
-            </DialogTitle>
-            <DialogDescription>
-              {extraerModo === "extraer"
-                ? "Registra un retiro de efectivo. Queda en el Archivo Histórico y en Configuración → Actividad."
-                : "Contá el dinero real y colocá el monto: el sistema registra la diferencia automáticamente. Queda en Configuración → Actividad."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-1">
-            {/* Selector de modo */}
-            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1">
-              <button
-                type="button"
-                className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                  extraerModo === "extraer" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
-                }`}
-                onClick={() => setExtraerModo("extraer")}
-              >
-                Extraer monto
-              </button>
-              <button
-                type="button"
-                className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                  extraerModo === "fijar" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
-                }`}
-                onClick={() => setExtraerModo("fijar")}
-              >
-                Colocar monto actual
-              </button>
-            </div>
-            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Saldo actual (sistema)</span>
-              <span className="text-sm font-semibold tabular-nums">{formatCurrency(saldoActual)}</span>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="extraer-monto-jaz">
-                {extraerModo === "extraer" ? "Monto a extraer" : "¿Cuánto dinero hay realmente?"}
-              </Label>
-              <MoneyInput
-                id="extraer-monto-jaz"
-                value={extraerMonto}
-                onValueChange={setExtraerMonto}
-                placeholder="0"
-              />
-              {extraerModo === "extraer" && extraerMonto > saldoActual && (
-                <p className="text-xs text-amber-600 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> El monto supera el saldo disponible. La caja quedará en negativo.
-                </p>
-              )}
-              {extraerModo === "fijar" && extraerMonto !== saldoActual && (
-                <p className={`text-xs flex items-center gap-1 ${extraerMonto < saldoActual ? "text-red-600" : "text-emerald-700"}`}>
-                  {extraerMonto < saldoActual
-                    ? `Se registrará un egreso de ${formatCurrency(saldoActual - extraerMonto)} (faltante).`
-                    : `Se registrará un ingreso de ${formatCurrency(extraerMonto - saldoActual)} (sobrante).`}
-                </p>
-              )}
-              {extraerModo === "fijar" && extraerMonto === saldoActual && (
-                <p className="text-xs text-muted-foreground">El saldo del sistema ya coincide con ese monto.</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="extraer-concepto-jaz">Nota / justificación</Label>
-              <Textarea
-                id="extraer-concepto-jaz"
-                value={extraerConcepto}
-                onChange={(e) => setExtraerConcepto(e.target.value)}
-                placeholder={
-                  extraerModo === "extraer"
-                    ? "Ej: Retiro de socios / pago en efectivo"
-                    : "Ej: Conteo de caja del cierre del día"
-                }
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setExtraerOpen(false)}>
-              Cancelar
-            </Button>
-            {extraerModo === "extraer" ? (
-              <Button
-                className="bg-red-600 hover:bg-red-700 text-white"
-                disabled={extraerMonto <= 0 || !extraerConcepto.trim()}
-                onClick={confirmarExtraccion}
-              >
-                <ArrowUpFromLine className="h-4 w-4 mr-1" /> Confirmar extracción
-              </Button>
-            ) : (
-              <Button
-                className="bg-teal-600 hover:bg-teal-700 text-white"
-                disabled={extraerMonto < 0 || extraerMonto === saldoActual || !extraerConcepto.trim()}
-                onClick={confirmarAjusteSaldo}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-1" /> Fijar saldo real
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
