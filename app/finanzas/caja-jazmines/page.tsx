@@ -84,6 +84,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
+import { SaldoHerramientas } from "./saldo-herramientas"
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -1787,6 +1788,7 @@ export default function CajaJazminePage() {
           cubiertos={gastosFijosCubiertos}
           variables={gastosVariablesCombinados}
         />
+        <SaldoHerramientas salonFiltro={salonFiltro} />
         <div className="flex items-center gap-3 shrink-0">
           <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
             Cambiar salón
