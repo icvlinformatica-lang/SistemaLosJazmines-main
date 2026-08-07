@@ -63,6 +63,8 @@ import {
   ArrowUpFromLine,
   ArrowRight,
   MoreVertical,
+  Search,
+  X,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -738,6 +740,161 @@ function CalendarioGastosSalones({
 // ---------------------------------------------------------------------------
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
+
+// ============================================================
+// BUSCADOR DE GASTOS (fijos y variables) con resumen flotante
+// ============================================================
+
+interface ResultadoGasto {
+  id: string
+  concepto: string
+  tipo: "fijo" | "variable"
+  salon: string | null | undefined
+  monto: number
+  estado: string
+  fecha?: string
+}
+
+function BuscadorGastos({
+  fijos,
+  cubiertos,
+  variables,
+}: {
+  fijos: GastoFijoMes[]
+  cubiertos: GastoFijoMes[]
+  variables: GastoVariable[]
+}) {
+  const [query, setQuery] = useState("")
+  const abierto = query.trim().length >= 2
+
+  const resultados = useMemo<ResultadoGasto[]>(() => {
+    if (!abierto) return []
+    const q = query.trim().toLowerCase()
+    const deFijos: ResultadoGasto[] = [...fijos, ...cubiertos]
+      .filter((g) => g.concepto.toLowerCase().includes(q))
+      .map((g) => ({
+        id: `f-${g.id}-${g.estado}`,
+        concepto: g.concepto,
+        tipo: "fijo" as const,
+        salon: g.salon,
+        monto: g.monto,
+        estado: g.estado === "pagado" ? "pagado" : g.estado === "vencido" ? "vencido" : "pendiente",
+        fecha: g.fechaVencimiento,
+      }))
+    const deVariables: ResultadoGasto[] = variables
+      .filter((g) => g.nombre.toLowerCase().includes(q))
+      .map((g) => ({
+        id: `v-${g.id}`,
+        concepto: g.nombre,
+        tipo: "variable" as const,
+        salon: g.salon,
+        monto: g.monto,
+        estado: g.estado,
+        fecha: g.fecha,
+      }))
+    return [...deFijos, ...deVariables]
+  }, [abierto, query, fijos, cubiertos, variables])
+
+  const totalFijos = resultados.filter((r) => r.tipo === "fijo")
+  const totalVariables = resultados.filter((r) => r.tipo === "variable")
+  const sumaTotal = resultados.reduce((s, r) => s + r.monto, 0)
+  const sumaPagado = resultados.filter((r) => r.estado === "pagado").reduce((s, r) => s + r.monto, 0)
+  const sumaPendiente = sumaTotal - sumaPagado
+
+  function badgeEstado(estado: string) {
+    if (estado === "pagado")
+      return <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] px-1.5">Pagado</Badge>
+    if (estado === "vencido")
+      return <Badge className="bg-red-100 text-red-700 border-0 text-[10px] px-1.5">Vencido</Badge>
+    return <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] px-1.5">Pendiente</Badge>
+  }
+
+  return (
+    <div className="relative w-full sm:w-64">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setQuery("")
+          }}
+          placeholder="Buscar gasto fijo o variable..."
+          className="h-9 pl-8 pr-8 bg-white text-black"
+          aria-label="Buscar gastos fijos o variables"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label="Limpiar busqueda"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {abierto && (
+        <div className="absolute left-0 right-0 sm:left-auto sm:right-0 sm:w-96 top-full mt-2 z-50 rounded-xl border border-border bg-white text-black shadow-xl overflow-hidden">
+          {resultados.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">
+              {"No se encontraron gastos con "}
+              <span className="font-medium text-black">{`"${query.trim()}"`}</span>
+            </p>
+          ) : (
+            <>
+              {/* Resumen */}
+              <div className="px-4 py-3 border-b border-border bg-muted/40">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {resultados.length} {resultados.length === 1 ? "resultado" : "resultados"}
+                  </span>
+                  <span className="text-sm font-bold">{formatCurrency(sumaTotal)}</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                  <span>
+                    Fijos: <span className="font-medium text-black">{totalFijos.length}</span> (
+                    {formatCurrency(totalFijos.reduce((s, r) => s + r.monto, 0))})
+                  </span>
+                  <span>
+                    Variables: <span className="font-medium text-black">{totalVariables.length}</span> (
+                    {formatCurrency(totalVariables.reduce((s, r) => s + r.monto, 0))})
+                  </span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap gap-x-4 text-xs">
+                  <span className="text-emerald-700">Pagado: {formatCurrency(sumaPagado)}</span>
+                  <span className="text-amber-700">Pendiente: {formatCurrency(sumaPendiente)}</span>
+                </div>
+              </div>
+
+              {/* Lista de coincidencias */}
+              <ul className="max-h-64 overflow-y-auto divide-y divide-border">
+                {resultados.map((r) => (
+                  <li key={r.id} className="px-4 py-2.5 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{r.concepto}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {r.tipo === "fijo" ? "Gasto fijo" : "Gasto variable"}
+                        {" · "}
+                        {salonLabel(r.salon || "General")}
+                        {r.fecha ? ` · vence ${r.fecha.split("-").reverse().join("/")}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-sm font-semibold">{formatCurrency(r.monto)}</span>
+                      {badgeEstado(r.estado)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function CajaJazminePage() {
   const {
@@ -1649,6 +1806,11 @@ export default function CajaJazminePage() {
             </span>
           </h1>
         </div>
+        <BuscadorGastos
+          fijos={gastosFijosMes}
+          cubiertos={gastosFijosCubiertos}
+          variables={gastosVariablesCombinados}
+        />
         <div className="flex items-center gap-3 shrink-0">
           <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
             Cambiar salón
