@@ -1,7 +1,7 @@
 "use client"
 
 // Calendario de Eventos
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -116,7 +116,14 @@ type ViewMode = "anual" | "trimestre" | "mes" | "semana" | "dia"
 const MESES_CORTO = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
 // --- Ocupación de fines de semana (Vie/Sab/Dom) por mes ---
-function OcupacionFinesDeSemana({ eventos, year }: { eventos: EventoGuardado[]; year: number }) {
+function OcupacionFinesDeSemana({ eventos, baseYear }: { eventos: EventoGuardado[]; baseYear: number }) {
+  const years = useMemo(() => [baseYear, baseYear + 1, baseYear + 2], [baseYear])
+  const [year, setYear] = useState(baseYear)
+
+  useEffect(() => {
+    if (!years.includes(year)) setYear(baseYear)
+  }, [years, year, baseYear])
+
   const data = useMemo(() => {
     // Set de fechas (YYYY-MM-DD) con al menos un evento no cancelado
     const fechasOcupadas = new Set(
@@ -144,10 +151,28 @@ function OcupacionFinesDeSemana({ eventos, year }: { eventos: EventoGuardado[]; 
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center justify-between gap-2 flex-wrap">
-          <span>Ocupacion de fines de semana {year} (Vie / Sab / Dom)</span>
-          <span className="text-xs font-normal text-muted-foreground flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Mes 100% cubierto
+          <span>Ocupacion de fines de semana (Vie / Sab / Dom)</span>
+          <span className="flex items-center gap-3 flex-wrap">
+            <span className="flex items-center gap-1 rounded-md bg-muted/60 p-0.5">
+              {years.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => setYear(y)}
+                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                    year === y
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Mes 100% cubierto
+            </span>
           </span>
         </CardTitle>
       </CardHeader>
@@ -1317,7 +1342,7 @@ export default function CalendarioPage() {
         </div>
 
         {/* Ocupacion de fines de semana */}
-        <OcupacionFinesDeSemana eventos={eventos} year={currentDate.getFullYear()} />
+        <OcupacionFinesDeSemana eventos={eventos} baseYear={new Date().getFullYear()} />
 
         {/* Calendar View */}
         {viewMode === "anual" && renderYearView()}
