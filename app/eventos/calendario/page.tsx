@@ -113,6 +113,85 @@ function parseEventDate(fecha: string): Date {
 
 type ViewMode = "anual" | "trimestre" | "mes" | "semana" | "dia"
 
+const MESES_CORTO = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+// --- Ocupación de fines de semana (Vie/Sab/Dom) por mes ---
+function OcupacionFinesDeSemana({ eventos, year }: { eventos: EventoGuardado[]; year: number }) {
+  const data = useMemo(() => {
+    // Set de fechas (YYYY-MM-DD) con al menos un evento no cancelado
+    const fechasOcupadas = new Set(
+      eventos.filter((e) => e.estado !== "cancelado").map((e) => e.fecha),
+    )
+
+    return Array.from({ length: 12 }, (_, month) => {
+      const daysInMonth = new Date(year, month + 1, 0).getDate()
+      let totalFinde = 0
+      let ocupados = 0
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dow = new Date(year, month, day).getDay() // 0=Dom, 5=Vie, 6=Sab
+        if (dow === 5 || dow === 6 || dow === 0) {
+          totalFinde++
+          const fecha = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+          if (fechasOcupadas.has(fecha)) ocupados++
+        }
+      }
+      const pct = totalFinde > 0 ? Math.round((ocupados / totalFinde) * 100) : 0
+      return { month, pct, ocupados, totalFinde }
+    })
+  }, [eventos, year])
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center justify-between gap-2 flex-wrap">
+          <span>Ocupacion de fines de semana {year} (Vie / Sab / Dom)</span>
+          <span className="text-xs font-normal text-muted-foreground flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Mes 100% cubierto
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-end gap-1.5 sm:gap-2 h-28 w-full">
+          {data.map(({ month, pct, ocupados, totalFinde }) => {
+            const completo = pct === 100
+            return (
+              <div
+                key={month}
+                className="flex-1 flex flex-col items-center gap-1 h-full justify-end min-w-0"
+                title={`${MESES[month]}: ${ocupados} de ${totalFinde} dias de finde con evento (${pct}%)`}
+              >
+                <span
+                  className={`text-[10px] font-semibold leading-none ${
+                    completo ? "text-emerald-600" : "text-muted-foreground"
+                  }`}
+                >
+                  {pct}%
+                </span>
+                <div className="w-full flex-1 flex items-end rounded-sm bg-muted/60 overflow-hidden">
+                  <div
+                    className={`w-full rounded-sm transition-all ${
+                      completo ? "bg-emerald-500" : "bg-primary/60"
+                    }`}
+                    style={{ height: `${Math.max(pct, 3)}%` }}
+                  />
+                </div>
+                <span
+                  className={`text-[10px] leading-none truncate ${
+                    completo ? "font-bold text-emerald-600" : "text-muted-foreground"
+                  }`}
+                >
+                  {MESES_CORTO[month]}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 const TRIMESTRE_NOMBRES = ["Ene - Mar", "Abr - Jun", "Jul - Sep", "Oct - Dic"]
 
 // --- Sub-components ---
@@ -1236,6 +1315,9 @@ export default function CalendarioPage() {
             </button>
           )}
         </div>
+
+        {/* Ocupacion de fines de semana */}
+        <OcupacionFinesDeSemana eventos={eventos} year={currentDate.getFullYear()} />
 
         {/* Calendar View */}
         {viewMode === "anual" && renderYearView()}
