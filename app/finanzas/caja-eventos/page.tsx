@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -108,6 +108,45 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
 const MONTO_OCULTO = "$ ••••••"
 
+// Cuerpo colapsable de tarjeta (misma animación que Caja Jazmines)
+function CuerpoColapsable({ colapsado, children }: { colapsado: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={`grid flex-1 transition-all duration-700 ease-in-out ${
+        colapsado ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+      }`}
+    >
+      <div className="overflow-hidden flex min-h-0 flex-col">{children}</div>
+    </div>
+  )
+}
+
+function BotonDesplegar({
+  colapsado,
+  onToggle,
+  color = "#000000",
+}: {
+  colapsado: boolean
+  onToggle: () => void
+  color?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle()
+      }}
+      className="hover:opacity-70"
+      style={{ color }}
+      aria-label={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
+      title={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
+    >
+      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${colapsado ? "" : "rotate-180"}`} />
+    </button>
+  )
+}
+
 // Ojito para mostrar/ocultar un monto (mismo look que Caja Jazmines)
 function BotonOjo({
   oculto,
@@ -210,6 +249,18 @@ useStore()
     finSemana: true,
   })
   const toggleMonto = (key: string) => setMontosOcultos((p) => ({ ...p, [key]: !p[key] }))
+
+  // Tarjetas: se cierran solas al entrar, en dos bloques (mes y semana).
+  // Tocar una tarjeta cerrada despliega todo su bloque.
+  const [colapsadoMes, setColapsadoMes] = useState(false)
+  const [colapsadoSemana, setColapsadoSemana] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setColapsadoMes(true)
+      setColapsadoSemana(true)
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [])
 
   // Carpetas por salón dentro de "Por cobrar" y "Por pagar" (vista Todos los salones)
   const [carpetasCobrar, setCarpetasCobrar] = useState<Record<string, boolean>>({})
@@ -1093,10 +1144,16 @@ useStore()
         <Card
           style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
           className="cursor-pointer transition-colors hover:bg-white/40"
-          onClick={() => setDesgloseOpen(true)}
+          onClick={() => {
+            if (colapsadoMes) {
+              setColapsadoMes(false)
+              return
+            }
+            setDesgloseOpen(true)
+          }}
           role="button"
           tabIndex={0}
-          aria-label="Ver desglose del saldo actual"
+          aria-label={colapsadoMes ? "Desplegar tarjetas del mes" : "Ver desglose del saldo actual"}
         >
           <CardContent className="p-4 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
@@ -1110,27 +1167,38 @@ useStore()
                   onToggle={() => toggleMonto("saldoActual")}
                   color="#0035db"
                 />
+                <BotonDesplegar
+                  colapsado={colapsadoMes}
+                  onToggle={() => setColapsadoMes((v) => !v)}
+                  color="#0035db"
+                />
               </div>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
-              {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
-            </p>
-            <p
-              className="text-xs mt-auto pt-1 flex items-center gap-1.5 font-semibold"
-              style={{ color: colorSalonActivo }}
-            >
-              <span
-                className="h-2 w-2 rounded-full shrink-0"
-                style={{ backgroundColor: colorSalonActivo }}
-                aria-hidden="true"
-              />
-              {salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}
-            </p>
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
+                {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
+              </p>
+              <p
+                className="text-xs mt-auto pt-1 flex items-center gap-1.5 font-semibold"
+                style={{ color: colorSalonActivo }}
+              >
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: colorSalonActivo }}
+                  aria-hidden="true"
+                />
+                {salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}
+              </p>
+            </CuerpoColapsable>
           </CardContent>
         </Card>
 
         {/* Cobro este mes */}
-        <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
+        <Card
+          className={`border-border ${colapsadoMes ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoMes && setColapsadoMes(false)}
+        >
           <CardContent className="p-4 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
@@ -1139,25 +1207,32 @@ useStore()
               <div className="flex items-center gap-1.5">
                 <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
                 <BotonOjo oculto={!!montosOcultos.cobroMes} onToggle={() => toggleMonto("cobroMes")} />
+                <BotonDesplegar colapsado={colapsadoMes} onToggle={() => setColapsadoMes((v) => !v)} />
               </div>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
-              {montosOcultos.cobroMes ? MONTO_OCULTO : `+${formatCurrency(porCobrarEsteMes)}`}
-            </p>
-            <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
-              {(() => {
-                const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
-                const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
-                return cuotasMes.length > 0
-                  ? `${cuotasMes.length} ${cuotasMes.length === 1 ? "cuota" : "cuotas"}`
-                  : "Sin cuotas este mes"
-              })()}
-            </p>
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.cobroMes ? MONTO_OCULTO : `+${formatCurrency(porCobrarEsteMes)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {(() => {
+                  const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+                  const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
+                  return cuotasMes.length > 0
+                    ? `${cuotasMes.length} ${cuotasMes.length === 1 ? "cuota" : "cuotas"}`
+                    : "Sin cuotas este mes"
+                })()}
+              </p>
+            </CuerpoColapsable>
           </CardContent>
         </Card>
 
         {/* Pago este mes */}
-        <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
+        <Card
+          className={`border-border ${colapsadoMes ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoMes && setColapsadoMes(false)}
+        >
           <CardContent className="p-4 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
@@ -1166,19 +1241,26 @@ useStore()
               <div className="flex items-center gap-1.5">
                 <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
                 <BotonOjo oculto={!!montosOcultos.pagoMes} onToggle={() => toggleMonto("pagoMes")} />
+                <BotonDesplegar colapsado={colapsadoMes} onToggle={() => setColapsadoMes((v) => !v)} />
               </div>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
-              {montosOcultos.pagoMes ? MONTO_OCULTO : `−${formatCurrency(porPagarEsteMes)}`}
-            </p>
-            <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
-              {pagoMesDetalle || "Sin pagos este mes"}
-            </p>
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.pagoMes ? MONTO_OCULTO : `−${formatCurrency(porPagarEsteMes)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {pagoMesDetalle || "Sin pagos este mes"}
+              </p>
+            </CuerpoColapsable>
           </CardContent>
         </Card>
 
         {/* Tengo a fin de mes */}
-        <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
+        <Card
+          className={`border-border ${colapsadoMes ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoMes && setColapsadoMes(false)}
+        >
           <CardContent className="p-4 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
@@ -1187,19 +1269,26 @@ useStore()
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
                 <BotonOjo oculto={!!montosOcultos.finMes} onToggle={() => toggleMonto("finMes")} />
+                <BotonDesplegar colapsado={colapsadoMes} onToggle={() => setColapsadoMes((v) => !v)} />
               </div>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
-              {montosOcultos.finMes ? MONTO_OCULTO : formatCurrency(saldoFinMes)}
-            </p>
-            <p className="text-xs mt-auto pt-1 capitalize" style={{ color: "#000000" }}>
-              {mesActualLabel}
-            </p>
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.finMes ? MONTO_OCULTO : formatCurrency(saldoFinMes)}
+              </p>
+              <p className="text-xs mt-auto pt-1 capitalize" style={{ color: "#000000" }}>
+                {mesActualLabel}
+              </p>
+            </CuerpoColapsable>
           </CardContent>
         </Card>
 
         {/* Cobro esta semana */}
-        <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
+        <Card
+          className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoSemana && setColapsadoSemana(false)}
+        >
           <CardContent className="p-4 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaLabel}>
@@ -1208,21 +1297,28 @@ useStore()
               <div className="flex items-center gap-1.5">
                 <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
                 <BotonOjo oculto={!!montosOcultos.cobroSemana} onToggle={() => toggleMonto("cobroSemana")} />
+                <BotonDesplegar colapsado={colapsadoSemana} onToggle={() => setColapsadoSemana((v) => !v)} />
               </div>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
-              {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemana)}`}
-            </p>
-            <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
-              {cuotasSemanaCount > 0
-                ? `${cuotasSemanaCount} ${cuotasSemanaCount === 1 ? "cuota a cobrar" : "cuotas a cobrar"}`
-                : "Nada por cobrar esta semana"}
-            </p>
+            <CuerpoColapsable colapsado={colapsadoSemana}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemana)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {cuotasSemanaCount > 0
+                  ? `${cuotasSemanaCount} ${cuotasSemanaCount === 1 ? "cuota a cobrar" : "cuotas a cobrar"}`
+                  : "Nada por cobrar esta semana"}
+              </p>
+            </CuerpoColapsable>
           </CardContent>
         </Card>
 
         {/* Pago esta semana */}
-        <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
+        <Card
+          className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoSemana && setColapsadoSemana(false)}
+        >
           <CardContent className="p-4 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
@@ -1231,19 +1327,26 @@ useStore()
               <div className="flex items-center gap-1.5">
                 <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
                 <BotonOjo oculto={!!montosOcultos.pagoSemana} onToggle={() => toggleMonto("pagoSemana")} />
+                <BotonDesplegar colapsado={colapsadoSemana} onToggle={() => setColapsadoSemana((v) => !v)} />
               </div>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
-              {montosOcultos.pagoSemana ? MONTO_OCULTO : `−${formatCurrency(pagoSemana)}`}
-            </p>
-            <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
-              {pagoSemanaDetalle || "Sin gastos esta semana"}
-            </p>
+            <CuerpoColapsable colapsado={colapsadoSemana}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.pagoSemana ? MONTO_OCULTO : `−${formatCurrency(pagoSemana)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {pagoSemanaDetalle || "Sin gastos esta semana"}
+              </p>
+            </CuerpoColapsable>
           </CardContent>
         </Card>
 
         {/* Tengo a fin de semana */}
-        <Card className="border-border" style={{ backgroundColor: "#ffffff", color: "#000000" }}>
+        <Card
+          className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoSemana && setColapsadoSemana(false)}
+        >
           <CardContent className="p-4 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
@@ -1252,21 +1355,24 @@ useStore()
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
                 <BotonOjo oculto={!!montosOcultos.finSemana} onToggle={() => toggleMonto("finSemana")} />
+                <BotonDesplegar colapsado={colapsadoSemana} onToggle={() => setColapsadoSemana((v) => !v)} />
               </div>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
-              {montosOcultos.finSemana ? MONTO_OCULTO : formatCurrency(saldoFinSemana)}
-            </p>
-            <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
-              Saldo actual + cobros − gastos
-            </p>
+            <CuerpoColapsable colapsado={colapsadoSemana}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.finSemana ? MONTO_OCULTO : formatCurrency(saldoFinSemana)}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                Saldo actual + cobros − gastos
+              </p>
+            </CuerpoColapsable>
           </CardContent>
         </Card>
       </div>
 
       {/* Vienen esta semana a pagar (L-V 09-20hs) */}
-      <Card className="border-amber-200 bg-amber-50/40">
-        <CardHeader className={cuotasAbierto ? "pb-3" : "pb-4"}>
+      <Card className={`border-amber-200 bg-amber-50/40 gap-0 ${cuotasAbierto ? "py-3" : "py-2.5"}`}>
+        <CardHeader className="px-6">
           <button
             type="button"
             onClick={() => setCuotasAbierto((v) => !v)}
