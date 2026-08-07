@@ -786,5 +786,5 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       gastosFijosProximoMes,
       estimacionesProximoMes,
     }
-  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, state.vendedores, state.insumos, state.insumosBarra, state.recetas, state.cocteles, salonFiltro, ahoraMs])
+  }, [state.movimientosCaja, state.costosOperativos, state.eventos, state.gastosArchivados, state.vendedores, state.insumos, state.insumosBarra, state.recetas, state.cocteles, state.servicios, salonFiltro, ahoraMs])
 }
