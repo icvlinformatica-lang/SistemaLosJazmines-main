@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -38,7 +38,7 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { calcularCostoInsumosEvento, calcularSeñaSaldoServicio, generateId, SALONES, salonLabel, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import { calcularCostoInsumosEvento, calcularSeñaSaldoServicio, generateId, SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import {
   BarraFiltrosEgresos,
   FILTRO_EGRESOS_INICIAL,
@@ -70,16 +70,18 @@ import {
   History,
   RotateCcw,
   Eye,
+  EyeOff,
   Building,
   Archive,
   AlertTriangle,
-  ChevronLeft,
   ChevronRight,
   ChevronDown,
   ChevronUp,
   Pencil,
+  ArrowRight,
+  Folder,
+  FolderOpen,
 } from "lucide-react"
-import Link from "next/link"
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -104,12 +106,169 @@ function vencBadge(dias: number) {
 
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
+const MONTO_OCULTO = "$ ••••••"
+
+// Cuerpo colapsable de tarjeta (misma animación que Caja Jazmines)
+function CuerpoColapsable({ colapsado, children }: { colapsado: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={`grid flex-1 transition-all duration-700 ease-in-out ${
+        colapsado ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+      }`}
+    >
+      <div className="overflow-hidden flex min-h-0 flex-col">{children}</div>
+    </div>
+  )
+}
+
+function BotonDesplegar({
+  colapsado,
+  onToggle,
+  color = "#000000",
+}: {
+  colapsado: boolean
+  onToggle: () => void
+  color?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle()
+      }}
+      className="hover:opacity-70"
+      style={{ color }}
+      aria-label={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
+      title={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
+    >
+      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${colapsado ? "" : "rotate-180"}`} />
+    </button>
+  )
+}
+
+// Ojito para mostrar/ocultar un monto (mismo look que Caja Jazmines)
+function BotonOjo({
+  oculto,
+  onToggle,
+  color = "#000000",
+}: {
+  oculto: boolean
+  onToggle: () => void
+  color?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle()
+      }}
+      className="hover:opacity-70"
+      style={{ color }}
+      aria-label={oculto ? "Mostrar monto" : "Ocultar monto"}
+      title={oculto ? "Mostrar monto" : "Ocultar monto"}
+    >
+      {oculto ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Carpeta por salón (ordena "Por cobrar" / "Por pagar" en Todos los salones)
+// ---------------------------------------------------------------------------
+function CarpetaSalon({
+  nombre,
+  color,
+  cantidad,
+  total,
+  totalColor,
+  abierta,
+  onToggle,
+  children,
+}: {
+  nombre: string
+  color: string
+  cantidad: number
+  total: number
+  totalColor: string
+  abierta: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={abierta}
+        className="w-full flex items-center gap-2.5 px-6 py-3 hover:bg-muted/50 transition-colors text-left"
+      >
+        {abierta ? (
+          <FolderOpen className="h-4 w-4 shrink-0" style={{ color }} />
+        ) : (
+          <Folder className="h-4 w-4 shrink-0" style={{ color }} />
+        )}
+        <span className="font-semibold text-sm" style={{ color }}>
+          {nombre}
+        </span>
+        <Badge variant="outline" className="text-[10px]">
+          {cantidad}
+        </Badge>
+        <span className={`ml-auto text-sm font-bold ${totalColor}`}>{formatCurrency(total)}</span>
+        <ChevronDown
+          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
+        />
+      </button>
+      <div
+        className={`grid transition-all duration-500 ease-in-out ${
+          abierta ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="overflow-hidden min-h-0">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
-  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal } =
+  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal, configuracionCajas } =
 useStore()
+
+  // Montos ocultos por defecto (mismo comportamiento que Caja Jazmines)
+  const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({
+    saldoActual: true,
+    cobroMes: true,
+    pagoMes: true,
+    finMes: true,
+    cobroSemana: true,
+    pagoSemana: true,
+    finSemana: true,
+  })
+  const toggleMonto = (key: string) => setMontosOcultos((p) => ({ ...p, [key]: !p[key] }))
+
+  // Tarjetas: se cierran solas al entrar, en dos bloques (mes y semana).
+  // Tocar una tarjeta cerrada despliega todo su bloque.
+  const [colapsadoMes, setColapsadoMes] = useState(false)
+  const [colapsadoSemana, setColapsadoSemana] = useState(false)
+  // Evita que el primer click (antes o después del plegado automático) abra
+  // información: el primer click siempre despliega.
+  const [dashboardInteractivo, setDashboardInteractivo] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setColapsadoMes(true)
+      setColapsadoSemana(true)
+      setDashboardInteractivo(true)
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [])
+
+  // Carpetas por salón dentro de "Por cobrar" y "Por pagar" (vista Todos los salones)
+  const [carpetasCobrar, setCarpetasCobrar] = useState<Record<string, boolean>>({})
+  const [carpetasPagar, setCarpetasPagar] = useState<Record<string, boolean>>({})
 
   // Sincronización constante: refresca eventos (fechas), servicios y precios
   // cada 15s y al volver a la pestaña, para que "Por pagar" siempre refleje
@@ -152,7 +311,6 @@ useStore()
   const [extraerModo, setExtraerModo] = useState<"extraer" | "fijar">("extraer")
 
   // ── Carrusel del dashboard: vista "Este mes" / "Esta semana" ────────────
-  const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = mes, 1 = semana
 
   const router = useRouter()
 
@@ -790,29 +948,174 @@ useStore()
     mesCalendario.getMonth() === ahora.getMonth() &&
     mesCalendario.getFullYear() === ahora.getFullYear()
 
-  return (
-    <div className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-start gap-3 flex-1">
-          <div className="h-10 w-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
-            <Wallet className="h-5 w-5 text-teal-700" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Caja Eventos</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Qué debo cobrar y pagar, mes a mes. <span className="capitalize">{mesActualLabel}</span>.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
-            <Link href="/finanzas/archivo">
-              <Archive className="h-4 w-4" />
-              Archivo Histórico
-            </Link>
+  // Color del salón activo: tiñe el icono del header y el fondo del body.
+  const colorSalonActivo =
+    salonFiltro === "todos" ? SALON_COLOR_GENERAL : salonColor(salonFiltro, configuracionCajas)
+
+  // Agrupar por salón para las carpetas de "Por cobrar" y "Por pagar"
+  // (solo se usan en la vista de Todos los salones)
+  const ordenSalones = useMemo(() => [...SALONES, "General"], [])
+  const gruposCobrar = useMemo(() => {
+    const map = new Map<string, IngresoPendiente[]>()
+    for (const ing of ingresosPendientes) {
+      const key = ing.salon && ing.salon !== "" ? ing.salon : "General"
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(ing)
+    }
+    const claves = [...ordenSalones.filter((s) => map.has(s)), ...[...map.keys()].filter((k) => !ordenSalones.includes(k))]
+    return claves.map((s) => {
+      const items = map.get(s)!
+      return { salon: s, items, total: items.reduce((sum, i) => sum + i.monto, 0) }
+    })
+  }, [ingresosPendientes, ordenSalones])
+
+  const gruposPagar = useMemo(() => {
+    const map = new Map<string, EgresoPendienteServicio[]>()
+    for (const eg of egresosProximosFiltrados) {
+      const key = eg.salon && eg.salon !== "" ? eg.salon : "General"
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(eg)
+    }
+    const claves = [...ordenSalones.filter((s) => map.has(s)), ...[...map.keys()].filter((k) => !ordenSalones.includes(k))]
+    return claves.map((s) => {
+      const items = map.get(s)!
+      return { salon: s, items, total: items.reduce((sum, e) => sum + e.monto, 0) }
+    })
+  }, [egresosProximosFiltrados, ordenSalones])
+
+  // Filas de las tablas (compartidas entre la vista plana y las carpetas)
+  const renderFilasCobrar = (items: IngresoPendiente[]) =>
+    items.map((ing) => (
+      <TableRow key={ing.id} className="cursor-pointer" onClick={() => setClienteSel(ing)}>
+        <TableCell className="pl-6">
+          <p className="font-medium text-sm">{ing.contacto.nombre}</p>
+          <p className="text-xs text-muted-foreground">{ing.eventoNombre} · {ing.salon}</p>
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {ing.numeroCuota}/{ing.totalCuotas}
+        </TableCell>
+        <TableCell>
+          <button
+            type="button"
+            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+            title="Cambiar fecha de vencimiento"
+            onClick={(e) => {
+              e.stopPropagation()
+              abrirEdicionCuota(ing)
+            }}
+          >
+            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+              {formatFecha(ing.fechaVencimiento)}
+            </span>
+            {vencBadge(ing.diasRestantes)}
+            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        </TableCell>
+        <TableCell className="text-right pr-6 font-bold text-emerald-700">
+          +{formatCurrency(ing.monto)}
+        </TableCell>
+      </TableRow>
+    ))
+
+  const renderFilasPagar = (items: EgresoPendienteServicio[]) =>
+    items.map((eg) => (
+      <TableRow key={eg.id}>
+        <TableCell className="pl-6">
+          <Badge
+            variant="outline"
+            className={
+              eg.tipo === "seña"
+                ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
+                : eg.tipo === "menu"
+                  ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
+                  : eg.tipo === "barra"
+                    ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
+                    : eg.tipo === "sueldo"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
+                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
+            }
+          >
+            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          <p className="font-medium text-sm">{eg.servicioNombre}</p>
+          <p className="text-xs text-muted-foreground">
+            {eg.eventoNombre}
+            {eg.eventoFecha && <span> · {formatFecha(eg.eventoFecha)}</span>}
+            {eg.salon && (
+              <span className="inline-flex items-center gap-1 align-middle">
+                {" · "}
+                <SalonDot salon={eg.salon} size={7} />
+                {salonLabel(eg.salon)}
+              </span>
+            )}
+          </p>
+        </TableCell>
+        <TableCell>
+          <button
+            type="button"
+            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
+            title="Cambiar fecha de vencimiento"
+            onClick={() => abrirEdicionEgreso(eg)}
+          >
+            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
+              {formatFecha(eg.fechaVencimiento)}
+            </span>
+            {vencBadge(eg.diasRestantes)}
+            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        </TableCell>
+        <TableCell className="text-right font-bold text-red-600">
+          −{formatCurrency(eg.monto)}
+        </TableCell>
+        <TableCell className="text-right pr-6">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-[11px] px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            onClick={() => setPagoConfirmar(eg)}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pagado
           </Button>
-          <Building className="h-4 w-4 text-muted-foreground" />
+        </TableCell>
+      </TableRow>
+    ))
+
+  return (
+    <div
+      className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 space-y-6 transition-colors duration-500"
+      style={{
+        backgroundColor:
+          salonFiltro === "todos"
+            ? undefined
+            : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
+      }}
+    >
+      {/* Header: nav fijo, siempre visible al scrollear, fondo siempre blanco */}
+      <div
+        className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3"
+        style={{ backgroundColor: "#ffffff" }}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div
+            className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-500"
+            style={{ backgroundColor: `color-mix(in srgb, ${colorSalonActivo} 16%, white)` }}
+          >
+            <Wallet className="h-5 w-5 transition-colors duration-500" style={{ color: colorSalonActivo }} />
+          </div>
+          <h1 className="text-lg xl:text-2xl font-bold tracking-tight truncate" style={{ color: "#000000" }}>
+            Caja Eventos
+            <span style={{ color: colorSalonActivo }}>
+              {` · ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}`}
+            </span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
+            Cambiar salón
+            <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
+          </span>
           <Select value={salonFiltro} onValueChange={setSalonFiltro}>
             <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
               <SelectValue placeholder="Todos los salones" />
@@ -839,174 +1142,243 @@ useStore()
         </p>
       )}
 
-      {/* DASHBOARD: carrusel con vista mensual y semanal */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-foreground capitalize">
-            {vistaDashboard === 0 ? mesActualLabel : `Esta semana · ${rangoSemanaLabel}`}
-          </p>
-          <div className="flex items-center gap-1.5">
-            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 0 ? "w-4 bg-teal-600" : "w-1.5 bg-muted-foreground/30"}`} />
-            <span className={`h-1.5 rounded-full transition-all ${vistaDashboard === 1 ? "w-4 bg-teal-600" : "w-1.5 bg-muted-foreground/30"}`} />
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 ml-2 bg-transparent"
-              onClick={() => setVistaDashboard((v) => (v === 0 ? 1 : 0))}
-              disabled={vistaDashboard === 0}
-              aria-label="Ver este mes"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 bg-transparent"
-              onClick={() => setVistaDashboard((v) => (v === 0 ? 1 : 0))}
-              disabled={vistaDashboard === 1}
-              aria-label="Ver esta semana"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="overflow-hidden">
-          <div
-            className="flex transition-transform duration-300 ease-in-out"
-            style={{ transform: `translateX(-${vistaDashboard * 100}%)` }}
-          >
-            {/* ── Slide 1: ESTE MES ─────────────────────────────────── */}
-            <div className="w-full shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3 pr-0.5">
-              <Card
-                className="border-teal-200 bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors"
-                onClick={() => setDesgloseOpen(true)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora:</p>
-                    <div className="flex items-center gap-1.5">
-                      <Eye className="h-3.5 w-3.5 text-teal-500" />
-                      <Wallet className="h-4 w-4 text-teal-600" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold text-teal-800">{formatCurrency(saldoActual)}</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-emerald-200 bg-emerald-50">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro este mes:</p>
-                    <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(porCobrarEsteMes)}</p>
-                  {(() => {
-                    const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
-                    const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
-                    if (cuotasMes.length === 0) return null
-                    return (
-                      <p className="text-lg font-semibold text-emerald-700 mt-1">
-                        {cuotasMes.length} {cuotasMes.length === 1 ? "cuota" : "cuotas"}
-                      </p>
-                    )
-                  })()}
-                </CardContent>
-              </Card>
-
-              <Card className="border-red-200 bg-red-50">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago este mes:</p>
-                    <ArrowUpFromLine className="h-4 w-4 text-red-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-red-700">−{formatCurrency(porPagarEsteMes)}</p>
-                  {pagoMesDetalle && (
-                    <p className="text-lg font-semibold text-red-600 mt-1">{pagoMesDetalle}</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className={saldoFinMes >= 0 ? "border-teal-200" : "border-red-300"}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">tengo a fin de mes:</p>
-                    <TrendingUp className={`h-4 w-4 ${saldoFinMes >= 0 ? "text-teal-600" : "text-red-600"}`} />
-                  </div>
-                  <p className={`text-2xl font-bold ${saldoFinMes >= 0 ? "text-foreground" : "text-red-700"}`}>
-                    {formatCurrency(saldoFinMes)}
-                  </p>
-                </CardContent>
-              </Card>
+      {/* DASHBOARD: tarjetas en una fila, estilo Caja Jazmines.
+          items-start: cada tarjeta mantiene su propia altura, así el bloque
+          semana queda chico cuando solo se despliega el bloque mes. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 items-start">
+        {/* Saldo Actual (destacada, igual que en Jazmines) */}
+        <Card
+          style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
+          className="cursor-pointer transition-colors hover:bg-white/40"
+          onClick={() => {
+            if (!dashboardInteractivo || colapsadoMes) {
+              setColapsadoMes(false)
+              return
+            }
+            setDesgloseOpen(true)
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={colapsadoMes ? "Desplegar tarjetas del mes" : "Ver desglose del saldo actual"}
+        >
+          <CardContent className="p-4 flex h-full flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>
+                Saldo Actual
+              </p>
+              <div className="flex items-center gap-1.5">
+                <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
+                <BotonOjo
+                  oculto={!!montosOcultos.saldoActual}
+                  onToggle={() => toggleMonto("saldoActual")}
+                  color="#0035db"
+                />
+                <BotonDesplegar
+                  colapsado={colapsadoMes}
+                  onToggle={() => setColapsadoMes((v) => !v)}
+                  color="#0035db"
+                />
+              </div>
             </div>
-
-            {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
-            <div className="w-full shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3 pl-0.5" aria-hidden={vistaDashboard !== 1}>
-              <Card
-                className="border-teal-200 bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors"
-                onClick={() => setDesgloseOpen(true)}
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
+                {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
+              </p>
+              <p
+                className="text-xs mt-auto pt-1 flex items-center gap-1.5 font-semibold"
+                style={{ color: colorSalonActivo }}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Tengo ahora:</p>
-                    <div className="flex items-center gap-1.5">
-                      <Eye className="h-3.5 w-3.5 text-teal-500" />
-                      <Wallet className="h-4 w-4 text-teal-600" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold text-teal-800">{formatCurrency(saldoActual)}</p>
-                </CardContent>
-              </Card>
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: colorSalonActivo }}
+                  aria-hidden="true"
+                />
+                {salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}
+              </p>
+            </CuerpoColapsable>
+          </CardContent>
+        </Card>
 
-              <Card className="border-emerald-200 bg-emerald-50">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wide">Cobro esta semana:</p>
-                    <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-emerald-800">+{formatCurrency(cobroSemana)}</p>
-                  {cuotasSemanaCount > 0 && (
-                    <p className="text-lg font-semibold text-emerald-700 mt-1">
-                      {cuotasSemanaCount} {cuotasSemanaCount === 1 ? "cuota" : "cuotas"}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="border-red-200 bg-red-50">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-red-700 uppercase tracking-wide">Pago esta semana:</p>
-                    <ArrowUpFromLine className="h-4 w-4 text-red-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-red-700">−{formatCurrency(pagoSemana)}</p>
-                  {pagoSemanaDetalle && (
-                    <p className="text-lg font-semibold text-red-600 mt-1">{pagoSemanaDetalle}</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className={saldoFinSemana >= 0 ? "border-teal-200" : "border-red-300"}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                      tengo a fin de semana:
-                    </p>
-                    <TrendingUp className={`h-4 w-4 ${saldoFinSemana >= 0 ? "text-teal-600" : "text-red-600"}`} />
-                  </div>
-                  <p className={`text-2xl font-bold ${saldoFinSemana >= 0 ? "text-foreground" : "text-red-700"}`}>
-                    {formatCurrency(saldoFinSemana)}
-                  </p>
-                </CardContent>
-              </Card>
+        {/* Cobro este mes */}
+        <Card
+          className={`border-border ${colapsadoMes ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoMes && setColapsadoMes(false)}
+        >
+          <CardContent className="p-4 flex h-full flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
+                Cobro este mes
+              </p>
+              <div className="flex items-center gap-1.5">
+                <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <BotonOjo oculto={!!montosOcultos.cobroMes} onToggle={() => toggleMonto("cobroMes")} />
+                <BotonDesplegar colapsado={colapsadoMes} onToggle={() => setColapsadoMes((v) => !v)} />
+              </div>
             </div>
-          </div>
-        </div>
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.cobroMes ? MONTO_OCULTO : `+${formatCurrency(porCobrarEsteMes)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {(() => {
+                  const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+                  const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
+                  return cuotasMes.length > 0
+                    ? `${cuotasMes.length} ${cuotasMes.length === 1 ? "cuota" : "cuotas"}`
+                    : "Sin cuotas este mes"
+                })()}
+              </p>
+            </CuerpoColapsable>
+          </CardContent>
+        </Card>
+
+        {/* Pago este mes */}
+        <Card
+          className={`border-border ${colapsadoMes ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoMes && setColapsadoMes(false)}
+        >
+          <CardContent className="p-4 flex h-full flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
+                Pago este mes
+              </p>
+              <div className="flex items-center gap-1.5">
+                <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <BotonOjo oculto={!!montosOcultos.pagoMes} onToggle={() => toggleMonto("pagoMes")} />
+                <BotonDesplegar colapsado={colapsadoMes} onToggle={() => setColapsadoMes((v) => !v)} />
+              </div>
+            </div>
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.pagoMes ? MONTO_OCULTO : `−${formatCurrency(porPagarEsteMes)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {pagoMesDetalle || "Sin pagos este mes"}
+              </p>
+            </CuerpoColapsable>
+          </CardContent>
+        </Card>
+
+        {/* Tengo a fin de mes */}
+        <Card
+          className={`border-border ${colapsadoMes ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoMes && setColapsadoMes(false)}
+        >
+          <CardContent className="p-4 flex h-full flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
+                Tengo a fin de mes
+              </p>
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
+                <BotonOjo oculto={!!montosOcultos.finMes} onToggle={() => toggleMonto("finMes")} />
+                <BotonDesplegar colapsado={colapsadoMes} onToggle={() => setColapsadoMes((v) => !v)} />
+              </div>
+            </div>
+            <CuerpoColapsable colapsado={colapsadoMes}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.finMes ? MONTO_OCULTO : formatCurrency(saldoFinMes)}
+              </p>
+              <p className="text-xs mt-auto pt-1 capitalize" style={{ color: "#000000" }}>
+                {mesActualLabel}
+              </p>
+            </CuerpoColapsable>
+          </CardContent>
+        </Card>
+
+        {/* Cobro esta semana */}
+        <Card
+          className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoSemana && setColapsadoSemana(false)}
+        >
+          <CardContent className="p-4 flex h-full flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaLabel}>
+                Cobro esta semana
+              </p>
+              <div className="flex items-center gap-1.5">
+                <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <BotonOjo oculto={!!montosOcultos.cobroSemana} onToggle={() => toggleMonto("cobroSemana")} />
+                <BotonDesplegar colapsado={colapsadoSemana} onToggle={() => setColapsadoSemana((v) => !v)} />
+              </div>
+            </div>
+            <CuerpoColapsable colapsado={colapsadoSemana}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemana)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {cuotasSemanaCount > 0
+                  ? `${cuotasSemanaCount} ${cuotasSemanaCount === 1 ? "cuota a cobrar" : "cuotas a cobrar"}`
+                  : "Nada por cobrar esta semana"}
+              </p>
+            </CuerpoColapsable>
+          </CardContent>
+        </Card>
+
+        {/* Pago esta semana */}
+        <Card
+          className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoSemana && setColapsadoSemana(false)}
+        >
+          <CardContent className="p-4 flex h-full flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
+                Pago esta semana
+              </p>
+              <div className="flex items-center gap-1.5">
+                <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <BotonOjo oculto={!!montosOcultos.pagoSemana} onToggle={() => toggleMonto("pagoSemana")} />
+                <BotonDesplegar colapsado={colapsadoSemana} onToggle={() => setColapsadoSemana((v) => !v)} />
+              </div>
+            </div>
+            <CuerpoColapsable colapsado={colapsadoSemana}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.pagoSemana ? MONTO_OCULTO : `−${formatCurrency(pagoSemana)}`}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                {pagoSemanaDetalle || "Sin gastos esta semana"}
+              </p>
+            </CuerpoColapsable>
+          </CardContent>
+        </Card>
+
+        {/* Tengo a fin de semana */}
+        <Card
+          className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          onClick={() => colapsadoSemana && setColapsadoSemana(false)}
+        >
+          <CardContent className="p-4 flex h-full flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
+                Tengo a fin de semana
+              </p>
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
+                <BotonOjo oculto={!!montosOcultos.finSemana} onToggle={() => toggleMonto("finSemana")} />
+                <BotonDesplegar colapsado={colapsadoSemana} onToggle={() => setColapsadoSemana((v) => !v)} />
+              </div>
+            </div>
+            <CuerpoColapsable colapsado={colapsadoSemana}>
+              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+                {montosOcultos.finSemana ? MONTO_OCULTO : formatCurrency(saldoFinSemana)}
+              </p>
+              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                Saldo actual + cobros − gastos
+              </p>
+            </CuerpoColapsable>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Vienen esta semana a pagar (L-V 09-20hs) */}
-      <Card className="border-amber-200 bg-amber-50/40">
-        <CardHeader className={cuotasAbierto ? "pb-3" : "pb-4"}>
+      <Card className={`border-amber-200 bg-amber-50/40 gap-0 ${cuotasAbierto ? "py-3" : "py-2.5"}`}>
+        <CardHeader className="px-6">
           <button
             type="button"
             onClick={() => setCuotasAbierto((v) => !v)}
@@ -1233,6 +1605,36 @@ useStore()
             <CardContent className="px-0 py-2">
               {ingresosPendientes.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">No hay cuotas pendientes de cobro.</p>
+              ) : salonFiltro === "todos" ? (
+                <div>
+                  <p className="text-xs text-muted-foreground px-6 pb-2">
+                    Cuotas ordenadas en carpetas por salón. Tocá una carpeta para ver su detalle.
+                  </p>
+                  {gruposCobrar.map((g) => (
+                    <CarpetaSalon
+                      key={g.salon}
+                      nombre={g.salon === "General" ? "General" : salonLabel(g.salon)}
+                      color={g.salon === "General" ? SALON_COLOR_GENERAL : salonColor(g.salon, configuracionCajas)}
+                      cantidad={g.items.length}
+                      total={g.total}
+                      totalColor="text-emerald-700"
+                      abierta={!!carpetasCobrar[g.salon]}
+                      onToggle={() => setCarpetasCobrar((prev) => ({ ...prev, [g.salon]: !prev[g.salon] }))}
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="pl-6">Cliente / Evento</TableHead>
+                            <TableHead>Cuota</TableHead>
+                            <TableHead>Vence</TableHead>
+                            <TableHead className="text-right pr-6">A cobrar</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>{renderFilasCobrar(g.items)}</TableBody>
+                      </Table>
+                    </CarpetaSalon>
+                  ))}
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -1243,46 +1645,10 @@ useStore()
                       <TableHead className="text-right pr-6">A cobrar</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {ingresosPendientes.slice(0, filasCobrar).map((ing) => (
-                      <TableRow
-                        key={ing.id}
-                        className="cursor-pointer"
-                        onClick={() => setClienteSel(ing)}
-                      >
-                        <TableCell className="pl-6">
-                          <p className="font-medium text-sm">{ing.contacto.nombre}</p>
-                          <p className="text-xs text-muted-foreground">{ing.eventoNombre} · {ing.salon}</p>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {ing.numeroCuota}/{ing.totalCuotas}
-                        </TableCell>
-                        <TableCell>
-                          <button
-                            type="button"
-                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
-                            title="Cambiar fecha de vencimiento"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              abrirEdicionCuota(ing)
-                            }}
-                          >
-                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
-                              {formatFecha(ing.fechaVencimiento)}
-                            </span>
-                            {vencBadge(ing.diasRestantes)}
-                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-right pr-6 font-bold text-emerald-700">
-                          +{formatCurrency(ing.monto)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
+                  <TableBody>{renderFilasCobrar(ingresosPendientes.slice(0, filasCobrar))}</TableBody>
                 </Table>
               )}
-              {ingresosPendientes.length > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && ingresosPendientes.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
                   {filasCobrar < ingresosPendientes.length ? (
                     <Button
@@ -1342,6 +1708,34 @@ useStore()
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos pendientes que coincidan con el filtro.
                 </p>
+              ) : salonFiltro === "todos" ? (
+                <div>
+                  {gruposPagar.map((g) => (
+                    <CarpetaSalon
+                      key={g.salon}
+                      nombre={g.salon === "General" ? "General" : salonLabel(g.salon)}
+                      color={g.salon === "General" ? SALON_COLOR_GENERAL : salonColor(g.salon, configuracionCajas)}
+                      cantidad={g.items.length}
+                      total={g.total}
+                      totalColor="text-red-600"
+                      abierta={!!carpetasPagar[g.salon]}
+                      onToggle={() => setCarpetasPagar((prev) => ({ ...prev, [g.salon]: !prev[g.salon] }))}
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="pl-6">Tipo</TableHead>
+                            <TableHead>Evento / Servicio</TableHead>
+                            <TableHead>Vence</TableHead>
+                            <TableHead className="text-right">A pagar</TableHead>
+                            <TableHead className="text-right pr-6"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>{renderFilasPagar(g.items)}</TableBody>
+                      </Table>
+                    </CarpetaSalon>
+                  ))}
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -1353,74 +1747,10 @@ useStore()
                       <TableHead className="text-right pr-6"></TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {egresosProximosFiltrados.slice(0, filasPagar).map((eg) => (
-                      <TableRow key={eg.id}>
-                        <TableCell className="pl-6">
-                          <Badge
-                            variant="outline"
-                            className={
-                              eg.tipo === "seña"
-                                ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
-                                : eg.tipo === "menu"
-                                  ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
-                                  : eg.tipo === "barra"
-                                    ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                                    : eg.tipo === "sueldo"
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
-                                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
-                            }
-                          >
-                            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-medium text-sm">{eg.servicioNombre}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {eg.eventoNombre}
-                            {eg.eventoFecha && <span> · {formatFecha(eg.eventoFecha)}</span>}
-                            {eg.salon && (
-                              <span className="inline-flex items-center gap-1 align-middle">
-                                {" · "}
-                                <SalonDot salon={eg.salon} size={7} />
-                                {salonLabel(eg.salon)}
-                              </span>
-                            )}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <button
-                            type="button"
-                            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
-                            title="Cambiar fecha de vencimiento"
-                            onClick={() => abrirEdicionEgreso(eg)}
-                          >
-                            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
-                              {formatFecha(eg.fechaVencimiento)}
-                            </span>
-                            {vencBadge(eg.diasRestantes)}
-                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-red-600">
-                          −{formatCurrency(eg.monto)}
-                        </TableCell>
-                        <TableCell className="text-right pr-6">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-[11px] px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => setPagoConfirmar(eg)}
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pagado
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
+                  <TableBody>{renderFilasPagar(egresosProximosFiltrados.slice(0, filasPagar))}</TableBody>
                 </Table>
               )}
-              {egresosProximosFiltrados.length > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && egresosProximosFiltrados.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
                   {filasPagar < egresosProximosFiltrados.length ? (
                     <Button
@@ -1760,7 +2090,7 @@ useStore()
             </DialogTitle>
             <DialogDescription>
               {extraerModo === "extraer"
-                ? "Registra un retiro de efectivo. Queda en el Archivo Histórico y en Configuración → Actividad."
+                ? "Registra un retiro de efectivo. Queda en el Archivo Histórico y en Configuraci��n → Actividad."
                 : "Contá el dinero real y colocá el monto: el sistema registra la diferencia automáticamente. Queda en Configuración → Actividad."}
             </DialogDescription>
           </DialogHeader>
