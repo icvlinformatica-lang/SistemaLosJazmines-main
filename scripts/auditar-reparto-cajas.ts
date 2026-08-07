@@ -153,23 +153,42 @@ async function main() {
 
   console.log("\n=== 3) APLICANDO reparto ===")
   for (const x of propuesta) {
-    // Reduzco el movimiento más grande del grupo y creo la contraparte Jazmines
-    const principal = x.ms.reduce((a: any, b: any) => (Number(a.monto) >= Number(b.monto) ? a : b))
-    const nuevoMontoPrincipal = Math.round((Number(principal.monto) - x.montoJazmines) * 100) / 100
-    if (nuevoMontoPrincipal <= 0) {
-      console.log(`  SKIP ${x.k} (el principal no cubre la parte de Jazmines)`)
-      continue
-    }
-    await rest(`/movimientos_caja?id=eq.${principal.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ monto: nuevoMontoPrincipal }),
-    })
+    // Reduzco TODOS los movimientos del grupo proporcionalmente (cada seña
+    // puede estar partida en varios movimientos por método de pago) y creo
+    // una única contraparte en Caja Jazmines por el total.
     const nombreEvento = x.e.nombrePareja || x.e.nombre || "Evento"
     const etiqueta = x.k.split("|")[1]
+
+    // factor que queda en Eventos
+    const factor = x.montoEventos / x.tE
+    let acumEventos = 0
+    const nuevos: { id: string; monto: number }[] = []
+    for (let i = 0; i < x.ms.length; i++) {
+      const m = x.ms[i]
+      let nuevo: number
+      if (i === x.ms.length - 1) {
+        // el último absorbe el redondeo para que la suma cierre exacta
+        nuevo = Math.round((x.montoEventos - acumEventos) * 100) / 100
+      } else {
+        nuevo = Math.round(Number(m.monto) * factor * 100) / 100
+      }
+      acumEventos += nuevo
+      nuevos.push({ id: m.id, monto: nuevo })
+    }
+    if (nuevos.some((n) => n.monto < 0)) {
+      console.log(`  SKIP ${x.k} (montos negativos tras el reparto)`)
+      continue
+    }
+    for (const n of nuevos) {
+      await rest(`/movimientos_caja?id=eq.${n.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ monto: n.monto }),
+      })
+    }
     await rest(`/movimientos_caja`, {
       method: "POST",
       body: JSON.stringify({
-        fecha: principal.fecha,
+        fecha: x.ms[0].fecha,
         tipo: "ingreso",
         concepto: `${etiqueta} (Caja Jazmines)`,
         monto: x.montoJazmines,
@@ -179,7 +198,7 @@ async function main() {
         saldo_resultante: null,
       }),
     })
-    console.log(`  OK ${nombreEvento} · ${etiqueta}: Eventos ${fmt(nuevoMontoPrincipal)} + Jazmines ${fmt(x.montoJazmines)}`)
+    console.log(`  OK ${nombreEvento} · ${etiqueta}: Eventos ${fmt(acumEventos)} (${x.ms.length} mov.) + Jazmines ${fmt(x.montoJazmines)}`)
   }
   console.log("Listo.")
 }
