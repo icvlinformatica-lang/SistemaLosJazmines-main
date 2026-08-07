@@ -1142,8 +1142,10 @@ useStore()
         </p>
       )}
 
-      {/* DASHBOARD: tarjetas en una fila, estilo Caja Jazmines */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+      {/* DASHBOARD: tarjetas en una fila, estilo Caja Jazmines.
+          items-start: cada tarjeta mantiene su propia altura, así el bloque
+          semana queda chico cuando solo se despliega el bloque mes. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 items-start">
         {/* Saldo Actual (destacada, igual que en Jazmines) */}
         <Card
           style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
