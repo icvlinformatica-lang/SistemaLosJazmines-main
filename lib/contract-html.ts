@@ -281,9 +281,12 @@ const salon = evento.salon || "___________"
   .anexo-title { text-align: center; font-weight: bold; margin: 14px 0 2px; }
   .anexo-value { text-align: center; margin: 0 0 4px; }
   .anexo-empty { min-height: 14px; }
-  .firma-row { display: flex; gap: 40px; margin-top: 70px; font-weight: bold; break-inside: avoid; page-break-inside: avoid; }
-  .firma-row > div { flex: 1; }
   .firma-line { border-top: 1px solid #111; margin-top: 40px; padding-top: 4px; font-size: 11px; font-weight: normal; text-align: center; }
+  /* Dos sectores de firma: uno para El Cliente y otro para Los Jazmines */
+  .firmas-partes { display: flex; gap: 50px; margin-top: 60px; break-inside: avoid; page-break-inside: avoid; }
+  .firma-parte { flex: 1; font-weight: bold; }
+  .firma-titulo { text-align: center; font-size: 12px; font-weight: bold; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .firma-campo { margin-bottom: 14px; font-size: 11px; }
   @media print { body { -webkit-print-color-adjust: exact; } }
 </style>
 </head>
@@ -418,10 +421,19 @@ ${detalleServicioRows}
     <p class="anexo-title">Observaciones:</p>
     ${evento.descripcionPersonalizada ? `<p class="anexo-value">${evento.descripcionPersonalizada}</p>` : `<p class="anexo-value anexo-empty">&nbsp;</p>`}
 
-    <div class="firma-row">
-      <div>FIRMA:<div class="firma-line">&nbsp;</div></div>
-      <div>ACLARACI\u00d3N:<div class="firma-line">${contrato.nombreCompleto || "&nbsp;"}</div></div>
-      <div>DNI:<div class="firma-line">${contrato.dni || "&nbsp;"}</div></div>
+    <div class="firmas-partes">
+      <div class="firma-parte">
+        <p class="firma-titulo">EL CLIENTE</p>
+        <div class="firma-campo">FIRMA:<div class="firma-line">&nbsp;</div></div>
+        <div class="firma-campo">ACLARACI\u00d3N:<div class="firma-line">${contrato.nombreCompleto || "&nbsp;"}</div></div>
+        <div class="firma-campo">DNI:<div class="firma-line">${contrato.dni || "&nbsp;"}</div></div>
+      </div>
+      <div class="firma-parte">
+        <p class="firma-titulo">LOS JAZMINES EVENTOS</p>
+        <div class="firma-campo">FIRMA:<div class="firma-line">&nbsp;</div></div>
+        <div class="firma-campo">ACLARACI\u00d3N:<div class="firma-line">&nbsp;</div></div>
+        <div class="firma-campo">DNI:<div class="firma-line">&nbsp;</div></div>
+      </div>
     </div>
     </div>
   </div>
