@@ -102,18 +102,21 @@ interface EditableCellProps {
   onCommit: (val: string) => void
   placeholder?: string
   numeric?: boolean
+  /** Textarea multilinea para textos largos (ej: letra chica del contrato, ~90 palabras) */
+  multiline?: boolean
   className?: string
 }
 
-function EditableCell({ value, onCommit, placeholder = "—", numeric = false, className }: EditableCellProps) {
+function EditableCell({ value, onCommit, placeholder = "—", numeric = false, multiline = false, className }: EditableCellProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const startEdit = () => {
     setDraft(value)
     setEditing(true)
-    setTimeout(() => inputRef.current?.select(), 0)
+    setTimeout(() => (multiline ? textareaRef.current?.focus() : inputRef.current?.select()), 0)
   }
 
   const commit = () => {
@@ -127,6 +130,27 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
   }
 
   if (editing) {
+    if (multiline) {
+      // Textarea amplio para la letra chica del contrato (textos de ~90 palabras)
+      return (
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") cancel()
+          }}
+          rows={5}
+          className={cn(
+            "w-full min-h-[110px] px-2.5 py-2 text-[13px] leading-snug border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white resize-y",
+            className
+          )}
+          placeholder="Letra chica que se imprime en el contrato"
+          autoFocus
+        />
+      )
+    }
     if (numeric) {
       // Input numérico con símbolo $ visual (meramente estético)
       return (
@@ -173,6 +197,26 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
         )}
         autoFocus
       />
+    )
+  }
+
+  if (multiline) {
+    // Vista de solo lectura: muestra hasta 3 líneas; el texto completo en tooltip
+    return (
+      <div
+        onClick={startEdit}
+        className={cn(
+          "group relative min-h-8 flex items-start px-2.5 py-1 rounded cursor-pointer hover:bg-muted/70 transition-colors text-[13px] leading-snug",
+          !value && "text-muted-foreground/50 italic",
+          className
+        )}
+        title={value || "Clic para editar"}
+      >
+        <span className="line-clamp-3 whitespace-pre-line pr-4">{value || placeholder}</span>
+        <span className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-40 transition-opacity text-[10px] text-muted-foreground">
+          ✎
+        </span>
+      </div>
     )
   }
 
@@ -380,7 +424,7 @@ export default function FinanzasServiciosPage() {
                 </span>
               </th>
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
-              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -411,7 +455,7 @@ export default function FinanzasServiciosPage() {
                   )}
                 >
                   {/* Nro fila + mover */}
-                  <td className="px-1.5 py-0 select-none">
+                  <td className="px-1.5 py-[3px] select-none">
                     <div className="flex items-center gap-1">
                       <div className="flex flex-col">
                         <button
@@ -440,7 +484,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Nombre */}
-                  <td className="px-1.5 py-0 min-w-[180px]">
+                  <td className="px-1.5 py-[3px] min-w-[180px]">
                     <EditableCell
                       value={s.nombre}
                       placeholder="Nombre del servicio"
@@ -449,7 +493,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Categoria */}
-                  <td className="px-2 py-0">
+                  <td className="px-2 py-[3px]">
                     <Select
                       value={s.categoria}
                       onValueChange={(v) => update(s.id, { categoria: v as CategoriaServicio })}
@@ -475,7 +519,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Unidad */}
-                  <td className="px-2 py-0">
+                  <td className="px-2 py-[3px]">
                     <Select
                       value={s.unidad}
                       onValueChange={(v) => update(s.id, { unidad: v as Servicio["unidad"] })}
@@ -492,7 +536,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Precio Venta */}
-                  <td className="px-1.5 py-0">
+                  <td className="px-1.5 py-[3px]">
                     <EditableCell
                       value={formatMiles(venta)}
                       placeholder="0"
@@ -507,7 +551,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Costo Caja Eventos */}
-                  <td className="px-1.5 py-0">
+                  <td className="px-1.5 py-[3px]">
                     <EditableCell
                       value={formatMiles(costo)}
                       placeholder="0"
@@ -522,7 +566,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Seña por evento */}
-                  <td className="px-1.5 py-0">
+                  <td className="px-1.5 py-[3px]">
                     <EditableCell
                       value={s.costoParaCajaEventos && s.porcentajeSeña
                         ? formatMiles(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))
@@ -541,7 +585,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Margen */}
-                  <td className="px-3 py-0 text-right tabular-nums">
+                  <td className="px-3 py-[3px] text-right tabular-nums">
                     {venta > 0 && costo > 0 ? (
                       <span className={cn("font-semibold text-[15px]", margenColor(margen))}>
                         {margen.toFixed(0)}%
@@ -551,17 +595,18 @@ export default function FinanzasServiciosPage() {
                     )}
                   </td>
 
-                  {/* Descripcion */}
-                  <td className="px-1.5 py-0 max-w-[220px]">
+                  {/* Descripcion = letra chica que se imprime en el contrato (~90 palabras) */}
+                  <td className="px-1.5 py-[3px] min-w-[300px] max-w-[420px] align-top">
                     <EditableCell
                       value={s.descripcion ?? ""}
-                      placeholder="Descripcion opcional"
+                      placeholder="Letra chica del contrato"
+                      multiline
                       onCommit={(v) => update(s.id, { descripcion: v })}
                     />
                   </td>
 
                   {/* Eliminar */}
-                  <td className="px-2 py-0">
+                  <td className="px-2 py-[3px]">
                     <button
                       type="button"
                       onClick={() => setIdEliminar(s.id)}

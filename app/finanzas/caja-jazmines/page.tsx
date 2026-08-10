@@ -152,13 +152,19 @@ function periodoQueSePaga(fechaVencimiento: string): string {
  * cargar es el mismo mes del vencimiento. Si el historial ya tiene ese mes
  * (o uno posterior) cargado, se ofrece el siguiente al último registrado.
  * Sin historial ni vencimiento, el mes próximo del calendario.
+ *
+ * IMPORTANTE: los registros de "Carga histórica" usan meses calendario de
+ * pagos pasados (enero a hoy), no meses de vencimiento, así que NO cuentan
+ * para decidir el próximo mes a cargar (si contaran, un gasto que vence en
+ * agosto ofrecería septiembre apenas se completa su historial).
  */
 function mesQueCorrespondeCargar(
   historial: RegistroMonto[] | undefined,
   fechaVencimiento?: string | null,
 ): string {
   const candidatos: string[] = []
-  const ultimo = historial && historial.length > 0 ? historial[historial.length - 1] : null
+  const registros = (historial || []).filter((r) => r.nota !== "Carga histórica")
+  const ultimo = registros.length > 0 ? registros[registros.length - 1] : null
   if (ultimo?.mes) candidatos.push(mesSiguienteA(ultimo.mes))
   if (fechaVencimiento && fechaVencimiento.length >= 7) {
     // Período del gasto = mes anterior al vencimiento → mes a cargar = período + 1
