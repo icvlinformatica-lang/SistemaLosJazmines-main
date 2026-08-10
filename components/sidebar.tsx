@@ -243,13 +243,22 @@ export function Sidebar() {
         )}
       >
         {/* Logo Section */}
-        <div className="px-5 pt-6 pb-3">
-          <Link href="/" className="block">
+        <div className="flex items-start justify-between gap-2 px-5 pt-6 pb-3">
+          <Link href="/" className="block min-w-0">
             <h1 className="text-lg font-bold text-[#f5f0e8] leading-tight">
               Los Jazmines
             </h1>
             <p className="text-sm text-[#f5f0e8]/70 font-medium">Sistema</p>
           </Link>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#f5f0e8]/60 transition-colors hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8]"
+            aria-label="Plegar menu"
+            title="Plegar menu"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Fecha del sistema (solo lectura) */}
@@ -413,15 +422,27 @@ export function Sidebar() {
 
 
 
-      {/* Floating open button - visible only when sidebar is closed */}
+      {/* Floating open buttons - visible only when sidebar is closed */}
       {!sidebarOpen && (
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="no-print fixed left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-6 h-12 rounded-r-lg bg-[#2d5a3d] text-[#f5f0e8]/80 hover:text-[#f5f0e8] hover:w-7 shadow-md transition-all duration-200"
-          aria-label="Abrir menu"
-        >
-          <ChevronLeft className="h-4 w-4 rotate-180" />
-        </button>
+        <>
+          {/* Botón arriba a la izquierda (siempre a la vista) */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="no-print fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-[#2d5a3d] text-[#f5f0e8]/90 shadow-md transition-all duration-200 hover:bg-[#376b49] hover:text-[#f5f0e8]"
+            aria-label="Desplegar menu"
+            title="Desplegar menu"
+          >
+            <ChevronLeft className="h-5 w-5 rotate-180" />
+          </button>
+          {/* Pestaña lateral al medio (acceso rápido) */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="no-print fixed left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-6 h-12 rounded-r-lg bg-[#2d5a3d] text-[#f5f0e8]/80 hover:text-[#f5f0e8] hover:w-7 shadow-md transition-all duration-200"
+            aria-label="Desplegar menu"
+          >
+            <ChevronLeft className="h-4 w-4 rotate-180" />
+          </button>
+        </>
       )}
 
       {/* Mobile overlay */}
