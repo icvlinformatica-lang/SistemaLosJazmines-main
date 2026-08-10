@@ -34,6 +34,7 @@ import {
   calcularSeñaSaldoServicio,
   actualizarCuotasIPC,
   revertirCuotasIPC,
+  congelarCostosEvento,
   generateNextCodigo,
   RECETA_CODIGO_PREFIX,
 } from "./store"
@@ -1252,16 +1253,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const updateEvento = async (id: string, updates: Partial<EventoGuardado>) => {
+    // --- ARCHIVO: congelar/descongelar costos según el cambio de estado ---
+    // Al pasar a "completado" (archivo) se guarda una foto congelada de los
+    // costos calculados en ese momento; al sacarlo del archivo se descarta la
+    // foto y todo vuelve a calcularse en vivo. Esto centraliza el congelado
+    // sin importar desde qué pantalla se archive o reactive el evento.
+    let updatesFinal = updates
+    const evPrevio = (state.eventos || []).find((e) => e.id === id)
+    if (evPrevio && updates.estado && updates.estado !== evPrevio.estado) {
+      if (updates.estado === "completado") {
+        try {
+          const archivoCongelado = congelarCostosEvento({ ...evPrevio, ...updates }, state)
+          updatesFinal = {
+            ...updates,
+            costosCalculados: { ...(evPrevio.costosCalculados || {}), archivoCongelado },
+          }
+        } catch (err) {
+          console.error("[v0] Error congelando costos al archivar:", err)
+        }
+      } else if (evPrevio.estado === "completado") {
+        const { archivoCongelado: _descartado, ...restoCostos } = (evPrevio.costosCalculados ||
+          {}) as Record<string, unknown>
+        updatesFinal = { ...updates, costosCalculados: restoCostos as EventoGuardado["costosCalculados"] }
+      }
+    }
+
     // Optimistic update first
     setState((prev) => ({
       ...prev,
-      eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updates } : e)),
+      eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updatesFinal } : e)),
     }))
     try {
       await fetchWithRetry(`/api/eventos/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
+        body: JSON.stringify(updatesFinal),
       })
     } catch (err) {
       console.error("[v0] Error updating evento:", err)

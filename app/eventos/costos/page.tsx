@@ -26,6 +26,7 @@ import {
   calcularCostoReceta,
   calcularMontoPersonalDelEvento,
   calcularSeñaSaldoServicio,
+  congelarCostosEvento,
   salonLabel,
   type MovimientoCaja,
 } from "@/lib/store"
@@ -42,6 +43,7 @@ import {
   PieChart as PieChartIcon,
   BookOpen,
   RefreshCw,
+  Lock,
 } from "lucide-react"
 import { PieChart, Pie, Cell, Label } from "recharts"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
@@ -150,15 +152,40 @@ function CostosEventoContent() {
   const [observacion, setObservacion] = useState(observacionGuardada)
   const [guardandoObs, setGuardandoObs] = useState(false)
 
-  // --- Costos calculados en vivo ---
-  const comprasCocina = useMemo(
+  // --- ARCHIVO: foto congelada de costos (si el evento está archivado) ---
+  // Mientras el evento esté en el Archivo se muestran los datos guardados al
+  // archivarlo; nada se recalcula en vivo. Al sacarlo del archivo, la foto se
+  // descarta (en updateEvento del store) y todo vuelve a calcularse en vivo.
+  const esArchivado = evento?.estado === "completado"
+  const congelado = esArchivado ? evento?.costosCalculados?.archivoCongelado : undefined
+
+  // Respaldo: eventos archivados antes de que existiera el congelado generan
+  // su foto la primera vez que se abre esta pantalla.
+  useEffect(() => {
+    if (evento && esArchivado && !congelado) {
+      try {
+        const archivoCongelado = congelarCostosEvento(evento, state)
+        updateEvento(evento.id, {
+          costosCalculados: { ...(evento.costosCalculados || {}), archivoCongelado },
+        } as Partial<typeof evento>)
+      } catch (err) {
+        console.error("[v0] Error generando congelado de archivo:", err)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evento?.id, esArchivado, !congelado])
+
+  // --- Costos calculados en vivo (o congelados si está archivado) ---
+  const comprasCocinaLive = useMemo(
     () => (evento ? calcularComprasSegmentadas(evento, state.recetas || [], state.insumos || []) : []),
     [evento, state.recetas, state.insumos],
   )
-  const comprasBarra = useMemo(
+  const comprasBarraLive = useMemo(
     () => (evento ? calcularComprasBarras(evento, state.cocteles || [], state.insumosBarra || []) : []),
     [evento, state.cocteles, state.insumosBarra],
   )
+  const comprasCocina = congelado?.comprasCocina ?? comprasCocinaLive
+  const comprasBarra = congelado?.comprasBarra ?? comprasBarraLive
   const cuotas = useMemo(() => (evento ? generarCalendarioCuotas(evento) : []), [evento])
 
   if (!evento) {
@@ -180,14 +207,18 @@ function CostosEventoContent() {
   const servicios = evento.servicios || []
   // Sueldos EN VIVO desde el roster (Finanzas → Personal): siguen la tarifa
   // vigente salvo que estén pagados o con monto personalizado por evento.
-  const personal = (evento.personalEvento || [])
-    .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, state.personal) }))
-    .filter((pe) => (pe.monto || 0) > 0)
+  // Si el evento está archivado, se usan los sueldos congelados al archivar.
+  const personal =
+    congelado?.personal ??
+    (evento.personalEvento || [])
+      .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, state.personal) }))
+      .filter((pe) => (pe.monto || 0) > 0)
 
   // --- Menú completo elegido por la familia (recetas por segmento, en vivo) ---
   // Cada plato lleva su costo de materia prima para el segmento completo:
   // costo por persona de la receta × invitados del segmento × multiplicador de porción.
-  const menuPorSegmento = [
+  // Si el evento está archivado, se usa el menú congelado al archivar.
+  const menuPorSegmento = congelado?.menuPorSegmento ?? [
     {
       segmento: "Adultos",
       pax: evento.adultos || 0,
@@ -269,9 +300,12 @@ function CostosEventoContent() {
       servicios: state.servicios ?? [],
     })
 
+    // Si el evento está archivado, usar los montos congelados al archivar.
+    const frozen = congelado?.serviciosCalc?.find((f) => f.servicioId === srv.servicioId)
+
     // Preservar lo ya pagado; recalcular en vivo lo pendiente.
-    const montoSeña = montoSeñaCalc
-    const saldo = saldoPagado ? montoSaldoPagado(srv.nombre) : saldoCalc
+    const montoSeña = frozen ? frozen.montoSeña : montoSeñaCalc
+    const saldo = frozen ? frozen.saldo : saldoPagado ? montoSaldoPagado(srv.nombre) : saldoCalc
 
     return { srv, senaPagada, saldoPagado, montoSeña, saldo }
   })
@@ -281,8 +315,8 @@ function CostosEventoContent() {
     (s, c) => s + (c.senaPagada ? c.montoSeña : 0) + (c.saldoPagado ? c.saldo : 0),
     0,
   )
-  const totalPersonal = personal.reduce((s, pe) => s + pe.monto, 0)
-  const pagadoPersonal = personal.filter((pe) => pe.pagado).reduce((s, pe) => s + pe.monto, 0)
+  const totalPersonal = personal.reduce((s, pe) => s + (pe.monto || 0), 0)
+  const pagadoPersonal = personal.filter((pe) => pe.pagado).reduce((s, pe) => s + (pe.monto || 0), 0)
   const pagadoCocina = evento.cocinaPagada ? costoCocina : 0
   const pagadoBarra = evento.barraPagada ? costoBarra : 0
 
@@ -359,8 +393,20 @@ function CostosEventoContent() {
 
   const hoyStr = new Date().toISOString().split("T")[0]
 
+  // Con el evento archivado no se registran ni revierten pagos: los datos
+  // están congelados hasta que se saque el evento del archivo.
+  const bloquearPorArchivo = (): boolean => {
+    if (!esArchivado) return false
+    toast({
+      title: "Evento archivado",
+      description: "Los datos están congelados. Sacá el evento del archivo para modificar pagos.",
+    })
+    return true
+  }
+
   // --- Cocina ---
   const toggleCocina = (checked: boolean) => {
+    if (bloquearPorArchivo()) return
     updateEvento(evento.id, { cocinaPagada: checked })
     const concepto = `Pago menú - ${nombreEvento}`
     if (checked) {
@@ -374,6 +420,7 @@ function CostosEventoContent() {
 
   // --- Barra ---
   const toggleBarra = (checked: boolean) => {
+    if (bloquearPorArchivo()) return
     updateEvento(evento.id, { barraPagada: checked })
     const concepto = `Pago barra - ${nombreEvento}`
     if (checked) {
@@ -387,6 +434,7 @@ function CostosEventoContent() {
 
   // --- Servicios: seña ---
   const toggleSena = (servicioId: string, checked: boolean) => {
+    if (bloquearPorArchivo()) return
     const srv = servicios.find((s) => s.servicioId === servicioId)
     if (!srv) return
     const concepto = `Pago seña ${srv.nombre} - ${nombreEvento}`
@@ -414,6 +462,7 @@ function CostosEventoContent() {
 
   // --- Servicios: saldo ---
   const toggleSaldo = (servicioId: string, checked: boolean) => {
+    if (bloquearPorArchivo()) return
     const srv = servicios.find((s) => s.servicioId === servicioId)
     if (!srv) return
     const concepto = `Pago saldo ${srv.nombre} - ${nombreEvento}`
@@ -450,6 +499,7 @@ function CostosEventoContent() {
 
   // --- Personal ---
   const togglePersonal = (peId: string, checked: boolean) => {
+    if (bloquearPorArchivo()) return
     const pe = (evento.personalEvento || []).find((p) => p.id === peId)
     if (!pe) return
     const concepto = `Pago sueldo ${pe.nombre} (${pe.funcion}) - ${nombreEvento}`
@@ -498,12 +548,21 @@ function CostosEventoContent() {
             </p>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <RefreshCw className="h-3 w-3" />
-          {ultimaSync
-            ? `Precios y contrato actualizados ${ultimaSync.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
-            : "Sincronización en tiempo real activa"}
-        </span>
+        {esArchivado ? (
+          <span className="flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+            <Lock className="h-3 w-3" />
+            {congelado
+              ? `Evento archivado — datos congelados al ${formatFecha(congelado.fechaArchivado.slice(0, 10))}`
+              : "Evento archivado — datos congelados"}
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <RefreshCw className="h-3 w-3" />
+            {ultimaSync
+              ? `Precios y contrato actualizados ${ultimaSync.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+              : "Sincronización en tiempo real activa"}
+          </span>
+        )}
       </div>
 
       {/* En PC: las 4 tarjetas + gráfico una al lado de la otra; en pantallas medianas 2x2 + gráfico */}
@@ -857,7 +916,7 @@ function CostosEventoContent() {
                   </span>
                 </span>
                 <span className={`shrink-0 font-medium ${pe.pagado ? "text-emerald-700" : "text-red-600"}`}>
-                  {formatCurrency(pe.monto)}
+                  {formatCurrency(pe.monto || 0)}
                 </span>
               </label>
             ))
@@ -894,7 +953,7 @@ function CostosEventoContent() {
                       <span
                         className={`shrink-0 font-medium ${pe.pagado ? "text-emerald-700" : "text-red-600"}`}
                       >
-                        {formatCurrency(pe.monto)}
+                        {formatCurrency(pe.monto || 0)}
                       </span>
                     </div>
                   ))}
