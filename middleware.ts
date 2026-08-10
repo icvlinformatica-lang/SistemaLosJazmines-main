@@ -2,7 +2,9 @@ import { NextResponse, type NextRequest } from "next/server"
 import { verifyToken, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
 
 // Rutas de API públicas (no requieren sesión)
-const PUBLIC_API_ROUTES = ["/api/auth/login", "/api/auth/logout", "/api/auth/session"]
+// /api/cron/* lo invoca el cron de Vercel (sin sesión); cada ruta de cron
+// valida CRON_SECRET por su cuenta.
+const PUBLIC_API_ROUTES = ["/api/auth/login", "/api/auth/logout", "/api/auth/session", "/api/cron/"]
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
