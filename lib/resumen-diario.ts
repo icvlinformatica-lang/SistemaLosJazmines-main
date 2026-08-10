@@ -362,32 +362,36 @@ function buildEmailHtml(r: ResumenDiario): string {
       </tr>`
     : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">No entraron cuotas hoy.</td></tr>`
 
-  const fechaCorta = (ymd: string) => {
-    try {
-      return new Date(ymd + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })
-    } catch {
-      return ymd
-    }
+  // A cobrar esta semana, agrupado por salón (sin desglose por persona):
+  // suma de cuotas que vencen esta semana + deuda atrasada de cada salón.
+  const cobrarPorSalon = new Map<string, { semana: number; atrasado: number }>()
+  for (const v of r.vienenAPagar) {
+    const acc = cobrarPorSalon.get(v.salon) || { semana: 0, atrasado: 0 }
+    if (v.cuotaSemana) acc.semana += v.cuotaSemana.monto
+    acc.atrasado += v.montoAtrasado
+    cobrarPorSalon.set(v.salon, acc)
   }
+  const cobrarEntries = [...cobrarPorSalon.entries()].sort((a, b) => b[1].semana - a[1].semana)
+  const totalSemana = cobrarEntries.reduce((s, [, v]) => s + v.semana, 0)
+  const totalAtrasado = cobrarEntries.reduce((s, [, v]) => s + v.atrasado, 0)
 
-  const pagarRows = r.vienenAPagar.length
-    ? r.vienenAPagar
+  const pagarRows = cobrarEntries.length
+    ? cobrarEntries
         .map(
-          (v) => `
+          ([salon, v]) => `
         <tr>
-          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">
-            ${v.evento}
-            <br/><span style="color:#9ca3af;font-size:11px;">${v.salon} · evento ${fechaCorta(v.fechaEvento)}</span>
-          </td>
-          <td style="padding:6px 12px;font-size:12px;border-bottom:1px solid #f3f4f6;">
-            ${v.cuotaSemana ? `<span style="color:#374151;">Cuota ${v.cuotaSemana.numero} vence ${fechaCorta(v.cuotaSemana.fechaVencimiento)}</span>` : `<span style="color:#9ca3af;">Sin cuota esta semana</span>`}
-            ${v.montoAtrasado > 0 ? `<br/><span style="color:#dc2626;font-weight:700;">ATRASADO: debe ${fmt(v.montoAtrasado)} (${v.cuotasAtrasadas} cuota${v.cuotasAtrasadas === 1 ? "" : "s"})</span>` : ""}
-          </td>
-          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${v.cuotaSemana ? fmt(v.cuotaSemana.monto) : "-"}</td>
+          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">${salon}</td>
+          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${v.semana > 0 ? fmt(v.semana) : "-"}</td>
+          <td style="padding:6px 12px;color:#dc2626;font-size:13px;font-weight:600;border-bottom:1px solid #f3f4f6;text-align:right;">${v.atrasado > 0 ? fmt(v.atrasado) : "-"}</td>
         </tr>`
         )
-        .join("")
-    : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">Nadie tiene cuotas por pagar esta semana.</td></tr>`
+        .join("") +
+      `<tr>
+        <td style="padding:8px 12px;color:#111827;font-size:13px;font-weight:700;">Total</td>
+        <td style="padding:8px 12px;color:#111827;font-size:14px;font-weight:700;text-align:right;">${fmt(totalSemana)}</td>
+        <td style="padding:8px 12px;color:#dc2626;font-size:14px;font-weight:700;text-align:right;">${totalAtrasado > 0 ? fmt(totalAtrasado) : "-"}</td>
+      </tr>`
+    : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">No hay cuotas por cobrar esta semana.</td></tr>`
 
   const seccion = (titulo: string, contenido: string) => `
     <h3 style="margin:20px 0 8px;font-size:14px;color:#111827;">${titulo}</h3>
@@ -420,7 +424,14 @@ function buildEmailHtml(r: ResumenDiario): string {
       )}
       ${seccion("Movimientos importantes del día", movRows)}
       ${seccion("Cuotas que entraron hoy", cuotaRows)}
-      ${seccion("Vienen a pagar esta semana", pagarRows)}
+      ${seccion(
+        "A cobrar esta semana por salón",
+        `<tr>
+          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Salón</th>
+          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Esta semana</th>
+          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Atrasado</th>
+        </tr>` + pagarRows
+      )}
       <p style="color:#9ca3af;font-size:12px;margin-top:16px;">
         Resumen automático generado a las 21:00 (hora argentina). ${r.cantidadMovimientos} movimiento${r.cantidadMovimientos === 1 ? "" : "s"} en el día.
       </p>
