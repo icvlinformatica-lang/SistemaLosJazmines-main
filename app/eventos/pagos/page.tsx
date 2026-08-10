@@ -57,6 +57,7 @@ import {
   FileText,
   Phone,
   TrendingUp,
+  X,
 } from "lucide-react"
 
 const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -458,6 +459,8 @@ function PagosPageContent() {
   // Payment dialog
   const [showPagoDialog, setShowPagoDialog] = useState(false)
   const [montoCuotaBase, setMontoCuotaBase] = useState(0) // Original cuota amount before IPC
+  // Permite quitar con un click el recargo por días de atraso del próximo pago
+  const [recargoAtrasoOmitido, setRecargoAtrasoOmitido] = useState(false)
   const [pagoForm, setPagoForm] = useState({
     monto: 0,
     fecha: new Date().toISOString().split("T")[0],
@@ -468,6 +471,11 @@ function PagosPageContent() {
     montoRecibido: 0,
     recibidoPor: "",
   })
+
+  // Al cambiar de evento, el recargo por atraso vuelve a aplicarse por defecto
+  useEffect(() => {
+    setRecargoAtrasoOmitido(false)
+  }, [selectedEvento?.id])
 
   // Cuotas config (solo lectura — se edita desde Contratos)
   const [cuotasTotal, setCuotasTotal] = useState(1)
@@ -1380,7 +1388,8 @@ function PagosPageContent() {
                 hoy.setHours(0, 0, 0, 0)
                 const fechaVenc = new Date(proximaCuota.fechaVencimiento + "T00:00:00")
                 const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
-                const recargoAtraso = diasAtraso * RECARGO_POR_DIA_ATRASO
+                // Con un click se puede quitar el recargo (queda en $0 pero se muestra que fue quitado)
+                const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
                 const ipcIncluido = cuotaFueAjustada ? proximaCuota.monto - montoCuotaOriginal : 0
                 const totalSimulado = proximaCuota.monto + recargoAtraso
 
@@ -1411,11 +1420,32 @@ function PagosPageContent() {
                                 Ajustada por IPC
                               </Badge>
                             )}
-                            {diasAtraso > 0 && (
-                              <Badge variant="secondary" className="gap-1 text-red-600">
-                                <Clock className="h-3.5 w-3.5" />
-                                {diasAtraso} {diasAtraso === 1 ? "día" : "días"} de atraso
-                              </Badge>
+                            {diasAtraso > 0 && !recargoAtrasoOmitido && (
+                              <button
+                                type="button"
+                                onClick={() => setRecargoAtrasoOmitido(true)}
+                                title="Quitar el recargo por atraso"
+                                className="inline-flex"
+                              >
+                                <Badge variant="secondary" className="gap-1 text-red-600 hover:bg-red-100">
+                                  <Clock className="h-3.5 w-3.5" />
+                                  {diasAtraso} {diasAtraso === 1 ? "día" : "días"} de atraso
+                                  <X className="h-3 w-3" />
+                                </Badge>
+                              </button>
+                            )}
+                            {diasAtraso > 0 && recargoAtrasoOmitido && (
+                              <button
+                                type="button"
+                                onClick={() => setRecargoAtrasoOmitido(false)}
+                                title="Volver a aplicar el recargo por atraso"
+                                className="inline-flex"
+                              >
+                                <Badge variant="outline" className="gap-1 text-muted-foreground line-through hover:bg-muted">
+                                  <Clock className="h-3.5 w-3.5" />
+                                  Recargo quitado
+                                </Badge>
+                              </button>
                             )}
                           </div>
                         </div>
@@ -1482,6 +1512,16 @@ function PagosPageContent() {
                                 + Recargo por atraso ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} x {formatCurrency(RECARGO_POR_DIA_ATRASO)})
                               </span>
                               <span className="font-mono font-medium text-red-600">+ {formatCurrency(recargoAtraso)}</span>
+                            </div>
+                          )}
+                          {diasAtraso > 0 && recargoAtrasoOmitido && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground line-through">
+                                Recargo por atraso ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} x {formatCurrency(RECARGO_POR_DIA_ATRASO)}) — quitado
+                              </span>
+                              <span className="font-mono font-medium text-muted-foreground line-through">
+                                {formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}
+                              </span>
                             </div>
                           )}
                           <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5 font-semibold">
