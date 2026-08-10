@@ -4,7 +4,7 @@ import React from "react"
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Home,
   Package,
@@ -140,6 +140,39 @@ export function Sidebar() {
   const { ahora: fechaActual } = useClock()
   const [expandedSections, setExpandedSections] = useState<string[]>([])
 
+  // --- Apertura/cierre automático por hover ---
+  // Si el panel se abrió al acercar el mouse (no con un botón), se cierra
+  // solo cuando el mouse queda fuera por más de 1 segundo.
+  const hoverOpenedRef = useRef(false)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelarCierre = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const abrirPorHover = () => {
+    cancelarCierre()
+    if (!sidebarOpen) {
+      hoverOpenedRef.current = true
+      setSidebarOpen(true)
+    }
+  }
+
+  const programarCierrePorHover = () => {
+    if (!hoverOpenedRef.current) return
+    cancelarCierre()
+    closeTimerRef.current = setTimeout(() => {
+      hoverOpenedRef.current = false
+      setSidebarOpen(false)
+    }, 1000)
+  }
+
+  // Limpiar el timer al desmontar
+  useEffect(() => cancelarCierre, [])
+
   // Construir items del menú según perfil activo
   const menuItems = buildMenuItems(perfilActivo?.id)
 
@@ -233,8 +266,19 @@ export function Sidebar() {
 
   return (
     <>
+      {/* Zona caliente: al acercar el mouse al borde izquierdo se despliega */}
+      {!sidebarOpen && (
+        <div
+          className="no-print fixed left-0 top-0 z-40 hidden h-screen w-2 lg:block"
+          onMouseEnter={abrirPorHover}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
       <aside
+        onMouseEnter={cancelarCierre}
+        onMouseLeave={programarCierrePorHover}
         className={cn(
           "no-print fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40",
           sidebarOpen ? "w-56" : "w-0 overflow-hidden",
@@ -252,7 +296,11 @@ export function Sidebar() {
           </Link>
           <button
             type="button"
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => {
+              cancelarCierre()
+              hoverOpenedRef.current = false
+              setSidebarOpen(false)
+            }}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#f5f0e8]/60 transition-colors hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8]"
             aria-label="Plegar menu"
             title="Plegar menu"
@@ -412,7 +460,11 @@ export function Sidebar() {
 
         {/* Collapse toggle */}
         <button
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => {
+            cancelarCierre()
+            hoverOpenedRef.current = false
+            setSidebarOpen(false)
+          }}
           className="flex items-center gap-2 px-5 py-3 border-t border-[#f5f0e8]/10 text-[#f5f0e8]/60 hover:text-[#f5f0e8]/90 text-sm transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -427,7 +479,11 @@ export function Sidebar() {
         <>
           {/* Botón arriba a la izquierda (siempre a la vista) */}
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => {
+              hoverOpenedRef.current = false
+              setSidebarOpen(true)
+            }}
+            onMouseEnter={abrirPorHover}
             className="no-print fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-[#2d5a3d] text-[#f5f0e8]/90 shadow-md transition-all duration-200 hover:bg-[#376b49] hover:text-[#f5f0e8]"
             aria-label="Desplegar menu"
             title="Desplegar menu"
@@ -436,7 +492,11 @@ export function Sidebar() {
           </button>
           {/* Pestaña lateral al medio (acceso rápido) */}
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => {
+              hoverOpenedRef.current = false
+              setSidebarOpen(true)
+            }}
+            onMouseEnter={abrirPorHover}
             className="no-print fixed left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-6 h-12 rounded-r-lg bg-[#2d5a3d] text-[#f5f0e8]/80 hover:text-[#f5f0e8] hover:w-7 shadow-md transition-all duration-200"
             aria-label="Desplegar menu"
           >
