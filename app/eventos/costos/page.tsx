@@ -157,12 +157,30 @@ function CostosEventoContent() {
   // archivarlo; nada se recalcula en vivo. Al sacarlo del archivo, la foto se
   // descarta (en updateEvento del store) y todo vuelve a calcularse en vivo.
   const esArchivado = evento?.estado === "completado"
-  const congelado = esArchivado ? evento?.costosCalculados?.archivoCongelado : undefined
+  const congeladoRaw = esArchivado ? evento?.costosCalculados?.archivoCongelado : undefined
+  // Una foto sin ningún dato se considera inválida (pudo generarse antes de
+  // que cargaran los catálogos) y se ignora para no mostrar todo en cero.
+  const congelado =
+    congeladoRaw &&
+    ((congeladoRaw.comprasCocina?.length ?? 0) > 0 ||
+      (congeladoRaw.comprasBarra?.length ?? 0) > 0 ||
+      (congeladoRaw.personal?.length ?? 0) > 0 ||
+      (congeladoRaw.serviciosCalc?.length ?? 0) > 0)
+      ? congeladoRaw
+      : undefined
+
+  // Los catálogos deben estar cargados antes de congelar nada; si no, la foto
+  // saldría vacía.
+  const catalogosCargados =
+    (state.recetas?.length ?? 0) > 0 && (state.insumos?.length ?? 0) > 0
 
   // Respaldo: eventos archivados antes de que existiera el congelado generan
-  // su foto la primera vez que se abre esta pantalla.
+  // su foto la primera vez que se abre esta pantalla (una sola vez, con los
+  // catálogos ya cargados).
+  const congeladoGeneradoRef = useRef(false)
   useEffect(() => {
-    if (evento && esArchivado && !congelado) {
+    if (evento && esArchivado && !congelado && catalogosCargados && !congeladoGeneradoRef.current) {
+      congeladoGeneradoRef.current = true
       try {
         const archivoCongelado = congelarCostosEvento(evento, state)
         updateEvento(evento.id, {
@@ -173,7 +191,7 @@ function CostosEventoContent() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evento?.id, esArchivado, !congelado])
+  }, [evento?.id, esArchivado, !congelado, catalogosCargados])
 
   // --- Costos calculados en vivo (o congelados si está archivado) ---
   const comprasCocinaLive = useMemo(
