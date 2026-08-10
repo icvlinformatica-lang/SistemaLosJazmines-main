@@ -18,9 +18,27 @@ export interface MovimientoResumen {
 
 export interface CuotaResumen {
   evento: string
+  salon: string
   monto: number
   pagadoPor: string
   notas: string
+}
+
+export interface IngresoSalonResumen {
+  salon: string
+  total: number
+}
+
+/** Evento que tiene cuota por pagar esta semana (o cuotas atrasadas). */
+export interface VieneAPagar {
+  evento: string
+  salon: string
+  fechaEvento: string // YYYY-MM-DD
+  /** Próxima cuota que vence esta semana (si hay) */
+  cuotaSemana: { numero: number; fechaVencimiento: string; monto: number } | null
+  /** Deuda de cuotas vencidas sin pagar (semana pasada o antes) */
+  montoAtrasado: number
+  cuotasAtrasadas: number
 }
 
 export interface ResumenDiario {
@@ -30,10 +48,14 @@ export interface ResumenDiario {
   ingresoCajaEventos: number
   egresoCajaJazmines: number
   egresoCajaEventos: number
+  /** Total que ingresó hoy a cada salón */
+  ingresosPorSalon: IngresoSalonResumen[]
   movimientosImportantes: MovimientoResumen[]
   cuotasDelDia: CuotaResumen[]
   totalCuotas: number
   cantidadMovimientos: number
+  /** Quiénes deben venir a pagar esta semana (incluye atrasados) */
+  vienenAPagar: VieneAPagar[]
 }
 
 /** Día de hoy (YYYY-MM-DD) en horario argentino. */
@@ -73,6 +95,15 @@ function cajaDe(m: Record<string, unknown>): string {
   if (destino === "caja_jazmines") return "Caja Jazmines"
   // Movimientos históricos sin caja_destino: inferir por salón
   return m.salon === "admin" ? "Caja Jazmines" : "Caja Eventos"
+}
+
+/** Nombre legible del salón para mostrar en resumen y mail. */
+function salonLegible(salon: unknown): string {
+  const s = String(salon || "").trim()
+  if (!s) return "Sin salón"
+  if (s === "admin") return "Administración"
+  if (s === "Salon" || s.toLowerCase() === "salon") return "Salón"
+  return s
 }
 
 function parseJson<T>(value: unknown, fallback: T): T {
@@ -119,6 +150,17 @@ export async function buildResumenDiario(): Promise<ResumenDiario> {
     }
   }
 
+  // Total que ingresó hoy a cada salón
+  const porSalon = new Map<string, number>()
+  for (const m of movsHoy) {
+    if (m.tipo !== "ingreso") continue
+    const s = salonLegible(m.salon)
+    porSalon.set(s, (porSalon.get(s) || 0) + (Number(m.monto) || 0))
+  }
+  const ingresosPorSalon: IngresoSalonResumen[] = [...porSalon.entries()]
+    .map(([salon, total]) => ({ salon, total }))
+    .sort((a, b) => b.total - a.total)
+
   // Movimientos importantes: los de mayor monto del día (hasta 10)
   const movimientosImportantes: MovimientoResumen[] = [...movsHoy]
     .sort((a, b) => (Number(b.monto) || 0) - (Number(a.monto) || 0))
@@ -128,14 +170,14 @@ export async function buildResumenDiario(): Promise<ResumenDiario> {
       concepto: String(m.concepto || "Sin concepto"),
       monto: Number(m.monto) || 0,
       caja: cajaDe(m),
-      salon: String(m.salon || ""),
+      salon: salonLegible(m.salon),
     }))
 
-  // Cuotas cobradas hoy: pagos dentro de cada evento con fecha de hoy
+  // Cuotas cobradas hoy + plan de cuotas para saber quién viene a pagar
   const evRows = (await sql`
-    SELECT nombre, nombre_pareja, pagos
+    SELECT nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas
     FROM eventos
-    WHERE pagos IS NOT NULL AND pagos::text <> '[]'
+    WHERE deleted_at IS NULL
   `) as unknown as Record<string, unknown>[]
 
   const cuotasDelDia: CuotaResumen[] = []
@@ -145,6 +187,7 @@ export async function buildResumenDiario(): Promise<ResumenDiario> {
       if (diaDe(p.fecha) === hoy) {
         cuotasDelDia.push({
           evento: String(ev.nombre || ev.nombre_pareja || "Sin nombre"),
+          salon: salonLegible(ev.salon),
           monto: Number(p.monto) || 0,
           pagadoPor: String(p.pagadoPor || ""),
           notas: String(p.notas || ""),
@@ -154,6 +197,94 @@ export async function buildResumenDiario(): Promise<ResumenDiario> {
   }
   cuotasDelDia.sort((a, b) => b.monto - a.monto)
 
+  // ------------------------------------------
+  // VIENEN A PAGAR ESTA SEMANA (+ atrasados)
+  // ------------------------------------------
+  // Semana actual: de lunes a domingo (hora argentina). Una cuota sin pagar
+  // que vence dentro de la semana => "viene a pagar". Cuotas sin pagar que
+  // vencieron ANTES del lunes => deuda atrasada (se suma el monto).
+  const hoyDate = new Date(hoy + "T12:00:00")
+  const diaSemana = (hoyDate.getDay() + 6) % 7 // 0 = lunes
+  const lunes = new Date(hoyDate)
+  lunes.setDate(hoyDate.getDate() - diaSemana)
+  const domingo = new Date(lunes)
+  domingo.setDate(lunes.getDate() + 6)
+  const toYmd = (d: Date) => d.toLocaleDateString("en-CA")
+  const inicioSemana = toYmd(lunes)
+  const finSemana = toYmd(domingo)
+
+  const vienenAPagar: VieneAPagar[] = []
+  for (const ev of evRows) {
+    // Solo eventos activos (no archivados ni cancelados)
+    const estado = String(ev.estado || "")
+    if (estado === "completado" || estado === "cancelado") continue
+
+    const plan = parseJson<Record<string, unknown> | null>(ev.plan_de_cuotas, null)
+    if (!plan || !Number(plan.numeroCuotas)) continue
+
+    const numeroCuotas = Number(plan.numeroCuotas) || 0
+    const montoCuotaBase = Number(plan.montoCuota) || (Number(plan.montoTotal) || 0) / (numeroCuotas || 1)
+    const cuotasPagadas = parseJson<number[]>(plan.cuotasPagadas, [])
+    const detalle = parseJson<Array<Record<string, unknown>>>(plan.cuotas, [])
+    const fechaInicioPlan = String(plan.fechaInicioPlan || "")
+    const diaVencimiento = Number(plan.diaVencimiento) || 10
+
+    // Fecha y monto por cuota: el detalle guardado en el contrato es la
+    // fuente de verdad; si falta, se calcula desde fechaInicioPlan.
+    const fechaDeCuota = (n: number): string => {
+      const d = detalle.find((c) => Number(c.numero) === n)
+      const guardada = String(d?.fechaVencimiento || "")
+      if (/^\d{4}-\d{2}-\d{2}$/.test(guardada)) return guardada
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaInicioPlan)) return ""
+      const [y, mo] = fechaInicioPlan.split("-").map(Number)
+      const mesTotal = mo - 1 + (n - 1)
+      const año = y + Math.floor(mesTotal / 12)
+      const mes = mesTotal % 12
+      const ultimoDia = new Date(año, mes + 1, 0).getDate()
+      return `${año}-${String(mes + 1).padStart(2, "0")}-${String(Math.min(diaVencimiento, ultimoDia)).padStart(2, "0")}`
+    }
+    const montoDeCuota = (n: number): number => {
+      const d = detalle.find((c) => Number(c.numero) === n)
+      const m = Number(d?.montoCuota)
+      return m > 0 ? m : montoCuotaBase
+    }
+
+    let cuotaSemana: VieneAPagar["cuotaSemana"] = null
+    let montoAtrasado = 0
+    let cuotasAtrasadas = 0
+
+    for (let n = 1; n <= numeroCuotas; n++) {
+      if (cuotasPagadas.includes(n)) continue
+      const venc = fechaDeCuota(n)
+      if (!venc) continue
+      if (venc < inicioSemana) {
+        // Vencida antes de esta semana y sin pagar => atrasada
+        montoAtrasado += montoDeCuota(n)
+        cuotasAtrasadas++
+      } else if (venc >= inicioSemana && venc <= finSemana && !cuotaSemana) {
+        cuotaSemana = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n) }
+      }
+    }
+
+    if (cuotaSemana || montoAtrasado > 0) {
+      vienenAPagar.push({
+        evento: String(ev.nombre || ev.nombre_pareja || "Sin nombre"),
+        salon: salonLegible(ev.salon),
+        fechaEvento: diaDe(ev.fecha),
+        cuotaSemana,
+        montoAtrasado,
+        cuotasAtrasadas,
+      })
+    }
+  }
+  // Primero los que tienen cuota esta semana (por fecha de vencimiento), después los solo-atrasados
+  vienenAPagar.sort((a, b) => {
+    if (a.cuotaSemana && b.cuotaSemana) return a.cuotaSemana.fechaVencimiento.localeCompare(b.cuotaSemana.fechaVencimiento)
+    if (a.cuotaSemana) return -1
+    if (b.cuotaSemana) return 1
+    return b.montoAtrasado - a.montoAtrasado
+  })
+
   return {
     fecha: hoy,
     fechaLegible: fechaLegible(hoy),
@@ -161,10 +292,12 @@ export async function buildResumenDiario(): Promise<ResumenDiario> {
     ingresoCajaEventos,
     egresoCajaJazmines,
     egresoCajaEventos,
+    ingresosPorSalon,
     movimientosImportantes,
     cuotasDelDia,
     totalCuotas: cuotasDelDia.reduce((s, c) => s + c.monto, 0),
     cantidadMovimientos: movsHoy.length,
+    vienenAPagar,
   }
 }
 
@@ -184,13 +317,25 @@ function buildEmailHtml(r: ResumenDiario): string {
       <td style="padding:8px 12px;color:#dc2626;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;text-align:right;">- ${fmt(egreso)}</td>
     </tr>`
 
+  const salonRows = r.ingresosPorSalon.length
+    ? r.ingresosPorSalon
+        .map(
+          (s) => `
+        <tr>
+          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">${s.salon}</td>
+          <td style="padding:6px 12px;color:#16a34a;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">+ ${fmt(s.total)}</td>
+        </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="2" style="padding:10px 12px;color:#9ca3af;font-size:13px;">Sin ingresos registrados hoy.</td></tr>`
+
   const movRows = r.movimientosImportantes.length
     ? r.movimientosImportantes
         .map(
           (m) => `
         <tr>
           <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">${m.concepto}</td>
-          <td style="padding:6px 12px;color:#6b7280;font-size:12px;border-bottom:1px solid #f3f4f6;">${m.caja}</td>
+          <td style="padding:6px 12px;color:#6b7280;font-size:12px;border-bottom:1px solid #f3f4f6;">${m.salon}<br/><span style="font-size:11px;color:#9ca3af;">${m.caja}</span></td>
           <td style="padding:6px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f3f4f6;text-align:right;color:${m.tipo === "ingreso" ? "#16a34a" : "#dc2626"};">${m.tipo === "ingreso" ? "+" : "-"} ${fmt(m.monto)}</td>
         </tr>`
         )
@@ -206,7 +351,7 @@ function buildEmailHtml(r: ResumenDiario): string {
             ${c.evento}
             ${c.notas ? `<br/><span style="color:#9ca3af;font-size:11px;">${c.notas}</span>` : ""}
           </td>
-          <td style="padding:6px 12px;color:#6b7280;font-size:12px;border-bottom:1px solid #f3f4f6;">${c.pagadoPor || "-"}</td>
+          <td style="padding:6px 12px;color:#6b7280;font-size:12px;border-bottom:1px solid #f3f4f6;">${c.salon}</td>
           <td style="padding:6px 12px;color:#16a34a;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${fmt(c.monto)}</td>
         </tr>`
         )
@@ -216,6 +361,33 @@ function buildEmailHtml(r: ResumenDiario): string {
         <td style="padding:8px 12px;color:#16a34a;font-size:14px;font-weight:700;text-align:right;">${fmt(r.totalCuotas)}</td>
       </tr>`
     : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">No entraron cuotas hoy.</td></tr>`
+
+  const fechaCorta = (ymd: string) => {
+    try {
+      return new Date(ymd + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })
+    } catch {
+      return ymd
+    }
+  }
+
+  const pagarRows = r.vienenAPagar.length
+    ? r.vienenAPagar
+        .map(
+          (v) => `
+        <tr>
+          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">
+            ${v.evento}
+            <br/><span style="color:#9ca3af;font-size:11px;">${v.salon} · evento ${fechaCorta(v.fechaEvento)}</span>
+          </td>
+          <td style="padding:6px 12px;font-size:12px;border-bottom:1px solid #f3f4f6;">
+            ${v.cuotaSemana ? `<span style="color:#374151;">Cuota ${v.cuotaSemana.numero} vence ${fechaCorta(v.cuotaSemana.fechaVencimiento)}</span>` : `<span style="color:#9ca3af;">Sin cuota esta semana</span>`}
+            ${v.montoAtrasado > 0 ? `<br/><span style="color:#dc2626;font-weight:700;">ATRASADO: debe ${fmt(v.montoAtrasado)} (${v.cuotasAtrasadas} cuota${v.cuotasAtrasadas === 1 ? "" : "s"})</span>` : ""}
+          </td>
+          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${v.cuotaSemana ? fmt(v.cuotaSemana.monto) : "-"}</td>
+        </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">Nadie tiene cuotas por pagar esta semana.</td></tr>`
 
   const seccion = (titulo: string, contenido: string) => `
     <h3 style="margin:20px 0 8px;font-size:14px;color:#111827;">${titulo}</h3>
@@ -239,8 +411,16 @@ function buildEmailHtml(r: ResumenDiario): string {
           filaCaja("Caja Jazmines", r.ingresoCajaJazmines, r.egresoCajaJazmines) +
           filaCaja("Caja Eventos", r.ingresoCajaEventos, r.egresoCajaEventos)
       )}
+      ${seccion(
+        "Ingresos por salón",
+        `<tr>
+          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Salón</th>
+          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Ingresó hoy</th>
+        </tr>` + salonRows
+      )}
       ${seccion("Movimientos importantes del día", movRows)}
       ${seccion("Cuotas que entraron hoy", cuotaRows)}
+      ${seccion("Vienen a pagar esta semana", pagarRows)}
       <p style="color:#9ca3af;font-size:12px;margin-top:16px;">
         Resumen automático generado a las 21:00 (hora argentina). ${r.cantidadMovimientos} movimiento${r.cantidadMovimientos === 1 ? "" : "s"} en el día.
       </p>

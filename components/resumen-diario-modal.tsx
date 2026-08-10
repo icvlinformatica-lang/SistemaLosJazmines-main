@@ -4,7 +4,7 @@
 // 21:00 — dinero por caja, movimientos importantes y cuotas del día.
 
 import { useEffect, useState } from "react"
-import { X, Wallet, TrendingUp, TrendingDown, CreditCard, Mail, Loader2 } from "lucide-react"
+import { X, Wallet, TrendingUp, TrendingDown, CreditCard, Mail, Loader2, MapPin } from "lucide-react"
 
 interface MovimientoResumen {
   tipo: string
@@ -16,9 +16,24 @@ interface MovimientoResumen {
 
 interface CuotaResumen {
   evento: string
+  salon: string
   monto: number
   pagadoPor: string
   notas: string
+}
+
+interface IngresoSalonResumen {
+  salon: string
+  total: number
+}
+
+interface VieneAPagar {
+  evento: string
+  salon: string
+  fechaEvento: string
+  cuotaSemana: { numero: number; fechaVencimiento: string; monto: number } | null
+  montoAtrasado: number
+  cuotasAtrasadas: number
 }
 
 interface ResumenDiario {
@@ -28,10 +43,12 @@ interface ResumenDiario {
   ingresoCajaEventos: number
   egresoCajaJazmines: number
   egresoCajaEventos: number
+  ingresosPorSalon: IngresoSalonResumen[]
   movimientosImportantes: MovimientoResumen[]
   cuotasDelDia: CuotaResumen[]
   totalCuotas: number
   cantidadMovimientos: number
+  vienenAPagar: VieneAPagar[]
 }
 
 function fmt(n: number): string {
@@ -129,6 +146,29 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
                 </div>
               </section>
 
+              {/* Ingresos por salón */}
+              <section>
+                <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-[#2d5a3d]">
+                  <MapPin className="h-4 w-4" />
+                  Ingresos por salón
+                </h3>
+                <div className="rounded-lg border border-[#2d5a3d]/20 bg-white">
+                  {resumen.ingresosPorSalon.length === 0 ? (
+                    <p className="p-3 text-sm text-gray-400">Sin ingresos registrados hoy.</p>
+                  ) : (
+                    resumen.ingresosPorSalon.map((s, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 last:border-b-0"
+                      >
+                        <span className="text-sm font-medium text-gray-700">{s.salon}</span>
+                        <span className="shrink-0 text-sm font-bold text-emerald-700">+ {fmt(s.total)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
               {/* Movimientos importantes */}
               <section>
                 <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-[#2d5a3d]">
@@ -146,7 +186,9 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
                       >
                         <span className="flex min-w-0 flex-col">
                           <span className="truncate text-sm text-gray-700">{m.concepto}</span>
-                          <span className="text-[11px] text-gray-400">{m.caja}</span>
+                          <span className="text-[11px] text-gray-400">
+                            {m.salon} · {m.caja}
+                          </span>
                         </span>
                         <span
                           className={`shrink-0 text-sm font-semibold ${m.tipo === "ingreso" ? "text-emerald-700" : "text-red-600"}`}
@@ -178,7 +220,8 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
                           <span className="flex min-w-0 flex-col">
                             <span className="truncate text-sm font-medium text-gray-700">{c.evento}</span>
                             <span className="truncate text-[11px] text-gray-400">
-                              {c.notas || c.pagadoPor || ""}
+                              {c.salon}
+                              {c.notas || c.pagadoPor ? ` · ${c.notas || c.pagadoPor}` : ""}
                             </span>
                           </span>
                           <span className="shrink-0 text-sm font-bold text-emerald-700">{fmt(c.monto)}</span>

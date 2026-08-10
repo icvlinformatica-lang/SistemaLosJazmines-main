@@ -1,16 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { Bell, HelpCircle, FileBarChart, PartyPopper } from "lucide-react"
+import { Bell, HelpCircle, FileBarChart, PartyPopper, HandCoins } from "lucide-react"
 import { NovedadesModal } from "@/components/novedades-modal"
 import { ResumenDiarioModal } from "@/components/resumen-diario-modal"
 import { FindeModal } from "@/components/finde-modal"
+import { VienenAPagarModal } from "@/components/vienen-a-pagar-modal"
 import { useUI } from "@/lib/ui-context"
 
 export default function HomePage() {
   const [novedadesOpen, setNovedadesOpen] = useState(false)
   const [resumenOpen, setResumenOpen] = useState(false)
   const [findeOpen, setFindeOpen] = useState(false)
+  const [pagarOpen, setPagarOpen] = useState(false)
   const { toggleSidebar } = useUI()
 
   const handleBackgroundClick = () => {
@@ -65,6 +67,14 @@ export default function HomePage() {
           <PartyPopper className="h-4 w-4" />
           <span>Este finde</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setPagarOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2d5a3d] hover:bg-[#3a6f4e] text-[#f5f0e8] text-sm font-medium transition-colors shadow-lg"
+        >
+          <HandCoins className="h-4 w-4" />
+          <span>Vienen a pagar</span>
+        </button>
       </div>
 
       {/* Help button - bottom right */}
@@ -81,6 +91,7 @@ export default function HomePage() {
       <NovedadesModal open={novedadesOpen} onOpenChange={setNovedadesOpen} />
       <ResumenDiarioModal open={resumenOpen} onOpenChange={setResumenOpen} />
       <FindeModal open={findeOpen} onOpenChange={setFindeOpen} />
+      <VienenAPagarModal open={pagarOpen} onOpenChange={setPagarOpen} />
     </div>
   )
 }
