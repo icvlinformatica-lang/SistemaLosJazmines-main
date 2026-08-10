@@ -23,6 +23,7 @@ import {
   generarCalendarioCuotas,
   calcularComprasSegmentadas,
   calcularComprasBarras,
+  calcularCostoReceta,
   calcularMontoPersonalDelEvento,
   calcularSeñaSaldoServicio,
   salonLabel,
@@ -184,20 +185,46 @@ function CostosEventoContent() {
     .filter((pe) => (pe.monto || 0) > 0)
 
   // --- Menú completo elegido por la familia (recetas por segmento, en vivo) ---
-  const nombreReceta = (id: string) => state.recetas?.find((r) => r.id === id)?.nombre || null
+  // Cada plato lleva su costo de materia prima para el segmento completo:
+  // costo por persona de la receta × invitados del segmento × multiplicador de porción.
   const menuPorSegmento = [
-    { segmento: "Adultos", pax: evento.adultos || 0, recetas: evento.recetasAdultos || [] },
-    { segmento: "Adolescentes", pax: evento.adolescentes || 0, recetas: evento.recetasAdolescentes || [] },
-    { segmento: "Niños", pax: evento.ninos || 0, recetas: evento.recetasNinos || [] },
+    {
+      segmento: "Adultos",
+      pax: evento.adultos || 0,
+      recetas: evento.recetasAdultos || [],
+      multipliers: evento.multipliersAdultos || {},
+    },
+    {
+      segmento: "Adolescentes",
+      pax: evento.adolescentes || 0,
+      recetas: evento.recetasAdolescentes || [],
+      multipliers: evento.multipliersAdolescentes || {},
+    },
+    {
+      segmento: "Niños",
+      pax: evento.ninos || 0,
+      recetas: evento.recetasNinos || [],
+      multipliers: evento.multipliersNinos || {},
+    },
     {
       segmento: "Dietas especiales",
       pax: evento.personasDietasEspeciales || 0,
       recetas: evento.recetasDietasEspeciales || [],
+      multipliers: evento.multipliersDietasEspeciales || {},
     },
   ]
     .map((s) => ({
-      ...s,
-      platos: s.recetas.map(nombreReceta).filter((n): n is string => !!n),
+      segmento: s.segmento,
+      pax: s.pax,
+      platos: s.recetas
+        .map((id) => {
+          const receta = state.recetas?.find((r) => r.id === id)
+          if (!receta) return null
+          const costo =
+            calcularCostoReceta(receta, state.insumos || []) * s.pax * (s.multipliers[id] || 1)
+          return { id, nombre: receta.nombre, costo }
+        })
+        .filter((p): p is { id: string; nombre: string; costo: number } => !!p),
     }))
     .filter((s) => s.platos.length > 0)
 
@@ -480,10 +507,10 @@ function CostosEventoContent() {
       </div>
 
       {/* En PC: las 4 tarjetas + gráfico una al lado de la otra; en pantallas medianas 2x2 + gráfico */}
-      <div className="grid gap-4 items-start xl:grid-cols-5">
-      <div className="grid gap-4 items-start md:grid-cols-2 xl:col-span-4 xl:grid-cols-4">
+      <div className="grid gap-4 items-start xl:grid-cols-5 xl:items-stretch">
+      <div className="grid gap-4 items-start md:grid-cols-2 xl:col-span-4 xl:grid-cols-4 xl:items-stretch">
       {/* Cocina */}
-      <Card>
+      <Card className="flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3">
             <CardTitle className="flex min-w-0 items-center gap-2 text-base">
@@ -507,12 +534,12 @@ function CostosEventoContent() {
             </label>
           </div>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
           {comprasCocina.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin menú/insumos calculados para este evento.</p>
           ) : (
             <>
-              <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+              <div className="max-h-48 min-h-0 space-y-1 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
                 {comprasCocina.map((c) => (
                   <div key={c.insumoId} className="flex items-center justify-between gap-2 text-sm">
                     <span className="flex min-w-0 flex-col">
@@ -557,13 +584,22 @@ function CostosEventoContent() {
                           </p>
                           <ul className="space-y-1 rounded-md border border-border p-3">
                             {seg.platos.map((plato) => (
-                              <li key={plato} className="text-sm text-muted-foreground">
-                                {plato}
+                              <li key={plato.id} className="flex items-center justify-between gap-2 text-sm">
+                                <span className="min-w-0 truncate text-muted-foreground">{plato.nombre}</span>
+                                <span className="shrink-0 font-medium">{formatCurrency(plato.costo)}</span>
                               </li>
                             ))}
+                            <li className="flex items-center justify-between gap-2 border-t pt-1.5 text-sm font-semibold">
+                              <span>Subtotal {seg.segmento.toLowerCase()}</span>
+                              <span>{formatCurrency(seg.platos.reduce((s, p) => s + p.costo, 0))}</span>
+                            </li>
                           </ul>
                         </div>
                       ))}
+                      <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                        <span>Total cocina</span>
+                        <span>{formatCurrency(costoCocina)}</span>
+                      </div>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -574,7 +610,7 @@ function CostosEventoContent() {
       </Card>
 
       {/* Barra */}
-      <Card>
+      <Card className="flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3">
             <CardTitle className="flex min-w-0 items-center gap-2 text-base">
@@ -598,12 +634,12 @@ function CostosEventoContent() {
             </label>
           </div>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
           {comprasBarra.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin barra configurada para este evento.</p>
           ) : (
             <>
-              <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+              <div className="max-h-48 min-h-0 space-y-1 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
                 {comprasBarra.map((c) => (
                   <div key={c.insumoBarraId} className="flex items-center justify-between gap-2 text-sm">
                     <span className="flex min-w-0 flex-col">
@@ -624,13 +660,48 @@ function CostosEventoContent() {
                   {formatCurrency(costoBarra)}
                 </span>
               </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full bg-transparent">
+                    <Wine className="h-4 w-4 mr-2" />
+                    Ver barra completa
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Wine className="h-4 w-4 text-teal-600" />
+                      Barra completa — {nombreEvento}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-1">
+                    {comprasBarra.map((c) => (
+                      <div key={c.insumoBarraId} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate text-muted-foreground">
+                            {c.insumoBarra?.descripcion || c.insumoBarraId}
+                          </span>
+                          <span className="text-xs text-muted-foreground/60">
+                            {Number(c.cantidadNecesaria.toFixed(2))} {c.insumoBarra?.unidad || ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-medium">{formatCurrency(c.costoMateriaPrima)}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                      <span>Total barra</span>
+                      <span>{formatCurrency(costoBarra)}</span>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </CardContent>
       </Card>
 
       {/* Servicios */}
-      <Card>
+      <Card className="flex flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="flex min-w-0 items-center gap-2 text-base">
             <ConciergeBell className="h-4 w-4 shrink-0 text-teal-600" />
@@ -639,7 +710,8 @@ function CostosEventoContent() {
             </span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="max-h-[340px] space-y-3 overflow-y-auto pr-1">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="max-h-[300px] min-h-0 space-y-3 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
           {servicios.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin servicios contratados.</p>
           ) : (
@@ -696,18 +768,68 @@ function CostosEventoContent() {
               )
             })
           )}
+          </div>
+          {servicios.length > 0 && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full bg-transparent">
+                  <ConciergeBell className="h-4 w-4 mr-2" />
+                  Ver servicios completos
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <ConciergeBell className="h-4 w-4 text-teal-600" />
+                    Servicios contratados — {nombreEvento}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo }) => (
+                    <div key={srv.servicioId} className="rounded-lg border border-border p-3">
+                      <p className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold">
+                        <span className="min-w-0 truncate">{srv.nombre}</span>
+                        <span className="shrink-0">{formatCurrency(montoSeña + saldo)}</span>
+                      </p>
+                      <div className="space-y-1 text-sm">
+                        {montoSeña > 0 && (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Seña</span>
+                            <span className={senaPagada ? "font-medium text-emerald-700" : "font-medium text-red-600"}>
+                              {formatCurrency(montoSeña)} {senaPagada ? "(pagada)" : "(pendiente)"}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-muted-foreground">Saldo</span>
+                          <span className={saldoPagado ? "font-medium text-emerald-700" : "font-medium text-red-600"}>
+                            {formatCurrency(saldo)} {saldoPagado ? "(pagado)" : "(pendiente)"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                    <span>Total servicios</span>
+                    <span>{formatCurrency(totalServicios)}</span>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
         </CardContent>
       </Card>
 
       {/* Personal */}
-      <Card>
+      <Card className="flex flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Users className="h-4 w-4 text-teal-600" />
             Personal del evento
           </CardTitle>
         </CardHeader>
-        <CardContent className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="max-h-[300px] min-h-0 space-y-2 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
           {personal.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin personal asignado con costo.</p>
           ) : (
@@ -739,6 +861,50 @@ function CostosEventoContent() {
                 </span>
               </label>
             ))
+          )}
+          </div>
+          {personal.length > 0 && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full bg-transparent">
+                  <Users className="h-4 w-4 mr-2" />
+                  Ver personal completo
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-teal-600" />
+                    Personal del evento — {nombreEvento}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-1">
+                  {personal.map((pe) => (
+                    <div
+                      key={pe.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate font-medium">{pe.nombre}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {pe.funcion}
+                          {pe.pagado ? " · pagado" : pe.fechaPago ? ` · paga el ${formatFecha(pe.fechaPago)}` : ""}
+                        </span>
+                      </span>
+                      <span
+                        className={`shrink-0 font-medium ${pe.pagado ? "text-emerald-700" : "text-red-600"}`}
+                      >
+                        {formatCurrency(pe.monto)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                    <span>Total personal</span>
+                    <span>{formatCurrency(totalPersonal)}</span>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           )}
         </CardContent>
       </Card>
