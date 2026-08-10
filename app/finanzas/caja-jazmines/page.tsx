@@ -1833,10 +1833,10 @@ export default function CajaJazminePage() {
                 tabIndex={0}
                 aria-label="Desplegar tarjetas a 30 días"
               >
-                <CardContent className="p-4 flex h-full flex-col">
+                <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 pr-7">
                       <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
                       <button
                         type="button"
@@ -1845,7 +1845,7 @@ export default function CajaJazminePage() {
                           toggleMonto("saldoActual")
                         }}
                         style={{ color: "#0035db" }}
-                        className="hover:opacity-80"
+                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
                         aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
                         title={montosOcultos.saldoActual ? "Mostrar monto" : "Ocultar monto"}
                       >
@@ -1882,19 +1882,19 @@ export default function CajaJazminePage() {
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
                 onClick={() => colapsado30 && setColapsado30(false)}
               >
-                <CardContent className="p-4 flex h-full flex-col">
+                <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Gastos A 30 días
                     </p>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 pr-7">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
                           toggleMonto("gastos30")
                         }}
-                        className="hover:opacity-70"
+                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
                         style={{ color: "#000000" }}
                         aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
                         title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
@@ -1921,12 +1921,12 @@ export default function CajaJazminePage() {
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
                 onClick={() => colapsado30 && setColapsado30(false)}
               >
-                <CardContent className="p-4 flex h-full flex-col">
+                <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Saldo a 30 días
                     </p>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 pr-7">
                       <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
                       <button
                         type="button"
@@ -1934,7 +1934,7 @@ export default function CajaJazminePage() {
                           e.stopPropagation()
                           toggleMonto("saldoProyectado")
                         }}
-                        className="hover:opacity-70"
+                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
                         style={{ color: "#000000" }}
                         aria-label={montosOcultos.saldoProyectado ? "Mostrar saldo proyectado" : "Ocultar saldo proyectado"}
                         title={montosOcultos.saldoProyectado ? "Mostrar monto" : "Ocultar monto"}
@@ -1974,12 +1974,12 @@ export default function CajaJazminePage() {
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
                 onClick={() => colapsadoSemana && setColapsadoSemana(false)}
               >
-                <CardContent className="p-4 flex h-full flex-col">
+                <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaJazLabel}>
                       Cobro esta semana
                     </p>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 pr-7">
                       <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
                       <button
                         type="button"
@@ -1987,7 +1987,7 @@ export default function CajaJazminePage() {
                           e.stopPropagation()
                           toggleMonto("cobroSemana")
                         }}
-                        className="hover:opacity-70"
+                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
                         style={{ color: "#000000" }}
                         aria-label={montosOcultos.cobroSemana ? "Mostrar cobro de esta semana" : "Ocultar cobro de esta semana"}
                         title={montosOcultos.cobroSemana ? "Mostrar monto" : "Ocultar monto"}
@@ -2026,10 +2026,10 @@ export default function CajaJazminePage() {
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
                 onClick={() => colapsadoSemana && setColapsadoSemana(false)}
               >
-                <CardContent className="p-4 flex h-full flex-col">
+                <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>Gastos esta semana</p>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 pr-7">
                       <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
                       <button
                         type="button"
@@ -2037,7 +2037,7 @@ export default function CajaJazminePage() {
                           e.stopPropagation()
                           toggleMonto("gastosSemana")
                         }}
-                        className="hover:opacity-70"
+                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
                         style={{ color: "#000000" }}
                         aria-label={montosOcultos.gastosSemana ? "Mostrar gastos de esta semana" : "Ocultar gastos de esta semana"}
                         title={montosOcultos.gastosSemana ? "Mostrar monto" : "Ocultar monto"}
@@ -2066,12 +2066,12 @@ export default function CajaJazminePage() {
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
                 onClick={() => colapsadoSemana && setColapsadoSemana(false)}
               >
-                <CardContent className="p-4 flex h-full flex-col">
+                <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Tengo a fin de semana
                     </p>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 pr-7">
                       <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
                       <BotonDesplegar
                         colapsado={colapsadoSemana}
