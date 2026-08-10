@@ -6,7 +6,9 @@ import { NovedadesModal } from "@/components/novedades-modal"
 import { ResumenDiarioModal } from "@/components/resumen-diario-modal"
 import { FindeModal } from "@/components/finde-modal"
 import { VienenAPagarModal } from "@/components/vienen-a-pagar-modal"
+import { ChatAyuda } from "@/components/chat-ayuda"
 import { useUI } from "@/lib/ui-context"
+import { useProfile } from "@/lib/profile-context"
 
 export default function HomePage() {
   const [novedadesOpen, setNovedadesOpen] = useState(false)
@@ -14,6 +16,7 @@ export default function HomePage() {
   const [findeOpen, setFindeOpen] = useState(false)
   const [pagarOpen, setPagarOpen] = useState(false)
   const { toggleSidebar } = useUI()
+  const { perfilActivo } = useProfile()
 
   const handleBackgroundClick = () => {
     toggleSidebar()
@@ -76,6 +79,13 @@ export default function HomePage() {
           <span>Vienen a pagar</span>
         </button>
       </div>
+
+      {/* Chat de ayuda con IA - solo perfil Soporte, centrado abajo */}
+      {perfilActivo?.id === "soporte" && (
+        <div className="absolute bottom-8 left-1/2 z-10 w-[calc(100%-2.5rem)] max-w-xl -translate-x-1/2 flex justify-center">
+          <ChatAyuda />
+        </div>
+      )}
 
       {/* Help button - bottom right */}
       <div className="absolute bottom-5 right-5 z-10">
