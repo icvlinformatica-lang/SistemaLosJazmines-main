@@ -380,7 +380,7 @@ export default function FinanzasServiciosPage() {
                 </span>
               </th>
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
-              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion</th>
+              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -411,7 +411,7 @@ export default function FinanzasServiciosPage() {
                   )}
                 >
                   {/* Nro fila + mover */}
-                  <td className="px-1.5 py-0 select-none">
+                  <td className="px-1.5 py-[3px] select-none">
                     <div className="flex items-center gap-1">
                       <div className="flex flex-col">
                         <button
@@ -440,7 +440,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Nombre */}
-                  <td className="px-1.5 py-0 min-w-[180px]">
+                  <td className="px-1.5 py-[3px] min-w-[180px]">
                     <EditableCell
                       value={s.nombre}
                       placeholder="Nombre del servicio"
@@ -449,7 +449,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Categoria */}
-                  <td className="px-2 py-0">
+                  <td className="px-2 py-[3px]">
                     <Select
                       value={s.categoria}
                       onValueChange={(v) => update(s.id, { categoria: v as CategoriaServicio })}
@@ -475,7 +475,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Unidad */}
-                  <td className="px-2 py-0">
+                  <td className="px-2 py-[3px]">
                     <Select
                       value={s.unidad}
                       onValueChange={(v) => update(s.id, { unidad: v as Servicio["unidad"] })}
@@ -492,7 +492,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Precio Venta */}
-                  <td className="px-1.5 py-0">
+                  <td className="px-1.5 py-[3px]">
                     <EditableCell
                       value={formatMiles(venta)}
                       placeholder="0"
@@ -507,7 +507,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Costo Caja Eventos */}
-                  <td className="px-1.5 py-0">
+                  <td className="px-1.5 py-[3px]">
                     <EditableCell
                       value={formatMiles(costo)}
                       placeholder="0"
@@ -522,7 +522,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Seña por evento */}
-                  <td className="px-1.5 py-0">
+                  <td className="px-1.5 py-[3px]">
                     <EditableCell
                       value={s.costoParaCajaEventos && s.porcentajeSeña
                         ? formatMiles(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))
@@ -541,7 +541,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Margen */}
-                  <td className="px-3 py-0 text-right tabular-nums">
+                  <td className="px-3 py-[3px] text-right tabular-nums">
                     {venta > 0 && costo > 0 ? (
                       <span className={cn("font-semibold text-[15px]", margenColor(margen))}>
                         {margen.toFixed(0)}%
@@ -551,17 +551,17 @@ export default function FinanzasServiciosPage() {
                     )}
                   </td>
 
-                  {/* Descripcion */}
-                  <td className="px-1.5 py-0 max-w-[220px]">
+                  {/* Descripcion = letra chica que se imprime en el contrato */}
+                  <td className="px-1.5 py-[3px] max-w-[220px]">
                     <EditableCell
                       value={s.descripcion ?? ""}
-                      placeholder="Descripcion opcional"
+                      placeholder="Letra chica del contrato"
                       onCommit={(v) => update(s.id, { descripcion: v })}
                     />
                   </td>
 
                   {/* Eliminar */}
-                  <td className="px-2 py-0">
+                  <td className="px-2 py-[3px]">
                     <button
                       type="button"
                       onClick={() => setIdEliminar(s.id)}

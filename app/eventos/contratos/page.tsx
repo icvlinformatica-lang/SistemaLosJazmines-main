@@ -120,7 +120,7 @@ const getSalonColor = (salon?: string): SalonColor =>
 function ContractPreview({
   open, evento, recetas, serviciosIncluidos, paquetePrecio, personalAsignado, barrasTemplates, cocteles, onClose,
 }: {
-  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: string[]; paquetePrecio: number; personalAsignado: { nombre: string; funcion: string }[]; barrasTemplates?: BarraTemplate[]; cocteles?: Coctel[]; onClose: () => void
+  open: boolean; evento: EventoGuardado; recetas: Receta[]; serviciosIncluidos: { nombre: string; descripcion?: string }[]; paquetePrecio: number; personalAsignado: { nombre: string; funcion: string }[]; barrasTemplates?: BarraTemplate[]; cocteles?: Coctel[]; onClose: () => void
 }) {
   const html = generateContractHTML(evento, recetas, serviciosIncluidos, paquetePrecio, personalAsignado, barrasTemplates || [], cocteles || [])
   if (!open) return null
@@ -163,17 +163,18 @@ function ContractPreview({
 // =====================================================================
 function getServiciosIncluidos(
   evento: EventoGuardado,
-  catalogoServicios: { id: string; nombre: string; activo?: boolean }[]
-): string[] {
+  catalogoServicios: { id: string; nombre: string; descripcion?: string; activo?: boolean }[]
+): { nombre: string; descripcion?: string }[] {
   const savedIds = evento.serviciosContrato
   const savedLibres = evento.serviciosLibresContrato || []
   const ids = savedIds && savedIds.length > 0
     ? savedIds
     : (evento.servicios || []).map((se) => se.servicioId).filter((id): id is string => Boolean(id))
+  // La descripcion es la "letra chica" del servicio que se imprime en el contrato
   const fromCatalog = catalogoServicios
     .filter((s) => ids.includes(s.id) && s.activo !== false)
-    .map((s) => s.nombre)
-  return [...fromCatalog, ...savedLibres]
+    .map((s) => ({ nombre: s.nombre, descripcion: s.descripcion }))
+  return [...fromCatalog, ...savedLibres.map((nombre) => ({ nombre }))]
 }
 
 // =====================================================================
@@ -982,9 +983,14 @@ function ContratosPageContent() {
                     {serviciosIncluidos.length > 0 ? (
                       <ul className="space-y-1">
                         {serviciosIncluidos.map((s, i) => (
-                          <li key={i} className="flex items-center gap-2 text-sm text-foreground">
-                            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-                            {s}
+                          <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" />
+                            <span className="min-w-0">
+                              {s.nombre}
+                              {s.descripcion ? (
+                                <span className="block text-xs italic text-muted-foreground">{s.descripcion}</span>
+                              ) : null}
+                            </span>
                           </li>
                         ))}
                       </ul>

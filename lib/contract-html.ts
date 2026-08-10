@@ -126,10 +126,17 @@ function buildMenuDetails(evento: EventoGuardado, recetas: Receta[]) {
 // CONTRACT HTML GENERATOR — replica el modelo real de Los Jazmines:
 // "Convenio de realizacion de eventos" con clausulas 1-15 y Anexo I.
 // =====================================================================
+/**
+ * Item de servicio del contrato: puede ser solo el nombre (string) o un
+ * objeto con nombre + descripcion. La descripcion es la "letra chica" que
+ * se carga en Finanzas → Servicios y se imprime debajo del nombre.
+ */
+export type ServicioContratoItem = string | { nombre: string; descripcion?: string }
+
 export function generateContractHTML(
   evento: EventoGuardado,
   recetas: Receta[],
-  serviciosIncluidos: string[],
+  serviciosIncluidos: ServicioContratoItem[],
   paquetePrecio: number,
   personalAsignado: PersonalContrato[] = [],
   barrasTemplates: BarraTemplate[] = [],
@@ -190,7 +197,7 @@ const salon = evento.salon || "___________"
   }
 
   // ---- 5) Detalle del servicio ----
-  const detalleServicio = serviciosIncluidos.length > 0
+  const detalleServicio: ServicioContratoItem[] = serviciosIncluidos.length > 0
     ? serviciosIncluidos
     : [
         "Mesas y Sillas",
@@ -201,7 +208,15 @@ const salon = evento.salon || "___________"
         "Estacionamiento privado",
         "Servicio de Emergencias Medicas",
       ]
-  const detalleServicioRows = detalleServicio.map((s) => `<div class="svc-item">\u2022${s}</div>`).join("")
+  // Cada servicio se imprime con su nombre y, debajo, la letra chica
+  // (descripcion cargada en Finanzas → Servicios) si existe.
+  const detalleServicioRows = detalleServicio
+    .map((s) => {
+      const nombre = typeof s === "string" ? s : s.nombre
+      const desc = typeof s === "string" ? "" : (s.descripcion || "").trim()
+      return `<div class="svc-item">\u2022${nombre}${desc ? `<div class="svc-desc">${desc}</div>` : ""}</div>`
+    })
+    .join("")
 
   // ---- Anexo: barras ----
   let tipoBarra = ""
@@ -255,7 +270,8 @@ const salon = evento.salon || "___________"
   .datos-lista div { margin-bottom: 2px; }
   .parrafo { text-align: justify; margin: 6px 0; }
   .campo { text-decoration: underline; font-weight: bold; }
-  .svc-item { margin-left: 32px; margin-bottom: 2px; }
+    .svc-item { margin-left: 32px; margin-bottom: 2px; }
+    .svc-desc { margin-left: 14px; font-size: 9px; color: #444; font-style: italic; margin-top: 1px; margin-bottom: 3px; text-align: justify; }
   .anexo { page-break-before: always; }
   .anexo-title { text-align: center; font-weight: bold; margin: 14px 0 2px; }
   .anexo-value { text-align: center; margin: 0 0 4px; }
@@ -418,19 +434,22 @@ const salon = evento.salon || "___________"
 export function buildUltimaVersionContratoHTML(
   evento: EventoGuardado,
   recetas: Receta[],
-  catalogoServicios: { id: string; nombre: string }[],
+  catalogoServicios: { id: string; nombre: string; descripcion?: string }[],
   pagosPersonal: PagoPersonal[] = [],
   barrasTemplates: BarraTemplate[] = [],
   cocteles: Coctel[] = [],
 ): string {
   const versiones = evento.versionesContrato || []
   let eventoParaImprimir = evento
-  let serviciosNombres: string[]
+  let serviciosNombres: ServicioContratoItem[]
 
   if (versiones.length > 0) {
     const ultima = [...versiones].sort((a, b) => b.version - a.version)[0]
     serviciosNombres = (ultima.snapshotServicios || [])
-      .map((id) => catalogoServicios.find((s) => s.id === id)?.nombre || id)
+      .map((id): ServicioContratoItem => {
+        const srv = catalogoServicios.find((s) => s.id === id)
+        return srv ? { nombre: srv.nombre, descripcion: srv.descripcion } : id
+      })
       .concat(ultima.snapshotServiciosLibres || [])
     eventoParaImprimir = {
       ...evento,
@@ -448,8 +467,11 @@ export function buildUltimaVersionContratoHTML(
   } else {
     // Sin versiones guardadas: usar servicios actuales del evento
     serviciosNombres = (evento.servicios || [])
-      .map((se) => catalogoServicios.find((s) => s.id === se.servicioId)?.nombre || se.nombre)
-      .filter(Boolean) as string[]
+      .map((se): ServicioContratoItem => {
+        const srv = catalogoServicios.find((s) => s.id === se.servicioId)
+        return srv ? { nombre: srv.nombre, descripcion: srv.descripcion } : se.nombre
+      })
+      .filter((s) => (typeof s === "string" ? Boolean(s) : Boolean(s.nombre)))
   }
 
   const personalAsignado = buildPersonalContrato(evento, pagosPersonal)
@@ -462,7 +484,7 @@ export function buildUltimaVersionContratoHTML(
 export function imprimirUltimaVersionContrato(
   evento: EventoGuardado,
   recetas: Receta[],
-  catalogoServicios: { id: string; nombre: string }[],
+  catalogoServicios: { id: string; nombre: string; descripcion?: string }[],
   pagosPersonal: PagoPersonal[] = [],
   barrasTemplates: BarraTemplate[] = [],
   cocteles: Coctel[] = [],
