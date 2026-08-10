@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 
 interface UIContextType {
   sidebarOpen: boolean
@@ -10,8 +10,29 @@ interface UIContextType {
 
 const UIContext = createContext<UIContextType | null>(null)
 
+const SIDEBAR_STORAGE_KEY = "lj-sidebar-open"
+
 export function UIProvider({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  // Restaurar preferencia guardada (plegado/desplegado) al cargar
+  useEffect(() => {
+    try {
+      const guardado = localStorage.getItem(SIDEBAR_STORAGE_KEY)
+      if (guardado !== null) setSidebarOpen(guardado === "true")
+    } catch {
+      // localStorage no disponible: mantener valor por defecto
+    }
+  }, [])
+
+  // Guardar la preferencia cada vez que cambia
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarOpen))
+    } catch {
+      // ignorar
+    }
+  }, [sidebarOpen])
 
   const toggleSidebar = () => {
     setSidebarOpen((prev) => !prev)
