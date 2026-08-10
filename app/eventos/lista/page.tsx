@@ -868,7 +868,7 @@ export default function EventosListaPage() {
                     </div>
                     <div>
                       <p className="text-2xl font-bold text-emerald-900">{eventosFinalizados}</p>
-                      <p className="text-xs text-emerald-700 font-medium">Finalizados</p>
+                      <p className="text-xs text-emerald-700 font-medium">En archivo</p>
                     </div>
                   </div>
                 </CardContent>

@@ -40,6 +40,9 @@ import {
   RotateCcw,
   ArrowUp,
   ArrowDown,
+  Calculator,
+  FileText,
+  User,
 } from "lucide-react"
 
 export default function EventosFinalizadosPage() {
@@ -73,8 +76,8 @@ export default function EventosFinalizadosPage() {
     try {
       await actualizarEvento(eventoId, { estado: "en_preparacion" })
       toast({ 
-        title: "Evento reactivado", 
-        description: "El evento volvió a En Preparación y ahora aparece en la lista activa." 
+        title: "Evento sacado del archivo", 
+        description: "El evento volvió a En Preparación: sus costos y datos vuelven a actualizarse en vivo." 
       })
       router.push("/eventos/lista")
     } catch (error) {
@@ -99,9 +102,9 @@ export default function EventosFinalizadosPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Eventos Finalizados</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Archivo</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {eventosFiltrados.length} evento{eventosFiltrados.length !== 1 ? "s" : ""} finalizado{eventosFiltrados.length !== 1 ? "s" : ""}
+              {eventosFiltrados.length} evento{eventosFiltrados.length !== 1 ? "s" : ""} archivado{eventosFiltrados.length !== 1 ? "s" : ""} — los datos quedan congelados hasta sacarlos del archivo
             </p>
           </div>
           <Button variant="outline" onClick={() => router.push("/eventos/lista")}>
@@ -139,13 +142,13 @@ export default function EventosFinalizadosPage() {
         {/* Tabla */}
         <Card>
           <CardHeader>
-            <CardTitle>Eventos completados</CardTitle>
+            <CardTitle>Eventos archivados</CardTitle>
           </CardHeader>
           <CardContent>
             {eventosFiltrados.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <CheckCircle className="h-12 w-12 text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">No hay eventos finalizados</p>
+                <p className="text-sm text-muted-foreground">No hay eventos en el archivo</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -167,6 +170,7 @@ export default function EventosFinalizadosPage() {
                         </button>
                       </TableHead>
                       <TableHead>Salón</TableHead>
+                      <TableHead>Acciones</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -189,6 +193,43 @@ export default function EventosFinalizadosPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Button
+                                asChild
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1 bg-transparent px-2 text-xs"
+                              >
+                                <Link href={`/eventos/costos?id=${evento.id}`}>
+                                  <Calculator className="h-3.5 w-3.5" />
+                                  Costos del evento
+                                </Link>
+                              </Button>
+                              <Button
+                                asChild
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1 bg-transparent px-2 text-xs"
+                              >
+                                <Link href={`/eventos/contratos?eventoId=${evento.id}`}>
+                                  <FileText className="h-3.5 w-3.5" />
+                                  Contrato
+                                </Link>
+                              </Button>
+                              <Button
+                                asChild
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1 bg-transparent px-2 text-xs"
+                              >
+                                <Link href={`/eventos/pagos?evento=${evento.id}`}>
+                                  <User className="h-3.5 w-3.5" />
+                                  Perfil del evento
+                                </Link>
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -206,7 +247,7 @@ export default function EventosFinalizadosPage() {
                                   className="text-sky-600 focus:text-sky-600"
                                 >
                                   <RotateCcw className="h-4 w-4 mr-2" />
-                                  Reactivar Evento
+                                  Sacar del archivo
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
