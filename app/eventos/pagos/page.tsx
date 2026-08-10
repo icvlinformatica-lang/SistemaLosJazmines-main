@@ -57,6 +57,7 @@ import {
   FileText,
   Phone,
   TrendingUp,
+  X,
 } from "lucide-react"
 
 const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -458,6 +459,8 @@ function PagosPageContent() {
   // Payment dialog
   const [showPagoDialog, setShowPagoDialog] = useState(false)
   const [montoCuotaBase, setMontoCuotaBase] = useState(0) // Original cuota amount before IPC
+  // Permite quitar con un click el recargo por días de atraso del próximo pago
+  const [recargoAtrasoOmitido, setRecargoAtrasoOmitido] = useState(false)
   const [pagoForm, setPagoForm] = useState({
     monto: 0,
     fecha: new Date().toISOString().split("T")[0],
@@ -468,6 +471,11 @@ function PagosPageContent() {
     montoRecibido: 0,
     recibidoPor: "",
   })
+
+  // Al cambiar de evento, el recargo por atraso vuelve a aplicarse por defecto
+  useEffect(() => {
+    setRecargoAtrasoOmitido(false)
+  }, [selectedEvento?.id])
 
   // Cuotas config (solo lectura — se edita desde Contratos)
   const [cuotasTotal, setCuotasTotal] = useState(1)
@@ -1372,6 +1380,19 @@ function PagosPageContent() {
               const esPagoUnico = freshEvento.planDeCuotas?.modalidadPago === "completo"
 
               if (proximaCuota && proximaCuota.fechaVencimiento) {
+                // Recargo por atraso: $3.000 fijos por cada día de atraso.
+                // Es un pago extraordinario que va POR SEPARADO del IPC:
+                // no se acumula ni capitaliza mes a mes, solo se suma al total.
+                const RECARGO_POR_DIA_ATRASO = 3000
+                const hoy = new Date()
+                hoy.setHours(0, 0, 0, 0)
+                const fechaVenc = new Date(proximaCuota.fechaVencimiento + "T00:00:00")
+                const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
+                // Con un click se puede quitar el recargo (queda en $0 pero se muestra que fue quitado)
+                const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
+                const ipcIncluido = cuotaFueAjustada ? proximaCuota.monto - montoCuotaOriginal : 0
+                const totalSimulado = proximaCuota.monto + recargoAtraso
+
                 return (
                   <Card className="border-2 border-primary/30 bg-primary/5">
                     <CardHeader className="pb-3">
@@ -1392,18 +1413,47 @@ function PagosPageContent() {
                             <CalendarIcon className="h-3.5 w-3.5" />
                             Vencimiento: {new Date(proximaCuota.fechaVencimiento + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })}
                           </p>
-                          {cuotaFueAjustada && (
-                            <Badge variant="secondary" className="mt-2 gap-1 text-emerald-700">
-                              <TrendingUp className="h-3.5 w-3.5" />
-                              Ajustada por IPC
-                            </Badge>
-                          )}
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {cuotaFueAjustada && (
+                              <Badge variant="secondary" className="gap-1 text-emerald-700">
+                                <TrendingUp className="h-3.5 w-3.5" />
+                                Ajustada por IPC
+                              </Badge>
+                            )}
+                            {diasAtraso > 0 && !recargoAtrasoOmitido && (
+                              <button
+                                type="button"
+                                onClick={() => setRecargoAtrasoOmitido(true)}
+                                title="Quitar el recargo por atraso"
+                                className="inline-flex"
+                              >
+                                <Badge variant="secondary" className="gap-1 text-red-600 hover:bg-red-100">
+                                  <Clock className="h-3.5 w-3.5" />
+                                  {diasAtraso} {diasAtraso === 1 ? "día" : "días"} de atraso
+                                  <X className="h-3 w-3" />
+                                </Badge>
+                              </button>
+                            )}
+                            {diasAtraso > 0 && recargoAtrasoOmitido && (
+                              <button
+                                type="button"
+                                onClick={() => setRecargoAtrasoOmitido(false)}
+                                title="Volver a aplicar el recargo por atraso"
+                                className="inline-flex"
+                              >
+                                <Badge variant="outline" className="gap-1 text-muted-foreground line-through hover:bg-muted">
+                                  <Clock className="h-3.5 w-3.5" />
+                                  Recargo quitado
+                                </Badge>
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="text-right">
                           {cuotaFueAjustada && (
                             <p className="text-sm text-muted-foreground line-through">{formatCurrency(montoCuotaOriginal)}</p>
                           )}
-                          <p className="text-2xl font-bold text-primary">{formatCurrency(proximaCuota.monto)}</p>
+                          <p className="text-2xl font-bold text-primary">{formatCurrency(totalSimulado)}</p>
                           <Button
                             size="sm"
                             className="mt-2"
@@ -1416,15 +1466,19 @@ function PagosPageContent() {
                                   ? Math.round(((proximaCuota.monto - montoCuotaOriginal) / montoCuotaOriginal) * 10000) / 100
                                   : 0
                               setMontoCuotaBase(proximaCuota.monto)
+                              const notaBase = esPagoUnico
+                                ? "Pago único (pago completo)"
+                                : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
                               setPagoForm({
-                                monto: proximaCuota.monto,
+                                monto: totalSimulado,
                                 fecha: new Date().toISOString().split("T")[0],
                                 pagadoPor: "",
                                 dni: selectedEvento?.dniNovio1 || "",
                                 porcentajeIPC: ipcAcumulado,
-                                notas: esPagoUnico
-                                  ? "Pago único (pago completo)"
-                                  : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`,
+                                notas:
+                                  recargoAtraso > 0
+                                    ? `${notaBase} + recargo por atraso ${formatCurrency(recargoAtraso)} (${diasAtraso} ${diasAtraso === 1 ? "día" : "días"} x ${formatCurrency(RECARGO_POR_DIA_ATRASO)})`
+                                    : notaBase,
                                 montoRecibido: 0,
                                 recibidoPor: "",
                               })
@@ -1434,6 +1488,52 @@ function PagosPageContent() {
                             <Plus className="h-4 w-4 mr-1" /> {esPagoUnico ? "Registrar pago" : "Registrar este pago"}
                           </Button>
                         </div>
+                      </div>
+
+                      {/* Nota: costo simulado (desglose de cómo se llega al total) */}
+                      <div className="mt-4 rounded-md border border-dashed border-primary/40 bg-background/60 p-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Costo simulado
+                        </p>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Monto estipulado (plan original)</span>
+                            <span className="font-mono font-medium">{formatCurrency(montoCuotaOriginal || proximaCuota.monto)}</span>
+                          </div>
+                          {ipcIncluido > 0 && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground">+ IPC acumulado (compuesto mes a mes)</span>
+                              <span className="font-mono font-medium text-emerald-700">+ {formatCurrency(ipcIncluido)}</span>
+                            </div>
+                          )}
+                          {recargoAtraso > 0 && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground">
+                                + Recargo por atraso ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} x {formatCurrency(RECARGO_POR_DIA_ATRASO)})
+                              </span>
+                              <span className="font-mono font-medium text-red-600">+ {formatCurrency(recargoAtraso)}</span>
+                            </div>
+                          )}
+                          {diasAtraso > 0 && recargoAtrasoOmitido && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground line-through">
+                                Recargo por atraso ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} x {formatCurrency(RECARGO_POR_DIA_ATRASO)}) — quitado
+                              </span>
+                              <span className="font-mono font-medium text-muted-foreground line-through">
+                                {formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5 font-semibold">
+                            <span>Total simulado a hoy</span>
+                            <span className="font-mono">{formatCurrency(totalSimulado)}</span>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                          El IPC de cada mes aumenta el valor de las cuotas pendientes de forma acumulativa (el de agosto se
+                          calcula sobre la cuota ya ajustada en julio). El recargo por atraso de {formatCurrency(RECARGO_POR_DIA_ATRASO)} por
+                          día es un pago extraordinario que va por separado: no se acumula mes a mes, solo se suma al total.
+                        </p>
                       </div>
                     </CardContent>
                   </Card>

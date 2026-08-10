@@ -565,6 +565,8 @@ export interface EventoGuardado extends Evento {
     diferencia?: number
     /** Observación libre dejada en la vista de Costos del evento */
     observacionCostos?: string
+    /** Foto congelada de costos al archivar el evento (ver ArchivoCongelado) */
+    archivoCongelado?: ArchivoCongelado
   }
 }
 
@@ -1032,7 +1034,7 @@ export function eventoAjustaPorIPC(evento: { planDeCuotas?: EventoGuardado["plan
  * - El aumento es compuesto: se aplica sobre el monto vigente de cada cuota, por lo que
  *   mes a mes crece de forma exponencial tomando como base el valor ya aumentado.
  */
-export function actualizarCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"] }>(
+export function actualizarCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"]; estado?: string }>(
   eventos: T[],
   porcentajeDelMes: number
 ): { eventos: T[]; eventosActualizados: number } {
@@ -1040,6 +1042,8 @@ export function actualizarCuotasIPC<T extends { planDeCuotas?: EventoGuardado["p
   let eventosActualizados = 0
 
   const nuevos = eventos.map(evento => {
+    // Los eventos archivados quedan congelados: el IPC no los toca
+    if (evento.estado === "completado") return evento
     if (!eventoAjustaPorIPC(evento)) return evento
 
     const plan = evento.planDeCuotas!
@@ -1079,7 +1083,7 @@ export function actualizarCuotasIPC<T extends { planDeCuotas?: EventoGuardado["p
  * devolviendo las cuotas pendientes a su valor previo a ese ajuste.
  * Las cuotas ya pagadas no se tocan (se cobraron a su valor de ese momento).
  */
-export function revertirCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"] }>(
+export function revertirCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"]; estado?: string }>(
   eventos: T[],
   porcentajeDelMes: number
 ): { eventos: T[]; eventosActualizados: number } {
@@ -1088,6 +1092,8 @@ export function revertirCuotasIPC<T extends { planDeCuotas?: EventoGuardado["pla
   let eventosActualizados = 0
 
   const nuevos = eventos.map(evento => {
+    // Los eventos archivados quedan congelados: el IPC no los toca
+    if (evento.estado === "completado") return evento
     if (!eventoAjustaPorIPC(evento)) return evento
 
     const plan = evento.planDeCuotas!
@@ -2418,6 +2424,118 @@ export function calcularFechaCuota(
     month: "2-digit",
     year: "numeric",
   })
+}
+
+// ==========================================
+// ARCHIVO DE EVENTOS — CONGELADO DE COSTOS
+// ==========================================
+
+/**
+ * Foto congelada de los costos de un evento al momento de archivarlo.
+ * Mientras el evento esté en el Archivo, las pantallas muestran estos datos
+ * en lugar de recalcular en vivo (los precios de insumos, catálogo de
+ * servicios y sueldos pueden cambiar después, pero el archivo no se mueve).
+ * Al sacar el evento del archivo, la foto se descarta y todo vuelve a
+ * calcularse en vivo.
+ */
+export interface ArchivoCongelado {
+  fechaArchivado: string // ISO
+  comprasCocina: CalculoCompraSegmentado[]
+  comprasBarra: CalculoCompraBarra[]
+  /** Personal del evento con el sueldo resuelto al momento de archivar */
+  personal: PersonalDelEvento[]
+  /** Seña/saldo de cada servicio contratado al momento de archivar */
+  serviciosCalc: Array<{ servicioId: string; montoSeña: number; saldo: number }>
+  menuPorSegmento: Array<{
+    segmento: string
+    pax: number
+    platos: Array<{ id: string; nombre: string; costo: number }>
+  }>
+  costoCocina: number
+  costoBarra: number
+  totalServicios: number
+  totalPersonal: number
+}
+
+/**
+ * Calcula la foto congelada de costos de un evento (misma lógica que la
+ * pantalla Costos del evento). Se llama una única vez al archivar.
+ */
+export function congelarCostosEvento(
+  evento: EventoGuardado,
+  ctx: Pick<AppState, "recetas" | "insumos" | "insumosBarra" | "cocteles" | "servicios" | "personal" | "movimientosCaja">,
+): ArchivoCongelado {
+  const comprasCocina = calcularComprasSegmentadas(evento, ctx.recetas || [], ctx.insumos || [])
+  const comprasBarra = calcularComprasBarras(evento, ctx.cocteles || [], ctx.insumosBarra || [])
+  const costoCocina = comprasCocina.reduce((s, c) => s + c.costoMateriaPrima, 0)
+  const costoBarra = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
+
+  const nombreEvento = evento.nombre || evento.nombrePareja || "Evento sin nombre"
+
+  // Personal con sueldo vigente resuelto (igual que la pantalla de costos)
+  const personal = (evento.personalEvento || [])
+    .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, ctx.personal) }))
+    .filter((pe) => (pe.monto || 0) > 0)
+  const totalPersonal = personal.reduce((s, pe) => s + (pe.monto || 0), 0)
+
+  // Servicios: seña/saldo en vivo; los saldos ya pagados conservan el monto
+  // real que movió Caja Eventos
+  const montoSaldoPagado = (nombreServicio: string): number => {
+    const mov = [...(ctx.movimientosCaja ?? [])]
+      .reverse()
+      .find(
+        (m) =>
+          m.tipo === "egreso" &&
+          m.cajaDestino === "caja_eventos" &&
+          m.eventoId === evento.id &&
+          m.concepto === `Pago saldo ${nombreServicio} - ${nombreEvento}`,
+      )
+    return mov?.monto || 0
+  }
+  const serviciosCalc = (evento.servicios || []).map((srv) => {
+    const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
+    const { montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(srv, { servicios: ctx.servicios ?? [] })
+    return {
+      servicioId: srv.servicioId,
+      montoSeña,
+      saldo: saldoPagado ? montoSaldoPagado(srv.nombre) : saldoPendiente,
+    }
+  })
+  const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)
+
+  // Menú elegido con costo por plato (por segmento de invitados)
+  const menuPorSegmento = [
+    { segmento: "Adultos", pax: evento.adultos || 0, recetas: evento.recetasAdultos || [], multipliers: evento.multipliersAdultos || {} },
+    { segmento: "Adolescentes", pax: evento.adolescentes || 0, recetas: evento.recetasAdolescentes || [], multipliers: evento.multipliersAdolescentes || {} },
+    { segmento: "Niños", pax: evento.ninos || 0, recetas: evento.recetasNinos || [], multipliers: evento.multipliersNinos || {} },
+    { segmento: "Dietas especiales", pax: evento.personasDietasEspeciales || 0, recetas: evento.recetasDietasEspeciales || [], multipliers: evento.multipliersDietasEspeciales || {} },
+  ]
+    .map((s) => ({
+      segmento: s.segmento,
+      pax: s.pax,
+      platos: s.recetas
+        .map((id) => {
+          const receta = (ctx.recetas || []).find((r) => r.id === id)
+          if (!receta) return null
+          const costo = calcularCostoReceta(receta, ctx.insumos || []) * s.pax * ((s.multipliers as Record<string, number>)[id] || 1)
+          return { id, nombre: receta.nombre, costo }
+        })
+        .filter((p): p is { id: string; nombre: string; costo: number } => !!p),
+    }))
+    .filter((s) => s.platos.length > 0)
+
+  return {
+    fechaArchivado: new Date().toISOString(),
+    comprasCocina,
+    comprasBarra,
+    personal,
+    serviciosCalc,
+    menuPorSegmento,
+    costoCocina,
+    costoBarra,
+    totalServicios,
+    totalPersonal,
+  }
 }
 
 /**
