@@ -47,6 +47,7 @@ import {
   type FiltroEgresos,
 } from "@/components/filtros-egresos"
 import { SalonDot } from "@/components/salon-badge"
+import { SaldoHerramientasEventos } from "./saldo-herramientas"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
@@ -1111,6 +1112,7 @@ useStore()
             </span>
           </h1>
         </div>
+        <SaldoHerramientasEventos salonFiltro={salonFiltro} />
         <div className="flex items-center gap-3 shrink-0">
           <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
             Cambiar salón
