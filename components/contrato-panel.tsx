@@ -825,7 +825,9 @@ export function ContratoPanel({
                       <span className="min-w-0">
                         {s.nombre}
                         {s.descripcion ? (
-                          <span className="block text-xs italic text-muted-foreground">{s.descripcion}</span>
+                          <span className="block max-w-prose whitespace-pre-line text-pretty text-xs italic leading-snug text-muted-foreground">
+                            {s.descripcion}
+                          </span>
                         ) : null}
                       </span>
                     </li>

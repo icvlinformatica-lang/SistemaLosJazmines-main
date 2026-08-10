@@ -102,18 +102,21 @@ interface EditableCellProps {
   onCommit: (val: string) => void
   placeholder?: string
   numeric?: boolean
+  /** Textarea multilinea para textos largos (ej: letra chica del contrato, ~90 palabras) */
+  multiline?: boolean
   className?: string
 }
 
-function EditableCell({ value, onCommit, placeholder = "—", numeric = false, className }: EditableCellProps) {
+function EditableCell({ value, onCommit, placeholder = "—", numeric = false, multiline = false, className }: EditableCellProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const startEdit = () => {
     setDraft(value)
     setEditing(true)
-    setTimeout(() => inputRef.current?.select(), 0)
+    setTimeout(() => (multiline ? textareaRef.current?.focus() : inputRef.current?.select()), 0)
   }
 
   const commit = () => {
@@ -127,6 +130,27 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
   }
 
   if (editing) {
+    if (multiline) {
+      // Textarea amplio para la letra chica del contrato (textos de ~90 palabras)
+      return (
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") cancel()
+          }}
+          rows={5}
+          className={cn(
+            "w-full min-h-[110px] px-2.5 py-2 text-[13px] leading-snug border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white resize-y",
+            className
+          )}
+          placeholder="Letra chica que se imprime en el contrato"
+          autoFocus
+        />
+      )
+    }
     if (numeric) {
       // Input numérico con símbolo $ visual (meramente estético)
       return (
@@ -173,6 +197,26 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, c
         )}
         autoFocus
       />
+    )
+  }
+
+  if (multiline) {
+    // Vista de solo lectura: muestra hasta 3 líneas; el texto completo en tooltip
+    return (
+      <div
+        onClick={startEdit}
+        className={cn(
+          "group relative min-h-8 flex items-start px-2.5 py-1 rounded cursor-pointer hover:bg-muted/70 transition-colors text-[13px] leading-snug",
+          !value && "text-muted-foreground/50 italic",
+          className
+        )}
+        title={value || "Clic para editar"}
+      >
+        <span className="line-clamp-3 whitespace-pre-line pr-4">{value || placeholder}</span>
+        <span className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-40 transition-opacity text-[10px] text-muted-foreground">
+          ✎
+        </span>
+      </div>
     )
   }
 
@@ -551,11 +595,12 @@ export default function FinanzasServiciosPage() {
                     )}
                   </td>
 
-                  {/* Descripcion = letra chica que se imprime en el contrato */}
-                  <td className="px-1.5 py-[3px] max-w-[220px]">
+                  {/* Descripcion = letra chica que se imprime en el contrato (~90 palabras) */}
+                  <td className="px-1.5 py-[3px] min-w-[300px] max-w-[420px] align-top">
                     <EditableCell
                       value={s.descripcion ?? ""}
                       placeholder="Letra chica del contrato"
+                      multiline
                       onCommit={(v) => update(s.id, { descripcion: v })}
                     />
                   </td>

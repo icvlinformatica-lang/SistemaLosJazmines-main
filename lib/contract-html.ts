@@ -264,14 +264,19 @@ const salon = evento.salon || "___________"
   /* Cada seccion del contrato se mantiene entera: si no entra en la hoja,
      pasa completa a la siguiente en lugar de cortarse a mitad del texto */
   .seccion { break-inside: avoid; page-break-inside: avoid; }
+  /* La seccion de servicios puede superar una hoja con las letras chicas
+     largas: se permite cortar ENTRE servicios (cada svc-item queda entero) */
+  .seccion-servicios { break-inside: auto; page-break-inside: auto; }
   h3.clausula { break-after: avoid; page-break-after: avoid; }
   p.parrafo { orphans: 3; widows: 3; }
   .datos-lista { margin-left: 16px; }
   .datos-lista div { margin-bottom: 2px; }
   .parrafo { text-align: justify; margin: 6px 0; }
   .campo { text-decoration: underline; font-weight: bold; }
-    .svc-item { margin-left: 32px; margin-bottom: 2px; }
-    .svc-desc { margin-left: 14px; font-size: 9px; color: #444; font-style: italic; margin-top: 1px; margin-bottom: 3px; text-align: justify; }
+  /* Cada servicio con su letra chica se mantiene entero: si la descripcion
+     (hasta ~90 palabras) no entra en la hoja, pasa completa a la siguiente */
+  .svc-item { margin-left: 32px; margin-bottom: 4px; break-inside: avoid; page-break-inside: avoid; }
+  .svc-desc { margin-left: 14px; margin-right: 8px; font-size: 9.5px; line-height: 1.45; color: #444; font-style: italic; margin-top: 2px; margin-bottom: 6px; text-align: justify; white-space: pre-line; }
   .anexo { page-break-before: always; }
   .anexo-title { text-align: center; font-weight: bold; margin: 14px 0 2px; }
   .anexo-value { text-align: center; margin: 0 0 4px; }
@@ -331,9 +336,9 @@ const salon = evento.salon || "___________"
   <p class="parrafo">En caso de incumplimiento por parte del cliente respecto al pago de las cuotas pactadas dentro de los t\u00e9rminos estipulados en el inciso 3 del presente contrato Los Jazmines Eventos operar\u00e1 la mora del cliente en forma autom\u00e1tica al vencimiento de la fecha de pago pactada, deveng\u00e1ndose a partir de la misma una multa de 3000 pesos por cada d\u00eda de atraso en el cumplimiento de la obligaci\u00f3n respectiva.</p>
   </div>
 
-  <div class="seccion">
+  <div class="seccion seccion-servicios">
   <h3 class="clausula">5) <span>Detalle del servicio a prestar por Los Jazmines:</span></h3>
-  ${detalleServicioRows}
+${detalleServicioRows}
   ${personalRows ? `<p class="parrafo" style="margin-top:10px;"><strong>Personal asignado al evento:</strong></p><div class="datos-lista">${personalRows}</div>` : ""}
   </div>
 
