@@ -1,11 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useStore } from "@/lib/store-context"
 import { formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,12 +33,13 @@ import {
   type ServicioEliminado,
 } from "@/lib/supabase/data-service"
 
-export function ServiciosEliminadosCard() {
+export function PapeleraServiciosButton() {
   const { state, setServicios } = useStore()
   const { toast } = useToast()
 
+  const [open, setOpen] = useState(false)
   const [items, setItems] = useState<ServicioEliminado[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [workingId, setWorkingId] = useState<string | null>(null)
 
   const loadItems = async () => {
@@ -46,9 +54,10 @@ export function ServiciosEliminadosCard() {
     }
   }
 
-  useEffect(() => {
-    loadItems()
-  }, [])
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next)
+    if (next) loadItems()
+  }
 
   const handleRestaurar = async (item: ServicioEliminado) => {
     setWorkingId(item.id)
@@ -114,31 +123,38 @@ export function ServiciosEliminadosCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <ArchiveRestore className="h-6 w-6" />
-              Papelera de Servicios
-            </CardTitle>
-            <CardDescription className="text-base">
-              Servicios eliminados del catálogo. Podés restaurarlos para deshacer el borrado.
-            </CardDescription>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="gap-2 bg-transparent">
+          <ArchiveRestore className="h-4 w-4" />
+          Papelera
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center justify-between pr-8">
+            <div>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <ArchiveRestore className="h-5 w-5" />
+                Papelera de Servicios
+              </DialogTitle>
+              <DialogDescription className="text-base mt-1">
+                Servicios eliminados del catálogo. Podés restaurarlos para deshacer el borrado.
+              </DialogDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground shrink-0"
+              onClick={loadItems}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${isLoading ? "animate-spin" : ""}`} />
+              Actualizar
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            onClick={loadItems}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-1 ${isLoading ? "animate-spin" : ""}`} />
-            Actualizar
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
+        </DialogHeader>
+
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -218,7 +234,7 @@ export function ServiciosEliminadosCard() {
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   )
 }

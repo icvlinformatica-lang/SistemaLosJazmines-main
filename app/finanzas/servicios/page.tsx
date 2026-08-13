@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { PapeleraServiciosButton } from "@/components/servicios-eliminados-card"
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -360,10 +361,13 @@ export default function FinanzasServiciosPage() {
             Configurá el precio de venta (contrato) y el costo que impacta en Caja Eventos.
           </p>
         </div>
-        <Button onClick={handleAgregarFila} className="gap-2 self-start sm:self-auto">
-          <Plus className="h-4 w-4" />
-          Agregar servicio
-        </Button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <PapeleraServiciosButton />
+          <Button onClick={handleAgregarFila} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Agregar servicio
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
