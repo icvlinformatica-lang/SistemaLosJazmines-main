@@ -429,6 +429,7 @@ export default function FinanzasServiciosPage() {
               </th>
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
               <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
+              <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[110px]">Creado</th>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -436,7 +437,7 @@ export default function FinanzasServiciosPage() {
           <tbody>
             {serviciosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={10} className="text-center py-16 text-muted-foreground">
+                <td colSpan={11} className="text-center py-16 text-muted-foreground">
                   {busqueda || categoriaFiltro !== "todas"
                     ? "No se encontraron servicios con esos filtros."
                     : "No hay servicios. Hacé clic en \"Agregar servicio\" para empezar."}
@@ -607,6 +608,17 @@ export default function FinanzasServiciosPage() {
                       multiline
                       onCommit={(v) => update(s.id, { descripcion: v })}
                     />
+                  </td>
+
+                  {/* Fecha de creación */}
+                  <td className="px-3 py-[3px] text-right tabular-nums text-[13px] text-muted-foreground whitespace-nowrap">
+                    {s.createdAt
+                      ? new Date(s.createdAt).toLocaleDateString("es-AR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                        })
+                      : "—"}
                   </td>
 
                   {/* Eliminar */}
