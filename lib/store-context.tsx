@@ -888,6 +888,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteServicio = async (id: string) => {
+    const servicioBorrado = (state.servicios || []).find((s) => s.id === id)
     // Foto de precios ANTES de borrar del catálogo: en cada evento que tenga
     // este servicio contratado se congelan montoSeña y saldoPendiente con los
     // precios vigentes. Sin esto, el costo del servicio caería a $0 en Costos
@@ -926,6 +927,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const { deleteServicio: deleteServ } = await import("./supabase/data-service")
       await deleteServ(id)
+      // Registrar en el historial de actividad
+      if (servicioBorrado) {
+        fetch("/api/activity-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: "servicio",
+            accion: "eliminado",
+            nombre: servicioBorrado.nombre,
+            detalle: "Se movió a la papelera. Podés restaurarlo desde Configuración → Papelera de Servicios.",
+          }),
+        }).catch(() => {})
+      }
     } catch (error) {
       console.error("[v0] Error deleting servicio from Supabase:", error)
       toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
