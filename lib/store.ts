@@ -310,6 +310,8 @@ export interface Servicio {
   activo: boolean
   /** Posición de la fila en la tabla de Finanzas → Servicios (orden manual). */
   orden?: number
+  /** Fecha de creación del servicio (ISO, viene de created_at en la base). */
+  createdAt?: string
 }
 
 export interface ServicioEvento {

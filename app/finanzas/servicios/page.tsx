@@ -249,6 +249,7 @@ export default function FinanzasServiciosPage() {
   const [busqueda, setBusqueda] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaServicio | "todas">("todas")
   const [idEliminar, setIdEliminar] = useState<string | null>(null)
+  const [confirmoCongelado, setConfirmoCongelado] = useState(false)
 
   // ── Servicios ordenados (orden manual tipo Excel) ─────────────────────────
   const serviciosOrdenados = servicios
@@ -338,10 +339,14 @@ export default function FinanzasServiciosPage() {
   )
 
   const handleEliminarConfirm = () => {
-    if (!idEliminar) return
+    if (!idEliminar || !confirmoCongelado) return
     deleteServicio(idEliminar)
     setIdEliminar(null)
-    toast({ title: "Servicio eliminado" })
+    setConfirmoCongelado(false)
+    toast({
+      title: "Servicio movido a la papelera",
+      description: "Podés restaurarlo desde el botón Papelera, arriba a la derecha.",
+    })
   }
 
   // Eventos que tienen contratado el servicio a eliminar (para avisar antes de borrar)
@@ -429,6 +434,7 @@ export default function FinanzasServiciosPage() {
               </th>
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
               <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
+              <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[110px]">Creado</th>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -436,7 +442,7 @@ export default function FinanzasServiciosPage() {
           <tbody>
             {serviciosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={10} className="text-center py-16 text-muted-foreground">
+                <td colSpan={11} className="text-center py-16 text-muted-foreground">
                   {busqueda || categoriaFiltro !== "todas"
                     ? "No se encontraron servicios con esos filtros."
                     : "No hay servicios. Hacé clic en \"Agregar servicio\" para empezar."}
@@ -609,6 +615,17 @@ export default function FinanzasServiciosPage() {
                     />
                   </td>
 
+                  {/* Fecha de creación */}
+                  <td className="px-3 py-[3px] text-right tabular-nums text-[13px] text-muted-foreground whitespace-nowrap">
+                    {s.createdAt
+                      ? new Date(s.createdAt).toLocaleDateString("es-AR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                        })
+                      : "—"}
+                  </td>
+
                   {/* Eliminar */}
                   <td className="px-2 py-[3px]">
                     <button
@@ -674,42 +691,75 @@ export default function FinanzasServiciosPage() {
       </div>
 
       {/* Confirm delete */}
-      <AlertDialog open={!!idEliminar} onOpenChange={(o) => !o && setIdEliminar(null)}>
+      <AlertDialog
+        open={!!idEliminar}
+        onOpenChange={(o) => {
+          if (!o) {
+            setIdEliminar(null)
+            setConfirmoCongelado(false)
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar servicio</AlertDialogTitle>
+            <AlertDialogTitle>¿Borrar o editar este servicio?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
-                <p>Esta accion es permanente y no se puede deshacer. El servicio sera eliminado del catalogo.</p>
-                {eventosConServicio.length > 0 && (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-800">
-                    <p className="font-semibold">
-                      Este servicio esta contratado en {eventosConServicio.length}{" "}
-                      {eventosConServicio.length === 1 ? "evento" : "eventos"}:
-                    </p>
-                    <p className="text-xs mt-1">
-                      {eventosConServicio
-                        .slice(0, 5)
-                        .map((ev) => ev.nombrePareja || ev.nombre || "Sin nombre")
-                        .join(", ")}
-                      {eventosConServicio.length > 5 && ` y ${eventosConServicio.length - 5} mas`}
-                    </p>
-                    <p className="text-xs mt-2">
-                      Los montos de seña y saldo pendientes quedaran congelados con los precios actuales en cada
-                      evento, para que sus costos y pagos pendientes no se pierdan.
-                    </p>
-                  </div>
-                )}
+                <p>
+                  Si solo querés cambiar el precio, el costo o el nombre, no hace falta borrarlo:
+                  cerrá esta ventana y editá las celdas directamente en la tabla.
+                </p>
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-800">
+                  <p className="font-semibold">Qué pasa si lo borrás:</p>
+                  <ul className="text-xs mt-1 list-disc pl-4 space-y-1">
+                    <li>El servicio se mueve a la papelera y sale del catálogo.</li>
+                    <li>
+                      Los eventos que lo tienen contratado quedan con la seña y el saldo{" "}
+                      <span className="font-semibold">congelados con los precios actuales</span>.
+                    </li>
+                    <li>
+                      Mientras esté en la papelera, esos montos <span className="font-semibold">no se actualizan más</span>{" "}
+                      aunque cambien los precios. Solo vuelven a actualizarse si lo restaurás.
+                    </li>
+                  </ul>
+                  {eventosConServicio.length > 0 && (
+                    <>
+                      <p className="font-semibold text-xs mt-2">
+                        Contratado en {eventosConServicio.length}{" "}
+                        {eventosConServicio.length === 1 ? "evento" : "eventos"}:
+                      </p>
+                      <p className="text-xs mt-0.5">
+                        {eventosConServicio
+                          .slice(0, 5)
+                          .map((ev) => ev.nombrePareja || ev.nombre || "Sin nombre")
+                          .join(", ")}
+                        {eventosConServicio.length > 5 && ` y ${eventosConServicio.length - 5} más`}
+                      </p>
+                    </>
+                  )}
+                </div>
+                <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
+                  <input
+                    type="checkbox"
+                    checked={confirmoCongelado}
+                    onChange={(e) => setConfirmoCongelado(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-destructive"
+                  />
+                  <span className="text-sm text-foreground">
+                    Entiendo que los eventos con este servicio quedarán congelados y no quiero editarlo, quiero borrarlo.
+                  </span>
+                </label>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Volver y editar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleEliminarConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!confirmoCongelado}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 disabled:pointer-events-none"
             >
-              Eliminar
+              Borrar (va a la papelera)
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

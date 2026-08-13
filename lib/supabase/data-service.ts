@@ -45,6 +45,7 @@ export async function fetchServicios(): Promise<Servicio[]> {
     proveedor: s.proveedor || undefined,
     notas: s.notas || undefined,
     orden: s.orden ?? undefined,
+    createdAt: s.created_at || undefined,
   }))
 }
 
@@ -150,6 +151,7 @@ function mapServicioRow(s: any): Servicio {
     proveedor: s.proveedor || undefined,
     notas: s.notas || undefined,
     orden: s.orden ?? undefined,
+    createdAt: s.created_at || undefined,
   }
 }
 
