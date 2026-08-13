@@ -101,9 +101,115 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
 }
 
 export async function deleteServicio(id: string): Promise<boolean> {
+  // Antes de borrar, guardar una copia en la papelera (servicios_eliminados)
+  // para poder deshacer desde Configuración → Papelera de Servicios.
+  const { data: existing, error: fetchError } = await supabase
+    .from("servicios")
+    .select("*")
+    .eq("id", id)
+    .single()
+
+  if (!fetchError && existing) {
+    const { error: trashError } = await supabase
+      .from("servicios_eliminados")
+      .upsert({
+        ...existing,
+        eliminado_at: new Date().toISOString(),
+      })
+    if (trashError) {
+      console.error("Error moviendo servicio a la papelera:", trashError)
+    }
+  }
+
   const { error } = await supabase.from("servicios").delete().eq("id", id)
   if (error) {
     console.error("Error deleting servicio:", error)
+    return false
+  }
+  return true
+}
+
+// ============ PAPELERA DE SERVICIOS ============
+export type ServicioEliminado = Servicio & { eliminadoAt: string }
+
+function mapServicioRow(s: any): Servicio {
+  return {
+    id: s.id,
+    codigo: s.codigo || "",
+    nombre: s.nombre,
+    descripcion: s.descripcion || "",
+    categoria: s.categoria,
+    unidad: s.unidad || "Fijo",
+    activo: s.activo ?? true,
+    margenGanancia: Number(s.margen_ganancia) || 0,
+    precioVenta: Number(s.precio_venta) || 0,
+    costoParaCajaEventos: Number(s.costo_para_caja_eventos) || 0,
+    porcentajeSeña: Number(s.porcentaje_sena) || 30,
+    diasAnticipacionSeña: Number(s.dias_anticipacion_sena) || 30,
+    diasAnticipacionSaldo: Number(s.dias_anticipacion_saldo) || 7,
+    proveedor: s.proveedor || undefined,
+    notas: s.notas || undefined,
+    orden: s.orden ?? undefined,
+  }
+}
+
+export async function fetchServiciosEliminados(): Promise<ServicioEliminado[]> {
+  const { data, error } = await supabase
+    .from("servicios_eliminados")
+    .select("*")
+    .order("eliminado_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching servicios eliminados:", error)
+    return []
+  }
+
+  return (data || []).map((s) => ({
+    ...mapServicioRow(s),
+    eliminadoAt: s.eliminado_at,
+  }))
+}
+
+export async function restaurarServicio(id: string): Promise<Servicio | null> {
+  const { data: row, error: fetchError } = await supabase
+    .from("servicios_eliminados")
+    .select("*")
+    .eq("id", id)
+    .single()
+
+  if (fetchError || !row) {
+    console.error("Error leyendo servicio de la papelera:", fetchError)
+    return null
+  }
+
+  const { eliminado_at: _e, eliminado_por: _p, ...servicioRow } = row
+
+  const { data: restored, error: insertError } = await supabase
+    .from("servicios")
+    .upsert({ ...servicioRow, updated_at: new Date().toISOString() })
+    .select()
+    .single()
+
+  if (insertError || !restored) {
+    console.error("Error restaurando servicio:", insertError)
+    return null
+  }
+
+  const { error: deleteError } = await supabase
+    .from("servicios_eliminados")
+    .delete()
+    .eq("id", id)
+  if (deleteError) {
+    console.error("Error limpiando la papelera:", deleteError)
+  }
+
+  return mapServicioRow(restored)
+}
+
+export async function deleteServicioDefinitivo(id: string): Promise<boolean> {
+  const { error } = await supabase.from("servicios_eliminados").delete().eq("id", id)
+  if (error) {
+    console.error("Error eliminando servicio definitivamente:", error)
     return false
   }
   return true
