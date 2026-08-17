@@ -240,6 +240,11 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, m
   )
 }
 
+// ─── Filas separadoras de año (verdes) ────────────────────────────────────────
+// Son filas de la misma tabla, marcadas con codigo="SEPARADOR" y activo=false,
+// por lo que nunca aparecen como servicios contratables en eventos.
+const esSeparador = (s: Servicio) => s.codigo === "SEPARADOR"
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function FinanzasServiciosPage() {
@@ -258,8 +263,10 @@ export default function FinanzasServiciosPage() {
     .map((x) => x.s)
 
   // ── Servicios filtrados ────────────────────────────────────────────────────
+  // Nota: acá se muestran también los desactivados (con el toggle apagado).
+  // En el resto del sistema (eventos, contratos, etc.) los inactivos no aparecen.
   const serviciosFiltrados = serviciosOrdenados.filter((s) => {
-    if (!s.activo) return false
+    if (esSeparador(s)) return !busqueda && categoriaFiltro === "todas"
     if (categoriaFiltro !== "todas" && s.categoria !== categoriaFiltro) return false
     if (busqueda) {
       const q = busqueda.toLowerCase()
@@ -272,6 +279,8 @@ export default function FinanzasServiciosPage() {
     }
     return true
   })
+
+  const serviciosReales = serviciosFiltrados.filter((s) => !esSeparador(s))
 
   // ── Mover fila arriba/abajo (persiste el orden en la base) ────────────────
   const moverServicio = async (id: string, dir: -1 | 1) => {
@@ -305,9 +314,9 @@ export default function FinanzasServiciosPage() {
     }
   }
 
-  // ── Totales pie de tabla ───────────────────────────────────────────────────
-  const totalVenta = serviciosFiltrados.reduce((sum, s) => sum + (s.precioVenta ?? 0), 0)
-  const totalCosto = serviciosFiltrados.reduce((sum, s) => sum + (s.costoParaCajaEventos ?? 0), 0)
+  // ── Totales pie de tabla (sin contar filas separadoras de año) ────────────
+  const totalVenta = serviciosReales.reduce((sum, s) => sum + (s.precioVenta ?? 0), 0)
+  const totalCosto = serviciosReales.reduce((sum, s) => sum + (s.costoParaCajaEventos ?? 0), 0)
 
   // ── Agregar fila nueva ─────────────────────────────────────────────────────
   const handleAgregarFila = () => {
@@ -401,7 +410,7 @@ export default function FinanzasServiciosPage() {
           </SelectContent>
         </Select>
         <span className="text-sm text-muted-foreground ml-auto hidden sm:block">
-          {serviciosFiltrados.length} servicio{serviciosFiltrados.length !== 1 ? "s" : ""}
+          {serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""}
         </span>
       </div>
 
