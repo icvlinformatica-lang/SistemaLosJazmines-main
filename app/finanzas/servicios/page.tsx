@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { Switch } from "@/components/ui/switch"
 import { PapeleraServiciosButton } from "@/components/servicios-eliminados-card"
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
