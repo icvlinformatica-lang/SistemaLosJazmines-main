@@ -716,7 +716,7 @@ export default function FinanzasServiciosPage() {
             <tfoot>
               <tr className="border-t-2 border-border bg-muted/60 font-semibold">
                 <td colSpan={4} className="px-3 py-2.5 text-sm text-muted-foreground">
-                  Total ({serviciosFiltrados.length} servicio{serviciosFiltrados.length !== 1 ? "s" : ""})
+                  Total ({serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""})
                 </td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
                   {formatARS(totalVenta)}
