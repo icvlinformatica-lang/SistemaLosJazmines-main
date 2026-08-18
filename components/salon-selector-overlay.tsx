@@ -31,7 +31,7 @@ export function SalonSelectorOverlay({
   ]
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-10 bg-white p-6 overflow-y-auto">
+    <div className="flex min-h-[calc(100vh-4rem)] w-full flex-col items-center justify-center gap-10 bg-white p-6">
       <div className="text-center space-y-2">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 text-balance">{titulo}</h1>
         <p className="text-sm sm:text-base text-gray-500">¿Qué salón querés ver?</p>
