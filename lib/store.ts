@@ -443,9 +443,32 @@ export interface GastoArchivado {
 export const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
 export type SalonNombre = (typeof SALONES)[number]
 
+/**
+ * Registro global de nombres personalizados de salones.
+ * Se actualiza automáticamente desde el StoreProvider cada vez que cambia
+ * configuracionCajas (donde se guarda `nombre` por salón, editable desde
+ * Finanzas → Configuración). Así `salonLabel` muestra el nombre elegido por
+ * el usuario en TODO el sistema sin cambiar sus ~70 llamadas existentes.
+ * Los IDs internos ("Quinta", "Casona", ...) nunca cambian: solo la etiqueta.
+ */
+let SALON_NOMBRES_CUSTOM: Record<string, string> = {}
+
+export function setSalonNombresCustom(configuracionCajas?: ConfiguracionCajas | null) {
+  const nuevos: Record<string, string> = {}
+  if (configuracionCajas?.salones) {
+    for (const [salon, cfg] of Object.entries(configuracionCajas.salones)) {
+      const nombre = cfg?.nombre?.trim()
+      if (nombre) nuevos[salon] = nombre
+    }
+  }
+  SALON_NOMBRES_CUSTOM = nuevos
+}
+
 /** Etiqueta amigable para mostrar un salón en la UI ("Salon" -> "Salón"). */
 export function salonLabel(salon: string | null | undefined): string {
   if (!salon) return "General"
+  const custom = SALON_NOMBRES_CUSTOM[salon]
+  if (custom) return custom
   if (salon === "Salon") return "Salón"
   return salon
 }
@@ -488,6 +511,8 @@ export interface ConfiguracionCaja {
   porcentajeAporteAdmin: number
   /** Color identificatorio del salón (hex, editable desde Configuración). */
   color?: string
+  /** Nombre personalizado del salón (editable desde Configuración). Reemplaza la etiqueta en todo el sistema. */
+  nombre?: string
 }
 
 export interface ConfiguracionCajas {

@@ -7,6 +7,7 @@ import {
   type TipoCostoOperativo,
   formatCurrency,
   SALONES,
+  salonLabel,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -410,9 +411,9 @@ export default function GastosFijosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos los salones</SelectItem>
-                    {SALONES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
+                  {SALONES.map((s) => (
+                    <SelectItem key={s} value={s}>{salonLabel(s)}</SelectItem>
+                  ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useEventos } from "@/lib/use-eventos"
-import { SALONES } from "@/lib/store"
+import { SALONES, salonLabel } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -131,7 +131,7 @@ export default function EventosFinalizadosPage() {
                 <SelectContent>
                   <SelectItem value="todos">Todos los salones</SelectItem>
                   {SALONES.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                    <SelectItem key={s} value={s}>{salonLabel(s)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

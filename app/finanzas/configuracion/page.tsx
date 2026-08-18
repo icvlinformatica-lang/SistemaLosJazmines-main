@@ -62,6 +62,19 @@ export default function ConfiguracionCajasPage() {
     }))
   }
 
+  const handleNombreChange = (salon: string, nombre: string) => {
+    setConfig((prev) => ({
+      ...prev,
+      salones: {
+        ...prev.salones,
+        [salon]: {
+          ...prev.salones[salon],
+          nombre,
+        },
+      },
+    }))
+  }
+
   const handleAdminSaldoChange = (value: number) => {
     setConfig((prev) => ({
       ...prev,
@@ -113,11 +126,47 @@ export default function ConfiguracionCajasPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Building2 className="h-5 w-5" style={{ color }} />
-                  {salonLabel(salon)}
+                  {salonConfig.nombre?.trim() || salonLabel(salon)}
                 </CardTitle>
-                <CardDescription>Caja del salon {salonLabel(salon)}</CardDescription>
+                <CardDescription>
+                  Caja del salon {salonConfig.nombre?.trim() || salonLabel(salon)}
+                  {salonConfig.nombre?.trim() && salonConfig.nombre.trim() !== salon && (
+                    <span className="ml-1 text-xs opacity-70">(antes: {salon})</span>
+                  )}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
+                {/* Nombre personalizado */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5 text-sm font-medium">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    Nombre del salon
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={salonConfig.nombre ?? ""}
+                      onChange={(e) => handleNombreChange(salon, e.target.value)}
+                      placeholder={salonLabel(salon)}
+                      maxLength={40}
+                      aria-label={`Nombre de ${salon}`}
+                    />
+                    {salonConfig.nombre?.trim() && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs shrink-0"
+                        onClick={() => handleNombreChange(salon, "")}
+                      >
+                        Restablecer
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Este nombre se muestra en todo el sistema (calendario, cajas, eventos, contratos)
+                  </p>
+                </div>
+
                 {/* Color identificatorio */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5 text-sm font-medium">
@@ -236,7 +285,9 @@ export default function ConfiguracionCajasPage() {
                 <div className="space-y-1.5">
                   {resumenAportes.map(({ salon, porcentaje }) => (
                     <div key={salon} className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">{salon}</span>
+                      <span className="text-muted-foreground">
+                        {config.salones[salon]?.nombre?.trim() || salonLabel(salon)}
+                      </span>
                       <span className="font-medium">{porcentaje}%</span>
                     </div>
                   ))}

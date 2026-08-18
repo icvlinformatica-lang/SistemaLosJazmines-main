@@ -1,5 +1,6 @@
 import {
   formatCurrency,
+  salonLabel,
   type EventoGuardado,
   type Receta,
   type PagoPersonal,
@@ -151,7 +152,7 @@ const fechaContrato = new Date().toLocaleDateString("es-AR")
 // URL absoluta del logo: el contrato se abre en una ventana about:blank
 // (window.open + document.write), donde las rutas relativas no resuelven.
 const logoUrl = typeof window !== "undefined" ? `${window.location.origin}/images/logo-los-jazmines.png` : "/images/logo-los-jazmines.png"
-const salon = evento.salon || "___________"
+  const salon = evento.salon ? salonLabel(evento.salon) : "___________"
   const direccion = SALON_DIRECCIONES[salon] || `${salon} \u2013 Del Viso \u2013 Bs. As.`
   const nombreEvento = evento.nombrePareja || evento.nombre || "Evento"
   const tipoEvento = evento.tipoEvento || ""

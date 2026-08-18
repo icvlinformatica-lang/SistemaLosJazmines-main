@@ -30,6 +30,7 @@ import {
   calcularMontoPersonalDelEvento,
   detectarImpactosContrato,
   SALONES,
+  salonLabel,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1439,7 +1440,7 @@ function EventoPageContent() {
                           : "border-[#2d5a3d] bg-white text-[#2d5a3d] hover:bg-emerald-50"
                       }`}
                     >
-                      {s}
+                      {salonLabel(s)}
                     </button>
                   )
                 })}
