@@ -83,6 +83,7 @@ import {
   ArrowRight,
   Folder,
   FolderOpen,
+  RefreshCw,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -1135,22 +1136,25 @@ useStore()
             Cambiar salón
             <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
           </span>
-          <Select value={salonFiltro} onValueChange={setSalonFiltro}>
-            <SelectTrigger className="w-[180px] h-9" aria-label="Filtrar por salón">
-              <SelectValue placeholder="Todos los salones" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos los salones</SelectItem>
-              {SALONES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  <span className="flex items-center gap-2">
-                    <SalonDot salon={s} size={8} />
-                    {salonLabel(s)}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <button
+            type="button"
+            onClick={() => setSelectorAbierto(true)}
+            className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
+            aria-label="Cambiar salón: volver al selector de salones"
+          >
+            <RefreshCw
+              className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
+              aria-hidden="true"
+            />
+            {salonFiltro === "todos" ? (
+              <span>Todos los salones</span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <SalonDot salon={salonFiltro} size={8} />
+                {salonLabel(salonFiltro)}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
