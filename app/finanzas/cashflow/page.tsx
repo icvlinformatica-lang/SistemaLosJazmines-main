@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useStore } from "@/lib/store-context"
-import { SALONES, calcularSaldoCaja, calcularSeñaSaldoServicio, type EventoGuardado, type CostoOperativo, type PagoPersonal, type Servicio } from "@/lib/store"
+import { SALONES, calcularSaldoCaja, calcularSeñaSaldoServicio, salonLabel, type EventoGuardado, type CostoOperativo, type PagoPersonal, type Servicio } from "@/lib/store"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -264,7 +264,7 @@ function SalonCashflowCard({ salon, horizonte }: { salon: string; horizonte: Hor
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Building2 className="h-4 w-4 text-muted-foreground" />
-          {isAdmin ? "Administracion General" : salon}
+          {isAdmin ? "Administracion General" : salonLabel(salon)}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

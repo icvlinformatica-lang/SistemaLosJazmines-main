@@ -24,6 +24,7 @@ import {
 } from "@/lib/store"
 import { salonLabel } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useEventos } from "@/lib/use-eventos"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
 import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
@@ -270,6 +271,8 @@ export default function EventosListaPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filtroEstado, setFiltroEstado] = useState<string>("todos")
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
+  // Selector de salón estilo perfiles al entrar a la página
+  const [selectorAbierto, setSelectorAbierto] = useState(true)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [recuperarStockAlEliminar, setRecuperarStockAlEliminar] = useState(false)
   const [recuperarStockDialogOpen, setRecuperarStockDialogOpen] = useState(false)
@@ -726,6 +729,19 @@ export default function EventosListaPage() {
   const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
   const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
   const eventosFinalizados = (eventos || []).filter((e) => e.estado === "completado").length
+
+  // Selector de salón estilo perfiles al entrar
+  if (selectorAbierto) {
+    return (
+      <SalonSelectorOverlay
+        titulo="Lista de Eventos"
+        onSelect={(salon) => {
+          setFiltroSalon(salon)
+          setSelectorAbierto(false)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">

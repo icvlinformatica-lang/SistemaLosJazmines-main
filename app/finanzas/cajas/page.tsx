@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { useStore } from "@/lib/store-context"
-import { SALONES, calcularSaldoCaja, MovimientoCaja } from "@/lib/store"
+import { SALONES, calcularSaldoCaja, salonLabel, MovimientoCaja } from "@/lib/store"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -77,7 +77,7 @@ function CajaCard({ salon, isAdmin }: CajaCardProps) {
             ) : (
               <Building2 className="h-5 w-5 text-primary" />
             )}
-            {isAdmin ? "Administracion General" : salon}
+            {isAdmin ? "Administracion General" : salonLabel(salon)}
           </CardTitle>
           <div
             className={`text-2xl font-bold ${saldoPositivo ? "text-emerald-600" : "text-red-600"}`}
@@ -86,7 +86,7 @@ function CajaCard({ salon, isAdmin }: CajaCardProps) {
           </div>
         </div>
         <CardDescription>
-          {isAdmin ? "Caja central que recibe aportes de todos los salones" : `Caja del salon ${salon}`}
+          {isAdmin ? "Caja central que recibe aportes de todos los salones" : `Caja del salon ${salonLabel(salon)}`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

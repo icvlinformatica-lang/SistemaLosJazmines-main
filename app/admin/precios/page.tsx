@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useStore } from "@/lib/store-context"
-import { formatCurrency, SALONES } from "@/lib/store"
+import { formatCurrency, SALONES, salonLabel } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -307,7 +307,7 @@ export default function PreciosPage() {
                       : "hover:bg-muted text-muted-foreground"
                   }`}
                 >
-                  {salon}
+                  {salonLabel(salon)}
                 </button>
               )
             })}

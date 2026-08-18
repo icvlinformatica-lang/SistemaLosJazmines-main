@@ -5,6 +5,7 @@ import {
   formatCurrency,
   calcularComprasSegmentadas,
   calcularComprasBarras,
+  salonLabel,
   type Receta,
   type Evento,
   type Insumo,
@@ -232,7 +233,7 @@ export function UnifiedDocument({ snapshot, onClose, sections }: UnifiedDocument
     html += `<div style="${S.headerRight}">`
     html += `<div><strong>Fecha:</strong> ${new Date(evento.fecha).toLocaleDateString("es-AR")}</div>`
     if (evento.horario) html += `<div><strong>Horario:</strong> ${evento.horario}</div>`
-    if (evento.salon) html += `<div><strong>Salon:</strong> ${evento.salon}</div>`
+    if (evento.salon) html += `<div><strong>Salon:</strong> ${salonLabel(evento.salon)}</div>`
     html += `<div style="${S.headerTotal}">Total: ${totalPersonas} personas</div>`
     html += `</div></div>`
 
@@ -436,7 +437,7 @@ export function UnifiedDocument({ snapshot, onClose, sections }: UnifiedDocument
                 )}
                 {evento.salon && (
                   <p>
-                    <strong>Salon:</strong> {evento.salon}
+                    <strong>Salon:</strong> {salonLabel(evento.salon)}
                   </p>
                 )}
                 <p className="mt-2 text-lg font-bold">Total: {totalPersonas} personas</p>

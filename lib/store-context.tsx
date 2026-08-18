@@ -37,6 +37,7 @@ import {
   congelarCostosEvento,
   generateNextCodigo,
   RECETA_CODIGO_PREFIX,
+  setSalonNombresCustom,
 } from "./store"
 import {
   Dialog,
@@ -238,6 +239,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [anioIPC, setAnioIPC] = useState<number>(new Date().getFullYear())
   const { toast } = useToast()
   const { soloLectura } = useClock()
+
+  // Mantener el registro global de nombres personalizados de salones al día,
+  // para que salonLabel() muestre el nombre elegido en todo el sistema.
+  useEffect(() => {
+    setSalonNombresCustom(state.configuracionCajas)
+  }, [state.configuracionCajas])
 
   useEffect(() => {
     const initializeData = async () => {

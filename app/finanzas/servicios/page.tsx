@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, memo } from "react"
 import { useStore } from "@/lib/store-context"
 import { generateId, type Servicio, type CategoriaServicio } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
@@ -15,7 +15,16 @@ import {
   Tag,
   DollarSign,
   ShoppingBag,
+  Minus,
 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -37,6 +46,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { Switch } from "@/components/ui/switch"
 import { PapeleraServiciosButton } from "@/components/servicios-eliminados-card"
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -240,6 +250,87 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, m
   )
 }
 
+// ─── Filas separadoras de año (verdes) ────────────────────────────────────────
+// Son filas de la misma tabla, marcadas con codigo="SEPARADOR" y activo=false,
+// por lo que nunca aparecen como servicios contratables en eventos.
+const esSeparador = (s: Servicio) => s.codigo === "SEPARADOR"
+
+// Diálogo con estado propio: al tipear acá NO se re-renderiza la tabla entera
+// (eso era lo que tildaba la compu al crear separadores).
+const SeparadorDialog = memo(function SeparadorDialog({
+  open,
+  onOpenChange,
+  onCrear,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCrear: (texto: string) => void
+}) {
+  const [texto, setTexto] = useState("")
+
+  const handleCrear = () => {
+    const t = texto.trim()
+    if (!t) return
+    onCrear(t)
+    setTexto("")
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o)
+        if (!o) setTexto("")
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Nuevo separador</DialogTitle>
+          <DialogDescription>
+            Crea una fila verde para organizar la tabla. Escribí un año (ej: 2029) o el texto que quieras.
+            Después ubicala con las flechas de subir/bajar.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Input
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Ej: 2029, PROMOS, EXTRAS..."
+            maxLength={40}
+            autoFocus
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.nativeEvent.isComposing &&
+                (e as unknown as { keyCode?: number }).keyCode !== 229
+              ) {
+                handleCrear()
+              }
+            }}
+          />
+          {texto.trim() && (
+            <div className="rounded-md bg-emerald-600 px-3 py-1.5">
+              <span className="text-white font-bold text-[15px] uppercase tracking-widest">{texto.trim()}</span>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleCrear}
+            disabled={!texto.trim()}
+            className="bg-emerald-600 text-white hover:bg-emerald-700"
+          >
+            Crear separador
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function FinanzasServiciosPage() {
@@ -250,6 +341,8 @@ export default function FinanzasServiciosPage() {
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaServicio | "todas">("todas")
   const [idEliminar, setIdEliminar] = useState<string | null>(null)
   const [confirmoCongelado, setConfirmoCongelado] = useState(false)
+  const [separadorDialogOpen, setSeparadorDialogOpen] = useState(false)
+  const [separadorEliminar, setSeparadorEliminar] = useState<Servicio | null>(null)
 
   // ── Servicios ordenados (orden manual tipo Excel) ─────────────────────────
   const serviciosOrdenados = servicios
@@ -258,8 +351,10 @@ export default function FinanzasServiciosPage() {
     .map((x) => x.s)
 
   // ── Servicios filtrados ────────────────────────────────────────────────────
+  // Nota: acá se muestran también los desactivados (con el toggle apagado).
+  // En el resto del sistema (eventos, contratos, etc.) los inactivos no aparecen.
   const serviciosFiltrados = serviciosOrdenados.filter((s) => {
-    if (!s.activo) return false
+    if (esSeparador(s)) return !busqueda && categoriaFiltro === "todas"
     if (categoriaFiltro !== "todas" && s.categoria !== categoriaFiltro) return false
     if (busqueda) {
       const q = busqueda.toLowerCase()
@@ -272,6 +367,8 @@ export default function FinanzasServiciosPage() {
     }
     return true
   })
+
+  const serviciosReales = serviciosFiltrados.filter((s) => !esSeparador(s))
 
   // ── Mover fila arriba/abajo (persiste el orden en la base) ────────────────
   const moverServicio = async (id: string, dir: -1 | 1) => {
@@ -305,9 +402,9 @@ export default function FinanzasServiciosPage() {
     }
   }
 
-  // ── Totales pie de tabla ───────────────────────────────────────────────────
-  const totalVenta = serviciosFiltrados.reduce((sum, s) => sum + (s.precioVenta ?? 0), 0)
-  const totalCosto = serviciosFiltrados.reduce((sum, s) => sum + (s.costoParaCajaEventos ?? 0), 0)
+  // ── Totales pie de tabla (sin contar filas separadoras de año) ────────────
+  const totalVenta = serviciosReales.reduce((sum, s) => sum + (s.precioVenta ?? 0), 0)
+  const totalCosto = serviciosReales.reduce((sum, s) => sum + (s.costoParaCajaEventos ?? 0), 0)
 
   // ── Agregar fila nueva ─────────────────────────────────────────────────────
   const handleAgregarFila = () => {
@@ -328,6 +425,41 @@ export default function FinanzasServiciosPage() {
     }
     addServicio(nuevo)
     toast({ title: "Servicio agregado", description: "Editá las celdas directamente." })
+  }
+
+  // ── Crear fila separadora (verde) con texto libre ──────────────────────────
+  const handleCrearSeparador = (texto: string) => {
+    const nuevo: Servicio = {
+      id: generateId(),
+      codigo: "SEPARADOR",
+      nombre: texto,
+      descripcion: "",
+      categoria: "Otros",
+      margenGanancia: 0,
+      unidad: "Fijo",
+      precioVenta: 0,
+      costoParaCajaEventos: 0,
+      porcentajeSeña: 0,
+      diasAnticipacionSeña: 30,
+      diasAnticipacionSaldo: 7,
+      activo: false,
+      orden: serviciosOrdenados.length,
+    }
+    // Cerrar el diálogo ANTES de tocar el estado global para que la UI responda al instante
+    setSeparadorDialogOpen(false)
+    addServicio(nuevo)
+    toast({
+      title: "Separador creado",
+      description: `"${texto}" se agregó al final de la tabla. Usá las flechas para ubicarlo.`,
+    })
+  }
+
+  // ── Eliminar separador (confirmación simple, sin papelera ni congelamiento) ─
+  const handleEliminarSeparador = () => {
+    if (!separadorEliminar) return
+    deleteServicio(separadorEliminar.id)
+    setSeparadorEliminar(null)
+    toast({ title: "Separador eliminado" })
   }
 
   // ── Handlers de actualización inline ─────────────────────────────────────
@@ -368,6 +500,14 @@ export default function FinanzasServiciosPage() {
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <PapeleraServiciosButton />
+          <Button
+            variant="outline"
+            onClick={() => setSeparadorDialogOpen(true)}
+            className="gap-2 border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+          >
+            <Minus className="h-4 w-4" />
+            Separadores
+          </Button>
           <Button onClick={handleAgregarFila} className="gap-2">
             <Plus className="h-4 w-4" />
             Agregar servicio
@@ -401,7 +541,7 @@ export default function FinanzasServiciosPage() {
           </SelectContent>
         </Select>
         <span className="text-sm text-muted-foreground ml-auto hidden sm:block">
-          {serviciosFiltrados.length} servicio{serviciosFiltrados.length !== 1 ? "s" : ""}
+          {serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""}
         </span>
       </div>
 
@@ -435,6 +575,7 @@ export default function FinanzasServiciosPage() {
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
               <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[110px]">Creado</th>
+              <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[70px]">Activo</th>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -442,7 +583,7 @@ export default function FinanzasServiciosPage() {
           <tbody>
             {serviciosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={11} className="text-center py-16 text-muted-foreground">
+                <td colSpan={12} className="text-center py-16 text-muted-foreground">
                   {busqueda || categoriaFiltro !== "todas"
                     ? "No se encontraron servicios con esos filtros."
                     : "No hay servicios. Hacé clic en \"Agregar servicio\" para empezar."}
@@ -451,6 +592,53 @@ export default function FinanzasServiciosPage() {
             )}
 
             {serviciosFiltrados.map((s, idx) => {
+              // Fila separadora de año: verde, letra blanca, solo se puede subir/bajar y borrar.
+              if (esSeparador(s)) {
+                return (
+                  <tr key={s.id} className="border-b border-border/60 bg-emerald-600 group">
+                    <td className="px-1.5 py-[3px] select-none">
+                      <div className="flex items-center gap-1">
+                        <div className="flex flex-col">
+                          <button
+                            type="button"
+                            onClick={() => moverServicio(s.id, -1)}
+                            disabled={idx === 0}
+                            className="min-h-0 p-0.5 rounded text-white/60 hover:text-white hover:bg-emerald-700 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                            title="Subir fila"
+                            aria-label={`Subir separador ${s.nombre}`}
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moverServicio(s.id, 1)}
+                            disabled={idx === serviciosFiltrados.length - 1}
+                            className="min-h-0 p-0.5 rounded text-white/60 hover:text-white hover:bg-emerald-700 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                            title="Bajar fila"
+                            aria-label={`Bajar separador ${s.nombre}`}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                    <td colSpan={10} className="px-3 py-1.5">
+                      <span className="text-white font-bold text-[15px] uppercase tracking-widest">{s.nombre}</span>
+                    </td>
+                    <td className="px-2 py-[3px]">
+                      <button
+                        type="button"
+                        onClick={() => setSeparadorEliminar(s)}
+                        className="min-h-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-emerald-700 text-white/60 hover:text-white"
+                        title="Eliminar separador"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
               const venta = s.precioVenta ?? 0
               const costo = s.costoParaCajaEventos ?? 0
               const ganancia = venta - costo
@@ -461,7 +649,8 @@ export default function FinanzasServiciosPage() {
                   key={s.id}
                   className={cn(
                     "border-b border-border/60 hover:bg-muted/30 transition-colors group",
-                    idx % 2 === 0 ? "bg-card" : "bg-muted/10"
+                    idx % 2 === 0 ? "bg-card" : "bg-muted/10",
+                    !s.activo && "opacity-50"
                   )}
                 >
                   {/* Nro fila + mover */}
@@ -626,6 +815,16 @@ export default function FinanzasServiciosPage() {
                       : "—"}
                   </td>
 
+                  {/* Activo / Inactivo */}
+                  <td className="px-2 py-[3px] text-center">
+                    <Switch
+                      checked={s.activo}
+                      onCheckedChange={(checked) => update(s.id, { activo: checked })}
+                      title={s.activo ? "Servicio activo (visible en eventos)" : "Servicio desactivado (oculto en eventos)"}
+                      aria-label={`${s.activo ? "Desactivar" : "Activar"} ${s.nombre}`}
+                    />
+                  </td>
+
                   {/* Eliminar */}
                   <td className="px-2 py-[3px]">
                     <button
@@ -647,7 +846,7 @@ export default function FinanzasServiciosPage() {
             <tfoot>
               <tr className="border-t-2 border-border bg-muted/60 font-semibold">
                 <td colSpan={4} className="px-3 py-2.5 text-sm text-muted-foreground">
-                  Total ({serviciosFiltrados.length} servicio{serviciosFiltrados.length !== 1 ? "s" : ""})
+                  Total ({serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""})
                 </td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
                   {formatARS(totalVenta)}
@@ -760,6 +959,43 @@ export default function FinanzasServiciosPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 disabled:pointer-events-none"
             >
               Borrar (va a la papelera)
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Crear separador (fila verde) — componente con estado propio para no re-renderizar la tabla */}
+      <SeparadorDialog
+        open={separadorDialogOpen}
+        onOpenChange={setSeparadorDialogOpen}
+        onCrear={handleCrearSeparador}
+      />
+
+      {/* Confirmación simple para eliminar separadores */}
+      <AlertDialog open={!!separadorEliminar} onOpenChange={(o) => !o && setSeparadorEliminar(null)}>
+        <AlertDialogContent className="sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este separador?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>Es solo una fila de organización: borrarla no afecta servicios ni eventos.</p>
+                {separadorEliminar && (
+                  <div className="rounded-md bg-emerald-600 px-3 py-1.5">
+                    <span className="text-white font-bold text-[15px] uppercase tracking-widest">
+                      {separadorEliminar.nombre}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleEliminarSeparador}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

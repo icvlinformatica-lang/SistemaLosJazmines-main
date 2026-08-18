@@ -2,7 +2,7 @@
 
 import { Navigation } from "@/components/navigation"
 import { useStore } from "@/lib/store-context"
-import { calcularComprasSegmentadas } from "@/lib/store"
+import { calcularComprasSegmentadas, salonLabel } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -110,7 +110,7 @@ export default function MiseEnPlacePage() {
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
                     {evento.fecha ? new Date(evento.fecha).toLocaleDateString("es-AR") : ""}
-                    {evento.salon ? ` — ${evento.salon}` : ""}
+                    {evento.salon ? ` — ${salonLabel(evento.salon)}` : ""}
                   </p>
                 </div>
               </div>

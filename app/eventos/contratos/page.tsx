@@ -8,6 +8,7 @@ import {
   formatCurrency,
   calcularTotalesPaquete,
   SALONES,
+  salonLabel,
   type EventoGuardado,
   type Receta,
   type Servicio,
@@ -702,7 +703,7 @@ function ContratosPageContent() {
                 }`}
               >
                 <span className={`h-2.5 w-2.5 rounded-full ${color.dot}`} />
-                {salon}
+                {salonLabel(salon)}
                 <span className="tabular-nums opacity-70">{countsPorSalon[salon] ?? 0}</span>
               </button>
             )

@@ -35,7 +35,7 @@ import {
   CalendarDays,
   List,
 } from "lucide-react"
-import { type EventoGuardado } from "@/lib/store"
+import { salonLabel, type EventoGuardado } from "@/lib/store"
 
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
@@ -338,7 +338,7 @@ export default function ProduccionPage() {
                           {ev.nombrePareja || ev.nombre || "Sin nombre"}
                         </span>
                         <span className="block text-[10px] text-orange-700/80 truncate leading-tight">
-                          {getTotalInvitados(ev)} pax{ev.salon ? ` · ${ev.salon}` : ""}
+                          {getTotalInvitados(ev)} pax{ev.salon ? ` · ${salonLabel(ev.salon)}` : ""}
                         </span>
                       </button>
                     ))}

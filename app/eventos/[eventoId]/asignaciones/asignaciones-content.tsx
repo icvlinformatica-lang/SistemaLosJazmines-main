@@ -9,6 +9,7 @@ import {
   asignarPersonalAEvento,
   desasignarPersonalDeEvento,
   calcularCostosEvento,
+  salonLabel,
 } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -207,7 +208,7 @@ export function AsignacionesContent({ evento }: { evento: EventoGuardado }) {
                 : `Faltan ${diasRestantes} dias`}
           </Badge>
           {evento.salon && (
-            <Badge variant="outline">{evento.salon}</Badge>
+            <Badge variant="outline">{salonLabel(evento.salon)}</Badge>
           )}
         </div>
       </div>
