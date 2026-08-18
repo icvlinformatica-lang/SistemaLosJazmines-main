@@ -48,6 +48,7 @@ import {
 } from "@/components/filtros-egresos"
 import { SalonDot } from "@/components/salon-badge"
 import { SaldoHerramientasEventos } from "./saldo-herramientas"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
@@ -300,6 +301,8 @@ useStore()
   const insumos = state.insumos ?? []
   const insumosBarra = state.insumosBarra ?? []
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
+  // Selector de salón estilo perfiles al entrar a la página
+  const [selectorAbierto, setSelectorAbierto] = useState(true)
   const data = useCajaEventos(state, salonFiltro, ahora)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
@@ -1083,6 +1086,19 @@ useStore()
         </TableCell>
       </TableRow>
     ))
+
+  // Selector de salón estilo perfiles al entrar
+  if (selectorAbierto) {
+    return (
+      <SalonSelectorOverlay
+        titulo="Caja Eventos"
+        onSelect={(salon) => {
+          setSalonFiltro(salon)
+          setSelectorAbierto(false)
+        }}
+      />
+    )
+  }
 
   return (
     <div

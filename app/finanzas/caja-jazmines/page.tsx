@@ -85,6 +85,7 @@ import {
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import { SaldoHerramientas } from "./saldo-herramientas"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -970,6 +971,8 @@ export default function CajaJazminePage() {
   const { ahora } = useClock()
   const { toast } = useToast()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
+  // Selector de salón estilo perfiles al entrar a la página
+  const [selectorAbierto, setSelectorAbierto] = useState(true)
 
   // ── Retiro de dinero de Caja Jazmines ────────────────────────────────────
   // Se registra desde "Gastos variables" (opción "Retiro") y SIEMPRE con un
@@ -1200,7 +1203,7 @@ export default function CajaJazminePage() {
     })
   }
 
-  // ── Pagar directo desde la tarjeta de alertas ──────────────────────────
+  // ── Pagar directo desde la tarjeta de alertas ──────────────────���───────
   // Dispara la animación de desvanecido y, al terminar, archiva el gasto en
   // el Archivo Histórico (fijo: avanza vencimiento / variable: se elimina).
   const [alertasPagando, setAlertasPagando] = useState<Set<string>>(new Set())
@@ -1759,6 +1762,19 @@ export default function CajaJazminePage() {
   // Color del salón activo: tiñe el icono del header y el fondo del body.
   const colorSalonActivo =
     salonFiltro === "todos" ? SALON_COLOR_GENERAL : salonColor(salonFiltro, configuracionCajas)
+
+  // Selector de salón estilo perfiles al entrar
+  if (selectorAbierto) {
+    return (
+      <SalonSelectorOverlay
+        titulo="Caja Jazmines"
+        onSelect={(salon) => {
+          setSalonFiltro(salon)
+          setSelectorAbierto(false)
+        }}
+      />
+    )
+  }
 
   return (
     <div

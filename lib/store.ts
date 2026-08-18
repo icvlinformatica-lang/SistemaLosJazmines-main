@@ -513,6 +513,8 @@ export interface ConfiguracionCaja {
   color?: string
   /** Nombre personalizado del salón (editable desde Configuración). Reemplaza la etiqueta en todo el sistema. */
   nombre?: string
+  /** Icono del salón (nombre del catálogo SALON_ICONOS, editable desde Configuración). */
+  icono?: string
 }
 
 export interface ConfiguracionCajas {
