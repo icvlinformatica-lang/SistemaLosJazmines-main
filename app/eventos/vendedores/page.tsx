@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
-import { formatCurrency, type EventoGuardado, type Vendedor } from "@/lib/store"
+import { formatCurrency, salonLabel, type EventoGuardado, type Vendedor } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -250,7 +250,7 @@ function VendedorCard({
                     <p className="text-sm font-medium truncate">{e.nombrePareja || e.nombre || "Sin nombre"}</p>
                     <p className="text-xs text-muted-foreground">
                       Vendido el {formatFecha(fechaVentaEvento(e))}
-                      {e.salon ? ` · ${e.salon}` : ""}
+                      {e.salon ? ` · ${salonLabel(e.salon)}` : ""}
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-teal-800 tabular-nums shrink-0">
@@ -292,7 +292,7 @@ function VendedorCard({
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {formatFecha(e.fecha)}
-                          {e.salon ? ` · ${e.salon}` : ""}
+                          {e.salon ? ` · ${salonLabel(e.salon)}` : ""}
                           {e.tipoEvento ? ` · ${e.tipoEvento}` : ""}
                         </p>
                       </div>

@@ -1458,7 +1458,7 @@ function EventoPageContent() {
                       Precio de venta: {formatCurrency(precioVenta)}
                     </p>
                     <p className="text-xs text-emerald-600">
-                      Definido en Finanzas para {evento.salon} el {evento.fecha}
+                      Definido en Finanzas para {salonLabel(evento.salon)} el {evento.fecha}
                     </p>
                   </div>
                 </div>
