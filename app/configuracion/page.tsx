@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast"
 import type { Insumo, Receta } from "@/lib/store"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { SalonesNombresCard } from "@/components/salones-nombres-card"
 
 type ActivityEntry = {
   id: string
@@ -740,6 +741,9 @@ export default function ConfiguracionPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Nombres de Salones */}
+        <SalonesNombresCard />
 
         {/* Section 2: Respaldo y Recuperacion (colapsable) */}
         <Collapsible open={isRespaldoOpen} onOpenChange={setIsRespaldoOpen}>
