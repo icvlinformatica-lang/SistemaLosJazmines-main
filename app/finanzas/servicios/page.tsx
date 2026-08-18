@@ -15,7 +15,16 @@ import {
   Tag,
   DollarSign,
   ShoppingBag,
+  Minus,
 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -256,6 +265,8 @@ export default function FinanzasServiciosPage() {
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaServicio | "todas">("todas")
   const [idEliminar, setIdEliminar] = useState<string | null>(null)
   const [confirmoCongelado, setConfirmoCongelado] = useState(false)
+  const [separadorDialogOpen, setSeparadorDialogOpen] = useState(false)
+  const [separadorTexto, setSeparadorTexto] = useState("")
 
   // ── Servicios ordenados (orden manual tipo Excel) ─────────────────────────
   const serviciosOrdenados = servicios
@@ -340,6 +351,35 @@ export default function FinanzasServiciosPage() {
     toast({ title: "Servicio agregado", description: "Editá las celdas directamente." })
   }
 
+  // ── Crear fila separadora (verde) con texto libre ──────────────────────────
+  const handleCrearSeparador = () => {
+    const texto = separadorTexto.trim()
+    if (!texto) return
+    const nuevo: Servicio = {
+      id: generateId(),
+      codigo: "SEPARADOR",
+      nombre: texto,
+      descripcion: "",
+      categoria: "Otros",
+      margenGanancia: 0,
+      unidad: "Fijo",
+      precioVenta: 0,
+      costoParaCajaEventos: 0,
+      porcentajeSeña: 0,
+      diasAnticipacionSeña: 30,
+      diasAnticipacionSaldo: 7,
+      activo: false,
+      orden: serviciosOrdenados.length,
+    }
+    addServicio(nuevo)
+    setSeparadorTexto("")
+    setSeparadorDialogOpen(false)
+    toast({
+      title: "Separador creado",
+      description: `"${texto}" se agregó al final de la tabla. Usá las flechas para ubicarlo.`,
+    })
+  }
+
   // ── Handlers de actualización inline ─────────────────────────────────────
   const update = useCallback(
     (id: string, patch: Partial<Servicio>) => {
@@ -378,6 +418,14 @@ export default function FinanzasServiciosPage() {
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <PapeleraServiciosButton />
+          <Button
+            variant="outline"
+            onClick={() => setSeparadorDialogOpen(true)}
+            className="gap-2 border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+          >
+            <Minus className="h-4 w-4" />
+            Separadores
+          </Button>
           <Button onClick={handleAgregarFila} className="gap-2">
             <Plus className="h-4 w-4" />
             Agregar servicio
@@ -833,6 +881,62 @@ export default function FinanzasServiciosPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Crear separador (fila verde) */}
+      <Dialog
+        open={separadorDialogOpen}
+        onOpenChange={(o) => {
+          setSeparadorDialogOpen(o)
+          if (!o) setSeparadorTexto("")
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo separador</DialogTitle>
+            <DialogDescription>
+              Crea una fila verde para organizar la tabla. Escribí un año (ej: 2029) o el texto que quieras.
+              Después ubicala con las flechas de subir/bajar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              value={separadorTexto}
+              onChange={(e) => setSeparadorTexto(e.target.value)}
+              placeholder="Ej: 2029, PROMOS, EXTRAS..."
+              maxLength={40}
+              autoFocus
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.nativeEvent.isComposing &&
+                  (e as unknown as { keyCode?: number }).keyCode !== 229
+                ) {
+                  handleCrearSeparador()
+                }
+              }}
+            />
+            {separadorTexto.trim() && (
+              <div className="rounded-md bg-emerald-600 px-3 py-1.5">
+                <span className="text-white font-bold text-[15px] uppercase tracking-widest">
+                  {separadorTexto.trim()}
+                </span>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSeparadorDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCrearSeparador}
+              disabled={!separadorTexto.trim()}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              Crear separador
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
