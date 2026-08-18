@@ -444,6 +444,7 @@ export default function FinanzasServiciosPage() {
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
               <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[110px]">Creado</th>
+              <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[70px]">Activo</th>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -451,7 +452,7 @@ export default function FinanzasServiciosPage() {
           <tbody>
             {serviciosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={11} className="text-center py-16 text-muted-foreground">
+                <td colSpan={12} className="text-center py-16 text-muted-foreground">
                   {busqueda || categoriaFiltro !== "todas"
                     ? "No se encontraron servicios con esos filtros."
                     : "No hay servicios. Hacé clic en \"Agregar servicio\" para empezar."}
@@ -460,6 +461,53 @@ export default function FinanzasServiciosPage() {
             )}
 
             {serviciosFiltrados.map((s, idx) => {
+              // Fila separadora de año: verde, letra blanca, solo se puede subir/bajar y borrar.
+              if (esSeparador(s)) {
+                return (
+                  <tr key={s.id} className="border-b border-border/60 bg-emerald-600 group">
+                    <td className="px-1.5 py-[3px] select-none">
+                      <div className="flex items-center gap-1">
+                        <div className="flex flex-col">
+                          <button
+                            type="button"
+                            onClick={() => moverServicio(s.id, -1)}
+                            disabled={idx === 0}
+                            className="min-h-0 p-0.5 rounded text-white/60 hover:text-white hover:bg-emerald-700 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                            title="Subir fila"
+                            aria-label={`Subir separador ${s.nombre}`}
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moverServicio(s.id, 1)}
+                            disabled={idx === serviciosFiltrados.length - 1}
+                            className="min-h-0 p-0.5 rounded text-white/60 hover:text-white hover:bg-emerald-700 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                            title="Bajar fila"
+                            aria-label={`Bajar separador ${s.nombre}`}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                    <td colSpan={10} className="px-3 py-1.5">
+                      <span className="text-white font-bold text-[15px] uppercase tracking-widest">{s.nombre}</span>
+                    </td>
+                    <td className="px-2 py-[3px]">
+                      <button
+                        type="button"
+                        onClick={() => setIdEliminar(s.id)}
+                        className="min-h-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-emerald-700 text-white/60 hover:text-white"
+                        title="Eliminar separador"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
               const venta = s.precioVenta ?? 0
               const costo = s.costoParaCajaEventos ?? 0
               const ganancia = venta - costo
@@ -470,7 +518,8 @@ export default function FinanzasServiciosPage() {
                   key={s.id}
                   className={cn(
                     "border-b border-border/60 hover:bg-muted/30 transition-colors group",
-                    idx % 2 === 0 ? "bg-card" : "bg-muted/10"
+                    idx % 2 === 0 ? "bg-card" : "bg-muted/10",
+                    !s.activo && "opacity-50"
                   )}
                 >
                   {/* Nro fila + mover */}
@@ -633,6 +682,16 @@ export default function FinanzasServiciosPage() {
                           year: "numeric",
                         })
                       : "—"}
+                  </td>
+
+                  {/* Activo / Inactivo */}
+                  <td className="px-2 py-[3px] text-center">
+                    <Switch
+                      checked={s.activo}
+                      onCheckedChange={(checked) => update(s.id, { activo: checked })}
+                      title={s.activo ? "Servicio activo (visible en eventos)" : "Servicio desactivado (oculto en eventos)"}
+                      aria-label={`${s.activo ? "Desactivar" : "Activar"} ${s.nombre}`}
+                    />
                   </td>
 
                   {/* Eliminar */}
