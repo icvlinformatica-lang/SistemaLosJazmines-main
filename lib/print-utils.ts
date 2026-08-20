@@ -484,3 +484,106 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     printWindow.close()
   }, 250)
 }
+
+/* ── Lista de platos por categoría ──────────────────────────────
+ * Imprime el listado de recetas agrupado por categoría, mostrando
+ * únicamente el nombre del plato y su categoría (mismo orden que el
+ * planificador de menú). */
+const CATEGORIAS_ORDEN_RECETAS = [
+  "Recepción",
+  "Entrada",
+  "Plato Principal",
+  "Guarnición",
+  "Postre",
+  "Mesa Dulce",
+  "Menú para Niños",
+  "Menú Adolescente",
+  "Celiaco",
+  "Vegano",
+  "Vegetariano",
+  "Sin Sal",
+]
+
+export function imprimirListaRecetas(recetas: Receta[]) {
+  // Agrupar por categoría respetando el orden del planificador; las
+  // categorías que no estén en la lista base se agregan al final.
+  const categoriasExtra = Array.from(
+    new Set(recetas.map((r) => r.categoria).filter((c) => c && !CATEGORIAS_ORDEN_RECETAS.includes(c))),
+  ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }))
+
+  const grupos = [...CATEGORIAS_ORDEN_RECETAS, ...categoriasExtra]
+    .map((cat) => ({
+      categoria: cat,
+      recetas: recetas
+        .filter((r) => (r.categoria || "Sin categoría") === cat)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })),
+    }))
+    .filter((g) => g.recetas.length > 0)
+
+  const printWindow = window.open("", "_blank", "width=900,height=700")
+  if (!printWindow) return
+
+  const S = {
+    page: "margin:0;padding:0;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;color:#000;background:#fff;font-size:11pt;line-height:1.4;",
+    header: "column-span:all;-webkit-column-span:all;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:12px;display:flex;justify-content:space-between;align-items:flex-start;",
+    headerLeft: "font-size:16pt;font-weight:bold;",
+    headerSub: "font-size:10pt;margin-top:4px;",
+    headerRight: "text-align:right;font-size:9pt;",
+    columns: "column-count:2;column-gap:16px;",
+    catBlock: "margin:0 0 16px;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid;",
+    catTitle: "background:#000;color:#fff;padding:6px 10px;font-size:11pt;font-weight:bold;display:flex;justify-content:space-between;-webkit-print-color-adjust:exact;print-color-adjust:exact;",
+    list: "list-style:none;margin:0;padding:0;border:1px solid #000;border-top:none;",
+    itemEven: "padding:5px 10px;font-size:10pt;border-bottom:1px solid #d1d5db;background:#fff;",
+    itemOdd: "padding:5px 10px;font-size:10pt;border-bottom:1px solid #d1d5db;background:#f9fafb;-webkit-print-color-adjust:exact;print-color-adjust:exact;",
+    footer: "column-span:all;-webkit-column-span:all;margin-top:24px;padding-top:12px;border-top:1px solid #000;text-align:center;font-size:8pt;color:#4b5563;",
+  }
+
+  const totalPlatos = grupos.reduce((sum, g) => sum + g.recetas.length, 0)
+
+  let html = ""
+
+  // Contenedor de dos columnas; header y footer ocupan todo el ancho
+  // (column-span:all) para evitar la hoja en blanco inicial de Chrome.
+  html += `<div style="${S.columns}">`
+
+  // ========== HEADER ==========
+  html += `<div style="${S.header}">`
+  html += `<div><div style="${S.headerLeft}">LOS JAZMINES EVENTOS</div>`
+  html += `<div style="${S.headerSub}">Listado de platos por categoría</div></div>`
+  html += `<div style="${S.headerRight}">`
+  html += `<div><strong>Total:</strong> ${totalPlatos} platos</div>`
+  html += `<div>${new Date().toLocaleDateString("es-AR")}</div>`
+  html += `</div></div>`
+
+  // ========== GRUPOS POR CATEGORÍA (dos columnas) ==========
+  grupos.forEach((grupo) => {
+    html += `<div style="${S.catBlock}">`
+    html += `<div style="${S.catTitle}"><span>${grupo.categoria}</span><span>${grupo.recetas.length}</span></div>`
+    html += `<ul style="${S.list}">`
+    grupo.recetas.forEach((receta, i) => {
+      const item = i % 2 === 0 ? S.itemEven : S.itemOdd
+      html += `<li style="${item}">${receta.nombre}</li>`
+    })
+    html += `</ul></div>`
+  })
+
+  // ========== FOOTER ==========
+  html += `<div style="${S.footer}">`
+  html += `<p>Documento generado por Los Jazmines Sistema de Gestión</p>`
+  html += `</div>`
+
+  html += `</div>`
+
+  printWindow.document.write(`<!DOCTYPE html><html><head><title>Los Jazmines - Listado de platos</title>
+<style>
+  @page { margin: 1.2cm; size: A4; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { ${S.page} }
+</style></head><body>${html}</body></html>`)
+
+  printWindow.document.close()
+  setTimeout(() => {
+    printWindow.print()
+    printWindow.close()
+  }, 250)
+}
