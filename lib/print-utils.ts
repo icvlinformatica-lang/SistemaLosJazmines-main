@@ -529,8 +529,9 @@ export function imprimirListaRecetas(recetas: Receta[]) {
     headerLeft: "font-size:16pt;font-weight:bold;",
     headerSub: "font-size:10pt;margin-top:4px;",
     headerRight: "text-align:right;font-size:9pt;",
-    catBlock: "margin-bottom:18px;page-break-inside:avoid;",
-    catTitle: "background:#000;color:#fff;padding:6px 10px;font-size:12pt;font-weight:bold;display:flex;justify-content:space-between;-webkit-print-color-adjust:exact;print-color-adjust:exact;",
+    columns: "column-count:2;column-gap:16px;",
+    catBlock: "margin:0 0 16px;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;width:100%;",
+    catTitle: "background:#000;color:#fff;padding:6px 10px;font-size:11pt;font-weight:bold;display:flex;justify-content:space-between;-webkit-print-color-adjust:exact;print-color-adjust:exact;",
     list: "list-style:none;margin:0;padding:0;border:1px solid #000;border-top:none;",
     itemEven: "padding:5px 10px;font-size:10pt;border-bottom:1px solid #d1d5db;background:#fff;",
     itemOdd: "padding:5px 10px;font-size:10pt;border-bottom:1px solid #d1d5db;background:#f9fafb;-webkit-print-color-adjust:exact;print-color-adjust:exact;",
@@ -550,7 +551,8 @@ export function imprimirListaRecetas(recetas: Receta[]) {
   html += `<div>${new Date().toLocaleDateString("es-AR")}</div>`
   html += `</div></div>`
 
-  // ========== GRUPOS POR CATEGORÍA ==========
+  // ========== GRUPOS POR CATEGORÍA (dos columnas) ==========
+  html += `<div style="${S.columns}">`
   grupos.forEach((grupo) => {
     html += `<div style="${S.catBlock}">`
     html += `<div style="${S.catTitle}"><span>${grupo.categoria}</span><span>${grupo.recetas.length}</span></div>`
@@ -561,6 +563,7 @@ export function imprimirListaRecetas(recetas: Receta[]) {
     })
     html += `</ul></div>`
   })
+  html += `</div>`
 
   // ========== FOOTER ==========
   html += `<div style="${S.footer}">`
