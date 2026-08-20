@@ -32,7 +32,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users, Utensils, Search, LayoutGrid, List } from "lucide-react"
+import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users, Utensils, Search, LayoutGrid, List, Printer } from "lucide-react"
+import { imprimirListaRecetas } from "@/lib/print-utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 
@@ -676,6 +677,23 @@ export default function RecetarioPage() {
                   <CardDescription>{state.recetas.filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase())).length} platos</CardDescription>
                 </div>
                 <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      imprimirListaRecetas(
+                        state.recetas.filter(
+                          (r) =>
+                            r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) ||
+                            r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()),
+                        ),
+                      )
+                    }
+                    className="p-1.5 rounded-md text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+                    aria-label="Imprimir listado de platos por categoría"
+                    title="Imprimir listado de platos"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => setRecetaViewMode("list")}
