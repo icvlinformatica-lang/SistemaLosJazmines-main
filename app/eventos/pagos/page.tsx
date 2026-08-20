@@ -18,6 +18,7 @@ import {
 import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
 import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
 import { ContratoPanel } from "@/components/contrato-panel"
+import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -1045,69 +1046,124 @@ function PagosPageContent() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {cuotasDelMes.map((item) => {
-                  const cn = (...classes: (string | boolean | undefined | null)[]) => classes.filter(Boolean).join(' ')
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                {SALONES.map((salonId) => {
+                  const cuotasSalon = cuotasDelMes.filter((item) => item.evento.salon === salonId)
+                  const cn = (...classes: (string | boolean | undefined | null)[]) =>
+                    classes.filter(Boolean).join(" ")
 
                   return (
-                    <div
-                      key={`${item.evento.id}-${item.numeroCuota}`}
-                      className={cn(
-                        "flex items-center justify-between p-3 rounded-lg border",
-                        item.rangoRecordatorio
-                          ? "bg-amber-50 border-amber-300 shadow-sm"
-                          : "bg-background"
+                    <div key={salonId} className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-2">
+                      <div className="flex items-center justify-between border-b pb-2 px-1">
+                        <span className="flex items-center gap-2 text-sm font-semibold">
+                          <SalonDot salon={salonId} size={8} />
+                          {salonLabel(salonId)}
+                        </span>
+                        <Badge variant="secondary" className="text-xs">
+                          {cuotasSalon.length}
+                        </Badge>
+                      </div>
+                      {cuotasSalon.length === 0 ? (
+                        <p className="px-1 py-3 text-center text-xs text-muted-foreground">Sin cuotas este mes</p>
+                      ) : (
+                        cuotasSalon.map((item) => (
+                          <div
+                            key={`${item.evento.id}-${item.numeroCuota}`}
+                            className={cn(
+                              "flex flex-col gap-1.5 rounded-lg border p-2",
+                              item.rangoRecordatorio ? "bg-amber-50 border-amber-300 shadow-sm" : "bg-background",
+                            )}
+                          >
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-sm font-semibold leading-tight">
+                                {item.evento.nombrePareja || item.evento.nombre}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                Cuota {item.numeroCuota}/{item.evento.planDeCuotas!.numeroCuotas}
+                              </Badge>
+                              {item.rangoRecordatorio && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-amber-700 border-amber-600 text-[10px] px-1.5 py-0"
+                                >
+                                  {"Vence pronto"}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <CalendarIcon className="h-3 w-3" />
+                                Vence: {new Date(item.fechaVencimiento).toLocaleDateString("es-AR")}
+                              </span>
+                              {item.evento.contrato?.telefono && (
+                                <span className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3" />
+                                  {item.evento.contrato.telefono}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-1.5">
+                              <div>
+                                <div className="font-mono text-sm font-bold">{formatCurrency(item.monto)}</div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  {item.evento.tipoEvento || "Evento"}
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs bg-transparent shrink-0"
+                                onClick={() => handleSelectEvento(item.evento)}
+                              >
+                                Ir al evento
+                              </Button>
+                            </div>
+                          </div>
+                        ))
                       )}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold">
-                            {item.evento.nombrePareja || item.evento.nombre}
-                          </span>
-                          <Badge variant="outline" className="text-xs">
-                            Cuota {item.numeroCuota}/{item.evento.planDeCuotas!.numeroCuotas}
-                          </Badge>
-                          {item.rangoRecordatorio && (
-                            <Badge variant="outline" className="text-amber-700 border-amber-600 text-xs">
-                              {"Vence pronto"}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <CalendarIcon className="h-3.5 w-3.5" />
-                            Vence: {new Date(item.fechaVencimiento).toLocaleDateString("es-AR")}
-                          </span>
-                          {item.evento.contrato?.telefono && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3.5 w-3.5" />
-                              {item.evento.contrato.telefono}
-                            </span>
-                          )}
-                          {item.evento.contrato?.nombreCompleto && (
-                            <span className="text-xs">
-                              {item.evento.contrato.nombreCompleto}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right flex items-center gap-3">
-                        <div>
-                          <div className="font-mono font-bold text-lg">
-                            {formatCurrency(item.monto)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {item.evento.tipoEvento || "Evento"}
-                          </div>
-                        </div>
-                        <Button size="sm" variant="outline" onClick={() => handleSelectEvento(item.evento)}>
-                          Ir al evento
-                        </Button>
-                      </div>
                     </div>
                   )
                 })}
               </div>
+              {cuotasDelMes.some((item) => !item.evento.salon) && (
+                <div className="mt-3 rounded-lg border bg-muted/30 p-2">
+                  <div className="flex items-center justify-between border-b pb-2 px-1 mb-2">
+                    <span className="text-sm font-semibold">Sin salón asignado</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {cuotasDelMes.filter((item) => !item.evento.salon).length}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
+                    {cuotasDelMes
+                      .filter((item) => !item.evento.salon)
+                      .map((item) => (
+                        <div
+                          key={`${item.evento.id}-${item.numeroCuota}`}
+                          className="flex flex-col gap-1.5 rounded-lg border bg-background p-2"
+                        >
+                          <span className="text-sm font-semibold leading-tight">
+                            {item.evento.nombrePareja || item.evento.nombre}
+                          </span>
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <CalendarIcon className="h-3 w-3" />
+                            Vence: {new Date(item.fechaVencimiento).toLocaleDateString("es-AR")}
+                          </span>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-mono text-sm font-bold">{formatCurrency(item.monto)}</div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs bg-transparent"
+                              onClick={() => handleSelectEvento(item.evento)}
+                            >
+                              Ir al evento
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
