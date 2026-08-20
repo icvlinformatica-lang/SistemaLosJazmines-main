@@ -525,22 +525,26 @@ export function imprimirListaRecetas(recetas: Receta[]) {
 
   const S = {
     page: "margin:0;padding:0;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;color:#000;background:#fff;font-size:11pt;line-height:1.4;",
-    header: "margin-bottom:20px;border-bottom:2px solid #000;padding-bottom:12px;display:flex;justify-content:space-between;align-items:flex-start;",
+    header: "column-span:all;-webkit-column-span:all;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:12px;display:flex;justify-content:space-between;align-items:flex-start;",
     headerLeft: "font-size:16pt;font-weight:bold;",
     headerSub: "font-size:10pt;margin-top:4px;",
     headerRight: "text-align:right;font-size:9pt;",
     columns: "column-count:2;column-gap:16px;",
-    catBlock: "margin:0 0 16px;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;width:100%;",
+    catBlock: "margin:0 0 16px;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid;",
     catTitle: "background:#000;color:#fff;padding:6px 10px;font-size:11pt;font-weight:bold;display:flex;justify-content:space-between;-webkit-print-color-adjust:exact;print-color-adjust:exact;",
     list: "list-style:none;margin:0;padding:0;border:1px solid #000;border-top:none;",
     itemEven: "padding:5px 10px;font-size:10pt;border-bottom:1px solid #d1d5db;background:#fff;",
     itemOdd: "padding:5px 10px;font-size:10pt;border-bottom:1px solid #d1d5db;background:#f9fafb;-webkit-print-color-adjust:exact;print-color-adjust:exact;",
-    footer: "margin-top:24px;padding-top:12px;border-top:1px solid #000;text-align:center;font-size:8pt;color:#4b5563;",
+    footer: "column-span:all;-webkit-column-span:all;margin-top:24px;padding-top:12px;border-top:1px solid #000;text-align:center;font-size:8pt;color:#4b5563;",
   }
 
   const totalPlatos = grupos.reduce((sum, g) => sum + g.recetas.length, 0)
 
   let html = ""
+
+  // Contenedor de dos columnas; header y footer ocupan todo el ancho
+  // (column-span:all) para evitar la hoja en blanco inicial de Chrome.
+  html += `<div style="${S.columns}">`
 
   // ========== HEADER ==========
   html += `<div style="${S.header}">`
@@ -552,7 +556,6 @@ export function imprimirListaRecetas(recetas: Receta[]) {
   html += `</div></div>`
 
   // ========== GRUPOS POR CATEGORÍA (dos columnas) ==========
-  html += `<div style="${S.columns}">`
   grupos.forEach((grupo) => {
     html += `<div style="${S.catBlock}">`
     html += `<div style="${S.catTitle}"><span>${grupo.categoria}</span><span>${grupo.recetas.length}</span></div>`
@@ -563,11 +566,12 @@ export function imprimirListaRecetas(recetas: Receta[]) {
     })
     html += `</ul></div>`
   })
-  html += `</div>`
 
   // ========== FOOTER ==========
   html += `<div style="${S.footer}">`
   html += `<p>Documento generado por Los Jazmines Sistema de Gestión</p>`
+  html += `</div>`
+
   html += `</div>`
 
   printWindow.document.write(`<!DOCTYPE html><html><head><title>Los Jazmines - Listado de platos</title>
