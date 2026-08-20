@@ -60,6 +60,8 @@ import {
   Phone,
   TrendingUp,
   X,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 
 const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -413,6 +415,10 @@ function PagosPageContent() {
   }, [])
 
   const [showContractPreview, setShowContractPreview] = useState(false)
+  // Salones plegados en la tarjeta de cuotas del mes (tiras angostas)
+  const [salonesPlegados, setSalonesPlegados] = useState<string[]>([])
+  const toggleSalonPlegado = (salonId: string) =>
+    setSalonesPlegados((prev) => (prev.includes(salonId) ? prev.filter((s) => s !== salonId) : [...prev, salonId]))
   const [showContratoPanel, setShowContratoPanel] = useState(false)
 
   // Protección con PIN de administración para editar el contrato.
@@ -1055,22 +1061,58 @@ function PagosPageContent() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+              <div className="flex flex-col lg:flex-row gap-2">
                 {SALONES.map((salonId) => {
                   const cuotasSalon = cuotasDelMes.filter((item) => item.evento.salon === salonId)
+                  const plegado = salonesPlegados.includes(salonId)
                   const cn = (...classes: (string | boolean | undefined | null)[]) =>
                     classes.filter(Boolean).join(" ")
 
-                  return (
-                    <div key={salonId} className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-2">
-                      <div className="flex items-center justify-between border-b pb-2 px-1">
-                        <span className="flex items-center gap-2 text-sm font-semibold">
+                  if (plegado) {
+                    return (
+                      <button
+                        key={salonId}
+                        type="button"
+                        onClick={() => toggleSalonPlegado(salonId)}
+                        className="flex lg:flex-col items-center justify-between lg:justify-start gap-2 rounded-lg border bg-muted/50 px-3 py-2 lg:px-1.5 lg:py-3 lg:w-9 shrink-0 transition-colors hover:bg-muted"
+                        aria-label={`Mostrar columna ${salonLabel(salonId)}`}
+                        title={`Mostrar ${salonLabel(salonId)}`}
+                      >
+                        <EyeOff className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                        <span className="flex lg:flex-col items-center gap-2 lg:gap-1.5 min-w-0">
                           <SalonDot salon={salonId} size={8} />
-                          {salonLabel(salonId)}
+                          <span className="text-xs font-semibold text-muted-foreground lg:[writing-mode:vertical-rl] whitespace-nowrap">
+                            {salonLabel(salonId)}
+                          </span>
                         </span>
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
                           {cuotasSalon.length}
                         </Badge>
+                      </button>
+                    )
+                  }
+
+                  return (
+                    <div key={salonId} className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-2 flex-1 min-w-0">
+                      <div className="flex items-center justify-between border-b pb-2 px-1 gap-1">
+                        <span className="flex items-center gap-2 text-sm font-semibold min-w-0">
+                          <SalonDot salon={salonId} size={8} />
+                          <span className="truncate">{salonLabel(salonId)}</span>
+                        </span>
+                        <span className="flex items-center gap-1 shrink-0">
+                          <Badge variant="secondary" className="text-xs">
+                            {cuotasSalon.length}
+                          </Badge>
+                          <button
+                            type="button"
+                            onClick={() => toggleSalonPlegado(salonId)}
+                            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            aria-label={`Plegar columna ${salonLabel(salonId)}`}
+                            title={`Plegar ${salonLabel(salonId)}`}
+                          >
+                            <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        </span>
                       </div>
                       {cuotasSalon.length === 0 ? (
                         <p className="px-1 py-3 text-center text-xs text-muted-foreground">Sin cuotas este mes</p>
