@@ -67,7 +67,10 @@ import {
   CheckCircle2,
   Briefcase,
   FileText,
+  ArrowRight,
+  RefreshCw,
 } from "lucide-react"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
 // --- Helpers ---
 const DIAS_SEMANA = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -316,6 +319,8 @@ export default function CalendarioPage() {
 
   // Filtro por salón: vacío = mostrar todos
   const [salonesFiltrados, setSalonesFiltrados] = useState<string[]>([])
+  // Selector de salón estilo perfiles al entrar a la página
+  const [selectorAbierto, setSelectorAbierto] = useState(true)
   const eventos = useMemo(() => {
     if (salonesFiltrados.length === 0) return eventosTodos
     return eventosTodos.filter((e) => e.salon && salonesFiltrados.includes(e.salon))
@@ -1095,6 +1100,21 @@ export default function CalendarioPage() {
 
   const totalPagos = selectedEvento ? (selectedEvento.pagos || []).reduce((s, p) => s + p.monto, 0) : 0
 
+  // Selector de salón estilo perfiles al entrar
+  if (selectorAbierto) {
+    return (
+      <SalonSelectorOverlay
+        titulo="Calendario de Eventos"
+        onSelect={(salon) => {
+          setSalonesFiltrados(salon === "todos" ? [] : [salon])
+          setSelectorAbierto(false)
+        }}
+      />
+    )
+  }
+
+  const salonActivo = salonesFiltrados.length === 1 ? salonesFiltrados[0] : "todos"
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -1105,6 +1125,31 @@ export default function CalendarioPage() {
           </Link>
           <CalendarIcon className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">Calendario de Eventos</h1>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
+              Cambiar salón
+              <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectorAbierto(true)}
+              className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
+              aria-label="Cambiar salón: volver al selector de salones"
+            >
+              <RefreshCw
+                className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
+                aria-hidden="true"
+              />
+              {salonActivo === "todos" ? (
+                <span>Todos los salones</span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <SalonDot salon={salonActivo} size={8} />
+                  {salonLabel(salonActivo)}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
