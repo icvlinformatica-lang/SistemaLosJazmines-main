@@ -4,18 +4,11 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useEventos } from "@/lib/use-eventos"
-import { SALONES, salonLabel } from "@/lib/store"
+import { salonLabel } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -40,10 +33,14 @@ import {
   RotateCcw,
   ArrowUp,
   ArrowDown,
+  ArrowRight,
   Calculator,
   FileText,
   User,
+  RefreshCw,
 } from "lucide-react"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
+import { SalonDot } from "@/components/salon-badge"
 
 export default function EventosFinalizadosPage() {
   const router = useRouter()
@@ -53,6 +50,8 @@ export default function EventosFinalizadosPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
   const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
+  // Selector de salón estilo perfiles al entrar a la página
+  const [selectorAbierto, setSelectorAbierto] = useState(true)
 
   // Filtrar solo eventos finalizados
   const eventosFiltrados = (eventos || [])
@@ -96,6 +95,19 @@ export default function EventosFinalizadosPage() {
     }
   }
 
+  // Selector de salón estilo perfiles al entrar
+  if (selectorAbierto) {
+    return (
+      <SalonSelectorOverlay
+        titulo="Archivo de eventos"
+        onSelect={(salon) => {
+          setFiltroSalon(salon)
+          setSelectorAbierto(false)
+        }}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -107,9 +119,34 @@ export default function EventosFinalizadosPage() {
               {eventosFiltrados.length} evento{eventosFiltrados.length !== 1 ? "s" : ""} archivado{eventosFiltrados.length !== 1 ? "s" : ""} — los datos quedan congelados hasta sacarlos del archivo
             </p>
           </div>
-          <Button variant="outline" onClick={() => router.push("/eventos/lista")}>
-            Volver a Lista
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
+              Cambiar salón
+              <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectorAbierto(true)}
+              className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
+              aria-label="Cambiar salón: volver al selector de salones"
+            >
+              <RefreshCw
+                className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
+                aria-hidden="true"
+              />
+              {filtroSalon === "todos" ? (
+                <span>Todos los salones</span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <SalonDot salon={filtroSalon} size={8} />
+                  {salonLabel(filtroSalon)}
+                </span>
+              )}
+            </button>
+            <Button variant="outline" onClick={() => router.push("/eventos/lista")}>
+              Volver a Lista
+            </Button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -124,17 +161,7 @@ export default function EventosFinalizadosPage() {
                   className="w-full"
                 />
               </div>
-              <Select value={filtroSalon} onValueChange={setFiltroSalon}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Salón" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos los salones</SelectItem>
-                  {SALONES.map((s) => (
-                    <SelectItem key={s} value={s}>{salonLabel(s)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
             </div>
           </CardContent>
         </Card>

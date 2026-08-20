@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import { formatCurrency } from "@/lib/utils-financieros"
-import { SALONES, salonLabel, type GastoArchivado } from "@/lib/store"
+import { salonLabel, type GastoArchivado } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,13 +19,16 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Archive,
   ArrowLeft,
-  Building,
+  ArrowRight,
   CalendarDays,
   Wallet,
   Receipt,
   RotateCcw,
   PartyPopper,
+  RefreshCw,
 } from "lucide-react"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
+import { SalonDot } from "@/components/salon-badge"
 import { BarrasPorPeriodo, CircularDistribucion, type SerieItem } from "./archivo-charts"
 
 const ORIGEN_LABEL: Record<GastoArchivado["origen"], string> = {
@@ -55,6 +58,8 @@ export default function ArchivoPage() {
   const { gastosArchivados, desarchivarGasto } = useStore()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
   const [origenFiltro, setOrigenFiltro] = useState<string>("todos")
+  // Selector de salón estilo perfiles al entrar a la página
+  const [selectorAbierto, setSelectorAbierto] = useState(true)
 
   const gastos = useMemo(() => {
     return (gastosArchivados || [])
@@ -134,6 +139,19 @@ export default function ArchivoPage() {
       .sort((a, b) => b.total - a.total)
   }, [gastos])
 
+  // Selector de salón estilo perfiles al entrar
+  if (selectorAbierto) {
+    return (
+      <SalonSelectorOverlay
+        titulo="Archivo de gastos"
+        onSelect={(salon) => {
+          setSalonFiltro(salon)
+          setSelectorAbierto(false)
+        }}
+      />
+    )
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 space-y-6">
       {/* Header */}
@@ -168,22 +186,32 @@ export default function ArchivoPage() {
               <SelectItem value="caja_eventos">Eventos</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex items-center gap-1.5">
-            <Building className="h-4 w-4 text-muted-foreground" />
-            <Select value={salonFiltro} onValueChange={setSalonFiltro}>
-              <SelectTrigger className="w-[170px] h-9" aria-label="Filtrar por salón">
-                <SelectValue placeholder="Todos los salones" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos los salones</SelectItem>
-                <SelectItem value="General">General</SelectItem>
-                {SALONES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {salonLabel(s)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
+              Cambiar salón
+              <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectorAbierto(true)}
+              className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
+              aria-label="Cambiar salón: volver al selector de salones"
+            >
+              <RefreshCw
+                className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
+                aria-hidden="true"
+              />
+              {salonFiltro === "todos" ? (
+                <span>Todos los salones</span>
+              ) : salonFiltro === "General" ? (
+                <span>General</span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <SalonDot salon={salonFiltro} size={8} />
+                  {salonLabel(salonFiltro)}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </div>
