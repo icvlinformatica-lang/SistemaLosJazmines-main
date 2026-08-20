@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
+import { useUI } from "@/lib/ui-context"
 import {
   generateId,
   formatCurrency,
@@ -403,6 +404,14 @@ function PagosPageContent() {
   const vieneDeLista = Boolean(initialSearch)
   const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
   const { toast } = useToast()
+  const { setSidebarOpen } = useUI()
+
+  // Ocultar automáticamente el panel lateral al entrar (se reabre con hover)
+  useEffect(() => {
+    setSidebarOpen(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const [showContractPreview, setShowContractPreview] = useState(false)
   const [showContratoPanel, setShowContratoPanel] = useState(false)
 
