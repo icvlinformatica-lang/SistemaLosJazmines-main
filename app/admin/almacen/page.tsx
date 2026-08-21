@@ -22,6 +22,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Plus, Search, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Printer } from "lucide-react"
+import { InsumosPrecioHistorialDialog } from "@/components/insumos-precio-historial-dialog"
+import { InsumoDeleteDialog } from "@/components/insumo-delete-dialog"
 
 const unidades: Unidad[] = ["CC", "KG", "UN", "LT", "GR"]
 
@@ -29,7 +31,7 @@ type SortField = "codigo" | "descripcion" | "stockActual"
 type SortDir = "asc" | "desc"
 
 function AlmacenContent() {
-  const { insumos, loading: isLoading, addInsumo, updateInsumo, deleteInsumo } = useStore()
+  const { insumos, recetas, loading: isLoading, addInsumo, updateInsumo, deleteInsumo } = useStore()
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<SortField>("codigo")
@@ -37,6 +39,8 @@ function AlmacenContent() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<Insumo | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Insumo pendiente de eliminar (abre el diálogo de seguridad)
+  const [insumoAEliminar, setInsumoAEliminar] = useState<Insumo | null>(null)
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -219,13 +223,15 @@ function AlmacenContent() {
     setTimeout(imprimir, 300)
   }
 
-  const handleDelete = async (id: string) => {
-    if (confirm("¿Estás seguro de eliminar este insumo?")) {
-      try {
-        await deleteInsumo(id)
-      } catch (error) {
-        console.error("Error deleting insumo:", error)
-      }
+  // La eliminación pasa por el diálogo de seguridad (InsumoDeleteDialog):
+  // muestra las recetas afectadas y exige confirmaciones antes de borrar.
+  const handleConfirmDelete = async (insumo: Insumo) => {
+    try {
+      await deleteInsumo(insumo.id)
+      toast({ title: "Insumo eliminado", description: `${insumo.descripcion} se eliminó del almacén.` })
+    } catch (error) {
+      console.error("Error deleting insumo:", error)
+      throw error
     }
   }
 
@@ -270,6 +276,7 @@ function AlmacenContent() {
                   <Printer className="h-4 w-4" />
                   <span className="sr-only">Imprimir lista de insumos</span>
                 </Button>
+                <InsumosPrecioHistorialDialog />
                 <Dialog
                   open={isAddDialogOpen}
                   onOpenChange={(open) => {
@@ -403,7 +410,12 @@ function AlmacenContent() {
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setInsumoAEliminar(insumo)}
+                            aria-label={`Eliminar ${insumo.descripcion}`}
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -417,6 +429,14 @@ function AlmacenContent() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Diálogo de seguridad para eliminar insumos */}
+      <InsumoDeleteDialog
+        insumo={insumoAEliminar}
+        recetas={Array.isArray(recetas) ? recetas : []}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setInsumoAEliminar(null)}
+      />
     </main>
   )
 }

@@ -47,6 +47,20 @@ export async function POST(request: Request) {
     `
 
     await logActivity("insumo", "creado", data.descripcion, `Código: ${data.codigo}`)
+
+    // Registrar el precio inicial en el historial de evolución
+    if (Number(data.precio_unitario) > 0) {
+      try {
+        await sql`
+          INSERT INTO insumos_precio_historial (insumo_id, precio_anterior, precio)
+          VALUES (${data.id}, NULL, ${Number(data.precio_unitario)})
+          ON CONFLICT (insumo_id, fecha) DO UPDATE SET precio = EXCLUDED.precio
+        `
+      } catch (histErr) {
+        console.error("[API] Error registrando precio inicial:", histErr)
+      }
+    }
+
     return NextResponse.json({
       id: data.id,
       codigo: data.codigo,

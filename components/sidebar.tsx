@@ -65,6 +65,16 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
     ]
   }
 
+  // Perfil "Cocina": accesos directos sin carpetas, visibles al instante.
+  if (perfilId === "cocina") {
+    return [
+      { href: "/", label: "Inicio", icon: Home },
+      { href: "/admin/recetario", label: "Recetas", icon: ChefHat },
+      { href: "/admin/almacen", label: "Insumos", icon: Warehouse },
+      { href: "/eventos/produccion", label: "Proximos eventos", icon: Calendar },
+    ]
+  }
+
   return [
     { href: "/", label: "Inicio", icon: Home },
     {

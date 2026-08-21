@@ -40,6 +40,9 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
+    // Precio actual antes de actualizar (para el historial de evolución)
+    const [previo] = await sql`SELECT precio_unitario FROM insumos WHERE id = ${id}`
+
     const [data] = await sql`
       UPDATE insumos SET
         codigo          = COALESCE(${body.codigo ?? null}, codigo),
@@ -55,6 +58,23 @@ export async function PATCH(
 
     if (!data) {
       return NextResponse.json({ error: "Insumo not found" }, { status: 404 })
+    }
+
+    // Registro automático de evolución de precio: una fila por insumo y día.
+    // Si el precio cambia varias veces el mismo día, se conserva el último.
+    const precioNuevo = Number(data.precio_unitario)
+    const precioPrevio = previo ? Number(previo.precio_unitario) : null
+    if (body.precioUnitario != null && precioPrevio !== null && precioNuevo !== precioPrevio) {
+      try {
+        await sql`
+          INSERT INTO insumos_precio_historial (insumo_id, precio_anterior, precio)
+          VALUES (${id}, ${precioPrevio}, ${precioNuevo})
+          ON CONFLICT (insumo_id, fecha)
+          DO UPDATE SET precio = EXCLUDED.precio
+        `
+      } catch (histErr) {
+        console.error("[API] Error registrando historial de precio:", histErr)
+      }
     }
 
     return NextResponse.json({
