@@ -41,6 +41,7 @@ import { salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { cn } from "@/lib/utils"
+import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
@@ -69,6 +70,12 @@ export default function ProduccionPage() {
   const { state } = useStore()
   const { eventos, loading } = useEventos()
   const { recetas } = useRecetas()
+
+  // Sincronización en tiempo real: refresca eventos (recetas asignadas,
+  // invitados, rinde) cada 15s y al volver a la pestaña, para que la pantalla
+  // de cocina refleje los cambios sin recargar. Las recetas se refrescan solas
+  // vía SWR (useRecetas, 30s).
+  useSyncTiempoReal()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedEvento, setSelectedEvento] = useState<EventoGuardado | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
