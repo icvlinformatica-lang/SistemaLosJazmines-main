@@ -34,8 +34,13 @@ import {
   ChevronRight,
   CalendarDays,
   List,
+  ArrowRight,
+  RefreshCw,
 } from "lucide-react"
 import { salonLabel, type EventoGuardado } from "@/lib/store"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
+import { SalonDot } from "@/components/salon-badge"
+import { cn } from "@/lib/utils"
 
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
@@ -68,10 +73,16 @@ export default function ProduccionPage() {
   const [selectedEvento, setSelectedEvento] = useState<EventoGuardado | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
+  // Selector de salón estilo perfiles al entrar a la página
+  const [selectorAbierto, setSelectorAbierto] = useState(true)
+  const [filtroSalon, setFiltroSalon] = useState<string>("todos")
+
   // Vista calendario (por defecto) o lista
   const [vista, setVista] = useState<"calendario" | "lista">("calendario")
   const hoy = new Date()
-  const [mesActual, setMesActual] = useState(new Date(hoy.getFullYear(), hoy.getMonth(), 1))
+  // Calendario anual: año visible + día seleccionado (para elegir entre varios eventos)
+  const [anioActual, setAnioActual] = useState(hoy.getFullYear())
+  const [diaDialog, setDiaDialog] = useState<{ fecha: string; eventos: EventoGuardado[] } | null>(null)
 
   // Filtrar eventos que tienen recetas (tienen guía de producción),
   // ordenados por fecha más cercana a hoy (los sin fecha van al final)
@@ -100,16 +111,18 @@ export default function ProduccionPage() {
       })
   }, [eventos])
 
-  // Filtrar por búsqueda
+  // Filtrar por salón + búsqueda
   const eventosFiltrados = useMemo(() => {
-    if (!searchQuery.trim()) return eventosConRecetas
+    let base = eventosConRecetas
+    if (filtroSalon !== "todos") base = base.filter((e) => e.salon === filtroSalon)
+    if (!searchQuery.trim()) return base
     const q = searchQuery.toLowerCase()
-    return eventosConRecetas.filter(
+    return base.filter(
       (e) =>
         (e.nombrePareja || e.nombre || "").toLowerCase().includes(q) ||
         (e.tipoEvento || "").toLowerCase().includes(q)
     )
-  }, [eventosConRecetas, searchQuery])
+  }, [eventosConRecetas, searchQuery, filtroSalon])
 
   const formatFecha = (fecha: string) => {
     if (!fecha) return "-"
@@ -121,44 +134,51 @@ export default function ProduccionPage() {
     })
   }
 
-  // ── Calendario: eventos agrupados por día del mes visible ────────────────
-  const { celdas, eventosSinFecha, mesLabel } = useMemo(() => {
-    const anio = mesActual.getFullYear()
-    const mes = mesActual.getMonth()
-    const mesKey = `${anio}-${String(mes + 1).padStart(2, "0")}`
-
-    // Mapa día (1-31) → eventos de ese día, ordenados por nombre
-    const porDia = new Map<number, EventoGuardado[]>()
+  // ── Calendario ANUAL: 12 mini-meses del año visible ──────────────────────
+  type CeldaDia = { dia: number; eventos: EventoGuardado[] } | null
+  const { meses, eventosSinFecha } = useMemo(() => {
+    // Mapa "mes-dia" → eventos de ese día
+    const porFecha = new Map<string, EventoGuardado[]>()
     const sinFecha: EventoGuardado[] = []
     for (const e of eventosFiltrados) {
       if (!e.fecha) {
         sinFecha.push(e)
         continue
       }
-      if (e.fecha.slice(0, 7) !== mesKey) continue
-      const dia = Number.parseInt(e.fecha.slice(8, 10), 10)
-      if (!porDia.has(dia)) porDia.set(dia, [])
-      porDia.get(dia)!.push(e)
+      const [y, m, d] = e.fecha.split("-").map((n) => Number.parseInt(n, 10))
+      if (y !== anioActual) continue
+      const key = `${m}-${d}`
+      if (!porFecha.has(key)) porFecha.set(key, [])
+      porFecha.get(key)!.push(e)
     }
 
-    // Grilla lunes a domingo
-    const primerDia = new Date(anio, mes, 1)
-    const diasEnMes = new Date(anio, mes + 1, 0).getDate()
-    const offsetLunes = (primerDia.getDay() + 6) % 7 // 0 = lunes
-    const items: ({ dia: number; eventos: EventoGuardado[] } | null)[] = []
-    for (let i = 0; i < offsetLunes; i++) items.push(null)
-    for (let d = 1; d <= diasEnMes; d++) items.push({ dia: d, eventos: porDia.get(d) || [] })
-    while (items.length % 7 !== 0) items.push(null)
+    const meses: { mes: number; label: string; celdas: CeldaDia[] }[] = []
+    for (let mes = 0; mes < 12; mes++) {
+      const primerDia = new Date(anioActual, mes, 1)
+      const diasEnMes = new Date(anioActual, mes + 1, 0).getDate()
+      const offsetLunes = (primerDia.getDay() + 6) % 7 // 0 = lunes
+      const celdas: CeldaDia[] = []
+      for (let i = 0; i < offsetLunes; i++) celdas.push(null)
+      for (let d = 1; d <= diasEnMes; d++) celdas.push({ dia: d, eventos: porFecha.get(`${mes + 1}-${d}`) || [] })
+      while (celdas.length % 7 !== 0) celdas.push(null)
+      const label = new Date(anioActual, mes, 1).toLocaleDateString("es-AR", { month: "long" })
+      meses.push({ mes, label: label.charAt(0).toUpperCase() + label.slice(1), celdas })
+    }
+    return { meses, eventosSinFecha: sinFecha }
+  }, [eventosFiltrados, anioActual])
 
-    const label = mesActual.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
-    return { celdas: items, eventosSinFecha: sinFecha, mesLabel: label.charAt(0).toUpperCase() + label.slice(1) }
-  }, [eventosFiltrados, mesActual])
+  const esHoy = (mes: number, dia: number) =>
+    hoy.getFullYear() === anioActual && hoy.getMonth() === mes && hoy.getDate() === dia
 
-  const esHoy = (dia: number) =>
-    hoy.getFullYear() === mesActual.getFullYear() && hoy.getMonth() === mesActual.getMonth() && hoy.getDate() === dia
-
-  const cambiarMes = (delta: number) =>
-    setMesActual((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1))
+  const handleDiaClick = (mes: number, celda: CeldaDia) => {
+    if (!celda || celda.eventos.length === 0) return
+    if (celda.eventos.length === 1) {
+      handleVerGuia(celda.eventos[0])
+      return
+    }
+    const fecha = `${anioActual}-${String(mes + 1).padStart(2, "0")}-${String(celda.dia).padStart(2, "0")}`
+    setDiaDialog({ fecha, eventos: celda.eventos })
+  }
 
   const getTotalInvitados = (e: EventoGuardado) =>
     (e.adultos || 0) + (e.adolescentes || 0) + (e.ninos || 0) + (e.personasDietasEspeciales || 0)
@@ -227,6 +247,19 @@ export default function ProduccionPage() {
     )
   }
 
+  // Selector de salón estilo perfiles al entrar
+  if (selectorAbierto) {
+    return (
+      <SalonSelectorOverlay
+        titulo="Proximos eventos"
+        onSelect={(salon) => {
+          setFiltroSalon(salon)
+          setSelectorAbierto(false)
+        }}
+      />
+    )
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -234,11 +267,36 @@ export default function ProduccionPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <ChefHat className="h-6 w-6 text-orange-500" />
-            Guias de Produccion
+            Proximos eventos
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Vista de solo lectura de las guias de preparacion de cada evento
+            Calendario anual de los eventos con guia de produccion
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
+            Cambiar salón
+            <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectorAbierto(true)}
+            className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
+            aria-label="Cambiar salón: volver al selector de salones"
+          >
+            <RefreshCw
+              className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
+              aria-hidden="true"
+            />
+            {filtroSalon === "todos" ? (
+              <span>Todos los salones</span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <SalonDot salon={filtroSalon} size={8} />
+                {salonLabel(filtroSalon)}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -279,72 +337,73 @@ export default function ProduccionPage() {
       {vista === "calendario" && (
         <Card>
           <CardContent className="p-4 space-y-4">
-            {/* Navegación de mes */}
+            {/* Navegación de año */}
             <div className="flex items-center justify-between">
-              <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">
+              <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent" onClick={() => setAnioActual((a) => a - 1)} aria-label="Año anterior">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <div className="flex items-center gap-3">
-                <h2 className="text-lg font-semibold">{mesLabel}</h2>
+                <h2 className="text-lg font-semibold">{anioActual}</h2>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 text-xs text-muted-foreground"
-                  onClick={() => setMesActual(new Date(hoy.getFullYear(), hoy.getMonth(), 1))}
+                  onClick={() => setAnioActual(hoy.getFullYear())}
                 >
-                  Hoy
+                  Este año
                 </Button>
               </div>
-              <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent" onClick={() => cambiarMes(1)} aria-label="Mes siguiente">
+              <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent" onClick={() => setAnioActual((a) => a + 1)} aria-label="Año siguiente">
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
 
-            {/* Encabezado de días */}
-            <div className="grid grid-cols-7 gap-1">
-              {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
-                <div key={d} className="text-center text-xs font-semibold text-muted-foreground py-1">
-                  {d}
+            {/* 12 mini-meses */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {meses.map((m) => (
+                <div key={m.mes} className="rounded-lg border bg-card p-2">
+                  <h3 className="mb-2 text-center text-sm font-semibold text-foreground">{m.label}</h3>
+                  <div className="grid grid-cols-7 gap-0.5">
+                    {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => (
+                      <div key={i} className="text-center text-[10px] font-medium text-muted-foreground">
+                        {d}
+                      </div>
+                    ))}
+                    {m.celdas.map((celda, i) => {
+                      if (celda === null) return <div key={`v-${i}`} className="h-8" />
+                      const tiene = celda.eventos.length > 0
+                      const hoyFlag = esHoy(m.mes, celda.dia)
+                      return (
+                        <button
+                          key={`d-${celda.dia}`}
+                          type="button"
+                          disabled={!tiene}
+                          onClick={() => handleDiaClick(m.mes, celda)}
+                          className={cn(
+                            "relative flex h-8 items-center justify-center rounded text-[11px] transition-colors",
+                            tiene
+                              ? "cursor-pointer bg-orange-100 font-semibold text-orange-900 hover:bg-orange-200"
+                              : "text-muted-foreground/60",
+                            hoyFlag && "ring-2 ring-orange-500",
+                          )}
+                          title={
+                            tiene
+                              ? celda.eventos.map((e) => e.nombrePareja || e.nombre || "Sin nombre").join(", ")
+                              : undefined
+                          }
+                        >
+                          {celda.dia}
+                          {celda.eventos.length > 1 && (
+                            <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-orange-500 px-1 text-[8px] font-bold text-white">
+                              {celda.eventos.length}
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               ))}
-
-              {/* Celdas */}
-              {celdas.map((celda, i) =>
-                celda === null ? (
-                  <div key={`v-${i}`} className="min-h-24 rounded-md bg-muted/30" />
-                ) : (
-                  <div
-                    key={`d-${celda.dia}`}
-                    className={`min-h-24 rounded-md border p-1.5 flex flex-col gap-1 ${
-                      esHoy(celda.dia) ? "border-orange-400 bg-orange-50" : "border-border bg-card"
-                    }`}
-                  >
-                    <span
-                      className={`text-xs font-semibold ${
-                        esHoy(celda.dia) ? "text-orange-700" : "text-muted-foreground"
-                      }`}
-                    >
-                      {celda.dia}
-                    </span>
-                    {celda.eventos.map((ev) => (
-                      <button
-                        key={ev.id}
-                        type="button"
-                        onClick={() => handleVerGuia(ev)}
-                        className="w-full rounded bg-orange-100 hover:bg-orange-200 border border-orange-300 px-1.5 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
-                        title={`Ver guía de ${ev.nombrePareja || ev.nombre || "evento"}`}
-                      >
-                        <span className="block text-[11px] font-medium text-orange-900 truncate leading-tight">
-                          {ev.nombrePareja || ev.nombre || "Sin nombre"}
-                        </span>
-                        <span className="block text-[10px] text-orange-700/80 truncate leading-tight">
-                          {getTotalInvitados(ev)} pax{ev.salon ? ` · ${salonLabel(ev.salon)}` : ""}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ),
-              )}
             </div>
 
             {/* Eventos sin fecha */}
@@ -458,6 +517,41 @@ export default function ProduccionPage() {
           </div>
         </Card>
       ))}
+
+      {/* Dialog: elegir entre varios eventos del mismo día */}
+      <Dialog open={!!diaDialog} onOpenChange={(open) => !open && setDiaDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <CalendarDays className="h-5 w-5" />
+              Eventos del {diaDialog ? formatFecha(diaDialog.fecha) : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {diaDialog?.eventos.map((ev) => (
+              <button
+                key={ev.id}
+                type="button"
+                onClick={() => {
+                  setDiaDialog(null)
+                  handleVerGuia(ev)
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-left transition-colors hover:bg-orange-100"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-orange-900">
+                    {ev.nombrePareja || ev.nombre || "Sin nombre"}
+                  </span>
+                  <span className="block text-xs text-orange-700/80">
+                    {getTotalInvitados(ev)} pax{ev.salon ? ` · ${salonLabel(ev.salon)}` : ""}
+                  </span>
+                </span>
+                <Eye className="h-4 w-4 shrink-0 text-orange-700" />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog guia de produccion - mise en place */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
