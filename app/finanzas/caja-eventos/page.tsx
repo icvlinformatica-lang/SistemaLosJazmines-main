@@ -1446,9 +1446,9 @@ useStore()
       </Card>
       </div>
 
-      {/* TABS: Cobros / Pagos */}
-      <Tabs defaultValue="cobrar" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+      {/* TABS: Por pagar abierto al centro (60%), Por cobrar e Historial plegados a los lados (20% c/u) */}
+      <Tabs defaultValue="pagar" className="w-full">
+        <TabsList className="grid w-full grid-cols-[1fr_3fr_1fr]">
           <TabsTrigger value="cobrar" className="gap-1.5 bg-emerald-100/40">
             <ArrowDownToLine className="h-4 w-4" /> Por cobrar
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-1">
