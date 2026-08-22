@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useStore } from "@/lib/store-context"
 import { useEventos } from "@/lib/use-eventos"
 import { useRecetas } from "@/lib/use-recetas"
@@ -41,6 +41,7 @@ import { salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { cn } from "@/lib/utils"
+import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
@@ -69,6 +70,12 @@ export default function ProduccionPage() {
   const { state } = useStore()
   const { eventos, loading } = useEventos()
   const { recetas } = useRecetas()
+
+  // Sincronización en tiempo real: refresca eventos (recetas asignadas,
+  // invitados, rinde) cada 15s y al volver a la pestaña, para que la pantalla
+  // de cocina refleje los cambios sin recargar. Las recetas se refrescan solas
+  // vía SWR (useRecetas, 30s).
+  useSyncTiempoReal()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedEvento, setSelectedEvento] = useState<EventoGuardado | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -83,6 +90,18 @@ export default function ProduccionPage() {
   // Calendario anual: año visible + día seleccionado (para elegir entre varios eventos)
   const [anioActual, setAnioActual] = useState(hoy.getFullYear())
   const [diaDialog, setDiaDialog] = useState<{ fecha: string; eventos: EventoGuardado[] } | null>(null)
+
+  // Al entrar desde el selector de salón, llevar la vista directo al mes actual
+  const mesActualRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (selectorAbierto || vista !== "calendario" || anioActual !== hoy.getFullYear()) return
+    // Esperar al render de los 12 meses antes de hacer scroll
+    const t = setTimeout(() => {
+      mesActualRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 100)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectorAbierto, vista, anioActual])
 
   // Filtrar eventos que tienen recetas (tienen guía de producción),
   // ordenados por fecha más cercana a hoy (los sin fecha van al final)
@@ -360,9 +379,25 @@ export default function ProduccionPage() {
 
             {/* 12 mini-meses */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {meses.map((m) => (
-                <div key={m.mes} className="rounded-lg border bg-card p-2">
-                  <h3 className="mb-2 text-center text-sm font-semibold text-foreground">{m.label}</h3>
+              {meses.map((m) => {
+                const esMesActual = anioActual === hoy.getFullYear() && m.mes === hoy.getMonth()
+                return (
+                <div
+                  key={m.mes}
+                  ref={esMesActual ? mesActualRef : undefined}
+                  className={cn(
+                    "rounded-lg border bg-card p-2 scroll-mt-4",
+                    esMesActual && "border-orange-400 ring-1 ring-orange-400",
+                  )}
+                >
+                  <h3
+                    className={cn(
+                      "mb-2 text-center text-sm font-semibold",
+                      esMesActual ? "text-orange-600" : "text-foreground",
+                    )}
+                  >
+                    {m.label}
+                  </h3>
                   <div className="grid grid-cols-7 gap-0.5">
                     {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => (
                       <div key={i} className="text-center text-[10px] font-medium text-muted-foreground">
@@ -403,7 +438,8 @@ export default function ProduccionPage() {
                     })}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
 
             {/* Eventos sin fecha */}
