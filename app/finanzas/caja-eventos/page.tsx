@@ -1081,13 +1081,6 @@ useStore()
         </div>
       </div>
 
-      {salonFiltro !== "todos" && (
-        <p className="text-[11px] leading-tight text-muted-foreground shrink-0">
-          Mostrando únicamente movimientos, cobros y pagos del salón{" "}
-          <span className="font-medium text-foreground">{salonLabel(salonFiltro)}</span>.
-        </p>
-      )}
-
       {/* DASHBOARD: tarjetas en una fila, estilo Caja Jazmines.
           Siempre plegadas; el hover sobre el grupo las despliega todas juntas
           y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
