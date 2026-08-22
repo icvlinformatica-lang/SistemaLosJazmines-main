@@ -1023,7 +1023,7 @@ useStore()
 
   return (
     <div
-      className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-6 space-y-6 transition-colors duration-500"
+      className="mx-auto w-full max-w-[1720px] px-4 lg:px-6 py-4 space-y-4 transition-colors duration-500"
       style={{
         backgroundColor:
           salonFiltro === "todos"
@@ -1031,9 +1031,10 @@ useStore()
             : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
       }}
     >
-      {/* Header: nav fijo, siempre visible al scrollear, fondo siempre blanco */}
+      {/* Header: barra blanca fija arriba mientras se scrollea (fuera del
+          wrapper con overflow-hidden para que el sticky funcione) */}
       <div
-        className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3"
+        className="sticky top-0 z-30 w-full rounded-xl border border-border shadow-sm px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0"
         style={{ backgroundColor: "#ffffff" }}
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -1078,25 +1079,21 @@ useStore()
         </div>
       </div>
 
-      {salonFiltro !== "todos" && (
-        <p className="-mt-2 text-xs text-muted-foreground">
-          Mostrando únicamente movimientos, cobros y pagos del salón{" "}
-          <span className="font-medium text-foreground">{salonLabel(salonFiltro)}</span>.
-        </p>
-      )}
-
+      {/* VISTA ÚNICA: KPIs + calendario/panel entran en el alto restante de la
+          ventana (100dvh menos padding, header fijo y separación) sin scroll */}
+      <div className="flex min-h-0 flex-col gap-3 lg:h-[calc(100dvh-6.5rem)] lg:overflow-hidden">
       {/* DASHBOARD: tarjetas en una fila, estilo Caja Jazmines.
           Siempre plegadas; el hover sobre el grupo las despliega todas juntas
           y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
       <div
-        className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 items-start"
+        className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2 items-start shrink-0"
         onMouseEnter={() => setTarjetasAbiertas(true)}
         onMouseLeave={() => setTarjetasAbiertas(false)}
       >
         {/* Saldo Actual (destacada, igual que en Jazmines) */}
         <Card
-          style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
-          className="cursor-pointer transition-colors hover:bg-white/40"
+          style={{ backgroundColor: "#ffffff" }}
+          className="cursor-pointer rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
           onClick={() => {
             if (colapsadoMes) {
               setTarjetasAbiertas(true)
@@ -1108,9 +1105,9 @@ useStore()
           tabIndex={0}
           aria-label="Ver desglose del saldo actual"
         >
-          <CardContent className="relative p-4 flex h-full flex-col">
+          <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#0035db" }}>
                 Saldo Actual
               </p>
               <div className="flex items-center gap-1.5">
@@ -1123,7 +1120,7 @@ useStore()
               </div>
             </div>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
+              <p className="text-lg font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
                 {formatCurrency(saldoActual)}
               </p>
               <p
@@ -1143,27 +1140,27 @@ useStore()
 
         {/* Cobro este mes */}
         <Card
-          className="border-border"
-          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          style={{ backgroundColor: "#ffffff" }}
         >
-          <CardContent className="relative p-4 flex h-full flex-col">
+          <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
-                Cobro este mes
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Ingreso mensual
               </p>
               <div className="flex items-center gap-1.5">
-                <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
+                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
                   aria-hidden="true"
                 />
               </div>
             </div>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+              <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
                 {`+${formatCurrency(porCobrarEsteMes)}`}
               </p>
-              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+              <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {(() => {
                   const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
                   const cuotasMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKey)
@@ -1178,27 +1175,27 @@ useStore()
 
         {/* Pago este mes */}
         <Card
-          className="border-border"
-          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          style={{ backgroundColor: "#ffffff" }}
         >
-          <CardContent className="relative p-4 flex h-full flex-col">
+          <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
-                Pago este mes
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Egreso mensual
               </p>
               <div className="flex items-center gap-1.5">
-                <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <ArrowUpFromLine className="h-4 w-4 text-red-500" />
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
+                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
                   aria-hidden="true"
                 />
               </div>
             </div>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+              <p className="text-lg font-bold whitespace-nowrap text-red-600">
                 {`−${formatCurrency(porPagarEsteMes)}`}
               </p>
-              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+              <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {pagoMesDetalle || "Sin pagos este mes"}
               </p>
             </CuerpoColapsable>
@@ -1207,27 +1204,27 @@ useStore()
 
         {/* Tengo a fin de mes */}
         <Card
-          className="border-border"
-          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          style={{ backgroundColor: "#ffffff" }}
         >
-          <CardContent className="relative p-4 flex h-full flex-col">
+          <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
-                Tengo a fin de mes
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Balance mensual
               </p>
               <div className="flex items-center gap-1.5">
-                <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
+                <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
+                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
                   aria-hidden="true"
                 />
               </div>
             </div>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+              <p className="text-lg font-bold whitespace-nowrap text-foreground">
                 {formatCurrency(saldoFinMes)}
               </p>
-              <p className="text-xs mt-auto pt-1 capitalize" style={{ color: "#000000" }}>
+              <p className="text-xs mt-auto pt-1 capitalize text-muted-foreground">
                 {mesActualLabel}
               </p>
             </CuerpoColapsable>
@@ -1236,27 +1233,27 @@ useStore()
 
         {/* Cobro esta semana */}
         <Card
-          className="border-border"
-          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          style={{ backgroundColor: "#ffffff" }}
         >
-          <CardContent className="relative p-4 flex h-full flex-col">
+          <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaLabel}>
-                Cobro esta semana
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" title={rangoSemanaLabel}>
+                Ingreso semanal
               </p>
               <div className="flex items-center gap-1.5">
-                <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
                   aria-hidden="true"
                 />
               </div>
             </div>
             <CuerpoColapsable colapsado={colapsadoSemana}>
-              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+              <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
                 {`+${formatCurrency(cobroSemana)}`}
               </p>
-              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+              <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {cuotasSemanaCount > 0
                   ? `${cuotasSemanaCount} ${cuotasSemanaCount === 1 ? "cuota a cobrar" : "cuotas a cobrar"}`
                   : "Nada por cobrar esta semana"}
@@ -1265,29 +1262,29 @@ useStore()
           </CardContent>
         </Card>
 
-        {/* Pago esta semana */}
+        {/* Egreso semanal */}
         <Card
-          className="border-border"
-          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          style={{ backgroundColor: "#ffffff" }}
         >
-          <CardContent className="relative p-4 flex h-full flex-col">
+          <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
-                Pago esta semana
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Egreso semanal
               </p>
               <div className="flex items-center gap-1.5">
-                <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
+                <ArrowUpFromLine className="h-4 w-4 text-red-500" />
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
                   aria-hidden="true"
                 />
               </div>
             </div>
             <CuerpoColapsable colapsado={colapsadoSemana}>
-              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+              <p className="text-lg font-bold whitespace-nowrap text-red-600">
                 {`−${formatCurrency(pagoSemana)}`}
               </p>
-              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+              <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {pagoSemanaDetalle || "Sin gastos esta semana"}
               </p>
             </CuerpoColapsable>
@@ -1296,27 +1293,27 @@ useStore()
 
         {/* Tengo a fin de semana */}
         <Card
-          className="border-border"
-          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          style={{ backgroundColor: "#ffffff" }}
         >
-          <CardContent className="relative p-4 flex h-full flex-col">
+          <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
-                Tengo a fin de semana
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Balance semanal
               </p>
               <div className="flex items-center gap-1.5">
-                <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
+                <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
                   aria-hidden="true"
                 />
               </div>
             </div>
             <CuerpoColapsable colapsado={colapsadoSemana}>
-              <p className="text-xl font-bold whitespace-nowrap" style={{ color: "#000000" }}>
+              <p className="text-lg font-bold whitespace-nowrap text-foreground">
                 {formatCurrency(saldoFinSemana)}
               </p>
-              <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+              <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 Saldo actual + cobros − gastos
               </p>
             </CuerpoColapsable>
@@ -1324,28 +1321,29 @@ useStore()
         </Card>
       </div>
 
-      {/* CALENDARIO mensual + panel lateral de gastos por evento */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
-      <Card>
-        <CardHeader className="pb-3">
+      {/* CALENDARIO mensual + panel lateral de gastos por evento:
+          ocupan todo el alto restante de la vista única */}
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3 items-stretch">
+      <Card className="rounded-xl bg-white shadow-sm flex min-h-0 flex-col py-3 gap-2">
+        <CardHeader className="pb-0 shrink-0">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2 capitalize">
+            <CardTitle className="text-sm flex items-center gap-2 capitalize">
               <CalendarDays className="h-4 w-4 text-teal-600" />
               {calendario.label}
             </CardTitle>
             <div className="flex items-center gap-1">
-              <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => cambiarMes(-1)}>‹</Button>
-              <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => cambiarMes(1)}>›</Button>
+              <Button variant="outline" size="sm" className="h-6 px-2" onClick={() => cambiarMes(-1)}>‹</Button>
+              <Button variant="outline" size="sm" className="h-6 px-2" onClick={() => cambiarMes(1)}>›</Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-1 mb-1">
+        <CardContent className="flex min-h-0 flex-1 flex-col">
+          <div className="grid grid-cols-7 gap-1 mb-1 shrink-0">
             {DIAS_SEMANA.map((d) => (
-              <div key={d} className="text-center text-[11px] font-medium text-muted-foreground py-1">{d}</div>
+              <div key={d} className="text-center text-[11px] font-medium text-muted-foreground py-0.5">{d}</div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1 flex-1 min-h-0 auto-rows-fr">
             {calendario.celdas.map((celda, i) => {
               const esHoy = esMesActualCal && celda.dia === hoyNum
               const tieneMov = celda.cobrar > 0 || celda.pagar > 0
@@ -1371,7 +1369,7 @@ useStore()
                     type="button"
                     title="Ver detalle del día"
                     onClick={() => setDiaDetalle(fechaCelda)}
-                    className={`min-h-[58px] rounded-md border p-1 text-[10px] text-left cursor-pointer transition-colors hover:border-teal-400 hover:bg-teal-50/60 ${
+                    className={`min-h-[42px] lg:min-h-0 h-full overflow-hidden rounded-md border p-1 text-[10px] leading-tight text-left cursor-pointer transition-colors hover:border-teal-400 hover:bg-teal-50/60 ${
                       esHoy ? "border-teal-400 bg-teal-50" : "border-border bg-muted/30"
                     }`}
                   >
@@ -1382,7 +1380,7 @@ useStore()
               return (
                 <div
                   key={i}
-                  className={`min-h-[58px] rounded-md border p-1 text-[10px] ${
+                  className={`min-h-[42px] lg:min-h-0 h-full overflow-hidden rounded-md border p-1 text-[10px] leading-tight ${
                     celda.dia === null
                       ? "border-transparent"
                       : esHoy
@@ -1395,22 +1393,24 @@ useStore()
               )
             })}
           </div>
-          <div className="flex items-center gap-4 mt-3 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground shrink-0">
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> A cobrar</span>
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> A pagar</span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Panel lateral: eventos del mes con su costo total */}
-      <Card className="lg:h-full">
-        <CardHeader className="pb-3">
+      {/* Panel lateral: eventos del mes con su costo total.
+          Su altura acompaña al calendario; si la lista es larga, solo este
+          panel scrollea internamente. */}
+      <Card className="lg:h-full rounded-xl bg-white shadow-sm flex min-h-0 flex-col py-3 gap-2">
+        <CardHeader className="pb-0 shrink-0">
           <CardTitle className="text-sm flex items-center gap-2">
             <Building className="h-4 w-4 text-teal-600" />
             Gastos del mes por evento
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2 flex-1 min-h-0 overflow-y-auto">
           {eventosDelMes.lista.length === 0 ? (
             <p className="text-xs text-muted-foreground">Sin eventos este mes.</p>
           ) : (
@@ -1444,6 +1444,7 @@ useStore()
           )}
         </CardContent>
       </Card>
+      </div>
       </div>
 
       {/* TABS: Por pagar abierto al centro (60%), Por cobrar e Historial plegados a los lados (20% c/u) */}
