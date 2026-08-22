@@ -1031,12 +1031,10 @@ useStore()
             : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
       }}
     >
-      {/* VISTA ÚNICA: header + filtro + KPIs + calendario/panel entran en el alto
-          de la ventana sin scroll (las pestañas quedan debajo, accesibles al scrollear) */}
-      <div className="flex min-h-0 flex-col gap-3 lg:h-[calc(100dvh-2rem)] lg:overflow-hidden">
-      {/* Header: barra blanca compacta a ancho completo de la vista */}
+      {/* Header: barra blanca fija arriba mientras se scrollea (fuera del
+          wrapper con overflow-hidden para que el sticky funcione) */}
       <div
-        className="z-30 w-full rounded-xl border border-border shadow-sm px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0"
+        className="sticky top-0 z-30 w-full rounded-xl border border-border shadow-sm px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0"
         style={{ backgroundColor: "#ffffff" }}
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -1081,6 +1079,9 @@ useStore()
         </div>
       </div>
 
+      {/* VISTA ÚNICA: KPIs + calendario/panel entran en el alto restante de la
+          ventana (100dvh menos padding, header fijo y separación) sin scroll */}
+      <div className="flex min-h-0 flex-col gap-3 lg:h-[calc(100dvh-6.5rem)] lg:overflow-hidden">
       {/* DASHBOARD: tarjetas en una fila, estilo Caja Jazmines.
           Siempre plegadas; el hover sobre el grupo las despliega todas juntas
           y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
