@@ -1187,7 +1187,7 @@ useStore()
           <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Pago este mes
+                Egreso mensual
               </p>
               <div className="flex items-center gap-1.5">
                 <ArrowUpFromLine className="h-4 w-4 text-red-500" />
