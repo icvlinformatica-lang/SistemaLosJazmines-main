@@ -1743,9 +1743,9 @@ export default function CajaJazminePage() {
             : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
       }}
     >
-      {/* Header: nav fijo, siempre visible al scrollear, fondo siempre blanco */}
+      {/* Header: barra blanca redondeada fija arriba mientras se scrollea */}
       <div
-        className="sticky top-0 z-30 -mx-4 lg:-mx-6 -mt-6 px-4 lg:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3"
+        className="sticky top-0 z-30 w-full rounded-xl border border-border shadow-sm px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0"
         style={{ backgroundColor: "#ffffff" }}
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -1807,19 +1807,19 @@ export default function CajaJazminePage() {
           Siempre plegadas; el hover sobre el grupo las despliega todas juntas
           y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
       <div
-        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3"
+        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 items-start"
         onMouseEnter={() => setTarjetasAbiertas(true)}
         onMouseLeave={() => setTarjetasAbiertas(false)}
       >
             {/* ── Slide 1: A 30 DÍAS ────────────────────────────────── */}
             <div className="contents">
               <Card
-                style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
-                className="transition-colors hover:bg-white/40"
+                style={{ backgroundColor: "#ffffff" }}
+                className="rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
               >
-                <CardContent className="relative p-4 flex h-full flex-col">
+                <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#0035db" }}>Saldo Actual</p>
                     <div className="flex items-center gap-1.5">
                       <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
                       <ChevronDown
@@ -1830,7 +1830,7 @@ export default function CajaJazminePage() {
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    <p className="text-2xl font-bold" style={{ color: "#3c4ce8" }}>
+                    <p className="text-lg font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
                       {formatCurrency(saldoActual)}
                     </p>
                     <p
@@ -1849,56 +1849,57 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="border-border"
-                style={{ backgroundColor: "#ffffff", color: "#000000" }}
+                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                style={{ backgroundColor: "#ffffff" }}
               >
-                <CardContent className="relative p-4 flex h-full flex-col">
+                <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Gastos A 30 días
                     </p>
                     <div className="flex items-center gap-1.5">
+                      <ArrowUpFromLine className="h-4 w-4 text-red-500" />
                       <ChevronDown
-                        className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
+                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
                         aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    <p className="text-2xl font-bold" style={{ color: "#000000" }}>
+                    <p className="text-lg font-bold whitespace-nowrap text-red-600">
                       {formatCurrency(gastosPróximos30Dias)}
                     </p>
-                    <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>Gastos pendientes</p>
+                    <p className="text-xs mt-auto pt-1 text-muted-foreground">Gastos pendientes</p>
                   </CuerpoColapsable>
                 </CardContent>
               </Card>
 
               <Card
-                className="border-border"
-                style={{ backgroundColor: "#ffffff", color: "#000000" }}
+                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                style={{ backgroundColor: "#ffffff" }}
               >
-                <CardContent className="relative p-4 flex h-full flex-col">
+                <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Saldo a 30 días
                     </p>
                     <div className="flex items-center gap-1.5">
-                      <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
+                      <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
                       <ChevronDown
-                        className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
+                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
                         aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    <p className="text-2xl font-bold" style={{ color: "#000000" }}>
+                    <p className="text-lg font-bold whitespace-nowrap text-foreground">
                       {formatCurrency(saldoProyectado30Dias)}
                     </p>
                     {(() => {
                       const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
                       const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
                       return (
-                        <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                        <p className="text-xs mt-auto pt-1 text-muted-foreground">
                           {cuotasMes.length > 0
                             ? `${cuotasMes.length} ${cuotasMes.length === 1 ? "cuota" : "cuotas"}`
                             : "Sin cuotas este mes"}
@@ -1913,27 +1914,27 @@ export default function CajaJazminePage() {
             {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
             <div className="contents">
               <Card
-                className="border-border"
-                style={{ backgroundColor: "#ffffff", color: "#000000" }}
+                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                style={{ backgroundColor: "#ffffff" }}
               >
-                <CardContent className="relative p-4 flex h-full flex-col">
+                <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaJazLabel}>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" title={rangoSemanaJazLabel}>
                       Cobro esta semana
                     </p>
                     <div className="flex items-center gap-1.5">
-                      <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
+                      <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
                       <ChevronDown
-                        className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
                         aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
-                    <p className="text-2xl font-bold" style={{ color: "#000000" }}>
+                    <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
                       {`+${formatCurrency(cobroSemanaJaz)}`}
                     </p>
-                    <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                    <p className="text-xs mt-auto pt-1 text-muted-foreground">
                       {(() => {
                         const total = cuotasSemanaJazCount + cuotasVencidasJazCount
                         return total > 0
@@ -1941,7 +1942,7 @@ export default function CajaJazminePage() {
                           : "Nada por cobrar esta semana"
                       })()}
                       {cuotasVencidasJazCount > 0 && (
-                        <span className="font-semibold" style={{ color: "#000000" }}>
+                        <span className="font-semibold text-red-600">
                           {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${formatCurrency(cobroVencidasJaz)})`}
                         </span>
                       )}
@@ -1951,25 +1952,25 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="border-border"
-                style={{ backgroundColor: "#ffffff", color: "#000000" }}
+                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                style={{ backgroundColor: "#ffffff" }}
               >
-                <CardContent className="relative p-4 flex h-full flex-col">
+                <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>Gastos esta semana</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Gastos esta semana</p>
                     <div className="flex items-center gap-1.5">
-                      <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
+                      <ArrowUpFromLine className="h-4 w-4 text-red-500" />
                       <ChevronDown
-                        className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
                         aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
-                    <p className="text-2xl font-bold" style={{ color: "#000000" }}>
+                    <p className="text-lg font-bold whitespace-nowrap text-red-600">
                       {`−${formatCurrency(gastosSemanaJaz)}`}
                     </p>
-                    <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                    <p className="text-xs mt-auto pt-1 text-muted-foreground">
                       {gastosSemanaJazDetalle || "Sin gastos esta semana"}
                     </p>
                   </CuerpoColapsable>
@@ -1977,27 +1978,27 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="border-border"
-                style={{ backgroundColor: "#ffffff", color: "#000000" }}
+                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                style={{ backgroundColor: "#ffffff" }}
               >
-                <CardContent className="relative p-4 flex h-full flex-col">
+                <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
-                      Tengo a fin de semana
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Balance semanal
                     </p>
                     <div className="flex items-center gap-1.5">
-                      <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
+                      <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
                       <ChevronDown
-                        className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
                         aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
-                    <p className="text-2xl font-bold" style={{ color: "#000000" }}>
+                    <p className="text-lg font-bold whitespace-nowrap text-foreground">
                       {formatCurrency(saldoFinSemanaJaz)}
                     </p>
-                    <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
+                    <p className="text-xs mt-auto pt-1 text-muted-foreground">
                       Saldo actual + cobros − gastos
                     </p>
                   </CuerpoColapsable>
