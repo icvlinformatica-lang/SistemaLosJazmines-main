@@ -46,8 +46,6 @@ import {
   Circle,
   Trash2,
   Archive,
-  Eye,
-  EyeOff,
   ChevronDown,
   ChevronUp,
   HandCoins,
@@ -205,7 +203,6 @@ function siguienteVencimiento(
 }
 
 /** Monto oculto mostrado cuando el usuario esconde una métrica. */
-const MONTO_OCULTO = "$ ••••••"
 
 function puntoPrioridad(estado: EstadoAlerta) {
   if (estado === "vencido" || estado === "urgente") {
@@ -917,32 +914,6 @@ function CuerpoColapsable({ colapsado, children }: { colapsado: boolean; childre
     >
       <div className="overflow-hidden flex min-h-0 flex-col">{children}</div>
     </div>
-  )
-}
-
-function BotonDesplegar({
-  colapsado,
-  onToggle,
-  color = "#000000",
-}: {
-  colapsado: boolean
-  onToggle: () => void
-  color?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        onToggle()
-      }}
-      className="hover:opacity-70"
-      style={{ color }}
-      aria-label={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
-      title={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
-    >
-      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${colapsado ? "" : "rotate-180"}`} />
-    </button>
   )
 }
 
@@ -1895,7 +1866,7 @@ export default function CajaJazminePage() {
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
+                      {formatCurrency(gastosPróximos30Dias)}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>Gastos pendientes</p>
                   </CuerpoColapsable>
@@ -1911,7 +1882,7 @@ export default function CajaJazminePage() {
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Saldo a 30 días
                     </p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
                       <ChevronDown
                         className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
@@ -1921,7 +1892,7 @@ export default function CajaJazminePage() {
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
+                      {formatCurrency(saldoProyectado30Dias)}
                     </p>
                     {(() => {
                       const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
@@ -1950,7 +1921,7 @@ export default function CajaJazminePage() {
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaJazLabel}>
                       Cobro esta semana
                     </p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
                       <ChevronDown
                         className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
@@ -1960,7 +1931,7 @@ export default function CajaJazminePage() {
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
+                      {`+${formatCurrency(cobroSemanaJaz)}`}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                       {(() => {
@@ -1971,7 +1942,7 @@ export default function CajaJazminePage() {
                       })()}
                       {cuotasVencidasJazCount > 0 && (
                         <span className="font-semibold" style={{ color: "#000000" }}>
-                          {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${montosOcultos.cobroSemana ? MONTO_OCULTO : formatCurrency(cobroVencidasJaz)})`}
+                          {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${formatCurrency(cobroVencidasJaz)})`}
                         </span>
                       )}
                     </p>
@@ -1986,7 +1957,7 @@ export default function CajaJazminePage() {
                 <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>Gastos esta semana</p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
                       <ChevronDown
                         className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
@@ -1996,7 +1967,7 @@ export default function CajaJazminePage() {
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.gastosSemana ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
+                      {`−${formatCurrency(gastosSemanaJaz)}`}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                       {gastosSemanaJazDetalle || "Sin gastos esta semana"}
@@ -2014,7 +1985,7 @@ export default function CajaJazminePage() {
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Tengo a fin de semana
                     </p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
                       <ChevronDown
                         className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
@@ -2024,7 +1995,7 @@ export default function CajaJazminePage() {
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoFinSemanaJaz)}
+                      {formatCurrency(saldoFinSemanaJaz)}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                       Saldo actual + cobros − gastos
@@ -2058,7 +2029,7 @@ export default function CajaJazminePage() {
               </div>
             </div>
             <p className="text-2xl font-bold text-amber-800 shrink-0">
-              {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(gastosFijosProximoMes)}`}
+              {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
           {estimacionesProximoMes.length > 0 && (
@@ -2093,7 +2064,7 @@ export default function CajaJazminePage() {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-sm font-semibold tabular-nums">
-                        {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
+                        {`≈ ${formatCurrency(est.estimado)}`}
                       </p>
                     </div>
                   </div>
@@ -2241,7 +2212,7 @@ export default function CajaJazminePage() {
                     {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
                   </TableCell>
                   <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
-                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(m.saldoProyectado)}
+                    {formatCurrency(m.saldoProyectado)}
                   </TableCell>
                 </TableRow>
               ))}
