@@ -321,7 +321,6 @@ useStore()
   const router = useRouter()
 
   // Desplegable de "Cuotas por cobrar" (cerrado por defecto)
-  const [cuotasAbierto, setCuotasAbierto] = useState(false)
 
   // Límite de filas por tab. Cada lista muestra hasta 7 filas y un botón
   // "Ver más" para expandir el resto (o "Ver menos" para volver a colapsar).
@@ -1398,84 +1397,6 @@ useStore()
           </CardContent>
         </Card>
       </div>
-
-      {/* Vienen esta semana a pagar (L-V 09-20hs) */}
-      <Card className={`border-amber-200 bg-amber-50/40 gap-0 ${cuotasAbierto ? "py-3" : "py-2.5"}`}>
-        <CardHeader className="px-6">
-          <button
-            type="button"
-            onClick={() => setCuotasAbierto((v) => !v)}
-            aria-expanded={cuotasAbierto}
-            className="flex w-full items-center justify-between gap-2 text-left"
-          >
-            <CardTitle className="text-base flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-amber-600" />
-              Cuotas por cobrar:
-              {vienenEstaSemana.length > 0 && (
-                <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">
-                  {vienenEstaSemana.length}
-                </Badge>
-              )}
-              {vencidasCount > 0 && (
-                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 ml-1 gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  {vencidasCount} pendiente{vencidasCount !== 1 ? "s" : ""}
-                </Badge>
-              )}
-            </CardTitle>
-            <ChevronDown
-              className={`h-4 w-4 text-amber-600 shrink-0 transition-transform ${cuotasAbierto ? "rotate-180" : ""}`}
-            />
-          </button>
-        </CardHeader>
-        {cuotasAbierto && (
-        <CardContent>
-          {vienenEstaSemana.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-2">No hay cuotas por cobrar esta semana ni cuotas vencidas.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {vienenEstaSemana.map((ing) => (
-                <button
-                  key={ing.id}
-                  onClick={() => setClienteSel(ing)}
-                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
-                    ing.esVencida
-                      ? "border-yellow-300 bg-yellow-50 hover:bg-yellow-100"
-                      : "border-amber-200 bg-card hover:bg-amber-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {ing.esVencida && (
-                      <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0" aria-label="Cuota pendiente de cobro" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{ing.contacto.nombre}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {ing.eventoNombre} · Cuota {ing.numeroCuota}/{ing.totalCuotas} · vence {formatFecha(ing.fechaVencimiento)}
-                      </p>
-                      {ing.esVencida && (
-                        <p className="text-xs font-medium text-yellow-700 mt-0.5 italic">
-                          Pendiente de cobro desde hace {Math.abs(ing.diasRestantes)} día{Math.abs(ing.diasRestantes) !== 1 ? "s" : ""}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {ing.esVencida && (
-                      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 text-[10px]">Pendiente</Badge>
-                    )}
-                    <span className={`text-sm font-bold ${ing.esVencida ? "text-yellow-700" : "text-emerald-700"}`}>
-                      +{formatCurrency(ing.monto)}
-                    </span>
-                    {ing.contacto.telefono && <Phone className="h-3.5 w-3.5 text-muted-foreground" />}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </CardContent>
-        )}
-      </Card>
 
       {/* CALENDARIO mensual + panel lateral de gastos por evento */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
