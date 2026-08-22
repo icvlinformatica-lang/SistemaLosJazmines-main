@@ -484,35 +484,20 @@ export function Sidebar() {
 
 
 
-      {/* Floating open buttons - visible only when sidebar is closed */}
+      {/* Floating open button - visible only when sidebar is closed */}
       {!sidebarOpen && (
-        <>
-          {/* Botón arriba a la izquierda (siempre a la vista) */}
-          <button
-            onClick={() => {
-              hoverOpenedRef.current = false
-              setSidebarOpen(true)
-            }}
-            onMouseEnter={abrirPorHover}
-            className="no-print fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-[#2d5a3d] text-[#f5f0e8]/90 shadow-md transition-all duration-200 hover:bg-[#376b49] hover:text-[#f5f0e8]"
-            aria-label="Desplegar menu"
-            title="Desplegar menu"
-          >
-            <ChevronLeft className="h-5 w-5 rotate-180" />
-          </button>
-          {/* Pestaña lateral al medio (acceso rápido) */}
-          <button
-            onClick={() => {
-              hoverOpenedRef.current = false
-              setSidebarOpen(true)
-            }}
-            onMouseEnter={abrirPorHover}
-            className="no-print fixed left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-6 h-12 rounded-r-lg bg-[#2d5a3d] text-[#f5f0e8]/80 hover:text-[#f5f0e8] hover:w-7 shadow-md transition-all duration-200"
-            aria-label="Desplegar menu"
-          >
-            <ChevronLeft className="h-4 w-4 rotate-180" />
-          </button>
-        </>
+        /* Pestaña lateral al medio (acceso rápido) */
+        <button
+          onClick={() => {
+            hoverOpenedRef.current = false
+            setSidebarOpen(true)
+          }}
+          onMouseEnter={abrirPorHover}
+          className="no-print fixed left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-6 h-12 rounded-r-lg bg-[#2d5a3d] text-[#f5f0e8]/80 hover:text-[#f5f0e8] hover:w-7 shadow-md transition-all duration-200"
+          aria-label="Desplegar menu"
+        >
+          <ChevronLeft className="h-4 w-4 rotate-180" />
+        </button>
       )}
 
       {/* Mobile overlay */}
