@@ -37,59 +37,34 @@ export function WelcomeModal() {
 
   if (!visible || !usuario) return null
 
-  if (usuario === "Leila") {
-    return (
-      <div
-        className="fixed inset-0 z-[9999] flex items-center justify-center"
-        style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-      >
-        <div className="flex flex-col items-center gap-6 rounded-2xl bg-white px-10 py-10 text-center shadow-2xl max-w-sm w-full mx-4">
-          <div
-            className="flex h-14 w-14 items-center justify-center rounded-full text-xl font-semibold text-white"
-            style={{ backgroundColor: "#2d5a3d" }}
-            aria-hidden="true"
-          >
-            L
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-[#2d5a3d]">Hola Leila,</h2>
-            <p className="text-xl font-semibold text-gray-800">bienvenida!</p>
-            <p className="text-gray-500 text-sm mt-1">Que tengas una buena jornada.</p>
-          </div>
-          <button
-            onClick={handleDismiss}
-            className="rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            style={{ backgroundColor: "#2d5a3d" }}
-          >
-            Ingresar
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // Tarjeta de bienvenida profesional, idéntica para Diego y Leila
+  const saludo = usuario === "Leila" ? "bienvenida!" : "bienvenido!"
 
-  // Diego: el mensaje de siempre
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
+      style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
     >
       <div className="flex flex-col items-center gap-6 rounded-2xl bg-white px-10 py-10 text-center shadow-2xl max-w-sm w-full mx-4">
-        <div className="text-6xl">🌿</div>
+        <div
+          className="flex h-14 w-14 items-center justify-center rounded-full text-xl font-semibold text-white"
+          style={{ backgroundColor: "#2d5a3d" }}
+          aria-hidden="true"
+        >
+          {usuario.charAt(0)}
+        </div>
         <div className="space-y-2">
-          <h2 className="text-2xl font-bold text-[#2d5a3d]">Hola Diego,</h2>
-          <p className="text-xl font-semibold text-gray-800">bienvenido!</p>
-          <p className="text-gray-500 text-sm mt-1">te extrañamos!</p>
+          <h2 className="text-2xl font-bold text-[#2d5a3d]">Hola {usuario},</h2>
+          <p className="text-xl font-semibold text-gray-800">{saludo}</p>
+          <p className="text-gray-500 text-sm mt-1">Que tengas una buena jornada.</p>
         </div>
         <button
           onClick={handleDismiss}
-          className="text-5xl transition-transform duration-150 hover:scale-125 active:scale-95 focus:outline-none"
-          title="Empezar"
-          aria-label="Entrar al sistema"
+          className="rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          style={{ backgroundColor: "#2d5a3d" }}
         >
-          😊
+          Ingresar
         </button>
-        <p className="text-xs text-gray-400">Presioná el emoji para empezar</p>
       </div>
     </div>
   )
