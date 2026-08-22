@@ -46,8 +46,6 @@ import {
   Circle,
   Trash2,
   Archive,
-  Eye,
-  EyeOff,
   ChevronDown,
   ChevronUp,
   HandCoins,
@@ -205,7 +203,6 @@ function siguienteVencimiento(
 }
 
 /** Monto oculto mostrado cuando el usuario esconde una métrica. */
-const MONTO_OCULTO = "$ ••••••"
 
 function puntoPrioridad(estado: EstadoAlerta) {
   if (estado === "vencido" || estado === "urgente") {
@@ -920,44 +917,13 @@ function CuerpoColapsable({ colapsado, children }: { colapsado: boolean; childre
   )
 }
 
-function BotonDesplegar({
-  colapsado,
-  onToggle,
-  color = "#000000",
-}: {
-  colapsado: boolean
-  onToggle: () => void
-  color?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        onToggle()
-      }}
-      className="hover:opacity-70"
-      style={{ color }}
-      aria-label={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
-      title={colapsado ? "Desplegar tarjetas" : "Contraer tarjetas"}
-    >
-      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${colapsado ? "" : "rotate-180"}`} />
-    </button>
-  )
-}
-
 export default function CajaJazminePage() {
-  // Tarjetas de métricas: se cierran solas al entrar, en dos bloques independientes.
-  // Tocar una tarjeta cerrada despliega todo su bloque.
-  const [colapsado30, setColapsado30] = useState(false)
-  const [colapsadoSemana, setColapsadoSemana] = useState(false)
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setColapsado30(true)
-      setColapsadoSemana(true)
-    }, 1200)
-    return () => clearTimeout(t)
-  }, [])
+  // Tarjetas de métricas: siempre plegadas por defecto, con los montos
+  // siempre visibles. Al pasar el cursor por encima del grupo se despliegan
+  // todas juntas y al quitarlo se vuelven a plegar.
+  const [tarjetasAbiertas, setTarjetasAbiertas] = useState(false)
+  const colapsado30 = !tarjetasAbiertas
+  const colapsadoSemana = !tarjetasAbiertas
   const {
     state,
     updateCostoOperativo,
@@ -1071,16 +1037,6 @@ export default function CajaJazminePage() {
 
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
-  // Los montos del dashboard arrancan OCULTOS: se revelan con el ojito.
-  const [montosOcultos, setMontosOcultos] = useState<Record<string, boolean>>({
-    saldoActual: true,
-    gastos30: true,
-    saldoProyectado: true,
-    cobroSemana: true,
-    gastosSemana: true,
-  })
-  const toggleMonto = (key: string) =>
-    setMontosOcultos((p) => ({ ...p, [key]: !p[key] }))
 
   // Archivar un gasto FIJO: registra el pago del período en el archivo y avanza
   // el vencimiento al próximo mes/año. El gasto sale de la lista activa (queda el
@@ -1847,46 +1803,35 @@ export default function CajaJazminePage() {
         </p>
       )}
 
-      {/* Métricas: 6 indicadores compactos (30 días + esta semana) en una sola fila */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      {/* Métricas: 6 indicadores compactos (30 días + esta semana) en una sola fila.
+          Siempre plegadas; el hover sobre el grupo las despliega todas juntas
+          y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
+      <div
+        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3"
+        onMouseEnter={() => setTarjetasAbiertas(true)}
+        onMouseLeave={() => setTarjetasAbiertas(false)}
+      >
             {/* ── Slide 1: A 30 DÍAS ────────────────────────────────── */}
             <div className="contents">
               <Card
                 style={{ backgroundColor: "rgba(255, 255, 255, 0.25)" }}
-                className={`transition-colors ${colapsado30 ? "cursor-pointer hover:bg-white/40" : ""}`}
-                onClick={() => colapsado30 && setColapsado30(false)}
-                role="button"
-                tabIndex={0}
-                aria-label="Desplegar tarjetas a 30 días"
+                className="transition-colors hover:bg-white/40"
               >
                 <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "#0035db" }}>Saldo Actual</p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleMonto("saldoActual")
-                        }}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
                         style={{ color: "#0035db" }}
-                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
-                        aria-label={montosOcultos.saldoActual ? "Mostrar saldo actual" : "Ocultar saldo actual"}
-                        title={montosOcultos.saldoActual ? "Mostrar monto" : "Ocultar monto"}
-                      >
-                        {montosOcultos.saldoActual ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                      <BotonDesplegar
-                        colapsado={colapsado30}
-                        onToggle={() => setColapsado30((v) => !v)}
-                        color="#0035db"
+                        aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
                     <p className="text-2xl font-bold" style={{ color: "#3c4ce8" }}>
-                      {montosOcultos.saldoActual ? MONTO_OCULTO : formatCurrency(saldoActual)}
+                      {formatCurrency(saldoActual)}
                     </p>
                     <p
                       className="text-xs mt-auto pt-1 flex items-center gap-1.5 font-semibold"
@@ -1904,38 +1849,24 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className={`border-border ${colapsado30 ? "cursor-pointer" : ""}`}
+                className="border-border"
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
-                onClick={() => colapsado30 && setColapsado30(false)}
               >
                 <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Gastos A 30 días
                     </p>
-                    <div className="flex items-center gap-1.5 pr-7">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleMonto("gastos30")
-                        }}
-                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
-                        style={{ color: "#000000" }}
-                        aria-label={montosOcultos.gastos30 ? "Mostrar gastos próximos" : "Ocultar gastos próximos"}
-                        title={montosOcultos.gastos30 ? "Mostrar monto" : "Ocultar monto"}
-                      >
-                        {montosOcultos.gastos30 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                      <BotonDesplegar
-                        colapsado={colapsado30}
-                        onToggle={() => setColapsado30((v) => !v)}
+                    <div className="flex items-center gap-1.5">
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
+                        aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.gastos30 ? MONTO_OCULTO : formatCurrency(gastosPróximos30Dias)}
+                      {formatCurrency(gastosPróximos30Dias)}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>Gastos pendientes</p>
                   </CuerpoColapsable>
@@ -1943,39 +1874,25 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className={`border-border ${colapsado30 ? "cursor-pointer" : ""}`}
+                className="border-border"
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
-                onClick={() => colapsado30 && setColapsado30(false)}
               >
                 <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Saldo a 30 días
                     </p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleMonto("saldoProyectado")
-                        }}
-                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
-                        style={{ color: "#000000" }}
-                        aria-label={montosOcultos.saldoProyectado ? "Mostrar saldo proyectado" : "Ocultar saldo proyectado"}
-                        title={montosOcultos.saldoProyectado ? "Mostrar monto" : "Ocultar monto"}
-                      >
-                        {montosOcultos.saldoProyectado ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                      <BotonDesplegar
-                        colapsado={colapsado30}
-                        onToggle={() => setColapsado30((v) => !v)}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
+                        aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsado30}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoProyectado30Dias)}
+                      {formatCurrency(saldoProyectado30Dias)}
                     </p>
                     {(() => {
                       const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
@@ -1996,39 +1913,25 @@ export default function CajaJazminePage() {
             {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
             <div className="contents">
               <Card
-                className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+                className="border-border"
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
-                onClick={() => colapsadoSemana && setColapsadoSemana(false)}
               >
                 <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }} title={rangoSemanaJazLabel}>
                       Cobro esta semana
                     </p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <ArrowDownToLine className="h-4 w-4" style={{ color: "#000000" }} />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleMonto("cobroSemana")
-                        }}
-                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
-                        style={{ color: "#000000" }}
-                        aria-label={montosOcultos.cobroSemana ? "Mostrar cobro de esta semana" : "Ocultar cobro de esta semana"}
-                        title={montosOcultos.cobroSemana ? "Mostrar monto" : "Ocultar monto"}
-                      >
-                        {montosOcultos.cobroSemana ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                      <BotonDesplegar
-                        colapsado={colapsadoSemana}
-                        onToggle={() => setColapsadoSemana((v) => !v)}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                        aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.cobroSemana ? MONTO_OCULTO : `+${formatCurrency(cobroSemanaJaz)}`}
+                      {`+${formatCurrency(cobroSemanaJaz)}`}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                       {(() => {
@@ -2039,7 +1942,7 @@ export default function CajaJazminePage() {
                       })()}
                       {cuotasVencidasJazCount > 0 && (
                         <span className="font-semibold" style={{ color: "#000000" }}>
-                          {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${montosOcultos.cobroSemana ? MONTO_OCULTO : formatCurrency(cobroVencidasJaz)})`}
+                          {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${formatCurrency(cobroVencidasJaz)})`}
                         </span>
                       )}
                     </p>
@@ -2048,37 +1951,23 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+                className="border-border"
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
-                onClick={() => colapsadoSemana && setColapsadoSemana(false)}
               >
                 <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>Gastos esta semana</p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <ArrowUpFromLine className="h-4 w-4" style={{ color: "#000000" }} />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleMonto("gastosSemana")
-                        }}
-                        className="absolute top-1 right-1 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/10 active:bg-black/15"
-                        style={{ color: "#000000" }}
-                        aria-label={montosOcultos.gastosSemana ? "Mostrar gastos de esta semana" : "Ocultar gastos de esta semana"}
-                        title={montosOcultos.gastosSemana ? "Mostrar monto" : "Ocultar monto"}
-                      >
-                        {montosOcultos.gastosSemana ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                      <BotonDesplegar
-                        colapsado={colapsadoSemana}
-                        onToggle={() => setColapsadoSemana((v) => !v)}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                        aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.gastosSemana ? MONTO_OCULTO : `−${formatCurrency(gastosSemanaJaz)}`}
+                      {`−${formatCurrency(gastosSemanaJaz)}`}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                       {gastosSemanaJazDetalle || "Sin gastos esta semana"}
@@ -2088,26 +1977,25 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className={`border-border ${colapsadoSemana ? "cursor-pointer" : ""}`}
+                className="border-border"
                 style={{ backgroundColor: "#ffffff", color: "#000000" }}
-                onClick={() => colapsadoSemana && setColapsadoSemana(false)}
               >
                 <CardContent className="relative p-4 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#000000" }}>
                       Tengo a fin de semana
                     </p>
-                    <div className="flex items-center gap-1.5 pr-7">
+                    <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#000000" }} />
-                      <BotonDesplegar
-                        colapsado={colapsadoSemana}
-                        onToggle={() => setColapsadoSemana((v) => !v)}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                        aria-hidden="true"
                       />
                     </div>
                   </div>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-2xl font-bold" style={{ color: "#000000" }}>
-                      {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(saldoFinSemanaJaz)}
+                      {formatCurrency(saldoFinSemanaJaz)}
                     </p>
                     <p className="text-xs mt-auto pt-1" style={{ color: "#000000" }}>
                       Saldo actual + cobros − gastos
@@ -2141,7 +2029,7 @@ export default function CajaJazminePage() {
               </div>
             </div>
             <p className="text-2xl font-bold text-amber-800 shrink-0">
-              {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(gastosFijosProximoMes)}`}
+              {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
           {estimacionesProximoMes.length > 0 && (
@@ -2176,7 +2064,7 @@ export default function CajaJazminePage() {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-sm font-semibold tabular-nums">
-                        {montosOcultos.gastos30 ? MONTO_OCULTO : `≈ ${formatCurrency(est.estimado)}`}
+                        {`≈ ${formatCurrency(est.estimado)}`}
                       </p>
                     </div>
                   </div>
@@ -2324,7 +2212,7 @@ export default function CajaJazminePage() {
                     {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
                   </TableCell>
                   <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
-                    {montosOcultos.saldoProyectado ? MONTO_OCULTO : formatCurrency(m.saldoProyectado)}
+                    {formatCurrency(m.saldoProyectado)}
                   </TableCell>
                 </TableRow>
               ))}
