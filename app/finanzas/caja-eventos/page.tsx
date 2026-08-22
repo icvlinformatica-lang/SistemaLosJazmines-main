@@ -999,10 +999,10 @@ useStore()
           <Button
             size="sm"
             variant="outline"
-            className="h-7 text-[11px] px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-            onClick={() => setPagoConfirmar(eg)}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pagado
+          className="h-7 text-[11px] px-2 border-yellow-400 text-yellow-600 hover:bg-yellow-50"
+          onClick={() => setPagoConfirmar(eg)}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pagar
           </Button>
         </TableCell>
       </TableRow>
