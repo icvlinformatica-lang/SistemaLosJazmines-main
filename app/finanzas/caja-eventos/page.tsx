@@ -1245,7 +1245,7 @@ useStore()
           <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" title={rangoSemanaLabel}>
-                Cobro esta semana
+                Ingreso semanal
               </p>
               <div className="flex items-center gap-1.5">
                 <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
@@ -1268,7 +1268,7 @@ useStore()
           </CardContent>
         </Card>
 
-        {/* Pago esta semana */}
+        {/* Egreso semanal */}
         <Card
           className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
           style={{ backgroundColor: "#ffffff" }}
@@ -1276,7 +1276,7 @@ useStore()
           <CardContent className="relative p-3 flex h-full flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Ingreso semanal
+                Egreso semanal
               </p>
               <div className="flex items-center gap-1.5">
                 <ArrowUpFromLine className="h-4 w-4 text-red-500" />
