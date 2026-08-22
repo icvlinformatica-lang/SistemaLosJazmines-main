@@ -1034,9 +1034,9 @@ useStore()
       {/* VISTA ÚNICA: header + filtro + KPIs + calendario/panel entran en el alto
           de la ventana sin scroll (las pestañas quedan debajo, accesibles al scrollear) */}
       <div className="flex min-h-0 flex-col gap-3 lg:h-[calc(100dvh-2rem)] lg:overflow-hidden">
-      {/* Header: compacto, fondo siempre blanco */}
+      {/* Header: barra blanca compacta a ancho completo de la vista */}
       <div
-        className="z-30 -mx-4 lg:-mx-6 -mt-4 px-4 lg:px-6 py-2 border-b border-border shadow-sm flex flex-col sm:flex-row sm:items-center gap-3 shrink-0"
+        className="z-30 w-full rounded-xl border border-border shadow-sm px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0"
         style={{ backgroundColor: "#ffffff" }}
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
