@@ -302,30 +302,42 @@ export function MesesFijo({
                   )}
                 </div>
 
-                {/* Dato protagonista: el monto del mes con su estado */}
-                <div className="mt-2">
-                  {registro ? (
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-lg font-bold tabular-nums text-foreground">
-                        {formatCurrency(aParte(registro.monto))}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          pagadoDelMes(registro) ? "bg-teal-50 text-teal-700" : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        {pagadoDelMes(registro) ? "Pagado" : "Debe"}
-                      </span>
+                {/* Dato protagonista: el monto del mes con su estado. Si el mes
+                    todavía no tiene registro se muestra el monto vigente como
+                    "A pagar", así el importe siempre está arriba. */}
+                {(() => {
+                  const montoGeneralMes = registro?.monto ?? gasto.monto
+                  const estadoPago = !registro ? "aPagar" : pagadoDelMes(registro) ? "pagado" : "debe"
+                  return (
+                    <div className="mt-2">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span
+                          className={`text-lg font-bold tabular-nums ${
+                            estadoPago === "aPagar" ? "text-muted-foreground" : "text-foreground"
+                          }`}
+                        >
+                          {formatCurrency(aParte(montoGeneralMes))}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            estadoPago === "pagado"
+                              ? "bg-teal-50 text-teal-700"
+                              : estadoPago === "debe"
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {estadoPago === "pagado" ? "Pagado" : estadoPago === "debe" ? "Debe" : "A pagar"}
+                        </span>
+                      </div>
+                      {parte && (
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          {`General ${formatCurrency(montoGeneralMes)}`}
+                        </p>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Sin monto cargado</p>
-                  )}
-                  {parte && registro && (
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      {`General ${formatCurrency(registro.monto)}`}
-                    </p>
-                  )}
-                </div>
+                  )
+                })()}
 
                 {/* Input del monto del mes */}
                 <div className="mt-3 space-y-2">
