@@ -354,10 +354,8 @@ export function MesesFijo({
                   <div className="flex items-center gap-1.5 pt-1">
                     {registro && pagadoDelMes(registro) ? (
                       <Button
-                        variant="outline"
                         size="sm"
-                        className="h-8 flex-1 gap-1.5 border-border text-muted-foreground hover:text-foreground"
-                        style={{ backgroundColor: "#ffffff" }}
+                        className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
                         onClick={() => guardarMes(montoPagar || aParte(registro.monto), false)}
                         title="Deshacer el pago de este mes"
                       >
