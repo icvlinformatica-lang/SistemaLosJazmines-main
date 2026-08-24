@@ -63,6 +63,7 @@ import {
   Search,
   X,
   RefreshCw,
+  CalendarCheck,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -83,6 +84,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
+import { CierreMesDialog } from "./cierre-mes-dialog"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
@@ -1485,6 +1487,9 @@ export default function CajaJazminePage() {
     updateCostoOperativo(gastoId, { historialMontos: historial })
   }
 
+  // ── Cierre de mes en un paso (carga de montos en lote) ──────────────────
+  const [cierreMesAbierto, setCierreMesAbierto] = useState(false)
+
   // ── Evolución de gastos fijos (ventana automática de historial) ──────────
   const [evolucionAbierta, setEvolucionAbierta] = useState(false)
   const [evolucionCostoId, setEvolucionCostoId] = useState<string | null>(null)
@@ -2606,14 +2611,25 @@ export default function CajaJazminePage() {
                 Gastos fijos
               </CardTitle>
               <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  style={{ backgroundColor: "#ffffff" }}
-                  className="h-7 w-7 text-purple-600 hover:text-purple-700"
-                  onClick={() => abrirEvolucion()}
-                  title="Ver evolución mes a mes"
-                >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      style={{ backgroundColor: "#ffffff" }}
+                      className="h-7 gap-1.5 text-xs text-purple-600 hover:text-purple-700"
+                      onClick={() => setCierreMesAbierto(true)}
+                      title="Cargar los montos del mes en un solo paso"
+                    >
+                      <CalendarCheck className="h-3.5 w-3.5" />
+                      Cerrar mes
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      style={{ backgroundColor: "#ffffff" }}
+                      className="h-7 w-7 text-purple-600 hover:text-purple-700"
+                      onClick={() => abrirEvolucion()}
+                      title="Ver evolución mes a mes"
+                    >
                   <TrendingUp className="h-4 w-4" />
                   <span className="sr-only">Ver evolución mes a mes de los gastos fijos</span>
                 </Button>
@@ -2643,7 +2659,11 @@ export default function CajaJazminePage() {
           {!colapsadas.fijos && (
           <CardContent className="space-y-2 reveal-stagger">
             {fijosSinCargarMesActual.length > 0 && (
-                <div className="rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-xs text-purple-950">
+                <button
+                  type="button"
+                  onClick={() => setCierreMesAbierto(true)}
+                  className="w-full rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-left text-xs text-purple-950 transition-colors hover:bg-purple-50"
+                >
                 <span className="font-semibold">
                   {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
                 </span>
@@ -2654,7 +2674,10 @@ export default function CajaJazminePage() {
                 {fijosSinCargarMesActual.length > 4
                   ? ` y ${fijosSinCargarMesActual.length - 4} más`
                   : ""}
-              </div>
+                <span className="mt-1 block font-semibold text-purple-600">
+                  Cargarlos todos juntos
+                </span>
+              </button>
             )}
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
@@ -3736,6 +3759,15 @@ export default function CajaJazminePage() {
       </Dialog>
 
       {/* ── Evolución de gastos fijos: ventana automática de historial ──��── */}
+      {/* ── Cierre de mes: carga de los montos del mes en un solo paso ───── */}
+      <CierreMesDialog
+        open={cierreMesAbierto}
+        onOpenChange={setCierreMesAbierto}
+        costos={state.costosOperativos || []}
+        updateCostoOperativo={updateCostoOperativo}
+        addCostoOperativo={addCostoOperativo}
+      />
+
       <EvolucionGastosFijosDialog
         open={evolucionAbierta}
         onOpenChange={setEvolucionAbierta}
