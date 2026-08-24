@@ -2766,28 +2766,14 @@ export default function CajaJazminePage() {
                               {` · ${cuota.porcentaje}%`}
                             </p>
                           </button>
-                          {/* 12 tarjetas de meses: TODO el manejo del gasto se hace
-                              desde acá (pagos, montos, editar y eliminar) */}
-                          {(() => {
-                            const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
-                            return origCuota ? (
-                              <div className="hidden xl:block shrink-0">
-                                <MesesFijo
-                                  gasto={origCuota}
-                                  updateCostoOperativo={updateCostoOperativo}
-                                  parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
-                                  onEditar={gastoRef ? () => abrirEditFijo(gastoRef) : undefined}
-                                  onEliminar={gastoRef ? () => setAccionMenu({ tipo: "eliminar", gasto: gastoRef }) : undefined}
-                                />
-                              </div>
-                            ) : null
-                          })()}
                         </div>
-                        {/* 12 tarjetas de meses en pantallas chicas: fila propia */}
+                        {/* 12 tarjetas de meses a ancho completo: TODO el manejo
+                            del gasto se hace desde acá (pagos, montos, editar y
+                            eliminar) */}
                         {(() => {
                           const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
                           return origCuota ? (
-                            <div className="xl:hidden border-t border-border px-3 py-2">
+                            <div className="border-t border-border px-3 py-2">
                               <MesesFijo
                                 gasto={origCuota}
                                 updateCostoOperativo={updateCostoOperativo}
@@ -2853,27 +2839,6 @@ export default function CajaJazminePage() {
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </button>
-                      {/* 12 tarjetas de meses: TODO el manejo del gasto se hace
-                          desde acá (pagos, montos, editar y eliminar). En la
-                          vista de un salón, los montos son la porción del salón. */}
-                      {!gasto.esSueldoVendedor && (() => {
-                        const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
-                        return origFijo ? (
-                          <div className="hidden xl:block shrink-0">
-                            <MesesFijo
-                              gasto={origFijo}
-                              updateCostoOperativo={updateCostoOperativo}
-                              parte={
-                                parteSalon
-                                  ? { salon: salonFiltro, porcentaje: parteSalon.porcentaje }
-                                  : undefined
-                              }
-                              onEditar={() => abrirEditFijo(gasto)}
-                              onEliminar={() => setAccionMenu({ tipo: "eliminar", gasto })}
-                            />
-                          </div>
-                        ) : null
-                      })()}
                       {/* Sueldos de vendedores: sin tira de meses, conservan
                           sus controles (monto, estado y edición de fecha). */}
                       {gasto.esSueldoVendedor && (
@@ -2906,11 +2871,13 @@ export default function CajaJazminePage() {
                         </div>
                       )}
                     </div>
-                    {/* 12 tarjetas de meses en pantallas chicas: fila propia */}
+                    {/* 12 tarjetas de meses a ancho completo: TODO el manejo del
+                        gasto se hace desde acá (pagos, montos, editar y eliminar).
+                        En la vista de un salón, los montos son la porción del salón. */}
                     {!gasto.esSueldoVendedor && (() => {
                       const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
                       return origFijo ? (
-                        <div className="xl:hidden border-t border-border px-3 py-2">
+                        <div className="border-t border-border px-3 py-2">
                           <MesesFijo
                             gasto={origFijo}
                             updateCostoOperativo={updateCostoOperativo}

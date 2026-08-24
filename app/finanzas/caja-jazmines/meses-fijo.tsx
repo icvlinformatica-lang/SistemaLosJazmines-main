@@ -89,6 +89,8 @@ export function MesesFijo({
   const hoyISO = mesActualISO()
   const anioActual = Number(hoyISO.split("-")[0])
   const [anioVer, setAnioVer] = useState(anioActual)
+  // Dirección del deslizamiento al cambiar de año (para la animación).
+  const [deslizar, setDeslizar] = useState<"izq" | "der">("der")
   const [mesAbierto, setMesAbierto] = useState<string | null>(null)
   const [montoPagar, setMontoPagar] = useState(0)
 
@@ -199,21 +201,30 @@ export function MesesFijo({
   }
 
   return (
-    <div className="flex items-center gap-1.5" aria-label={`Meses de ${gasto.concepto}${parte ? ` (${parte.salon})` : ""}`}>
+    <div className="flex w-full items-center gap-1.5" aria-label={`Meses de ${gasto.concepto}${parte ? ` (${parte.salon})` : ""}`}>
       <button
         type="button"
-        onClick={() => setAnioVer((a) => Math.max(anioMin, a - 1))}
+        onClick={() => {
+          setDeslizar("izq")
+          setAnioVer((a) => Math.max(anioMin, a - 1))
+        }}
         disabled={anioVer <= anioMin}
-        className="h-6 w-5 shrink-0 rounded border border-border text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+        className="h-7 w-6 shrink-0 rounded border border-border text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
         title="Año anterior"
       >
         <ChevronLeft className="mx-auto h-3.5 w-3.5" />
         <span className="sr-only">Ver año anterior</span>
       </button>
-      <span className="w-8 shrink-0 text-center text-[10px] font-semibold tabular-nums text-muted-foreground">
+      <span className="w-9 shrink-0 text-center text-[11px] font-semibold tabular-nums text-muted-foreground">
         {anioVer}
       </span>
-      <div className="flex flex-wrap items-center gap-1">
+      {/* key={anioVer} re-monta la fila y dispara el deslizamiento */}
+      <div
+        key={anioVer}
+        className={`flex min-w-0 flex-1 items-center gap-1 overflow-hidden animate-in fade-in duration-300 ${
+          deslizar === "der" ? "slide-in-from-right-8" : "slide-in-from-left-8"
+        }`}
+      >
         {MESES_CORTOS.map((nombre, i) => {
           const mesISO = `${anioVer}-${String(i + 1).padStart(2, "0")}`
           const registro = registroDe(mesISO)
@@ -223,7 +234,7 @@ export function MesesFijo({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className={`h-6 w-8 rounded border text-[10px] font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]}`}
+                  className={`h-7 min-w-0 flex-1 rounded border text-[10px] font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]}`}
                   title={`${nombre} ${anioVer} · ${
                     estado === "pagado"
                       ? `pagado ${formatCurrency(aParte(registro!.monto))}`
@@ -371,9 +382,12 @@ export function MesesFijo({
       </div>
       <button
         type="button"
-        onClick={() => setAnioVer((a) => Math.min(anioMax, a + 1))}
+        onClick={() => {
+          setDeslizar("der")
+          setAnioVer((a) => Math.min(anioMax, a + 1))
+        }}
         disabled={anioVer >= anioMax}
-        className="h-6 w-5 shrink-0 rounded border border-border text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+        className="h-7 w-6 shrink-0 rounded border border-border text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
         title="Año siguiente"
       >
         <ChevronRight className="mx-auto h-3.5 w-3.5" />
