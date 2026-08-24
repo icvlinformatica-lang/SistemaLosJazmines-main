@@ -85,6 +85,7 @@ import {
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import { CierreMesDialog } from "./cierre-mes-dialog"
+import { MesesFijo } from "./meses-fijo"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
@@ -1355,7 +1356,7 @@ export default function CajaJazminePage() {
     setEditandoSueldoVendedor(null)
   }
 
-  // ── Edición de gastos fijos ──────────────────────────────────────────────
+  // ── Edición de gastos fijos ─────────────────────────────────────────���────
   const [editandoFijo, setEditandoFijo] = useState<GastoFijoMes | null>(null)
   const [editFijo, setEditFijo] = useState({
     concepto: "",
@@ -2602,7 +2603,7 @@ export default function CajaJazminePage() {
       </Card>
 
       {/* ── Columna izquierda: gastos fijos ── */}
-      <div className="flex min-w-0 flex-col gap-4 md:col-start-1 md:row-start-1 md:row-span-3 md:order-first">
+      <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
         {/* Gastos fijos del mes */}
         <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
           <CardHeader className="pb-3">
@@ -2890,6 +2891,15 @@ export default function CajaJazminePage() {
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </button>
+                      {/* 12 tarjetas de meses: click para ver/cargar el pago del mes */}
+                      {!gasto.esSueldoVendedor && (() => {
+                        const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
+                        return origFijo ? (
+                          <div className="hidden lg:block shrink-0">
+                            <MesesFijo gasto={origFijo} updateCostoOperativo={updateCostoOperativo} />
+                          </div>
+                        ) : null
+                      })()}
                       <div className="flex items-center gap-1 shrink-0">
                         <div className="flex flex-col items-end gap-1 mr-1">
                           <span className="text-sm font-bold text-foreground">
@@ -3018,6 +3028,15 @@ export default function CajaJazminePage() {
                         </DropdownMenu>
                       </div>
                     </div>
+                    {/* 12 tarjetas de meses en pantallas chicas: fila propia */}
+                    {!gasto.esSueldoVendedor && (() => {
+                      const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
+                      return origFijo ? (
+                        <div className="lg:hidden border-t border-border px-3 py-2">
+                          <MesesFijo gasto={origFijo} updateCostoOperativo={updateCostoOperativo} />
+                        </div>
+                      ) : null
+                    })()}
                     {/* Deudas de períodos anteriores: check propio que desaparece al pagarse */}
                     {deudasAnteriores.length > 0 && (
                       <div className="border-t border-amber-200 bg-amber-50/60 rounded-b-lg">
@@ -3096,7 +3115,7 @@ export default function CajaJazminePage() {
       </div>
 
         {/* Gastos variables (columna derecha, fila 1) */}
-        <Card className="md:col-start-2 md:row-start-1" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
+        <Card className="md:col-start-1 md:row-start-2" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
