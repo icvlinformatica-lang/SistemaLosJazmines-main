@@ -349,41 +349,48 @@ export function MesesFijo({
                       {`Sugerido ${formatCurrency(aParte(sugeridoGeneral))}`}
                     </button>
                   )}
+                  {/* El botón principal se transforma: si el mes ya está pagado
+                      pasa a ser "Deshacer" del propio pago. */}
                   <div className="flex items-center gap-1.5 pt-1">
-                    <Button
-                      size="sm"
-                      className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                      onClick={() => guardarMes(montoPagar, true)}
-                      disabled={!montoPagar || montoPagar <= 0}
-                      title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                      Pagar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 flex-1 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50"
-                      style={{ backgroundColor: "#ffffff" }}
-                      onClick={() => guardarMes(montoPagar, false)}
-                      disabled={!montoPagar || montoPagar <= 0}
-                      title="Guarda el monto como deuda del mes, sin pagar"
-                    >
-                      <Wallet className="h-3.5 w-3.5" />
-                      Debe
-                    </Button>
+                    {registro && pagadoDelMes(registro) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 flex-1 gap-1.5 border-border text-muted-foreground hover:text-foreground"
+                        style={{ backgroundColor: "#ffffff" }}
+                        onClick={() => guardarMes(montoPagar || aParte(registro.monto), false)}
+                        title="Deshacer el pago de este mes"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Deshacer
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
+                          onClick={() => guardarMes(montoPagar, true)}
+                          disabled={!montoPagar || montoPagar <= 0}
+                          title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Pagar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 flex-1 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50"
+                          style={{ backgroundColor: "#ffffff" }}
+                          onClick={() => guardarMes(montoPagar, false)}
+                          disabled={!montoPagar || montoPagar <= 0}
+                          title="Guarda el monto como deuda del mes, sin pagar"
+                        >
+                          <Wallet className="h-3.5 w-3.5" />
+                          Debe
+                        </Button>
+                      </>
+                    )}
                   </div>
-                  {registro && pagadoDelMes(registro) && (
-                    <button
-                      type="button"
-                      className="inline-flex w-full items-center justify-center gap-1 pt-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                      onClick={() => guardarMes(aParte(registro.monto), false)}
-                      title="Deshacer el pago de este mes"
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                      Deshacer pago
-                    </button>
-                  )}
                 </div>
               </PopoverContent>
             </Popover>
