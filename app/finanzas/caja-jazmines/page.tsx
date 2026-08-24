@@ -2766,7 +2766,8 @@ export default function CajaJazminePage() {
                               {` · ${cuota.porcentaje}%`}
                             </p>
                           </button>
-                          {/* 12 tarjetas de meses: montos de la porción de ESTE salón */}
+                          {/* 12 tarjetas de meses: TODO el manejo del gasto se hace
+                              desde acá (pagos, montos, editar y eliminar) */}
                           {(() => {
                             const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
                             return origCuota ? (
@@ -2775,79 +2776,12 @@ export default function CajaJazminePage() {
                                   gasto={origCuota}
                                   updateCostoOperativo={updateCostoOperativo}
                                   parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
+                                  onEditar={gastoRef ? () => abrirEditFijo(gastoRef) : undefined}
+                                  onEliminar={gastoRef ? () => setAccionMenu({ tipo: "eliminar", gasto: gastoRef }) : undefined}
                                 />
                               </div>
                             ) : null
                           })()}
-                          <div className="flex items-center gap-1 shrink-0">
-                            <div className="flex flex-col items-end gap-1 mr-1">
-                              <span className="text-sm font-bold text-foreground">
-                                {formatCurrency(cuota.monto)}
-                              </span>
-                              {badgeEstadoFijo(cuota.estado)}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-purple-600 hover:text-purple-700"
-                              title={`Ver evolución mes a mes de ${cuota.concepto}`}
-                              onClick={() => abrirEvolucion(cuota.id)}
-                            >
-                              <TrendingUp className="h-4 w-4" />
-                              <span className="sr-only">{`Ver evolución mes a mes de ${cuota.concepto}`}</span>
-                            </Button>
-                            <ConfirmAction
-                              title={cuota.pagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                              description={`${cuota.concepto} · ${carpeta.salon} · ${formatCurrency(cuota.monto)}`}
-                              confirmLabel={cuota.pagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
-                              onConfirm={() => pagarCuotaSalon(cuota.id, carpeta.salon, !cuota.pagado)}
-                            >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={`h-7 w-7 ${cuota.pagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                                title={cuota.pagado ? `Marcar ${cuota.concepto} en ${carpeta.salon} como pendiente` : `Marcar ${cuota.concepto} en ${carpeta.salon} como pagado`}
-                              >
-                                {cuota.pagado ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-                                <span className="sr-only">{cuota.pagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                              </Button>
-                            </ConfirmAction>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                  title="Más acciones"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                  <span className="sr-only">{`Más acciones para ${cuota.concepto} en ${carpeta.salon}`}</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-52">
-                                {gastoRef && (
-                                  <>
-                                    <DropdownMenuItem onSelect={() => abrirRegistroMonto(gastoRef)}>
-                                      <Receipt className="h-3.5 w-3.5" />
-                                      {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(histRef, gastoRef.fechaVencimiento))})`}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => abrirEditFijo(gastoRef)}>
-                                      <Pencil className="h-3.5 w-3.5" />
-                                      Editar
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onSelect={() => setAccionMenu({ tipo: "eliminar", gasto: gastoRef })}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                      Eliminar
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
                         </div>
                         {/* 12 tarjetas de meses en pantallas chicas: fila propia */}
                         {(() => {
@@ -2858,6 +2792,8 @@ export default function CajaJazminePage() {
                                 gasto={origCuota}
                                 updateCostoOperativo={updateCostoOperativo}
                                 parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
+                                onEditar={gastoRef ? () => abrirEditFijo(gastoRef) : undefined}
+                                onEliminar={gastoRef ? () => setAccionMenu({ tipo: "eliminar", gasto: gastoRef }) : undefined}
                               />
                             </div>
                           ) : null
@@ -2917,8 +2853,9 @@ export default function CajaJazminePage() {
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </button>
-                      {/* 12 tarjetas de meses: click para ver/cargar el pago del mes.
-                          En la vista de un salón, los montos son la porción del salón. */}
+                      {/* 12 tarjetas de meses: TODO el manejo del gasto se hace
+                          desde acá (pagos, montos, editar y eliminar). En la
+                          vista de un salón, los montos son la porción del salón. */}
                       {!gasto.esSueldoVendedor && (() => {
                         const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
                         return origFijo ? (
@@ -2931,137 +2868,43 @@ export default function CajaJazminePage() {
                                   ? { salon: salonFiltro, porcentaje: parteSalon.porcentaje }
                                   : undefined
                               }
+                              onEditar={() => abrirEditFijo(gasto)}
+                              onEliminar={() => setAccionMenu({ tipo: "eliminar", gasto })}
                             />
                           </div>
                         ) : null
                       })()}
-                      <div className="flex items-center gap-1 shrink-0">
-                        <div className="flex flex-col items-end gap-1 mr-1">
-                          <span className="text-sm font-bold text-foreground">
-                            {formatCurrency(gasto.monto)}
-                          </span>
-                          {badgeEstadoFijo(gasto.estado)}
-                        </div>
-                        {!gasto.esSueldoVendedor && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-purple-600 hover:text-purple-700"
-                            title={`Ver evolución mes a mes de ${gasto.concepto}`}
-                            onClick={() => abrirEvolucion(gasto.id)}
-                          >
-                            <TrendingUp className="h-4 w-4" />
-                            <span className="sr-only">{`Ver evolución mes a mes de ${gasto.concepto}`}</span>
-                          </Button>
-                        )}
-                        {!gasto.esSueldoVendedor && esRepartido && (
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] shrink-0 ${partesPagadas === distGasto.length ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-muted text-muted-foreground"}`}
-                            title={salonFiltro === "todos" ? "Se paga desde la carpeta de cada salón" : "Avance de pago entre salones"}
-                          >
-                            {`${partesPagadas}/${distGasto.length} salones`}
-                          </Badge>
-                        )}
-                        {/* Gasto repartido visto desde UN salón: check para pagar
-                            la parte que le corresponde a este salón. */}
-                        {!gasto.esSueldoVendedor && esRepartido && parteSalon && (
-                          <ConfirmAction
-                            title={parteSalonPagada ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                            description={`${gasto.concepto} · ${salonLabel(salonFiltro)} · ${formatCurrency(gasto.monto)}`}
-                            confirmLabel={parteSalonPagada ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
-                            onConfirm={() => pagarCuotaSalon(gasto.id, salonFiltro, !parteSalonPagada)}
-                          >
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={`h-7 w-7 ${parteSalonPagada ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                              title={parteSalonPagada ? `Marcar la parte de ${salonLabel(salonFiltro)} como pendiente` : `Marcar la parte de ${salonLabel(salonFiltro)} como pagada`}
-                            >
-                              {parteSalonPagada
-                                ? <CheckCircle2 className="h-4 w-4" />
-                                : <Circle className="h-4 w-4" />
-                              }
-                              <span className="sr-only">{parteSalonPagada ? "Marcar pendiente" : "Marcar pagado"}</span>
-                            </Button>
-                          </ConfirmAction>
-                        )}
-                        {!gasto.esSueldoVendedor && !esRepartido && (
-                          <ConfirmAction
-                            title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                            description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}${ultimoRegistro ? ` · período ${formatMes(ultimoRegistro.mes)}` : ""}`}
-                            confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
-                            onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
-                          >
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                              title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
-                            >
-                              {esPagado
-                                ? <CheckCircle2 className="h-4 w-4" />
-                                : <Circle className="h-4 w-4" />
-                              }
-                              <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                            </Button>
-                          </ConfirmAction>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                              title="Más acciones"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                              <span className="sr-only">Más acciones para {gasto.concepto}</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
-                            {gasto.esSueldoVendedor ? (
+                      {/* Sueldos de vendedores: sin tira de meses, conservan
+                          sus controles (monto, estado y edición de fecha). */}
+                      {gasto.esSueldoVendedor && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex flex-col items-end gap-1 mr-1">
+                            <span className="text-sm font-bold text-foreground">
+                              {formatCurrency(gasto.monto)}
+                            </span>
+                            {badgeEstadoFijo(gasto.estado)}
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                title="Más acciones"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">Más acciones para {gasto.concepto}</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
                               <DropdownMenuItem onSelect={() => abrirEdicionSueldo(gasto)}>
                                 <Pencil className="h-3.5 w-3.5" />
                                 Editar fecha de pago
                               </DropdownMenuItem>
-                            ) : (
-                              <>
-                                <DropdownMenuItem onSelect={() => abrirRegistroMonto(gasto)}>
-                                  <Receipt className="h-3.5 w-3.5" />
-                                  {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(hist, gasto.fechaVencimiento))})`}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => abrirEditFijo(gasto)}>
-                                  <Pencil className="h-3.5 w-3.5" />
-                                  Editar
-                                </DropdownMenuItem>
-                                {deudasPagadas.length > 0 && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    {deudasPagadas.map((deuda) => (
-                                      <DropdownMenuItem
-                                        key={deuda.id}
-                                        onSelect={() => pagarDeudaAnterior(gasto.id, deuda.id, false)}
-                                      >
-                                        <Circle className="h-3.5 w-3.5" />
-                                        {`Destildar pago de ${formatMes(deuda.mes)}`}
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onSelect={() => setAccionMenu({ tipo: "eliminar", gasto })}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  Eliminar
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
                     </div>
                     {/* 12 tarjetas de meses en pantallas chicas: fila propia */}
                     {!gasto.esSueldoVendedor && (() => {
@@ -3076,6 +2919,8 @@ export default function CajaJazminePage() {
                                 ? { salon: salonFiltro, porcentaje: parteSalon.porcentaje }
                                 : undefined
                             }
+                            onEditar={() => abrirEditFijo(gasto)}
+                            onEliminar={() => setAccionMenu({ tipo: "eliminar", gasto })}
                           />
                         </div>
                       ) : null

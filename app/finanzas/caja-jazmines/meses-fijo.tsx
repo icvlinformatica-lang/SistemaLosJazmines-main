@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button"
 import { MoneyInput } from "@/components/ui/money-input"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { generateId, type CostoOperativo, type RegistroMonto } from "@/lib/store"
-import { Check, ChevronLeft, ChevronRight, RotateCcw, Sparkles, Wallet } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Pencil, RotateCcw, Sparkles, Trash2, Wallet } from "lucide-react"
 
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -74,11 +74,17 @@ export function MesesFijo({
   gasto,
   updateCostoOperativo,
   parte,
+  onEditar,
+  onEliminar,
 }: {
   gasto: CostoOperativo
   updateCostoOperativo: (id: string, cambios: Partial<CostoOperativo>) => void
   /** Gasto repartido visto desde un salón: porción que le corresponde. */
   parte?: { salon: string; porcentaje: number }
+  /** Abre el formulario de edición del gasto (reemplaza al menú "⋯"). */
+  onEditar?: () => void
+  /** Dispara la eliminación del gasto, con su confirmación existente. */
+  onEliminar?: () => void
 }) {
   const hoyISO = mesActualISO()
   const anioActual = Number(hoyISO.split("-")[0])
@@ -324,6 +330,40 @@ export function MesesFijo({
                     </Button>
                   )}
                 </div>
+                {(onEditar || onEliminar) && (
+                  <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-2">
+                    {onEditar && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 flex-1 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          setMesAbierto(null)
+                          onEditar()
+                        }}
+                        title={`Editar ${gasto.concepto}`}
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Editar gasto
+                      </Button>
+                    )}
+                    {onEliminar && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 flex-1 gap-1.5 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                        onClick={() => {
+                          setMesAbierto(null)
+                          onEliminar()
+                        }}
+                        title={`Eliminar ${gasto.concepto}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Eliminar
+                      </Button>
+                    )}
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
           )
