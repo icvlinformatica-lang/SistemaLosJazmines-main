@@ -2766,6 +2766,19 @@ export default function CajaJazminePage() {
                               {` · ${cuota.porcentaje}%`}
                             </p>
                           </button>
+                          {/* 12 tarjetas de meses: montos de la porción de ESTE salón */}
+                          {(() => {
+                            const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
+                            return origCuota ? (
+                              <div className="hidden xl:block shrink-0">
+                                <MesesFijo
+                                  gasto={origCuota}
+                                  updateCostoOperativo={updateCostoOperativo}
+                                  parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
+                                />
+                              </div>
+                            ) : null
+                          })()}
                           <div className="flex items-center gap-1 shrink-0">
                             <div className="flex flex-col items-end gap-1 mr-1">
                               <span className="text-sm font-bold text-foreground">
@@ -2836,6 +2849,19 @@ export default function CajaJazminePage() {
                             </DropdownMenu>
                           </div>
                         </div>
+                        {/* 12 tarjetas de meses en pantallas chicas: fila propia */}
+                        {(() => {
+                          const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
+                          return origCuota ? (
+                            <div className="xl:hidden border-t border-border px-3 py-2">
+                              <MesesFijo
+                                gasto={origCuota}
+                                updateCostoOperativo={updateCostoOperativo}
+                                parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
+                              />
+                            </div>
+                          ) : null
+                        })()}
                       </div>
                       )
                     })}
@@ -2891,12 +2917,21 @@ export default function CajaJazminePage() {
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </button>
-                      {/* 12 tarjetas de meses: click para ver/cargar el pago del mes */}
+                      {/* 12 tarjetas de meses: click para ver/cargar el pago del mes.
+                          En la vista de un salón, los montos son la porción del salón. */}
                       {!gasto.esSueldoVendedor && (() => {
                         const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
                         return origFijo ? (
-                          <div className="hidden lg:block shrink-0">
-                            <MesesFijo gasto={origFijo} updateCostoOperativo={updateCostoOperativo} />
+                          <div className="hidden xl:block shrink-0">
+                            <MesesFijo
+                              gasto={origFijo}
+                              updateCostoOperativo={updateCostoOperativo}
+                              parte={
+                                parteSalon
+                                  ? { salon: salonFiltro, porcentaje: parteSalon.porcentaje }
+                                  : undefined
+                              }
+                            />
                           </div>
                         ) : null
                       })()}
@@ -3032,8 +3067,16 @@ export default function CajaJazminePage() {
                     {!gasto.esSueldoVendedor && (() => {
                       const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
                       return origFijo ? (
-                        <div className="lg:hidden border-t border-border px-3 py-2">
-                          <MesesFijo gasto={origFijo} updateCostoOperativo={updateCostoOperativo} />
+                        <div className="xl:hidden border-t border-border px-3 py-2">
+                          <MesesFijo
+                            gasto={origFijo}
+                            updateCostoOperativo={updateCostoOperativo}
+                            parte={
+                              parteSalon
+                                ? { salon: salonFiltro, porcentaje: parteSalon.porcentaje }
+                                : undefined
+                            }
+                          />
                         </div>
                       ) : null
                     })()}

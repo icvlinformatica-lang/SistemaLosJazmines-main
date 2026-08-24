@@ -10,6 +10,13 @@
  * escribe en historialMontos con las MISMAS reglas que la carga individual
  * (⋯ → "Cargar nuevo monto") y el check de pago de la fila, así la tarjeta
  * sigue funcionando con normalidad en Caja Jazmines.
+ *
+ * Si se pasa `parte` (gasto repartido visto desde UN salón), todos los montos
+ * visibles son la porción de ese salón, con el monto general en chiquito; los
+ * montos ingresados también se interpretan como porción del salón y se
+ * convierten al general antes de escribir en el historial. El pago marca la
+ * cuota de ESE salón (misma regla que el check de la fila): el gasto completo
+ * queda pagado solo cuando todos los salones pagaron.
  */
 
 import { useState } from "react"
@@ -55,12 +62,6 @@ function montoSugerido(c: CostoOperativo): number {
 
 type EstadoMes = "pagado" | "cargado" | "actual" | "pasado" | "futuro"
 
-function estadoDeMes(mesISO: string, registro: RegistroMonto | undefined, hoyISO: string): EstadoMes {
-  if (registro) return registro.pagado === false ? "cargado" : "pagado"
-  if (mesISO === hoyISO) return "actual"
-  return mesISO < hoyISO ? "pasado" : "futuro"
-}
-
 const ESTILO_CHIP: Record<EstadoMes, string> = {
   pagado: "bg-teal-600 border-teal-600 text-white hover:bg-teal-700",
   cargado: "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200",
@@ -72,9 +73,12 @@ const ESTILO_CHIP: Record<EstadoMes, string> = {
 export function MesesFijo({
   gasto,
   updateCostoOperativo,
+  parte,
 }: {
   gasto: CostoOperativo
   updateCostoOperativo: (id: string, cambios: Partial<CostoOperativo>) => void
+  /** Gasto repartido visto desde un salón: porción que le corresponde. */
+  parte?: { salon: string; porcentaje: number }
 }) {
   const hoyISO = mesActualISO()
   const anioActual = Number(hoyISO.split("-")[0])
@@ -84,7 +88,32 @@ export function MesesFijo({
 
   const hist = gasto.historialMontos || []
   const registroDe = (mesISO: string) => hist.find((r) => r.mes === mesISO)
-  const sugerido = montoSugerido(gasto)
+  const sugeridoGeneral = montoSugerido(gasto)
+  const mesVigente = hist.length > 0 ? hist[hist.length - 1].mes : null
+
+  // Con `parte`, todo monto visible/ingresado es la porción del salón.
+  const factor = parte ? parte.porcentaje / 100 : 1
+  const aParte = (x: number) => Math.round(x * factor)
+  const aGeneral = (x: number) => (parte ? Math.round((x * 100) / parte.porcentaje) : x)
+
+  /**
+   * Estado de pago del mes desde la mirada del salón: para el período vigente
+   * de un gasto repartido manda la cuota del salón (distribucion), igual que
+   * el check de la fila; para el resto, el flag del registro.
+   */
+  const pagadoDelMes = (registro: RegistroMonto) => {
+    if (parte && registro.mes === mesVigente) {
+      const d = gasto.distribucion?.find((x) => x.salon === parte.salon)
+      if (d) return d.pagado === true
+    }
+    return registro.pagado !== false
+  }
+
+  const estadoDeMes = (mesISO: string, registro: RegistroMonto | undefined): EstadoMes => {
+    if (registro) return pagadoDelMes(registro) ? "pagado" : "cargado"
+    if (mesISO === hoyISO) return "actual"
+    return mesISO < hoyISO ? "pasado" : "futuro"
+  }
 
   // Se puede navegar desde el primer año con historial hasta 2 años adelante.
   const anioMin = Math.min(anioActual, ...hist.map((r) => Number(r.mes.split("-")[0])).filter(Boolean))
@@ -97,7 +126,7 @@ export function MesesFijo({
     }
     const registro = registroDe(mesISO)
     setMesAbierto(mesISO)
-    setMontoPagar(registro?.monto ?? sugerido)
+    setMontoPagar(aParte(registro?.monto ?? sugeridoGeneral))
   }
 
   /**
@@ -105,16 +134,36 @@ export function MesesFijo({
    * - Si el mes ya tenía registro, se actualiza su monto y su estado de pago.
    * - Si no lo tenía, se crea el registro (montoAnterior = monto vigente).
    * - Si el mes es el período más reciente del historial, el monto pasa a ser
-   *   el vigente del gasto y la fila refleja el estado de pago (incluidas las
-   *   cuotas por salón si el gasto está repartido).
+   *   el vigente del gasto y la fila refleja el estado de pago.
+   * - Con `parte`, el monto ingresado es la porción del salón (se convierte al
+   *   general) y el pago marca la cuota de ese salón: el gasto completo queda
+   *   pagado solo si todos los salones pagaron (regla de pagarCuotaSalon).
    */
   function guardarMes(monto: number, pagado: boolean) {
     if (!mesAbierto || !monto || monto <= 0) return
+    const montoTotal = aGeneral(monto)
     const registro = registroDe(mesAbierto)
+
+    // ¿El mes editado será el período más reciente? → pasa a ser el vigente.
+    const mesesOrdenados = [...new Set([...hist.map((r) => r.mes), mesAbierto])].sort()
+    const esVigente = mesesOrdenados[mesesOrdenados.length - 1] === mesAbierto
+
+    // Reparto por salón: el pago afecta solo la cuota de este salón.
+    let distActualizada = gasto.distribucion
+    let pagadoGasto = pagado
+    if (parte && gasto.distribucion && gasto.distribucion.length > 0) {
+      distActualizada = gasto.distribucion.map((d) => (d.salon === parte.salon ? { ...d, pagado } : d))
+      pagadoGasto = distActualizada.every((d) => d.pagado === true)
+    } else if (gasto.distribucion && gasto.distribucion.length > 0) {
+      distActualizada = gasto.distribucion.map((d) => ({ ...d, pagado }))
+    }
+
     let historial: RegistroMonto[]
     if (registro) {
       historial = hist.map((r) =>
-        r.id === registro.id ? { ...r, monto, pagado, fecha: new Date().toISOString() } : r,
+        r.id === registro.id
+          ? { ...r, monto: montoTotal, pagado: parte ? pagadoGasto : pagado, fecha: new Date().toISOString() }
+          : r,
       )
     } else {
       historial = [
@@ -122,24 +171,21 @@ export function MesesFijo({
         {
           id: generateId(),
           mes: mesAbierto,
-          monto,
+          monto: montoTotal,
           montoAnterior: gasto.monto,
           fecha: new Date().toISOString(),
-          pagado,
+          pagado: parte ? pagadoGasto : pagado,
         },
       ].sort((a, b) => a.mes.localeCompare(b.mes))
     }
-    // ¿El mes editado es el período más reciente? → pasa a ser el monto vigente.
-    const esVigente = historial.length > 0 && historial[historial.length - 1].mes === mesAbierto
+
     updateCostoOperativo(gasto.id, {
       historialMontos: historial,
       ...(esVigente
         ? {
-            monto,
-            pagado,
-            ...(gasto.distribucion && gasto.distribucion.length > 0
-              ? { distribucion: gasto.distribucion.map((d) => ({ ...d, pagado })) }
-              : {}),
+            monto: montoTotal,
+            pagado: pagadoGasto,
+            ...(distActualizada ? { distribucion: distActualizada } : {}),
           }
         : {}),
     })
@@ -147,7 +193,7 @@ export function MesesFijo({
   }
 
   return (
-    <div className="flex items-center gap-1.5" aria-label={`Meses de ${gasto.concepto}`}>
+    <div className="flex items-center gap-1.5" aria-label={`Meses de ${gasto.concepto}${parte ? ` (${parte.salon})` : ""}`}>
       <button
         type="button"
         onClick={() => setAnioVer((a) => Math.max(anioMin, a - 1))}
@@ -165,7 +211,7 @@ export function MesesFijo({
         {MESES_CORTOS.map((nombre, i) => {
           const mesISO = `${anioVer}-${String(i + 1).padStart(2, "0")}`
           const registro = registroDe(mesISO)
-          const estado = estadoDeMes(mesISO, registro, hoyISO)
+          const estado = estadoDeMes(mesISO, registro)
           return (
             <Popover key={mesISO} open={mesAbierto === mesISO} onOpenChange={(o) => abrirMes(mesISO, o)}>
               <PopoverTrigger asChild>
@@ -174,11 +220,11 @@ export function MesesFijo({
                   className={`h-6 w-8 rounded border text-[10px] font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]}`}
                   title={`${nombre} ${anioVer} · ${
                     estado === "pagado"
-                      ? `pagado ${formatCurrency(registro!.monto)}`
+                      ? `pagado ${formatCurrency(aParte(registro!.monto))}`
                       : estado === "cargado"
-                        ? `cargado ${formatCurrency(registro!.monto)}, sin pagar`
+                        ? `cargado ${formatCurrency(aParte(registro!.monto))}, sin pagar`
                         : "sin monto cargado"
-                  }`}
+                  }${parte ? ` (${parte.salon} ${parte.porcentaje}%)` : ""}`}
                 >
                   {nombre.charAt(0)}
                   <span className="sr-only">{`${nombre} ${anioVer}: ${estado === "pagado" ? "pagado" : estado === "cargado" ? "cargado sin pagar" : "sin cargar"}`}</span>
@@ -188,29 +234,50 @@ export function MesesFijo({
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground capitalize">
                   {nombreMesLargo(mesISO)}
                 </p>
+                {parte && (
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {`Porción de ${parte.salon} (${parte.porcentaje}%)`}
+                  </p>
+                )}
                 <div className="mt-2 space-y-1.5 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-muted-foreground">Monto cargado</span>
                     {registro ? (
-                      <span className={`font-bold ${registro.pagado === false ? "text-amber-700" : "text-teal-700"}`}>
-                        {formatCurrency(registro.monto)}
-                        {registro.pagado === false ? " · debe" : " · pagado"}
+                      <span className={`font-bold ${pagadoDelMes(registro) ? "text-teal-700" : "text-amber-700"}`}>
+                        {formatCurrency(aParte(registro.monto))}
+                        {pagadoDelMes(registro) ? " · pagado" : " · debe"}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">Sin cargar</span>
                     )}
                   </div>
+                  {parte && registro && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-muted-foreground">General</span>
+                      <span className="text-[10px] font-medium text-muted-foreground">
+                        {formatCurrency(registro.monto)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
                       <Sparkles className="h-3 w-3 text-purple-500" />
                       Sugerido
                     </span>
-                    <span className="font-semibold text-purple-700">{formatCurrency(sugerido)}</span>
+                    <span className="font-semibold text-purple-700">{formatCurrency(aParte(sugeridoGeneral))}</span>
                   </div>
+                  {parte && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-muted-foreground">General sugerido</span>
+                      <span className="text-[10px] font-medium text-muted-foreground">
+                        {formatCurrency(sugeridoGeneral)}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-3 space-y-2">
                   <label htmlFor={`pago-${gasto.id}-${mesISO}`} className="text-xs font-medium text-foreground">
-                    Monto de {nombre}
+                    {parte ? `Monto de ${nombre} (${parte.salon})` : `Monto de ${nombre}`}
                   </label>
                   <MoneyInput
                     id={`pago-${gasto.id}-${mesISO}`}
@@ -218,6 +285,11 @@ export function MesesFijo({
                     onValueChange={setMontoPagar}
                     className="h-8"
                   />
+                  {parte && montoPagar > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {`Equivale a un monto general de ${formatCurrency(aGeneral(montoPagar))}`}
+                    </p>
+                  )}
                   <Button
                     size="sm"
                     className="w-full h-8 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
@@ -225,7 +297,7 @@ export function MesesFijo({
                     disabled={!montoPagar || montoPagar <= 0}
                   >
                     <Check className="h-3.5 w-3.5" />
-                    Registrar pago
+                    {parte ? `Registrar pago de ${parte.salon}` : "Registrar pago"}
                   </Button>
                   <Button
                     variant="outline"
@@ -239,12 +311,12 @@ export function MesesFijo({
                     <Wallet className="h-3.5 w-3.5" />
                     Cargar monto sin pagar
                   </Button>
-                  {registro && registro.pagado !== false && (
+                  {registro && pagadoDelMes(registro) && (
                     <Button
                       variant="ghost"
                       size="sm"
                       className="w-full h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => guardarMes(registro.monto, false)}
+                      onClick={() => guardarMes(aParte(registro.monto), false)}
                       title="Deshacer el pago de este mes"
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
