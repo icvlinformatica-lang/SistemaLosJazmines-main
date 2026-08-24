@@ -1329,7 +1329,7 @@ useStore()
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2 capitalize">
               <CalendarDays className="h-4 w-4 text-teal-600" />
-              {calendario.label}
+              Calendario Caja Eventos {calendario.label}
             </CardTitle>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="sm" className="h-6 px-2" onClick={() => cambiarMes(-1)}>‹</Button>
