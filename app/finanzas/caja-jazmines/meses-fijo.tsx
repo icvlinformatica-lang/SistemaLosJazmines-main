@@ -100,6 +100,8 @@ export function MesesFijo({
   const [deslizar, setDeslizar] = useState<"izq" | "der">("der")
   const [mesAbierto, setMesAbierto] = useState<string | null>(null)
   const [montoPagar, setMontoPagar] = useState(0)
+  // El input del monto está oculto: aparece al elegir "Pagar otro monto".
+  const [editandoMonto, setEditandoMonto] = useState(false)
 
   const hist = gasto.historialMontos || []
   const registroDe = (mesISO: string) => hist.find((r) => r.mes === mesISO)
@@ -137,10 +139,12 @@ export function MesesFijo({
   function abrirMes(mesISO: string, abierto: boolean) {
     if (!abierto) {
       setMesAbierto(null)
+      setEditandoMonto(false)
       return
     }
     const registro = registroDe(mesISO)
     setMesAbierto(mesISO)
+    setEditandoMonto(false)
     // Sin registro previo: con el sugerido apagado se pre-carga el monto vigente.
     setMontoPagar(aParte(registro?.monto ?? (SUGERIDO_ACTIVO ? sugeridoGeneral : gasto.monto)))
   }
@@ -339,42 +343,50 @@ export function MesesFijo({
                   )
                 })()}
 
-                {/* Input del monto del mes */}
+                {/* Acciones. El input está oculto: solo aparece al elegir
+                    "Pagar otro monto". */}
                 <div className="mt-3 space-y-2">
-                  <MoneyInput
-                    id={`pago-${gasto.id}-${mesISO}`}
-                    value={montoPagar}
-                    onValueChange={setMontoPagar}
-                    className="h-8"
-                    aria-label={parte ? `Monto de ${nombre} (${parte.salon})` : `Monto de ${nombre}`}
-                  />
-                  {/* Sugerido por tendencia: DESACTIVADO temporalmente a pedido
-                      del usuario. Para reactivarlo, cambiar a true. */}
-                  {SUGERIDO_ACTIVO && (
-                    <button
-                      type="button"
-                      onClick={() => setMontoPagar(aParte(sugeridoGeneral))}
-                      className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 transition-colors hover:bg-purple-100"
-                      title={parte ? `Usar sugerido (general ${formatCurrency(sugeridoGeneral)})` : "Usar el monto sugerido"}
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      {`Sugerido ${formatCurrency(aParte(sugeridoGeneral))}`}
-                    </button>
+                  {editandoMonto && (
+                    <>
+                      <MoneyInput
+                        id={`pago-${gasto.id}-${mesISO}`}
+                        value={montoPagar}
+                        onValueChange={setMontoPagar}
+                        className="h-8"
+                        autoFocus
+                        aria-label={parte ? `Monto de ${nombre} (${parte.salon})` : `Monto de ${nombre}`}
+                      />
+                      {/* Sugerido por tendencia: DESACTIVADO temporalmente a pedido
+                          del usuario. Para reactivarlo, cambiar a true. */}
+                      {SUGERIDO_ACTIVO && (
+                        <button
+                          type="button"
+                          onClick={() => setMontoPagar(aParte(sugeridoGeneral))}
+                          className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 transition-colors hover:bg-purple-100"
+                          title={
+                            parte ? `Usar sugerido (general ${formatCurrency(sugeridoGeneral)})` : "Usar el monto sugerido"
+                          }
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          {`Sugerido ${formatCurrency(aParte(sugeridoGeneral))}`}
+                        </button>
+                      )}
+                    </>
                   )}
-                  {/* El botón principal se transforma: si el mes ya está pagado
-                      pasa a ser "Deshacer" del propio pago. */}
-                  <div className="flex items-center gap-1.5 pt-1">
+                  <div className="flex items-center gap-1.5">
                     {registro && pagadoDelMes(registro) ? (
+                      /* Mes pagado: el botón principal se transforma en Deshacer. */
                       <Button
                         size="sm"
                         className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                        onClick={() => guardarMes(montoPagar || aParte(registro.monto), false)}
+                        onClick={() => guardarMes(aParte(registro.monto), false)}
                         title="Deshacer el pago de este mes"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         Deshacer
                       </Button>
-                    ) : (
+                    ) : editandoMonto ? (
+                      /* Editando: confirma el monto escrito o cancela. */
                       <>
                         <Button
                           size="sm"
@@ -384,19 +396,46 @@ export function MesesFijo({
                           title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
                         >
                           <Check className="h-3.5 w-3.5" />
+                          {`Pagar ${formatCurrency(montoPagar)}`}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setEditandoMonto(false)
+                            setMontoPagar(aParte(registro?.monto ?? gasto.monto))
+                          }}
+                          title="Cancelar y volver al monto sugerido"
+                        >
+                          Cancelar
+                        </Button>
+                      </>
+                    ) : (
+                      /* Estado inicial: paga el monto de arriba con un toque. */
+                      <>
+                        <Button
+                          size="sm"
+                          className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
+                          onClick={() => guardarMes(aParte(registro?.monto ?? gasto.monto), true)}
+                          title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
+                        >
+                          <Check className="h-3.5 w-3.5" />
                           Pagar
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-8 flex-1 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50"
+                          className="h-8 flex-1 gap-1.5 border-amber-300 text-xs text-amber-800 hover:bg-amber-50"
                           style={{ backgroundColor: "#ffffff" }}
-                          onClick={() => guardarMes(montoPagar, false)}
-                          disabled={!montoPagar || montoPagar <= 0}
-                          title="Guarda el monto como deuda del mes, sin pagar"
+                          onClick={() => {
+                            setMontoPagar(aParte(registro?.monto ?? gasto.monto))
+                            setEditandoMonto(true)
+                          }}
+                          title="Escribir un monto distinto al de la factura"
                         >
                           <Wallet className="h-3.5 w-3.5" />
-                          Debe
+                          Pagar otro monto
                         </Button>
                       </>
                     )}
