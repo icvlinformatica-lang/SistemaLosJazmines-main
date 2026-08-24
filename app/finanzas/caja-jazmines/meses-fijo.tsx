@@ -247,134 +247,132 @@ export function MesesFijo({
                   <span className="sr-only">{`${nombre} ${anioVer}: ${estado === "pagado" ? "pagado" : estado === "cargado" ? "cargado sin pagar" : "sin cargar"}`}</span>
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-64 p-3" style={{ backgroundColor: "#ffffff" }}>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground capitalize">
-                  {nombreMesLargo(mesISO)}
-                </p>
-                {parte && (
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">
-                    {`Porción de ${parte.salon} (${parte.porcentaje}%)`}
-                  </p>
-                )}
-                <div className="mt-2 space-y-1.5 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">Monto cargado</span>
-                    {registro ? (
-                      <span className={`font-bold ${pagadoDelMes(registro) ? "text-teal-700" : "text-amber-700"}`}>
-                        {formatCurrency(aParte(registro.monto))}
-                        {pagadoDelMes(registro) ? " · pagado" : " · debe"}
+              <PopoverContent align="end" className="w-60 p-3" style={{ backgroundColor: "#ffffff" }}>
+                {/* Encabezado en una línea + acciones secundarias como íconos */}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold capitalize text-foreground">
+                    {nombreMesLargo(mesISO)}
+                    {parte && (
+                      <span className="ml-1 font-normal normal-case text-muted-foreground">
+                        {`· ${parte.salon} ${parte.porcentaje}%`}
                       </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Sin cargar</span>
                     )}
-                  </div>
-                  {parte && registro && (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-muted-foreground">General</span>
-                      <span className="text-[10px] font-medium text-muted-foreground">
-                        {formatCurrency(registro.monto)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-purple-500" />
-                      Sugerido
-                    </span>
-                    <span className="font-semibold text-purple-700">{formatCurrency(aParte(sugeridoGeneral))}</span>
-                  </div>
-                  {parte && (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-muted-foreground">General sugerido</span>
-                      <span className="text-[10px] font-medium text-muted-foreground">
-                        {formatCurrency(sugeridoGeneral)}
-                      </span>
+                  </p>
+                  {(onEditar || onEliminar) && (
+                    <div className="flex items-center">
+                      {onEditar && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setMesAbierto(null)
+                            onEditar()
+                          }}
+                          title={`Editar ${gasto.concepto}`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                          <span className="sr-only">{`Editar ${gasto.concepto}`}</span>
+                        </Button>
+                      )}
+                      {onEliminar && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                          onClick={() => {
+                            setMesAbierto(null)
+                            onEliminar()
+                          }}
+                          title={`Eliminar ${gasto.concepto}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          <span className="sr-only">{`Eliminar ${gasto.concepto}`}</span>
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
+
+                {/* Dato protagonista: el monto del mes con su estado */}
+                <div className="mt-2">
+                  {registro ? (
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-lg font-bold tabular-nums text-foreground">
+                        {formatCurrency(aParte(registro.monto))}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          pagadoDelMes(registro) ? "bg-teal-50 text-teal-700" : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {pagadoDelMes(registro) ? "Pagado" : "Debe"}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Sin monto cargado</p>
+                  )}
+                  {parte && registro && (
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      {`General ${formatCurrency(registro.monto)}`}
+                    </p>
+                  )}
+                </div>
+
+                {/* Input + sugerido aplicable con un toque */}
                 <div className="mt-3 space-y-2">
-                  <label htmlFor={`pago-${gasto.id}-${mesISO}`} className="text-xs font-medium text-foreground">
-                    {parte ? `Monto de ${nombre} (${parte.salon})` : `Monto de ${nombre}`}
-                  </label>
                   <MoneyInput
                     id={`pago-${gasto.id}-${mesISO}`}
                     value={montoPagar}
                     onValueChange={setMontoPagar}
                     className="h-8"
+                    aria-label={parte ? `Monto de ${nombre} (${parte.salon})` : `Monto de ${nombre}`}
                   />
-                  {parte && montoPagar > 0 && (
-                    <p className="text-[10px] text-muted-foreground">
-                      {`Equivale a un monto general de ${formatCurrency(aGeneral(montoPagar))}`}
-                    </p>
-                  )}
-                  <Button
-                    size="sm"
-                    className="w-full h-8 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                    onClick={() => guardarMes(montoPagar, true)}
-                    disabled={!montoPagar || montoPagar <= 0}
+                  <button
+                    type="button"
+                    onClick={() => setMontoPagar(aParte(sugeridoGeneral))}
+                    className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 transition-colors hover:bg-purple-100"
+                    title={parte ? `Usar sugerido (general ${formatCurrency(sugeridoGeneral)})` : "Usar el monto sugerido"}
                   >
-                    <Check className="h-3.5 w-3.5" />
-                    {parte ? `Registrar pago de ${parte.salon}` : "Registrar pago"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full h-8 gap-1.5 border-amber-400 text-amber-800 hover:bg-amber-50"
-                    style={{ backgroundColor: "#ffffff" }}
-                    onClick={() => guardarMes(montoPagar, false)}
-                    disabled={!montoPagar || montoPagar <= 0}
-                    title="Deja el monto cargado como deuda del mes, sin pagar"
-                  >
-                    <Wallet className="h-3.5 w-3.5" />
-                    Cargar monto sin pagar
-                  </Button>
-                  {registro && pagadoDelMes(registro) && (
+                    <Sparkles className="h-3 w-3" />
+                    {`Sugerido ${formatCurrency(aParte(sugeridoGeneral))}`}
+                  </button>
+                  <div className="flex items-center gap-1.5 pt-1">
                     <Button
-                      variant="ghost"
                       size="sm"
-                      className="w-full h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
+                      onClick={() => guardarMes(montoPagar, true)}
+                      disabled={!montoPagar || montoPagar <= 0}
+                      title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Pagar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 flex-1 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50"
+                      style={{ backgroundColor: "#ffffff" }}
+                      onClick={() => guardarMes(montoPagar, false)}
+                      disabled={!montoPagar || montoPagar <= 0}
+                      title="Guarda el monto como deuda del mes, sin pagar"
+                    >
+                      <Wallet className="h-3.5 w-3.5" />
+                      Debe
+                    </Button>
+                  </div>
+                  {registro && pagadoDelMes(registro) && (
+                    <button
+                      type="button"
+                      className="inline-flex w-full items-center justify-center gap-1 pt-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
                       onClick={() => guardarMes(aParte(registro.monto), false)}
                       title="Deshacer el pago de este mes"
                     >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Marcar como no pagado
-                    </Button>
+                      <RotateCcw className="h-3 w-3" />
+                      Deshacer pago
+                    </button>
                   )}
                 </div>
-                {(onEditar || onEliminar) && (
-                  <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-2">
-                    {onEditar && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 flex-1 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => {
-                          setMesAbierto(null)
-                          onEditar()
-                        }}
-                        title={`Editar ${gasto.concepto}`}
-                      >
-                        <Pencil className="h-3 w-3" />
-                        Editar gasto
-                      </Button>
-                    )}
-                    {onEliminar && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 flex-1 gap-1.5 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
-                        onClick={() => {
-                          setMesAbierto(null)
-                          onEliminar()
-                        }}
-                        title={`Eliminar ${gasto.concepto}`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Eliminar
-                      </Button>
-                    )}
-                  </div>
-                )}
               </PopoverContent>
             </Popover>
           )
