@@ -60,6 +60,13 @@ function montoSugerido(c: CostoOperativo): number {
   return t === 0 ? c.monto : Math.round(c.monto * (1 + t))
 }
 
+/**
+ * Sugerido por tendencia: DESACTIVADO temporalmente a pedido del usuario.
+ * Cambiar a true para volver a mostrar el chip "Sugerido" en el popover
+ * y pre-cargar el input con la proyección en meses sin registro.
+ */
+const SUGERIDO_ACTIVO = false
+
 type EstadoMes = "pagado" | "cargado" | "actual" | "pasado" | "futuro"
 
 const ESTILO_CHIP: Record<EstadoMes, string> = {
@@ -134,7 +141,8 @@ export function MesesFijo({
     }
     const registro = registroDe(mesISO)
     setMesAbierto(mesISO)
-    setMontoPagar(aParte(registro?.monto ?? sugeridoGeneral))
+    // Sin registro previo: con el sugerido apagado se pre-carga el monto vigente.
+    setMontoPagar(aParte(registro?.monto ?? (SUGERIDO_ACTIVO ? sugeridoGeneral : gasto.monto)))
   }
 
   /**
@@ -319,7 +327,7 @@ export function MesesFijo({
                   )}
                 </div>
 
-                {/* Input + sugerido aplicable con un toque */}
+                {/* Input del monto del mes */}
                 <div className="mt-3 space-y-2">
                   <MoneyInput
                     id={`pago-${gasto.id}-${mesISO}`}
@@ -328,15 +336,19 @@ export function MesesFijo({
                     className="h-8"
                     aria-label={parte ? `Monto de ${nombre} (${parte.salon})` : `Monto de ${nombre}`}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setMontoPagar(aParte(sugeridoGeneral))}
-                    className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 transition-colors hover:bg-purple-100"
-                    title={parte ? `Usar sugerido (general ${formatCurrency(sugeridoGeneral)})` : "Usar el monto sugerido"}
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    {`Sugerido ${formatCurrency(aParte(sugeridoGeneral))}`}
-                  </button>
+                  {/* Sugerido por tendencia: DESACTIVADO temporalmente a pedido
+                      del usuario. Para reactivarlo, cambiar a true. */}
+                  {SUGERIDO_ACTIVO && (
+                    <button
+                      type="button"
+                      onClick={() => setMontoPagar(aParte(sugeridoGeneral))}
+                      className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 transition-colors hover:bg-purple-100"
+                      title={parte ? `Usar sugerido (general ${formatCurrency(sugeridoGeneral)})` : "Usar el monto sugerido"}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {`Sugerido ${formatCurrency(aParte(sugeridoGeneral))}`}
+                    </button>
+                  )}
                   <div className="flex items-center gap-1.5 pt-1">
                     <Button
                       size="sm"

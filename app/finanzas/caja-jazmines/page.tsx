@@ -93,6 +93,13 @@ import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 // HELPERS
 // ---------------------------------------------------------------------------
 
+/**
+ * Evolución de gastos fijos: DESACTIVADA temporalmente a pedido del usuario.
+ * Cambiar a true para volver a mostrar el botón del encabezado, el click
+ * sobre el nombre de cada gasto y el diálogo de historial.
+ */
+const EVOLUCION_ACTIVA = false
+
 function formatFecha(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
   const date = new Date(y, m - 1, d)
@@ -1557,6 +1564,9 @@ export default function CajaJazminePage() {
     })
   }
   function abrirEvolucion(costoId?: string) {
+    // Evolución de gastos fijos: DESACTIVADA temporalmente a pedido del
+    // usuario. Cambiar EVOLUCION_ACTIVA a true para reactivarla.
+    if (!EVOLUCION_ACTIVA) return
     setEvolucionCostoId(costoId ?? null)
     setEvolucionAbierta(true)
   }
@@ -2623,17 +2633,19 @@ export default function CajaJazminePage() {
                       <CalendarCheck className="h-3.5 w-3.5" />
                       Cerrar mes
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      style={{ backgroundColor: "#ffffff" }}
-                      className="h-7 w-7 text-purple-600 hover:text-purple-700"
-                      onClick={() => abrirEvolucion()}
-                      title="Ver evolución mes a mes"
-                    >
-                  <TrendingUp className="h-4 w-4" />
-                  <span className="sr-only">Ver evolución mes a mes de los gastos fijos</span>
-                </Button>
+                    {EVOLUCION_ACTIVA && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        style={{ backgroundColor: "#ffffff" }}
+                        className="h-7 w-7 text-purple-600 hover:text-purple-700"
+                        onClick={() => abrirEvolucion()}
+                        title="Ver evolución mes a mes"
+                      >
+                        <TrendingUp className="h-4 w-4" />
+                        <span className="sr-only">Ver evolución mes a mes de los gastos fijos</span>
+                      </Button>
+                    )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -2752,7 +2764,7 @@ export default function CajaJazminePage() {
                             type="button"
                             className="flex-1 min-w-0 text-left"
                             onClick={() => abrirEvolucion(cuota.id)}
-                            title="Ver evolución mes a mes"
+                            title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
                           >
                             <p className="text-sm font-medium truncate">{cuota.concepto}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
@@ -2826,7 +2838,7 @@ export default function CajaJazminePage() {
                         type="button"
                         className="flex-1 min-w-0 text-left"
                         onClick={() => abrirEvolucion(gasto.id)}
-                        title="Ver evolución mes a mes"
+                        title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
                       >
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
