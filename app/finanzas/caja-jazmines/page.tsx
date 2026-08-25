@@ -86,6 +86,7 @@ import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo } from "./meses-fijo"
+import { GastoPlegable } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
@@ -2762,30 +2763,31 @@ export default function CajaJazminePage() {
                       const gastoRef = gastosFijosMes.find((g) => g.id === cuota.id)
                       const histRef = gastoRef?.historialMontos || []
                       return (
-                      <div
+                      <GastoPlegable
                         key={`reparto-${cuota.id}`}
-                        className="rounded-lg border border-border bg-card"
+                        header={
+                          <div className="flex items-center gap-3 p-3">
+                            <button
+                              type="button"
+                              className="flex-1 min-w-0 text-left"
+                              onClick={() => abrirEvolucion(cuota.id)}
+                              title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
+                            >
+                              <p className="text-sm font-medium truncate">{cuota.concepto}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {gastoRef?.frecuencia || "Mensual"}
+                                {cuota.fechaVencimiento && (gastoRef?.frecuencia || "Mensual") === "Mensual" ? (
+                                  <span className="font-semibold text-purple-600">
+                                    {` · ${periodoQueSePaga(cuota.fechaVencimiento)}`}
+                                  </span>
+                                ) : null}
+                                {cuota.fechaVencimiento ? ` · vence ${formatFecha(cuota.fechaVencimiento)}` : ""}
+                                {` · ${cuota.porcentaje}%`}
+                              </p>
+                            </button>
+                          </div>
+                        }
                       >
-                        <div className="flex items-center gap-3 p-3">
-                          <button
-                            type="button"
-                            className="flex-1 min-w-0 text-left"
-                            onClick={() => abrirEvolucion(cuota.id)}
-                            title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
-                          >
-                            <p className="text-sm font-medium truncate">{cuota.concepto}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {gastoRef?.frecuencia || "Mensual"}
-                              {cuota.fechaVencimiento && (gastoRef?.frecuencia || "Mensual") === "Mensual" ? (
-                                <span className="font-semibold text-purple-600">
-                                  {` · ${periodoQueSePaga(cuota.fechaVencimiento)}`}
-                                </span>
-                              ) : null}
-                              {cuota.fechaVencimiento ? ` · vence ${formatFecha(cuota.fechaVencimiento)}` : ""}
-                              {` · ${cuota.porcentaje}%`}
-                            </p>
-                          </button>
-                        </div>
                         {/* 12 tarjetas de meses a ancho completo: TODO el manejo
                             del gasto se hace desde acá (pagos, montos, editar y
                             eliminar) */}
@@ -2803,7 +2805,7 @@ export default function CajaJazminePage() {
                             </div>
                           ) : null
                         })()}
-                      </div>
+                      </GastoPlegable>
                       )
                     })}
                     {carpeta.items.map((gasto) => {
@@ -2835,61 +2837,62 @@ export default function CajaJazminePage() {
                     (r, i) => r.pagado === true && i !== hist.length - 1,
                   )
                   return (
-                    <div
+                    <GastoPlegable
                       key={gasto.id}
-                      className="rounded-lg border border-border bg-card"
-                    >
-                    <div className="flex items-center gap-3 p-3">
-                      {/* Un click sobre el gasto abre su historial automático */}
-                      <button
-                        type="button"
-                        className="flex-1 min-w-0 text-left"
-                        onClick={() => abrirEvolucion(gasto.id)}
-                        title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
-                      >
-                        <p className="text-sm font-medium truncate">{gasto.concepto}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {gasto.frecuencia}
-                          {gasto.fechaVencimiento && gasto.frecuencia === "Mensual" ? (
-                            <span className="font-semibold text-purple-600">
-                              {` · ${periodoQueSePaga(gasto.fechaVencimiento)}`}
-                            </span>
-                          ) : null}
-                          {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
-                        </p>
-                      </button>
-                      {/* Sueldos de vendedores: sin tira de meses, conservan
-                          sus controles (monto, estado y edición de fecha). */}
-                      {gasto.esSueldoVendedor && (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <div className="flex flex-col items-end gap-1 mr-1">
-                            <span className="text-sm font-bold text-foreground">
-                              {formatCurrency(gasto.monto)}
-                            </span>
-                            {badgeEstadoFijo(gasto.estado)}
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                title="Más acciones"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                                <span className="sr-only">Más acciones para {gasto.concepto}</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-52">
-                              <DropdownMenuItem onSelect={() => abrirEdicionSueldo(gasto)}>
-                                <Pencil className="h-3.5 w-3.5" />
-                                Editar fecha de pago
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                      header={
+                        <div className="flex items-center gap-3 p-3">
+                          {/* Un click sobre el gasto abre su historial automático */}
+                          <button
+                            type="button"
+                            className="flex-1 min-w-0 text-left"
+                            onClick={() => abrirEvolucion(gasto.id)}
+                            title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
+                          >
+                            <p className="text-sm font-medium truncate">{gasto.concepto}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {gasto.frecuencia}
+                              {gasto.fechaVencimiento && gasto.frecuencia === "Mensual" ? (
+                                <span className="font-semibold text-purple-600">
+                                  {` · ${periodoQueSePaga(gasto.fechaVencimiento)}`}
+                                </span>
+                              ) : null}
+                              {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
+                            </p>
+                          </button>
+                          {/* Sueldos de vendedores: sin tira de meses, conservan
+                              sus controles (monto, estado y edición de fecha). */}
+                          {gasto.esSueldoVendedor && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <div className="flex flex-col items-end gap-1 mr-1">
+                                <span className="text-sm font-bold text-foreground">
+                                  {formatCurrency(gasto.monto)}
+                                </span>
+                                {badgeEstadoFijo(gasto.estado)}
+                              </div>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                    title="Más acciones"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                    <span className="sr-only">Más acciones para {gasto.concepto}</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-52">
+                                  <DropdownMenuItem onSelect={() => abrirEdicionSueldo(gasto)}>
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    Editar fecha de pago
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      }
+                    >
                     {/* 12 tarjetas de meses a ancho completo: TODO el manejo del
                         gasto se hace desde acá (pagos, montos, editar y eliminar).
                         En la vista de un salón, los montos son la porción del salón. */}
@@ -2942,7 +2945,7 @@ export default function CajaJazminePage() {
                         ))}
                       </div>
                     )}
-                    </div>
+                    </GastoPlegable>
                   )
                     })}
                   </CarpetaGastos>
