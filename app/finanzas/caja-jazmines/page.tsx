@@ -63,6 +63,7 @@ import {
   Search,
   X,
   RefreshCw,
+  CalendarCheck,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -83,12 +84,28 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
+import { CierreMesDialog } from "./cierre-mes-dialog"
+import { MesesFijo } from "./meses-fijo"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
 // ---------------------------------------------------------------------------
 // HELPERS
 // ---------------------------------------------------------------------------
+
+/**
+ * Evolución de gastos fijos: DESACTIVADA temporalmente a pedido del usuario.
+ * Cambiar a true para volver a mostrar el botón del encabezado, el click
+ * sobre el nombre de cada gasto y el diálogo de historial.
+ */
+const EVOLUCION_ACTIVA = false
+
+/**
+ * Cierre de mes: DESACTIVADO temporalmente a pedido del usuario.
+ * Cambiar a true para volver a mostrar el botón "Cerrar mes" y hacer
+ * clickeable el aviso de gastos sin cargar (que abre el mismo diálogo).
+ */
+const CIERRE_MES_ACTIVO = false
 
 function formatFecha(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
@@ -1353,7 +1370,7 @@ export default function CajaJazminePage() {
     setEditandoSueldoVendedor(null)
   }
 
-  // ── Edición de gastos fijos ──────────────────────────────────────────────
+  // ── Edición de gastos fijos ─────────────────────────────────────────���────
   const [editandoFijo, setEditandoFijo] = useState<GastoFijoMes | null>(null)
   const [editFijo, setEditFijo] = useState({
     concepto: "",
@@ -1485,6 +1502,9 @@ export default function CajaJazminePage() {
     updateCostoOperativo(gastoId, { historialMontos: historial })
   }
 
+  // ── Cierre de mes en un paso (carga de montos en lote) ──────────────────
+  const [cierreMesAbierto, setCierreMesAbierto] = useState(false)
+
   // ── Evolución de gastos fijos (ventana automática de historial) ──────────
   const [evolucionAbierta, setEvolucionAbierta] = useState(false)
   const [evolucionCostoId, setEvolucionCostoId] = useState<string | null>(null)
@@ -1551,6 +1571,9 @@ export default function CajaJazminePage() {
     })
   }
   function abrirEvolucion(costoId?: string) {
+    // Evolución de gastos fijos: DESACTIVADA temporalmente a pedido del
+    // usuario. Cambiar EVOLUCION_ACTIVA a true para reactivarla.
+    if (!EVOLUCION_ACTIVA) return
     setEvolucionCostoId(costoId ?? null)
     setEvolucionAbierta(true)
   }
@@ -2597,26 +2620,41 @@ export default function CajaJazminePage() {
       </Card>
 
       {/* ── Columna izquierda: gastos fijos ── */}
-      <div className="flex min-w-0 flex-col gap-4 md:col-start-1 md:row-start-1 md:row-span-3 md:order-first">
-        {/* Gastos fijos del mes */}
-        <Card style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
-          <CardHeader className="pb-3">
+      <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
+        {/* Gastos fijos del mes (gap-3/py-4 la compactan: el Card base trae gap-6/py-6) */}
+        <Card className="gap-3 py-4" style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
+          <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 Gastos fijos
               </CardTitle>
               <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  style={{ backgroundColor: "#ffffff" }}
-                  className="h-7 w-7 text-purple-600 hover:text-purple-700"
-                  onClick={() => abrirEvolucion()}
-                  title="Ver evolución mes a mes"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  <span className="sr-only">Ver evolución mes a mes de los gastos fijos</span>
-                </Button>
+                    {CIERRE_MES_ACTIVO && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        style={{ backgroundColor: "#ffffff" }}
+                        className="h-7 gap-1.5 text-xs text-purple-600 hover:text-purple-700"
+                        onClick={() => setCierreMesAbierto(true)}
+                        title="Cargar los montos del mes en un solo paso"
+                      >
+                        <CalendarCheck className="h-3.5 w-3.5" />
+                        Cerrar mes
+                      </Button>
+                    )}
+                    {EVOLUCION_ACTIVA && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        style={{ backgroundColor: "#ffffff" }}
+                        className="h-7 w-7 text-purple-600 hover:text-purple-700"
+                        onClick={() => abrirEvolucion()}
+                        title="Ver evolución mes a mes"
+                      >
+                        <TrendingUp className="h-4 w-4" />
+                        <span className="sr-only">Ver evolución mes a mes de los gastos fijos</span>
+                      </Button>
+                    )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -2642,8 +2680,14 @@ export default function CajaJazminePage() {
           </CardHeader>
           {!colapsadas.fijos && (
           <CardContent className="space-y-2 reveal-stagger">
-            {fijosSinCargarMesActual.length > 0 && (
-                <div className="rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-xs text-purple-950">
+            {/* Aviso de gastos sin cargar: oculto junto con el Cierre de mes
+                (CIERRE_MES_ACTIVO). Reactivar la bandera lo vuelve a mostrar. */}
+            {CIERRE_MES_ACTIVO && fijosSinCargarMesActual.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setCierreMesAbierto(true)}
+                className="w-full rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-left text-xs text-purple-950 transition-colors hover:bg-purple-50"
+              >
                 <span className="font-semibold">
                   {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
                 </span>
@@ -2651,10 +2695,9 @@ export default function CajaJazminePage() {
                   .slice(0, 4)
                   .map((c) => c.concepto)
                   .join(", ")}
-                {fijosSinCargarMesActual.length > 4
-                  ? ` y ${fijosSinCargarMesActual.length - 4} más`
-                  : ""}
-              </div>
+                {fijosSinCargarMesActual.length > 4 ? ` y ${fijosSinCargarMesActual.length - 4} más` : ""}
+                <span className="mt-1 block font-semibold text-purple-600">Cargarlos todos juntos</span>
+              </button>
             )}
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
@@ -2728,7 +2771,7 @@ export default function CajaJazminePage() {
                             type="button"
                             className="flex-1 min-w-0 text-left"
                             onClick={() => abrirEvolucion(cuota.id)}
-                            title="Ver evolución mes a mes"
+                            title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
                           >
                             <p className="text-sm font-medium truncate">{cuota.concepto}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
@@ -2742,76 +2785,24 @@ export default function CajaJazminePage() {
                               {` · ${cuota.porcentaje}%`}
                             </p>
                           </button>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <div className="flex flex-col items-end gap-1 mr-1">
-                              <span className="text-sm font-bold text-foreground">
-                                {formatCurrency(cuota.monto)}
-                              </span>
-                              {badgeEstadoFijo(cuota.estado)}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-purple-600 hover:text-purple-700"
-                              title={`Ver evolución mes a mes de ${cuota.concepto}`}
-                              onClick={() => abrirEvolucion(cuota.id)}
-                            >
-                              <TrendingUp className="h-4 w-4" />
-                              <span className="sr-only">{`Ver evolución mes a mes de ${cuota.concepto}`}</span>
-                            </Button>
-                            <ConfirmAction
-                              title={cuota.pagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                              description={`${cuota.concepto} · ${carpeta.salon} · ${formatCurrency(cuota.monto)}`}
-                              confirmLabel={cuota.pagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
-                              onConfirm={() => pagarCuotaSalon(cuota.id, carpeta.salon, !cuota.pagado)}
-                            >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={`h-7 w-7 ${cuota.pagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                                title={cuota.pagado ? `Marcar ${cuota.concepto} en ${carpeta.salon} como pendiente` : `Marcar ${cuota.concepto} en ${carpeta.salon} como pagado`}
-                              >
-                                {cuota.pagado ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-                                <span className="sr-only">{cuota.pagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                              </Button>
-                            </ConfirmAction>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                  title="Más acciones"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                  <span className="sr-only">{`Más acciones para ${cuota.concepto} en ${carpeta.salon}`}</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-52">
-                                {gastoRef && (
-                                  <>
-                                    <DropdownMenuItem onSelect={() => abrirRegistroMonto(gastoRef)}>
-                                      <Receipt className="h-3.5 w-3.5" />
-                                      {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(histRef, gastoRef.fechaVencimiento))})`}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => abrirEditFijo(gastoRef)}>
-                                      <Pencil className="h-3.5 w-3.5" />
-                                      Editar
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onSelect={() => setAccionMenu({ tipo: "eliminar", gasto: gastoRef })}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                      Eliminar
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
                         </div>
+                        {/* 12 tarjetas de meses a ancho completo: TODO el manejo
+                            del gasto se hace desde acá (pagos, montos, editar y
+                            eliminar) */}
+                        {(() => {
+                          const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
+                          return origCuota ? (
+                            <div className="border-t border-border px-3 py-2.5">
+                              <MesesFijo
+                                gasto={origCuota}
+                                updateCostoOperativo={updateCostoOperativo}
+                                parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
+                                onEditar={gastoRef ? () => abrirEditFijo(gastoRef) : undefined}
+                                onEliminar={gastoRef ? () => setAccionMenu({ tipo: "eliminar", gasto: gastoRef }) : undefined}
+                              />
+                            </div>
+                          ) : null
+                        })()}
                       </div>
                       )
                     })}
@@ -2854,7 +2845,7 @@ export default function CajaJazminePage() {
                         type="button"
                         className="flex-1 min-w-0 text-left"
                         onClick={() => abrirEvolucion(gasto.id)}
-                        title="Ver evolución mes a mes"
+                        title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
                       >
                         <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -2867,134 +2858,59 @@ export default function CajaJazminePage() {
                           {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                         </p>
                       </button>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <div className="flex flex-col items-end gap-1 mr-1">
-                          <span className="text-sm font-bold text-foreground">
-                            {formatCurrency(gasto.monto)}
-                          </span>
-                          {badgeEstadoFijo(gasto.estado)}
-                        </div>
-                        {!gasto.esSueldoVendedor && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-purple-600 hover:text-purple-700"
-                            title={`Ver evolución mes a mes de ${gasto.concepto}`}
-                            onClick={() => abrirEvolucion(gasto.id)}
-                          >
-                            <TrendingUp className="h-4 w-4" />
-                            <span className="sr-only">{`Ver evolución mes a mes de ${gasto.concepto}`}</span>
-                          </Button>
-                        )}
-                        {!gasto.esSueldoVendedor && esRepartido && (
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] shrink-0 ${partesPagadas === distGasto.length ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-muted text-muted-foreground"}`}
-                            title={salonFiltro === "todos" ? "Se paga desde la carpeta de cada salón" : "Avance de pago entre salones"}
-                          >
-                            {`${partesPagadas}/${distGasto.length} salones`}
-                          </Badge>
-                        )}
-                        {/* Gasto repartido visto desde UN salón: check para pagar
-                            la parte que le corresponde a este salón. */}
-                        {!gasto.esSueldoVendedor && esRepartido && parteSalon && (
-                          <ConfirmAction
-                            title={parteSalonPagada ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                            description={`${gasto.concepto} · ${salonLabel(salonFiltro)} · ${formatCurrency(gasto.monto)}`}
-                            confirmLabel={parteSalonPagada ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
-                            onConfirm={() => pagarCuotaSalon(gasto.id, salonFiltro, !parteSalonPagada)}
-                          >
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={`h-7 w-7 ${parteSalonPagada ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                              title={parteSalonPagada ? `Marcar la parte de ${salonLabel(salonFiltro)} como pendiente` : `Marcar la parte de ${salonLabel(salonFiltro)} como pagada`}
-                            >
-                              {parteSalonPagada
-                                ? <CheckCircle2 className="h-4 w-4" />
-                                : <Circle className="h-4 w-4" />
-                              }
-                              <span className="sr-only">{parteSalonPagada ? "Marcar pendiente" : "Marcar pagado"}</span>
-                            </Button>
-                          </ConfirmAction>
-                        )}
-                        {!gasto.esSueldoVendedor && !esRepartido && (
-                          <ConfirmAction
-                            title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                            description={`${gasto.concepto} · ${formatCurrency(gasto.monto)}${ultimoRegistro ? ` · período ${formatMes(ultimoRegistro.mes)}` : ""}`}
-                            confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
-                            onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
-                          >
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
-                              title={esPagado ? "Marcar como pendiente" : "Marcar como pagado"}
-                            >
-                              {esPagado
-                                ? <CheckCircle2 className="h-4 w-4" />
-                                : <Circle className="h-4 w-4" />
-                              }
-                              <span className="sr-only">{esPagado ? "Marcar pendiente" : "Marcar pagado"}</span>
-                            </Button>
-                          </ConfirmAction>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                              title="Más acciones"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                              <span className="sr-only">Más acciones para {gasto.concepto}</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
-                            {gasto.esSueldoVendedor ? (
+                      {/* Sueldos de vendedores: sin tira de meses, conservan
+                          sus controles (monto, estado y edición de fecha). */}
+                      {gasto.esSueldoVendedor && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex flex-col items-end gap-1 mr-1">
+                            <span className="text-sm font-bold text-foreground">
+                              {formatCurrency(gasto.monto)}
+                            </span>
+                            {badgeEstadoFijo(gasto.estado)}
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                title="Más acciones"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">Más acciones para {gasto.concepto}</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
                               <DropdownMenuItem onSelect={() => abrirEdicionSueldo(gasto)}>
                                 <Pencil className="h-3.5 w-3.5" />
                                 Editar fecha de pago
                               </DropdownMenuItem>
-                            ) : (
-                              <>
-                                <DropdownMenuItem onSelect={() => abrirRegistroMonto(gasto)}>
-                                  <Receipt className="h-3.5 w-3.5" />
-                                  {`Cargar nuevo monto (${nombreDeMes(mesQueCorrespondeCargar(hist, gasto.fechaVencimiento))})`}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => abrirEditFijo(gasto)}>
-                                  <Pencil className="h-3.5 w-3.5" />
-                                  Editar
-                                </DropdownMenuItem>
-                                {deudasPagadas.length > 0 && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    {deudasPagadas.map((deuda) => (
-                                      <DropdownMenuItem
-                                        key={deuda.id}
-                                        onSelect={() => pagarDeudaAnterior(gasto.id, deuda.id, false)}
-                                      >
-                                        <Circle className="h-3.5 w-3.5" />
-                                        {`Destildar pago de ${formatMes(deuda.mes)}`}
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onSelect={() => setAccionMenu({ tipo: "eliminar", gasto })}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  Eliminar
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
                     </div>
+                    {/* 12 tarjetas de meses a ancho completo: TODO el manejo del
+                        gasto se hace desde acá (pagos, montos, editar y eliminar).
+                        En la vista de un salón, los montos son la porción del salón. */}
+                    {!gasto.esSueldoVendedor && (() => {
+                      const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
+                      return origFijo ? (
+                        <div className="border-t border-border px-3 py-2.5">
+                          <MesesFijo
+                            gasto={origFijo}
+                            updateCostoOperativo={updateCostoOperativo}
+                            parte={
+                              parteSalon
+                                ? { salon: salonFiltro, porcentaje: parteSalon.porcentaje }
+                                : undefined
+                            }
+                            onEditar={() => abrirEditFijo(gasto)}
+                            onEliminar={() => setAccionMenu({ tipo: "eliminar", gasto })}
+                          />
+                        </div>
+                      ) : null
+                    })()}
                     {/* Deudas de períodos anteriores: check propio que desaparece al pagarse */}
                     {deudasAnteriores.length > 0 && (
                       <div className="border-t border-amber-200 bg-amber-50/60 rounded-b-lg">
@@ -3073,7 +2989,7 @@ export default function CajaJazminePage() {
       </div>
 
         {/* Gastos variables (columna derecha, fila 1) */}
-        <Card className="md:col-start-2 md:row-start-1" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
+        <Card className="md:col-start-1 md:row-start-2" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -3736,6 +3652,15 @@ export default function CajaJazminePage() {
       </Dialog>
 
       {/* ── Evolución de gastos fijos: ventana automática de historial ──��── */}
+      {/* ── Cierre de mes: carga de los montos del mes en un solo paso ───── */}
+      <CierreMesDialog
+        open={cierreMesAbierto}
+        onOpenChange={setCierreMesAbierto}
+        costos={state.costosOperativos || []}
+        updateCostoOperativo={updateCostoOperativo}
+        addCostoOperativo={addCostoOperativo}
+      />
+
       <EvolucionGastosFijosDialog
         open={evolucionAbierta}
         onOpenChange={setEvolucionAbierta}
