@@ -9,8 +9,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
  * - El contenido (tira de meses, deudas) arranca PLEGADO: solo se ve el
  *   encabezado del gasto.
  * - Se despliega automáticamente si el mouse queda encima al menos
- *   1 segundo. Pasadas rápidas (menos de 1s) no lo despliegan.
- * - Al sacar el mouse, espera 3 segundos antes de volver a plegarse.
+ *   0,5 segundos. Pasadas rápidas (menos de 0,5s) no lo despliegan.
+ * - Al sacar el mouse, espera 2 segundos antes de volver a plegarse.
  * - No se pliega mientras haya un popover o menú abierto (se está
  *   operando un mes del gasto); reintenta cada segundo hasta que cierre.
  * - También se despliega si el teclado enfoca algo adentro (accesibilidad).
@@ -52,7 +52,7 @@ export function GastoPlegable({ header, children }: { header: ReactNode; childre
       timerAbrir.current = setTimeout(() => {
         timerAbrir.current = null
         setAbierto(true)
-      }, 1000)
+      }, 500)
     }
   }
 
@@ -61,7 +61,7 @@ export function GastoPlegable({ header, children }: { header: ReactNode; childre
       clearTimeout(timerAbrir.current)
       timerAbrir.current = null
     }
-    if (abierto) programarCierre(3000)
+    if (abierto) programarCierre(2000)
   }
 
   return (
