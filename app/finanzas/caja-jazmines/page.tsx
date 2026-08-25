@@ -2636,7 +2636,7 @@ export default function CajaJazminePage() {
       {/* ── Columna izquierda: gastos fijos ── */}
       <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
         {/* Gastos fijos del mes (gap-3/py-4 la compactan: el Card base trae gap-6/py-6) */}
-        <Card className="gap-3 py-4" style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }} {...hovFijos.props}>
+        <Card className="gap-3 py-4" style={{ backgroundColor: "#ffffff" }} {...hovFijos.props}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
