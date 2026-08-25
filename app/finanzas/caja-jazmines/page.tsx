@@ -86,7 +86,7 @@ import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo } from "./meses-fijo"
-import { GastoPlegable } from "./gasto-plegable"
+import { GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
@@ -533,6 +533,8 @@ function CalendarioGastosSalones({
   const { configuracionCajas } = useStore()
   const [mesVista, setMesVista] = useState(() => new Date(ahora.getFullYear(), ahora.getMonth(), 1))
   const [diaSel, setDiaSel] = useState<string | null>(null)
+  // La tarjeta arranca plegada y se despliega dejando el mouse encima 0,5s
+  const hovCalendario = useHoverPlegado()
 
   // Unificar todos los gastos con fecha en una sola lista
   const items: ItemCalendario[] = [
@@ -628,8 +630,8 @@ function CalendarioGastosSalones({
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card {...hovCalendario.props}>
+      <CardHeader className={hovCalendario.abierto ? "pb-3" : "pb-0"}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Calendar className="h-4 w-4 text-purple-600" />
@@ -669,6 +671,7 @@ function CalendarioGastosSalones({
           </div>
         )}
       </CardHeader>
+      {hovCalendario.abierto && (
       <CardContent className="space-y-3">
         <div className="grid grid-cols-7 gap-1">
           {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
@@ -756,6 +759,7 @@ function CalendarioGastosSalones({
           </p>
         )}
       </CardContent>
+      )}
     </Card>
   )
 }
@@ -1022,8 +1026,8 @@ export default function CajaJazminePage() {
   const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
-  // Al entrar, todas las tarjetas arrancan plegadas y se van abriendo solas,
-  // de a una, con la animación escalonada de sus subtarjetas.
+  // Todas arrancan plegadas: se despliegan solas al dejar el mouse encima
+  // 0,5s (useHoverPlegado) o quedan fijas abiertas con el botón de chevron.
   const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({
     alertas: true,
     cuotas: true,
@@ -1032,6 +1036,21 @@ export default function CajaJazminePage() {
     proyeccion: true,
   })
 
+  // Hover que despliega cada tarjeta grande (mismos tiempos que los gastos:
+  // 0,5s para abrir, 2s para volver a plegarse). El dashboard de métricas
+  // (saldo, gastos, cobros, balance) queda afuera a pedido del usuario.
+  const hovProyeccion = useHoverPlegado()
+  const hovProyeccion12 = useHoverPlegado()
+  const hovAlertas = useHoverPlegado()
+  const hovCuotas = useHoverPlegado()
+  const hovFijos = useHoverPlegado()
+  const hovVariables = useHoverPlegado()
+  const abiertaProyeccion = !colapsadas.proyeccion || hovProyeccion.abierto
+  const abiertaAlertas = !colapsadas.alertas || hovAlertas.abierto
+  const abiertaCuotas = !colapsadas.cuotas || hovCuotas.abierto
+  const abiertaFijos = !colapsadas.fijos || hovFijos.abierto
+  const abiertaVariables = !colapsadas.variables || hovVariables.abierto
+
   // Proyección: se muestran 3 meses y "Ver más" agrega de a 3 hasta los 12.
   // Siempre parte del mes corriente, así se va actualizando mes a mes solo.
   const [mesesProyeccionVisibles, setMesesProyeccionVisibles] = useState(3)
@@ -1039,19 +1058,6 @@ export default function CajaJazminePage() {
   // Próximos vencimientos: al abrir la tarjeta se muestran de a 5,
   // con "Ver más" para ir agregando de a 5.
   const [alertasVisibles, setAlertasVisibles] = useState(5)
-
-  useEffect(() => {
-    // "cuotas" y "alertas" (próximos vencimientos) quedan SIEMPRE colapsadas
-    // al entrar; el resto se abre solo con la animación escalonada.
-    const orden = ["fijos", "variables", "proyeccion"]
-    const timers = orden.map((key, i) =>
-      setTimeout(() => {
-        setColapsadas((prev) => ({ ...prev, [key]: false }))
-      }, 500 + i * 900),
-    )
-    return () => timers.forEach(clearTimeout)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
@@ -2130,7 +2136,7 @@ export default function CajaJazminePage() {
 
       {/* Proyección visual del saldo a 30 d��as (columna lateral) — oculta temporalmente */}
       {false && (
-      <Card>
+      <Card {...hovProyeccion.props}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -2149,7 +2155,7 @@ export default function CajaJazminePage() {
             </Button>
           </div>
         </CardHeader>
-        {!colapsadas.proyeccion && (
+        {abiertaProyeccion && (
         <CardContent className="space-y-1 reveal-stagger">
           {/* Resumen tipo cuenta: tengo + entra − sale = me queda */}
           <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/50">
@@ -2197,9 +2203,9 @@ export default function CajaJazminePage() {
       )}
       </div>
 
-      {/* PROYECCIÓN MENSUAL — tabla a 12 meses */}
-      <Card className="md:col-span-7 2xl:col-span-8 md:order-1">
-        <CardHeader className="pb-3">
+      {/* PROYECCIÓN MENSUAL — tabla a 12 meses. Plegada: se abre con hover. */}
+      <Card className="md:col-span-7 2xl:col-span-8 md:order-1" {...hovProyeccion12.props}>
+        <CardHeader className={hovProyeccion12.abierto ? "pb-3" : "pb-0"}>
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
@@ -2209,6 +2215,7 @@ export default function CajaJazminePage() {
             El saldo parte del saldo actual de la caja.
           </p>
         </CardHeader>
+        {hovProyeccion12.abierto && (
         <CardContent className="px-0">
           <Table>
             <TableHeader>
@@ -2272,6 +2279,7 @@ export default function CajaJazminePage() {
             </div>
           )}
         </CardContent>
+        )}
       </Card>
       </div>
 
@@ -2282,8 +2290,12 @@ export default function CajaJazminePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-[auto_auto_1fr] gap-4 items-start">
 
       {/* Alertas de vencimiento (columna derecha, fila 2) */}
-      <Card className={`md:col-start-2 md:row-start-2 ${colapsadas.alertas ? "py-3 gap-0" : ""}`} style={{ backgroundColor: "#f5ffbd", color: "#000000" }}>
-        <CardHeader className={colapsadas.alertas ? "pb-0" : "pb-3"}>
+      <Card
+        className={`md:col-start-2 md:row-start-2 ${abiertaAlertas ? "" : "py-3 gap-0"}`}
+        style={{ backgroundColor: "#f5ffbd", color: "#000000" }}
+        {...hovAlertas.props}
+      >
+        <CardHeader className={abiertaAlertas ? "pb-3" : "pb-0"}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-amber-500" />
@@ -2301,7 +2313,7 @@ export default function CajaJazminePage() {
             </Button>
           </div>
         </CardHeader>
-        {!colapsadas.alertas && (
+        {abiertaAlertas && (
         <CardContent className="space-y-2 reveal-stagger">
           {alertasVencimiento.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
@@ -2524,10 +2536,11 @@ export default function CajaJazminePage() {
 
       {/* Cuotas por cobrar: columna derecha, debajo de Próximos vencimientos */}
       <Card
-        className={`md:col-start-2 md:row-start-3 ${colapsadas.cuotas ? "py-3 gap-0" : ""}`}
+        className={`md:col-start-2 md:row-start-3 ${abiertaCuotas ? "" : "py-3 gap-0"}`}
         style={{ backgroundColor: "#cdf7c6" }}
+        {...hovCuotas.props}
       >
-        <CardHeader className={colapsadas.cuotas ? "pb-0" : "pb-3"}>
+        <CardHeader className={abiertaCuotas ? "pb-3" : "pb-0"}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <HandCoins className="h-4 w-4 text-emerald-600" />
@@ -2550,7 +2563,7 @@ export default function CajaJazminePage() {
             </Button>
           </div>
         </CardHeader>
-        {!colapsadas.cuotas && (
+        {abiertaCuotas && (
           <CardContent>
             {cuotasPorCobrar.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
@@ -2623,7 +2636,7 @@ export default function CajaJazminePage() {
       {/* ── Columna izquierda: gastos fijos ── */}
       <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
         {/* Gastos fijos del mes (gap-3/py-4 la compactan: el Card base trae gap-6/py-6) */}
-        <Card className="gap-3 py-4" style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }}>
+        <Card className="gap-3 py-4" style={{ backgroundColor: "rgba(239, 238, 232, 0.42)" }} {...hovFijos.props}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -2679,7 +2692,7 @@ export default function CajaJazminePage() {
               </div>
             </div>
           </CardHeader>
-          {!colapsadas.fijos && (
+          {abiertaFijos && (
           <CardContent className="space-y-2 reveal-stagger">
             {/* Aviso de gastos sin cargar: oculto junto con el Cierre de mes
                 (CIERRE_MES_ACTIVO). Reactivar la bandera lo vuelve a mostrar. */}
@@ -2992,7 +3005,11 @@ export default function CajaJazminePage() {
       </div>
 
         {/* Gastos variables (columna derecha, fila 1) */}
-        <Card className="md:col-start-1 md:row-start-2" style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}>
+        <Card
+        className="md:col-start-1 md:row-start-2"
+        style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}
+        {...hovVariables.props}
+      >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -3022,7 +3039,7 @@ export default function CajaJazminePage() {
               </div>
             </div>
           </CardHeader>
-          {!colapsadas.variables && (
+          {abiertaVariables && (
           <CardContent className="space-y-2 reveal-stagger">
             {gastosVariablesCombinados.length === 0 ? (
               <p className="text-sm text-muted-foreground py-3 text-center">

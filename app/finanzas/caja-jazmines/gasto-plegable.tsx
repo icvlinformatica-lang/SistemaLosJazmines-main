@@ -3,19 +3,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 
 /**
- * Tarjeta de gasto fijo con contenido plegable por hover.
+ * Lógica de plegado por hover, compartida por los gastos individuales y
+ * por las tarjetas grandes de Caja Jazmines.
  *
  * Comportamiento pedido por el usuario:
- * - El contenido (tira de meses, deudas) arranca PLEGADO: solo se ve el
- *   encabezado del gasto.
+ * - El contenido arranca PLEGADO.
  * - Se despliega automáticamente si el mouse queda encima al menos
  *   0,5 segundos. Pasadas rápidas (menos de 0,5s) no lo despliegan.
  * - Al sacar el mouse, espera 2 segundos antes de volver a plegarse.
- * - No se pliega mientras haya un popover o menú abierto (se está
- *   operando un mes del gasto); reintenta cada segundo hasta que cierre.
+ * - No se pliega mientras haya un popover, menú o diálogo abierto (se está
+ *   operando adentro); reintenta cada segundo hasta que cierre.
  * - También se despliega si el teclado enfoca algo adentro (accesibilidad).
  */
-export function GastoPlegable({ header, children }: { header: ReactNode; children?: ReactNode }) {
+export function useHoverPlegado() {
   const [abierto, setAbierto] = useState(false)
   const timerAbrir = useRef<ReturnType<typeof setTimeout> | null>(null)
   const timerCerrar = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -33,9 +33,9 @@ export function GastoPlegable({ header, children }: { header: ReactNode; childre
     if (timerCerrar.current) clearTimeout(timerCerrar.current)
     timerCerrar.current = setTimeout(() => {
       timerCerrar.current = null
-      // Con un popover/menú abierto el usuario sigue operando el gasto:
+      // Con un popover/menú/diálogo abierto el usuario sigue operando:
       // esperar a que lo cierre antes de plegar.
-      if (document.querySelector("[data-slot=popover-content], [role=menu]")) {
+      if (document.querySelector("[data-slot=popover-content], [role=menu], [role=dialog]")) {
         programarCierre(1000)
         return
       }
@@ -64,19 +64,33 @@ export function GastoPlegable({ header, children }: { header: ReactNode; childre
     if (abierto) programarCierre(2000)
   }
 
+  function alEnfocar() {
+    if (timerCerrar.current) {
+      clearTimeout(timerCerrar.current)
+      timerCerrar.current = null
+    }
+    setAbierto(true)
+  }
+
+  /** Props para esparcir en el contenedor que dispara el hover. */
+  const props = {
+    onMouseEnter: alEntrar,
+    onMouseLeave: alSalir,
+    onFocusCapture: alEnfocar,
+  }
+
+  return { abierto, props }
+}
+
+/**
+ * Tarjeta de gasto fijo con contenido plegable por hover: solo se ve el
+ * encabezado hasta que el mouse queda encima (ver useHoverPlegado).
+ */
+export function GastoPlegable({ header, children }: { header: ReactNode; children?: ReactNode }) {
+  const { abierto, props } = useHoverPlegado()
+
   return (
-    <div
-      className="rounded-lg border border-border bg-card"
-      onMouseEnter={alEntrar}
-      onMouseLeave={alSalir}
-      onFocusCapture={() => {
-        if (timerCerrar.current) {
-          clearTimeout(timerCerrar.current)
-          timerCerrar.current = null
-        }
-        setAbierto(true)
-      }}
-    >
+    <div className="rounded-lg border border-border bg-card" {...props}>
       {header}
       <div
         className={`grid transition-all duration-300 ease-in-out ${
