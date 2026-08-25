@@ -2282,11 +2282,14 @@ export default function CajaJazminePage() {
           Columnas independientes ancladas ARRIBA: la fila 1 mide solo el alto de su
           tarjeta (grid-rows auto) y cada tarjeta se alinea a su tope (items-start),
           así al plegar una tarjeta la de abajo sube al instante y nada queda flotando. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-[auto_auto_1fr] gap-4 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
-      {/* Alertas de vencimiento (columna derecha, fila 2) */}
+      {/* Columna derecha: vencimientos + cuotas apiladas sin huecos.
+          Van juntas en un flex para que la altura de una no afecte a la otra. */}
+      <div className="flex min-w-0 flex-col gap-4 md:col-start-2 md:row-start-2">
+      {/* Alertas de vencimiento */}
       <Card
-        className={`md:col-start-2 md:row-start-2 ${abiertaAlertas ? "" : "py-3 gap-0"}`}
+        className={abiertaAlertas ? "" : "py-3 gap-0"}
         style={{ backgroundColor: "#f5ffbd", color: "#000000" }}
         {...hovAlertas.props}
       >
@@ -2529,9 +2532,9 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-      {/* Cuotas por cobrar: columna derecha, debajo de Próximos vencimientos */}
+      {/* Cuotas por cobrar: debajo de Próximos vencimientos */}
       <Card
-        className={`md:col-start-2 md:row-start-3 ${abiertaCuotas ? "" : "py-3 gap-0"}`}
+        className={abiertaCuotas ? "" : "py-3 gap-0"}
         style={{ backgroundColor: "#cdf7c6" }}
         {...hovCuotas.props}
       >
@@ -2627,11 +2630,12 @@ export default function CajaJazminePage() {
           </CardContent>
         )}
       </Card>
+      </div>
 
       {/* ── Columna izquierda: gastos fijos ── */}
       <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
-        {/* Gastos fijos del mes (gap-3/py-4 la compactan: el Card base trae gap-6/py-6) */}
-        <Card className="gap-3 py-4" style={{ backgroundColor: "#ffffff" }} {...hovFijos.props}>
+        {/* Gastos fijos del mes: compacta al plegarse (el Card base trae gap-6/py-6) */}
+        <Card className={abiertaFijos ? "gap-3 py-4" : "gap-0 py-3"} style={{ backgroundColor: "#ffffff" }} {...hovFijos.props}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -2999,13 +3003,13 @@ export default function CajaJazminePage() {
         </Card>
       </div>
 
-        {/* Gastos variables (columna derecha, fila 1) */}
+        {/* Gastos variables (columna izquierda, fila 2): compacta al plegarse */}
         <Card
-        className="md:col-start-1 md:row-start-2"
+        className={`md:col-start-1 md:row-start-2 ${abiertaVariables ? "" : "gap-0 py-3"}`}
         style={{ backgroundColor: "#ffffff", color: "#000000" }}
         {...hovVariables.props}
       >
-          <CardHeader className="pb-3">
+          <CardHeader className={abiertaVariables ? "pb-3" : "pb-0"}>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 Gastos variables
