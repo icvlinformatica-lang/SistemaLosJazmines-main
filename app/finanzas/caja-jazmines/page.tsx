@@ -100,6 +100,13 @@ import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
  */
 const EVOLUCION_ACTIVA = false
 
+/**
+ * Cierre de mes: DESACTIVADO temporalmente a pedido del usuario.
+ * Cambiar a true para volver a mostrar el botón "Cerrar mes" y hacer
+ * clickeable el aviso de gastos sin cargar (que abre el mismo diálogo).
+ */
+const CIERRE_MES_ACTIVO = false
+
 function formatFecha(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
   const date = new Date(y, m - 1, d)
@@ -2622,17 +2629,19 @@ export default function CajaJazminePage() {
                 Gastos fijos
               </CardTitle>
               <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      style={{ backgroundColor: "#ffffff" }}
-                      className="h-7 gap-1.5 text-xs text-purple-600 hover:text-purple-700"
-                      onClick={() => setCierreMesAbierto(true)}
-                      title="Cargar los montos del mes en un solo paso"
-                    >
-                      <CalendarCheck className="h-3.5 w-3.5" />
-                      Cerrar mes
-                    </Button>
+                    {CIERRE_MES_ACTIVO && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        style={{ backgroundColor: "#ffffff" }}
+                        className="h-7 gap-1.5 text-xs text-purple-600 hover:text-purple-700"
+                        onClick={() => setCierreMesAbierto(true)}
+                        title="Cargar los montos del mes en un solo paso"
+                      >
+                        <CalendarCheck className="h-3.5 w-3.5" />
+                        Cerrar mes
+                      </Button>
+                    )}
                     {EVOLUCION_ACTIVA && (
                       <Button
                         variant="outline"
@@ -2674,8 +2683,10 @@ export default function CajaJazminePage() {
             {fijosSinCargarMesActual.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setCierreMesAbierto(true)}
-                  className="w-full rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-left text-xs text-purple-950 transition-colors hover:bg-purple-50"
+                  onClick={() => CIERRE_MES_ACTIVO && setCierreMesAbierto(true)}
+                  className={`w-full rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-left text-xs text-purple-950 ${
+                    CIERRE_MES_ACTIVO ? "transition-colors hover:bg-purple-50" : "cursor-default"
+                  }`}
                 >
                 <span className="font-semibold">
                   {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
@@ -2687,9 +2698,9 @@ export default function CajaJazminePage() {
                 {fijosSinCargarMesActual.length > 4
                   ? ` y ${fijosSinCargarMesActual.length - 4} más`
                   : ""}
-                <span className="mt-1 block font-semibold text-purple-600">
-                  Cargarlos todos juntos
-                </span>
+                {CIERRE_MES_ACTIVO && (
+                  <span className="mt-1 block font-semibold text-purple-600">Cargarlos todos juntos</span>
+                )}
               </button>
             )}
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
