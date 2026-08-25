@@ -41,7 +41,6 @@ import {
   RotateCcw,
   Sparkles,
   Trash2,
-  Wallet,
 } from "lucide-react"
 
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -117,9 +116,9 @@ export function MesesFijo({
   const [deslizar, setDeslizar] = useState<"izq" | "der">("der")
   const [mesAbierto, setMesAbierto] = useState<string | null>(null)
   const [montoPagar, setMontoPagar] = useState(0)
-  // El input del monto está oculto: aparece al elegir "Pagar otro monto"
-  // (paga al confirmar) o el lápiz del monto (guarda sin pagar).
-  const [modoEdicion, setModoEdicion] = useState<"pagar" | "actualizar" | null>(null)
+  // El input del monto está oculto: aparece al tocar el lápiz junto al
+  // monto. Al confirmar se decide si pagar o solo guardar el nuevo valor.
+  const [editando, setEditando] = useState(false)
   const { toast } = useToast()
 
   const hist = gasto.historialMontos || []
@@ -158,12 +157,12 @@ export function MesesFijo({
   function abrirMes(mesISO: string, abierto: boolean) {
     if (!abierto) {
       setMesAbierto(null)
-      setModoEdicion(null)
+      setEditando(false)
       return
     }
     const registro = registroDe(mesISO)
     setMesAbierto(mesISO)
-    setModoEdicion(null)
+    setEditando(false)
     // Sin registro previo: con el sugerido apagado se pre-carga el monto vigente.
     setMontoPagar(aParte(registro?.monto ?? (SUGERIDO_ACTIVO ? sugeridoGeneral : gasto.monto)))
   }
@@ -230,7 +229,7 @@ export function MesesFijo({
         : {}),
     })
     setMesAbierto(null)
-    setModoEdicion(null)
+    setEditando(false)
     if (aviso) {
       toast({
         title: aviso,
@@ -356,21 +355,21 @@ export function MesesFijo({
                           >
                             {formatCurrency(aParte(montoGeneralMes))}
                           </span>
-                          {/* Lápiz: actualizar el monto del mes sin pagarlo,
-                              p.ej. cargar de antemano un aumento futuro. */}
-                          {estadoPago !== "pagado" && (
+                          {/* Lápiz: único punto para cambiar el monto del mes.
+                              Al confirmar se elige pagar o solo guardar. */}
+                          {estadoPago !== "pagado" && !editando && (
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6 text-muted-foreground hover:text-foreground"
                               onClick={() => {
                                 setMontoPagar(aParte(montoGeneralMes))
-                                setModoEdicion("actualizar")
+                                setEditando(true)
                               }}
-                              title="Actualizar el monto de este mes sin pagarlo"
+                              title="Cambiar el monto de este mes"
                             >
                               <Pencil className="h-3 w-3" />
-                              <span className="sr-only">Actualizar el monto de este mes</span>
+                              <span className="sr-only">Cambiar el monto de este mes</span>
                             </Button>
                           )}
                         </span>
@@ -395,10 +394,11 @@ export function MesesFijo({
                   )
                 })()}
 
-                {/* Acciones. El input está oculto: solo aparece al elegir
-                    "Pagar otro monto". */}
+                {/* Acciones. Un solo camino: arriba se ve cuánto pagar,
+                    "Pagar" paga eso, y el lápiz abre el editor donde se
+                    decide al final si pagar o solo guardar el nuevo monto. */}
                 <div className="mt-3 space-y-2">
-                  {modoEdicion !== null && (
+                  {editando && (
                     <>
                       <MoneyInput
                         id={`pago-${gasto.id}-${mesISO}`}
@@ -437,71 +437,56 @@ export function MesesFijo({
                         <RotateCcw className="h-3.5 w-3.5" />
                         Deshacer
                       </Button>
-                    ) : modoEdicion !== null ? (
-                      /* Editando: paga o solo guarda el monto, según el modo. */
-                      <>
-                        <Button
-                          size="sm"
-                          className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                          onClick={() =>
-                            modoEdicion === "pagar"
-                              ? guardarMes(montoPagar, true, "Pago registrado")
-                              : guardarMes(montoPagar, false, "Monto guardado")
-                          }
-                          disabled={!montoPagar || montoPagar <= 0}
-                          title={
-                            modoEdicion === "pagar"
-                              ? parte
-                                ? `Registrar pago de ${parte.salon}`
-                                : "Registrar pago del mes"
-                              : "Guardar el monto de este mes sin pagarlo"
-                          }
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          {modoEdicion === "pagar"
-                            ? `Pagar ${formatCurrency(montoPagar)}`
-                            : `Guardar ${formatCurrency(montoPagar)}`}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    ) : editando ? (
+                      /* Editando: al final se decide — pagar ya o solo dejar
+                         el monto anotado como pendiente. */
+                      <div className="w-full space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
+                            onClick={() => guardarMes(montoPagar, true, "Pago registrado")}
+                            disabled={!montoPagar || montoPagar <= 0}
+                            title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            {`Pagar ${formatCurrency(montoPagar)}`}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 border-border text-xs text-muted-foreground hover:text-foreground"
+                            style={{ backgroundColor: "#ffffff" }}
+                            onClick={() => guardarMes(montoPagar, false, "Monto guardado")}
+                            disabled={!montoPagar || montoPagar <= 0}
+                            title="Deja el nuevo monto anotado como pendiente, sin pagarlo"
+                          >
+                            Solo guardar
+                          </Button>
+                        </div>
+                        <button
+                          type="button"
+                          className="w-full text-center text-[11px] text-muted-foreground transition-colors hover:text-foreground"
                           onClick={() => {
-                            setModoEdicion(null)
+                            setEditando(false)
                             setMontoPagar(aParte(registro?.monto ?? gasto.monto))
                           }}
-                          title="Cancelar sin guardar"
                         >
                           Cancelar
-                        </Button>
-                      </>
+                        </button>
+                      </div>
                     ) : (
-                      /* Estado inicial: paga el monto de arriba con un toque. */
-                      <>
-                        <Button
-                          size="sm"
-                          className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                          onClick={() => guardarMes(aParte(registro?.monto ?? gasto.monto), true, "Pago registrado")}
-                          title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          Pagar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 flex-1 gap-1.5 border-amber-300 text-xs text-amber-800 hover:bg-amber-50"
-                          style={{ backgroundColor: "#ffffff" }}
-                          onClick={() => {
-                            setMontoPagar(aParte(registro?.monto ?? gasto.monto))
-                            setModoEdicion("pagar")
-                          }}
-                          title="Escribir un monto distinto al de la factura"
-                        >
-                          <Wallet className="h-3.5 w-3.5" />
-                          Pagar otro monto
-                        </Button>
-                      </>
+                      /* Estado inicial: una sola acción — pagar lo de arriba.
+                         Para cambiar el número está el lápiz junto al monto. */
+                      <Button
+                        size="sm"
+                        className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
+                        onClick={() => guardarMes(aParte(registro?.monto ?? gasto.monto), true, "Pago registrado")}
+                        title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        {`Pagar ${formatCurrency(aParte(registro?.monto ?? gasto.monto))}`}
+                      </Button>
                     )}
                   </div>
                 </div>
