@@ -441,29 +441,27 @@ export function MesesFijo({
                       /* Editando: al final se decide — pagar ya o solo dejar
                          el monto anotado como pendiente. */
                       <div className="w-full space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                            onClick={() => guardarMes(montoPagar, true, "Pago registrado")}
-                            disabled={!montoPagar || montoPagar <= 0}
-                            title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            {`Pagar ${formatCurrency(montoPagar)}`}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 border-border text-xs text-muted-foreground hover:text-foreground"
-                            style={{ backgroundColor: "#ffffff" }}
-                            onClick={() => guardarMes(montoPagar, false, "Monto guardado")}
-                            disabled={!montoPagar || montoPagar <= 0}
-                            title="Deja el nuevo monto anotado como pendiente, sin pagarlo"
-                          >
-                            Solo guardar
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          className="h-8 w-full gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
+                          onClick={() => guardarMes(montoPagar, true, "Pago registrado")}
+                          disabled={!montoPagar || montoPagar <= 0}
+                          title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          {`Pagar ${formatCurrency(montoPagar)}`}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-full gap-1.5 border-border text-xs text-muted-foreground hover:text-foreground"
+                          style={{ backgroundColor: "#ffffff" }}
+                          onClick={() => guardarMes(montoPagar, false, "Monto guardado")}
+                          disabled={!montoPagar || montoPagar <= 0}
+                          title="Deja el nuevo monto anotado como pendiente, sin pagarlo"
+                        >
+                          Solo guardar
+                        </Button>
                         <button
                           type="button"
                           className="w-full text-center text-[11px] text-muted-foreground transition-colors hover:text-foreground"
