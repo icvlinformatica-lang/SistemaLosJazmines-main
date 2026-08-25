@@ -104,6 +104,38 @@ export function useHoverPlegado() {
 }
 
 /**
+ * Cuerpo plegable con la MISMA animación que las tarjetas del dashboard
+ * (CuerpoColapsable de las métricas): transición suave de altura con
+ * grid-rows + fundido de opacidad, 700ms ease-in-out.
+ *
+ * El contenido se monta al abrir y se desmonta 700ms después de cerrar
+ * (cuando termina la animación), para no pagar el costo de listas grandes
+ * mientras la tarjeta está plegada.
+ */
+export function CuerpoTarjeta({ abierto, children }: { abierto: boolean; children: ReactNode }) {
+  const [renderizar, setRenderizar] = useState(abierto)
+
+  useEffect(() => {
+    if (abierto) {
+      setRenderizar(true)
+      return
+    }
+    const t = setTimeout(() => setRenderizar(false), 700)
+    return () => clearTimeout(t)
+  }, [abierto])
+
+  return (
+    <div
+      className={`grid transition-all duration-700 ease-in-out ${
+        abierto ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+      }`}
+    >
+      <div className="overflow-hidden flex min-h-0 flex-col">{renderizar ? children : null}</div>
+    </div>
+  )
+}
+
+/**
  * Tarjeta de gasto fijo con contenido plegable por hover: solo se ve el
  * encabezado hasta que el mouse queda encima (ver useHoverPlegado).
  */
@@ -113,13 +145,7 @@ export function GastoPlegable({ header, children }: { header: ReactNode; childre
   return (
     <div className="rounded-lg border border-border bg-card" {...props}>
       {header}
-      <div
-        className={`grid transition-all duration-300 ease-in-out ${
-          abierto ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        }`}
-      >
-        <div className="overflow-hidden">{children}</div>
-      </div>
+      <CuerpoTarjeta abierto={abierto}>{children}</CuerpoTarjeta>
     </div>
   )
 }
