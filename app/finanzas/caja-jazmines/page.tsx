@@ -2680,14 +2680,14 @@ export default function CajaJazminePage() {
           </CardHeader>
           {!colapsadas.fijos && (
           <CardContent className="space-y-2 reveal-stagger">
-            {fijosSinCargarMesActual.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => CIERRE_MES_ACTIVO && setCierreMesAbierto(true)}
-                  className={`w-full rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-left text-xs text-purple-950 ${
-                    CIERRE_MES_ACTIVO ? "transition-colors hover:bg-purple-50" : "cursor-default"
-                  }`}
-                >
+            {/* Aviso de gastos sin cargar: oculto junto con el Cierre de mes
+                (CIERRE_MES_ACTIVO). Reactivar la bandera lo vuelve a mostrar. */}
+            {CIERRE_MES_ACTIVO && fijosSinCargarMesActual.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setCierreMesAbierto(true)}
+                className="w-full rounded-lg border-l-4 border border-purple-600 bg-white px-3 py-2 text-left text-xs text-purple-950 transition-colors hover:bg-purple-50"
+              >
                 <span className="font-semibold">
                   {`Falta cargar ${fijosSinCargarMesActual.length} gasto${fijosSinCargarMesActual.length === 1 ? "" : "s"} fijo${fijosSinCargarMesActual.length === 1 ? "" : "s"} del mes de ${nombreDeMes(mesActualISO())}: `}
                 </span>
@@ -2695,12 +2695,8 @@ export default function CajaJazminePage() {
                   .slice(0, 4)
                   .map((c) => c.concepto)
                   .join(", ")}
-                {fijosSinCargarMesActual.length > 4
-                  ? ` y ${fijosSinCargarMesActual.length - 4} más`
-                  : ""}
-                {CIERRE_MES_ACTIVO && (
-                  <span className="mt-1 block font-semibold text-purple-600">Cargarlos todos juntos</span>
-                )}
+                {fijosSinCargarMesActual.length > 4 ? ` y ${fijosSinCargarMesActual.length - 4} más` : ""}
+                <span className="mt-1 block font-semibold text-purple-600">Cargarlos todos juntos</span>
               </button>
             )}
             {gastosFijosMes.length === 0 && gastosFijosCubiertos.length === 0 ? (
