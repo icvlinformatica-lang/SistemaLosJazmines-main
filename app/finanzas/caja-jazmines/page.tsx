@@ -2796,7 +2796,7 @@ export default function CajaJazminePage() {
                         {(() => {
                           const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
                           return origCuota ? (
-                            <div className="border-t border-border px-3 py-2">
+                            <div className="border-t border-border px-3 py-2.5">
                               <MesesFijo
                                 gasto={origCuota}
                                 updateCostoOperativo={updateCostoOperativo}
@@ -2900,7 +2900,7 @@ export default function CajaJazminePage() {
                     {!gasto.esSueldoVendedor && (() => {
                       const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
                       return origFijo ? (
-                        <div className="border-t border-border px-3 py-2">
+                        <div className="border-t border-border px-3 py-2.5">
                           <MesesFijo
                             gasto={origFijo}
                             updateCostoOperativo={updateCostoOperativo}

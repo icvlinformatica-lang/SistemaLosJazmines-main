@@ -85,12 +85,17 @@ const SUGERIDO_ACTIVO = false
 
 type EstadoMes = "pagado" | "cargado" | "actual" | "pasado" | "futuro"
 
+/**
+ * Estética limpia: chips grandes y redondeados. Gris uniforme para meses sin
+ * cargar, verde sólido para pagado, contorno violeta + punto rojo para
+ * cargado sin pagar (el punto se dibuja aparte en el render).
+ */
 const ESTILO_CHIP: Record<EstadoMes, string> = {
-  pagado: "bg-teal-600 border-teal-600 text-white hover:bg-teal-700",
-  cargado: "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200",
-  actual: "bg-white border-dashed border-purple-500 text-purple-700 hover:bg-purple-50",
-  pasado: "bg-muted border-border text-muted-foreground hover:bg-purple-50 hover:text-purple-700",
-  futuro: "bg-transparent border-border/60 text-muted-foreground/50 hover:bg-purple-50 hover:text-purple-700",
+  pagado: "bg-teal-600 border-teal-600 text-white shadow-sm hover:bg-teal-700",
+  cargado: "bg-purple-50 border-purple-400 text-purple-700 hover:bg-purple-100",
+  actual: "bg-white border-border text-foreground shadow-sm hover:border-purple-400 hover:text-purple-700",
+  pasado: "bg-muted border-transparent text-muted-foreground hover:bg-purple-50 hover:text-purple-700",
+  futuro: "bg-muted/60 border-transparent text-muted-foreground/60 hover:bg-purple-50 hover:text-purple-700",
 }
 
 export function MesesFijo({
@@ -247,19 +252,17 @@ export function MesesFijo({
           setAnioVer((a) => Math.max(anioMin, a - 1))
         }}
         disabled={anioVer <= anioMin}
-        className="h-7 w-6 shrink-0 rounded border border-border text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+        className="h-10 w-7 shrink-0 rounded-xl border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
         title="Año anterior"
       >
         <ChevronLeft className="mx-auto h-3.5 w-3.5" />
         <span className="sr-only">Ver año anterior</span>
       </button>
-      <span className="w-9 shrink-0 text-center text-[11px] font-semibold tabular-nums text-muted-foreground">
-        {anioVer}
-      </span>
+      <span className="w-9 shrink-0 text-center text-xs font-semibold tabular-nums text-foreground">{anioVer}</span>
       {/* key={anioVer} re-monta la fila y dispara el deslizamiento */}
       <div
         key={anioVer}
-        className={`flex min-w-0 flex-1 items-center gap-1 overflow-hidden animate-in fade-in duration-300 ${
+        className={`flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden animate-in fade-in duration-300 ${
           deslizar === "der" ? "slide-in-from-right-8" : "slide-in-from-left-8"
         }`}
       >
@@ -272,7 +275,7 @@ export function MesesFijo({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className={`h-7 min-w-0 flex-1 rounded border text-[10px] font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]}`}
+                  className={`relative h-10 min-w-0 flex-1 rounded-xl border text-xs font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]}`}
                   title={`${nombre} ${anioVer} · ${
                     estado === "pagado"
                       ? `pagado ${formatCurrency(aParte(registro!.monto))}`
@@ -281,7 +284,11 @@ export function MesesFijo({
                         : "sin monto cargado"
                   }${parte ? ` (${parte.salon} ${parte.porcentaje}%)` : ""}`}
                 >
-                  {nombre.charAt(0)}
+                  {nombre}
+                  {/* Punto rojo: mes cargado que todavía se debe */}
+                  {estado === "cargado" && (
+                    <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+                  )}
                   <span className="sr-only">{`${nombre} ${anioVer}: ${estado === "pagado" ? "pagado" : estado === "cargado" ? "cargado sin pagar" : "sin cargar"}`}</span>
                 </button>
               </PopoverTrigger>
@@ -500,7 +507,7 @@ export function MesesFijo({
           setAnioVer((a) => Math.min(anioMax, a + 1))
         }}
         disabled={anioVer >= anioMax}
-        className="h-7 w-6 shrink-0 rounded border border-border text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+        className="h-10 w-7 shrink-0 rounded-xl border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
         title="Año siguiente"
       >
         <ChevronRight className="mx-auto h-3.5 w-3.5" />
