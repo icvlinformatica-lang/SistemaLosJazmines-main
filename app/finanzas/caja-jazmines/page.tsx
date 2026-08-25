@@ -85,7 +85,7 @@ import {
 import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import { CierreMesDialog } from "./cierre-mes-dialog"
-import { MesesFijo } from "./meses-fijo"
+import { MesesFijo, pagoDelMesActual } from "./meses-fijo"
 import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
@@ -1910,7 +1910,7 @@ export default function CajaJazminePage() {
         onMouseEnter={() => setTarjetasAbiertas(true)}
         onMouseLeave={() => setTarjetasAbiertas(false)}
       >
-            {/* ── Slide 1: A 30 DÍAS ────────────────────────────────── */}
+            {/* ── Slide 1: A 30 DÍAS ────────────────────────────���───── */}
             <div className="contents">
               <Card
                 style={{ backgroundColor: "#ffffff" }}
@@ -2856,6 +2856,13 @@ export default function CajaJazminePage() {
                     {cuotasReparto.map((cuota) => {
                       const gastoRef = gastosFijosMes.find((g) => g.id === cuota.id)
                       const histRef = gastoRef?.historialMontos || []
+                      // Estado del MES CALENDARIO actual (misma regla que la tira
+                      // de meses): sin registro de este mes, se debe — aunque el
+                      // período anterior esté saldado.
+                      const origPill = state.costosOperativos?.find((c) => c.id === cuota.id)
+                      const pagoMes = origPill
+                        ? pagoDelMesActual(origPill, { salon: carpeta.salon, porcentaje: cuota.porcentaje })
+                        : { monto: cuota.monto, pagado: cuota.pagado }
                       return (
                       <GastoPlegable
                         key={`reparto-${cuota.id}`}
@@ -2879,7 +2886,7 @@ export default function CajaJazminePage() {
                                 {` · ${cuota.porcentaje}%`}
                               </p>
                             </button>
-                            <MontoPagoPill monto={cuota.monto} pagado={cuota.pagado} />
+                            <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
                           </div>
                         }
                       >
@@ -2954,26 +2961,23 @@ export default function CajaJazminePage() {
                               {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                             </p>
                           </button>
-                          {/* Monto del mes visible con el ítem plegado: verde si
-                              está pagado, amarillo si falta pagar. Repartidos: en
-                              vista de salón muestra la porción y su estado; en
-                              "todos" el total, pagado solo con todas las partes. */}
-                          {!gasto.esSueldoVendedor && (
-                            <MontoPagoPill
-                              monto={
+                          {/* Monto del MES CALENDARIO actual, visible con el ítem
+                              plegado: verde si el mes en curso está pagado según
+                              la tira de meses, amarillo si falta pagar (sin
+                              registro del mes = se debe, aunque el período
+                              anterior esté saldado). Con salón elegido muestra
+                              la porción de ese salón. */}
+                          {!gasto.esSueldoVendedor &&
+                            (() => {
+                              const origPill = state.costosOperativos?.find((c) => c.id === gasto.id) ?? gasto
+                              const pagoMes = pagoDelMesActual(
+                                origPill,
                                 parteSalon
-                                  ? Math.round((gasto.monto * parteSalon.porcentaje) / 100)
-                                  : gasto.monto
-                              }
-                              pagado={
-                                parteSalon
-                                  ? parteSalonPagada
-                                  : esRepartido
-                                    ? partesPagadas === distGasto.length
-                                    : esPagado
-                              }
-                            />
-                          )}
+                                  ? { salon: parteSalon.salon, porcentaje: parteSalon.porcentaje }
+                                  : undefined,
+                              )
+                              return <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
+                            })()}
                           {/* Sueldos de vendedores: sin tira de meses, conservan
                               sus controles (monto, estado y edición de fecha). */}
                           {gasto.esSueldoVendedor && (
@@ -3350,7 +3354,7 @@ export default function CajaJazminePage() {
       />
       )}
 
-      {/* ── Dialog: Agregar gasto fijo ────────────────────────────────────── */}
+      {/* ── Dialog: Agregar gasto fijo ─────────────────────────────���──────── */}
       <Dialog open={modalFijoAbierto} onOpenChange={setModalFijoAbierto}>
         <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>

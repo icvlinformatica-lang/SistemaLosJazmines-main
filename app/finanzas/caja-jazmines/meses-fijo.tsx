@@ -86,6 +86,37 @@ const SUGERIDO_ACTIVO = false
 type EstadoMes = "pagado" | "cargado" | "actual" | "pasado" | "futuro"
 
 /**
+ * Monto y estado de pago del MES CALENDARIO ACTUAL de un gasto fijo, con las
+ * mismas reglas que la tira de meses: el mes está pagado solo si tiene
+ * registro pagado en historialMontos (para el período vigente de un gasto
+ * repartido visto desde un salón manda la cuota de ese salón). Sin registro
+ * del mes en curso, el gasto está "a pagar" aunque el período anterior haya
+ * quedado saldado. Con `parte`, el monto devuelto es la porción del salón.
+ */
+export function pagoDelMesActual(
+  gasto: Pick<CostoOperativo, "monto"> & Partial<Pick<CostoOperativo, "historialMontos" | "distribucion">>,
+  parte?: { salon: string; porcentaje: number },
+): { monto: number; pagado: boolean } {
+  const hoyISO = mesActualISO()
+  const hist = gasto.historialMontos || []
+  const registro = hist.find((r) => r.mes === hoyISO)
+  const mesVigente = hist.length > 0 ? hist[hist.length - 1].mes : null
+  const factor = parte ? parte.porcentaje / 100 : 1
+  const montoGeneral = registro?.monto ?? gasto.monto
+
+  let pagado = false
+  if (registro) {
+    if (parte && registro.mes === mesVigente) {
+      const d = gasto.distribucion?.find((x) => x.salon === parte.salon)
+      pagado = d ? d.pagado === true : registro.pagado !== false
+    } else {
+      pagado = registro.pagado !== false
+    }
+  }
+  return { monto: Math.round(montoGeneral * factor), pagado }
+}
+
+/**
  * Estética limpia: chips grandes y redondeados. Gris uniforme para meses sin
  * cargar, verde sólido para pagado, amarillo suave + punto rojo para
  * cargado sin pagar (el punto se dibuja aparte en el render).
