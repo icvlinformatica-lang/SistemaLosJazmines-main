@@ -86,7 +86,7 @@ import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo } from "./meses-fijo"
-import { GastoPlegable, useHoverPlegado } from "./gasto-plegable"
+import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 
@@ -454,7 +454,9 @@ function CarpetaGastos({
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`} />
       </button>
-      {abierta && <div className="space-y-2 bg-card p-2 reveal-stagger">{children}</div>}
+      <CuerpoTarjeta abierto={abierta}>
+        <div className="space-y-2 bg-card p-2">{children}</div>
+      </CuerpoTarjeta>
     </div>
   )
 }
@@ -681,7 +683,7 @@ function CalendarioGastosSalones({
           </div>
         )}
       </CardHeader>
-      {hovCalendario.abierto && (
+      <CuerpoTarjeta abierto={hovCalendario.abierto}>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-7 gap-1">
           {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
@@ -769,7 +771,7 @@ function CalendarioGastosSalones({
           </p>
         )}
       </CardContent>
-      )}
+      </CuerpoTarjeta>
     </Card>
   )
 }
@@ -2060,14 +2062,13 @@ export default function CajaJazminePage() {
               {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
-          {hovServicios.abierto && (
-            <p className="mt-1 text-xs text-amber-700/70 text-pretty">
-              {estimacionEsProxMes
-                ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
-                : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
-            </p>
-          )}
-          {hovServicios.abierto && estimacionesProximoMes.length > 0 && (
+          <CuerpoTarjeta abierto={hovServicios.abierto}>
+          <p className="mt-1 text-xs text-amber-700/70 text-pretty">
+            {estimacionEsProxMes
+              ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
+              : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
+          </p>
+          {estimacionesProximoMes.length > 0 && (
             <div className="mt-3">
               <button
                 type="button"
@@ -2135,6 +2136,7 @@ export default function CajaJazminePage() {
               })()}
             </div>
           )}
+          </CuerpoTarjeta>
         </CardContent>
       </Card>
 
@@ -2159,8 +2161,8 @@ export default function CajaJazminePage() {
             </Button>
           </div>
         </CardHeader>
-        {abiertaProyeccion && (
-        <CardContent className="space-y-1 reveal-stagger">
+        <CuerpoTarjeta abierto={abiertaProyeccion}>
+        <CardContent className="space-y-1">
           {/* Resumen tipo cuenta: tengo + entra − sale = me queda */}
           <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/50">
             <span className="text-sm text-muted-foreground">Tengo hoy</span>
@@ -2202,7 +2204,7 @@ export default function CajaJazminePage() {
             </span>
           </div>
         </CardContent>
-        )}
+        </CuerpoTarjeta>
       </Card>
       )}
       </div>
@@ -2217,14 +2219,14 @@ export default function CajaJazminePage() {
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
           </CardTitle>
-          {hovProyeccion12.abierto && (
+          <CuerpoTarjeta abierto={hovProyeccion12.abierto}>
             <p className="text-xs text-muted-foreground mt-1 text-pretty">
               A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
               El saldo parte del saldo actual de la caja.
             </p>
-          )}
+          </CuerpoTarjeta>
         </CardHeader>
-        {hovProyeccion12.abierto && (
+        <CuerpoTarjeta abierto={hovProyeccion12.abierto}>
         <CardContent className="px-0">
           <Table>
             <TableHeader>
@@ -2288,7 +2290,7 @@ export default function CajaJazminePage() {
             </div>
           )}
         </CardContent>
-        )}
+        </CuerpoTarjeta>
       </Card>
       </div>
 
@@ -2325,8 +2327,8 @@ export default function CajaJazminePage() {
             </Button>
           </div>
         </CardHeader>
-        {abiertaAlertas && (
-        <CardContent className="space-y-2 reveal-stagger">
+        <CuerpoTarjeta abierto={abiertaAlertas}>
+        <CardContent className="space-y-2">
           {alertasVencimiento.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
               No hay vencimientos en los próximos 30 días.
@@ -2506,8 +2508,8 @@ export default function CajaJazminePage() {
                 {formatCurrency(totalProximoMes1al10)}
               </span>
             </button>
-            {subcarpetaProximoMes && (
-              <div className="space-y-2 bg-card p-2 reveal-stagger">
+            <CuerpoTarjeta abierto={subcarpetaProximoMes}>
+              <div className="space-y-2 bg-card p-2">
                 {gastosProximoMes1al10.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-3 text-center">
                     No hay gastos fijos agendados del 1 al 10 del mes próximo.
@@ -2541,10 +2543,10 @@ export default function CajaJazminePage() {
                   ))
                 )}
               </div>
-            )}
+            </CuerpoTarjeta>
           </div>
         </CardContent>
-        )}
+        </CuerpoTarjeta>
       </Card>
 
       {/* Cuotas por cobrar: debajo de Próximos vencimientos */}
@@ -2576,14 +2578,14 @@ export default function CajaJazminePage() {
             </Button>
           </div>
         </CardHeader>
-        {abiertaCuotas && (
+        <CuerpoTarjeta abierto={abiertaCuotas}>
           <CardContent>
             {cuotasPorCobrar.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 No hay cuotas pendientes de cobro.
               </p>
             ) : (
-              <div ref={cuotasListaRef} className="space-y-2 reveal-stagger">
+              <div ref={cuotasListaRef} className="space-y-2">
                 {(() => {
                   const renderCuota = (cuota: (typeof cuotasPorCobrar)[number]) => (
                     <div
@@ -2643,7 +2645,7 @@ export default function CajaJazminePage() {
               </div>
             )}
           </CardContent>
-        )}
+        </CuerpoTarjeta>
       </Card>
       </div>
 
@@ -2706,8 +2708,8 @@ export default function CajaJazminePage() {
               </div>
             </div>
           </CardHeader>
-          {abiertaFijos && (
-          <CardContent className="space-y-2 reveal-stagger">
+          <CuerpoTarjeta abierto={abiertaFijos}>
+          <CardContent className="space-y-2">
             {/* Aviso de gastos sin cargar: oculto junto con el Cierre de mes
                 (CIERRE_MES_ACTIVO). Reactivar la bandera lo vuelve a mostrar. */}
             {CIERRE_MES_ACTIVO && fijosSinCargarMesActual.length > 0 && (
@@ -3015,7 +3017,7 @@ export default function CajaJazminePage() {
               </>
             )}
           </CardContent>
-          )}
+          </CuerpoTarjeta>
         </Card>
       </div>
 
@@ -3054,8 +3056,8 @@ export default function CajaJazminePage() {
               </div>
             </div>
           </CardHeader>
-          {abiertaVariables && (
-          <CardContent className="space-y-2 reveal-stagger">
+          <CuerpoTarjeta abierto={abiertaVariables}>
+          <CardContent className="space-y-2">
             {gastosVariablesCombinados.length === 0 ? (
               <p className="text-sm text-muted-foreground py-3 text-center">
                 Sin gastos variables registrados.
@@ -3228,7 +3230,7 @@ export default function CajaJazminePage() {
               ))
             )}
           </CardContent>
-          )}
+          </CuerpoTarjeta>
         </Card>
       </div>
 
