@@ -1044,6 +1044,7 @@ export default function CajaJazminePage() {
   // (saldo, gastos, cobros, balance) queda afuera a pedido del usuario.
   const hovProyeccion = useHoverPlegado()
   const hovProyeccion12 = useHoverPlegado()
+  const hovServicios = useHoverPlegado()
   const hovAlertas = useHoverPlegado()
   const hovCuotas = useHoverPlegado()
   const hovFijos = useHoverPlegado()
@@ -2035,30 +2036,29 @@ export default function CajaJazminePage() {
       {/* Última fila: proyección a 12 meses + servicios a pagar al lado */}
       <div className="order-last grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
       <div className="space-y-4 md:col-span-5 2xl:col-span-4 md:order-2">
-      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos */}
-      <Card className="border-amber-200 bg-amber-50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
-                <Receipt className="h-5 w-5 text-amber-700" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">
-                  {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
-                </p>
-                <p className="text-xs text-amber-700/70 mt-0.5 text-pretty">
-                  {estimacionEsProxMes
-                    ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
-                    : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
-                </p>
-              </div>
+      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos.
+          Plegada muestra solo título y monto; se despliega con hover (0,5s / 2s). */}
+      <Card className={`border-amber-200 bg-amber-50 ${hovServicios.abierto ? "" : "gap-0 py-3"}`} {...hovServicios.props}>
+        <CardContent className={hovServicios.abierto ? "p-4 py-0" : "px-4 py-0"}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Receipt className="h-4 w-4 shrink-0 text-amber-700" />
+              <p className="truncate text-sm font-semibold text-amber-900">
+                {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
+              </p>
             </div>
-            <p className="text-2xl font-bold text-amber-800 shrink-0">
+            <p className={`shrink-0 font-bold text-amber-800 ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}>
               {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
-          {estimacionesProximoMes.length > 0 && (
+          {hovServicios.abierto && (
+            <p className="mt-1 text-xs text-amber-700/70 text-pretty">
+              {estimacionEsProxMes
+                ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
+                : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
+            </p>
+          )}
+          {hovServicios.abierto && estimacionesProximoMes.length > 0 && (
             <div className="mt-3">
               <button
                 type="button"
@@ -2199,16 +2199,21 @@ export default function CajaJazminePage() {
       </div>
 
       {/* PROYECCIÓN MENSUAL — tabla a 12 meses. Plegada: se abre con hover. */}
-      <Card className="md:col-span-7 2xl:col-span-8 md:order-1" {...hovProyeccion12.props}>
+      <Card
+        className={`md:col-span-7 2xl:col-span-8 md:order-1 ${hovProyeccion12.abierto ? "" : "gap-0 py-3"}`}
+        {...hovProyeccion12.props}
+      >
         <CardHeader className={hovProyeccion12.abierto ? "pb-3" : "pb-0"}>
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
           </CardTitle>
-          <p className="text-xs text-muted-foreground mt-1 text-pretty">
-            A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
-            El saldo parte del saldo actual de la caja.
-          </p>
+          {hovProyeccion12.abierto && (
+            <p className="text-xs text-muted-foreground mt-1 text-pretty">
+              A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
+              El saldo parte del saldo actual de la caja.
+            </p>
+          )}
         </CardHeader>
         {hovProyeccion12.abierto && (
         <CardContent className="px-0">
