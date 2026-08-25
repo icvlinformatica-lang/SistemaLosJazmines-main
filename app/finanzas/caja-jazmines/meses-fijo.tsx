@@ -87,12 +87,12 @@ type EstadoMes = "pagado" | "cargado" | "actual" | "pasado" | "futuro"
 
 /**
  * Estética limpia: chips grandes y redondeados. Gris uniforme para meses sin
- * cargar, verde sólido para pagado, contorno violeta + punto rojo para
+ * cargar, verde sólido para pagado, amarillo suave + punto rojo para
  * cargado sin pagar (el punto se dibuja aparte en el render).
  */
 const ESTILO_CHIP: Record<EstadoMes, string> = {
   pagado: "bg-teal-600 border-teal-600 text-white shadow-sm hover:bg-teal-700",
-  cargado: "bg-purple-50 border-purple-400 text-purple-700 hover:bg-purple-100",
+  cargado: "bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200",
   actual: "bg-white border-border text-foreground shadow-sm hover:border-purple-400 hover:text-purple-700",
   pasado: "bg-muted border-transparent text-muted-foreground hover:bg-purple-50 hover:text-purple-700",
   futuro: "bg-muted/60 border-transparent text-muted-foreground/60 hover:bg-purple-50 hover:text-purple-700",
