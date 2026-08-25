@@ -1828,14 +1828,6 @@ export default function CajaJazminePage() {
         </div>
       </div>
 
-      {salonFiltro !== "todos" && (
-        <p className="-mt-2 text-xs text-muted-foreground">
-          Mostrando únicamente el saldo y los gastos del salón{" "}
-          <span className="font-medium text-foreground">{salonLabel(salonFiltro)}</span>.
-          Los gastos generales (sin salón) solo aparecen en la vista de todos los salones.
-        </p>
-      )}
-
       {/* Métricas: 6 indicadores compactos (30 días + esta semana) en una sola fila.
           Siempre plegadas; el hover sobre el grupo las despliega todas juntas
           y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
