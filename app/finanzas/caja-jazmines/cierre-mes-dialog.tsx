@@ -5,9 +5,9 @@
  *
  * Reemplaza la carga de montos de a uno (⋯ → "Cargar nuevo monto") por una
  * revisión en lote: el panel arma la lista de gastos fijos que todavía no
- * tienen monto cargado para el mes elegido, precarga el monto SUGERIDO
- * (último monto pagado + tendencia de sus últimos aumentos) y deja confirmar
- * todo junto. Solo hay que tocar los que cambiaron distinto a lo esperado.
+ * tienen monto cargado para el mes elegido, precarga el monto vigente (la
+ * proyección por tendencia está desactivada, ver SUGERIDO_ACTIVO) y deja
+ * confirmar todo junto. Solo hay que tocar los que cambiaron.
  *
  * La solapa "Variables" ofrece los gastos variables que suelen repetirse
  * (mismo concepto en meses anteriores) para agendar el mes entero de una vez.
@@ -84,8 +84,16 @@ function tendenciaDeCosto(c: CostoOperativo): number {
   return ultimos.reduce((s, x) => s + x, 0) / ultimos.length
 }
 
+/**
+ * Sugerido por tendencia: DESACTIVADO temporalmente a pedido del usuario
+ * (misma decisión que en la tira de meses). Cambiar a true para volver a
+ * precargar el cierre con la proyección en lugar del monto vigente.
+ */
+const SUGERIDO_ACTIVO = false
+
 /** Monto sugerido para el mes: monto vigente proyectado por su tendencia. */
 function montoSugerido(c: CostoOperativo): number {
+  if (!SUGERIDO_ACTIVO) return c.monto
   const t = tendenciaDeCosto(c)
   return t === 0 ? c.monto : Math.round(c.monto * (1 + t))
 }
@@ -304,8 +312,8 @@ export function CierreMesDialog({
             {`Cerrar ${nombreMes(mes)}`}
           </DialogTitle>
           <DialogDescription>
-            Los montos vienen precargados con la tendencia de cada servicio. Corregí solo los que
-            llegaron distinto y confirmá todo junto.
+            Los montos vienen precargados con el valor vigente de cada servicio. Corregí solo los
+            que llegaron distinto y confirmá todo junto.
           </DialogDescription>
         </DialogHeader>
 
