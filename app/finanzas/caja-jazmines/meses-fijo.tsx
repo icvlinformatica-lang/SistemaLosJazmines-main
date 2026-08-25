@@ -23,9 +23,26 @@ import { useState } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { MoneyInput } from "@/components/ui/money-input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { generateId, type CostoOperativo, type RegistroMonto } from "@/lib/store"
-import { Check, ChevronLeft, ChevronRight, Pencil, RotateCcw, Sparkles, Trash2, Wallet } from "lucide-react"
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  Pencil,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  Wallet,
+} from "lucide-react"
 
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -100,8 +117,10 @@ export function MesesFijo({
   const [deslizar, setDeslizar] = useState<"izq" | "der">("der")
   const [mesAbierto, setMesAbierto] = useState<string | null>(null)
   const [montoPagar, setMontoPagar] = useState(0)
-  // El input del monto está oculto: aparece al elegir "Pagar otro monto".
-  const [editandoMonto, setEditandoMonto] = useState(false)
+  // El input del monto está oculto: aparece al elegir "Pagar otro monto"
+  // (paga al confirmar) o el lápiz del monto (guarda sin pagar).
+  const [modoEdicion, setModoEdicion] = useState<"pagar" | "actualizar" | null>(null)
+  const { toast } = useToast()
 
   const hist = gasto.historialMontos || []
   const registroDe = (mesISO: string) => hist.find((r) => r.mes === mesISO)
@@ -139,12 +158,12 @@ export function MesesFijo({
   function abrirMes(mesISO: string, abierto: boolean) {
     if (!abierto) {
       setMesAbierto(null)
-      setEditandoMonto(false)
+      setModoEdicion(null)
       return
     }
     const registro = registroDe(mesISO)
     setMesAbierto(mesISO)
-    setEditandoMonto(false)
+    setModoEdicion(null)
     // Sin registro previo: con el sugerido apagado se pre-carga el monto vigente.
     setMontoPagar(aParte(registro?.monto ?? (SUGERIDO_ACTIVO ? sugeridoGeneral : gasto.monto)))
   }
@@ -159,8 +178,9 @@ export function MesesFijo({
    *   general) y el pago marca la cuota de ese salón: el gasto completo queda
    *   pagado solo si todos los salones pagaron (regla de pagarCuotaSalon).
    */
-  function guardarMes(monto: number, pagado: boolean) {
+  function guardarMes(monto: number, pagado: boolean, aviso?: string) {
     if (!mesAbierto || !monto || monto <= 0) return
+    const mesGuardado = mesAbierto
     const montoTotal = aGeneral(monto)
     const registro = registroDe(mesAbierto)
 
@@ -210,6 +230,13 @@ export function MesesFijo({
         : {}),
     })
     setMesAbierto(null)
+    setModoEdicion(null)
+    if (aviso) {
+      toast({
+        title: aviso,
+        description: `${gasto.concepto}${parte ? ` (${parte.salon})` : ""} · ${nombreMesLargo(mesGuardado)} · ${formatCurrency(monto)}`,
+      })
+    }
   }
 
   return (
@@ -271,38 +298,44 @@ export function MesesFijo({
                     )}
                   </p>
                   {(onEditar || onEliminar) && (
-                    <div className="flex items-center">
-                      {onEditar && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                          onClick={() => {
-                            setMesAbierto(null)
-                            onEditar()
-                          }}
-                          title={`Editar ${gasto.concepto}`}
+                          title={`Opciones de ${gasto.concepto}`}
                         >
-                          <Pencil className="h-3 w-3" />
-                          <span className="sr-only">{`Editar ${gasto.concepto}`}</span>
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                          <span className="sr-only">{`Opciones de ${gasto.concepto}`}</span>
                         </Button>
-                      )}
-                      {onEliminar && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                          onClick={() => {
-                            setMesAbierto(null)
-                            onEliminar()
-                          }}
-                          title={`Eliminar ${gasto.concepto}`}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          <span className="sr-only">{`Eliminar ${gasto.concepto}`}</span>
-                        </Button>
-                      )}
-                    </div>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" style={{ backgroundColor: "#ffffff" }}>
+                        {onEditar && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setMesAbierto(null)
+                              onEditar()
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar gasto
+                          </DropdownMenuItem>
+                        )}
+                        {onEliminar && (
+                          <DropdownMenuItem
+                            className="text-red-600 focus:bg-red-50 focus:text-red-700"
+                            onClick={() => {
+                              setMesAbierto(null)
+                              onEliminar()
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
 
@@ -314,13 +347,32 @@ export function MesesFijo({
                   const estadoPago = !registro ? "aPagar" : pagadoDelMes(registro) ? "pagado" : "debe"
                   return (
                     <div className="mt-2">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span
-                          className={`text-lg font-bold tabular-nums ${
-                            estadoPago === "aPagar" ? "text-muted-foreground" : "text-foreground"
-                          }`}
-                        >
-                          {formatCurrency(aParte(montoGeneralMes))}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1">
+                          <span
+                            className={`text-lg font-bold tabular-nums ${
+                              estadoPago === "aPagar" ? "text-muted-foreground" : "text-foreground"
+                            }`}
+                          >
+                            {formatCurrency(aParte(montoGeneralMes))}
+                          </span>
+                          {/* Lápiz: actualizar el monto del mes sin pagarlo,
+                              p.ej. cargar de antemano un aumento futuro. */}
+                          {estadoPago !== "pagado" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setMontoPagar(aParte(montoGeneralMes))
+                                setModoEdicion("actualizar")
+                              }}
+                              title="Actualizar el monto de este mes sin pagarlo"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              <span className="sr-only">Actualizar el monto de este mes</span>
+                            </Button>
+                          )}
                         </span>
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -346,7 +398,7 @@ export function MesesFijo({
                 {/* Acciones. El input está oculto: solo aparece al elegir
                     "Pagar otro monto". */}
                 <div className="mt-3 space-y-2">
-                  {editandoMonto && (
+                  {modoEdicion !== null && (
                     <>
                       <MoneyInput
                         id={`pago-${gasto.id}-${mesISO}`}
@@ -379,34 +431,46 @@ export function MesesFijo({
                       <Button
                         size="sm"
                         className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                        onClick={() => guardarMes(aParte(registro.monto), false)}
+                        onClick={() => guardarMes(aParte(registro.monto), false, "Pago deshecho")}
                         title="Deshacer el pago de este mes"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         Deshacer
                       </Button>
-                    ) : editandoMonto ? (
-                      /* Editando: confirma el monto escrito o cancela. */
+                    ) : modoEdicion !== null ? (
+                      /* Editando: paga o solo guarda el monto, según el modo. */
                       <>
                         <Button
                           size="sm"
                           className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                          onClick={() => guardarMes(montoPagar, true)}
+                          onClick={() =>
+                            modoEdicion === "pagar"
+                              ? guardarMes(montoPagar, true, "Pago registrado")
+                              : guardarMes(montoPagar, false, "Monto guardado")
+                          }
                           disabled={!montoPagar || montoPagar <= 0}
-                          title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
+                          title={
+                            modoEdicion === "pagar"
+                              ? parte
+                                ? `Registrar pago de ${parte.salon}`
+                                : "Registrar pago del mes"
+                              : "Guardar el monto de este mes sin pagarlo"
+                          }
                         >
                           <Check className="h-3.5 w-3.5" />
-                          {`Pagar ${formatCurrency(montoPagar)}`}
+                          {modoEdicion === "pagar"
+                            ? `Pagar ${formatCurrency(montoPagar)}`
+                            : `Guardar ${formatCurrency(montoPagar)}`}
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
                           onClick={() => {
-                            setEditandoMonto(false)
+                            setModoEdicion(null)
                             setMontoPagar(aParte(registro?.monto ?? gasto.monto))
                           }}
-                          title="Cancelar y volver al monto sugerido"
+                          title="Cancelar sin guardar"
                         >
                           Cancelar
                         </Button>
@@ -417,7 +481,7 @@ export function MesesFijo({
                         <Button
                           size="sm"
                           className="h-8 flex-1 gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                          onClick={() => guardarMes(aParte(registro?.monto ?? gasto.monto), true)}
+                          onClick={() => guardarMes(aParte(registro?.monto ?? gasto.monto), true, "Pago registrado")}
                           title={parte ? `Registrar pago de ${parte.salon}` : "Registrar pago del mes"}
                         >
                           <Check className="h-3.5 w-3.5" />
@@ -430,7 +494,7 @@ export function MesesFijo({
                           style={{ backgroundColor: "#ffffff" }}
                           onClick={() => {
                             setMontoPagar(aParte(registro?.monto ?? gasto.monto))
-                            setEditandoMonto(true)
+                            setModoEdicion("pagar")
                           }}
                           title="Escribir un monto distinto al de la factura"
                         >
