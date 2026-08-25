@@ -2033,9 +2033,11 @@ export default function CajaJazminePage() {
             </div>
       </div>
 
-      {/* Última fila: proyección a 12 meses + servicios a pagar al lado */}
-      <div className="order-last grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-      <div className="space-y-4 md:col-span-5 2xl:col-span-4 md:order-2">
+      {/* Última fila: proyección a 12 meses (izquierda) + servicios a pagar
+          (derecha). Mismo grid de 2 columnas que las tarjetas de arriba para
+          que queden exactamente alineadas con Gastos variables y Cuotas. */}
+      <div className="order-last grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+      <div className="space-y-4 md:col-start-2 md:order-2">
       {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos.
           Plegada muestra solo título y monto; se despliega con hover (0,5s / 2s). */}
       <Card className={`border-amber-200 bg-amber-50 ${hovServicios.abierto ? "" : "gap-0 py-3"}`} {...hovServicios.props}>
@@ -2200,7 +2202,7 @@ export default function CajaJazminePage() {
 
       {/* PROYECCIÓN MENSUAL — tabla a 12 meses. Plegada: se abre con hover. */}
       <Card
-        className={`md:col-span-7 2xl:col-span-8 md:order-1 ${hovProyeccion12.abierto ? "" : "gap-0 py-3"}`}
+        className={`md:col-start-1 md:row-start-1 md:order-1 ${hovProyeccion12.abierto ? "" : "gap-0 py-3"}`}
         {...hovProyeccion12.props}
       >
         <CardHeader className={hovProyeccion12.abierto ? "pb-3" : "pb-0"}>
