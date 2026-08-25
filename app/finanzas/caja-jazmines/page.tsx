@@ -422,15 +422,18 @@ function CarpetaGastos({
   resumen?: React.ReactNode
   children: React.ReactNode
 }) {
-  // Las carpetas arrancan SIEMPRE cerradas: se abren solo a pedido.
-  const [abierta, setAbierta] = useState(false)
+  // Las carpetas arrancan cerradas: se abren con click (fijas) o dejando el
+  // mouse encima 0,5s, y se repliegan 2s después de salir (useHoverPlegado).
+  const [fijaAbierta, setFijaAbierta] = useState(false)
+  const hov = useHoverPlegado()
+  const abierta = fijaAbierta || hov.abierto
   const { configuracionCajas } = useStore()
   const color = salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }}>
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }} {...hov.props}>
       <button
         type="button"
-        onClick={() => setAbierta((v) => !v)}
+        onClick={() => setFijaAbierta((v) => !v)}
         className="flex w-full items-center gap-2 px-3 py-2 transition-colors hover:brightness-95"
         style={{ backgroundColor: `${color}1f`, color }}
         aria-expanded={abierta}
@@ -1184,7 +1187,7 @@ export default function CajaJazminePage() {
     })
   }
 
-  // ── Pagar directo desde la tarjeta de alertas ──────────────────���───────
+  // ── Pagar directo desde la tarjeta de alertas ─���────────────────���───────
   // Dispara la animación de desvanecido y, al terminar, archiva el gasto en
   // el Archivo Histórico (fijo: avanza vencimiento / variable: se elimina).
   const [alertasPagando, setAlertasPagando] = useState<Set<string>>(new Set())
