@@ -3010,7 +3010,7 @@ export default function CajaJazminePage() {
         {/* Gastos variables (columna derecha, fila 1) */}
         <Card
         className="md:col-start-1 md:row-start-2"
-        style={{ backgroundColor: "rgba(236, 248, 208, 0.64)", color: "#000000" }}
+        style={{ backgroundColor: "#ffffff", color: "#000000" }}
         {...hovVariables.props}
       >
           <CardHeader className="pb-3">
