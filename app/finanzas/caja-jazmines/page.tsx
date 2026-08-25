@@ -411,6 +411,7 @@ function CarpetaGastos({
   subtotal,
   unidad = "gasto",
   resumen,
+  plano = false,
   children,
 }: {
   salon: string
@@ -420,6 +421,9 @@ function CarpetaGastos({
   unidad?: string
   /** Indicadores extra visibles con la carpeta cerrada (ej. puntos de prioridad) */
   resumen?: React.ReactNode
+  /** Sin carpeta: muestra el contenido directo (vista de un solo salón,
+      donde el nombre del salón ya se eligió y la carpeta es redundante). */
+  plano?: boolean
   children: React.ReactNode
 }) {
   // Las carpetas arrancan cerradas: se abren con click (fijas) o dejando el
@@ -429,6 +433,9 @@ function CarpetaGastos({
   const abierta = fijaAbierta || hov.abierto
   const { configuracionCajas } = useStore()
   const color = salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
+  if (plano) {
+    return <div className="space-y-2">{children}</div>
+  }
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }} {...hov.props}>
       <button
@@ -1044,6 +1051,7 @@ export default function CajaJazminePage() {
   // (saldo, gastos, cobros, balance) queda afuera a pedido del usuario.
   const hovProyeccion = useHoverPlegado()
   const hovProyeccion12 = useHoverPlegado()
+  const hovServicios = useHoverPlegado()
   const hovAlertas = useHoverPlegado()
   const hovCuotas = useHoverPlegado()
   const hovFijos = useHoverPlegado()
@@ -1828,14 +1836,6 @@ export default function CajaJazminePage() {
         </div>
       </div>
 
-      {salonFiltro !== "todos" && (
-        <p className="-mt-2 text-xs text-muted-foreground">
-          Mostrando únicamente el saldo y los gastos del salón{" "}
-          <span className="font-medium text-foreground">{salonLabel(salonFiltro)}</span>.
-          Los gastos generales (sin salón) solo aparecen en la vista de todos los salones.
-        </p>
-      )}
-
       {/* Métricas: 6 indicadores compactos (30 días + esta semana) en una sola fila.
           Siempre plegadas; el hover sobre el grupo las despliega todas juntas
           y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
@@ -2040,33 +2040,34 @@ export default function CajaJazminePage() {
             </div>
       </div>
 
-      {/* Última fila: proyección a 12 meses + servicios a pagar al lado */}
-      <div className="order-last grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-      <div className="space-y-4 md:col-span-5 2xl:col-span-4 md:order-2">
-      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos */}
-      <Card className="border-amber-200 bg-amber-50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
-                <Receipt className="h-5 w-5 text-amber-700" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">
-                  {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
-                </p>
-                <p className="text-xs text-amber-700/70 mt-0.5 text-pretty">
-                  {estimacionEsProxMes
-                    ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
-                    : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
-                </p>
-              </div>
+      {/* Última fila: proyección a 12 meses (izquierda) + servicios a pagar
+          (derecha). Mismo grid de 2 columnas que las tarjetas de arriba para
+          que queden exactamente alineadas con Gastos variables y Cuotas. */}
+      <div className="order-last grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+      <div className="space-y-4 md:col-start-2 md:order-2">
+      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos.
+          Plegada muestra solo título y monto; se despliega con hover (0,5s / 2s). */}
+      <Card className={`border-amber-200 bg-amber-50 ${hovServicios.abierto ? "" : "gap-0 py-3"}`} {...hovServicios.props}>
+        <CardContent className={hovServicios.abierto ? "p-4 py-0" : "px-4 py-0"}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Receipt className="h-4 w-4 shrink-0 text-amber-700" />
+              <p className="truncate text-sm font-semibold text-amber-900">
+                {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
+              </p>
             </div>
-            <p className="text-2xl font-bold text-amber-800 shrink-0">
+            <p className={`shrink-0 font-bold text-amber-800 ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}>
               {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
-          {estimacionesProximoMes.length > 0 && (
+          {hovServicios.abierto && (
+            <p className="mt-1 text-xs text-amber-700/70 text-pretty">
+              {estimacionEsProxMes
+                ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
+                : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
+            </p>
+          )}
+          {hovServicios.abierto && estimacionesProximoMes.length > 0 && (
             <div className="mt-3">
               <button
                 type="button"
@@ -2207,16 +2208,21 @@ export default function CajaJazminePage() {
       </div>
 
       {/* PROYECCIÓN MENSUAL — tabla a 12 meses. Plegada: se abre con hover. */}
-      <Card className="md:col-span-7 2xl:col-span-8 md:order-1" {...hovProyeccion12.props}>
+      <Card
+        className={`md:col-start-1 md:row-start-1 md:order-1 ${hovProyeccion12.abierto ? "" : "gap-0 py-3"}`}
+        {...hovProyeccion12.props}
+      >
         <CardHeader className={hovProyeccion12.abierto ? "pb-3" : "pb-0"}>
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
           </CardTitle>
-          <p className="text-xs text-muted-foreground mt-1 text-pretty">
-            A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
-            El saldo parte del saldo actual de la caja.
-          </p>
+          {hovProyeccion12.abierto && (
+            <p className="text-xs text-muted-foreground mt-1 text-pretty">
+              A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
+              El saldo parte del saldo actual de la caja.
+            </p>
+          )}
         </CardHeader>
         {hovProyeccion12.abierto && (
         <CardContent className="px-0">
@@ -2290,11 +2296,14 @@ export default function CajaJazminePage() {
           Columnas independientes ancladas ARRIBA: la fila 1 mide solo el alto de su
           tarjeta (grid-rows auto) y cada tarjeta se alinea a su tope (items-start),
           así al plegar una tarjeta la de abajo sube al instante y nada queda flotando. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-[auto_auto_1fr] gap-4 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
-      {/* Alertas de vencimiento (columna derecha, fila 2) */}
+      {/* Columna derecha: vencimientos + cuotas apiladas sin huecos.
+          Van juntas en un flex para que la altura de una no afecte a la otra. */}
+      <div className="flex min-w-0 flex-col gap-4 md:col-start-2 md:row-start-2">
+      {/* Alertas de vencimiento */}
       <Card
-        className={`md:col-start-2 md:row-start-2 ${abiertaAlertas ? "" : "py-3 gap-0"}`}
+        className={abiertaAlertas ? "" : "py-3 gap-0"}
         style={{ backgroundColor: "#f5ffbd", color: "#000000" }}
         {...hovAlertas.props}
       >
@@ -2382,6 +2391,7 @@ export default function CajaJazminePage() {
                         count={carpeta.items.length}
                         subtotal={carpeta.subtotal}
                         unidad="vencimiento"
+                        plano={salonFiltro !== "todos"}
                         resumen={
                           <span className="flex items-center gap-2 shrink-0">
                             {rojos > 0 && (
@@ -2537,9 +2547,9 @@ export default function CajaJazminePage() {
         )}
       </Card>
 
-      {/* Cuotas por cobrar: columna derecha, debajo de Próximos vencimientos */}
+      {/* Cuotas por cobrar: debajo de Próximos vencimientos */}
       <Card
-        className={`md:col-start-2 md:row-start-3 ${abiertaCuotas ? "" : "py-3 gap-0"}`}
+        className={abiertaCuotas ? "" : "py-3 gap-0"}
         style={{ backgroundColor: "#cdf7c6" }}
         {...hovCuotas.props}
       >
@@ -2635,11 +2645,12 @@ export default function CajaJazminePage() {
           </CardContent>
         )}
       </Card>
+      </div>
 
       {/* ── Columna izquierda: gastos fijos ── */}
       <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
-        {/* Gastos fijos del mes (gap-3/py-4 la compactan: el Card base trae gap-6/py-6) */}
-        <Card className="gap-3 py-4" style={{ backgroundColor: "#ffffff" }} {...hovFijos.props}>
+        {/* Gastos fijos del mes: compacta al plegarse (el Card base trae gap-6/py-6) */}
+        <Card className={abiertaFijos ? "gap-3 py-4" : "gap-0 py-3"} style={{ backgroundColor: "#ffffff" }} {...hovFijos.props}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -2772,6 +2783,7 @@ export default function CajaJazminePage() {
                     salon={carpeta.salon}
                     count={carpeta.items.length + cuotasReparto.length}
                     subtotal={carpeta.subtotal + cuotasReparto.reduce((s, c) => s + c.monto, 0)}
+                    plano={salonFiltro !== "todos"}
                   >
                     {/* Cuotas de gastos repartidos: misma tarjeta y acciones que
                         un gasto normal; el check paga la parte de este salón. */}
@@ -3007,13 +3019,13 @@ export default function CajaJazminePage() {
         </Card>
       </div>
 
-        {/* Gastos variables (columna derecha, fila 1) */}
+        {/* Gastos variables (columna izquierda, fila 2): compacta al plegarse */}
         <Card
-        className="md:col-start-1 md:row-start-2"
+        className={`md:col-start-1 md:row-start-2 ${abiertaVariables ? "" : "gap-0 py-3"}`}
         style={{ backgroundColor: "#ffffff", color: "#000000" }}
         {...hovVariables.props}
       >
-          <CardHeader className="pb-3">
+          <CardHeader className={abiertaVariables ? "pb-3" : "pb-0"}>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 Gastos variables
@@ -3055,6 +3067,7 @@ export default function CajaJazminePage() {
                   salon={carpeta.salon}
                   count={carpeta.items.length}
                   subtotal={carpeta.subtotal}
+                  plano={salonFiltro !== "todos"}
                 >
                   {carpeta.items.map((gasto) => {
                 const esPagado = gasto.estado === "pagado"

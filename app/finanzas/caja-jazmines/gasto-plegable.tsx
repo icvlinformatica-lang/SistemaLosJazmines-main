@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 
 /**
  * Lógica de plegado por hover, compartida por los gastos individuales y
@@ -11,6 +11,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
  * - Se despliega automáticamente si el mouse queda encima al menos
  *   0,5 segundos. Pasadas rápidas (menos de 0,5s) no lo despliegan.
  * - Al sacar el mouse, espera 2 segundos antes de volver a plegarse.
+ * - Un click en cualquier parte "vacía" de la tarjeta la abre o la cierra al
+ *   instante (los clicks sobre botones, links o inputs internos no cuentan).
  * - No se pliega mientras haya un popover, menú o diálogo abierto (se está
  *   operando adentro); reintenta cada segundo hasta que cierre.
  * - También se despliega si el teclado enfoca algo adentro (accesibilidad).
@@ -72,11 +74,30 @@ export function useHoverPlegado() {
     setAbierto(true)
   }
 
+  function alClick(e: ReactMouseEvent) {
+    // Los controles internos (botones, links, inputs, menús) conservan su
+    // acción propia: solo el click sobre zona "vacía" alterna la tarjeta.
+    const objetivo = e.target as HTMLElement
+    if (objetivo.closest("button, a, input, select, textarea, label, [role=menu], [data-slot=popover-content]")) {
+      return
+    }
+    if (timerAbrir.current) {
+      clearTimeout(timerAbrir.current)
+      timerAbrir.current = null
+    }
+    if (timerCerrar.current) {
+      clearTimeout(timerCerrar.current)
+      timerCerrar.current = null
+    }
+    setAbierto((v) => !v)
+  }
+
   /** Props para esparcir en el contenedor que dispara el hover. */
   const props = {
     onMouseEnter: alEntrar,
     onMouseLeave: alSalir,
     onFocusCapture: alEnfocar,
+    onClick: alClick,
   }
 
   return { abierto, props }
