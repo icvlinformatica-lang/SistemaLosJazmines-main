@@ -411,6 +411,7 @@ function CarpetaGastos({
   subtotal,
   unidad = "gasto",
   resumen,
+  plano = false,
   children,
 }: {
   salon: string
@@ -420,6 +421,9 @@ function CarpetaGastos({
   unidad?: string
   /** Indicadores extra visibles con la carpeta cerrada (ej. puntos de prioridad) */
   resumen?: React.ReactNode
+  /** Sin carpeta: muestra el contenido directo (vista de un solo salón,
+      donde el nombre del salón ya se eligió y la carpeta es redundante). */
+  plano?: boolean
   children: React.ReactNode
 }) {
   // Las carpetas arrancan cerradas: se abren con click (fijas) o dejando el
@@ -429,6 +433,9 @@ function CarpetaGastos({
   const abierta = fijaAbierta || hov.abierto
   const { configuracionCajas } = useStore()
   const color = salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
+  if (plano) {
+    return <div className="space-y-2">{children}</div>
+  }
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }} {...hov.props}>
       <button
@@ -2384,6 +2391,7 @@ export default function CajaJazminePage() {
                         count={carpeta.items.length}
                         subtotal={carpeta.subtotal}
                         unidad="vencimiento"
+                        plano={salonFiltro !== "todos"}
                         resumen={
                           <span className="flex items-center gap-2 shrink-0">
                             {rojos > 0 && (
@@ -2775,6 +2783,7 @@ export default function CajaJazminePage() {
                     salon={carpeta.salon}
                     count={carpeta.items.length + cuotasReparto.length}
                     subtotal={carpeta.subtotal + cuotasReparto.reduce((s, c) => s + c.monto, 0)}
+                    plano={salonFiltro !== "todos"}
                   >
                     {/* Cuotas de gastos repartidos: misma tarjeta y acciones que
                         un gasto normal; el check paga la parte de este salón. */}
@@ -3058,6 +3067,7 @@ export default function CajaJazminePage() {
                   salon={carpeta.salon}
                   count={carpeta.items.length}
                   subtotal={carpeta.subtotal}
+                  plano={salonFiltro !== "todos"}
                 >
                   {carpeta.items.map((gasto) => {
                 const esPagado = gasto.estado === "pagado"
