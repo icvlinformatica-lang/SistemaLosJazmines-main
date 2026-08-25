@@ -48,8 +48,8 @@ export interface GastoVariable {
   estado: "pendiente" | "pagado" | "vencido"
   /** true si es una comisión de vendedor (generada automáticamente desde los eventos) */
   esComision?: boolean
-  /** Carpeta elegida al agendar el gasto: "comisiones" o "varios" (default). */
-  carpeta?: "comisiones" | "varios"
+  /** Carpeta elegida al agendar el gasto: "comisiones", "varios" (default) o una creada por el usuario. */
+  carpeta?: string
   /** Detalle de la comisión: quién comisionó, sobre qué evento y con qué % */
   comisionDetalle?: {
     vendedor: string
@@ -520,7 +520,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           fechaGasto: c.fechaGasto,
           monto: c.monto,
           estado,
-          carpeta: c.categoria === "comisiones" ? "comisiones" : "varios",
+          carpeta: c.categoria || "varios",
         } as GastoVariable
       })
 
