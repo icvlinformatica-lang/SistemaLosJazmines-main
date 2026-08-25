@@ -1737,6 +1737,7 @@ export default function CajaJazminePage() {
     fechaGasto: "",
     repartir: false,
     distribucion: [] as DistribucionSalon[],
+    carpeta: "varios" as "comisiones" | "varios",
   })
   // Si tiene valor, el modal de gasto variable está editando ese costo operativo.
   const [editandoVariableId, setEditandoVariableId] = useState<string | null>(null)
@@ -1758,7 +1759,7 @@ export default function CajaJazminePage() {
       if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon) return
       if (!confirm(`¿Registrar el retiro "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} del salón ${salonLabel(nuevoGasto.salon)}? Se descuenta del saldo ahora.`)) return
       registrarRetiro(nuevoGasto.nombre, Number(nuevoGasto.monto), nuevoGasto.salon)
-      setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+      setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
       setModoVariable("gasto")
       setModalVariableAbierto(false)
       return
@@ -1782,6 +1783,7 @@ export default function CajaJazminePage() {
         fechaVencimiento: nuevoGasto.fecha,
         fechaGasto: nuevoGasto.fechaGasto || undefined,
         distribucion: dist.length > 0 ? dist : undefined,
+        categoria: nuevoGasto.carpeta,
       })
       toast({ title: "Gasto actualizado", description: nuevoGasto.nombre })
     } else {
@@ -1798,9 +1800,10 @@ export default function CajaJazminePage() {
         esVariable: true,
         pagado: false,
         distribucion: dist.length > 0 ? dist : undefined,
+        categoria: nuevoGasto.carpeta,
       })
     }
-    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
     setEditandoVariableId(null)
     setModalVariableAbierto(false)
   }
@@ -1818,6 +1821,7 @@ export default function CajaJazminePage() {
       fechaGasto: orig.fechaGasto || "",
       repartir: dist.length > 0,
       distribucion: dist,
+      carpeta: orig.categoria === "comisiones" ? "comisiones" : "varios",
     })
     setEditandoVariableId(gasto.id)
     setModalVariableAbierto(true)
@@ -1910,7 +1914,7 @@ export default function CajaJazminePage() {
         onMouseEnter={() => setTarjetasAbiertas(true)}
         onMouseLeave={() => setTarjetasAbiertas(false)}
       >
-            {/* ── Slide 1: A 30 DÍAS ────────────────────────────���───── */}
+            {/* ── Slide 1: A 30 DÍAS ──────────────────────���─────���───── */}
             <div className="contents">
               <Card
                 style={{ backgroundColor: "#ffffff" }}
@@ -3152,19 +3156,20 @@ export default function CajaJazminePage() {
                 Sin gastos variables registrados.
               </p>
             ) : (
-              // Carpetas por tipo: "Comisiones" (de vendedores) y "Varios" (el resto).
+              // Carpetas por tipo: "Comisiones" (de vendedores, automáticas, y
+              // gastos agendados en esa carpeta) y "Varios" (el resto).
               [
                 {
                   clave: "comisiones",
                   etiqueta: "Comisiones",
                   color: "#b45309",
-                  items: gastosVariablesCombinados.filter((g) => g.esComision),
+                  items: gastosVariablesCombinados.filter((g) => g.esComision || g.carpeta === "comisiones"),
                 },
                 {
                   clave: "varios",
                   etiqueta: "Varios",
                   color: "#0f766e",
-                  items: gastosVariablesCombinados.filter((g) => !g.esComision),
+                  items: gastosVariablesCombinados.filter((g) => !g.esComision && g.carpeta !== "comisiones"),
                 },
               ]
                 .filter((grupo) => grupo.items.length > 0)
@@ -3642,7 +3647,7 @@ export default function CajaJazminePage() {
           if (!open) {
             setEditandoVariableId(null)
             setModoVariable("gasto")
-            setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+            setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
           }
         }}
       >
@@ -3703,6 +3708,35 @@ export default function CajaJazminePage() {
                 onValueChange={(v) => setNuevoGasto((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
+            {modoVariable !== "retiro" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="gv-carpeta">Carpeta</Label>
+                <Select
+                  value={nuevoGasto.carpeta}
+                  onValueChange={(v) =>
+                    setNuevoGasto((p) => ({ ...p, carpeta: v as "comisiones" | "varios" }))
+                  }
+                >
+                  <SelectTrigger id="gv-carpeta">
+                    <SelectValue placeholder="Seleccionar carpeta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="varios">
+                      <span className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#0f766e" }} />
+                        Varios
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="comisiones">
+                      <span className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#b45309" }} />
+                        Comisiones
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               {modoVariable !== "retiro" && (
                 <div className="flex items-center justify-between">

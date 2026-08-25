@@ -366,6 +366,11 @@ export interface CostoOperativo {
   fechaGasto?: string
   /** true para gastos variables agendados desde caja-jazmines */
   esVariable?: boolean
+  /**
+   * Carpeta del gasto variable en Caja Jazmines: "comisiones" o "varios".
+   * Se guarda en la columna `categoria` (texto libre) de costos_operativos.
+   */
+  categoria?: string
   /** Etiqueta "Servicio": solo estos gastos fijos entran en la tarjeta "Servicios a pagar" */
   esServicio?: boolean
   /** true si el gasto ya fue pagado */
