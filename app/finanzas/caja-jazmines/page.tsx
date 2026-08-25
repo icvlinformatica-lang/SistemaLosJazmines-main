@@ -407,6 +407,25 @@ function agruparPorSalon<T extends { salon?: string | null; monto: number }>(
 /** Cuántos ítems se muestran antes de ofrecer el botón "Ver más". */
 const ITEMS_VISIBLES_LISTA = 5
 
+/**
+ * Pastilla con el monto del mes de un gasto fijo, visible con el ítem
+ * plegado: verde si ya se pagó, amarilla si falta pagar.
+ */
+function MontoPagoPill({ monto, pagado }: { monto: number; pagado: boolean }) {
+  return (
+    <span
+      className={`shrink-0 rounded-md border px-2 py-1 text-xs font-bold tabular-nums ${
+        pagado
+          ? "border-teal-200 bg-teal-50 text-teal-700"
+          : "border-amber-200 bg-amber-50 text-amber-700"
+      }`}
+      title={pagado ? "Pagado este mes" : "Falta pagar este mes"}
+    >
+      {formatCurrency(monto)}
+    </span>
+  )
+}
+
 /** Carpeta colapsable de color que agrupa los gastos de un salón. */
 function CarpetaGastos({
   salon,
@@ -2860,6 +2879,7 @@ export default function CajaJazminePage() {
                                 {` · ${cuota.porcentaje}%`}
                               </p>
                             </button>
+                            <MontoPagoPill monto={cuota.monto} pagado={cuota.pagado} />
                           </div>
                         }
                       >
@@ -2934,6 +2954,26 @@ export default function CajaJazminePage() {
                               {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                             </p>
                           </button>
+                          {/* Monto del mes visible con el ítem plegado: verde si
+                              está pagado, amarillo si falta pagar. Repartidos: en
+                              vista de salón muestra la porción y su estado; en
+                              "todos" el total, pagado solo con todas las partes. */}
+                          {!gasto.esSueldoVendedor && (
+                            <MontoPagoPill
+                              monto={
+                                parteSalon
+                                  ? Math.round((gasto.monto * parteSalon.porcentaje) / 100)
+                                  : gasto.monto
+                              }
+                              pagado={
+                                parteSalon
+                                  ? parteSalonPagada
+                                  : esRepartido
+                                    ? partesPagadas === distGasto.length
+                                    : esPagado
+                              }
+                            />
+                          )}
                           {/* Sueldos de vendedores: sin tira de meses, conservan
                               sus controles (monto, estado y edición de fecha). */}
                           {gasto.esSueldoVendedor && (

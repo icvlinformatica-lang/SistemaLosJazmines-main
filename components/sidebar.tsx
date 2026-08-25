@@ -151,9 +151,10 @@ export function Sidebar() {
   const [expandedSections, setExpandedSections] = useState<string[]>([])
 
   // --- Apertura/cierre automático por hover ---
-  // Si el panel se abrió al acercar el mouse (no con un botón), se cierra
-  // solo cuando el mouse queda fuera por más de 1 segundo.
-  const hoverOpenedRef = useRef(false)
+  // El panel se abre al acercar el mouse al borde y SIEMPRE se pliega solo
+  // cuando el mouse queda fuera de él por más de 1 segundo (sin importar
+  // cómo se abrió: hover, pestaña, botón o abierto al cargar la página).
+  const asideRef = useRef<HTMLElement | null>(null)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const cancelarCierre = () => {
@@ -166,22 +167,43 @@ export function Sidebar() {
   const abrirPorHover = () => {
     cancelarCierre()
     if (!sidebarOpen) {
-      hoverOpenedRef.current = true
       setSidebarOpen(true)
     }
   }
 
   const programarCierrePorHover = () => {
-    if (!hoverOpenedRef.current) return
     cancelarCierre()
     closeTimerRef.current = setTimeout(() => {
-      hoverOpenedRef.current = false
       setSidebarOpen(false)
     }, 1000)
   }
 
-  // Limpiar el timer al desmontar
-  useEffect(() => cancelarCierre, [])
+  // Vigilancia global: cubre los casos donde onMouseLeave nunca dispara
+  // (el mouse pasó por la zona caliente sin entrar al panel, el panel se
+  // abrió con un click, o ya estaba abierto al navegar). Solo en desktop:
+  // en mobile se cierra con el overlay oscuro.
+  useEffect(() => {
+    if (!sidebarOpen) return
+    if (typeof window === "undefined" || !window.matchMedia("(min-width: 1024px)").matches) return
+
+    const vigilarMouse = (e: PointerEvent) => {
+      const aside = asideRef.current
+      if (!aside) return
+      const dentro = aside.contains(e.target as Node)
+      if (dentro) {
+        cancelarCierre()
+      } else if (!closeTimerRef.current) {
+        programarCierrePorHover()
+      }
+    }
+
+    document.addEventListener("pointermove", vigilarMouse)
+    return () => {
+      document.removeEventListener("pointermove", vigilarMouse)
+      cancelarCierre()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarOpen])
 
   // Construir items del menú según perfil activo
   const menuItems = buildMenuItems(perfilActivo?.id)
@@ -287,6 +309,7 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside
+        ref={asideRef}
         onMouseEnter={cancelarCierre}
         onMouseLeave={programarCierrePorHover}
         className={cn(
@@ -308,7 +331,6 @@ export function Sidebar() {
             type="button"
             onClick={() => {
               cancelarCierre()
-              hoverOpenedRef.current = false
               setSidebarOpen(false)
             }}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#f5f0e8]/60 transition-colors hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8]"
@@ -472,7 +494,6 @@ export function Sidebar() {
         <button
           onClick={() => {
             cancelarCierre()
-            hoverOpenedRef.current = false
             setSidebarOpen(false)
           }}
           className="flex items-center gap-2 px-5 py-3 border-t border-[#f5f0e8]/10 text-[#f5f0e8]/60 hover:text-[#f5f0e8]/90 text-sm transition-colors"
@@ -488,10 +509,7 @@ export function Sidebar() {
       {!sidebarOpen && (
         /* Pestaña lateral al medio (acceso rápido) */
         <button
-          onClick={() => {
-            hoverOpenedRef.current = false
-            setSidebarOpen(true)
-          }}
+          onClick={() => setSidebarOpen(true)}
           onMouseEnter={abrirPorHover}
           className="no-print fixed left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-6 h-12 rounded-r-lg bg-[#2d5a3d] text-[#f5f0e8]/80 hover:text-[#f5f0e8] hover:w-7 shadow-md transition-all duration-200"
           aria-label="Desplegar menu"
