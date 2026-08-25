@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { Children, useState, useRef, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -404,6 +404,9 @@ function agruparPorSalon<T extends { salon?: string | null; monto: number }>(
     }))
 }
 
+/** Cuántos ítems se muestran antes de ofrecer el botón "Ver más". */
+const ITEMS_VISIBLES_LISTA = 5
+
 /** Carpeta colapsable de color que agrupa los gastos de un salón. */
 function CarpetaGastos({
   salon,
@@ -412,6 +415,8 @@ function CarpetaGastos({
   unidad = "gasto",
   resumen,
   plano = false,
+  etiqueta,
+  colorCustom,
   children,
 }: {
   salon: string
@@ -424,17 +429,57 @@ function CarpetaGastos({
   /** Sin carpeta: muestra el contenido directo (vista de un solo salón,
       donde el nombre del salón ya se eligió y la carpeta es redundante). */
   plano?: boolean
+  /** Nombre visible custom (ej. "Comisiones" / "Varios"); si falta, usa el salón. */
+  etiqueta?: string
+  /** Color custom para carpetas que no son de un salón. */
+  colorCustom?: string
   children: React.ReactNode
 }) {
   // Las carpetas arrancan cerradas: se abren con click (fijas) o dejando el
   // mouse encima 0,5s, y se repliegan 2s después de salir (useHoverPlegado).
   const [fijaAbierta, setFijaAbierta] = useState(false)
+  // La lista se despliega hasta ITEMS_VISIBLES_LISTA; "Ver más" muestra el resto.
+  const [verTodos, setVerTodos] = useState(false)
   const hov = useHoverPlegado()
   const abierta = fijaAbierta || hov.abierto
   const { configuracionCajas } = useStore()
-  const color = salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL
+  const color =
+    colorCustom ?? (salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL)
+
+  const nodos = Children.toArray(children).filter(Boolean)
+  const visibles = verTodos ? nodos : nodos.slice(0, ITEMS_VISIBLES_LISTA)
+  const ocultos = nodos.length - ITEMS_VISIBLES_LISTA
+  const lista = (
+    <>
+      {visibles}
+      {ocultos > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-muted-foreground"
+          onClick={(e) => {
+            e.stopPropagation()
+            setVerTodos((v) => !v)
+          }}
+        >
+          {verTodos ? (
+            <>
+              <ChevronUp className="h-3.5 w-3.5" />
+              Ver menos
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3.5 w-3.5" />
+              {`Ver más (${ocultos})`}
+            </>
+          )}
+        </Button>
+      )}
+    </>
+  )
+
   if (plano) {
-    return <div className="space-y-2">{children}</div>
+    return <div className="space-y-2">{lista}</div>
   }
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }} {...hov.props}>
@@ -447,7 +492,7 @@ function CarpetaGastos({
       >
         {abierta ? <FolderOpen className="h-4 w-4" style={{ color }} /> : <Folder className="h-4 w-4" style={{ color }} />}
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
-        <span className="text-sm font-semibold flex-1 text-left">{salonLabel(salon)}</span>
+        <span className="text-sm font-semibold flex-1 text-left">{etiqueta ?? salonLabel(salon)}</span>
         {resumen}
         <span className="text-xs font-medium opacity-80">
           {count} {count === 1 ? unidad : `${unidad}s`} · {formatCurrency(subtotal)}
@@ -455,7 +500,7 @@ function CarpetaGastos({
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`} />
       </button>
       <CuerpoTarjeta abierto={abierta}>
-        <div className="space-y-2 bg-card p-2">{children}</div>
+        <div className="space-y-2 bg-card p-2">{lista}</div>
       </CuerpoTarjeta>
     </div>
   )
@@ -3063,13 +3108,34 @@ export default function CajaJazminePage() {
                 Sin gastos variables registrados.
               </p>
             ) : (
-              agruparPorSalon(gastosVariablesCombinados).map((carpeta) => (
+              // Carpetas por tipo: "Comisiones" (de vendedores) y "Varios" (el resto).
+              [
+                {
+                  clave: "comisiones",
+                  etiqueta: "Comisiones",
+                  color: "#b45309",
+                  items: gastosVariablesCombinados.filter((g) => g.esComision),
+                },
+                {
+                  clave: "varios",
+                  etiqueta: "Varios",
+                  color: "#0f766e",
+                  items: gastosVariablesCombinados.filter((g) => !g.esComision),
+                },
+              ]
+                .filter((grupo) => grupo.items.length > 0)
+                .map((grupo) => ({
+                  ...grupo,
+                  subtotal: grupo.items.reduce((s, g) => s + g.monto, 0),
+                }))
+                .map((carpeta) => (
                 <CarpetaGastos
-                  key={`var-${carpeta.salon}`}
-                  salon={carpeta.salon}
+                  key={`var-${carpeta.clave}`}
+                  salon="General"
+                  etiqueta={carpeta.etiqueta}
+                  colorCustom={carpeta.color}
                   count={carpeta.items.length}
                   subtotal={carpeta.subtotal}
-                  plano={salonFiltro !== "todos"}
                 >
                   {carpeta.items.map((gasto) => {
                 const esPagado = gasto.estado === "pagado"
