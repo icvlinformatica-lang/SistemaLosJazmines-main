@@ -408,6 +408,12 @@ function agruparPorSalon<T extends { salon?: string | null; monto: number }>(
 const ITEMS_VISIBLES_LISTA = 5
 
 /**
+ * Paleta para carpetas de gastos variables creadas por el usuario; el color
+ * se asigna por hash del nombre para que sea estable entre sesiones.
+ */
+const COLORES_CARPETAS_CUSTOM = ["#7c3aed", "#0369a1", "#be185d", "#4d7c0f", "#b91c1c", "#0e7490"]
+
+/**
  * Pastilla con el monto del mes de un gasto fijo, visible con el ítem
  * plegado: verde si ya se pagó, amarilla si falta pagar.
  */
@@ -1737,7 +1743,11 @@ export default function CajaJazminePage() {
     fechaGasto: "",
     repartir: false,
     distribucion: [] as DistribucionSalon[],
+    carpeta: "varios",
   })
+  // Modo "crear nueva carpeta" dentro del selector de carpeta del diálogo.
+  const [creandoCarpeta, setCreandoCarpeta] = useState(false)
+  const [nombreCarpetaNueva, setNombreCarpetaNueva] = useState("")
   // Si tiene valor, el modal de gasto variable está editando ese costo operativo.
   const [editandoVariableId, setEditandoVariableId] = useState<string | null>(null)
   // Modo del modal: "gasto" agenda un gasto variable; "retiro" extrae dinero
@@ -1758,7 +1768,8 @@ export default function CajaJazminePage() {
       if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon) return
       if (!confirm(`¿Registrar el retiro "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} del salón ${salonLabel(nuevoGasto.salon)}? Se descuenta del saldo ahora.`)) return
       registrarRetiro(nuevoGasto.nombre, Number(nuevoGasto.monto), nuevoGasto.salon)
-      setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+      setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
+    setCreandoCarpeta(false)
       setModoVariable("gasto")
       setModalVariableAbierto(false)
       return
@@ -1782,6 +1793,7 @@ export default function CajaJazminePage() {
         fechaVencimiento: nuevoGasto.fecha,
         fechaGasto: nuevoGasto.fechaGasto || undefined,
         distribucion: dist.length > 0 ? dist : undefined,
+        categoria: nuevoGasto.carpeta,
       })
       toast({ title: "Gasto actualizado", description: nuevoGasto.nombre })
     } else {
@@ -1798,9 +1810,11 @@ export default function CajaJazminePage() {
         esVariable: true,
         pagado: false,
         distribucion: dist.length > 0 ? dist : undefined,
+        categoria: nuevoGasto.carpeta,
       })
     }
-    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+    setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
+    setCreandoCarpeta(false)
     setEditandoVariableId(null)
     setModalVariableAbierto(false)
   }
@@ -1818,6 +1832,7 @@ export default function CajaJazminePage() {
       fechaGasto: orig.fechaGasto || "",
       repartir: dist.length > 0,
       distribucion: dist,
+      carpeta: orig.categoria || "varios",
     })
     setEditandoVariableId(gasto.id)
     setModalVariableAbierto(true)
@@ -1910,7 +1925,7 @@ export default function CajaJazminePage() {
         onMouseEnter={() => setTarjetasAbiertas(true)}
         onMouseLeave={() => setTarjetasAbiertas(false)}
       >
-            {/* ── Slide 1: A 30 DÍAS ────────────────────────────���───── */}
+            {/* ── Slide 1: A 30 DÍAS ──────────────────────���─────���───── */}
             <div className="contents">
               <Card
                 style={{ backgroundColor: "#ffffff" }}
@@ -3152,20 +3167,39 @@ export default function CajaJazminePage() {
                 Sin gastos variables registrados.
               </p>
             ) : (
-              // Carpetas por tipo: "Comisiones" (de vendedores) y "Varios" (el resto).
+              // Carpetas por tipo: "Comisiones" (de vendedores, automáticas, y
+              // gastos agendados ahí), "Varios" (default) y las creadas por el
+              // usuario al agendar (aparecen con sus gastos, orden alfabético).
               [
                 {
                   clave: "comisiones",
                   etiqueta: "Comisiones",
                   color: "#b45309",
-                  items: gastosVariablesCombinados.filter((g) => g.esComision),
+                  items: gastosVariablesCombinados.filter((g) => g.esComision || g.carpeta === "comisiones"),
                 },
                 {
                   clave: "varios",
                   etiqueta: "Varios",
                   color: "#0f766e",
-                  items: gastosVariablesCombinados.filter((g) => !g.esComision),
+                  items: gastosVariablesCombinados.filter(
+                    (g) => !g.esComision && (!g.carpeta || g.carpeta === "varios"),
+                  ),
                 },
+                ...[...new Set(
+                  gastosVariablesCombinados
+                    .map((g) => g.carpeta)
+                    .filter((c): c is string => !!c && c !== "comisiones" && c !== "varios"),
+                )]
+                  .sort((a, b) => a.localeCompare(b))
+                  .map((clave) => ({
+                    clave,
+                    etiqueta: clave.charAt(0).toUpperCase() + clave.slice(1),
+                    color: COLORES_CARPETAS_CUSTOM[
+                      Math.abs([...clave].reduce((h, ch) => h * 31 + ch.charCodeAt(0), 7)) %
+                        COLORES_CARPETAS_CUSTOM.length
+                    ],
+                    items: gastosVariablesCombinados.filter((g) => !g.esComision && g.carpeta === clave),
+                  })),
               ]
                 .filter((grupo) => grupo.items.length > 0)
                 .map((grupo) => ({
@@ -3642,7 +3676,8 @@ export default function CajaJazminePage() {
           if (!open) {
             setEditandoVariableId(null)
             setModoVariable("gasto")
-            setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [] })
+            setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
+    setCreandoCarpeta(false)
           }
         }}
       >
@@ -3703,6 +3738,112 @@ export default function CajaJazminePage() {
                 onValueChange={(v) => setNuevoGasto((p) => ({ ...p, monto: v ? String(v) : "" }))}
               />
             </div>
+            {modoVariable !== "retiro" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="gv-carpeta">Carpeta</Label>
+                {creandoCarpeta ? (
+                  // Mini-formulario para crear la carpeta sin salir del diálogo.
+                  <div className="flex items-center gap-2">
+                    <Input
+                      autoFocus
+                      placeholder="Nombre de la carpeta"
+                      value={nombreCarpetaNueva}
+                      onChange={(e) => setNombreCarpetaNueva(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                          e.preventDefault()
+                          const nombre = nombreCarpetaNueva.trim().toLowerCase()
+                          if (nombre) {
+                            setNuevoGasto((p) => ({ ...p, carpeta: nombre }))
+                            setCreandoCarpeta(false)
+                          }
+                        }
+                        if (e.key === "Escape") setCreandoCarpeta(false)
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!nombreCarpetaNueva.trim()}
+                      onClick={() => {
+                        const nombre = nombreCarpetaNueva.trim().toLowerCase()
+                        if (!nombre) return
+                        setNuevoGasto((p) => ({ ...p, carpeta: nombre }))
+                        setCreandoCarpeta(false)
+                      }}
+                    >
+                      Crear
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setCreandoCarpeta(false)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                ) : (
+                  <Select
+                    value={nuevoGasto.carpeta}
+                    onValueChange={(v) => {
+                      if (v === "__nueva__") {
+                        setNombreCarpetaNueva("")
+                        setCreandoCarpeta(true)
+                        return
+                      }
+                      setNuevoGasto((p) => ({ ...p, carpeta: v }))
+                    }}
+                  >
+                    <SelectTrigger id="gv-carpeta">
+                      <SelectValue placeholder="Seleccionar carpeta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="varios">
+                        <span className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#0f766e" }} />
+                          Varios
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="comisiones">
+                        <span className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#b45309" }} />
+                          Comisiones
+                        </span>
+                      </SelectItem>
+                      {/* Carpetas creadas por el usuario (existentes en gastos + la recién elegida) */}
+                      {[...new Set([
+                        ...gastosVariablesCombinados
+                          .map((g) => g.carpeta)
+                          .filter((c): c is string => !!c && c !== "comisiones" && c !== "varios"),
+                        ...(nuevoGasto.carpeta !== "comisiones" && nuevoGasto.carpeta !== "varios"
+                          ? [nuevoGasto.carpeta]
+                          : []),
+                      ])]
+                        .sort((a, b) => a.localeCompare(b))
+                        .map((c) => (
+                          <SelectItem key={c} value={c}>
+                            <span className="flex items-center gap-2">
+                              <span
+                                className="h-2 w-2 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    COLORES_CARPETAS_CUSTOM[
+                                      Math.abs([...c].reduce((h, ch) => h * 31 + ch.charCodeAt(0), 7)) %
+                                        COLORES_CARPETAS_CUSTOM.length
+                                    ],
+                                }}
+                              />
+                              {c.charAt(0).toUpperCase() + c.slice(1)}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      <SelectItem value="__nueva__">
+                        <span className="flex items-center gap-2 font-medium text-primary">
+                          <Plus className="h-3.5 w-3.5" />
+                          Crear nueva carpeta
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               {modoVariable !== "retiro" && (
                 <div className="flex items-center justify-between">
