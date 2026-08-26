@@ -373,6 +373,8 @@ export interface CostoOperativo {
   categoria?: string
   /** Etiqueta "Servicio": solo estos gastos fijos entran en la tarjeta "Servicios a pagar" */
   esServicio?: boolean
+  /** Símbolo elegido para la tarjeta del gasto (nombre del catálogo ICONOS_GASTO). */
+  icono?: string
   /** true si el gasto ya fue pagado */
   pagado?: boolean
   /**

@@ -64,7 +64,21 @@ import {
   X,
   RefreshCw,
   CalendarCheck,
+  Zap,
+  Droplets,
+  Flame,
+  Wifi,
+  Home,
+  Shield,
+  Wrench,
+  Landmark,
+  CreditCard,
+  Users,
+  Truck,
+  Sparkles,
+  type LucideIcon,
 } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -412,6 +426,92 @@ const ITEMS_VISIBLES_LISTA = 5
  * se asigna por hash del nombre para que sea estable entre sesiones.
  */
 const COLORES_CARPETAS_CUSTOM = ["#7c3aed", "#0369a1", "#be185d", "#4d7c0f", "#b91c1c", "#0e7490"]
+
+/**
+ * Catálogo de símbolos para las tarjetas de gastos fijos. El nombre se guarda
+ * en la columna `icono` de costos_operativos; el default es el recibo.
+ */
+const ICONOS_GASTO: { nombre: string; etiqueta: string; Icono: LucideIcon }[] = [
+  { nombre: "recibo", etiqueta: "Recibo", Icono: Receipt },
+  { nombre: "luz", etiqueta: "Luz", Icono: Zap },
+  { nombre: "agua", etiqueta: "Agua", Icono: Droplets },
+  { nombre: "gas", etiqueta: "Gas", Icono: Flame },
+  { nombre: "internet", etiqueta: "Internet", Icono: Wifi },
+  { nombre: "alquiler", etiqueta: "Alquiler", Icono: Home },
+  { nombre: "seguro", etiqueta: "Seguro", Icono: Shield },
+  { nombre: "mantenimiento", etiqueta: "Mantenimiento", Icono: Wrench },
+  { nombre: "impuestos", etiqueta: "Impuestos", Icono: Landmark },
+  { nombre: "cuota", etiqueta: "Cuota / tarjeta", Icono: CreditCard },
+  { nombre: "personal", etiqueta: "Personal", Icono: Users },
+  { nombre: "proveedor", etiqueta: "Proveedor", Icono: Truck },
+  { nombre: "limpieza", etiqueta: "Limpieza", Icono: Sparkles },
+  { nombre: "edificio", etiqueta: "Edificio", Icono: Building },
+]
+
+/**
+ * Botón cuadrado con bordes redondeados a la izquierda de cada tarjeta de
+ * gasto: muestra el símbolo elegido en el color del salón y, al apretarlo,
+ * abre una grilla para cambiarlo. La elección persiste en Supabase.
+ */
+function IconoGastoBoton({
+  icono,
+  color,
+  onSelect,
+}: {
+  icono?: string
+  color: string
+  onSelect: (nombre: string) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const actual = ICONOS_GASTO.find((i) => i.nombre === icono) || ICONOS_GASTO[0]
+  return (
+    <Popover open={abierto} onOpenChange={setAbierto}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
+          style={{
+            color,
+            borderColor: `color-mix(in srgb, ${color} 35%, white)`,
+            backgroundColor: `color-mix(in srgb, ${color} 10%, white)`,
+          }}
+          title="Elegir símbolo del gasto"
+          aria-label={`Elegir símbolo del gasto (actual: ${actual.etiqueta})`}
+        >
+          <actual.Icono className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-2" align="start">
+        <p className="px-1 pb-2 text-xs font-medium text-muted-foreground">¿Qué representa este gasto?</p>
+        <div className="grid grid-cols-5 gap-1">
+          {ICONOS_GASTO.map(({ nombre, etiqueta, Icono }) => (
+            <button
+              key={nombre}
+              type="button"
+              className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-opacity hover:opacity-75 ${
+                nombre === actual.nombre ? "ring-2 ring-offset-1" : ""
+              }`}
+              style={{
+                color,
+                borderColor: `color-mix(in srgb, ${color} 35%, white)`,
+                backgroundColor: `color-mix(in srgb, ${color} 10%, white)`,
+                ...(nombre === actual.nombre ? ({ "--tw-ring-color": color } as React.CSSProperties) : {}),
+              }}
+              title={etiqueta}
+              aria-label={etiqueta}
+              onClick={() => {
+                onSelect(nombre)
+                setAbierto(false)
+              }}
+            >
+              <Icono className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 /**
  * Pastilla con el monto del mes de un gasto fijo, visible con el ítem
@@ -3007,6 +3107,11 @@ export default function CajaJazminePage() {
                         key={`reparto-${cuota.id}`}
                         header={
                           <div className="flex items-center gap-3 p-3">
+                            <IconoGastoBoton
+                              icono={origPill?.icono}
+                              color={salonColor(carpeta.salon, configuracionCajas)}
+                              onSelect={(nombre) => updateCostoOperativo(cuota.id, { icono: nombre })}
+                            />
                             <button
                               type="button"
                               className="flex-1 min-w-0 text-left"
@@ -3082,6 +3187,11 @@ export default function CajaJazminePage() {
                       key={gasto.id}
                       header={
                         <div className="flex items-center gap-3 p-3">
+                          <IconoGastoBoton
+                            icono={state.costosOperativos?.find((c) => c.id === gasto.id)?.icono}
+                            color={salonColor(carpeta.salon, configuracionCajas)}
+                            onSelect={(nombre) => updateCostoOperativo(gasto.id, { icono: nombre })}
+                          />
                           {/* Un click sobre el gasto abre su historial automático */}
                           <button
                             type="button"
