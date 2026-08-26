@@ -469,7 +469,7 @@ function IconoGastoBoton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
+          className="flex h-9 min-h-9 w-9 min-w-9 shrink-0 grow-0 basis-9 self-center items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
           style={{
             color,
             borderColor: `color-mix(in srgb, ${color} 35%, white)`,
@@ -488,14 +488,12 @@ function IconoGastoBoton({
             <button
               key={nombre}
               type="button"
-              className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-opacity hover:opacity-75 ${
-                nombre === actual.nombre ? "ring-2 ring-offset-1" : ""
-              }`}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
               style={{
                 color,
-                borderColor: `color-mix(in srgb, ${color} 35%, white)`,
-                backgroundColor: `color-mix(in srgb, ${color} 10%, white)`,
-                ...(nombre === actual.nombre ? ({ "--tw-ring-color": color } as React.CSSProperties) : {}),
+                borderColor: nombre === actual.nombre ? color : `color-mix(in srgb, ${color} 35%, white)`,
+                backgroundColor: `color-mix(in srgb, ${color} ${nombre === actual.nombre ? 22 : 10}%, white)`,
+                boxShadow: nombre === actual.nombre ? `0 0 0 2px white, 0 0 0 4px ${color}` : undefined,
               }}
               title={etiqueta}
               aria-label={etiqueta}
