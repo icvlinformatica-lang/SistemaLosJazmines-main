@@ -3447,7 +3447,8 @@ export default function CajaJazminePage() {
                   count={carpeta.items.length}
                   subtotal={carpeta.subtotal}
                 >
-                  {carpeta.items.map((gasto) => {
+                  {(() => {
+                  const renderGastoVar = (gasto: GastoVariable) => {
                 const esPagado = gasto.estado === "pagado"
                 return (
                   <div
@@ -3459,6 +3460,15 @@ export default function CajaJazminePage() {
                       {gasto.esComision && gasto.comisionDetalle ? (
                         <>
                           <p className="text-xs text-amber-800/80 mt-0.5">
+                            {salonFiltro === "todos" && gasto.salon ? (
+                              <span
+                                className="font-semibold"
+                                style={{ color: salonColor(gasto.salon, configuracionCajas) }}
+                              >
+                                {salonLabel(gasto.salon)}
+                                {" · "}
+                              </span>
+                            ) : null}
                             {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
                             {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
                           </p>
@@ -3601,7 +3611,113 @@ export default function CajaJazminePage() {
                     </div>
                   </div>
                 )
-              })}
+              }
+
+                  // Carpetas comunes: lista plana como siempre.
+                  if (carpeta.clave !== "comisiones") return carpeta.items.map(renderGastoVar)
+
+                  // ── Subcarpetas de Comisiones ─────────────────────────────
+                  // "Lista para pagar": ya se cobró lo suficiente del evento.
+                  // "Próximamente": aún no se cobró lo que corresponde.
+                  // "Pagadas": marcadas pagadas + las archivadas del histórico.
+                  const listas = carpeta.items.filter((g) => g.estado !== "pagado" && g.listaParaPagar)
+                  const proximas = carpeta.items.filter((g) => g.estado !== "pagado" && !g.listaParaPagar)
+                  const pagadasVivas = carpeta.items.filter((g) => g.estado === "pagado")
+                  const archivadas = (state.gastosArchivados || []).filter(
+                    (g) =>
+                      g.origen === "caja_jazmines_comision" &&
+                      (salonFiltro === "todos" || g.salon === salonFiltro),
+                  )
+                  const totalPagadas =
+                    pagadasVivas.reduce((s, g) => s + g.monto, 0) +
+                    archivadas.reduce((s, g) => s + g.monto, 0)
+
+                  const subcarpeta = (
+                    titulo: string,
+                    color: string,
+                    count: number,
+                    subtotal: number,
+                    abierta: boolean,
+                    contenido: React.ReactNode,
+                  ) => (
+                    <details key={titulo} open={abierta} className="group rounded-lg border" style={{ borderColor: `color-mix(in srgb, ${color} 30%, white)` }}>
+                      <summary
+                        className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-black/5 [&::-webkit-details-marker]:hidden"
+                        style={{ backgroundColor: `color-mix(in srgb, ${color} 7%, white)` }}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" style={{ color }} />
+                        <span className="flex-1 text-sm font-semibold" style={{ color: `color-mix(in srgb, ${color} 80%, black)` }}>
+                          {titulo}
+                        </span>
+                        <span
+                          className="rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums"
+                          style={{ color, backgroundColor: `color-mix(in srgb, ${color} 14%, white)` }}
+                        >
+                          {count}
+                        </span>
+                        <span className="text-sm font-bold tabular-nums" style={{ color: `color-mix(in srgb, ${color} 85%, black)` }}>
+                          {formatCurrency(subtotal)}
+                        </span>
+                      </summary>
+                      <div className="space-y-2 p-2">
+                        {count === 0 ? (
+                          <p className="py-2 text-center text-xs text-muted-foreground">Sin comisiones acá.</p>
+                        ) : (
+                          contenido
+                        )}
+                      </div>
+                    </details>
+                  )
+
+                  return (
+                    <>
+                      {subcarpeta(
+                        "Lista para pagar",
+                        "#059669",
+                        listas.length,
+                        listas.reduce((s, g) => s + g.monto, 0),
+                        true,
+                        listas.map(renderGastoVar),
+                      )}
+                      {subcarpeta(
+                        "Próximamente",
+                        "#b45309",
+                        proximas.length,
+                        proximas.reduce((s, g) => s + g.monto, 0),
+                        false,
+                        proximas.map(renderGastoVar),
+                      )}
+                      {subcarpeta(
+                        "Pagadas",
+                        "#0f766e",
+                        pagadasVivas.length + archivadas.length,
+                        totalPagadas,
+                        false,
+                        <>
+                          {pagadasVivas.map(renderGastoVar)}
+                          {archivadas.map((g) => (
+                            <div key={`arch-${g.id}`} className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{g.concepto}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  {g.salon ? `${salonLabel(g.salon)} · ` : ""}
+                                  {g.fecha ? formatFecha(g.fecha) : ""}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 flex-col items-end gap-1">
+                                <span className="text-sm font-bold">{formatCurrency(g.monto)}</span>
+                                <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+                                  <Archive className="h-3 w-3" />
+                                  Archivada
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </>,
+                      )}
+                    </>
+                  )
+                })()}
                 </CarpetaGastos>
               ))
             )}
