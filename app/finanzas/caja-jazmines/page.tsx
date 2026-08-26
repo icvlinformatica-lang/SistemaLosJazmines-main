@@ -1513,6 +1513,8 @@ export default function CajaJazminePage() {
 
   // ── Detalle expandible de la tarjeta "servicios a pagar el mes que viene" ─
   const [detalleProxAbierto, setDetalleProxAbierto] = useState(false)
+  // Panel para sumar gastos fijos existentes a la tarjeta (marca esServicio).
+  const [agregandoServicioProx, setAgregandoServicioProx] = useState(false)
 
   // ── Registro de montos pagados (seguimiento de aumentos) ─────────────────
   const [registrandoMonto, setRegistrandoMonto] = useState<GastoFijoMes | null>(null)
@@ -2149,8 +2151,13 @@ export default function CajaJazminePage() {
               ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
               : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
           </p>
-          {estimacionesProximoMes.length > 0 && (
+          {(estimacionesProximoMes.length > 0 ||
+            (state.costosOperativos || []).some(
+              (c) => c.activo && !c.esVariable && !c.esServicio && (c.frecuencia === "Mensual" || c.frecuencia === "Anual"),
+            )) && (
             <div className="mt-3">
+              <div className="flex items-center gap-4">
+              {estimacionesProximoMes.length > 0 && (
               <button
                 type="button"
                 className="flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 transition-colors"
@@ -2160,6 +2167,65 @@ export default function CajaJazminePage() {
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detalleProxAbierto ? "rotate-180" : ""}`} />
                 {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
               </button>
+              )}
+              {(state.costosOperativos || []).some(
+                (c) => c.activo && !c.esVariable && !c.esServicio && (c.frecuencia === "Mensual" || c.frecuencia === "Anual"),
+              ) && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 transition-colors"
+                  onClick={() => setAgregandoServicioProx((v) => !v)}
+                  aria-expanded={agregandoServicioProx}
+                >
+                  <Plus className={`h-3.5 w-3.5 transition-transform ${agregandoServicioProx ? "rotate-45" : ""}`} />
+                  {agregandoServicioProx ? "Cerrar" : "Agregar gasto fijo"}
+                </button>
+              )}
+              </div>
+              {/* Panel: gastos fijos existentes que aún no están en la tarjeta.
+                  Un click los marca como "Servicio" y se suman al estimado. */}
+              {agregandoServicioProx &&
+                (() => {
+                  const candidatos = (state.costosOperativos || [])
+                    .filter(
+                      (c) =>
+                        c.activo &&
+                        !c.esVariable &&
+                        !c.esServicio &&
+                        (c.frecuencia === "Mensual" || c.frecuencia === "Anual"),
+                    )
+                    .sort((a, b) => a.concepto.localeCompare(b.concepto))
+                  if (candidatos.length === 0)
+                    return (
+                      <p className="mt-2 text-xs text-amber-700/70">
+                        Todos los gastos fijos existentes ya están incluidos.
+                      </p>
+                    )
+                  return (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-white/60">
+                      <p className="px-3 pt-2 pb-1 text-xs font-medium text-amber-800">
+                        Elegí un gasto fijo existente para sumarlo acá:
+                      </p>
+                      <div className="max-h-48 overflow-y-auto divide-y divide-amber-200/70">
+                        {candidatos.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-amber-100/60"
+                            onClick={() => updateCostoOperativo(c.id, { esServicio: true })}
+                          >
+                            <Plus className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+                            <span className="flex-1 min-w-0 truncate text-sm">{c.concepto}</span>
+                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                              {c.frecuencia === "Anual" ? "Anual · " : ""}
+                              {formatCurrency(c.monto)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
               {detalleProxAbierto && (() => {
                 const renderEstimacion = (est: (typeof estimacionesProximoMes)[number]) => (
                   <div key={est.id} className="flex items-center gap-3 px-3 py-2">
@@ -2184,6 +2250,26 @@ export default function CajaJazminePage() {
                         {`≈ ${formatCurrency(est.estimado)}`}
                       </p>
                     </div>
+                    {/* Quitar de la tarjeta (desmarca esServicio; el gasto fijo
+                        sigue existiendo). Repartidos: el id viene con sufijo
+                        "-salón", se recorta para editar el gasto original. */}
+                    {est.tipo !== "sueldos" && (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-amber-100 hover:text-amber-900"
+                        title="Quitar de esta tarjeta"
+                        aria-label={`Quitar ${est.concepto} de esta tarjeta`}
+                        onClick={() => {
+                          const baseId =
+                            est.salon && est.id.endsWith(`-${est.salon}`)
+                              ? est.id.slice(0, -(est.salon.length + 1))
+                              : est.id
+                          updateCostoOperativo(baseId, { esServicio: false })
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 )
                 // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
