@@ -1114,7 +1114,9 @@ export default function CajaJazminePage() {
     alertas: true,
     cuotas: true,
     fijos: true,
-    variables: true,
+    // Gastos variables permanece abierta (sus carpetas internas arrancan
+    // cerradas igual); se puede plegar manualmente con el chevron.
+    variables: false,
     proyeccion: true,
   })
 
