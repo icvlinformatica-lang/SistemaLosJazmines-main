@@ -3620,14 +3620,27 @@ export default function CajaJazminePage() {
                   // "Lista para pagar": ya se cobró lo suficiente del evento.
                   // "Próximamente": aún no se cobró lo que corresponde.
                   // "Pagadas": marcadas pagadas + las archivadas del histórico.
-                  const listas = carpeta.items.filter((g) => g.estado !== "pagado" && g.listaParaPagar)
-                  const proximas = carpeta.items.filter((g) => g.estado !== "pagado" && !g.listaParaPagar)
-                  const pagadasVivas = carpeta.items.filter((g) => g.estado === "pagado")
-                  const archivadas = (state.gastosArchivados || []).filter(
-                    (g) =>
-                      g.origen === "caja_jazmines_comision" &&
-                      (salonFiltro === "todos" || g.salon === salonFiltro),
-                  )
+                  // Dentro de cada subcarpeta las comisiones van agrupadas por
+                  // salón, siguiendo el orden estándar de SALONES.
+                  const ordenSalon = (a: { salon?: string }, b: { salon?: string }) => {
+                    const ia = a.salon ? SALONES.indexOf(a.salon as (typeof SALONES)[number]) : SALONES.length
+                    const ib = b.salon ? SALONES.indexOf(b.salon as (typeof SALONES)[number]) : SALONES.length
+                    return (ia === -1 ? SALONES.length : ia) - (ib === -1 ? SALONES.length : ib)
+                  }
+                  const listas = carpeta.items
+                    .filter((g) => g.estado !== "pagado" && g.listaParaPagar)
+                    .sort(ordenSalon)
+                  const proximas = carpeta.items
+                    .filter((g) => g.estado !== "pagado" && !g.listaParaPagar)
+                    .sort(ordenSalon)
+                  const pagadasVivas = carpeta.items.filter((g) => g.estado === "pagado").sort(ordenSalon)
+                  const archivadas = (state.gastosArchivados || [])
+                    .filter(
+                      (g) =>
+                        g.origen === "caja_jazmines_comision" &&
+                        (salonFiltro === "todos" || g.salon === salonFiltro),
+                    )
+                    .sort(ordenSalon)
                   const totalPagadas =
                     pagadasVivas.reduce((s, g) => s + g.monto, 0) +
                     archivadas.reduce((s, g) => s + g.monto, 0)
