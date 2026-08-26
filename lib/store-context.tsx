@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
 import {
   type AppState,
   type Insumo,
@@ -246,7 +246,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSalonNombresCustom(state.configuracionCajas)
   }, [state.configuracionCajas])
 
+  // Evita que la carga inicial corra dos veces (doble montaje de React en
+  // desarrollo): duplicaba los ~19 fetches y recargaba todo el estado.
+  const initYaCorrio = useRef(false)
+
   useEffect(() => {
+    if (initYaCorrio.current) return
+    initYaCorrio.current = true
     const initializeData = async () => {
       const fetchSafe = async (url: string) => {
         try {
@@ -259,8 +265,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Fetch all DB modules in parallel — incluye eventos
-      const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes, eventosRes] = await Promise.all([
+      // Load localStorage for non-DB modules only (servicios, personal, etc.)
+      // Se carga primero (es síncrono) para que ambas tandas de red lo usen.
+      const localState = loadState()
+
+      // TANDA 1: APIs de Postgres (insumos, recetas, eventos...). Se LANZA
+      // ahora pero no se espera todavía: corre en paralelo con la tanda 2.
+      // Antes iban en serie y la carga total sumaba ambas (~1,3s extra).
+      const apiPromise = Promise.all([
         fetchSafe("/api/insumos"),
         fetchSafe("/api/insumos-barra"),
         fetchSafe("/api/recetas"),
@@ -269,11 +281,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fetchSafe("/api/eventos"),
       ])
 
-      // Load localStorage for non-DB modules only (servicios, personal, etc.)
-      const localState = loadState()
-
-      // Fetch from Supabase for servicios, personal, eventos, pagos, costos
+      // TANDA 2: Supabase (servicios, personal, pagos, costos...), en paralelo.
       let supabaseData: any = {}
+      const supabasePromise = (async () => {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
@@ -401,6 +411,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           gastosArchivados: localState.gastosArchivados || [],
         }
       }
+      })()
+
+      // Esperar ambas tandas (corren en paralelo desde que se lanzaron arriba)
+      const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes, eventosRes] = await apiPromise
+      await supabasePromise
 
       // Merge: DB data takes absolute priority over localStorage for migrated modules
       const eventosVigentes = eventosRes ?? localState.eventos ?? []
