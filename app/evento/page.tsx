@@ -31,6 +31,7 @@ import {
   detectarImpactosContrato,
   SALONES,
   salonLabel,
+  salonColor,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1429,16 +1430,20 @@ function EventoPageContent() {
               <div className="flex gap-2">
                 {SALONES.map((s) => {
                   const active = evento.salon === s
+                  // Cada salón se muestra en su propio color (el mismo que usa
+                  // el resto del sistema), personalizable desde Configuración.
+                  const color = salonColor(s, configuracionCajas)
                   return (
                     <button
                       key={s}
                       type="button"
                       onClick={() => updateEventoActual({ salon: s, paquetesSeleccionados: [], servicios: [] })}
-                      className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                        active
-                          ? "border-[#2d5a3d] bg-[#2d5a3d] text-white"
-                          : "border-[#2d5a3d] bg-white text-[#2d5a3d] hover:bg-emerald-50"
-                      }`}
+                      className="flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      style={{
+                        borderColor: color,
+                        backgroundColor: active ? color : `color-mix(in srgb, ${color} 8%, white)`,
+                        color: active ? "white" : color,
+                      }}
                     >
                       {salonLabel(s)}
                     </button>

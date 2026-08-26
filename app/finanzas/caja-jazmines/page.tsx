@@ -64,7 +64,21 @@ import {
   X,
   RefreshCw,
   CalendarCheck,
+  Zap,
+  Droplets,
+  Flame,
+  Wifi,
+  Home,
+  Shield,
+  Wrench,
+  Landmark,
+  CreditCard,
+  Users,
+  Truck,
+  Sparkles,
+  type LucideIcon,
 } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -412,6 +426,90 @@ const ITEMS_VISIBLES_LISTA = 5
  * se asigna por hash del nombre para que sea estable entre sesiones.
  */
 const COLORES_CARPETAS_CUSTOM = ["#7c3aed", "#0369a1", "#be185d", "#4d7c0f", "#b91c1c", "#0e7490"]
+
+/**
+ * Catálogo de símbolos para las tarjetas de gastos fijos. El nombre se guarda
+ * en la columna `icono` de costos_operativos; el default es el recibo.
+ */
+const ICONOS_GASTO: { nombre: string; etiqueta: string; Icono: LucideIcon }[] = [
+  { nombre: "recibo", etiqueta: "Recibo", Icono: Receipt },
+  { nombre: "luz", etiqueta: "Luz", Icono: Zap },
+  { nombre: "agua", etiqueta: "Agua", Icono: Droplets },
+  { nombre: "gas", etiqueta: "Gas", Icono: Flame },
+  { nombre: "internet", etiqueta: "Internet", Icono: Wifi },
+  { nombre: "alquiler", etiqueta: "Alquiler", Icono: Home },
+  { nombre: "seguro", etiqueta: "Seguro", Icono: Shield },
+  { nombre: "mantenimiento", etiqueta: "Mantenimiento", Icono: Wrench },
+  { nombre: "impuestos", etiqueta: "Impuestos", Icono: Landmark },
+  { nombre: "cuota", etiqueta: "Cuota / tarjeta", Icono: CreditCard },
+  { nombre: "personal", etiqueta: "Personal", Icono: Users },
+  { nombre: "proveedor", etiqueta: "Proveedor", Icono: Truck },
+  { nombre: "limpieza", etiqueta: "Limpieza", Icono: Sparkles },
+  { nombre: "edificio", etiqueta: "Edificio", Icono: Building },
+]
+
+/**
+ * Botón cuadrado con bordes redondeados a la izquierda de cada tarjeta de
+ * gasto: muestra el símbolo elegido en el color del salón y, al apretarlo,
+ * abre una grilla para cambiarlo. La elección persiste en Supabase.
+ */
+function IconoGastoBoton({
+  icono,
+  color,
+  onSelect,
+}: {
+  icono?: string
+  color: string
+  onSelect: (nombre: string) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const actual = ICONOS_GASTO.find((i) => i.nombre === icono) || ICONOS_GASTO[0]
+  return (
+    <Popover open={abierto} onOpenChange={setAbierto}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-9 min-h-9 w-9 min-w-9 shrink-0 grow-0 basis-9 self-center items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
+          style={{
+            color,
+            borderColor: `color-mix(in srgb, ${color} 35%, white)`,
+            backgroundColor: `color-mix(in srgb, ${color} 10%, white)`,
+          }}
+          title="Elegir símbolo del gasto"
+          aria-label={`Elegir símbolo del gasto (actual: ${actual.etiqueta})`}
+        >
+          <actual.Icono className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-2" align="start">
+        <p className="px-1 pb-2 text-xs font-medium text-muted-foreground">¿Qué representa este gasto?</p>
+        <div className="grid grid-cols-5 gap-1">
+          {ICONOS_GASTO.map(({ nombre, etiqueta, Icono }) => (
+            <button
+              key={nombre}
+              type="button"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
+              style={{
+                color,
+                borderColor: nombre === actual.nombre ? color : `color-mix(in srgb, ${color} 35%, white)`,
+                backgroundColor: `color-mix(in srgb, ${color} ${nombre === actual.nombre ? 22 : 10}%, white)`,
+                boxShadow: nombre === actual.nombre ? `0 0 0 2px white, 0 0 0 4px ${color}` : undefined,
+              }}
+              title={etiqueta}
+              aria-label={etiqueta}
+              onClick={() => {
+                onSelect(nombre)
+                setAbierto(false)
+              }}
+            >
+              <Icono className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 /**
  * Pastilla con el monto del mes de un gasto fijo, visible con el ítem
@@ -1513,6 +1611,8 @@ export default function CajaJazminePage() {
 
   // ── Detalle expandible de la tarjeta "servicios a pagar el mes que viene" ─
   const [detalleProxAbierto, setDetalleProxAbierto] = useState(false)
+  // Panel para sumar gastos fijos existentes a la tarjeta (marca esServicio).
+  const [agregandoServicioProx, setAgregandoServicioProx] = useState(false)
 
   // ── Registro de montos pagados (seguimiento de aumentos) ─────────────────
   const [registrandoMonto, setRegistrandoMonto] = useState<GastoFijoMes | null>(null)
@@ -1844,6 +1944,23 @@ export default function CajaJazminePage() {
   const colorSalonActivo =
     salonFiltro === "todos" ? SALON_COLOR_GENERAL : salonColor(salonFiltro, configuracionCajas)
 
+  // Tarjeta "Servicios a pagar": toma el color del salón activo (ámbar en "todos").
+  const colorServicios = salonFiltro === "todos" ? "#b45309" : colorSalonActivo
+  // Gastos fijos que se pueden sumar a la tarjeta: solo los del salón donde
+  // estamos (propios o repartidos que incluyen este salón); en "todos", todos.
+  const candidatosServicio = (state.costosOperativos || [])
+    .filter(
+      (c) =>
+        c.activo &&
+        !c.esVariable &&
+        !c.esServicio &&
+        (c.frecuencia === "Mensual" || c.frecuencia === "Anual") &&
+        (salonFiltro === "todos" ||
+          c.salon === salonFiltro ||
+          (c.distribucion || []).some((d) => d && d.salon === salonFiltro && d.porcentaje > 0)),
+    )
+    .sort((a, b) => a.concepto.localeCompare(b.concepto))
+
   // Selector de salón estilo perfiles al entrar
   if (selectorAbierto) {
     return (
@@ -2130,36 +2247,111 @@ export default function CajaJazminePage() {
       <div className="space-y-4 md:col-start-2 md:order-2">
       {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos.
           Plegada muestra solo título y monto; se despliega con hover (0,5s / 2s). */}
-      <Card className={`border-amber-200 bg-amber-50 ${hovServicios.abierto ? "" : "gap-0 py-3"}`} {...hovServicios.props}>
+      <Card
+        className={hovServicios.abierto ? "" : "gap-0 py-3"}
+        style={{
+          borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)`,
+          backgroundColor: `color-mix(in srgb, ${colorServicios} 7%, white)`,
+        }}
+        {...hovServicios.props}
+      >
         <CardContent className={hovServicios.abierto ? "p-4 py-0" : "px-4 py-0"}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <Receipt className="h-4 w-4 shrink-0 text-amber-700" />
-              <p className="truncate text-sm font-semibold text-amber-900">
+              <Receipt className="h-4 w-4 shrink-0" style={{ color: colorServicios }} />
+              <p
+                className="truncate text-sm font-semibold"
+                style={{ color: `color-mix(in srgb, ${colorServicios} 75%, black)` }}
+              >
                 {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
               </p>
             </div>
-            <p className={`shrink-0 font-bold text-amber-800 ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}>
+            <p
+              className={`shrink-0 font-bold ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}
+              style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+            >
               {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
           <CuerpoTarjeta abierto={hovServicios.abierto}>
-          <p className="mt-1 text-xs text-amber-700/70 text-pretty">
+          <p
+            className="mt-1 text-xs text-pretty"
+            style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
+          >
             {estimacionEsProxMes
               ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
               : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
           </p>
-          {estimacionesProximoMes.length > 0 && (
+          {(estimacionesProximoMes.length > 0 || candidatosServicio.length > 0) && (
             <div className="mt-3">
+              <div className="flex items-center gap-4">
+              {estimacionesProximoMes.length > 0 && (
               <button
                 type="button"
-                className="flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 transition-colors"
+                className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
+                style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
                 onClick={() => setDetalleProxAbierto((v) => !v)}
                 aria-expanded={detalleProxAbierto}
               >
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detalleProxAbierto ? "rotate-180" : ""}`} />
                 {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
               </button>
+              )}
+              {candidatosServicio.length > 0 && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
+                  style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+                  onClick={() => setAgregandoServicioProx((v) => !v)}
+                  aria-expanded={agregandoServicioProx}
+                >
+                  <Plus className={`h-3.5 w-3.5 transition-transform ${agregandoServicioProx ? "rotate-45" : ""}`} />
+                  {agregandoServicioProx ? "Cerrar" : "Agregar gasto fijo a servicios"}
+                </button>
+              )}
+              </div>
+              {/* Panel: gastos fijos existentes del salón activo que aún no están
+                  en la tarjeta. Un click los marca como "Servicio" y se suman. */}
+              {agregandoServicioProx &&
+                (candidatosServicio.length === 0 ? (
+                  <p
+                    className="mt-2 text-xs"
+                    style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
+                  >
+                    Todos los gastos fijos de este salón ya están incluidos.
+                  </p>
+                ) : (
+                  <div
+                    className="mt-2 rounded-lg border bg-white/60"
+                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                  >
+                    <p
+                      className="px-3 pt-2 pb-1 text-xs font-medium"
+                      style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+                    >
+                      {salonFiltro === "todos"
+                        ? "Elegí un gasto fijo existente para sumarlo acá:"
+                        : `Elegí un gasto fijo de ${salonLabel(salonFiltro)} para sumarlo acá:`}
+                    </p>
+                    <div className="max-h-48 overflow-y-auto divide-y divide-black/5">
+                      {candidatosServicio.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5"
+                          onClick={() => updateCostoOperativo(c.id, { esServicio: true })}
+                        >
+                          <Plus className="h-3.5 w-3.5 shrink-0" style={{ color: colorServicios }} />
+                          <span className="flex-1 min-w-0 truncate text-sm">{c.concepto}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                            {c.frecuencia === "Anual" ? "Anual · " : ""}
+                            {formatCurrency(c.monto)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               {detalleProxAbierto && (() => {
                 const renderEstimacion = (est: (typeof estimacionesProximoMes)[number]) => (
                   <div key={est.id} className="flex items-center gap-3 px-3 py-2">
@@ -2184,6 +2376,26 @@ export default function CajaJazminePage() {
                         {`≈ ${formatCurrency(est.estimado)}`}
                       </p>
                     </div>
+                    {/* Quitar de la tarjeta (desmarca esServicio; el gasto fijo
+                        sigue existiendo). Repartidos: el id viene con sufijo
+                        "-salón", se recorta para editar el gasto original. */}
+                    {est.tipo !== "sueldos" && (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-black/5 hover:text-foreground"
+                        title="Quitar de esta tarjeta"
+                        aria-label={`Quitar ${est.concepto} de esta tarjeta`}
+                        onClick={() => {
+                          const baseId =
+                            est.salon && est.id.endsWith(`-${est.salon}`)
+                              ? est.id.slice(0, -(est.salon.length + 1))
+                              : est.id
+                          updateCostoOperativo(baseId, { esServicio: false })
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 )
                 // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
@@ -2200,7 +2412,10 @@ export default function CajaJazminePage() {
                           subtotal={carpeta.subtotal}
                           unidad="servicio"
                         >
-                          <div className="divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                          <div
+                            className="divide-y divide-black/5 rounded-lg border bg-white/60"
+                            style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                          >
                             {carpeta.items.map(renderEstimacion)}
                           </div>
                         </CarpetaGastos>
@@ -2210,7 +2425,10 @@ export default function CajaJazminePage() {
                 }
                 // Vista de un salón: lista plana como siempre.
                 return (
-                  <div className="mt-2 divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                  <div
+                    className="mt-2 divide-y divide-black/5 rounded-lg border bg-white/60"
+                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                  >
                     {estimacionesProximoMes.map(renderEstimacion)}
                   </div>
                 )
@@ -2411,8 +2629,10 @@ export default function CajaJazminePage() {
         <CuerpoTarjeta abierto={abiertaAlertas}>
         <CardContent className="space-y-2">
           {alertasVencimiento.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No hay vencimientos en los próximos 30 días.
+            <p className="text-sm text-muted-foreground py-4 text-center text-pretty">
+              {gastosProximoMes1al10.length > 0
+                ? `No queda nada pendiente este mes. Los próximos vencimientos son de ${tituloProxMes}: están en la carpeta de abajo.`
+                : "No hay vencimientos pendientes."}
             </p>
           ) : (
             <>
@@ -2885,6 +3105,11 @@ export default function CajaJazminePage() {
                         key={`reparto-${cuota.id}`}
                         header={
                           <div className="flex items-center gap-3 p-3">
+                            <IconoGastoBoton
+                              icono={origPill?.icono}
+                              color={salonColor(carpeta.salon, configuracionCajas)}
+                              onSelect={(nombre) => updateCostoOperativo(cuota.id, { icono: nombre })}
+                            />
                             <button
                               type="button"
                               className="flex-1 min-w-0 text-left"
@@ -2960,6 +3185,11 @@ export default function CajaJazminePage() {
                       key={gasto.id}
                       header={
                         <div className="flex items-center gap-3 p-3">
+                          <IconoGastoBoton
+                            icono={state.costosOperativos?.find((c) => c.id === gasto.id)?.icono}
+                            color={salonColor(carpeta.salon, configuracionCajas)}
+                            onSelect={(nombre) => updateCostoOperativo(gasto.id, { icono: nombre })}
+                          />
                           {/* Un click sobre el gasto abre su historial automático */}
                           <button
                             type="button"
