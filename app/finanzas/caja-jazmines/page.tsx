@@ -3676,7 +3676,7 @@ export default function CajaJazminePage() {
                         "#059669",
                         listas.length,
                         listas.reduce((s, g) => s + g.monto, 0),
-                        true,
+                        false,
                         listas.map(renderGastoVar),
                       )}
                       {subcarpeta(
