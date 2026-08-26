@@ -1846,6 +1846,23 @@ export default function CajaJazminePage() {
   const colorSalonActivo =
     salonFiltro === "todos" ? SALON_COLOR_GENERAL : salonColor(salonFiltro, configuracionCajas)
 
+  // Tarjeta "Servicios a pagar": toma el color del salón activo (ámbar en "todos").
+  const colorServicios = salonFiltro === "todos" ? "#b45309" : colorSalonActivo
+  // Gastos fijos que se pueden sumar a la tarjeta: solo los del salón donde
+  // estamos (propios o repartidos que incluyen este salón); en "todos", todos.
+  const candidatosServicio = (state.costosOperativos || [])
+    .filter(
+      (c) =>
+        c.activo &&
+        !c.esVariable &&
+        !c.esServicio &&
+        (c.frecuencia === "Mensual" || c.frecuencia === "Anual") &&
+        (salonFiltro === "todos" ||
+          c.salon === salonFiltro ||
+          (c.distribucion || []).some((d) => d && d.salon === salonFiltro && d.porcentaje > 0)),
+    )
+    .sort((a, b) => a.concepto.localeCompare(b.concepto))
+
   // Selector de salón estilo perfiles al entrar
   if (selectorAbierto) {
     return (
@@ -2132,35 +2149,49 @@ export default function CajaJazminePage() {
       <div className="space-y-4 md:col-start-2 md:order-2">
       {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos.
           Plegada muestra solo título y monto; se despliega con hover (0,5s / 2s). */}
-      <Card className={`border-amber-200 bg-amber-50 ${hovServicios.abierto ? "" : "gap-0 py-3"}`} {...hovServicios.props}>
+      <Card
+        className={hovServicios.abierto ? "" : "gap-0 py-3"}
+        style={{
+          borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)`,
+          backgroundColor: `color-mix(in srgb, ${colorServicios} 7%, white)`,
+        }}
+        {...hovServicios.props}
+      >
         <CardContent className={hovServicios.abierto ? "p-4 py-0" : "px-4 py-0"}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <Receipt className="h-4 w-4 shrink-0 text-amber-700" />
-              <p className="truncate text-sm font-semibold text-amber-900">
+              <Receipt className="h-4 w-4 shrink-0" style={{ color: colorServicios }} />
+              <p
+                className="truncate text-sm font-semibold"
+                style={{ color: `color-mix(in srgb, ${colorServicios} 75%, black)` }}
+              >
                 {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
               </p>
             </div>
-            <p className={`shrink-0 font-bold text-amber-800 ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}>
+            <p
+              className={`shrink-0 font-bold ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}
+              style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+            >
               {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
           <CuerpoTarjeta abierto={hovServicios.abierto}>
-          <p className="mt-1 text-xs text-amber-700/70 text-pretty">
+          <p
+            className="mt-1 text-xs text-pretty"
+            style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
+          >
             {estimacionEsProxMes
               ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
               : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
           </p>
-          {(estimacionesProximoMes.length > 0 ||
-            (state.costosOperativos || []).some(
-              (c) => c.activo && !c.esVariable && !c.esServicio && (c.frecuencia === "Mensual" || c.frecuencia === "Anual"),
-            )) && (
+          {(estimacionesProximoMes.length > 0 || candidatosServicio.length > 0) && (
             <div className="mt-3">
               <div className="flex items-center gap-4">
               {estimacionesProximoMes.length > 0 && (
               <button
                 type="button"
-                className="flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 transition-colors"
+                className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
+                style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
                 onClick={() => setDetalleProxAbierto((v) => !v)}
                 aria-expanded={detalleProxAbierto}
               >
@@ -2168,12 +2199,11 @@ export default function CajaJazminePage() {
                 {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
               </button>
               )}
-              {(state.costosOperativos || []).some(
-                (c) => c.activo && !c.esVariable && !c.esServicio && (c.frecuencia === "Mensual" || c.frecuencia === "Anual"),
-              ) && (
+              {candidatosServicio.length > 0 && (
                 <button
                   type="button"
-                  className="flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 transition-colors"
+                  className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
+                  style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
                   onClick={() => setAgregandoServicioProx((v) => !v)}
                   aria-expanded={agregandoServicioProx}
                 >
@@ -2182,50 +2212,48 @@ export default function CajaJazminePage() {
                 </button>
               )}
               </div>
-              {/* Panel: gastos fijos existentes que aún no están en la tarjeta.
-                  Un click los marca como "Servicio" y se suman al estimado. */}
+              {/* Panel: gastos fijos existentes del salón activo que aún no están
+                  en la tarjeta. Un click los marca como "Servicio" y se suman. */}
               {agregandoServicioProx &&
-                (() => {
-                  const candidatos = (state.costosOperativos || [])
-                    .filter(
-                      (c) =>
-                        c.activo &&
-                        !c.esVariable &&
-                        !c.esServicio &&
-                        (c.frecuencia === "Mensual" || c.frecuencia === "Anual"),
-                    )
-                    .sort((a, b) => a.concepto.localeCompare(b.concepto))
-                  if (candidatos.length === 0)
-                    return (
-                      <p className="mt-2 text-xs text-amber-700/70">
-                        Todos los gastos fijos existentes ya están incluidos.
-                      </p>
-                    )
-                  return (
-                    <div className="mt-2 rounded-lg border border-amber-200 bg-white/60">
-                      <p className="px-3 pt-2 pb-1 text-xs font-medium text-amber-800">
-                        Elegí un gasto fijo existente para sumarlo acá:
-                      </p>
-                      <div className="max-h-48 overflow-y-auto divide-y divide-amber-200/70">
-                        {candidatos.map((c) => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-amber-100/60"
-                            onClick={() => updateCostoOperativo(c.id, { esServicio: true })}
-                          >
-                            <Plus className="h-3.5 w-3.5 shrink-0 text-amber-700" />
-                            <span className="flex-1 min-w-0 truncate text-sm">{c.concepto}</span>
-                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                              {c.frecuencia === "Anual" ? "Anual · " : ""}
-                              {formatCurrency(c.monto)}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
+                (candidatosServicio.length === 0 ? (
+                  <p
+                    className="mt-2 text-xs"
+                    style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
+                  >
+                    Todos los gastos fijos de este salón ya están incluidos.
+                  </p>
+                ) : (
+                  <div
+                    className="mt-2 rounded-lg border bg-white/60"
+                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                  >
+                    <p
+                      className="px-3 pt-2 pb-1 text-xs font-medium"
+                      style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+                    >
+                      {salonFiltro === "todos"
+                        ? "Elegí un gasto fijo existente para sumarlo acá:"
+                        : `Elegí un gasto fijo de ${salonLabel(salonFiltro)} para sumarlo acá:`}
+                    </p>
+                    <div className="max-h-48 overflow-y-auto divide-y divide-black/5">
+                      {candidatosServicio.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5"
+                          onClick={() => updateCostoOperativo(c.id, { esServicio: true })}
+                        >
+                          <Plus className="h-3.5 w-3.5 shrink-0" style={{ color: colorServicios }} />
+                          <span className="flex-1 min-w-0 truncate text-sm">{c.concepto}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                            {c.frecuencia === "Anual" ? "Anual · " : ""}
+                            {formatCurrency(c.monto)}
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                  )
-                })()}
+                  </div>
+                ))}
               {detalleProxAbierto && (() => {
                 const renderEstimacion = (est: (typeof estimacionesProximoMes)[number]) => (
                   <div key={est.id} className="flex items-center gap-3 px-3 py-2">
@@ -2256,7 +2284,7 @@ export default function CajaJazminePage() {
                     {est.tipo !== "sueldos" && (
                       <button
                         type="button"
-                        className="shrink-0 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-amber-100 hover:text-amber-900"
+                        className="shrink-0 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-black/5 hover:text-foreground"
                         title="Quitar de esta tarjeta"
                         aria-label={`Quitar ${est.concepto} de esta tarjeta`}
                         onClick={() => {
@@ -2286,7 +2314,10 @@ export default function CajaJazminePage() {
                           subtotal={carpeta.subtotal}
                           unidad="servicio"
                         >
-                          <div className="divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                          <div
+                            className="divide-y divide-black/5 rounded-lg border bg-white/60"
+                            style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                          >
                             {carpeta.items.map(renderEstimacion)}
                           </div>
                         </CarpetaGastos>
@@ -2296,7 +2327,10 @@ export default function CajaJazminePage() {
                 }
                 // Vista de un salón: lista plana como siempre.
                 return (
-                  <div className="mt-2 divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-white/60">
+                  <div
+                    className="mt-2 divide-y divide-black/5 rounded-lg border bg-white/60"
+                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                  >
                     {estimacionesProximoMes.map(renderEstimacion)}
                   </div>
                 )
