@@ -2208,7 +2208,7 @@ export default function CajaJazminePage() {
                   aria-expanded={agregandoServicioProx}
                 >
                   <Plus className={`h-3.5 w-3.5 transition-transform ${agregandoServicioProx ? "rotate-45" : ""}`} />
-                  {agregandoServicioProx ? "Cerrar" : "Agregar gasto fijo"}
+                  {agregandoServicioProx ? "Cerrar" : "Agregar gasto fijo a servicios"}
                 </button>
               )}
               </div>
