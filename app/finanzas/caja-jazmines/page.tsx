@@ -2531,8 +2531,10 @@ export default function CajaJazminePage() {
         <CuerpoTarjeta abierto={abiertaAlertas}>
         <CardContent className="space-y-2">
           {alertasVencimiento.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No hay vencimientos en los próximos 30 días.
+            <p className="text-sm text-muted-foreground py-4 text-center text-pretty">
+              {gastosProximoMes1al10.length > 0
+                ? `No queda nada pendiente este mes. Los próximos vencimientos son de ${tituloProxMes}: están en la carpeta de abajo.`
+                : "No hay vencimientos pendientes."}
             </p>
           ) : (
             <>
