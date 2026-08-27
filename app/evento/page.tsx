@@ -212,13 +212,10 @@ function EventoPageContent() {
   }, [isEditing, evento, state.recetas, catalogoServicios, state.pagosPersonal, state.barrasTemplates, state.cocteles])
 
   // Cambios en curso: original vs estado actual, con su impacto en el sistema
-  const cambiosEnCurso = useMemo(
-    () =>
-      isEditing && originalEvento && evento
-        ? detectarCambiosEvento(originalEvento, evento as EventoGuardado, state.recetas, catalogoServicios || [], state.barrasTemplates || [])
-        : [],
-    [isEditing, originalEvento, evento, state.recetas, catalogoServicios, state.barrasTemplates],
-  )
+  const cambiosEnCurso = useMemo(() => {
+    if (!isEditing || !originalEvento || !evento) return []
+    return detectarCambiosEvento(originalEvento, evento as EventoGuardado, state.recetas, catalogoServicios || [], state.barrasTemplates || [])
+  }, [isEditing, originalEvento, evento, state.recetas, catalogoServicios, state.barrasTemplates])
 
   // Versiones del contrato ordenadas de mas nueva a mas vieja
   const versionesContratoOrdenadas = useMemo(
@@ -730,7 +727,15 @@ function EventoPageContent() {
       if (fromContratos) {
         router.push(`/eventos/contratos?eventoId=${editingEventoId}`)
       } else {
-        router.push("/eventos/lista")
+        // Quedarse en el planificador: la nueva version del contrato pasa a ser
+        // la vigente (arriba a la izquierda) y la anterior queda plegada debajo.
+        if (seCreoNuevaVersion) {
+          updateEventoActual({ versionesContrato } as Partial<EventoGuardado>)
+        }
+        // Re-bloquear las secciones y tomar un snapshot fresco para comparar
+        setSeccionesDesbloqueadas({})
+        setOriginalEvento(JSON.parse(JSON.stringify({ ...evento, ...eventData, versionesContrato })) as EventoGuardado)
+        window.scrollTo({ top: 0, behavior: "smooth" })
       }
     } else {
       // Crear nuevo evento — garantizar un id estable para asociar contrato y movimientos
@@ -1739,6 +1744,8 @@ function EventoPageContent() {
             ) : undefined
           }
           locked={esBloqueado}
+          editLocked={seccionBloqueadaPorEdicion("menu")}
+          onModificar={() => pedirDesbloqueo("menu", "el Menú del Evento")}
         >
           <MenuTable
             recetas={state.recetas}
@@ -1780,6 +1787,8 @@ function EventoPageContent() {
           subtitle={coctelesEventoSeleccionados.length > 0 ? `${coctelesEventoSeleccionados.length} coctel${coctelesEventoSeleccionados.length > 1 ? "es" : ""} seleccionado${coctelesEventoSeleccionados.length > 1 ? "s" : ""}` : "Selecciona los cocteles para este evento"}
           badge={coctelesEventoSeleccionados.length > 0 ? <Badge variant="secondary" className="text-xs">{coctelesEventoSeleccionados.length} coctel{coctelesEventoSeleccionados.length > 1 ? "es" : ""}</Badge> : undefined}
           locked={esBloqueado}
+          editLocked={seccionBloqueadaPorEdicion("barras")}
+          onModificar={() => pedirDesbloqueo("barras", "la Barra del Evento")}
         >
           <CoctelTable
             cocteles={state.cocteles}
@@ -1828,6 +1837,8 @@ function EventoPageContent() {
             ) : undefined
           }
           locked={esBloqueado}
+          editLocked={seccionBloqueadaPorEdicion("personal")}
+          onModificar={() => pedirDesbloqueo("personal", "el Personal del Evento")}
         >
           {personalActivoRoster.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
@@ -1920,6 +1931,8 @@ function EventoPageContent() {
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
           title="Servicios del Evento"
           subtitle={serviciosEvento.length > 0 ? `${serviciosEvento.length} servicio${serviciosEvento.length > 1 ? "s" : ""} agregado${serviciosEvento.length > 1 ? "s" : ""}` : "Agrega servicios al evento"}
+          editLocked={seccionBloqueadaPorEdicion("servicios-evento")}
+          onModificar={() => pedirDesbloqueo("servicios-evento", "los Servicios del Evento")}
         >
           {/* Tabla multiplechoice de servicios */}
           {catalogoServicios.filter(s => s.activo).length === 0 ? (
@@ -2148,6 +2161,8 @@ function EventoPageContent() {
           icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10"><FileText className="h-5 w-5 text-sky-600" /></div>}
           title="Datos del Contrato"
           subtitle="Datos del cliente y plan de cuotas"
+          editLocked={seccionBloqueadaPorEdicion("contrato")}
+          onModificar={() => pedirDesbloqueo("contrato", "los Datos del Contrato")}
         >
           <Tabs defaultValue="cliente">
             <TabsList className="grid w-full grid-cols-2">
