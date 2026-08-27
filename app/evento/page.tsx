@@ -106,6 +106,9 @@ import {
 } from "lucide-react"
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
+import { ContratoPreviewCard } from "@/components/contrato-preview-card"
+import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
+import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
 
 function EventoPageContent() {
   const router = useRouter()
@@ -127,6 +130,14 @@ function EventoPageContent() {
     barraCocteles: true,
     guiaProduccion: true,
   })
+
+  // --- Edicion con contrato versionado: snapshot original, bloqueo por seccion y paneles ---
+  const [originalEvento, setOriginalEvento] = useState<EventoGuardado | null>(null)
+  const [seccionesDesbloqueadas, setSeccionesDesbloqueadas] = useState<Record<string, boolean>>({})
+  const [seccionAConfirmar, setSeccionAConfirmar] = useState<{ key: string; titulo: string; impacto: string } | null>(null)
+  const [htmlContratoEnVivo, setHtmlContratoEnVivo] = useState<string>("")
+  const [panelContratoAbierto, setPanelContratoAbierto] = useState(false)
+  const [panelCambiosAbierto, setPanelCambiosAbierto] = useState(false)
 
   // Package selection state (no more individual service dialog)
 
@@ -169,6 +180,51 @@ function EventoPageContent() {
   }, [editingEventoId, state.eventoActual, setEventoActual, router, eventos, loading])
 
   const evento = state.eventoActual
+
+  // Snapshot del evento original al entrar en edicion (para comparar cambios en vivo)
+  useEffect(() => {
+    if (!isEditing || !evento) return
+    if (originalEvento?.id === evento.id) return
+    setOriginalEvento(JSON.parse(JSON.stringify(evento)) as EventoGuardado)
+    setSeccionesDesbloqueadas({})
+  }, [isEditing, evento, originalEvento])
+
+  // Contrato "en vivo": se regenera con debounce mientras se edita el evento
+  useEffect(() => {
+    if (!isEditing || !evento) return
+    const t = setTimeout(() => {
+      try {
+        setHtmlContratoEnVivo(
+          buildContratoEnVivoHTML(
+            evento as EventoGuardado,
+            state.recetas,
+            catalogoServicios || [],
+            state.pagosPersonal || [],
+            state.barrasTemplates || [],
+            state.cocteles || [],
+          ),
+        )
+      } catch (err) {
+        console.error("[v0] Error generando contrato en vivo:", err)
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [isEditing, evento, state.recetas, catalogoServicios, state.pagosPersonal, state.barrasTemplates, state.cocteles])
+
+  // Cambios en curso: original vs estado actual, con su impacto en el sistema
+  const cambiosEnCurso = useMemo(
+    () =>
+      isEditing && originalEvento && evento
+        ? detectarCambiosEvento(originalEvento, evento as EventoGuardado, state.recetas, catalogoServicios || [], state.barrasTemplates || [])
+        : [],
+    [isEditing, originalEvento, evento, state.recetas, catalogoServicios, state.barrasTemplates],
+  )
+
+  // Versiones del contrato ordenadas de mas nueva a mas vieja
+  const versionesContratoOrdenadas = useMemo(
+    () => [...(((evento as EventoGuardado | null)?.versionesContrato) || [])].sort((a, b) => b.version - a.version),
+    [evento],
+  )
 
   const [saveErrors, setSaveErrors] = useState<string[]>([])
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -931,6 +987,8 @@ function EventoPageContent() {
         children,
         locked,
         proximamente,
+        editLocked,
+        onModificar,
       }: {
         sectionKey: string
         icon: React.ReactNode
@@ -940,6 +998,9 @@ function EventoPageContent() {
         children: React.ReactNode
         locked?: boolean
         proximamente?: boolean
+        /** Bloqueo por edicion: la seccion requiere confirmar "Modificar" para editarse */
+        editLocked?: boolean
+        onModificar?: () => void
       }) => {
         const isOpen = openSections[sectionKey] ?? false
         if (proximamente) {
@@ -970,6 +1031,33 @@ function EventoPageContent() {
                   {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
                 </div>
                 <Lock className="h-5 w-5 shrink-0 text-muted-foreground" />
+              </div>
+            </div>
+          )
+        }
+        if (editLocked) {
+          return (
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <div className="flex w-full items-center gap-4 px-5 py-4">
+                <div className="shrink-0 opacity-70">{icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-semibold text-card-foreground truncate">{title}</h2>
+                    {badge}
+                  </div>
+                  {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5 bg-transparent"
+                  onClick={onModificar}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Modificar
+                </Button>
+                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </div>
             </div>
           )
@@ -1146,6 +1234,81 @@ function EventoPageContent() {
 
   // Service handlers removed - now using package selection
 
+  // ==================== EDICION: BLOQUEO POR SECCION + PANELES ====================
+  const seccionBloqueadaPorEdicion = (key: string) => isEditing && !esSoloLectura && !seccionesDesbloqueadas[key]
+
+  const IMPACTOS_SECCION: Record<string, string> = {
+    detalles: "Cambiar fecha, salón, horarios o invitados impacta el Calendario, los costos de cocina y el contrato.",
+    menu: "Cambiar el menú recalcula los costos de cocina, la lista de compras y el Anexo I del contrato.",
+    barras: "Cambiar la barra recalcula su costo y el detalle de tragos del contrato.",
+    personal: "Cambiar el personal impacta los sueldos a pagar en Caja Eventos y el contrato.",
+    "servicios-evento": "Cambiar los servicios recalcula los costos del evento y la cláusula 5 del contrato.",
+    contrato: "Cambiar datos del cliente o el plan de pagos impacta el contrato y los vencimientos en Pagos y Caja.",
+    vendedor: "Cambiar el vendedor impacta la comisión en Eventos > Vendedores y Caja Jazmines.",
+  }
+
+  const pedirDesbloqueo = (key: string, titulo: string) =>
+    setSeccionAConfirmar({ key, titulo, impacto: IMPACTOS_SECCION[key] || "" })
+
+  const confirmarDesbloqueo = () => {
+    if (!seccionAConfirmar) return
+    const { key } = seccionAConfirmar
+    setSeccionesDesbloqueadas((prev) => ({ ...prev, [key]: true }))
+    // Abrir la seccion recien desbloqueada (comportamiento acordeon)
+    setOpenSections((prev) => {
+      const allClosed: Record<string, boolean> = {}
+      for (const k of Object.keys(prev)) allClosed[k] = false
+      return { ...allClosed, [key]: true }
+    })
+    setSeccionAConfirmar(null)
+  }
+
+  // Panel izquierdo: contrato vigente + versiones anteriores plegadas
+  const panelContratoVigente = isEditing ? (
+    <>
+      {versionesContratoOrdenadas.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card px-3 py-4 text-center text-xs text-muted-foreground">
+          Este evento todavía no tiene versiones de contrato guardadas. Al actualizar el evento se creará la primera versión.
+        </div>
+      ) : (
+        versionesContratoOrdenadas.map((v, idx) => (
+          <ContratoPreviewCard
+            key={`${v.version}-${idx}`}
+            titulo={idx === 0 ? `Contrato vigente · v${v.version}` : `Versión ${v.version}`}
+            subtitulo={new Date(v.fechaGuardado).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+            html={() =>
+              buildVersionContratoHTML(
+                evento as EventoGuardado,
+                v.version,
+                state.recetas,
+                catalogoServicios || [],
+                state.pagosPersonal || [],
+                state.barrasTemplates || [],
+                state.cocteles || [],
+              )
+            }
+            plegada={idx > 0}
+            alturaPreview={idx === 0 ? 420 : 340}
+          />
+        ))
+      )}
+    </>
+  ) : null
+
+  // Panel derecho: cambios en curso + contrato en generacion
+  const panelCambiosYContrato = isEditing ? (
+    <>
+      <EventoCambiosPanel cambios={cambiosEnCurso} />
+      <ContratoPreviewCard
+        titulo="Contrato en generación"
+        subtitulo="Vista previa en vivo con tus cambios"
+        html={htmlContratoEnVivo || "<!DOCTYPE html><html><body></body></html>"}
+        alturaPreview={520}
+        acento="#b45309"
+      />
+    </>
+  ) : null
+
   return (
     <div className="min-h-screen bg-background">
 
@@ -1213,7 +1376,19 @@ function EventoPageContent() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <div className={isEditing ? "mx-auto flex max-w-[1600px] items-start gap-4 px-3 py-6 sm:px-4" : undefined}>
+
+      {/* Panel izquierdo (solo edicion, pantallas anchas): contrato vigente + versiones anteriores */}
+      {isEditing && (
+        <aside
+          className="sticky top-20 hidden max-h-[calc(100vh-6rem)] w-[300px] shrink-0 space-y-3 overflow-y-auto xl:block"
+          aria-label="Contrato vigente y versiones anteriores"
+        >
+          {panelContratoVigente}
+        </aside>
+      )}
+
+      <main className={isEditing ? "mx-auto w-full min-w-0 max-w-3xl flex-1 px-1 sm:px-0" : "mx-auto max-w-3xl px-4 py-6 sm:px-6"}>
 
         {/* Banner de bloqueo por stock comprometido */}
         {esSoloLectura && (
@@ -1326,6 +1501,8 @@ function EventoPageContent() {
           title="Detalles del Evento"
           subtitle={evento.tipoEvento ? `${evento.tipoEvento}${evento.nombrePareja ? ` - ${evento.nombrePareja}` : ""}` : "Configura la fecha, salon y comensales"}
           className="bg-emerald-50/60 border-emerald-100"
+          editLocked={seccionBloqueadaPorEdicion("detalles")}
+          onModificar={() => pedirDesbloqueo("detalles", "Detalles del Evento")}
         >
           <div className="space-y-5">
 
@@ -2713,11 +2890,107 @@ function EventoPageContent() {
               >
                 <X className="h-6 w-6" />
               </Button>
-              <UnifiedDocument sections={docSections} />
-            </div>
-          </div>
-        )}
+          <UnifiedDocument sections={docSections} />
+        </div>
+      </div>
+      )}
       </main>
+
+      {/* Panel derecho (solo edicion, pantallas anchas): cambios en curso + contrato en generacion */}
+      {isEditing && (
+        <aside
+          className="sticky top-20 hidden max-h-[calc(100vh-6rem)] w-[380px] shrink-0 flex-col gap-3 overflow-y-auto xl:flex"
+          aria-label="Cambios en curso y contrato en generación"
+        >
+          {panelCambiosYContrato}
+        </aside>
+      )}
+
+      </div>
+
+      {/* Solapas laterales (solo edicion, pantallas angostas) */}
+      {isEditing && (
+        <>
+          <button
+            type="button"
+            onClick={() => setPanelContratoAbierto(true)}
+            className="fixed left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-lg border border-l-0 border-border bg-card px-1.5 py-4 shadow-md transition-colors hover:bg-muted xl:hidden"
+            aria-label="Ver contrato vigente y versiones anteriores"
+          >
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground [writing-mode:vertical-rl]">
+              <FileText className="h-4 w-4 rotate-90" aria-hidden="true" />
+              Contrato
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanelCambiosAbierto(true)}
+            className="fixed right-0 top-1/2 z-40 -translate-y-1/2 rounded-l-lg border border-r-0 border-border bg-card px-1.5 py-4 shadow-md transition-colors hover:bg-muted xl:hidden"
+            aria-label="Ver cambios en curso y contrato en generación"
+          >
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground [writing-mode:vertical-rl]">
+              <ClipboardList className="h-4 w-4 rotate-90" aria-hidden="true" />
+              Cambios
+              {cambiosEnCurso.length > 0 && (
+                <span className="rounded-full bg-amber-500 px-1 py-1 text-[10px] font-bold leading-none text-white [writing-mode:horizontal-tb]">
+                  {cambiosEnCurso.length}
+                </span>
+              )}
+            </span>
+          </button>
+
+          {panelContratoAbierto && (
+            <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-label="Contrato vigente">
+              <div className="absolute inset-0 bg-black/40" onClick={() => setPanelContratoAbierto(false)} aria-hidden="true" />
+              <div className="absolute inset-y-0 left-0 w-[min(380px,92vw)] space-y-3 overflow-y-auto bg-background p-3 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold">Contrato vigente</h2>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPanelContratoAbierto(false)} aria-label="Cerrar panel">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                {panelContratoVigente}
+              </div>
+            </div>
+          )}
+
+          {panelCambiosAbierto && (
+            <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-label="Cambios en curso">
+              <div className="absolute inset-0 bg-black/40" onClick={() => setPanelCambiosAbierto(false)} aria-hidden="true" />
+              <div className="absolute inset-y-0 right-0 w-[min(400px,92vw)] space-y-3 overflow-y-auto bg-background p-3 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold">Cambios y contrato en generación</h2>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPanelCambiosAbierto(false)} aria-label="Cerrar panel">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                {panelCambiosYContrato}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Confirmacion para desbloquear una seccion en modo edicion */}
+      <AlertDialog open={!!seccionAConfirmar} onOpenChange={(open) => { if (!open) setSeccionAConfirmar(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`¿Querés modificar ${seccionAConfirmar?.titulo || "esta sección"}?`}</AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              {seccionAConfirmar?.impacto}
+              <br />
+              <br />
+              Los cambios se van a reflejar a la derecha junto con su impacto, y al presionar &quot;Actualizar Evento&quot; se generará una nueva versión del contrato.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarDesbloqueo} className="bg-primary hover:bg-primary/90">
+              Sí, modificar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
