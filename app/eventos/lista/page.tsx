@@ -301,6 +301,27 @@ export default function EventosListaPage() {
     setTimeout(() => setFinalizadoAnimacion(null), 2500)
   }
 
+  // Buscador de eventos en el selector de salón: encuentra por nombre o fecha
+  // en todos los salones, navega al salón del evento y resalta su fila.
+  const [busquedaEvento, setBusquedaEvento] = useState("")
+  const [eventoResaltado, setEventoResaltado] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!eventoResaltado || selectorAbierto) return
+    // Espera a que la tabla renderice y hace scroll a la fila resaltada.
+    const t = setTimeout(() => {
+      document
+        .querySelector(`[data-evento-id="${eventoResaltado}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 350)
+    // El resaltado se apaga solo a los 8 segundos.
+    const off = setTimeout(() => setEventoResaltado(null), 8000)
+    return () => {
+      clearTimeout(t)
+      clearTimeout(off)
+    }
+  }, [eventoResaltado, selectorAbierto])
+
   // Consolidar compras
   const [modoConsolidar, setModoConsolidar] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -733,6 +754,34 @@ export default function EventosListaPage() {
 
   // Selector de salón estilo perfiles al entrar
   if (selectorAbierto) {
+    const q = busquedaEvento.trim().toLowerCase()
+    // Busca en todos los salones por nombre de agasajados o por fecha
+    // (acepta "12/09/2026", "2026-09-12" o "12 de septiembre").
+    const resultadosBusqueda = !q
+      ? []
+      : (eventos || [])
+          .filter((e) => e.estado !== "completado")
+          .filter((e) => {
+            const nombre = `${e.nombrePareja || ""} ${e.nombre || ""}`.toLowerCase()
+            if (nombre.includes(q)) return true
+            if (!e.fecha) return false
+            const fechaLarga = new Date(`${e.fecha}T12:00:00`)
+              .toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })
+              .toLowerCase()
+            return e.fecha.includes(q) || formatFecha(e.fecha).includes(q) || fechaLarga.includes(q)
+          })
+          .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""))
+          .slice(0, 8)
+
+    const elegirEvento = (evento: EventoGuardado) => {
+      setFiltroSalon(evento.salon || "todos")
+      setFiltroEstado("todos")
+      setSearchQuery("")
+      setEventoResaltado(evento.id)
+      setBusquedaEvento("")
+      setSelectorAbierto(false)
+    }
+
     return (
       <SalonSelectorOverlay
         titulo="Lista de Eventos"
@@ -740,7 +789,62 @@ export default function EventosListaPage() {
           setFiltroSalon(salon)
           setSelectorAbierto(false)
         }}
-      />
+      >
+        <div className="relative -mt-4 w-full max-w-xl">
+          {/* Buscador estilo Google: redondeado, con la lupa adentro a la derecha */}
+          <div className="flex items-center rounded-full border-2 border-gray-500 bg-white px-5 shadow-md transition-shadow hover:shadow-lg focus-within:shadow-lg">
+            <input
+              type="text"
+              value={busquedaEvento}
+              onChange={(e) => setBusquedaEvento(e.target.value)}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.nativeEvent.isComposing &&
+                  e.keyCode !== 229 &&
+                  resultadosBusqueda.length > 0
+                ) {
+                  elegirEvento(resultadosBusqueda[0])
+                }
+              }}
+              placeholder="buscar evento"
+              aria-label="Buscar evento por nombre o fecha en todos los salones"
+              className="h-12 w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-600 focus:outline-none"
+            />
+            <Search className="h-5 w-5 shrink-0 text-gray-700" aria-hidden="true" />
+          </div>
+
+          {/* Resultados en vivo mientras se escribe */}
+          {q && (
+            <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg">
+              {resultadosBusqueda.length === 0 ? (
+                <p className="px-5 py-3 text-sm text-gray-400">Sin eventos que coincidan.</p>
+              ) : (
+                resultadosBusqueda.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => elegirEvento(e)}
+                    className="flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors hover:bg-gray-50"
+                  >
+                    {e.salon && <SalonDot salon={e.salon} size={9} />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-gray-900">
+                        {e.nombrePareja || e.nombre || "Sin nombre"}
+                      </span>
+                      <span className="block text-xs text-gray-500">
+                        {e.salon ? `${salonLabel(e.salon)} · ` : ""}
+                        {formatFecha(e.fecha)}
+                      </span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-gray-300" aria-hidden="true" />
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </SalonSelectorOverlay>
     )
   }
 
@@ -1032,7 +1136,8 @@ export default function EventosListaPage() {
                     return (
                       <TableRow
                         key={evento.id}
-                        className={`group transition-all duration-500 ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""} ${estaAnimando ? "bg-emerald-50 scale-[0.99]" : ""}`}
+                        data-evento-id={evento.id}
+                        className={`group transition-all duration-500 ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""} ${estaAnimando ? "bg-emerald-50 scale-[0.99]" : ""} ${eventoResaltado === evento.id ? "bg-amber-50" : ""}`}
                       >
                         {modoConsolidar && (
                           <TableCell className="w-10">

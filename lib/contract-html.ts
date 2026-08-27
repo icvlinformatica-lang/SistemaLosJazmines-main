@@ -445,6 +445,94 @@ ${detalleServicioRows}
 }
 
 // =====================================================================
+// HELPER: Genera el HTML del contrato desde el estado ACTUAL del evento
+// (sin usar snapshots de versiones). Se usa para la vista previa "en vivo"
+// mientras se edita el evento y como rama por defecto cuando no hay
+// versiones guardadas.
+// =====================================================================
+export function buildContratoEnVivoHTML(
+  evento: EventoGuardado,
+  recetas: Receta[],
+  catalogoServicios: { id: string; nombre: string; descripcion?: string }[],
+  pagosPersonal: PagoPersonal[] = [],
+  barrasTemplates: BarraTemplate[] = [],
+  cocteles: Coctel[] = [],
+): string {
+  const serviciosNombres: ServicioContratoItem[] = (evento.servicios || [])
+    .map((se): ServicioContratoItem => {
+      const srv = catalogoServicios.find((s) => s.id === se.servicioId)
+      return srv ? { nombre: srv.nombre, descripcion: srv.descripcion } : se.nombre
+    })
+    .filter((s) => (typeof s === "string" ? Boolean(s) : Boolean(s.nombre)))
+
+  const personalAsignado = buildPersonalContrato(evento, pagosPersonal)
+  return generateContractHTML(evento, recetas, serviciosNombres, 0, personalAsignado, barrasTemplates, cocteles)
+}
+
+// =====================================================================
+// HELPER: Genera el HTML de UNA version especifica del contrato usando su
+// snapshot (datos del cliente, servicios, plan de cuotas, menu, barras e
+// invitados guardados en esa version). Si la version no existe cae al
+// estado actual del evento.
+// =====================================================================
+export function buildVersionContratoHTML(
+  evento: EventoGuardado,
+  numeroVersion: number,
+  recetas: Receta[],
+  catalogoServicios: { id: string; nombre: string; descripcion?: string }[],
+  pagosPersonal: PagoPersonal[] = [],
+  barrasTemplates: BarraTemplate[] = [],
+  cocteles: Coctel[] = [],
+): string {
+  const version = (evento.versionesContrato || []).find((v) => v.version === numeroVersion)
+  if (!version) {
+    return buildContratoEnVivoHTML(evento, recetas, catalogoServicios, pagosPersonal, barrasTemplates, cocteles)
+  }
+
+  const serviciosNombres: ServicioContratoItem[] = (version.snapshotServicios || [])
+    .map((id): ServicioContratoItem => {
+      const srv = catalogoServicios.find((s) => s.id === id)
+      return srv ? { nombre: srv.nombre, descripcion: srv.descripcion } : id
+    })
+    .concat(version.snapshotServiciosLibres || [])
+
+  const eventoParaImprimir: EventoGuardado = {
+    ...evento,
+    contrato: {
+      nombreCompleto: version.snapshotContrato.nombreCompleto,
+      dni: version.snapshotContrato.dni,
+      telefono: version.snapshotContrato.telefono,
+      direccion: version.snapshotContrato.direccion,
+      email: version.snapshotContrato.email,
+      // Las observaciones no forman parte del snapshot: usar las actuales del evento
+      observaciones: evento.contrato?.observaciones,
+    },
+    planDeCuotas: version.snapshotPlanCuotas || evento.planDeCuotas,
+    // Menu, barras e invitados: usar el snapshot si la version lo guardo
+    ...(version.snapshotMenu
+      ? {
+          recetasAdultos: version.snapshotMenu.recetasAdultos,
+          recetasAdolescentes: version.snapshotMenu.recetasAdolescentes,
+          recetasNinos: version.snapshotMenu.recetasNinos,
+          recetasDietasEspeciales: version.snapshotMenu.recetasDietasEspeciales,
+        }
+      : {}),
+    ...(version.snapshotBarras ? { barras: version.snapshotBarras } : {}),
+    ...(version.snapshotInvitados
+      ? {
+          adultos: version.snapshotInvitados.adultos,
+          adolescentes: version.snapshotInvitados.adolescentes,
+          ninos: version.snapshotInvitados.ninos,
+          personasDietasEspeciales: version.snapshotInvitados.dietasEspeciales,
+        }
+      : {}),
+  }
+
+  const personalAsignado = buildPersonalContrato(evento, pagosPersonal)
+  return generateContractHTML(eventoParaImprimir, recetas, serviciosNombres, 0, personalAsignado, barrasTemplates, cocteles)
+}
+
+// =====================================================================
 // HELPER: Genera el HTML de la ultima version del contrato de un evento.
 // Usa el snapshot de la version mas reciente si existe; si no, cae al
 // estado actual del evento.
@@ -458,42 +546,11 @@ export function buildUltimaVersionContratoHTML(
   cocteles: Coctel[] = [],
 ): string {
   const versiones = evento.versionesContrato || []
-  let eventoParaImprimir = evento
-  let serviciosNombres: ServicioContratoItem[]
-
-  if (versiones.length > 0) {
-    const ultima = [...versiones].sort((a, b) => b.version - a.version)[0]
-    serviciosNombres = (ultima.snapshotServicios || [])
-      .map((id): ServicioContratoItem => {
-        const srv = catalogoServicios.find((s) => s.id === id)
-        return srv ? { nombre: srv.nombre, descripcion: srv.descripcion } : id
-      })
-      .concat(ultima.snapshotServiciosLibres || [])
-    eventoParaImprimir = {
-      ...evento,
-      contrato: {
-        nombreCompleto: ultima.snapshotContrato.nombreCompleto,
-        dni: ultima.snapshotContrato.dni,
-        telefono: ultima.snapshotContrato.telefono,
-        direccion: ultima.snapshotContrato.direccion,
-        email: ultima.snapshotContrato.email,
-        // Las observaciones no forman parte del snapshot: usar las actuales del evento
-        observaciones: evento.contrato?.observaciones,
-      },
-      planDeCuotas: ultima.snapshotPlanCuotas || evento.planDeCuotas,
-    }
-  } else {
-    // Sin versiones guardadas: usar servicios actuales del evento
-    serviciosNombres = (evento.servicios || [])
-      .map((se): ServicioContratoItem => {
-        const srv = catalogoServicios.find((s) => s.id === se.servicioId)
-        return srv ? { nombre: srv.nombre, descripcion: srv.descripcion } : se.nombre
-      })
-      .filter((s) => (typeof s === "string" ? Boolean(s) : Boolean(s.nombre)))
+  if (versiones.length === 0) {
+    return buildContratoEnVivoHTML(evento, recetas, catalogoServicios, pagosPersonal, barrasTemplates, cocteles)
   }
-
-  const personalAsignado = buildPersonalContrato(evento, pagosPersonal)
-  return generateContractHTML(eventoParaImprimir, recetas, serviciosNombres, 0, personalAsignado, barrasTemplates, cocteles)
+  const ultima = [...versiones].sort((a, b) => b.version - a.version)[0]
+  return buildVersionContratoHTML(evento, ultima.version, recetas, catalogoServicios, pagosPersonal, barrasTemplates, cocteles)
 }
 
 // =====================================================================

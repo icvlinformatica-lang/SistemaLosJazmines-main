@@ -13,9 +13,12 @@ import { salonIcono, IconoTodos } from "@/components/salon-iconos"
 export function SalonSelectorOverlay({
   titulo,
   onSelect,
+  children,
 }: {
   titulo: string
   onSelect: (salon: string) => void
+  /** Contenido extra debajo de los salones (ej: buscador de eventos). */
+  children?: React.ReactNode
 }) {
   const { state } = useStore()
   const config = state.configuracionCajas
@@ -58,6 +61,8 @@ export function SalonSelectorOverlay({
           </button>
         ))}
       </div>
+
+      {children}
     </div>
   )
 }
