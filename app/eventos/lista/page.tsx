@@ -790,9 +790,9 @@ export default function EventosListaPage() {
           setSelectorAbierto(false)
         }}
       >
-        <div className="relative w-full max-w-xl">
+        <div className="relative -mt-4 w-full max-w-xl">
           {/* Buscador estilo Google: redondeado, con la lupa adentro a la derecha */}
-          <div className="flex items-center rounded-full border border-gray-200 bg-white px-5 shadow-md transition-shadow hover:shadow-lg focus-within:shadow-lg">
+          <div className="flex items-center rounded-full border-2 border-gray-500 bg-white px-5 shadow-md transition-shadow hover:shadow-lg focus-within:shadow-lg">
             <input
               type="text"
               value={busquedaEvento}
@@ -809,9 +809,9 @@ export default function EventosListaPage() {
               }}
               placeholder="buscar evento"
               aria-label="Buscar evento por nombre o fecha en todos los salones"
-              className="h-12 w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+              className="h-12 w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-600 focus:outline-none"
             />
-            <Search className="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+            <Search className="h-5 w-5 shrink-0 text-gray-700" aria-hidden="true" />
           </div>
 
           {/* Resultados en vivo mientras se escribe */}
