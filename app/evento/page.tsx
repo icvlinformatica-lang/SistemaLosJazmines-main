@@ -1395,6 +1395,37 @@ function EventoPageContent() {
 
       <main className={isEditing ? "mx-auto w-full min-w-0 max-w-3xl flex-1 px-1 sm:px-0" : "mx-auto max-w-3xl px-4 py-6 sm:px-6"}>
 
+        {/* Barra superior (solo edicion, pantallas angostas): despliega contrato y cambios */}
+        {isEditing && (
+          <div className="mb-4 flex gap-2 xl:hidden">
+            <button
+              type="button"
+              onClick={() => setPanelContratoAbierto(true)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-semibold text-muted-foreground shadow-sm transition-colors hover:bg-muted"
+              aria-label="Ver contrato vigente y versiones anteriores"
+            >
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Contrato vigente
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelCambiosAbierto(true)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-semibold text-muted-foreground shadow-sm transition-colors hover:bg-muted"
+              aria-label="Ver cambios en curso y contrato en generación"
+            >
+              <ClipboardList className="h-4 w-4" aria-hidden="true" />
+              Cambios
+              {cambiosEnCurso.length > 0 && (
+                <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                  {cambiosEnCurso.length}
+                </span>
+              )}
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
         {/* Banner de bloqueo por stock comprometido */}
         {esSoloLectura && (
           <div className="mb-4 flex items-start gap-3 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3">
@@ -2923,48 +2954,20 @@ function EventoPageContent() {
 
       </div>
 
-      {/* Solapas laterales (solo edicion, pantallas angostas) */}
+      {/* Paneles desplegables desde arriba (solo edicion, pantallas angostas) */}
       {isEditing && (
         <>
-          <button
-            type="button"
-            onClick={() => setPanelContratoAbierto(true)}
-            className="fixed left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-lg border border-l-0 border-border bg-card px-1.5 py-4 shadow-md transition-colors hover:bg-muted xl:hidden"
-            aria-label="Ver contrato vigente y versiones anteriores"
-          >
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground [writing-mode:vertical-rl]">
-              <FileText className="h-4 w-4 rotate-90" aria-hidden="true" />
-              Contrato
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setPanelCambiosAbierto(true)}
-            className="fixed right-0 top-1/2 z-40 -translate-y-1/2 rounded-l-lg border border-r-0 border-border bg-card px-1.5 py-4 shadow-md transition-colors hover:bg-muted xl:hidden"
-            aria-label="Ver cambios en curso y contrato en generación"
-          >
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground [writing-mode:vertical-rl]">
-              <ClipboardList className="h-4 w-4 rotate-90" aria-hidden="true" />
-              Cambios
-              {cambiosEnCurso.length > 0 && (
-                <span className="rounded-full bg-amber-500 px-1 py-1 text-[10px] font-bold leading-none text-white [writing-mode:horizontal-tb]">
-                  {cambiosEnCurso.length}
-                </span>
-              )}
-            </span>
-          </button>
-
           {panelContratoAbierto && (
             <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-label="Contrato vigente">
               <div className="absolute inset-0 bg-black/40" onClick={() => setPanelContratoAbierto(false)} aria-hidden="true" />
-              <div className="absolute inset-y-0 left-0 w-[min(380px,92vw)] space-y-3 overflow-y-auto bg-background p-3 shadow-xl">
+              <div className="absolute inset-x-0 top-0 max-h-[85vh] space-y-3 overflow-y-auto rounded-b-2xl bg-background p-3 shadow-xl">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold">Contrato vigente</h2>
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPanelContratoAbierto(false)} aria-label="Cerrar panel">
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                {panelContratoVigente}
+                <div className="mx-auto max-w-md space-y-3">{panelContratoVigente}</div>
               </div>
             </div>
           )}
@@ -2972,14 +2975,14 @@ function EventoPageContent() {
           {panelCambiosAbierto && (
             <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-label="Cambios en curso">
               <div className="absolute inset-0 bg-black/40" onClick={() => setPanelCambiosAbierto(false)} aria-hidden="true" />
-              <div className="absolute inset-y-0 right-0 w-[min(400px,92vw)] space-y-3 overflow-y-auto bg-background p-3 shadow-xl">
+              <div className="absolute inset-x-0 top-0 max-h-[85vh] space-y-3 overflow-y-auto rounded-b-2xl bg-background p-3 shadow-xl">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold">Cambios y contrato en generación</h2>
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPanelCambiosAbierto(false)} aria-label="Cerrar panel">
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                {panelCambiosYContrato}
+                <div className="mx-auto max-w-md space-y-3">{panelCambiosYContrato}</div>
               </div>
             </div>
           )}
