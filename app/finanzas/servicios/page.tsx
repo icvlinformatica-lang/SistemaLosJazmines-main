@@ -48,6 +48,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Switch } from "@/components/ui/switch"
 import { PapeleraServiciosButton } from "@/components/servicios-eliminados-card"
+import { ServicioImpactoDialog, type CampoImpacto } from "@/components/servicio-impacto-dialog"
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -470,6 +471,28 @@ export default function FinanzasServiciosPage() {
     [updateServicio]
   )
 
+  /**
+   * Cambio de monto pendiente de confirmación. Los montos de los eventos se
+   * recalculan en vivo desde el catálogo, así que antes de guardar mostramos
+   * el impacto real en cada evento contratado (ServicioImpactoDialog).
+   */
+  const [cambioMonto, setCambioMonto] = useState<{
+    servicio: Servicio
+    campo: CampoImpacto
+    valorNuevo: number
+  } | null>(null)
+
+  const confirmarCambioMonto = () => {
+    if (!cambioMonto) return
+    const { servicio, campo, valorNuevo } = cambioMonto
+    update(servicio.id, { [campo]: valorNuevo } as Partial<Servicio>)
+    setCambioMonto(null)
+    toast({
+      title: "Monto actualizado",
+      description: `Los montos de los eventos con "${servicio.nombre}" ya quedaron recalculados.`,
+    })
+  }
+
   const handleEliminarConfirm = () => {
     if (!idEliminar || !confirmoCongelado) return
     deleteServicio(idEliminar)
@@ -741,10 +764,9 @@ export default function FinanzasServiciosPage() {
                       placeholder="0"
                       numeric
                       onCommit={(v) => {
-                        const nuevo = parseARS(v)
-                        if (nuevo === venta) return
-                        if (!confirm(`¿Establecer el precio de venta de "${s.nombre}" en ${formatARS(nuevo)}?`)) return
-                        update(s.id, { precioVenta: nuevo })
+                            const nuevo = parseARS(v)
+                            if (nuevo === venta) return
+                            setCambioMonto({ servicio: s, campo: "precioVenta", valorNuevo: nuevo })
                       }}
                     />
                   </td>
@@ -756,10 +778,9 @@ export default function FinanzasServiciosPage() {
                       placeholder="0"
                       numeric
                       onCommit={(v) => {
-                        const nuevo = parseARS(v)
-                        if (nuevo === costo) return
-                        if (!confirm(`¿Establecer el costo (Caja Eventos) de "${s.nombre}" en ${formatARS(nuevo)}?`)) return
-                        update(s.id, { costoParaCajaEventos: nuevo })
+                            const nuevo = parseARS(v)
+                            if (nuevo === costo) return
+                            setCambioMonto({ servicio: s, campo: "costoParaCajaEventos", valorNuevo: nuevo })
                       }}
                     />
                   </td>
@@ -776,9 +797,8 @@ export default function FinanzasServiciosPage() {
                         const montoSeña = parseARS(v)
                         const base = s.costoParaCajaEventos ?? 0
                         const pct = base > 0 ? Math.round((montoSeña / base) * 100) : 30
-                        if (pct === (s.porcentajeSeña ?? 30)) return
-                        if (!confirm(`¿Establecer la seña de "${s.nombre}" en ${formatARS(montoSeña)} (${pct}%)?`)) return
-                        update(s.id, { porcentajeSeña: pct })
+                            if (pct === (s.porcentajeSeña ?? 30)) return
+                            setCambioMonto({ servicio: s, campo: "porcentajeSeña", valorNuevo: pct })
                       }}
                     />
                   </td>
@@ -1000,6 +1020,16 @@ export default function FinanzasServiciosPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Impacto en el sistema al cambiar un monto del catálogo */}
+      <ServicioImpactoDialog
+        servicio={cambioMonto?.servicio ?? null}
+        campo={cambioMonto?.campo ?? "precioVenta"}
+        valorNuevo={cambioMonto?.valorNuevo ?? 0}
+        eventos={eventos || []}
+        onConfirmar={confirmarCambioMonto}
+        onCancelar={() => setCambioMonto(null)}
+      />
     </div>
   )
 }
