@@ -135,6 +135,7 @@ interface FilaPagoUnificada {
   servicioNombre: string
   eventoId: string
   eventoNombre: string
+  eventoTipo?: string
   eventoFecha?: string
   eventoFechaCarga?: string
   salon: string
@@ -169,6 +170,7 @@ function agruparFilasPago(
         servicioNombre: eg.servicioNombre,
         eventoId: eg.eventoId,
         eventoNombre: eg.eventoNombre,
+        eventoTipo: eg.eventoTipo,
         eventoFecha: eg.eventoFecha,
         eventoFechaCarga: eg.eventoFechaCarga,
         salon: eg.salon,
@@ -1225,6 +1227,13 @@ useStore()
             </p>
           )}
         </TableCell>
+        <TableCell className="text-sm">
+          {fila.eventoTipo ? (
+            <Badge variant="secondary" className="font-normal">{fila.eventoTipo}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
         <TableCell className="text-right">{renderCeldaPago(fila.seña)}</TableCell>
         <TableCell className="text-right">{renderCeldaPago(fila.saldo)}</TableCell>
         <TableCell className="text-right pr-4 w-10">
@@ -1884,6 +1893,7 @@ useStore()
                                                 <TableHead>Fecha de carga</TableHead>
                                                 <TableHead>Fecha del evento</TableHead>
                                                 <TableHead>Nombre del evento</TableHead>
+                                                <TableHead>Tipo de evento</TableHead>
                                                 <TableHead className="text-right">Seña</TableHead>
                                                 <TableHead className="text-right">Saldo restante</TableHead>
                                                 <TableHead className="w-10 pr-4">
@@ -1914,6 +1924,7 @@ useStore()
                       <TableHead>Fecha de carga</TableHead>
                       <TableHead>Fecha del evento</TableHead>
                       <TableHead>Nombre del evento</TableHead>
+                      <TableHead>Tipo de evento</TableHead>
                       <TableHead className="text-right">Seña</TableHead>
                       <TableHead className="text-right">Saldo restante</TableHead>
                       <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
