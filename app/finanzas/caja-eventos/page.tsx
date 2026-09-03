@@ -6,6 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
+import {
   Table,
   TableBody,
   TableCell,
@@ -82,6 +88,9 @@ import {
   Folder,
   FolderOpen,
   RefreshCw,
+  MoreVertical,
+  Receipt,
+  UserCircle,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -435,7 +444,7 @@ useStore()
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
 
-  // ── Extracción de dinero de la caja (retiro con justificación) ──────────
+  // ── Extracción de dinero de la caja (retiro con justificación) ──────��───
   const [extraerOpen, setExtraerOpen] = useState(false)
   const [extraerMonto, setExtraerMonto] = useState(0)
   const [extraerConcepto, setExtraerConcepto] = useState("")
@@ -1203,7 +1212,33 @@ useStore()
           )}
         </TableCell>
         <TableCell className="text-right">{renderCeldaPago(fila.seña)}</TableCell>
-        <TableCell className="text-right pr-6">{renderCeldaPago(fila.saldo)}</TableCell>
+        <TableCell className="text-right">{renderCeldaPago(fila.saldo)}</TableCell>
+        <TableCell className="text-right pr-4 w-10">
+          {fila.eventoId ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  aria-label="Opciones del evento"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => router.push(`/eventos/costos?id=${fila.eventoId}`)}>
+                  <Receipt className="h-4 w-4" />
+                  Costos del evento
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push(`/evento?id=${fila.eventoId}`)}>
+                  <UserCircle className="h-4 w-4" />
+                  Perfil del evento
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </TableCell>
       </TableRow>
     ))
 
@@ -1826,7 +1861,8 @@ useStore()
                                         <TableHead>Fecha del evento</TableHead>
                                         <TableHead>Nombre del evento</TableHead>
                                         <TableHead className="text-right">Seña</TableHead>
-                                        <TableHead className="text-right pr-6">Saldo restante</TableHead>
+                                        <TableHead className="text-right">Saldo restante</TableHead>
+                                        <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>{renderFilasPagar(mes.items)}</TableBody>
@@ -1849,7 +1885,8 @@ useStore()
                       <TableHead>Fecha del evento</TableHead>
                       <TableHead>Nombre del evento</TableHead>
                       <TableHead className="text-right">Seña</TableHead>
-                      <TableHead className="text-right pr-6">Saldo restante</TableHead>
+                      <TableHead className="text-right">Saldo restante</TableHead>
+                      <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>{renderFilasPagar(egresosProximosFiltrados.slice(0, filasPagar))}</TableBody>
