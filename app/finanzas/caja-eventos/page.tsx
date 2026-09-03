@@ -272,6 +272,118 @@ function CarpetaSalon({
 }
 
 // ---------------------------------------------------------------------------
+// Subcarpeta por año / mes dentro de cada salón (sección "Por pagar")
+// ---------------------------------------------------------------------------
+const MESES_NOMBRES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+]
+
+// Agrupa los egresos de un salón por año y luego por mes (según la fecha del
+// evento). Los años y meses quedan en orden cronológico ascendente: el año
+// corriente primero y luego los siguientes; dentro de cada año, del mes
+// corriente en adelante. Los egresos sin fecha de evento van al final.
+function agruparEgresosPorAñoMes(items: EgresoPendienteServicio[]) {
+  const sinFecha: EgresoPendienteServicio[] = []
+  const años = new Map<number, Map<number, EgresoPendienteServicio[]>>()
+  for (const eg of items) {
+    const f = eg.eventoFecha
+    if (!f || !/^\d{4}-\d{2}-\d{2}/.test(f)) {
+      sinFecha.push(eg)
+      continue
+    }
+    const [y, m] = f.split("-").map(Number)
+    if (!años.has(y)) años.set(y, new Map())
+    const meses = años.get(y)!
+    if (!meses.has(m)) meses.set(m, [])
+    meses.get(m)!.push(eg)
+  }
+  const resultado = [...años.keys()]
+    .sort((a, b) => a - b)
+    .map((y) => {
+      const mesesMap = años.get(y)!
+      const meses = [...mesesMap.keys()]
+        .sort((a, b) => a - b)
+        .map((m) => {
+          const its = mesesMap.get(m)!
+          return { mes: m, nombre: MESES_NOMBRES[m - 1], items: its, total: its.reduce((s, e) => s + e.monto, 0) }
+        })
+      const its = meses.flatMap((mm) => mm.items)
+      return { año: y, meses, items: its, total: its.reduce((s, e) => s + e.monto, 0) }
+    })
+  if (sinFecha.length) {
+    resultado.push({
+      año: 0,
+      meses: [{ mes: 0, nombre: "Sin fecha", items: sinFecha, total: sinFecha.reduce((s, e) => s + e.monto, 0) }],
+      items: sinFecha,
+      total: sinFecha.reduce((s, e) => s + e.monto, 0),
+    })
+  }
+  return resultado
+}
+
+function CarpetaTiempo({
+  nombre,
+  cantidad,
+  total,
+  nivel,
+  abierta,
+  onToggle,
+  children,
+}: {
+  nombre: string
+  cantidad: number
+  total: number
+  nivel: 1 | 2
+  abierta: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="border-b border-border/60 last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={abierta}
+        className="w-full flex items-center gap-2 py-2.5 pr-6 hover:bg-muted/40 transition-colors text-left"
+        style={{ paddingLeft: nivel === 1 ? "2.5rem" : "4rem" }}
+      >
+        {abierta ? (
+          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <span className={`text-sm ${nivel === 1 ? "font-semibold" : "font-medium"}`}>{nombre}</span>
+        <Badge variant="outline" className="text-[10px]">
+          {cantidad}
+        </Badge>
+        <span className="ml-auto text-sm font-bold text-red-600">{formatCurrency(total)}</span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
+        />
+      </button>
+      <div
+        className={`grid transition-all duration-300 ease-in-out ${
+          abierta ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="overflow-hidden min-h-0">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
@@ -1525,7 +1637,7 @@ useStore()
                 <span className="text-xs font-medium text-muted-foreground">
                   Total ({eventosDelMes.lista.length} {eventosDelMes.lista.length === 1 ? "evento" : "eventos"})
                 </span>
-                <span className="text-sm font-bold text-red-600">−{formatCurrency(eventosDelMes.total)}</span>
+                <span className="text-sm font-bold text-red-600">���{formatCurrency(eventosDelMes.total)}</span>
               </div>
             </>
           )}
@@ -1680,19 +1792,51 @@ useStore()
                       abierta={!!carpetasPagar[g.salon]}
                       onToggle={() => setCarpetasPagar((prev) => ({ ...prev, [g.salon]: !prev[g.salon] }))}
                     >
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="pl-6">Tipo de servicio</TableHead>
-                            <TableHead>Fecha de carga</TableHead>
-                            <TableHead>Fecha del evento</TableHead>
-                            <TableHead>Nombre del evento</TableHead>
-                            <TableHead className="text-right">Seña</TableHead>
-                            <TableHead className="text-right pr-6">Saldo restante</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>{renderFilasPagar(g.items)}</TableBody>
-                      </Table>
+                      {agruparEgresosPorAñoMes(g.items).map((año) => {
+                        const claveAño = `${g.salon}::${año.año}`
+                        return (
+                          <CarpetaTiempo
+                            key={claveAño}
+                            nombre={año.año === 0 ? "Sin fecha" : String(año.año)}
+                            nivel={1}
+                            cantidad={año.items.length}
+                            total={año.total}
+                            abierta={!!carpetasPagar[claveAño]}
+                            onToggle={() => setCarpetasPagar((prev) => ({ ...prev, [claveAño]: !prev[claveAño] }))}
+                          >
+                            {año.meses.map((mes) => {
+                              const claveMes = `${claveAño}::${mes.mes}`
+                              return (
+                                <CarpetaTiempo
+                                  key={claveMes}
+                                  nombre={mes.nombre}
+                                  nivel={2}
+                                  cantidad={mes.items.length}
+                                  total={mes.total}
+                                  abierta={!!carpetasPagar[claveMes]}
+                                  onToggle={() =>
+                                    setCarpetasPagar((prev) => ({ ...prev, [claveMes]: !prev[claveMes] }))
+                                  }
+                                >
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead className="pl-6">Tipo de servicio</TableHead>
+                                        <TableHead>Fecha de carga</TableHead>
+                                        <TableHead>Fecha del evento</TableHead>
+                                        <TableHead>Nombre del evento</TableHead>
+                                        <TableHead className="text-right">Seña</TableHead>
+                                        <TableHead className="text-right pr-6">Saldo restante</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>{renderFilasPagar(mes.items)}</TableBody>
+                                  </Table>
+                                </CarpetaTiempo>
+                              )
+                            })}
+                          </CarpetaTiempo>
+                        )
+                      })}
                     </CarpetaSalon>
                   ))}
                 </div>
