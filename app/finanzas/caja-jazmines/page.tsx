@@ -3470,6 +3470,8 @@ export default function CajaJazminePage() {
                               </span>
                             ) : null}
                             {gasto.comisionDetalle.porcentaje}% de {formatCurrency(gasto.comisionDetalle.totalEvento)}
+                            {" − "}
+                            {formatCurrency(gasto.comisionDetalle.costoServicios)} de servicios
                             {gasto.fecha ? ` · evento ${formatFecha(gasto.fecha)}` : ""}
                           </p>
                           {esPagado ? (

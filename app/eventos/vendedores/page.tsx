@@ -1,18 +1,27 @@
 "use client"
 
+import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
-import { formatCurrency, salonLabel, type EventoGuardado, type Vendedor } from "@/lib/store"
+import { useClock } from "@/lib/clock-context"
+import { formatCurrency, salonLabel, PORCENTAJE_COMISION_VENDEDOR, type EventoGuardado, type Vendedor } from "@/lib/store"
+import { useCajaJazmines, type GastoVariable } from "@/lib/hooks/use-caja-jazmines"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { MoneyInput } from "@/components/ui/money-input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Calendar, Percent, Banknote, ChevronDown, ChevronUp, UserCheck, Eye, EyeOff, TrendingUp, BadgeCheck } from "lucide-react"
+import {
+  ArrowLeft,
+  ChevronDown,
+  UserCheck,
+  Eye,
+  EyeOff,
+  Folder,
+  CheckCircle2,
+  Archive,
+  Info,
+} from "lucide-react"
 
 // Emojis disponibles como foto de perfil
 const EMOJIS_PERFIL = [
@@ -29,67 +38,155 @@ function formatFecha(fecha: string | undefined) {
   return `${d}/${m}/${y}`
 }
 
-/** Total de venta de un evento: prioriza el plan de cuotas del contrato */
-function totalVentaEvento(e: EventoGuardado): number {
-  if (e.planDeCuotas && e.planDeCuotas.montoTotal > 0) return e.planDeCuotas.montoTotal
-  return e.precioVenta || 0
-}
-
-/** Fecha en que se vendió el evento: inicio del plan de cuotas o, si no hay, la fecha del evento */
-function fechaVentaEvento(e: EventoGuardado): string {
-  return e.planDeCuotas?.fechaInicioPlan || e.fecha || ""
-}
-
 /** Texto usado para tapar montos cuando el ojito está activado */
 const MONTO_TAPADO = "•••••••"
+
+/** Fila individual de una comisión (viva, viene de Caja Jazmines en vivo). */
+function FilaComisionViva({ gasto, oculto }: { gasto: GastoVariable; oculto: boolean }) {
+  const esPagado = gasto.estado === "pagado"
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">
+          {gasto.comisionDetalle?.eventoNombre || gasto.nombre}
+        </p>
+        <p className="text-xs text-amber-800/80 mt-0.5">
+          {gasto.salon ? `${salonLabel(gasto.salon)} · ` : ""}
+          {gasto.fecha ? formatFecha(gasto.fecha) : ""}
+        </p>
+        {esPagado ? (
+          <p className="text-xs text-teal-700 mt-0.5">Comisión pagada al vendedor.</p>
+        ) : (
+          gasto.listaParaPagar && (
+            <p className="text-xs text-emerald-700 mt-0.5">
+              {gasto.motivoLista === "la seña cobrada la cubre"
+                ? "La seña cobrada ya cubre esta comisión."
+                : `Ya se pagaron ${gasto.motivoLista}.`}
+            </p>
+          )
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-1 shrink-0">
+        <span className="text-sm font-bold tabular-nums">{oculto ? MONTO_TAPADO : formatCurrency(gasto.monto)}</span>
+        {gasto.listaParaPagar && !esPagado && (
+          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+            <CheckCircle2 className="h-3 w-3" />
+            Lista para pagar
+          </Badge>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Fila de una comisión ya archivada (histórico), sin datos en vivo del evento. */
+function FilaComisionArchivada({
+  concepto,
+  monto,
+  salon,
+  fecha,
+  oculto,
+}: {
+  concepto: string
+  monto: number
+  salon?: string | null
+  fecha?: string
+  oculto: boolean
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{concepto}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {salon ? `${salonLabel(salon)} · ` : ""}
+          {fecha ? formatFecha(fecha) : ""}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <span className="text-sm font-bold tabular-nums">{oculto ? MONTO_TAPADO : formatCurrency(monto)}</span>
+        <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+          <Archive className="h-3 w-3" />
+          Archivada
+        </Badge>
+      </div>
+    </div>
+  )
+}
+
+/** Subcarpeta colapsable de un estado de comisión (Lista para pagar / Próximamente / Pagadas). */
+function Subcarpeta({
+  titulo,
+  color,
+  count,
+  subtotal,
+  oculto,
+  children,
+}: {
+  titulo: string
+  color: string
+  count: number
+  subtotal: number
+  oculto: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <details className="group rounded-lg border" style={{ borderColor: `color-mix(in srgb, ${color} 30%, white)` }}>
+      <summary
+        className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-black/5 [&::-webkit-details-marker]:hidden"
+        style={{ backgroundColor: `color-mix(in srgb, ${color} 7%, white)` }}
+      >
+        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" style={{ color }} />
+        <span className="flex-1 text-sm font-semibold" style={{ color: `color-mix(in srgb, ${color} 80%, black)` }}>
+          {titulo}
+        </span>
+        <span
+          className="rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums"
+          style={{ color, backgroundColor: `color-mix(in srgb, ${color} 14%, white)` }}
+        >
+          {count}
+        </span>
+        <span className="text-sm font-bold tabular-nums" style={{ color: `color-mix(in srgb, ${color} 85%, black)` }}>
+          {oculto ? MONTO_TAPADO : formatCurrency(subtotal)}
+        </span>
+      </summary>
+      <div className="space-y-2 p-2">
+        {count === 0 ? (
+          <p className="py-2 text-center text-xs text-muted-foreground">Sin comisiones acá.</p>
+        ) : (
+          children
+        )}
+      </div>
+    </details>
+  )
+}
 
 function VendedorCard({
   vendedor,
   eventosAsignados,
+  comisionesVivas,
+  archivadas,
 }: {
   vendedor: Vendedor
   eventosAsignados: EventoGuardado[]
+  comisionesVivas: GastoVariable[]
+  archivadas: { id: string; concepto: string; monto: number; salon?: string | null; fecha?: string }[]
 }) {
   const { updateVendedor } = useStore()
-  const { toast } = useToast()
   const [emojiOpen, setEmojiOpen] = useState(false)
-  const [expandido, setExpandido] = useState(false)
   const [oculto, setOculto] = useState(false)
-  const [sueldoLocal, setSueldoLocal] = useState<number>(vendedor.sueldo || 0)
-  const [comisionLocal, setComisionLocal] = useState<string>(String(vendedor.comisionPct || 0))
 
-  const totalVendido = eventosAsignados.reduce((s, e) => s + totalVentaEvento(e), 0)
-  const pct = Number.parseFloat(comisionLocal) || 0
-  const totalComisiones = (totalVendido * pct) / 100
+  const listas = comisionesVivas.filter((g) => g.estado !== "pagado" && g.listaParaPagar)
+  const proximas = comisionesVivas.filter((g) => g.estado !== "pagado" && !g.listaParaPagar)
+  const pagadasVivas = comisionesVivas.filter((g) => g.estado === "pagado")
 
-  // Eventos vendidos en los últimos 30 días (según fecha de venta del contrato)
-  const hace30Dias = new Date()
-  hace30Dias.setDate(hace30Dias.getDate() - 30)
-  const hace30ISO = `${hace30Dias.getFullYear()}-${String(hace30Dias.getMonth() + 1).padStart(2, "0")}-${String(hace30Dias.getDate()).padStart(2, "0")}`
-  const vendidosUltimoMes = eventosAsignados
-    .filter((e) => {
-      const f = fechaVentaEvento(e)
-      return f && f >= hace30ISO
-    })
-    .sort((a, b) => fechaVentaEvento(b).localeCompare(fechaVentaEvento(a)))
-  const totalUltimoMes = vendidosUltimoMes.reduce((s, e) => s + totalVentaEvento(e), 0)
+  const totalListas = listas.reduce((s, g) => s + g.monto, 0)
+  const totalProximas = proximas.reduce((s, g) => s + g.monto, 0)
+  const totalPagadas = pagadasVivas.reduce((s, g) => s + g.monto, 0) + archivadas.reduce((s, g) => s + g.monto, 0)
 
-  /** Muestra el monto o lo tapa según el ojito */
+  const totalComisionesCount = listas.length + proximas.length + pagadasVivas.length + archivadas.length
+  const totalComisionesMonto = totalListas + totalProximas + totalPagadas
+
   const monto = (v: number) => (oculto ? MONTO_TAPADO : formatCurrency(v))
-
-  const guardarSueldo = () => {
-    if (sueldoLocal === vendedor.sueldo) return
-    updateVendedor(vendedor.id, { sueldo: sueldoLocal })
-    toast({ title: "Sueldo actualizado", description: `${vendedor.nombre}: ${formatCurrency(sueldoLocal)}` })
-  }
-
-  const guardarComision = () => {
-    const nueva = Math.max(0, Math.min(100, Number.parseFloat(comisionLocal) || 0))
-    setComisionLocal(String(nueva))
-    if (nueva === vendedor.comisionPct) return
-    updateVendedor(vendedor.id, { comisionPct: nueva })
-    toast({ title: "Comisión actualizada", description: `${vendedor.nombre}: ${nueva}% por evento vendido` })
-  }
 
   const elegirEmoji = (emoji: string) => {
     updateVendedor(vendedor.id, { emoji })
@@ -148,14 +245,10 @@ function VendedorCard({
           <div className="flex-1 min-w-0">
             <CardTitle className="text-lg">{vendedor.nombre}</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {eventosAsignados.length} evento{eventosAsignados.length !== 1 ? "s" : ""} asignado
+              {eventosAsignados.length} evento{eventosAsignados.length !== 1 ? "s" : ""} vendido
               {eventosAsignados.length !== 1 ? "s" : ""}
             </p>
           </div>
-
-          <Badge variant="secondary" className="shrink-0 tabular-nums">
-            Vendió {monto(totalVendido)}
-          </Badge>
 
           <Button
             variant="ghost"
@@ -171,165 +264,75 @@ function VendedorCard({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Sueldo y comisión */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor={`sueldo-${vendedor.id}`} className="text-xs font-medium flex items-center gap-1.5">
-              <Banknote className="h-3.5 w-3.5 text-teal-600" />
-              Sueldo base mensual
-            </Label>
-            {oculto ? (
-              <div className="flex h-10 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground select-none">
-                {MONTO_TAPADO}
-              </div>
-            ) : (
-              <MoneyInput
-                id={`sueldo-${vendedor.id}`}
-                value={sueldoLocal}
-                onValueChange={(v) => setSueldoLocal(v || 0)}
-                onBlur={guardarSueldo}
-                className="h-10"
-              />
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`comision-${vendedor.id}`} className="text-xs font-medium flex items-center gap-1.5">
-              <Percent className="h-3.5 w-3.5 text-amber-600" />
-              Comisión por evento vendido (%)
-            </Label>
-            {oculto ? (
-              <div className="flex h-10 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground select-none">
-                {MONTO_TAPADO}
-              </div>
-            ) : (
-              <Input
-                id={`comision-${vendedor.id}`}
-                type="number"
-                min={0}
-                max={100}
-                step={0.5}
-                value={comisionLocal}
-                onChange={(e) => setComisionLocal(e.target.value)}
-                onBlur={guardarComision}
-                className="h-10"
-              />
-            )}
-          </div>
-        </div>
-
-        {/* Resumen de comisiones */}
-        <div className="rounded-lg bg-muted/60 p-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-          <span className="text-muted-foreground">
-            Comisiones ({oculto ? "•••" : `${pct}% de ${formatCurrency(totalVendido)}`}):
-          </span>
-          <span className="font-bold text-teal-700 tabular-nums">{monto(totalComisiones)}</span>
-          <span className="text-muted-foreground">Total con sueldo:</span>
-          <span className="font-bold text-foreground tabular-nums">
-            {monto((vendedor.sueldo || 0) + totalComisiones)}
-          </span>
-        </div>
-
-        {/* Vendidos en el último mes */}
-        <div className="rounded-lg border border-teal-200 bg-teal-50/60 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-teal-200/70">
-            <TrendingUp className="h-3.5 w-3.5 text-teal-700 shrink-0" />
-            <span className="text-xs font-semibold text-teal-900 flex-1">Vendidos el último mes</span>
-            <Badge className="bg-teal-600 text-white border-transparent text-[11px]">
-              {vendidosUltimoMes.length}
+      <CardContent>
+        {/* Carpeta principal: Comisiones */}
+        <details className="group rounded-lg border border-amber-200 overflow-hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-2 bg-amber-50/70 hover:bg-amber-50 px-3 py-2.5 transition-colors [&::-webkit-details-marker]:hidden">
+            <ChevronDown className="h-4 w-4 text-amber-700 transition-transform group-open:rotate-180 shrink-0" />
+            <Folder className="h-4 w-4 text-amber-700 shrink-0" />
+            <span className="text-sm font-semibold text-amber-900 flex-1">Comisiones</span>
+            <Badge className="bg-amber-600 text-white border-transparent text-[11px]">
+              {totalComisionesCount}
             </Badge>
-            <span className="text-xs font-bold text-teal-800 tabular-nums">{monto(totalUltimoMes)}</span>
-          </div>
-          {vendidosUltimoMes.length === 0 ? (
-            <p className="px-3 py-2.5 text-xs text-muted-foreground">Sin ventas en los últimos 30 días.</p>
-          ) : (
-            <div className="divide-y divide-teal-100">
-              {vendidosUltimoMes.map((e) => (
-                <div key={`mes-${e.id}`} className="flex items-center gap-3 px-3 py-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{e.nombrePareja || e.nombre || "Sin nombre"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Vendido el {formatFecha(fechaVentaEvento(e))}
-                      {e.salon ? ` · ${salonLabel(e.salon)}` : ""}
-                    </p>
-                  </div>
-                  <p className="text-sm font-semibold text-teal-800 tabular-nums shrink-0">
-                    {monto(totalVentaEvento(e))}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Eventos asignados */}
-        {eventosAsignados.length > 0 && (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setExpandido((v) => !v)}
-              aria-expanded={expandido}
-              className="w-full flex items-center gap-2 bg-muted/50 hover:bg-muted px-3 py-2 text-left transition-colors"
-            >
-              {expandido ? (
-                <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              )}
-              <Calendar className="h-3.5 w-3.5 text-teal-600 shrink-0" />
-              <span className="text-xs font-semibold flex-1">Eventos vendidos</span>
-              <Badge variant="outline" className="text-[11px]">{eventosAsignados.length}</Badge>
-            </button>
-            {expandido && (
-              <div className="divide-y divide-border">
-                {eventosAsignados.map((e) => {
-                  const total = totalVentaEvento(e)
-                  return (
-                    <div key={e.id} className="flex items-center gap-3 px-3 py-2.5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {e.nombrePareja || e.nombre || "Sin nombre"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatFecha(e.fecha)}
-                          {e.salon ? ` · ${salonLabel(e.salon)}` : ""}
-                          {e.tipoEvento ? ` · ${e.tipoEvento}` : ""}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold tabular-nums">{monto(total)}</p>
-                        <p className="text-xs text-teal-700 tabular-nums">
-                          Comisión: {monto((total * pct) / 100)}
-                        </p>
-                        {e.comisionPagada ? (
-                          <Badge className="mt-1 bg-teal-100 text-teal-700 border-teal-200 text-[10px] gap-1">
-                            <BadgeCheck className="h-3 w-3" />
-                            Pagada{e.comisionPagadaFecha ? ` el ${formatFecha(e.comisionPagadaFecha)}` : ""}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="mt-1 text-[10px] text-muted-foreground">
-                            Comisión pendiente
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+            <span className="text-sm font-bold text-amber-900 tabular-nums">{monto(totalComisionesMonto)}</span>
+          </summary>
+          <div className="space-y-2 p-3 bg-amber-50/20">
+            {totalComisionesCount === 0 ? (
+              <p className="py-2 text-center text-xs text-muted-foreground">
+                {vendedor.nombre} todavía no tiene comisiones registradas.
+              </p>
+            ) : (
+              <>
+                <Subcarpeta titulo="Lista para pagar" color="#059669" count={listas.length} subtotal={totalListas} oculto={oculto}>
+                  {listas.map((g) => (
+                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} />
+                  ))}
+                </Subcarpeta>
+                <Subcarpeta titulo="Próximamente" color="#b45309" count={proximas.length} subtotal={totalProximas} oculto={oculto}>
+                  {proximas.map((g) => (
+                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} />
+                  ))}
+                </Subcarpeta>
+                <Subcarpeta titulo="Pagadas" color="#0f766e" count={pagadasVivas.length + archivadas.length} subtotal={totalPagadas} oculto={oculto}>
+                  {pagadasVivas.map((g) => (
+                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} />
+                  ))}
+                  {archivadas.map((g) => (
+                    <FilaComisionArchivada
+                      key={`arch-${g.id}`}
+                      concepto={g.concepto}
+                      monto={g.monto}
+                      salon={g.salon}
+                      fecha={g.fecha}
+                      oculto={oculto}
+                    />
+                  ))}
+                </Subcarpeta>
+              </>
             )}
           </div>
-        )}
+        </details>
       </CardContent>
     </Card>
   )
 }
 
 export default function VendedoresPage() {
-  const { vendedores, eventos } = useStore()
+  const { vendedores, eventos, state } = useStore()
+  const { ahora } = useClock()
+  const dataCaja = useCajaJazmines(state, "todos", ahora)
 
   // Eventos asignados por vendedor (por nombre, como queda guardado en el contrato)
   const eventosPorVendedor = (nombre: string) =>
     (eventos || []).filter((e) => e.contrato?.vendedor === nombre)
+
+  const comisionesVivasPorVendedor = (nombre: string) =>
+    dataCaja.gastosVariables.filter((g) => g.esComision && g.comisionDetalle?.vendedor === nombre)
+
+  const archivadasPorVendedor = (nombre: string) =>
+    (state.gastosArchivados || []).filter(
+      (g) => g.origen === "caja_jazmines_comision" && g.concepto.includes(nombre),
+    )
 
   const totalEventosAsignados = (eventos || []).filter((e) => e.contrato?.vendedor).length
 
@@ -356,10 +359,30 @@ export default function VendedoresPage() {
           </Button>
         </div>
 
+        {/* Banner explicativo del flujo de comisiones */}
+        <div className="rounded-lg border border-border bg-muted/40 p-4 flex gap-3">
+          <Info className="h-4 w-4 text-teal-600 shrink-0 mt-0.5" />
+          <div className="text-sm text-muted-foreground">
+            <p className="font-semibold text-foreground mb-1">Cómo se calculan las comisiones</p>
+            <p className="leading-relaxed">
+              El cálculo de la comisión para cada vendedor se basa en un {PORCENTAJE_COMISION_VENDEDOR}% fijo. Por
+              cada evento vendido, primero se restan los costos de servicios del monto total del evento. El{" "}
+              {PORCENTAJE_COMISION_VENDEDOR}% de comisión se aplica sobre la diferencia resultante (Monto de Evento −
+              Servicios).
+            </p>
+          </div>
+        </div>
+
         {/* Cards de vendedores */}
         <div className="grid gap-4 items-start md:grid-cols-2 lg:grid-cols-3">
           {vendedores.map((v) => (
-            <VendedorCard key={v.id} vendedor={v} eventosAsignados={eventosPorVendedor(v.nombre)} />
+            <VendedorCard
+              key={v.id}
+              vendedor={v}
+              eventosAsignados={eventosPorVendedor(v.nombre)}
+              comisionesVivas={comisionesVivasPorVendedor(v.nombre)}
+              archivadas={archivadasPorVendedor(v.nombre)}
+            />
           ))}
         </div>
 
