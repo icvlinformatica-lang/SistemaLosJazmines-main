@@ -38,6 +38,8 @@ export interface EgresoPendienteServicio {
   eventoNombre: string
   /** Fecha ACTUAL del evento (YYYY-MM-DD) para mostrar junto al nombre */
   eventoFecha?: string
+  /** Fecha en que se cargó/creó el registro del evento (ISO, viene de created_at) */
+  eventoFechaCarga?: string
   salon: string
   servicioNombre: string
   servicioId?: string // presente para egresos de servicios (no menú/barra); para sueldos es el id de la entrada de personal
@@ -255,6 +257,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             eventoId: evento.id,
           eventoNombre,
           eventoFecha: evento.fecha || undefined,
+  eventoFechaCarga: evento.createdAt || undefined,
           salon: evento.salon || "",
           servicioNombre: "Menú del evento",
             tipo: "menu",
@@ -293,6 +296,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             eventoId: evento.id,
           eventoNombre,
           eventoFecha: evento.fecha || undefined,
+  eventoFechaCarga: evento.createdAt || undefined,
           salon: evento.salon || "",
           servicioNombre: "Barra del evento",
             tipo: "barra",
@@ -322,6 +326,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
           eventoId: evento.id,
           eventoNombre,
           eventoFecha: evento.fecha || undefined,
+  eventoFechaCarga: evento.createdAt || undefined,
           salon: evento.salon || "",
           servicioNombre: `${pp.nombrePersonal} (${pp.servicioNombre})`,
           servicioId: pp.id,
@@ -355,6 +360,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             eventoId: evento.id,
           eventoNombre,
           eventoFecha: evento.fecha || undefined,
+  eventoFechaCarga: evento.createdAt || undefined,
           salon: evento.salon || "",
           servicioNombre: `${pe.nombre} (${pe.funcion})`,
             servicioId: pe.id,
@@ -407,6 +413,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             eventoId: evento.id,
             eventoNombre,
             eventoFecha: evento.fecha || undefined,
+  eventoFechaCarga: evento.createdAt || undefined,
             salon: evento.salon || "",
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
@@ -429,6 +436,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
             eventoId: evento.id,
             eventoNombre,
             eventoFecha: evento.fecha || undefined,
+  eventoFechaCarga: evento.createdAt || undefined,
             salon: evento.salon || "",
             servicioNombre: srv.nombre,
             servicioId: srv.servicioId,
