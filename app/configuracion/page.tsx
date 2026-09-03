@@ -17,8 +17,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck, Wallet } from "lucide-react"
-import { useState, useEffect } from "react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck, Wallet, Search, X } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
 import type { Insumo, Receta } from "@/lib/store"
@@ -101,6 +102,8 @@ export default function ConfiguracionPage() {
   // Activity log state
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([])
   const [isLoadingActivity, setIsLoadingActivity] = useState(true)
+  const [activitySearch, setActivitySearch] = useState("")
+  const activitySearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Check data status on mount and when state changes
   useEffect(() => {
@@ -142,10 +145,11 @@ export default function ConfiguracionPage() {
   }, [state])
 
   // Load activity log
-  const fetchActivity = async () => {
+  const fetchActivity = async (query?: string) => {
     setIsLoadingActivity(true)
     try {
-      const res = await fetch("/api/activity-log")
+      const url = query && query.trim() ? `/api/activity-log?q=${encodeURIComponent(query.trim())}` : "/api/activity-log"
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         setActivityLog(Array.isArray(data) ? data : [])
@@ -160,6 +164,22 @@ export default function ConfiguracionPage() {
   useEffect(() => {
     fetchActivity()
   }, [])
+
+  // Buscar en el historial con una pequeña espera para no disparar una consulta por cada tecla
+  useEffect(() => {
+    if (activitySearchDebounceRef.current) {
+      clearTimeout(activitySearchDebounceRef.current)
+    }
+    activitySearchDebounceRef.current = setTimeout(() => {
+      fetchActivity(activitySearch)
+    }, 350)
+    return () => {
+      if (activitySearchDebounceRef.current) {
+        clearTimeout(activitySearchDebounceRef.current)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activitySearch])
 
   const handleManualSync = async () => {
     setIsSyncing(true)
@@ -660,7 +680,7 @@ export default function ConfiguracionPage() {
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground"
-                  onClick={fetchActivity}
+                  onClick={() => fetchActivity(activitySearch)}
                   disabled={isLoadingActivity}
                 >
                   <RefreshCw className={`h-4 w-4 mr-1 ${isLoadingActivity ? "animate-spin" : ""}`} />
@@ -697,6 +717,25 @@ export default function ConfiguracionPage() {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={activitySearch}
+                onChange={(e) => setActivitySearch(e.target.value)}
+                placeholder="Buscar por nombre de evento, insumo, vendedor, DNI, monto..."
+                className="pl-9 pr-9 h-11 text-base"
+              />
+              {activitySearch && (
+                <button
+                  type="button"
+                  onClick={() => setActivitySearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Limpiar búsqueda"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
             {isLoadingActivity ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -705,8 +744,17 @@ export default function ConfiguracionPage() {
             ) : activityLog.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <History className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                <p className="text-base">Sin actividad registrada</p>
-                <p className="text-sm mt-1">Las acciones apareceran aqui automaticamente</p>
+                {activitySearch ? (
+                  <>
+                    <p className="text-base">Sin resultados para &quot;{activitySearch}&quot;</p>
+                    <p className="text-sm mt-1">Probá con otra palabra: el nombre del evento, un vendedor, un DNI o un monto</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-base">Sin actividad registrada</p>
+                    <p className="text-sm mt-1">Las acciones apareceran aqui automaticamente</p>
+                  </>
+                )}
               </div>
             ) : (
               <ScrollArea className="h-[420px] pr-2">
