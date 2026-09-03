@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import type { AppState, CostoOperativo, MovimientoCaja, RegistroMonto } from "../store"
-import { salonLabel } from "../store"
+import { salonLabel, calcularCostoServiciosContratados, PORCENTAJE_COMISION_VENDEDOR } from "../store"
 import { calcularProporcionCajaEventos } from "../cobrar-cuota"
 
 // ============================================================
@@ -55,6 +55,8 @@ export interface GastoVariable {
     vendedor: string
     eventoNombre: string
     totalEvento: number
+    /** Costo de los servicios contratados del evento (se resta del total antes de aplicar el %) */
+    costoServicios: number
     porcentaje: number
     /** ID del evento para poder marcar la comisión como pagada */
     eventoId: string
@@ -526,7 +528,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
 
     // ----------------------------------------------------------
     // COMISIONES DE VENDEDORES → gasto variable automático por evento vendido.
-    // Muestra el total del evento, el % del vendedor y el nombre de ambos.
+    // Regla de negocio fija: Comisión = (Total del evento − Costo de los
+    // servicios contratados) × 5%. El % ya no se configura por vendedor.
     // ----------------------------------------------------------
     const vendedoresPorNombre = new Map(
       (state.vendedores || []).map((v) => [v.nombre.toLowerCase(), v]),
@@ -538,7 +541,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       const nombreVendedor = evento.contrato?.vendedor
       if (!nombreVendedor) continue
       const vendedor = vendedoresPorNombre.get(nombreVendedor.toLowerCase())
-      if (!vendedor || !vendedor.comisionPct || vendedor.comisionPct <= 0) continue
+      if (!vendedor) continue
 
       const totalEvento =
         evento.planDeCuotas && evento.planDeCuotas.montoTotal > 0
@@ -547,7 +550,10 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       if (totalEvento <= 0) continue
 
       const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
-      const montoComision = Math.round((totalEvento * vendedor.comisionPct) / 100)
+      const costoServicios = calcularCostoServiciosContratados(evento, state)
+      const baseComision = Math.max(0, totalEvento - costoServicios)
+      if (baseComision <= 0) continue
+      const montoComision = Math.round((baseComision * PORCENTAJE_COMISION_VENDEDOR) / 100)
 
       // ¿Lista para pagar? Se cumple con 4+ cuotas pagadas del evento,
       // o si la seña ya cobrada (movimiento real en cajas) cubre la comisión.
@@ -586,7 +592,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           vendedor: vendedor.nombre,
           eventoNombre,
           totalEvento,
-          porcentaje: vendedor.comisionPct,
+          costoServicios,
+          porcentaje: PORCENTAJE_COMISION_VENDEDOR,
           eventoId: evento.id,
         },
         listaParaPagar,

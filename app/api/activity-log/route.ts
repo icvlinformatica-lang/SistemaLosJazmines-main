@@ -3,8 +3,23 @@ export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url)
+    const q = searchParams.get("q")?.trim()
+
+    if (q) {
+      const like = `%${q}%`
+      const rows = await sql`
+        SELECT id, tipo, accion, nombre, detalle, created_at
+        FROM activity_log
+        WHERE nombre ILIKE ${like} OR detalle ILIKE ${like} OR tipo ILIKE ${like}
+        ORDER BY created_at DESC
+        LIMIT 200
+      `
+      return NextResponse.json(rows)
+    }
+
     const rows = await sql`
       SELECT id, tipo, accion, nombre, detalle, created_at
       FROM activity_log

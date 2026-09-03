@@ -2067,6 +2067,25 @@ export function calcularSeñaSaldoServicio(
   return { costoTotal, montoSeña, saldoPendiente }
 }
 
+/** Porcentaje fijo de comisión de vendedor: 5% sobre (Total del evento − Costo de los servicios). */
+export const PORCENTAJE_COMISION_VENDEDOR = 5
+
+/**
+ * Costo real de los servicios contratados en un evento (mismo criterio en
+ * vivo que Caja Eventos / Costos del evento: costoParaCajaEventos del
+ * catálogo × cantidad, con seña + saldo). Se usa para calcular la comisión
+ * del vendedor: Comisión = (Total del evento − Costo de servicios) × 5%.
+ */
+export function calcularCostoServiciosContratados(
+  evento: Pick<EventoGuardado, "servicios">,
+  state: Pick<AppState, "servicios">,
+): number {
+  return (evento.servicios || []).reduce((sum, srv) => {
+    const { costoTotal } = calcularSeñaSaldoServicio(srv, state)
+    return sum + costoTotal
+  }, 0)
+}
+
 export function calcularCostosOperativos(
   evento: Evento,
   costosOperativos: CostoOperativo[],
