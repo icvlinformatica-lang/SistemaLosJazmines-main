@@ -269,13 +269,14 @@ function CarpetaSalon({
           className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
         />
       </button>
-      <div
-        className={`grid transition-all duration-500 ease-in-out ${
-          abierta ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        }`}
-      >
-        <div className="overflow-hidden min-h-0">{children}</div>
-      </div>
+      {/* Los hijos se montan SOLO cuando la carpeta está abierta: en la vista
+          "Todos los salones" esto evita montar miles de filas (cada una con su
+          menú) de golpe, que era lo que hacía lenta la carga. */}
+      {abierta && (
+        <div className="grid grid-rows-[1fr] opacity-100">
+          <div className="overflow-hidden min-h-0">{children}</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -381,13 +382,13 @@ function CarpetaTiempo({
           className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
         />
       </button>
-      <div
-        className={`grid transition-all duration-300 ease-in-out ${
-          abierta ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        }`}
-      >
-        <div className="overflow-hidden min-h-0">{children}</div>
-      </div>
+      {/* Montaje diferido: los hijos (subcarpetas o filas) solo existen en el
+          DOM cuando la carpeta está abierta. */}
+      {abierta && (
+        <div className="grid grid-rows-[1fr] opacity-100">
+          <div className="overflow-hidden min-h-0">{children}</div>
+        </div>
+      )}
     </div>
   )
 }
