@@ -1208,11 +1208,11 @@ useStore()
   const renderFilasPagar = (items: EgresoPendienteServicio[]) =>
     agruparFilasPago(items, state.eventos ?? []).map((fila) => (
       <TableRow key={fila.key}>
-        <TableCell className="pl-6">
+        <TableCell className="pl-6 w-[180px] max-w-[180px]">
           <Badge variant="outline" className={CATEGORIA_PAGO[fila.categoria].className}>
             {CATEGORIA_PAGO[fila.categoria].label}
           </Badge>
-          <p className="font-medium text-sm mt-1">{fila.servicioNombre}</p>
+          <p className="font-medium text-sm mt-1 whitespace-normal break-words">{fila.servicioNombre}</p>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">{formatFechaCarga(fila.eventoFechaCarga)}</TableCell>
         <TableCell className="text-sm text-muted-foreground">
@@ -1889,9 +1889,9 @@ useStore()
                                           <Table>
                                             <TableHeader>
                                               <TableRow>
-                                                <TableHead className="pl-6">Tipo de servicio</TableHead>
-                                                <TableHead>Fecha de carga</TableHead>
-                                                <TableHead>Fecha del evento</TableHead>
+                                                <TableHead className="pl-6 w-[180px]">Tipo de servicio</TableHead>
+                                                <TableHead className="whitespace-nowrap">Fecha de carga</TableHead>
+                                                <TableHead className="whitespace-nowrap">Fecha del evento</TableHead>
                                                 <TableHead>Nombre del evento</TableHead>
                                                 <TableHead>Tipo de evento</TableHead>
                                                 <TableHead className="text-right">Seña</TableHead>
@@ -1920,9 +1920,9 @@ useStore()
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="pl-6">Tipo de servicio</TableHead>
-                      <TableHead>Fecha de carga</TableHead>
-                      <TableHead>Fecha del evento</TableHead>
+                      <TableHead className="pl-6 w-[180px]">Tipo de servicio</TableHead>
+                      <TableHead className="whitespace-nowrap">Fecha de carga</TableHead>
+                      <TableHead className="whitespace-nowrap">Fecha del evento</TableHead>
                       <TableHead>Nombre del evento</TableHead>
                       <TableHead>Tipo de evento</TableHead>
                       <TableHead className="text-right">Seña</TableHead>
