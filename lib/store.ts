@@ -997,6 +997,7 @@ export const VENDEDORES_DEFAULT: Vendedor[] = [
   { id: "maira", nombre: "Maira", emoji: "", sueldo: 0, comisionPct: 0 },
   { id: "sonia", nombre: "Sonia", emoji: "", sueldo: 0, comisionPct: 0 },
   { id: "gustavo", nombre: "Gustavo", emoji: "", sueldo: 0, comisionPct: 0 },
+  { id: "belen", nombre: "Belén", emoji: "", sueldo: 0, comisionPct: 0 },
 ]
 
 export interface AppState {
