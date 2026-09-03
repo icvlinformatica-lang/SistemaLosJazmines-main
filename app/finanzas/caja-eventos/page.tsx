@@ -135,6 +135,7 @@ interface FilaPagoUnificada {
   servicioNombre: string
   eventoId: string
   eventoNombre: string
+  eventoTipo?: string
   eventoFecha?: string
   eventoFechaCarga?: string
   salon: string
@@ -169,6 +170,7 @@ function agruparFilasPago(
         servicioNombre: eg.servicioNombre,
         eventoId: eg.eventoId,
         eventoNombre: eg.eventoNombre,
+        eventoTipo: eg.eventoTipo,
         eventoFecha: eg.eventoFecha,
         eventoFechaCarga: eg.eventoFechaCarga,
         salon: eg.salon,
@@ -1206,11 +1208,11 @@ useStore()
   const renderFilasPagar = (items: EgresoPendienteServicio[]) =>
     agruparFilasPago(items, state.eventos ?? []).map((fila) => (
       <TableRow key={fila.key}>
-        <TableCell className="pl-6">
+        <TableCell className="pl-6 w-[180px] max-w-[180px]">
           <Badge variant="outline" className={CATEGORIA_PAGO[fila.categoria].className}>
             {CATEGORIA_PAGO[fila.categoria].label}
           </Badge>
-          <p className="font-medium text-sm mt-1">{fila.servicioNombre}</p>
+          <p className="font-medium text-sm mt-1 whitespace-normal break-words">{fila.servicioNombre}</p>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">{formatFechaCarga(fila.eventoFechaCarga)}</TableCell>
         <TableCell className="text-sm text-muted-foreground">
@@ -1223,6 +1225,13 @@ useStore()
               <SalonDot salon={fila.salon} size={7} />
               {salonLabel(fila.salon)}
             </p>
+          )}
+        </TableCell>
+        <TableCell className="text-sm">
+          {fila.eventoTipo ? (
+            <Badge variant="secondary" className="font-normal">{fila.eventoTipo}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
           )}
         </TableCell>
         <TableCell className="text-right">{renderCeldaPago(fila.seña)}</TableCell>
@@ -1880,10 +1889,11 @@ useStore()
                                           <Table>
                                             <TableHeader>
                                               <TableRow>
-                                                <TableHead className="pl-6">Tipo de servicio</TableHead>
-                                                <TableHead>Fecha de carga</TableHead>
-                                                <TableHead>Fecha del evento</TableHead>
+                                                <TableHead className="pl-6 w-[180px]">Tipo de servicio</TableHead>
+                                                <TableHead className="whitespace-nowrap">Fecha de carga</TableHead>
+                                                <TableHead className="whitespace-nowrap">Fecha del evento</TableHead>
                                                 <TableHead>Nombre del evento</TableHead>
+                                                <TableHead>Tipo de evento</TableHead>
                                                 <TableHead className="text-right">Seña</TableHead>
                                                 <TableHead className="text-right">Saldo restante</TableHead>
                                                 <TableHead className="w-10 pr-4">
@@ -1910,10 +1920,11 @@ useStore()
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="pl-6">Tipo de servicio</TableHead>
-                      <TableHead>Fecha de carga</TableHead>
-                      <TableHead>Fecha del evento</TableHead>
+                      <TableHead className="pl-6 w-[180px]">Tipo de servicio</TableHead>
+                      <TableHead className="whitespace-nowrap">Fecha de carga</TableHead>
+                      <TableHead className="whitespace-nowrap">Fecha del evento</TableHead>
                       <TableHead>Nombre del evento</TableHead>
+                      <TableHead>Tipo de evento</TableHead>
                       <TableHead className="text-right">Seña</TableHead>
                       <TableHead className="text-right">Saldo restante</TableHead>
                       <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
