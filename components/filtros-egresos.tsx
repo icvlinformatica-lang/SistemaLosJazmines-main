@@ -64,8 +64,6 @@ export function esFiltroEgresosActivo(f: FiltroEgresos): boolean {
 
 const CHIPS_TIPO = [
   { id: "todos", label: "Todos", activo: "bg-foreground text-background border-foreground", inactivo: "bg-muted/50 text-muted-foreground border-border hover:bg-muted" },
-  { id: "seña", label: "Seña", activo: "bg-amber-500 text-white border-amber-500", inactivo: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" },
-  { id: "saldo", label: "Saldo", activo: "bg-orange-500 text-white border-orange-500", inactivo: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100" },
   { id: "menu", label: "Menú", activo: "bg-sky-500 text-white border-sky-500", inactivo: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100" },
   { id: "barra", label: "Barra", activo: "bg-violet-500 text-white border-violet-500", inactivo: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" },
   { id: "sueldo", label: "Sueldos", activo: "bg-emerald-500 text-white border-emerald-500", inactivo: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
@@ -84,10 +82,15 @@ export function BarraFiltrosEgresos({
   egresos,
   filtro,
   onChange,
+  catalogoServicios = [],
 }: {
   egresos: EgresoPendienteServicio[]
   filtro: FiltroEgresos
   onChange: (f: FiltroEgresos) => void
+  /** Nombres de todos los servicios activos del catálogo (Finanzas → Servicios),
+   * para que el sub-filtro de "Servicios" muestre todo lo que ofrecemos, no
+   * solo los que tienen un pago pendiente en este momento. */
+  catalogoServicios?: string[]
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -115,17 +118,28 @@ export function BarraFiltrosEgresos({
     return c
   }, [base])
 
-  // Sub-opciones según el tipo activo: tipos de servicio o eventos (sueldos)
+  // Sub-opciones según el tipo activo: para "Servicios" es el catálogo
+  // completo (todo lo que ofrecemos, tenga o no pagos pendientes ahora);
+  // para "Sueldos" son los eventos con pagos de personal pendientes.
   const subOpciones = useMemo(() => {
-    if (!["seña", "saldo", "servicios", "sueldo"].includes(filtro.tipo)) return []
+    if (filtro.tipo === "servicios") {
+      const enTipo = base.filter((e) => coincideTipo(e, "servicios"))
+      const c = new Map<string, number>()
+      for (const e of enTipo) {
+        if (e.servicioNombre) c.set(e.servicioNombre, (c.get(e.servicioNombre) || 0) + 1)
+      }
+      const nombres = new Set(catalogoServicios)
+      for (const nombre of c.keys()) nombres.add(nombre)
+      return [...nombres].sort((a, b) => a.localeCompare(b)).map((nombre) => [nombre, c.get(nombre) || 0] as [string, number])
+    }
+    if (filtro.tipo !== "sueldo") return []
     const enTipo = base.filter((e) => coincideTipo(e, filtro.tipo))
     const c = new Map<string, number>()
     for (const e of enTipo) {
-      const clave = filtro.tipo === "sueldo" ? e.eventoNombre : e.servicioNombre
-      if (clave) c.set(clave, (c.get(clave) || 0) + 1)
+      if (e.eventoNombre) c.set(e.eventoNombre, (c.get(e.eventoNombre) || 0) + 1)
     }
     return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [base, filtro.tipo])
+  }, [base, filtro.tipo, catalogoServicios])
 
   const setTipo = (tipo: string) => onChange({ ...filtro, tipo, sub: null })
 

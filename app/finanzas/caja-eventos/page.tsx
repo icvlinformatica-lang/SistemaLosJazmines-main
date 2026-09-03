@@ -736,6 +736,13 @@ useStore()
     () => filtrarEgresos(egresosProximos, filtroPagar),
     [egresosProximos, filtroPagar],
   )
+  // Catálogo completo de servicios activos (Finanzas → Servicios), para que
+  // el sub-filtro "Servicios" de la barra de filtros muestre todo lo que
+  // ofrecemos y no solo lo que tiene un pago pendiente en este momento.
+  const catalogoServiciosActivos = useMemo(
+    () => state.servicios.filter((s) => s.activo).map((s) => s.nombre),
+    [state.servicios],
+  )
   const filtroPagarActivo = esFiltroEgresosActivo(filtroPagar)
   const totalPorPagar60 = useMemo(
     () => egresosPendientes.filter((e) => e.diasRestantes <= DIAS_TOTAL_PAGO).reduce((s, e) => s + e.monto, 0),
@@ -1645,6 +1652,7 @@ useStore()
                 <BarraFiltrosEgresos
                   egresos={egresosProximos}
                   filtro={filtroPagar}
+                  catalogoServicios={catalogoServiciosActivos}
                   onChange={(f) => {
                     setFiltroPagar(f)
                     setFilasPagar(LIMITE_FILAS)
