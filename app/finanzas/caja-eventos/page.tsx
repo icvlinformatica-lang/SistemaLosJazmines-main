@@ -95,6 +95,100 @@ function formatFecha(dateStr: string): string {
   })
 }
 
+// Fecha de carga de un evento (created_at, viene como timestamp ISO completo
+// desde la base — a diferencia de formatFecha, que espera "YYYY-MM-DD").
+function formatFechaCarga(dateStr?: string): string {
+  if (!dateStr) return "—"
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "2-digit",
+  })
+}
+
+// Categoría visual de cada fila unificada de "Por pagar": define el color
+// del badge y la etiqueta que se muestra junto al nombre del servicio.
+const CATEGORIA_PAGO: Record<
+  "servicio" | "menu" | "barra" | "sueldo",
+  { label: string; className: string }
+> = {
+  servicio: { label: "Servicio", className: "bg-indigo-50 text-indigo-700 border-indigo-200 text-[11px]" },
+  menu: { label: "Menú", className: "bg-sky-50 text-sky-700 border-sky-200 text-[11px]" },
+  barra: { label: "Barra", className: "bg-violet-50 text-violet-700 border-violet-200 text-[11px]" },
+  sueldo: { label: "Sueldo", className: "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]" },
+}
+
+interface FilaPagoUnificada {
+  key: string
+  categoria: "servicio" | "menu" | "barra" | "sueldo"
+  servicioNombre: string
+  eventoId: string
+  eventoNombre: string
+  eventoFecha?: string
+  eventoFechaCarga?: string
+  salon: string
+  seña?: { monto: number; pagado: boolean; fecha?: string; egreso?: EgresoPendienteServicio }
+  saldo?: { monto: number; pagado: boolean; fecha?: string; egreso?: EgresoPendienteServicio }
+}
+
+// Agrupa la lista plana de egresos pendientes (una fila por seña/saldo/menú/
+// barra/sueldo) en una fila por servicio: la seña y el saldo restante de un
+// mismo servicio quedan juntos en la misma fila, cada uno en su columna.
+function agruparFilasPago(
+  items: EgresoPendienteServicio[],
+  eventos: EventoGuardado[],
+): FilaPagoUnificada[] {
+  const map = new Map<string, FilaPagoUnificada>()
+
+  for (const eg of items) {
+    const categoria: FilaPagoUnificada["categoria"] =
+      eg.tipo === "seña" || eg.tipo === "saldo" ? "servicio" : (eg.tipo as "menu" | "barra" | "sueldo")
+    const key =
+      categoria === "servicio"
+        ? `${eg.eventoId}__srv__${eg.servicioId}`
+        : categoria === "sueldo"
+          ? `${eg.eventoId}__sueldo__${eg.servicioId ?? eg.id}`
+          : `${eg.eventoId}__${categoria}`
+
+    let fila = map.get(key)
+    if (!fila) {
+      fila = {
+        key,
+        categoria,
+        servicioNombre: eg.servicioNombre,
+        eventoId: eg.eventoId,
+        eventoNombre: eg.eventoNombre,
+        eventoFecha: eg.eventoFecha,
+        eventoFechaCarga: eg.eventoFechaCarga,
+        salon: eg.salon,
+      }
+      map.set(key, fila)
+    }
+
+    if (eg.tipo === "seña") {
+      fila.seña = { monto: eg.monto, pagado: false, egreso: eg }
+    } else {
+      // saldo, menú, barra y sueldo son pagos únicos: van en la columna "Saldo restante".
+      fila.saldo = { monto: eg.monto, pagado: false, egreso: eg }
+      // Si el saldo de un servicio sigue pendiente pero su seña ya se pagó,
+      // esa seña ya no aparece en egresosPendientes (se saca de la lista al
+      // pagarla) — la recuperamos desde el propio servicio del evento para
+      // poder mostrarla en verde en la misma fila.
+      if (eg.tipo === "saldo" && eg.estadoPago && eg.estadoPago !== "sin_seña" && !fila.seña) {
+        const evento = eventos.find((e) => e.id === eg.eventoId)
+        const srv = evento?.servicios?.find((s) => s.servicioId === eg.servicioId)
+        if (srv?.montoSeña) {
+          fila.seña = { monto: srv.montoSeña, pagado: true, fecha: srv.fechaPagoSeña }
+        }
+      }
+    }
+  }
+
+  return [...map.values()]
+}
+
 function vencBadge(dias: number) {
   if (dias < 0)
     return <Badge className="bg-red-100 text-red-700 border-red-200 text-[11px]">vencido</Badge>
@@ -943,68 +1037,54 @@ useStore()
       </TableRow>
     ))
 
+  // Celda clicable de Seña / Saldo restante: pendiente (roja, click para
+  // pagar) o pagada (verde, muestra cuánto y cuándo se pagó).
+  const renderCeldaPago = (dato?: FilaPagoUnificada["seña"]) => {
+    if (!dato) return <span className="text-xs text-muted-foreground">—</span>
+    if (dato.pagado) {
+      return (
+        <div className="inline-flex flex-col items-end gap-0.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1">
+          <span className="text-xs font-bold text-emerald-700">{formatCurrency(dato.monto)}</span>
+          {dato.fecha && <span className="text-[10px] text-emerald-600">{formatFecha(dato.fecha)}</span>}
+        </div>
+      )
+    }
+    return (
+      <button
+        type="button"
+        title="Marcar como pagado"
+        onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
+        className="inline-flex flex-col items-end gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-right transition-colors hover:bg-yellow-100"
+      >
+        <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
+      </button>
+    )
+  }
+
   const renderFilasPagar = (items: EgresoPendienteServicio[]) =>
-    items.map((eg) => (
-      <TableRow key={eg.id}>
+    agruparFilasPago(items, state.eventos ?? []).map((fila) => (
+      <TableRow key={fila.key}>
         <TableCell className="pl-6">
-          <Badge
-            variant="outline"
-            className={
-              eg.tipo === "seña"
-                ? "bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
-                : eg.tipo === "menu"
-                  ? "bg-sky-50 text-sky-700 border-sky-200 text-[11px]"
-                  : eg.tipo === "barra"
-                    ? "bg-violet-50 text-violet-700 border-violet-200 text-[11px]"
-                    : eg.tipo === "sueldo"
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
-                      : "bg-orange-50 text-orange-700 border-orange-200 text-[11px]"
-            }
-          >
-            {eg.tipo === "seña" ? "Seña" : eg.tipo === "menu" ? "Menú" : eg.tipo === "barra" ? "Barra" : eg.tipo === "sueldo" ? "Sueldo" : "Saldo"}
+          <Badge variant="outline" className={CATEGORIA_PAGO[fila.categoria].className}>
+            {CATEGORIA_PAGO[fila.categoria].label}
           </Badge>
+          <p className="font-medium text-sm mt-1">{fila.servicioNombre}</p>
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">{formatFechaCarga(fila.eventoFechaCarga)}</TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {fila.eventoFecha ? formatFecha(fila.eventoFecha) : "—"}
         </TableCell>
         <TableCell>
-          <p className="font-medium text-sm">{eg.servicioNombre}</p>
-          <p className="text-xs text-muted-foreground">
-            {eg.eventoNombre}
-            {eg.eventoFecha && <span> · {formatFecha(eg.eventoFecha)}</span>}
-            {eg.salon && (
-              <span className="inline-flex items-center gap-1 align-middle">
-                {" · "}
-                <SalonDot salon={eg.salon} size={7} />
-                {salonLabel(eg.salon)}
-              </span>
-            )}
-          </p>
+          <p className="text-sm">{fila.eventoNombre}</p>
+          {fila.salon && (
+            <p className="inline-flex items-center gap-1 align-middle text-xs text-muted-foreground">
+              <SalonDot salon={fila.salon} size={7} />
+              {salonLabel(fila.salon)}
+            </p>
+          )}
         </TableCell>
-        <TableCell>
-          <button
-            type="button"
-            className="group flex items-center gap-2 rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-muted transition-colors"
-            title="Cambiar fecha de vencimiento"
-            onClick={() => abrirEdicionEgreso(eg)}
-          >
-            <span className="text-sm underline decoration-dotted underline-offset-4 decoration-muted-foreground/50">
-              {formatFecha(eg.fechaVencimiento)}
-            </span>
-            {vencBadge(eg.diasRestantes)}
-            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-        </TableCell>
-        <TableCell className="text-right font-bold text-red-600">
-          −{formatCurrency(eg.monto)}
-        </TableCell>
-        <TableCell className="text-right pr-6">
-          <Button
-            size="sm"
-            variant="outline"
-          className="h-7 text-[11px] px-2 border-yellow-400 text-yellow-600 hover:bg-yellow-50"
-          onClick={() => setPagoConfirmar(eg)}
-        >
-          <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pagar
-          </Button>
-        </TableCell>
+        <TableCell className="text-right">{renderCeldaPago(fila.seña)}</TableCell>
+        <TableCell className="text-right pr-6">{renderCeldaPago(fila.saldo)}</TableCell>
       </TableRow>
     ))
 
@@ -1595,11 +1675,12 @@ useStore()
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="pl-6">Tipo</TableHead>
-                            <TableHead>Evento / Servicio</TableHead>
-                            <TableHead>Vence</TableHead>
-                            <TableHead className="text-right">A pagar</TableHead>
-                            <TableHead className="text-right pr-6"></TableHead>
+                            <TableHead className="pl-6">Tipo de servicio</TableHead>
+                            <TableHead>Fecha de carga</TableHead>
+                            <TableHead>Fecha del evento</TableHead>
+                            <TableHead>Nombre del evento</TableHead>
+                            <TableHead className="text-right">Seña</TableHead>
+                            <TableHead className="text-right pr-6">Saldo restante</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>{renderFilasPagar(g.items)}</TableBody>
@@ -1611,11 +1692,12 @@ useStore()
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="pl-6">Tipo</TableHead>
-                      <TableHead>Evento / Servicio</TableHead>
-                      <TableHead>Vence</TableHead>
-                      <TableHead className="text-right">A pagar</TableHead>
-                      <TableHead className="text-right pr-6"></TableHead>
+                      <TableHead className="pl-6">Tipo de servicio</TableHead>
+                      <TableHead>Fecha de carga</TableHead>
+                      <TableHead>Fecha del evento</TableHead>
+                      <TableHead>Nombre del evento</TableHead>
+                      <TableHead className="text-right">Seña</TableHead>
+                      <TableHead className="text-right pr-6">Saldo restante</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>{renderFilasPagar(egresosProximosFiltrados.slice(0, filasPagar))}</TableBody>
