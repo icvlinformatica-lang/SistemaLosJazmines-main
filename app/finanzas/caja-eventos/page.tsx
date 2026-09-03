@@ -243,7 +243,7 @@ function CarpetaSalon({
   totalColor: string
   abierta: boolean
   onToggle: () => void
-  children: React.ReactNode
+  children: () => React.ReactNode
 }) {
   return (
     <div className="border-b border-border last:border-b-0">
@@ -252,6 +252,7 @@ function CarpetaSalon({
         onClick={onToggle}
         aria-expanded={abierta}
         className="w-full flex items-center gap-2.5 px-6 py-3 hover:bg-muted/50 transition-colors text-left"
+        style={abierta ? { backgroundColor: `${color}1f`, boxShadow: `inset 3px 0 0 ${color}` } : undefined}
       >
         {abierta ? (
           <FolderOpen className="h-4 w-4 shrink-0" style={{ color }} />
@@ -269,12 +270,14 @@ function CarpetaSalon({
           className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
         />
       </button>
-      {/* Los hijos se montan SOLO cuando la carpeta está abierta: en la vista
-          "Todos los salones" esto evita montar miles de filas (cada una con su
-          menú) de golpe, que era lo que hacía lenta la carga. */}
+      {/* Los hijos son una función (render prop) que solo se ejecuta cuando la
+          carpeta está abierta. Así, en la vista "Todos los salones", el JSX de
+          las miles de filas (cada una con su menú) NO se construye en cada
+          render, sino recién al expandir la carpeta: eso es lo que hacía lenta
+          la carga. */}
       {abierta && (
         <div className="grid grid-rows-[1fr] opacity-100">
-          <div className="overflow-hidden min-h-0">{children}</div>
+          <div className="overflow-hidden min-h-0">{children()}</div>
         </div>
       )}
     </div>
@@ -347,6 +350,7 @@ function CarpetaTiempo({
   cantidad,
   total,
   nivel,
+  color,
   abierta,
   onToggle,
   children,
@@ -355,9 +359,10 @@ function CarpetaTiempo({
   cantidad: number
   total: number
   nivel: 1 | 2
+  color: string
   abierta: boolean
   onToggle: () => void
-  children: React.ReactNode
+  children: () => React.ReactNode
 }) {
   return (
     <div className="border-b border-border/60 last:border-b-0">
@@ -366,14 +371,22 @@ function CarpetaTiempo({
         onClick={onToggle}
         aria-expanded={abierta}
         className="w-full flex items-center gap-2 py-2.5 pr-6 hover:bg-muted/40 transition-colors text-left"
-        style={{ paddingLeft: nivel === 1 ? "2.5rem" : "4rem" }}
+        style={{
+          paddingLeft: nivel === 1 ? "2.5rem" : "4rem",
+          ...(abierta ? { backgroundColor: `${color}1a`, boxShadow: `inset 3px 0 0 ${color}` } : {}),
+        }}
       >
         {abierta ? (
-          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <FolderOpen className="h-3.5 w-3.5 shrink-0" style={{ color }} />
         ) : (
           <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
-        <span className={`text-sm ${nivel === 1 ? "font-semibold" : "font-medium"}`}>{nombre}</span>
+        <span
+          className={`text-sm ${nivel === 1 ? "font-semibold" : "font-medium"}`}
+          style={abierta ? { color } : undefined}
+        >
+          {nombre}
+        </span>
         <Badge variant="outline" className="text-[10px]">
           {cantidad}
         </Badge>
@@ -382,11 +395,11 @@ function CarpetaTiempo({
           className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
         />
       </button>
-      {/* Montaje diferido: los hijos (subcarpetas o filas) solo existen en el
-          DOM cuando la carpeta está abierta. */}
+      {/* Montaje diferido con render prop: los hijos (subcarpetas o filas) solo
+          se construyen y montan cuando la carpeta está abierta. */}
       {abierta && (
         <div className="grid grid-rows-[1fr] opacity-100">
-          <div className="overflow-hidden min-h-0">{children}</div>
+          <div className="overflow-hidden min-h-0">{children()}</div>
         </div>
       )}
     </div>
@@ -445,7 +458,7 @@ useStore()
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
 
-  // ── Extracción de dinero de la caja (retiro con justificación) ──────��───
+  // ── Extracción de dinero de la caja (retiro con justificación) ──���───��───
   const [extraerOpen, setExtraerOpen] = useState(false)
   const [extraerMonto, setExtraerMonto] = useState(0)
   const [extraerConcepto, setExtraerConcepto] = useState("")
@@ -1727,17 +1740,19 @@ useStore()
                       abierta={!!carpetasCobrar[g.salon]}
                       onToggle={() => setCarpetasCobrar((prev) => ({ ...prev, [g.salon]: !prev[g.salon] }))}
                     >
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="pl-6">Cliente / Evento</TableHead>
-                            <TableHead>Cuota</TableHead>
-                            <TableHead>Vence</TableHead>
-                            <TableHead className="text-right pr-6">A cobrar</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>{renderFilasCobrar(g.items)}</TableBody>
-                      </Table>
+                      {() => (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="pl-6">Cliente / Evento</TableHead>
+                              <TableHead>Cuota</TableHead>
+                              <TableHead>Vence</TableHead>
+                              <TableHead className="text-right pr-6">A cobrar</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>{renderFilasCobrar(g.items)}</TableBody>
+                        </Table>
+                      )}
                     </CarpetaSalon>
                   ))}
                 </div>
@@ -1817,65 +1832,79 @@ useStore()
                 </p>
               ) : salonFiltro === "todos" ? (
                 <div>
-                  {gruposPagar.map((g) => (
-                    <CarpetaSalon
-                      key={g.salon}
-                      nombre={g.salon === "General" ? "General" : salonLabel(g.salon)}
-                      color={g.salon === "General" ? SALON_COLOR_GENERAL : salonColor(g.salon, configuracionCajas)}
-                      cantidad={g.items.length}
-                      total={g.total}
-                      totalColor="text-red-600"
-                      abierta={!!carpetasPagar[g.salon]}
-                      onToggle={() => setCarpetasPagar((prev) => ({ ...prev, [g.salon]: !prev[g.salon] }))}
-                    >
-                      {agruparEgresosPorAñoMes(g.items).map((año) => {
-                        const claveAño = `${g.salon}::${año.año}`
-                        return (
-                          <CarpetaTiempo
-                            key={claveAño}
-                            nombre={año.año === 0 ? "Sin fecha" : String(año.año)}
-                            nivel={1}
-                            cantidad={año.items.length}
-                            total={año.total}
-                            abierta={!!carpetasPagar[claveAño]}
-                            onToggle={() => setCarpetasPagar((prev) => ({ ...prev, [claveAño]: !prev[claveAño] }))}
-                          >
-                            {año.meses.map((mes) => {
-                              const claveMes = `${claveAño}::${mes.mes}`
-                              return (
-                                <CarpetaTiempo
-                                  key={claveMes}
-                                  nombre={mes.nombre}
-                                  nivel={2}
-                                  cantidad={mes.items.length}
-                                  total={mes.total}
-                                  abierta={!!carpetasPagar[claveMes]}
-                                  onToggle={() =>
-                                    setCarpetasPagar((prev) => ({ ...prev, [claveMes]: !prev[claveMes] }))
-                                  }
-                                >
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead className="pl-6">Tipo de servicio</TableHead>
-                                        <TableHead>Fecha de carga</TableHead>
-                                        <TableHead>Fecha del evento</TableHead>
-                                        <TableHead>Nombre del evento</TableHead>
-                                        <TableHead className="text-right">Seña</TableHead>
-                                        <TableHead className="text-right">Saldo restante</TableHead>
-                                        <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>{renderFilasPagar(mes.items)}</TableBody>
-                                  </Table>
-                                </CarpetaTiempo>
-                              )
-                            })}
-                          </CarpetaTiempo>
-                        )
-                      })}
-                    </CarpetaSalon>
-                  ))}
+                  {gruposPagar.map((g) => {
+                    const colorSalon =
+                      g.salon === "General" ? SALON_COLOR_GENERAL : salonColor(g.salon, configuracionCajas)
+                    return (
+                      <CarpetaSalon
+                        key={g.salon}
+                        nombre={g.salon === "General" ? "General" : salonLabel(g.salon)}
+                        color={colorSalon}
+                        cantidad={g.items.length}
+                        total={g.total}
+                        totalColor="text-red-600"
+                        abierta={!!carpetasPagar[g.salon]}
+                        onToggle={() => setCarpetasPagar((prev) => ({ ...prev, [g.salon]: !prev[g.salon] }))}
+                      >
+                        {() =>
+                          agruparEgresosPorAñoMes(g.items).map((año) => {
+                            const claveAño = `${g.salon}::${año.año}`
+                            return (
+                              <CarpetaTiempo
+                                key={claveAño}
+                                nombre={año.año === 0 ? "Sin fecha" : String(año.año)}
+                                nivel={1}
+                                color={colorSalon}
+                                cantidad={año.items.length}
+                                total={año.total}
+                                abierta={!!carpetasPagar[claveAño]}
+                                onToggle={() => setCarpetasPagar((prev) => ({ ...prev, [claveAño]: !prev[claveAño] }))}
+                              >
+                                {() =>
+                                  año.meses.map((mes) => {
+                                    const claveMes = `${claveAño}::${mes.mes}`
+                                    return (
+                                      <CarpetaTiempo
+                                        key={claveMes}
+                                        nombre={mes.nombre}
+                                        nivel={2}
+                                        color={colorSalon}
+                                        cantidad={mes.items.length}
+                                        total={mes.total}
+                                        abierta={!!carpetasPagar[claveMes]}
+                                        onToggle={() =>
+                                          setCarpetasPagar((prev) => ({ ...prev, [claveMes]: !prev[claveMes] }))
+                                        }
+                                      >
+                                        {() => (
+                                          <Table>
+                                            <TableHeader>
+                                              <TableRow>
+                                                <TableHead className="pl-6">Tipo de servicio</TableHead>
+                                                <TableHead>Fecha de carga</TableHead>
+                                                <TableHead>Fecha del evento</TableHead>
+                                                <TableHead>Nombre del evento</TableHead>
+                                                <TableHead className="text-right">Seña</TableHead>
+                                                <TableHead className="text-right">Saldo restante</TableHead>
+                                                <TableHead className="w-10 pr-4">
+                                                  <span className="sr-only">Opciones</span>
+                                                </TableHead>
+                                              </TableRow>
+                                            </TableHeader>
+                                            <TableBody>{renderFilasPagar(mes.items)}</TableBody>
+                                          </Table>
+                                        )}
+                                      </CarpetaTiempo>
+                                    )
+                                  })
+                                }
+                              </CarpetaTiempo>
+                            )
+                          })
+                        }
+                      </CarpetaSalon>
+                    )
+                  })}
                 </div>
               ) : (
                 <Table>
