@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
+import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
 import {
   formatCurrency,
@@ -319,8 +320,21 @@ function EventoPageContent() {
 
   // ✅ Handlers para actualizar el store cuando el usuario termina de escribir
   const handleBlur = useCallback((field: string, value: string | number) => {
+    if (field === "fecha" && typeof value === "string" && value) {
+      const { valido, anio } = validarAnioEvento(value)
+      if (!valido) {
+        toast({
+          title: "Fecha inválida",
+          description: mensajeAnioEventoInvalido(anio),
+          variant: "destructive",
+        })
+        // Revertir el input al último valor válido guardado en el evento
+        setLocalFecha(evento?.fecha || "")
+        return
+      }
+    }
     updateEventoActual({ [field]: value })
-  }, [updateEventoActual])
+  }, [updateEventoActual, evento?.fecha, toast])
 
   const addRecetaToSegment = useCallback((segment: "adultos" | "adolescentes" | "ninos" | "dietasEspeciales", recetaId: string) => {
     if (!evento) return
@@ -517,6 +531,11 @@ function EventoPageContent() {
     }
     if (!evento.fecha) {
       errors.push("Fecha")
+    } else {
+      const { valido, anio } = validarAnioEvento(evento.fecha)
+      if (!valido) {
+        errors.push(`Fecha (${mensajeAnioEventoInvalido(anio)})`)
+      }
     }
     if (!evento.salon) {
       errors.push("Salón")
@@ -602,7 +621,7 @@ function EventoPageContent() {
         // Generar el detalle de cuotas con fechas de vencimiento.
         // Esto es lo que consumen las cajas (caja_eventos / caja_jazmines) para
         // proyectar ingresos: cada cuota se reparte según la regla del evento
-        // (regla única: costo + 5% a Eventos y resto a Jazmines).
+        // (regla ��nica: costo + 5% a Eventos y resto a Jazmines).
         const [planYear, planMonth, planDay] = (localFechaInicioPlan || new Date().toISOString().split("T")[0])
           .split("-")
           .map(Number)
@@ -1591,6 +1610,8 @@ function EventoPageContent() {
                   value={localFecha}
                   onChange={(e) => setLocalFecha(e.target.value)}
                   onBlur={() => handleBlur("fecha", localFecha)}
+                  min={FECHA_EVENTO_MIN}
+                  max={FECHA_EVENTO_MAX}
                   className="h-11 text-base"
                 />
               </div>

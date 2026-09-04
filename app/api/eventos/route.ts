@@ -3,6 +3,7 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
+import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 
 // camelCase → snake_case for DB insert/update
 function toRow(ev: Record<string, unknown>) {
@@ -175,6 +176,11 @@ export async function POST(req: Request) {
     const id = body.id || generateId()
     const r = toRow({ ...body, id })
     const nombre = r.nombre
+
+    const validacionAnio = validarAnioEvento(r.fecha)
+    if (!validacionAnio.valido) {
+      return NextResponse.json({ error: mensajeAnioEventoInvalido(validacionAnio.anio) }, { status: 400 })
+    }
 
     await sql`
       INSERT INTO eventos (

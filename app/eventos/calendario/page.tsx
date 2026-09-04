@@ -18,6 +18,7 @@ import {
   type PagoEvento,
 } from "@/lib/store"
 import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
+import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { useToast } from "@/hooks/use-toast"
 import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
@@ -497,6 +498,15 @@ export default function CalendarioPage() {
   // --- CRUD handlers ---
   const handleUpdate = () => {
     if (!selectedEvento) return
+    const { valido, anio } = validarAnioEvento(form.fecha)
+    if (!valido) {
+      toast({
+        title: "Fecha inválida",
+        description: mensajeAnioEventoInvalido(anio),
+        variant: "destructive",
+      })
+      return
+    }
     updateEvento(selectedEvento.id, form)
     setSelectedEvento({ ...selectedEvento, ...form })
     setEditMode(false)
@@ -1401,7 +1411,7 @@ export default function CalendarioPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <div className="grid gap-2">
                       <Label>Fecha</Label>
-                      <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} min="2020-01-01" max="2030-12-31" />
+                      <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} min={FECHA_EVENTO_MIN} max={FECHA_EVENTO_MAX} />
                     </div>
                     <div className="grid gap-2">
                       <Label>Horario</Label>

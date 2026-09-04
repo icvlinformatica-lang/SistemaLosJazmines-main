@@ -3,6 +3,7 @@ import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
+import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -126,6 +127,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params
     const updates = await req.json()
 
+    if ("fecha" in updates) {
+      const validacionAnio = validarAnioEvento(updates.fecha)
+      if (!validacionAnio.valido) {
+        return NextResponse.json({ error: mensajeAnioEventoInvalido(validacionAnio.anio) }, { status: 400 })
+      }
+    }
+
     const fieldMap: Record<string, string> = {
       nombre: "nombre", fecha: "fecha", horario: "horario", horarioFin: "horario_fin",
       salon: "salon", tipoEvento: "tipo_evento", nombrePareja: "nombre_pareja",
@@ -201,6 +209,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params
     const ev = await req.json()
     const nombre = ev.nombrePareja || ev.nombre || "Sin nombre"
+
+    const validacionAnio = validarAnioEvento(ev.fecha)
+    if (!validacionAnio.valido) {
+      return NextResponse.json({ error: mensajeAnioEventoInvalido(validacionAnio.anio) }, { status: 400 })
+    }
 
     await sql.unsafe(
       `UPDATE eventos SET
