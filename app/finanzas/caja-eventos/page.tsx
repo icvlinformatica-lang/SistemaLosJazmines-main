@@ -237,6 +237,7 @@ function CarpetaSalon({
   abierta,
   onToggle,
   children,
+  compacta = false,
 }: {
   nombre: string
   color: string
@@ -246,6 +247,7 @@ function CarpetaSalon({
   abierta: boolean
   onToggle: () => void
   children: () => React.ReactNode
+  compacta?: boolean
 }) {
   return (
     <div className="border-b border-border last:border-b-0">
@@ -253,7 +255,9 @@ function CarpetaSalon({
         type="button"
         onClick={onToggle}
         aria-expanded={abierta}
-        className="w-full flex items-center gap-2.5 px-6 py-3 hover:bg-muted/50 transition-colors text-left"
+        className={compacta
+          ? "w-full grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-2 py-3 hover:bg-muted/50 transition-colors text-left"
+          : "w-full flex items-center gap-2.5 px-6 py-3 hover:bg-muted/50 transition-colors text-left"}
         style={abierta ? { backgroundColor: `${color}1f`, boxShadow: `inset 3px 0 0 ${color}` } : undefined}
       >
         {abierta ? (
@@ -261,13 +265,13 @@ function CarpetaSalon({
         ) : (
           <Folder className="h-4 w-4 shrink-0" style={{ color }} />
         )}
-        <span className="font-semibold text-sm" style={{ color }}>
+        <span className="min-w-0 break-words font-semibold text-sm" style={{ color }}>
           {nombre}
         </span>
         <Badge variant="outline" className="text-[10px]">
           {cantidad}
         </Badge>
-        <span className={`ml-auto text-sm font-bold ${totalColor}`}>{formatCurrency(total)}</span>
+        <span className={`${compacta ? "col-span-2 min-w-0 break-words" : "ml-auto"} text-sm font-bold ${totalColor}`}>{formatCurrency(total)}</span>
         <ChevronDown
           className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
         />
@@ -425,6 +429,7 @@ useStore()
   // Carpetas por salón dentro de "Por cobrar" y "Por pagar" (vista Todos los salones)
   const [carpetasCobrar, setCarpetasCobrar] = useState<Record<string, boolean>>({})
   const [carpetasPagar, setCarpetasPagar] = useState<Record<string, boolean>>({})
+  const [carpetasGastos, setCarpetasGastos] = useState<Record<string, boolean>>({})
 
   // Sincronización constante: refresca eventos (fechas), servicios y precios
   // cada 15s y al volver a la pestaña, para que "Por pagar" siempre refleje
@@ -1119,6 +1124,40 @@ useStore()
   // Agrupar por salón para las carpetas de "Por cobrar" y "Por pagar"
   // (solo se usan en la vista de Todos los salones)
   const ordenSalones = useMemo(() => [...SALONES, "General"], [])
+  const gruposGastos = useMemo(() => {
+    const map = new Map<string, typeof eventosDelMes.lista>()
+    for (const evento of eventosDelMes.lista) {
+      const salon = evento.salon || "General"
+      if (!map.has(salon)) map.set(salon, [])
+      map.get(salon)!.push(evento)
+    }
+    const claves = [...ordenSalones.filter((salon) => map.has(salon)), ...[...map.keys()].filter((salon) => !ordenSalones.includes(salon))]
+    return claves.map((salon) => {
+      const items = map.get(salon)!
+      return { salon, items, total: items.reduce((sum, evento) => sum + evento.costoTotal, 0) }
+    })
+  }, [eventosDelMes.lista, ordenSalones])
+
+  const renderGastoEvento = (ev: (typeof eventosDelMes.lista)[number]) => (
+    <button
+      key={ev.id}
+      type="button"
+      onClick={() => router.push(`/eventos/costos?id=${ev.id}`)}
+      title="Ver el detalle de costos de este evento"
+      className="w-full text-left rounded-md border border-border bg-muted/30 p-2.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        <SalonDot salon={ev.salon} />
+        <span className="text-xs font-semibold truncate">{ev.nombre}</span>
+        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0" />
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-[11px] text-muted-foreground">{formatFecha(ev.fecha)}</span>
+        <span className="text-xs font-bold text-destructive">−{formatCurrency(ev.costoTotal)}</span>
+      </div>
+    </button>
+  )
+
   const gruposCobrar = useMemo(() => {
     const map = new Map<string, IngresoPendiente[]>()
     for (const ing of ingresosPendientes) {
@@ -1672,30 +1711,32 @@ useStore()
             <p className="text-xs text-muted-foreground">Sin eventos este mes.</p>
           ) : (
             <>
-              {eventosDelMes.lista.map((ev) => (
-                <button
-                  key={ev.id}
-                  type="button"
-                  onClick={() => router.push(`/eventos/costos?id=${ev.id}`)}
-                  title="Ver el detalle de costos de este evento"
-                  className="w-full text-left rounded-md border border-border bg-muted/30 p-2.5 transition-colors hover:bg-muted hover:border-teal-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <SalonDot salon={ev.salon} />
-                    <span className="text-xs font-semibold truncate">{ev.nombre}</span>
-                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0" />
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[11px] text-muted-foreground">{formatFecha(ev.fecha)}</span>
-                    <span className="text-xs font-bold text-red-600">−{formatCurrency(ev.costoTotal)}</span>
-                  </div>
-                </button>
-              ))}
+              {salonFiltro === "todos" ? (
+                <div>
+                  {gruposGastos.map((grupo) => (
+                    <CarpetaSalon
+                      key={grupo.salon}
+                      compacta
+                      nombre={grupo.salon === "General" ? "General" : salonLabel(grupo.salon)}
+                      color={grupo.salon === "General" ? SALON_COLOR_GENERAL : salonColor(grupo.salon, configuracionCajas)}
+                      cantidad={grupo.items.length}
+                      total={grupo.total}
+                      totalColor="text-destructive"
+                      abierta={!!carpetasGastos[grupo.salon]}
+                      onToggle={() => setCarpetasGastos((prev) => ({ ...prev, [grupo.salon]: !prev[grupo.salon] }))}
+                    >
+                      {() => <div className="flex flex-col gap-2 pb-2">{grupo.items.map(renderGastoEvento)}</div>}
+                    </CarpetaSalon>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">{eventosDelMes.lista.map(renderGastoEvento)}</div>
+              )}
               <div className="flex items-center justify-between border-t border-border pt-2 mt-2">
                 <span className="text-xs font-medium text-muted-foreground">
                   Total ({eventosDelMes.lista.length} {eventosDelMes.lista.length === 1 ? "evento" : "eventos"})
                 </span>
-                <span className="text-sm font-bold text-red-600">���{formatCurrency(eventosDelMes.total)}</span>
+                <span className="text-sm font-bold text-destructive">−{formatCurrency(eventosDelMes.total)}</span>
               </div>
             </>
           )}
