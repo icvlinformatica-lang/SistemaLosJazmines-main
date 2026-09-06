@@ -16,8 +16,8 @@ export const FECHA_EVENTO_MAX = `${ANIO_EVENTO_MAX}-12-31`
  * Extrae el año de una fecha en formato "YYYY-MM-DD" (o cualquier string que
  * empiece así). Devuelve null si no se puede determinar un año de 4 dígitos.
  */
-export function extraerAnioFecha(fecha: string | null | undefined): number | null {
-  if (!fecha) return null
+export function extraerAnioFecha(fecha: unknown): number | null {
+  if (typeof fecha !== "string" || !fecha) return null
   const match = /^(\d{4})-\d{2}-\d{2}/.exec(fecha)
   if (!match) return null
   const anio = Number(match[1])
@@ -28,10 +28,10 @@ export function extraerAnioFecha(fecha: string | null | undefined): number | nul
  * Valida que la fecha de un evento tenga un año dentro del rango permitido.
  * Si no hay fecha, se considera válido (esa ausencia la maneja otra validación).
  */
-export function validarAnioEvento(fecha: string | null | undefined): { valido: boolean; anio: number | null } {
+export function validarAnioEvento(fecha: unknown): { valido: boolean; anio: number | null } {
+  if (fecha === null || fecha === undefined || fecha === "") return { valido: true, anio: null }
   const anio = extraerAnioFecha(fecha)
-  if (anio === null) return { valido: true, anio: null }
-  return { valido: anio >= ANIO_EVENTO_MIN && anio <= ANIO_EVENTO_MAX, anio }
+  return { valido: anio !== null && anio >= ANIO_EVENTO_MIN && anio <= ANIO_EVENTO_MAX, anio }
 }
 
 export function mensajeAnioEventoInvalido(anio: number | null): string {
