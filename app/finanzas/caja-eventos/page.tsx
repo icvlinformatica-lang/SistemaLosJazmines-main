@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -237,6 +237,7 @@ function CarpetaSalon({
   abierta,
   onToggle,
   children,
+  compacta = false,
 }: {
   nombre: string
   color: string
@@ -246,6 +247,7 @@ function CarpetaSalon({
   abierta: boolean
   onToggle: () => void
   children: () => React.ReactNode
+  compacta?: boolean
 }) {
   return (
     <div className="border-b border-border last:border-b-0">
@@ -253,7 +255,9 @@ function CarpetaSalon({
         type="button"
         onClick={onToggle}
         aria-expanded={abierta}
-        className="w-full flex items-center gap-2.5 px-6 py-3 hover:bg-muted/50 transition-colors text-left"
+        className={compacta
+          ? "w-full grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-2 py-3 hover:bg-muted/50 transition-colors text-left"
+          : "w-full flex items-center gap-2.5 px-6 py-3 hover:bg-muted/50 transition-colors text-left"}
         style={abierta ? { backgroundColor: `${color}1f`, boxShadow: `inset 3px 0 0 ${color}` } : undefined}
       >
         {abierta ? (
@@ -261,13 +265,13 @@ function CarpetaSalon({
         ) : (
           <Folder className="h-4 w-4 shrink-0" style={{ color }} />
         )}
-        <span className="font-semibold text-sm" style={{ color }}>
+        <span className="min-w-0 break-words font-semibold text-sm" style={{ color }}>
           {nombre}
         </span>
         <Badge variant="outline" className="text-[10px]">
           {cantidad}
         </Badge>
-        <span className={`ml-auto text-sm font-bold ${totalColor}`}>{formatCurrency(total)}</span>
+        <span className={`${compacta ? "col-span-2 min-w-0 break-words" : "ml-auto"} text-sm font-bold ${totalColor}`}>{formatCurrency(total)}</span>
         <ChevronDown
           className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${abierta ? "rotate-180" : ""}`}
         />
@@ -412,7 +416,7 @@ function CarpetaTiempo({
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
-  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal, configuracionCajas } =
+  const { state, syncGuard, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal, configuracionCajas } =
 useStore()
 
   // Tarjetas de métricas: siempre plegadas por defecto, con los montos
@@ -425,12 +429,13 @@ useStore()
   // Carpetas por salón dentro de "Por cobrar" y "Por pagar" (vista Todos los salones)
   const [carpetasCobrar, setCarpetasCobrar] = useState<Record<string, boolean>>({})
   const [carpetasPagar, setCarpetasPagar] = useState<Record<string, boolean>>({})
+  const [carpetasGastos, setCarpetasGastos] = useState<Record<string, boolean>>({})
 
   // Sincronización constante: refresca eventos (fechas), servicios y precios
   // cada 15s y al volver a la pestaña, para que "Por pagar" siempre refleje
   // las fechas actuales de los eventos (si se reprograma uno, los vencimientos
   // se corren solos).
-  useSyncTiempoReal()
+  useSyncTiempoReal(15000, true)
 
   // Ids de pagos ya archivados (para ocultarlos del historial activo sin tocar el saldo)
   const pagosArchivadosIds = new Set(
@@ -792,14 +797,43 @@ useStore()
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
   const { toast } = useToast()
+  const operacionEnCurso = useRef(false)
+  const [guardandoOperacion, setGuardandoOperacion] = useState(false)
+
+  async function guardarOperacion(guardarEstado: () => Promise<boolean>, movimientos: MovimientoCaja[]) {
+    if (operacionEnCurso.current) return false
+    operacionEnCurso.current = true
+    setGuardandoOperacion(true)
+    try {
+      return await syncGuard.run(async () => {
+        if (!await guardarEstado()) return false
+        if (!await addMovimientosCaja(movimientos)) {
+          toast({
+            title: "Operación incompleta: revisar caja",
+            description: "El estado del evento se guardó, pero no se pudo confirmar el movimiento. Revisá el historial antes de volver a cobrar o pagar.",
+            variant: "destructive",
+          })
+          return false
+        }
+        return true
+      })
+    } finally {
+      operacionEnCurso.current = false
+      setGuardandoOperacion(false)
+    }
+  }
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
   // "por cobrar" y genera el ingreso repartido entre Caja Eventos y Caja Jazmines
   // según la regla proporcional única (costo + 5% a Eventos, resto a Jazmines),
   // datado en la fecha de vencimiento de la cuota.
-  function confirmarCobroCuota(ing: IngresoPendiente) {
+  async function confirmarCobroCuota(ing: IngresoPendiente) {
     const evento = state.eventos?.find((e) => e.id === ing.eventoId) as EventoGuardado | undefined
     if (!evento) return
+    if (!evento.salon) {
+      toast({ title: "Falta el salón del evento", description: "Asigná un salón antes de registrar el cobro en caja.", variant: "destructive" })
+      return
+    }
     const { yaCobrada, planUpdate, movimientos } = construirCobroCuota(
       evento,
       ing.numeroCuota,
@@ -818,8 +852,7 @@ useStore()
       toast({ title: "Esta cuota ya figura como cobrada." })
       return
     }
-    if (planUpdate) updateEvento(ing.eventoId, planUpdate)
-    if (movimientos.length > 0) addMovimientosCaja(movimientos)
+    if (!planUpdate || !await guardarOperacion(() => updateEvento(ing.eventoId, planUpdate), movimientos)) return
     toast({
       title: "Cuota marcada como cobrada",
       description: `Cuota ${ing.numeroCuota}/${ing.totalCuotas} · ${ing.eventoNombre}`,
@@ -890,22 +923,23 @@ useStore()
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
   // (así el dashboard "por pagar" del mes se actualiza al instante).
-  const handleMarcarPagado = (egreso: EgresoPendienteServicio) => {
+  const handleMarcarPagado = async (egreso: EgresoPendienteServicio) => {
     const evento = state.eventos.find((e) => e.id === egreso.eventoId)
-    if (!evento) return
+    if (!evento || !egresosPendientes.some((pendiente) => pendiente.id === egreso.id)) return false
     const hoyISO = new Date().toISOString()
     const fechaPago = hoyISO.split("T")[0]
+    let guardarEstado: () => Promise<boolean>
 
     if (egreso.tipo === "menu") {
       // El costo de cocina (menú) queda marcado como pagado en el evento,
       // lo que actualiza el indicador de /eventos/lista.
-      updateEvento(egreso.eventoId, { cocinaPagada: true })
+      guardarEstado = () => updateEvento(egreso.eventoId, { cocinaPagada: true })
     } else if (egreso.tipo === "barra") {
-      updateEvento(egreso.eventoId, { barraPagada: true })
+      guardarEstado = () => updateEvento(egreso.eventoId, { barraPagada: true })
     } else if (egreso.tipo === "sueldo") {
       if (egreso.id.includes("-compromiso-")) {
         // Compromiso asignado manualmente desde Finanzas → Personal
-        updatePagoPersonal(egreso.servicioId!, {
+        guardarEstado = () => updatePagoPersonal(egreso.servicioId!, {
           estado: "pagado",
           fechaPago: new Date().toISOString().split("T")[0],
         })
@@ -916,7 +950,7 @@ useStore()
         const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
           pe.id === egreso.servicioId ? { ...pe, pagado: true, monto: egreso.monto } : pe
         )
-        updateEvento(egreso.eventoId, { personalEvento: nuevoPersonal })
+        guardarEstado = () => updateEvento(egreso.eventoId, { personalEvento: nuevoPersonal })
       }
     } else {
       // Servicio: matchear por servicioId exacto y marcar pagado + estadoPago,
@@ -936,7 +970,7 @@ useStore()
           fechaPagoSaldo: fechaPago,
         }
       })
-      updateEvento(egreso.eventoId, { servicios: nuevosServicios })
+      guardarEstado = () => updateEvento(egreso.eventoId, { servicios: nuevosServicios })
     }
 
     // Registrar el egreso real que sale de Caja Eventos
@@ -964,13 +998,12 @@ useStore()
       cajaDestino: "caja_eventos",
       saldoResultante: saldoPrev - egreso.monto,
     }
-    addMovimientosCaja([movimiento])
+    return await guardarOperacion(guardarEstado, [movimiento])
   }
 
   // Confirma el pago desde el diálogo: ejecuta el marcado y muestra la animación de check.
-  const confirmarMarcarPagado = () => {
-    if (!pagoConfirmar) return
-    handleMarcarPagado(pagoConfirmar)
+  const confirmarMarcarPagado = async () => {
+    if (!pagoConfirmar || !await handleMarcarPagado(pagoConfirmar)) return
     setPagoConfirmar(null)
     setPagoExito(true)
     setTimeout(() => setPagoExito(false), 1400)
@@ -1119,6 +1152,40 @@ useStore()
   // Agrupar por salón para las carpetas de "Por cobrar" y "Por pagar"
   // (solo se usan en la vista de Todos los salones)
   const ordenSalones = useMemo(() => [...SALONES, "General"], [])
+  const gruposGastos = useMemo(() => {
+    const map = new Map<string, typeof eventosDelMes.lista>()
+    for (const evento of eventosDelMes.lista) {
+      const salon = evento.salon || "General"
+      if (!map.has(salon)) map.set(salon, [])
+      map.get(salon)!.push(evento)
+    }
+    const claves = [...ordenSalones.filter((salon) => map.has(salon)), ...[...map.keys()].filter((salon) => !ordenSalones.includes(salon))]
+    return claves.map((salon) => {
+      const items = map.get(salon)!
+      return { salon, items, total: items.reduce((sum, evento) => sum + evento.costoTotal, 0) }
+    })
+  }, [eventosDelMes.lista, ordenSalones])
+
+  const renderGastoEvento = (ev: (typeof eventosDelMes.lista)[number]) => (
+    <button
+      key={ev.id}
+      type="button"
+      onClick={() => router.push(`/eventos/costos?id=${ev.id}`)}
+      title="Ver el detalle de costos de este evento"
+      className="w-full text-left rounded-md border border-border bg-muted/30 p-2.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        <SalonDot salon={ev.salon} />
+        <span className="text-xs font-semibold truncate">{ev.nombre}</span>
+        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0" />
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-[11px] text-muted-foreground">{formatFecha(ev.fecha)}</span>
+        <span className="text-xs font-bold text-destructive">−{formatCurrency(ev.costoTotal)}</span>
+      </div>
+    </button>
+  )
+
   const gruposCobrar = useMemo(() => {
     const map = new Map<string, IngresoPendiente[]>()
     for (const ing of ingresosPendientes) {
@@ -1153,7 +1220,7 @@ useStore()
       <TableRow key={ing.id} className="cursor-pointer" onClick={() => setClienteSel(ing)}>
         <TableCell className="pl-6">
           <p className="font-medium text-sm">{ing.contacto.nombre}</p>
-          <p className="text-xs text-muted-foreground">{ing.eventoNombre} · {ing.salon}</p>
+          <p className="text-xs text-muted-foreground">{ing.eventoNombre} · {ing.salon ? salonLabel(ing.salon) : "General"}</p>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {ing.numeroCuota}/{ing.totalCuotas}
@@ -1672,30 +1739,32 @@ useStore()
             <p className="text-xs text-muted-foreground">Sin eventos este mes.</p>
           ) : (
             <>
-              {eventosDelMes.lista.map((ev) => (
-                <button
-                  key={ev.id}
-                  type="button"
-                  onClick={() => router.push(`/eventos/costos?id=${ev.id}`)}
-                  title="Ver el detalle de costos de este evento"
-                  className="w-full text-left rounded-md border border-border bg-muted/30 p-2.5 transition-colors hover:bg-muted hover:border-teal-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <SalonDot salon={ev.salon} />
-                    <span className="text-xs font-semibold truncate">{ev.nombre}</span>
-                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0" />
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[11px] text-muted-foreground">{formatFecha(ev.fecha)}</span>
-                    <span className="text-xs font-bold text-red-600">−{formatCurrency(ev.costoTotal)}</span>
-                  </div>
-                </button>
-              ))}
+              {salonFiltro === "todos" ? (
+                <div>
+                  {gruposGastos.map((grupo) => (
+                    <CarpetaSalon
+                      key={grupo.salon}
+                      compacta
+                      nombre={grupo.salon === "General" ? "General" : salonLabel(grupo.salon)}
+                      color={grupo.salon === "General" ? SALON_COLOR_GENERAL : salonColor(grupo.salon, configuracionCajas)}
+                      cantidad={grupo.items.length}
+                      total={grupo.total}
+                      totalColor="text-destructive"
+                      abierta={!!carpetasGastos[grupo.salon]}
+                      onToggle={() => setCarpetasGastos((prev) => ({ ...prev, [grupo.salon]: !prev[grupo.salon] }))}
+                    >
+                      {() => <div className="flex flex-col gap-2 pb-2">{grupo.items.map(renderGastoEvento)}</div>}
+                    </CarpetaSalon>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">{eventosDelMes.lista.map(renderGastoEvento)}</div>
+              )}
               <div className="flex items-center justify-between border-t border-border pt-2 mt-2">
                 <span className="text-xs font-medium text-muted-foreground">
                   Total ({eventosDelMes.lista.length} {eventosDelMes.lista.length === 1 ? "evento" : "eventos"})
                 </span>
-                <span className="text-sm font-bold text-red-600">���{formatCurrency(eventosDelMes.total)}</span>
+                <span className="text-sm font-bold text-destructive">−{formatCurrency(eventosDelMes.total)}</span>
               </div>
             </>
           )}
@@ -2205,7 +2274,7 @@ useStore()
                 </label>
                 <Button
                   className="w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={!marcarCobrada}
+                  disabled={!marcarCobrada || guardandoOperacion}
                   onClick={() => confirmarCobroCuota(clienteSel)}
                 >
                   <CheckCircle2 className="h-4 w-4" />
@@ -2389,6 +2458,7 @@ useStore()
             </Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={guardandoOperacion}
               onClick={confirmarMarcarPagado}
             >
               <CheckCircle2 className="h-4 w-4 mr-1" /> Sí, marcar pagado

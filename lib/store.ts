@@ -2883,7 +2883,7 @@ export function getPagosPendientes(state: AppState): PagoPersonal[] {
  * Prioriza asignaciones confirmadas; cae al flujo legacy para eventos sin asignaciones.
  * Debe ejecutarse periódicamente o al cargar la app.
  */
-export function generarPagosPendientesAutomaticos(state: AppState): void {
+export function generarPagosPendientesAutomaticos(state: AppState, persistir = true): void {
   const hoy = new Date()
   const en7Dias = new Date(hoy)
   en7Dias.setDate(en7Dias.getDate() + 7)
@@ -2980,7 +2980,7 @@ export function generarPagosPendientesAutomaticos(state: AppState): void {
     }
   })
 
-  saveState(state)
+  if (persistir) saveState(state)
 }
 
 /**
@@ -3089,7 +3089,7 @@ export function sincronizarPagosConAsignaciones(state: AppState): {
 /**
  * Actualiza el estado de pagos vencidos
  */
-export function actualizarEstadoPagos(state: AppState): void {
+export function actualizarEstadoPagos(state: AppState, persistir = true): void {
   const hoy = new Date()
   let cambios = false
 
@@ -3103,7 +3103,7 @@ export function actualizarEstadoPagos(state: AppState): void {
     }
   })
 
-  if (cambios) {
+  if (cambios && persistir) {
     saveState(state)
   }
 }

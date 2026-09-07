@@ -109,7 +109,7 @@ export function construirCobroCuota(
   const plan = evento.planDeCuotas
   const cuotasPagadas = plan?.cuotasPagadas ?? []
 
-  if (cuotasPagadas.includes(numeroCuota)) {
+  if (cuotasPagadas.includes(numeroCuota) || plan?.cuotas?.some((cuota) => cuota.numero === numeroCuota && cuota.pagada)) {
     return { yaCobrada: true, planUpdate: null, movimientos: [] }
   }
 

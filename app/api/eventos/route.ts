@@ -3,6 +3,7 @@ import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
+import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 
 // camelCase → snake_case for DB insert/update
 function toRow(ev: Record<string, unknown>) {
@@ -164,7 +165,7 @@ export async function GET() {
     return NextResponse.json(rows.map(fromRow))
   } catch (err) {
     console.error("[API] Error fetching eventos:", err)
-    return NextResponse.json([], { status: 200 })
+    return NextResponse.json({ error: "No se pudieron cargar los eventos. Volvé a intentar." }, { status: 500 })
   }
 }
 
@@ -175,6 +176,11 @@ export async function POST(req: Request) {
     const id = body.id || generateId()
     const r = toRow({ ...body, id })
     const nombre = r.nombre
+
+    const validacionAnio = validarAnioEvento(r.fecha)
+    if (!validacionAnio.valido) {
+      return NextResponse.json({ error: mensajeAnioEventoInvalido(validacionAnio.anio) }, { status: 400 })
+    }
 
     await sql`
       INSERT INTO eventos (

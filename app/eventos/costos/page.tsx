@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { useStore } from "@/lib/store-context"
+import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
 import {
@@ -67,12 +68,6 @@ function CostosEventoContent() {
     updateEvento,
     addMovimientosCaja,
     deleteMovimientoCaja,
-    setInsumos,
-    setInsumosBarra,
-    setRecetas,
-    setCocteles,
-    setEventos,
-    setServicios,
   } = useStore()
   const { toast } = useToast()
 
@@ -85,66 +80,7 @@ function CostosEventoContent() {
   // costos siempre reflejan la última versión del contrato y los últimos
   // precios cargados en la web.
   // ------------------------------------------------------------------
-  const [ultimaSync, setUltimaSync] = useState<Date | null>(null)
-  const sincronizando = useRef(false)
-
-  useEffect(() => {
-    const refrescar = async () => {
-      if (sincronizando.current) return
-      sincronizando.current = true
-      try {
-        const fetchSafe = async (url: string) => {
-          try {
-            const r = await fetch(url, { cache: "no-store" })
-            if (!r.ok) return null
-            const data = await r.json()
-            return Array.isArray(data) ? data : null
-          } catch {
-            return null
-          }
-        }
-        // El catálogo de servicios (precios, % de seña) vive en Supabase vía
-        // data-service, no en un endpoint HTTP; lo traemos con fetchServicios().
-        const fetchServiciosSafe = async () => {
-          try {
-            const { fetchServicios } = await import("@/lib/supabase/data-service")
-            const data = await fetchServicios()
-            return Array.isArray(data) ? data : null
-          } catch {
-            return null
-          }
-        }
-        const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, eventosRes, serviciosRes] = await Promise.all([
-          fetchSafe("/api/insumos"),
-          fetchSafe("/api/insumos-barra"),
-          fetchSafe("/api/recetas"),
-          fetchSafe("/api/cocteles"),
-          fetchSafe("/api/eventos"),
-          fetchServiciosSafe(),
-        ])
-        if (insumosRes) setInsumos(insumosRes)
-        if (insumosBarraRes) setInsumosBarra(insumosBarraRes)
-        if (recetasRes) setRecetas(recetasRes)
-        if (coctelesRes) setCocteles(coctelesRes)
-        if (eventosRes) setEventos(eventosRes)
-        if (serviciosRes) setServicios(serviciosRes)
-        setUltimaSync(new Date())
-      } finally {
-        sincronizando.current = false
-      }
-    }
-
-    const interval = setInterval(refrescar, 15000)
-    const onVisible = () => {
-      if (document.visibilityState === "visible") refrescar()
-    }
-    document.addEventListener("visibilitychange", onVisible)
-    return () => {
-      clearInterval(interval)
-      document.removeEventListener("visibilitychange", onVisible)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const { ultimaSync, errorSync } = useSyncTiempoReal(15000, true)
 
   // Observación guardada dentro de costosCalculados (JSON ya persistido del evento)
   const observacionGuardada =
@@ -576,7 +512,9 @@ function CostosEventoContent() {
         ) : (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <RefreshCw className="h-3 w-3" />
-            {ultimaSync
+            {errorSync
+              ? "Sin conexión: mostrando la última información disponible"
+              : ultimaSync
               ? `Precios y contrato actualizados ${ultimaSync.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
               : "Sincronización en tiempo real activa"}
           </span>

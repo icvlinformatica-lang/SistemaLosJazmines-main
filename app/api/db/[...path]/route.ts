@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 
 /**
  * Proxy autenticado hacia la API REST de Supabase (PostgREST).
@@ -27,6 +28,27 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   // El cliente supabase-js llama a `${base}/rest/v1/...`; solo permitimos esa ruta.
   if (path[0] !== "rest" || path[1] !== "v1") {
     return NextResponse.json({ error: "Ruta no permitida" }, { status: 404 })
+  }
+
+  if (path.length === 3 && path[2] === "eventos" && ["POST", "PATCH", "PUT"].includes(req.method)) {
+    let payload: unknown
+    try {
+      payload = await req.clone().json()
+    } catch {
+      return NextResponse.json({ error: "El cuerpo debe ser JSON válido" }, { status: 400 })
+    }
+    const eventos = Array.isArray(payload) ? payload : [payload]
+    for (const evento of eventos) {
+      if (!evento || typeof evento !== "object" || Array.isArray(evento)) {
+        return NextResponse.json({ error: "Datos de evento inválidos" }, { status: 400 })
+      }
+      if ("fecha" in evento) {
+        const { valido, anio } = validarAnioEvento(evento.fecha)
+        if (!valido) {
+          return NextResponse.json({ error: mensajeAnioEventoInvalido(anio) }, { status: 400 })
+        }
+      }
+    }
   }
 
   const target = new URL(`${SUPABASE_URL}/${path.join("/")}`)
