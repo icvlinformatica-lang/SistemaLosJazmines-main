@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ConfirmAction } from "@/components/confirm-action"
+import { useToast } from "@/hooks/use-toast"
 import {
   ArrowLeft,
   ChevronDown,
@@ -19,6 +21,7 @@ import {
   EyeOff,
   Folder,
   CheckCircle2,
+  Circle,
   Archive,
   Info,
 } from "lucide-react"
@@ -42,7 +45,15 @@ function formatFecha(fecha: string | undefined) {
 const MONTO_TAPADO = "•••••••"
 
 /** Fila individual de una comisión (viva, viene de Caja Jazmines en vivo). */
-function FilaComisionViva({ gasto, oculto }: { gasto: GastoVariable; oculto: boolean }) {
+function FilaComisionViva({
+  gasto,
+  oculto,
+  onTogglePagada,
+}: {
+  gasto: GastoVariable
+  oculto: boolean
+  onTogglePagada: (gasto: GastoVariable, pagada: boolean) => void
+}) {
   const esPagado = gasto.estado === "pagado"
   return (
     <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
@@ -66,13 +77,37 @@ function FilaComisionViva({ gasto, oculto }: { gasto: GastoVariable; oculto: boo
           )
         )}
       </div>
-      <div className="flex flex-col items-end gap-1 shrink-0">
-        <span className="text-sm font-bold tabular-nums">{oculto ? MONTO_TAPADO : formatCurrency(gasto.monto)}</span>
-        {gasto.listaParaPagar && !esPagado && (
-          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] gap-1">
-            <CheckCircle2 className="h-3 w-3" />
-            Lista para pagar
-          </Badge>
+      <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-col items-end gap-1 mr-1">
+          <span className="text-sm font-bold tabular-nums">
+            {oculto ? MONTO_TAPADO : formatCurrency(gasto.monto)}
+          </span>
+          {gasto.listaParaPagar && !esPagado && (
+            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              Lista para pagar
+            </Badge>
+          )}
+        </div>
+        {gasto.comisionDetalle && (
+          <ConfirmAction
+            title={esPagado ? "¿Marcar comisión como pendiente?" : "¿Marcar comisión como pagada?"}
+            description={`${gasto.comisionDetalle.eventoNombre || gasto.nombre} · ${formatCurrency(gasto.monto)}. ${esPagado ? "Volverá a figurar como pendiente." : "Quedará registrada como pagada también en Caja Eventos."}`}
+            confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagada"}
+            onConfirm={() => onTogglePagada(gasto, !esPagado)}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 ${esPagado ? "text-teal-600 hover:text-teal-700" : "text-muted-foreground hover:text-teal-600"}`}
+              title={esPagado ? "Marcar comisión como pendiente" : "Marcar comisión como pagada"}
+            >
+              {esPagado ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+              <span className="sr-only">
+                {esPagado ? "Marcar comisión pendiente" : "Marcar comisión pagada"}
+              </span>
+            </Button>
+          </ConfirmAction>
         )}
       </div>
     </div>
@@ -171,9 +206,37 @@ function VendedorCard({
   comisionesVivas: GastoVariable[]
   archivadas: { id: string; concepto: string; monto: number; salon?: string | null; fecha?: string }[]
 }) {
-  const { updateVendedor } = useStore()
+  const { updateVendedor, updateEvento } = useStore()
+  const { toast } = useToast()
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [oculto, setOculto] = useState(false)
+
+  // Mismo flujo que Caja Eventos → Comisiones: persiste comisionPagada en el
+  // evento (se ve también allá), deja registro en Actividad y avisa con un toast.
+  const marcarComisionPagada = (gasto: GastoVariable, pagada: boolean) => {
+    const eventoId = gasto.comisionDetalle?.eventoId
+    if (!eventoId) return
+    const hoyISO = new Date()
+    const fechaCorta = `${hoyISO.getFullYear()}-${String(hoyISO.getMonth() + 1).padStart(2, "0")}-${String(hoyISO.getDate()).padStart(2, "0")}`
+    updateEvento(eventoId, {
+      comisionPagada: pagada,
+      comisionPagadaFecha: (pagada ? fechaCorta : null) as EventoGuardado["comisionPagadaFecha"],
+    })
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "caja",
+        accion: pagada ? "comisión pagada" : "comisión marcada pendiente",
+        nombre: gasto.nombre,
+        detalle: `${formatCurrency(gasto.monto)} (${gasto.comisionDetalle?.porcentaje}% de ${formatCurrency(gasto.comisionDetalle?.totalEvento ?? 0)}) · evento ${gasto.comisionDetalle?.eventoNombre}`,
+      }),
+    }).catch(() => {})
+    toast({
+      title: pagada ? "Comisión pagada" : "Comisión pendiente",
+      description: `${gasto.nombre} · ${formatCurrency(gasto.monto)}`,
+    })
+  }
 
   const listas = comisionesVivas.filter((g) => g.estado !== "pagado" && g.listaParaPagar)
   const proximas = comisionesVivas.filter((g) => g.estado !== "pagado" && !g.listaParaPagar)
@@ -285,17 +348,17 @@ function VendedorCard({
               <>
                 <Subcarpeta titulo="Lista para pagar" color="#059669" count={listas.length} subtotal={totalListas} oculto={oculto}>
                   {listas.map((g) => (
-                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} />
+                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} onTogglePagada={marcarComisionPagada} />
                   ))}
                 </Subcarpeta>
                 <Subcarpeta titulo="Próximamente" color="#b45309" count={proximas.length} subtotal={totalProximas} oculto={oculto}>
                   {proximas.map((g) => (
-                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} />
+                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} onTogglePagada={marcarComisionPagada} />
                   ))}
                 </Subcarpeta>
                 <Subcarpeta titulo="Pagadas" color="#0f766e" count={pagadasVivas.length + archivadas.length} subtotal={totalPagadas} oculto={oculto}>
                   {pagadasVivas.map((g) => (
-                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} />
+                    <FilaComisionViva key={g.id} gasto={g} oculto={oculto} onTogglePagada={marcarComisionPagada} />
                   ))}
                   {archivadas.map((g) => (
                     <FilaComisionArchivada
