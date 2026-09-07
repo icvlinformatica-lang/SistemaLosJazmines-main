@@ -495,9 +495,9 @@ function EventoPageContent() {
     }
     if (isEditing) {
       // Persistir también el contrato (incluye vendedor) para no perder la selección
-      await updateEvento(borradorData.id, { estado: "borrador", contrato: evento.contrato })
+      if (!await updateEvento(borradorData.id, { estado: "borrador", contrato: evento.contrato })) return
     } else {
-      await addEvento(borradorData)
+      if (!await addEvento(borradorData)) return
     }
     setShowDraftDialog(false)
     setEventoActual(null)
@@ -732,10 +732,14 @@ function EventoPageContent() {
       }
 
       // Actualizar evento existente — await para garantizar persistencia antes de navegar
-      await updateEvento(editingEventoId, {
+      const guardado = await updateEvento(editingEventoId, {
         ...eventData,
         ...(seCreoNuevaVersion ? { versionesContrato } : {}),
       })
+      if (!guardado) {
+        setIsSaving(false)
+        return
+      }
       toast({
         title: fromContratos ? "Contrato actualizado" : "Evento actualizado",
         description: seCreoNuevaVersion
@@ -793,12 +797,16 @@ function EventoPageContent() {
         impactos: ["sin_cambios"],
       }
 
-      await addEvento({
+      const guardado = await addEvento({
         ...eventData,
         id: nuevoEventoId,
         estado: "pendiente",
         versionesContrato: [primeraVersion],
       } as any)
+      if (!guardado) {
+        setIsSaving(false)
+        return
+      }
 
       // 2) Registrar automaticamente la seña en las cajas.
       // Regla nueva (eventos creados desde ahora): a Caja Eventos va solo la parte

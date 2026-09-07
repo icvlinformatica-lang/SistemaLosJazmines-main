@@ -1,6 +1,7 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react"
+import { StoreSyncGuard, mergeRemoteStore, type RemoteStoreData } from "./store-sync"
 import {
   type AppState,
   type Insumo,
@@ -62,6 +63,8 @@ import { useClock } from "@/lib/clock-context"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
 
 interface StoreContextType {
+  syncGuard: StoreSyncGuard
+  applyRemoteState: (baseline: AppState, updates: RemoteStoreData, revision: number) => void
   state: AppState
   loading: boolean
   insumos: Insumo[]
@@ -102,9 +105,9 @@ interface StoreContextType {
   setEventoActual: (evento: Evento | null) => void
   updateEventoActual: (updates: Partial<Evento>) => void
   // Eventos (calendario)
-  addEvento: (evento: EventoGuardado) => void
-  updateEvento: (id: string, updates: Partial<EventoGuardado>) => void
-  deleteEvento: (id: string) => void
+  addEvento: (evento: EventoGuardado) => Promise<boolean>
+  updateEvento: (id: string, updates: Partial<EventoGuardado>) => Promise<boolean>
+  deleteEvento: (id: string, motivo?: string) => Promise<boolean>
   setEventos: (eventos: EventoGuardado[]) => void
   // Servicios
   addServicio: (servicio: Omit<Servicio, "id">) => void
@@ -145,7 +148,7 @@ interface StoreContextType {
   // Pagos Personal
   pagosPersonal: PagoPersonal[]
   addPagoPersonal: (pago: Omit<PagoPersonal, "id">) => void
-  updatePagoPersonal: (id: string, updates: Partial<PagoPersonal>) => void
+  updatePagoPersonal: (id: string, updates: Partial<PagoPersonal>) => Promise<boolean>
   deletePagoPersonal: (id: string) => void
   getPagosPorEvento: (eventoId: string) => PagoPersonal[]
   getPagosPendientes: () => PagoPersonal[]
@@ -156,9 +159,9 @@ interface StoreContextType {
   configuracionCajas: ConfiguracionCajas
   movimientosCaja: MovimientoCaja[]
   updateConfiguracionCajas: (config: ConfiguracionCajas) => void
-  addMovimientoCaja: (movimiento: MovimientoCaja) => void
-  addMovimientosCaja: (movimientos: MovimientoCaja[]) => void
-  deleteMovimientoCaja: (id: string) => void
+  addMovimientoCaja: (movimiento: MovimientoCaja) => Promise<boolean>
+  addMovimientosCaja: (movimientos: MovimientoCaja[]) => Promise<boolean>
+  deleteMovimientoCaja: (id: string) => Promise<boolean>
 
   // Archivo de gastos
   gastosArchivados: GastoArchivado[]
@@ -232,13 +235,28 @@ function aplicarSoloLectura<T extends Record<string, any>>(
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState())
+  const syncGuard = useRef(new StoreSyncGuard()).current
+  const { soloLectura } = useClock()
+  const applyRemoteState = useCallback((baseline: AppState, updates: RemoteStoreData, revision: number) => {
+    if (soloLectura) return
+    setState((prev) => {
+      if (!syncGuard.isCurrent(revision)) return prev
+      const next = mergeRemoteStore(prev, baseline, updates)
+      if (next === prev) return prev
+      if (updates.pagosPersonal) {
+        next.pagosPersonal = updates.pagosPersonal.map((pago) => ({ ...pago }))
+        generarPagosPendientesAutomaticos(next, false)
+        actualizarEstadoPagos(next, false)
+      }
+      return next
+    })
+  }, [syncGuard, soloLectura])
   const [isHydrated, setIsHydrated] = useState(false)
   const [showIPCDialog, setShowIPCDialog] = useState(false)
   const [porcentajeIPC, setPorcentajeIPC] = useState("")
   const [mesIPC, setMesIPC] = useState<number>(new Date().getMonth())
   const [anioIPC, setAnioIPC] = useState<number>(new Date().getFullYear())
   const { toast } = useToast()
-  const { soloLectura } = useClock()
 
   // Mantener el registro global de nombres personalizados de salones al día,
   // para que salonLabel() muestre el nombre elegido en todo el sistema.
@@ -287,13 +305,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
-        const [serviciosDB, personalDB, pagosDB, costosDB, asignacionesDB, movimientosDB, configDB, preciosDB, archivadosDB, historialIPCDB, paquetesDB, temporadasDB, vendedoresDB] = await Promise.all([
-          db.fetchServicios(),
+        const [serviciosResultado, personalDB, pagosResultado, costosDB, asignacionesDB, movimientosResultado, configDB, preciosDB, archivadosDB, historialIPCDB, paquetesDB, temporadasDB, vendedoresDB] = await Promise.all([
+          db.fetchServicios().catch(() => null),
           db.fetchPersonal(),
-          db.fetchPagosPersonal(),
+          db.fetchPagosPersonal().catch(() => null),
           db.fetchCostosOperativos(),
           db.fetchAsignaciones(),
-          db.fetchMovimientosCaja(),
+          db.fetchMovimientosCaja().catch(() => null),
           db.fetchConfiguracionCajas(),
           db.fetchPreciosVenta(),
           db.fetchGastosArchivados(),
@@ -302,6 +320,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           db.fetchTemporadas(),
           db.fetchVendedores(),
         ])
+
+        const serviciosDB = serviciosResultado ?? localState.servicios ?? []
+        const pagosDB = pagosResultado ?? localState.pagosPersonal ?? []
+        const movimientosDB = movimientosResultado ?? localState.movimientosCaja ?? []
+        if (serviciosResultado === null || pagosResultado === null || movimientosResultado === null) {
+          toast({ title: "Carga financiera incompleta", description: "No se pudieron cargar todos los movimientos, pagos o servicios. Caja Eventos reintentará la conexión automáticamente.", variant: "destructive" })
+        }
 
         // Migración one-time: si Supabase devuelve vacío pero localStorage tiene precios, upsertearlos ahora
         const preciosLocal = localState.preciosVenta || {}
@@ -345,19 +370,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // sea la única fuente de verdad (nunca más solo-localStorage).
         let movimientosMigrados = movimientosDB
         const movimientosLocales = (localState.movimientosCaja || []).filter((m) => m && m.id)
-        if (movimientosDB.length === 0 && movimientosLocales.length > 0) {
+        if (movimientosResultado !== null && movimientosDB.length === 0 && movimientosLocales.length > 0) {
           await Promise.all(movimientosLocales.map((m) => db.insertMovimientoCaja(m)))
           movimientosMigrados = movimientosLocales
         }
         let pagosMigrados = pagosDB
         const pagosLocales = (localState.pagosPersonal || []).filter((p) => p && p.id)
-        if (pagosDB.length === 0 && pagosLocales.length > 0) {
+        if (pagosResultado !== null && pagosDB.length === 0 && pagosLocales.length > 0) {
           await Promise.all(pagosLocales.map((p) => db.upsertPagoPersonal(p)))
           pagosMigrados = pagosLocales
         }
         let serviciosMigrados = serviciosDB
         const serviciosLocales = (localState.servicios || []).filter((s) => s && s.id)
-        if (serviciosDB.length === 0 && serviciosLocales.length > 0) {
+        if (serviciosResultado !== null && serviciosDB.length === 0 && serviciosLocales.length > 0) {
           await Promise.all(serviciosLocales.map((s) => db.upsertServicio(s)))
           serviciosMigrados = serviciosLocales
         }
@@ -416,6 +441,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Esperar ambas tandas (corren en paralelo desde que se lanzaron arriba)
       const [insumosRes, insumosBarraRes, recetasRes, coctelesRes, barraTemplatesRes, eventosRes] = await apiPromise
       await supabasePromise
+      if (eventosRes === null) {
+        toast({ title: "No se pudieron cargar los eventos", description: "La información puede estar incompleta. Revisá la conexión antes de registrar operaciones.", variant: "destructive" })
+      }
 
       // Merge: DB data takes absolute priority over localStorage for migrated modules
       const eventosVigentes = eventosRes ?? localState.eventos ?? []
@@ -423,7 +451,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Auto-sanear: descartar movimientos de caja cuyo evento asociado ya no existe
       // (evita ingresos/egresos fantasma de eventos eliminados que quedaron en localStorage)
       const movimientosSaneados = (supabaseData.movimientosCaja || []).filter(
-        (m: MovimientoCaja) => !m.eventoId || idsEventosVigentes.has(m.eventoId)
+        (m: MovimientoCaja) => eventosRes === null || !m.eventoId || idsEventosVigentes.has(m.eventoId)
       )
 
       // Historial IPC desde Supabase (undefined si falló la conexión, para caer a localStorage)
@@ -1192,20 +1220,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const updatePagoPersonal = async (id: string, updates: Partial<PagoPersonal>) => {
-    setState((prev) => ({
-      ...prev,
-      pagosPersonal: (prev.pagosPersonal || []).map((p) => (p.id === id ? { ...p, ...updates } : p)),
-    }))
-    // Sync to Supabase
     try {
-      const existing = state.pagosPersonal?.find(p => p.id === id)
-      if (existing) {
-        const { upsertPagoPersonal } = await import("./supabase/data-service")
-        await upsertPagoPersonal({ ...existing, ...updates })
-      }
+      const existing = state.pagosPersonal?.find((p) => p.id === id)
+      if (!existing) return false
+      const { upsertPagoPersonal } = await import("./supabase/data-service")
+      if (!await upsertPagoPersonal({ ...existing, ...updates })) throw new Error("No se pudo guardar el pago")
+      setState((prev) => ({ ...prev, pagosPersonal: prev.pagosPersonal.map((p) => p.id === id ? { ...p, ...updates } : p) }))
+      return true
     } catch (error) {
       console.error("[v0] Error syncing pago personal update to Supabase:", error)
-      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "No se pudo confirmar el pago. Volvé a intentar.", variant: "destructive" })
+      return false
     }
   }
 
@@ -1266,25 +1291,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // === Eventos (Calendario) — Synced with Postgres API (soft delete / papelera) ===
   const addEvento = async (evento: EventoGuardado) => {
-    // Optimistic: add locally first so UI responds immediately
-    setState((prev) => ({ ...prev, eventos: [...(prev.eventos || []), evento] }))
+    const eventoConId = { ...evento, id: evento.id || generateId() }
     try {
       const res = await fetchWithRetry("/api/eventos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(evento),
+        body: JSON.stringify(eventoConId),
       })
-      if (res.ok) {
-        const created = await res.json()
-        // Replace optimistic entry with the confirmed server record
-        setState((prev) => ({
-          ...prev,
-          eventos: prev.eventos.map((e) => (e.id === evento.id ? { ...e, ...created } : e)),
-        }))
-      }
+      if (!res.ok) throw new Error(`Error al crear evento (${res.status})`)
+      const created = await res.json()
+      setState((prev) => ({
+        ...prev,
+        eventos: [...prev.eventos.filter((e) => e.id !== created.id), { ...eventoConId, ...created }],
+      }))
+      return true
     } catch (err) {
       console.error("[v0] Error adding evento:", err)
-      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "No se pudo confirmar el guardado. Revisá la conexión y volvé a intentar.", variant: "destructive" })
+      return false
     }
   }
 
@@ -1314,38 +1338,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Optimistic update first
-    setState((prev) => ({
-      ...prev,
-      eventos: (prev.eventos || []).map((e) => (e.id === id ? { ...e, ...updatesFinal } : e)),
-    }))
     try {
-      await fetchWithRetry(`/api/eventos/${id}`, {
+      const res = await fetchWithRetry(`/api/eventos/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatesFinal),
       })
+      if (!res.ok) throw new Error(`Error al actualizar evento (${res.status})`)
+      setState((prev) => ({
+        ...prev,
+        eventos: prev.eventos.map((e) => e.id === id ? { ...e, ...updatesFinal } : e),
+      }))
+      return true
     } catch (err) {
       console.error("[v0] Error updating evento:", err)
-      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      toast({ title: "Error al guardar", description: "No se pudo confirmar el guardado. Revisá la conexión y volvé a intentar.", variant: "destructive" })
+      return false
     }
   }
 
-  const deleteEvento = async (id: string) => {
-    // Optimistic: remove evento AND its caja movements from local state immediately
-    setState((prev) => ({
-      ...prev,
-      eventos: (prev.eventos || []).filter((e) => e.id !== id),
-      movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.eventoId !== id),
-    }))
-    // API soft-deletes evento and moves to papelera; also purge its caja movements
+  const deleteEvento = async (id: string, motivo?: string) => {
     try {
-      await fetchWithRetry(`/api/eventos/${id}`, { method: "DELETE" })
-      const { deleteMovimientosByEvento } = await import("./supabase/data-service")
-      await deleteMovimientosByEvento(id)
+      const url = `/api/eventos/${encodeURIComponent(id)}${motivo ? `?motivo=${encodeURIComponent(motivo)}` : ""}`
+      const res = await fetchWithRetry(url, { method: "DELETE" })
+      if (!res.ok) throw new Error(`Error al eliminar evento (${res.status})`)
+      // Se ocultan los movimientos, pero se conservan en la base para restaurar el evento.
+      setState((prev) => ({
+        ...prev,
+        eventos: prev.eventos.filter((e) => e.id !== id),
+        movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.eventoId !== id),
+      }))
+      return true
     } catch (err) {
       console.error("[v0] Error deleting evento:", err)
-      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "No se pudo confirmar la eliminación. Volvé a intentar.", variant: "destructive" })
+      return false
     }
   }
 
@@ -1450,75 +1477,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addMovimientoCaja = async (movimiento: MovimientoCaja) => {
-    setState((prev) => ({
-      ...prev,
-      movimientosCaja: [...(prev.movimientosCaja || []), movimiento],
-    }))
-    // Sync to Supabase
-    try {
-      const { insertMovimientoCaja } = await import("./supabase/data-service")
-      await insertMovimientoCaja(movimiento)
-    } catch (error) {
-      console.error("[v0] Error syncing movimiento caja to Supabase:", error)
-      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
-    }
-  }
+  const addMovimientoCaja = async (movimiento: MovimientoCaja) => addMovimientosCaja([movimiento])
 
   const addMovimientosCaja = async (movimientos: MovimientoCaja[]) => {
-    setState((prev) => ({
-      ...prev,
-      movimientosCaja: [...(prev.movimientosCaja || []), ...movimientos],
-    }))
-    // Sync to Supabase
-    const insertados: string[] = []
     try {
-      const { insertMovimientoCaja, deleteMovimientoCaja: deleteMov } =
-        await import("./supabase/data-service")
-      for (const mov of movimientos) {
-        await insertMovimientoCaja(mov)
-        insertados.push(mov.id)
-      }
+      const { insertMovimientosCaja } = await import("./supabase/data-service")
+      await insertMovimientosCaja(movimientos)
+      const ids = new Set(movimientos.map((mov) => mov.id))
+      setState((prev) => ({
+        ...prev,
+        movimientosCaja: [...(prev.movimientosCaja || []).filter((mov) => !ids.has(mov.id)), ...movimientos],
+      }))
+      return true
     } catch (error) {
       console.error("[v0] Error syncing movimientos caja:", error)
-      // Rollback: eliminar los que sí se insertaron para
-      // evitar desbalance entre caja_eventos y caja_jazmines
-      if (insertados.length > 0) {
-        try {
-          const { deleteMovimientoCaja: deleteMov } =
-            await import("./supabase/data-service")
-          await Promise.all(insertados.map((id) => deleteMov(id)))
-        } catch (rollbackError) {
-          console.error("[v0] Error en rollback:", rollbackError)
-        }
-        // Revertir también el estado local
-        setState((prev) => ({
-          ...prev,
-          movimientosCaja: (prev.movimientosCaja || []).filter(
-            (m) => !insertados.includes(m.id)
-          ),
-        }))
-      }
-      toast({
-        title: "Error al guardar",
-        description: "No se pudo registrar el movimiento. Reintentá.",
-        variant: "destructive",
-      })
+      toast({ title: "Error al guardar", description: "No se pudo confirmar el movimiento. Actualizá la información antes de reintentar.", variant: "destructive" })
+      return false
     }
   }
 
   const deleteMovimientoCaja = async (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.id !== id),
-    }))
-    // Sync to Supabase
     try {
       const { deleteMovimientoCaja: deleteMov } = await import("./supabase/data-service")
-      await deleteMov(id)
+      if (!await deleteMov(id)) throw new Error("No se pudo eliminar el movimiento")
+      setState((prev) => ({ ...prev, movimientosCaja: prev.movimientosCaja.filter((m) => m.id !== id) }))
+      return true
     } catch (error) {
       console.error("[v0] Error deleting movimiento caja from Supabase:", error)
-      toast({ title: "Error al eliminar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
+      toast({ title: "Error al eliminar", description: "No se pudo confirmar la eliminación del movimiento.", variant: "destructive" })
+      return false
     }
   }
 
@@ -1616,7 +1603,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     // Persistir en Supabase solo los eventos cuyo planDeCuotas cambió
     const eventosParaPersistir = eventosActualizados.filter((e, i) => e !== eventosPrevios[i])
-    void (async () => {
+    void syncGuard.run(async () => {
       for (const evento of eventosParaPersistir) {
         try {
           await fetchWithRetry(`/api/eventos/${evento.id}`, {
@@ -1643,7 +1630,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ? `Se ajustaron las cuotas restantes de ${eventosConIPC} evento(s).`
           : "No había eventos con cuotas pendientes para ajustar, pero el IPC quedó registrado.",
       })
-    })()
+    })
 
     return eventosConIPC
   }
@@ -1688,7 +1675,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     // Persistir en Supabase: eventos revertidos + borrar la entrada del historial
     const eventosParaPersistir = eventosRevertidos.filter((e, i) => e !== eventosPrevios[i])
-    void (async () => {
+    void syncGuard.run(async () => {
       for (const evento of eventosParaPersistir) {
         try {
           await fetchWithRetry(`/api/eventos/${evento.id}`, {
@@ -1714,7 +1701,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         title: "IPC deshecho",
         description: `Se revirtieron las cuotas restantes de ${eventosAfectados} evento(s) a su valor anterior.`,
       })
-    })()
+    })
 
     return eventosAfectados
   }
@@ -1737,6 +1724,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const rawValue: StoreContextType = {
+        syncGuard,
+        applyRemoteState,
         state,
         loading: !isHydrated,
         insumos: state.insumos,
@@ -1749,34 +1738,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         servicios: state.servicios || [],
         costosOperativos: state.costosOperativos || [],
         preciosVenta: state.preciosVenta || {},
-        addInsumo,
-        updateInsumo,
-        deleteInsumo,
+        addInsumo: (...args) => syncGuard.run(() => addInsumo(...args)),
+        updateInsumo: (...args) => syncGuard.run(() => updateInsumo(...args)),
+        deleteInsumo: (...args) => syncGuard.run(() => deleteInsumo(...args)),
         setInsumos,
-        addInsumoBarra,
-        updateInsumoBarra,
-        deleteInsumoBarra,
+        addInsumoBarra: (...args) => syncGuard.run(() => addInsumoBarra(...args)),
+        updateInsumoBarra: (...args) => syncGuard.run(() => updateInsumoBarra(...args)),
+        deleteInsumoBarra: (...args) => syncGuard.run(() => deleteInsumoBarra(...args)),
         setInsumosBarra,
-        addReceta,
-        updateReceta,
-        deleteReceta,
+        addReceta: (...args) => syncGuard.run(() => addReceta(...args)),
+        updateReceta: (...args) => syncGuard.run(() => updateReceta(...args)),
+        deleteReceta: (...args) => syncGuard.run(() => deleteReceta(...args)),
         setRecetas,
-        addCoctel,
-        updateCoctel,
-        deleteCoctel,
+        addCoctel: (...args) => syncGuard.run(() => addCoctel(...args)),
+        updateCoctel: (...args) => syncGuard.run(() => updateCoctel(...args)),
+        deleteCoctel: (...args) => syncGuard.run(() => deleteCoctel(...args)),
         setCocteles,
         addBarraTemplate,
         updateBarraTemplate,
         deleteBarraTemplate,
         setEventoActual,
         updateEventoActual,
-        addEvento,
-        updateEvento,
-        deleteEvento,
+        addEvento: (...args) => syncGuard.run(() => addEvento(...args)),
+        updateEvento: (...args) => syncGuard.run(() => updateEvento(...args)),
+        deleteEvento: (...args) => syncGuard.run(() => deleteEvento(...args)),
         setEventos,
-        addServicio,
-        updateServicio,
-        deleteServicio,
+        addServicio: (...args) => syncGuard.run(() => addServicio(...args)),
+        updateServicio: (...args) => syncGuard.run(() => updateServicio(...args)),
+        deleteServicio: (...args) => syncGuard.run(() => deleteServicio(...args)),
         setServicios,
         addCostoOperativo,
         updateCostoOperativo,
@@ -1801,9 +1790,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         deletePersonal,
         getPersonalByServicio,
         pagosPersonal: state.pagosPersonal || [],
-        addPagoPersonal,
-        updatePagoPersonal,
-        deletePagoPersonal,
+        addPagoPersonal: (...args) => syncGuard.run(() => addPagoPersonal(...args)),
+        updatePagoPersonal: (...args) => syncGuard.run(() => updatePagoPersonal(...args)),
+        deletePagoPersonal: (...args) => syncGuard.run(() => deletePagoPersonal(...args)),
         getPagosPorEvento,
         getPagosPendientes,
         generarPagosPendientes,
@@ -1820,9 +1809,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         },
         movimientosCaja: state.movimientosCaja || [],
         updateConfiguracionCajas,
-        addMovimientoCaja,
-        addMovimientosCaja,
-        deleteMovimientoCaja,
+        addMovimientoCaja: (...args) => syncGuard.run(() => addMovimientoCaja(...args)),
+        addMovimientosCaja: (...args) => syncGuard.run(() => addMovimientosCaja(...args)),
+        deleteMovimientoCaja: (...args) => syncGuard.run(() => deleteMovimientoCaja(...args)),
         gastosArchivados: state.gastosArchivados || [],
         archivarGasto,
         desarchivarGasto,

@@ -1,64 +1,41 @@
 "use client"
 
-import { useCallback } from "react"
+import { useCallback, useRef } from "react"
 import { useStore } from "@/lib/store-context"
-import type { EventoGuardado } from "@/lib/store"
+import { generateId, type EventoGuardado } from "@/lib/store"
 
 export function useEventos() {
-  const { eventos, loading, addEvento, updateEvento: storeUpdate, deleteEvento: storeDelete, setEventos } = useStore()
+  const { state, eventos, loading, addEvento, updateEvento: storeUpdate, deleteEvento: storeDelete, syncGuard, applyRemoteState } = useStore()
+  const stateRef = useRef(state)
+  stateRef.current = state
 
-  // Fetch desde la API y actualiza el store con los datos frescos
   const fetchEventos = useCallback(async () => {
+    const revision = syncGuard.snapshot()
+    if (revision === null) return
+    const baseline = stateRef.current
     try {
-      const res = await fetch("/api/eventos")
-      if (res.ok) {
-        const data: EventoGuardado[] = await res.json()
-        setEventos(data)
-      }
+      const res = await fetch("/api/eventos", { cache: "no-store" })
+      if (!res.ok) throw new Error("No se pudieron actualizar los eventos")
+      const data = await res.json()
+      if (!Array.isArray(data)) throw new Error("Respuesta inválida de eventos")
+      applyRemoteState(baseline, { eventos: data }, revision)
     } catch (err) {
       console.error("[useEventos] Error fetching:", err)
     }
-  }, [setEventos])
+  }, [syncGuard, applyRemoteState])
 
-  // Delega a addEvento del store, que hace el POST y actualiza el store en memoria
   const crearEvento = useCallback(async (evento: Omit<EventoGuardado, "id"> & { id?: string }): Promise<EventoGuardado | null> => {
-    try {
-      await addEvento(evento as EventoGuardado)
-      return null
-    } catch {
-      return null
-    }
+    const nuevo = { ...evento, id: evento.id || generateId() } as EventoGuardado
+    return await addEvento(nuevo) ? nuevo : null
   }, [addEvento])
 
   const actualizarEvento = useCallback(async (id: string, cambios: Partial<EventoGuardado>): Promise<boolean> => {
-    try {
-      await storeUpdate(id, cambios)
-      return true
-    } catch {
-      return false
-    }
+    return await storeUpdate(id, cambios)
   }, [storeUpdate])
 
   const eliminarEvento = useCallback(async (id: string, motivo?: string): Promise<boolean> => {
-    try {
-      const url = motivo ? `/api/eventos/${id}?motivo=${encodeURIComponent(motivo)}` : `/api/eventos/${id}`
-      const res = await fetch(url, { method: "DELETE" })
-      if (res.ok) {
-        await storeDelete(id)
-        return true
-      }
-      return false
-    } catch {
-      return false
-    }
+    return await storeDelete(id, motivo)
   }, [storeDelete])
 
-  return {
-    eventos: eventos || [],
-    loading: loading ?? false,
-    fetchEventos,
-    crearEvento,
-    actualizarEvento,
-    eliminarEvento,
-  }
+  return { eventos: eventos || [], loading: loading ?? false, fetchEventos, crearEvento, actualizarEvento, eliminarEvento }
 }

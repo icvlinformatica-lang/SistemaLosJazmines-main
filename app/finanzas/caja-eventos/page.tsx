@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -416,7 +416,7 @@ function CarpetaTiempo({
 // COMPONENTE PRINCIPAL
 // ---------------------------------------------------------------------------
 export default function CajaEventosPage() {
-  const { state, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal, configuracionCajas } =
+  const { state, syncGuard, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal, configuracionCajas } =
 useStore()
 
   // Tarjetas de métricas: siempre plegadas por defecto, con los montos
@@ -435,7 +435,7 @@ useStore()
   // cada 15s y al volver a la pestaña, para que "Por pagar" siempre refleje
   // las fechas actuales de los eventos (si se reprograma uno, los vencimientos
   // se corren solos).
-  useSyncTiempoReal()
+  useSyncTiempoReal(15000, true)
 
   // Ids de pagos ya archivados (para ocultarlos del historial activo sin tocar el saldo)
   const pagosArchivadosIds = new Set(
@@ -797,14 +797,43 @@ useStore()
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
   const { toast } = useToast()
+  const operacionEnCurso = useRef(false)
+  const [guardandoOperacion, setGuardandoOperacion] = useState(false)
+
+  async function guardarOperacion(guardarEstado: () => Promise<boolean>, movimientos: MovimientoCaja[]) {
+    if (operacionEnCurso.current) return false
+    operacionEnCurso.current = true
+    setGuardandoOperacion(true)
+    try {
+      return await syncGuard.run(async () => {
+        if (!await guardarEstado()) return false
+        if (!await addMovimientosCaja(movimientos)) {
+          toast({
+            title: "Operación incompleta: revisar caja",
+            description: "El estado del evento se guardó, pero no se pudo confirmar el movimiento. Revisá el historial antes de volver a cobrar o pagar.",
+            variant: "destructive",
+          })
+          return false
+        }
+        return true
+      })
+    } finally {
+      operacionEnCurso.current = false
+      setGuardandoOperacion(false)
+    }
+  }
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
   // "por cobrar" y genera el ingreso repartido entre Caja Eventos y Caja Jazmines
   // según la regla proporcional única (costo + 5% a Eventos, resto a Jazmines),
   // datado en la fecha de vencimiento de la cuota.
-  function confirmarCobroCuota(ing: IngresoPendiente) {
+  async function confirmarCobroCuota(ing: IngresoPendiente) {
     const evento = state.eventos?.find((e) => e.id === ing.eventoId) as EventoGuardado | undefined
     if (!evento) return
+    if (!evento.salon) {
+      toast({ title: "Falta el salón del evento", description: "Asigná un salón antes de registrar el cobro en caja.", variant: "destructive" })
+      return
+    }
     const { yaCobrada, planUpdate, movimientos } = construirCobroCuota(
       evento,
       ing.numeroCuota,
@@ -823,8 +852,7 @@ useStore()
       toast({ title: "Esta cuota ya figura como cobrada." })
       return
     }
-    if (planUpdate) updateEvento(ing.eventoId, planUpdate)
-    if (movimientos.length > 0) addMovimientosCaja(movimientos)
+    if (!planUpdate || !await guardarOperacion(() => updateEvento(ing.eventoId, planUpdate), movimientos)) return
     toast({
       title: "Cuota marcada como cobrada",
       description: `Cuota ${ing.numeroCuota}/${ing.totalCuotas} · ${ing.eventoNombre}`,
@@ -895,22 +923,23 @@ useStore()
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
   // (así el dashboard "por pagar" del mes se actualiza al instante).
-  const handleMarcarPagado = (egreso: EgresoPendienteServicio) => {
+  const handleMarcarPagado = async (egreso: EgresoPendienteServicio) => {
     const evento = state.eventos.find((e) => e.id === egreso.eventoId)
-    if (!evento) return
+    if (!evento || !egresosPendientes.some((pendiente) => pendiente.id === egreso.id)) return false
     const hoyISO = new Date().toISOString()
     const fechaPago = hoyISO.split("T")[0]
+    let guardarEstado: () => Promise<boolean>
 
     if (egreso.tipo === "menu") {
       // El costo de cocina (menú) queda marcado como pagado en el evento,
       // lo que actualiza el indicador de /eventos/lista.
-      updateEvento(egreso.eventoId, { cocinaPagada: true })
+      guardarEstado = () => updateEvento(egreso.eventoId, { cocinaPagada: true })
     } else if (egreso.tipo === "barra") {
-      updateEvento(egreso.eventoId, { barraPagada: true })
+      guardarEstado = () => updateEvento(egreso.eventoId, { barraPagada: true })
     } else if (egreso.tipo === "sueldo") {
       if (egreso.id.includes("-compromiso-")) {
         // Compromiso asignado manualmente desde Finanzas → Personal
-        updatePagoPersonal(egreso.servicioId!, {
+        guardarEstado = () => updatePagoPersonal(egreso.servicioId!, {
           estado: "pagado",
           fechaPago: new Date().toISOString().split("T")[0],
         })
@@ -921,7 +950,7 @@ useStore()
         const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
           pe.id === egreso.servicioId ? { ...pe, pagado: true, monto: egreso.monto } : pe
         )
-        updateEvento(egreso.eventoId, { personalEvento: nuevoPersonal })
+        guardarEstado = () => updateEvento(egreso.eventoId, { personalEvento: nuevoPersonal })
       }
     } else {
       // Servicio: matchear por servicioId exacto y marcar pagado + estadoPago,
@@ -941,7 +970,7 @@ useStore()
           fechaPagoSaldo: fechaPago,
         }
       })
-      updateEvento(egreso.eventoId, { servicios: nuevosServicios })
+      guardarEstado = () => updateEvento(egreso.eventoId, { servicios: nuevosServicios })
     }
 
     // Registrar el egreso real que sale de Caja Eventos
@@ -969,13 +998,12 @@ useStore()
       cajaDestino: "caja_eventos",
       saldoResultante: saldoPrev - egreso.monto,
     }
-    addMovimientosCaja([movimiento])
+    return await guardarOperacion(guardarEstado, [movimiento])
   }
 
   // Confirma el pago desde el diálogo: ejecuta el marcado y muestra la animación de check.
-  const confirmarMarcarPagado = () => {
-    if (!pagoConfirmar) return
-    handleMarcarPagado(pagoConfirmar)
+  const confirmarMarcarPagado = async () => {
+    if (!pagoConfirmar || !await handleMarcarPagado(pagoConfirmar)) return
     setPagoConfirmar(null)
     setPagoExito(true)
     setTimeout(() => setPagoExito(false), 1400)
@@ -1192,7 +1220,7 @@ useStore()
       <TableRow key={ing.id} className="cursor-pointer" onClick={() => setClienteSel(ing)}>
         <TableCell className="pl-6">
           <p className="font-medium text-sm">{ing.contacto.nombre}</p>
-          <p className="text-xs text-muted-foreground">{ing.eventoNombre} · {ing.salon}</p>
+          <p className="text-xs text-muted-foreground">{ing.eventoNombre} · {ing.salon ? salonLabel(ing.salon) : "General"}</p>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {ing.numeroCuota}/{ing.totalCuotas}
@@ -2246,7 +2274,7 @@ useStore()
                 </label>
                 <Button
                   className="w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={!marcarCobrada}
+                  disabled={!marcarCobrada || guardandoOperacion}
                   onClick={() => confirmarCobroCuota(clienteSel)}
                 >
                   <CheckCircle2 className="h-4 w-4" />
@@ -2430,6 +2458,7 @@ useStore()
             </Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={guardandoOperacion}
               onClick={confirmarMarcarPagado}
             >
               <CheckCircle2 className="h-4 w-4 mr-1" /> Sí, marcar pagado

@@ -165,7 +165,7 @@ export async function GET() {
     return NextResponse.json(rows.map(fromRow))
   } catch (err) {
     console.error("[API] Error fetching eventos:", err)
-    return NextResponse.json([], { status: 200 })
+    return NextResponse.json({ error: "No se pudieron cargar los eventos. Volvé a intentar." }, { status: 500 })
   }
 }
 

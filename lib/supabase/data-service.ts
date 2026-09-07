@@ -1,6 +1,7 @@
 "use client"
 
 import { createClient } from "./client"
+import { fetchAllPages } from "../fetch-all-pages"
 import type { 
   Evento, 
   Servicio, 
@@ -17,16 +18,14 @@ const supabase = createClient()
 
 // ============ SERVICIOS ============
 export async function fetchServicios(): Promise<Servicio[]> {
-  const { data, error } = await supabase
+  const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
     .from("servicios")
-    .select("*")
+    .select("*", { count: "exact" })
     .order("orden", { ascending: true, nullsFirst: false })
     .order("nombre")
-  
-  if (error) {
-    console.error("Error fetching servicios:", error)
-    return []
-  }
+    .order("id")
+    .range(from, to)
+    .abortSignal(AbortSignal.timeout(15000)))
   
   return (data || []).map(s => ({
     id: s.id,
@@ -461,15 +460,13 @@ export async function deleteEvento(id: string): Promise<boolean> {
 
 // ============ PAGOS PERSONAL ============
 export async function fetchPagosPersonal(): Promise<PagoPersonal[]> {
-  const { data, error } = await supabase
+  const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
     .from("pagos_personal")
-    .select("*")
+    .select("*", { count: "exact" })
     .order("fecha_evento")
-  
-  if (error) {
-    console.error("Error fetching pagos_personal:", error)
-    return []
-  }
+    .order("id")
+    .range(from, to)
+    .abortSignal(AbortSignal.timeout(15000)))
   
   return (data || []).map(p => ({
     id: p.id,
@@ -712,15 +709,13 @@ export async function deleteCostoOperativo(id: string): Promise<boolean> {
 
 // ============ MOVIMIENTOS CAJA ============
 export async function fetchMovimientosCaja(): Promise<MovimientoCaja[]> {
-  const { data, error } = await supabase
+  const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
     .from("movimientos_caja")
-    .select("*")
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
-  
-  if (error) {
-    console.error("Error fetching movimientos_caja:", error)
-    return []
-  }
+    .order("id")
+    .range(from, to)
+    .abortSignal(AbortSignal.timeout(15000)))
   
   return (data || []).map(m => ({
     id: m.id,
@@ -735,6 +730,25 @@ export async function fetchMovimientosCaja(): Promise<MovimientoCaja[]> {
     saldoAnterior: m.saldo_anterior ? Number(m.saldo_anterior) : undefined,
     saldoPosterior: m.saldo_posterior ? Number(m.saldo_posterior) : undefined,
   }))
+}
+
+export async function insertMovimientosCaja(movimientos: MovimientoCaja[]): Promise<void> {
+  if (movimientos.length === 0) return
+  const { error } = await supabase.from("movimientos_caja").insert(movimientos.map((mov) => ({
+    id: mov.id,
+    salon: mov.salon,
+    tipo: mov.tipo,
+    monto: mov.monto,
+    concepto: mov.concepto,
+    fecha: mov.fecha,
+    evento_id: mov.eventoId ?? null,
+    saldo_resultante: mov.saldoResultante ?? null,
+    caja_destino: mov.cajaDestino ?? null,
+    saldo_anterior: "saldoAnterior" in mov ? mov.saldoAnterior ?? null : null,
+    saldo_posterior: "saldoPosterior" in mov ? mov.saldoPosterior ?? null : null,
+  })))
+  // PostgREST inserta el lote en una transacción: nunca queda medio reparto.
+  if (error) throw error
 }
 
 export async function insertMovimientoCaja(mov: Partial<MovimientoCaja>): Promise<MovimientoCaja | null> {
