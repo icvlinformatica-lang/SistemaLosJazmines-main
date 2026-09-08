@@ -97,7 +97,21 @@ test("cuenta cada cuota y divide por salón en columnas de cinco sin duplicados"
   assert.equal(grupos.filter((g) => g.salon === "Casona").length, 0)
   assert.deepEqual(agruparCuotasPorSalon([]), [])
 })
-test("la vista muestra filtros, cantidades y columnas con hasta cinco cuotas", () => {
+test("Ver más muestra 5, 10, 15 y todas; ordena por fecha del evento entre salones", () => {
+  const { limiteCuotasVisibles, ordenarCuotasPorEvento } = require("../lib/vienen-a-pagar.ts")
+  const lista = Array.from({ length: 23 }, (_, i) => i)
+  assert.deepEqual([0, 1, 2, 3].map((paso) => lista.slice(0, limiteCuotasVisibles(paso)).length), [5, 10, 15, 23])
+  const cuota = { numero: 1, fechaVencimiento: "2026-08-01", monto: 100, atrasada: true }
+  const grupos = agruparCuotasPorSalon([
+    { salonId: "Quinta", evento: "Lejano", fechaEvento: "2027-01-01", cuotasPendientes: [cuota] },
+    { salonId: "Salon", evento: "Próximo", fechaEvento: "2026-09-10", cuotasPendientes: [{ ...cuota, atrasada: false }] },
+    { salonId: "Quinta", evento: "Intermedio", fechaEvento: "2026-10-10", cuotasPendientes: [cuota] },
+    { salonId: "Salon", evento: "Sin fecha", fechaEvento: "", cuotasPendientes: [cuota] },
+  ])
+  assert.deepEqual(ordenarCuotasPorEvento(grupos).map((c) => c.evento), ["Próximo", "Intermedio", "Lejano", "Sin fecha"])
+  assert.deepEqual(ordenarCuotasPorEvento(grupos.filter((g) => g.salon === "Quinta")).map((c) => c.evento), ["Intermedio", "Lejano"])
+})
+test("la vista muestra filtros, cantidades y cinco filas con Ver más", () => {
   const React = require("react")
   const { renderToStaticMarkup } = require("react-dom/server")
   require.extensions[".tsx"] = (mod, filename) => {
@@ -118,10 +132,10 @@ test("la vista muestra filtros, cantidades y columnas con hasta cinco cuotas", (
     assert.match(html, /Filtrar por salón/)
     assert.match(html, /12 cuotas por pagar/)
     assert.match(html, /Salón personalizado/)
-    assert.match(html, /aria-label="Cuotas 1 a 5"/)
-    assert.match(html, /aria-label="Cuotas 6 a 10"/)
-    assert.match(html, /aria-label="Cuotas 11 a 12"/)
-    assert.equal((html.match(/<li /g) || []).length, 12)
+    assert.match(html, /aria-label="Cuotas por fecha del evento"/)
+    assert.match(html, /Ver más/)
+    assert.doesNotMatch(html, /Columnas de cuotas|overflow-x-auto/)
+    assert.equal((html.match(/<li /g) || []).length, 5)
     const { FindeModal } = require("../components/finde-modal.tsx")
     const finde = renderToStaticMarkup(React.createElement(FindeModal, { open: true, onOpenChange: () => {} }))
     assert.match(finde, /Fin de semana anterior/)

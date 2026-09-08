@@ -5,6 +5,16 @@ export type CuotaPorPagar = VieneAPagar["cuotasPendientes"][number] & {
   fechaEvento: string
 }
 
+export function limiteCuotasVisibles(ampliaciones: number): number {
+  return ampliaciones >= 3 ? Infinity : 5 * (ampliaciones + 1)
+}
+
+export function ordenarCuotasPorEvento(grupos: ReturnType<typeof agruparCuotasPorSalon>) {
+  return grupos.flatMap((grupo) => grupo.cuotas.map((cuota) => ({ ...cuota, salon: grupo.salon })))
+    .sort((a, b) => (a.fechaEvento || "9999-12-31").localeCompare(b.fechaEvento || "9999-12-31")
+      || a.evento.localeCompare(b.evento) || a.salon.localeCompare(b.salon) || a.numero - b.numero)
+}
+
 export function agruparCuotasPorSalon(lista: VieneAPagar[]) {
   const grupos = new Map<string, CuotaPorPagar[]>()
   for (const evento of lista) {
