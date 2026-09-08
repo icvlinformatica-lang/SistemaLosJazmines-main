@@ -44,7 +44,7 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
         {cuota.atrasada && <span className="inline-flex items-center gap-1 text-sm font-semibold text-destructive"><AlertTriangle className="size-4" />Atrasada</span>}
         {cuota.eventoId ? (
           <Button asChild variant="outline" size="sm" className="shrink-0">
-            <Link href={`/evento?id=${encodeURIComponent(cuota.eventoId)}`} prefetch={false} onClick={onAbrirEvento} aria-label={`Ir al evento ${cuota.evento}, cuota ${cuota.numero}`}>Ir al evento</Link>
+            <Link href={`/eventos/pagos?evento=${encodeURIComponent(cuota.eventoId)}`} prefetch={false} onClick={onAbrirEvento} aria-label={`Ir al evento ${cuota.evento}, cuota ${cuota.numero}`}>Ir al evento</Link>
           </Button>
         ) : <Button variant="outline" size="sm" disabled title="No se pudo identificar el evento. Volvé a abrir la lista.">Ir al evento</Button>}
       </div>
