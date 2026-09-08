@@ -9,7 +9,11 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } fr
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ResumenMensual } from "@/components/resumen-mensual"
 import { cn } from "@/lib/utils"
-import { X, Wallet, TrendingUp, TrendingDown, CreditCard, Mail, Loader2, MapPin } from "lucide-react"
+import { X, Wallet, TrendingUp, TrendingDown, CreditCard, Mail, Loader2, MapPin, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { cambiarDiaResumen, fechaArgentina, fechaResumenValida } from "@/lib/resumen-fecha"
 
 interface MovimientoResumen {
   tipo: string
@@ -67,15 +71,19 @@ interface Props {
 
 export function ResumenDiarioModal({ open, onOpenChange }: Props) {
   const [tab, setTab] = useState("diario")
+  const [fechaElegida, setFechaElegida] = useState<string | null>(null)
+  const hoy = fechaArgentina()
+  const fecha = fechaElegida ?? hoy
+  const fechaLegible = new Date(`${fecha}T12:00:00Z`).toLocaleDateString("es-AR", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" })
   const touchX = useRef<number | null>(null)
-  const { data: resumen, isLoading: loading } = useSWR<ResumenDiario>(open ? "/api/resumen-diario" : null, async (url: string) => {
+  const { data: resumen, isLoading: loading, error, mutate } = useSWR<ResumenDiario>(open && tab === "diario" ? `/api/resumen-diario?fecha=${fecha}` : null, async (url: string) => {
     const respuesta = await fetch(url, { cache: "no-store" })
     if (!respuesta.ok) throw new Error("No se pudo cargar el resumen")
     const data = await respuesta.json()
     if (data.error) throw new Error("No se pudo cargar el resumen")
     return data
-  })
-  useEffect(() => { if (!open) setTab("diario") }, [open])
+  }, { keepPreviousData: false })
+  useEffect(() => { if (!open) { setTab("diario"); setFechaElegida(null) } }, [open])
 
   if (!open) return null
 
@@ -87,7 +95,7 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
         <div className="flex items-start justify-between gap-2 bg-[#2d5a3d] px-5 py-4 text-[#f5f0e8]">
           <div>
             <DialogTitle className="text-lg font-bold">Resumen</DialogTitle>
-            <p className="text-xs opacity-90 capitalize">{tab === "diario" ? resumen?.fechaLegible || "Hoy" : "Ingresos y egresos por salón"}</p>
+            <p className="text-xs opacity-90 capitalize">{tab === "diario" ? fechaLegible : "Ingresos y egresos por salón"}</p>
           </div>
           <DialogClose
             type="button"
@@ -113,14 +121,25 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
             </TabsList>
           </div>
         <TabsContent value="diario" className="min-h-0 overflow-y-auto">
-        <div className="flex-1 space-y-4 p-5">
+        <div className="flex flex-1 flex-col gap-4 p-5">
+          <div className="rounded-lg border bg-background p-3 text-foreground">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="fecha-resumen-diario">Fecha del resumen</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="icon" aria-label="Día anterior" disabled={fecha === "0001-01-01"} onClick={() => setFechaElegida(cambiarDiaResumen(fecha, -1))}><ChevronLeft /></Button>
+                <Input id="fecha-resumen-diario" className="w-40" type="date" min="0001-01-01" max="9999-12-31" value={fecha} onChange={(e) => { if (fechaResumenValida(e.target.value)) setFechaElegida(e.target.value) }} />
+                <Button variant="outline" size="icon" aria-label="Día siguiente" disabled={fecha === "9999-12-31"} onClick={() => setFechaElegida(cambiarDiaResumen(fecha, 1))}><ChevronRight /></Button>
+                <Button variant="ghost" size="sm" disabled={fecha === hoy} onClick={() => setFechaElegida(null)}><CalendarDays />Hoy</Button>
+              </div>
+            </div>
+          </div>
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#2d5a3d]">
               <Loader2 className="h-4 w-4 animate-spin" />
               Armando el resumen del día...
             </div>
-          ) : !resumen ? (
-            <p className="py-10 text-center text-sm text-gray-500">No se pudo cargar el resumen.</p>
+          ) : error || !resumen || resumen.fecha !== fecha ? (
+            <div role="alert" className="rounded-lg bg-background p-4 text-center text-foreground"><p className="text-sm">No se pudo cargar el resumen de esta fecha.</p><Button variant="outline" size="sm" onClick={() => void mutate()}>Reintentar</Button></div>
           ) : (
             <>
               {/* Dinero por caja */}
@@ -157,7 +176,7 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
                 </h3>
                 <div className="rounded-lg border border-[#2d5a3d]/20 bg-white">
                   {resumen.ingresosPorSalon.length === 0 ? (
-                    <p className="p-3 text-sm text-gray-400">Sin ingresos registrados hoy.</p>
+                    <p className="p-3 text-sm text-gray-400">Sin ingresos registrados para este día.</p>
                   ) : (
                     resumen.ingresosPorSalon.map((s, i) => (
                       <div
@@ -180,7 +199,7 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
                 </h3>
                 <div className="rounded-lg border border-[#2d5a3d]/20 bg-white">
                   {resumen.movimientosImportantes.length === 0 ? (
-                    <p className="p-3 text-sm text-gray-400">Sin movimientos registrados hoy.</p>
+                    <p className="p-3 text-sm text-gray-400">Sin movimientos registrados para este día.</p>
                   ) : (
                     resumen.movimientosImportantes.map((m, i) => (
                       <div
@@ -208,11 +227,11 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
               <section>
                 <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-[#2d5a3d]">
                   <CreditCard className="h-4 w-4" />
-                  Cuotas que entraron hoy
+                  Cuotas que entraron este día
                 </h3>
                 <div className="rounded-lg border border-[#2d5a3d]/20 bg-white">
                   {resumen.cuotasDelDia.length === 0 ? (
-                    <p className="p-3 text-sm text-gray-400">No entraron cuotas hoy.</p>
+                    <p className="p-3 text-sm text-gray-400">No entraron cuotas este día.</p>
                   ) : (
                     <>
                       {resumen.cuotasDelDia.map((c, i) => (

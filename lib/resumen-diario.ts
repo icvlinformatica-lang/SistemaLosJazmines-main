@@ -5,6 +5,7 @@
 // /api/cron/resumen-diario). Corre SOLO en el servidor.
 
 import { sql } from "@/lib/db"
+import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
 
 const TZ = "America/Argentina/Buenos_Aires"
 
@@ -118,17 +119,18 @@ function parseJson<T>(value: unknown, fallback: T): T {
   return value as T
 }
 
-export async function buildResumenDiario(): Promise<ResumenDiario> {
-  const hoy = hoyArgentina()
+export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenDiario> {
+  if (!fechaResumenValida(hoy)) throw new Error("Fecha de resumen inválida")
+  const desde = cambiarDiaResumen(hoy, -1)
+  const hasta = cambiarDiaResumen(hoy, 1)
 
-  // Movimientos recientes (últimas 48 hs) y se filtran por día argentino en JS
-  // para no depender del tipo de la columna fecha.
+  // fecha es TEXT: incluir los días adyacentes contempla offsets horarios.
+  // El filtro exacto argentino se aplica abajo, sin recortar por created_at ni cantidad.
   const movRows = (await sql`
     SELECT tipo, concepto, monto, salon, caja_destino, fecha
     FROM movimientos_caja
-    WHERE created_at >= NOW() - INTERVAL '3 days'
+    WHERE LEFT(fecha, 10) BETWEEN ${desde} AND ${hasta}
     ORDER BY created_at DESC
-    LIMIT 500
   `) as unknown as Record<string, unknown>[]
 
   const movsHoy = movRows.filter((m) => diaDe(m.fecha) === hoy)

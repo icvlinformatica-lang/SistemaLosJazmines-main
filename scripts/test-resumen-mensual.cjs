@@ -168,7 +168,7 @@ test("panel mensual renderiza selector, columnas y ambas cajas sin proveedores e
   const { renderToStaticMarkup } = require("react-dom/server")
   const load = Module._load
   Module._load = function (request, ...args) {
-    if (request === "@/lib/store-context") return { useStore: () => ({ state: state({ eventos: [ev()] }) }) }
+    if (request === "@/lib/store-context") return { useStore: () => ({ state: state({ eventos: [ev()] }), configuracionCajas: { salones: { Quinta: { color: "#123456" } } } }) }
     if (request === "@/lib/clock-context") return { useClock: () => ({ ahora: hoy, soloLectura: false }) }
     if (request === "@/lib/hooks/use-sync-tiempo-real") return { useSyncTiempoReal: () => ({ ultimaSync: hoy, errorSync: false, sincronizando: false, refrescar: () => {} }) }
     return load.call(this, request, ...args)
@@ -180,6 +180,8 @@ test("panel mensual renderiza selector, columnas y ambas cajas sin proveedores e
   assert.match(html, /type="month"/)
   assert.match(html, /scope="row"/)
   assert.match(html, /scope="col"/)
+  assert.match(html, /border-top-color:#123456/)
+  assert.match(html, /background-color:#1234560d/)
 })
 
 test("mes vacío y consulta no mutan el estado", () => {

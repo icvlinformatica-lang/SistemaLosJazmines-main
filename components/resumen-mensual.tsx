@@ -6,7 +6,8 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { calcularResumenMensual, cambiarMes, mesDeFecha, CAJAS_RESUMEN, GENERAL, type ImportesResumen } from "@/lib/resumen-mensual"
-import { formatCurrency, salonLabel } from "@/lib/store"
+import { formatCurrency, salonLabel, salonColor } from "@/lib/store"
+import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,7 +33,7 @@ function ImportesCelda({ valores }: { valores: ImportesResumen }) {
 }
 
 export function ResumenMensual() {
-  const { state } = useStore()
+  const { state, configuracionCajas } = useStore()
   const { ahora, soloLectura } = useClock()
   const actual = mesDeFecha(ahora)
   const [mes, setMes] = useState(actual)
@@ -72,12 +73,12 @@ export function ResumenMensual() {
               <TableCaption>Previsto por vencimiento · Cobrado y pagado por fecha registrada</TableCaption>
               <TableHeader><TableRow>
                 <TableHead scope="col" className="sticky left-0 z-10 min-w-32 bg-background">Caja</TableHead>
-                {resumen.salones.map((salon) => <TableHead key={salon} scope="col" className="px-4 py-3">{salon === GENERAL ? "General / Sin asignar" : salonLabel(salon)}</TableHead>)}
+                {resumen.salones.map((salon) => <TableHead key={salon} scope="col" className="border-t-4 px-4 py-3 text-foreground" style={{ borderTopColor: salonColor(salon, configuracionCajas), backgroundColor: `${salonColor(salon, configuracionCajas)}20` }}><span className="flex items-center gap-2"><SalonDot salon={salon} />{salon === GENERAL ? "General / Sin asignar" : salonLabel(salon)}</span></TableHead>)}
                 <TableHead scope="col" className="px-4 py-3">Total</TableHead>
               </TableRow></TableHeader>
               <TableBody>{CAJAS_RESUMEN.map((caja) => <TableRow key={caja}>
                 <TableHead scope="row" className="sticky left-0 z-10 bg-background align-top py-4 font-semibold">{nombreCaja[caja]}</TableHead>
-                {resumen.salones.map((salon) => <TableCell key={salon} className="border-l p-4 align-top"><ImportesCelda valores={resumen.cajas[caja][salon]} /></TableCell>)}
+                {resumen.salones.map((salon) => <TableCell key={salon} className="border-l p-4 align-top text-foreground" style={{ backgroundColor: `${salonColor(salon, configuracionCajas)}0d` }}><ImportesCelda valores={resumen.cajas[caja][salon]} /></TableCell>)}
                 <TableCell className="border-l bg-muted p-4 align-top text-foreground"><ImportesCelda valores={resumen.totales[caja]} /></TableCell>
               </TableRow>)}</TableBody>
             </Table>
