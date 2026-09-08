@@ -4,8 +4,12 @@
 // domingo) con su salón y un pequeño desglose de costos calculado en vivo
 // con los mismos criterios que la pantalla Costos del evento.
 
-import { useMemo } from "react"
-import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { cambiarDiaResumen, fechaArgentina, fechaResumenValida, rangoFinde } from "@/lib/resumen-fecha"
 import { useStore } from "@/lib/store-context"
 import {
   calcularComprasSegmentadas,
@@ -13,27 +17,11 @@ import {
   calcularMontoPersonalDelEvento,
   calcularSeñaSaldoServicio,
   salonLabel,
+  salonColor,
 } from "@/lib/store"
 
 function fmt(n: number): string {
   return "$" + Math.round(n).toLocaleString("es-AR")
-}
-
-/** Rango [viernes, domingo] del fin de semana actual o próximo (hora AR). */
-function rangoFinde(): { desde: string; hasta: string } {
-  const hoyStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-  const hoy = new Date(hoyStr + "T12:00:00")
-  const dia = hoy.getDay() // 0 = domingo
-  let offsetViernes: number
-  if (dia === 0) offsetViernes = -2 // domingo: el finde arrancó el viernes pasado
-  else if (dia === 6) offsetViernes = -1 // sábado
-  else offsetViernes = 5 - dia // lunes a viernes: el viernes que viene (o hoy)
-  const viernes = new Date(hoy)
-  viernes.setDate(hoy.getDate() + offsetViernes)
-  const domingo = new Date(viernes)
-  domingo.setDate(viernes.getDate() + 2)
-  const toStr = (d: Date) => d.toISOString().slice(0, 10)
-  return { desde: toStr(viernes), hasta: toStr(domingo) }
 }
 
 function fechaCorta(fecha: string): string {
@@ -42,6 +30,7 @@ function fechaCorta(fecha: string): string {
       weekday: "long",
       day: "numeric",
       month: "short",
+      year: "numeric",
     })
   } catch {
     return fecha
@@ -54,9 +43,13 @@ interface Props {
 }
 
 export function FindeModal({ open, onOpenChange }: Props) {
-  const { state } = useStore()
+  const { state, configuracionCajas } = useStore()
 
-  const { desde, hasta } = useMemo(() => rangoFinde(), [])
+  const [fechaElegida, setFechaElegida] = useState<string | null>(null)
+  const fecha = fechaElegida ?? fechaArgentina()
+  const { desde, hasta } = rangoFinde(fecha)
+  const actual = rangoFinde()
+  useEffect(() => { if (!open) setFechaElegida(null) }, [open])
 
   const eventosFinde = useMemo(() => {
     return (state.eventos || [])
@@ -131,7 +124,19 @@ export function FindeModal({ open, onOpenChange }: Props) {
           </button>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
+          <div className="rounded-lg border bg-background p-3 text-foreground">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="fecha-finde">Elegir fecha</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="icon" aria-label="Fin de semana anterior" disabled={desde < "0001-01-08"} onClick={() => setFechaElegida(cambiarDiaResumen(desde, -7))}><ChevronLeft /></Button>
+                <Input id="fecha-finde" className="w-40" type="date" min="0001-01-01" max="9999-12-31" value={fecha} onChange={(e) => { if (fechaResumenValida(e.target.value)) setFechaElegida(e.target.value) }} />
+                <Button variant="outline" size="icon" aria-label="Fin de semana siguiente" disabled={desde > "9999-12-24"} onClick={() => setFechaElegida(cambiarDiaResumen(desde, 7))}><ChevronRight /></Button>
+                <Button variant="ghost" size="sm" disabled={desde === actual.desde} onClick={() => setFechaElegida(null)}>Este finde</Button>
+              </div>
+              <p className="text-sm text-muted-foreground" aria-live="polite">{eventosFinde.length} eventos · viernes a domingo de la semana elegida.</p>
+            </div>
+          </div>
           {eventosFinde.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-gray-400">
               <PartyPopper className="h-8 w-8" />
@@ -139,49 +144,59 @@ export function FindeModal({ open, onOpenChange }: Props) {
             </div>
           ) : (
             eventosFinde.map(({ evento, costoCocina, costoBarra, totalPersonal, totalServicios, total, invitados }) => (
-              <div key={evento.id} className="rounded-lg border border-[#2d5a3d]/20 bg-white p-4">
+              <div
+                key={evento.id}
+                className="rounded-lg border border-t-4 bg-card p-4 text-card-foreground"
+                style={{
+                  borderColor: salonColor(evento.salon, configuracionCajas),
+                  backgroundColor: `color-mix(in srgb, ${salonColor(evento.salon, configuracionCajas)} 10%, var(--card))`,
+                }}
+              >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-gray-800">
+                    <p className="truncate text-sm font-bold text-card-foreground">
                       {evento.nombre || evento.nombrePareja || "Sin nombre"}
                     </p>
-                    <p className="flex items-center gap-1 text-xs capitalize text-gray-500">
+                    <p className="flex items-center gap-1 text-xs capitalize text-muted-foreground">
                       <CalendarDays className="h-3 w-3" />
                       {evento.fecha ? fechaCorta(evento.fecha) : "Sin fecha"}
                       {evento.horario ? ` · ${evento.horario}` : ""}
                     </p>
                   </div>
-                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-[#2d5a3d]/10 px-2.5 py-1 text-xs font-semibold text-[#2d5a3d]">
-                    <MapPin className="h-3 w-3" />
+                  <span
+                    className="flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold text-card-foreground"
+                    style={{ borderColor: salonColor(evento.salon, configuracionCajas), backgroundColor: `${salonColor(evento.salon, configuracionCajas)}20` }}
+                  >
+                    <MapPin className="h-3 w-3" style={{ color: salonColor(evento.salon, configuracionCajas) }} />
                     {salonLabel(evento.salon)}
                   </span>
                 </div>
 
                 {/* Desglose de costos */}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  <span className="flex items-center gap-1.5 text-gray-500">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
                     <ChefHat className="h-3.5 w-3.5" /> Cocina
                   </span>
-                  <span className="text-right font-medium text-gray-800">{fmt(costoCocina)}</span>
-                  <span className="flex items-center gap-1.5 text-gray-500">
+                  <span className="text-right font-medium text-card-foreground">{fmt(costoCocina)}</span>
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Martini className="h-3.5 w-3.5" /> Barra
                   </span>
-                  <span className="text-right font-medium text-gray-800">{fmt(costoBarra)}</span>
-                  <span className="flex items-center gap-1.5 text-gray-500">
+                  <span className="text-right font-medium text-card-foreground">{fmt(costoBarra)}</span>
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Briefcase className="h-3.5 w-3.5" /> Servicios
                   </span>
-                  <span className="text-right font-medium text-gray-800">{fmt(totalServicios)}</span>
-                  <span className="flex items-center gap-1.5 text-gray-500">
+                  <span className="text-right font-medium text-card-foreground">{fmt(totalServicios)}</span>
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Users className="h-3.5 w-3.5" /> Personal
                   </span>
-                  <span className="text-right font-medium text-gray-800">{fmt(totalPersonal)}</span>
+                  <span className="text-right font-medium text-card-foreground">{fmt(totalPersonal)}</span>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
-                  <span className="text-xs text-gray-500">
+                <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+                  <span className="text-xs text-muted-foreground">
                     {invitados > 0 ? `${invitados} invitados` : "Sin invitados cargados"}
                   </span>
-                  <span className="text-sm font-bold text-[#2d5a3d]">Total {fmt(total)}</span>
+                  <span className="text-sm font-bold text-card-foreground">Total {fmt(total)}</span>
                 </div>
               </div>
             ))

@@ -2,7 +2,8 @@ import type { AppState } from "./store"
 
 export type RemoteStoreData = Partial<Pick<AppState,
   "eventos" | "movimientosCaja" | "pagosPersonal" | "servicios" |
-  "insumos" | "insumosBarra" | "recetas" | "cocteles"
+  "insumos" | "insumosBarra" | "recetas" | "cocteles" |
+  "costosOperativos" | "gastosArchivados" | "vendedores" | "personal"
 >>
 
 export class StoreSyncGuard {

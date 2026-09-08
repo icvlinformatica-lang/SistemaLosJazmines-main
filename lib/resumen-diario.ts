@@ -5,6 +5,7 @@
 // /api/cron/resumen-diario). Corre SOLO en el servidor.
 
 import { sql } from "@/lib/db"
+import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
 
 const TZ = "America/Argentina/Buenos_Aires"
 
@@ -31,9 +32,12 @@ export interface IngresoSalonResumen {
 
 /** Evento que tiene cuota por pagar esta semana (o cuotas atrasadas). */
 export interface VieneAPagar {
+  eventoId: string
   evento: string
   salon: string
   fechaEvento: string // YYYY-MM-DD
+  salonId: string
+  cuotasPendientes: Array<{ numero: number; fechaVencimiento: string; monto: number; atrasada: boolean }>
   /** Próxima cuota que vence esta semana (si hay) */
   cuotaSemana: { numero: number; fechaVencimiento: string; monto: number } | null
   /** Deuda de cuotas vencidas sin pagar (semana pasada o antes) */
@@ -118,17 +122,18 @@ function parseJson<T>(value: unknown, fallback: T): T {
   return value as T
 }
 
-export async function buildResumenDiario(): Promise<ResumenDiario> {
-  const hoy = hoyArgentina()
+export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenDiario> {
+  if (!fechaResumenValida(hoy)) throw new Error("Fecha de resumen inválida")
+  const desde = cambiarDiaResumen(hoy, -1)
+  const hasta = cambiarDiaResumen(hoy, 1)
 
-  // Movimientos recientes (últimas 48 hs) y se filtran por día argentino en JS
-  // para no depender del tipo de la columna fecha.
+  // fecha es TEXT: incluir los días adyacentes contempla offsets horarios.
+  // El filtro exacto argentino se aplica abajo, sin recortar por created_at ni cantidad.
   const movRows = (await sql`
     SELECT tipo, concepto, monto, salon, caja_destino, fecha
     FROM movimientos_caja
-    WHERE created_at >= NOW() - INTERVAL '3 days'
+    WHERE LEFT(fecha, 10) BETWEEN ${desde} AND ${hasta}
     ORDER BY created_at DESC
-    LIMIT 500
   `) as unknown as Record<string, unknown>[]
 
   const movsHoy = movRows.filter((m) => diaDe(m.fecha) === hoy)
@@ -175,7 +180,7 @@ export async function buildResumenDiario(): Promise<ResumenDiario> {
 
   // Cuotas cobradas hoy + plan de cuotas para saber quién viene a pagar
   const evRows = (await sql`
-    SELECT nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas
+    SELECT id, nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas
     FROM eventos
     WHERE deleted_at IS NULL
   `) as unknown as Record<string, unknown>[]
@@ -250,26 +255,32 @@ export async function buildResumenDiario(): Promise<ResumenDiario> {
     }
 
     let cuotaSemana: VieneAPagar["cuotaSemana"] = null
+    const cuotasPendientes: VieneAPagar["cuotasPendientes"] = []
     let montoAtrasado = 0
     let cuotasAtrasadas = 0
 
     for (let n = 1; n <= numeroCuotas; n++) {
-      if (cuotasPagadas.includes(n)) continue
+      if (cuotasPagadas.includes(n) || detalle.some((c) => Number(c.numero) === n && c.pagada === true)) continue
       const venc = fechaDeCuota(n)
-      if (!venc) continue
-      if (venc < inicioSemana) {
+      if (!venc || venc > finSemana) continue
+      const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana }
+      cuotasPendientes.push(cuota)
+      if (cuota.atrasada) {
         // Vencida antes de esta semana y sin pagar => atrasada
-        montoAtrasado += montoDeCuota(n)
+        montoAtrasado += cuota.monto
         cuotasAtrasadas++
-      } else if (venc >= inicioSemana && venc <= finSemana && !cuotaSemana) {
-        cuotaSemana = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n) }
+      } else if (!cuotaSemana || venc < cuotaSemana.fechaVencimiento) {
+        cuotaSemana = { numero: n, fechaVencimiento: venc, monto: cuota.monto }
       }
     }
 
-    if (cuotaSemana || montoAtrasado > 0) {
+    if (cuotasPendientes.length > 0) {
       vienenAPagar.push({
+        eventoId: String(ev.id ?? ""),
         evento: String(ev.nombre || ev.nombre_pareja || "Sin nombre"),
         salon: salonLegible(ev.salon),
+        salonId: String(ev.salon || "").trim(),
+        cuotasPendientes,
         fechaEvento: diaDe(ev.fecha),
         cuotaSemana,
         montoAtrasado,

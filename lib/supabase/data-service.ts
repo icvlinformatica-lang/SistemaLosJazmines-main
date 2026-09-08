@@ -16,6 +16,12 @@ import type {
 
 const supabase = createClient()
 
+async function fetchReportRows(table: "personal" | "costos_operativos" | "gastos_archivados" | "vendedores") {
+  return fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
+    .from(table).select("*", { count: "exact" }).order("id").range(from, to)
+    .abortSignal(AbortSignal.timeout(15000)))
+}
+
 // ============ SERVICIOS ============
 export async function fetchServicios(): Promise<Servicio[]> {
   const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
@@ -217,8 +223,8 @@ export async function deleteServicioDefinitivo(id: string): Promise<boolean> {
 }
 
 // ============ PERSONAL ============
-export async function fetchPersonal(): Promise<PersonalEvento[]> {
-  const { data, error } = await supabase
+export async function fetchPersonal(strict = false): Promise<PersonalEvento[]> {
+  const { data, error } = strict ? { data: await fetchReportRows("personal"), error: null } : await supabase
     .from("personal")
     .select("*")
     .order("orden", { ascending: true, nullsFirst: false })
@@ -612,8 +618,8 @@ export async function deleteAsignacion(id: string): Promise<boolean> {
 }
 
 // ============ COSTOS OPERATIVOS ============
-export async function fetchCostosOperativos(): Promise<CostoOperativo[]> {
-  const { data, error } = await supabase
+export async function fetchCostosOperativos(strict = false): Promise<CostoOperativo[]> {
+  const { data, error } = strict ? { data: await fetchReportRows("costos_operativos"), error: null } : await supabase
     .from("costos_operativos")
     .select("*")
     .order("concepto")
@@ -820,8 +826,8 @@ function mapGastoArchivado(g: Record<string, any>): GastoArchivado {
   }
 }
 
-export async function fetchGastosArchivados(): Promise<GastoArchivado[]> {
-  const { data, error } = await supabase
+export async function fetchGastosArchivados(strict = false): Promise<GastoArchivado[]> {
+  const { data, error } = strict ? { data: await fetchReportRows("gastos_archivados"), error: null } : await supabase
     .from("gastos_archivados")
     .select("*")
     .order("fecha", { ascending: false })
@@ -993,8 +999,8 @@ export async function deleteHistorialIPC(id: string): Promise<boolean> {
 
 import type { Vendedor } from "@/lib/store"
 
-export async function fetchVendedores(): Promise<Vendedor[]> {
-  const { data, error } = await supabase
+export async function fetchVendedores(strict = false): Promise<Vendedor[]> {
+  const { data, error } = strict ? { data: await fetchReportRows("vendedores"), error: null } : await supabase
     .from("vendedores")
     .select("*")
     .order("nombre", { ascending: true })

@@ -16,7 +16,7 @@ async function fetchList<T>(url: string): Promise<T[]> {
 }
 
 /** Refresca al entrar, al volver a la pestaña y cada 15s, sin escribir en la base. */
-export function useSyncTiempoReal(intervaloMs = 15000, incluirFinanzas = false) {
+export function useSyncTiempoReal(intervaloMs = 15000, incluirFinanzas = false, incluirResumen = false) {
   const { state, syncGuard, applyRemoteState } = useStore()
   const { soloLectura } = useClock()
   const { toast } = useToast()
@@ -24,13 +24,13 @@ export function useSyncTiempoReal(intervaloMs = 15000, incluirFinanzas = false) 
   stateRef.current = state
 
   const { data, error, isValidating, mutate } = useSWR(
-    soloLectura ? null : ["store-tiempo-real", incluirFinanzas],
+    soloLectura ? null : ["store-tiempo-real", incluirFinanzas, incluirResumen],
     async () => {
       const revision = syncGuard.snapshot()
       if (revision === null) return null
       const baseline = stateRef.current
       const db = await import("@/lib/supabase/data-service")
-      const [insumos, insumosBarra, recetas, cocteles, eventos, servicios, finanzas] = await Promise.all([
+      const [insumos, insumosBarra, recetas, cocteles, eventos, servicios, finanzas, resumen] = await Promise.all([
         fetchList<(typeof state.insumos)[number]>("/api/insumos"),
         fetchList<(typeof state.insumosBarra)[number]>("/api/insumos-barra"),
         fetchList<(typeof state.recetas)[number]>("/api/recetas"),
@@ -38,12 +38,19 @@ export function useSyncTiempoReal(intervaloMs = 15000, incluirFinanzas = false) 
         fetchList<(typeof state.eventos)[number]>("/api/eventos"),
         db.fetchServicios(),
         incluirFinanzas ? Promise.all([db.fetchMovimientosCaja(), db.fetchPagosPersonal()]) : null,
+        incluirResumen ? Promise.all([db.fetchCostosOperativos(true), db.fetchGastosArchivados(true), db.fetchVendedores(true), db.fetchPersonal(true)]) : null,
       ])
       const updates: RemoteStoreData = { insumos, insumosBarra, recetas, cocteles, eventos, servicios }
       if (finanzas) {
         const ids = new Set(eventos.map((evento) => evento.id))
         updates.movimientosCaja = finanzas[0].filter((mov) => !mov.eventoId || ids.has(mov.eventoId))
         updates.pagosPersonal = finanzas[1]
+      }
+      if (resumen) {
+        updates.costosOperativos = resumen[0]
+        updates.gastosArchivados = resumen[1]
+        updates.vendedores = resumen[2]
+        updates.personal = resumen[3]
       }
       if (!syncGuard.isCurrent(revision)) return null
       return { baseline, updates, revision, fecha: new Date() }
