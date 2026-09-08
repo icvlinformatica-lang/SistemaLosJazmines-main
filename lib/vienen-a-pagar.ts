@@ -1,6 +1,7 @@
 import type { VieneAPagar } from "@/lib/resumen-diario"
 
 export type CuotaPorPagar = VieneAPagar["cuotasPendientes"][number] & {
+  eventoId: string
   evento: string
   fechaEvento: string
 }
@@ -21,7 +22,7 @@ export function agruparCuotasPorSalon(lista: VieneAPagar[]) {
     const salon = evento.salonId
     const cuotas = grupos.get(salon) ?? []
     for (const cuota of evento.cuotasPendientes) {
-      cuotas.push({ ...cuota, evento: evento.evento, fechaEvento: evento.fechaEvento })
+      cuotas.push({ ...cuota, eventoId: evento.eventoId, evento: evento.evento, fechaEvento: evento.fechaEvento })
     }
     if (cuotas.length) grupos.set(salon, cuotas)
   }

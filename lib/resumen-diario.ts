@@ -32,6 +32,7 @@ export interface IngresoSalonResumen {
 
 /** Evento que tiene cuota por pagar esta semana (o cuotas atrasadas). */
 export interface VieneAPagar {
+  eventoId: string
   evento: string
   salon: string
   fechaEvento: string // YYYY-MM-DD
@@ -179,7 +180,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
 
   // Cuotas cobradas hoy + plan de cuotas para saber quién viene a pagar
   const evRows = (await sql`
-    SELECT nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas
+    SELECT id, nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas
     FROM eventos
     WHERE deleted_at IS NULL
   `) as unknown as Record<string, unknown>[]
@@ -275,6 +276,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
 
     if (cuotasPendientes.length > 0) {
       vienenAPagar.push({
+        eventoId: String(ev.id ?? ""),
         evento: String(ev.nombre || ev.nombre_pareja || "Sin nombre"),
         salon: salonLegible(ev.salon),
         salonId: String(ev.salon || "").trim(),

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react"
 import useSWR from "swr"
+import Link from "next/link"
 import { X, Users, Loader2, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -25,7 +26,7 @@ function fechaCorta(ymd: string): string {
   return new Date(ymd + "T12:00:00Z").toLocaleDateString("es-AR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" })
 }
 
-function CuotaFila({ cuota }: { cuota: CuotaPorPagar & { salon: string } }) {
+function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: string }; onAbrirEvento: () => void }) {
   return (
     <li className="border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -41,6 +42,11 @@ function CuotaFila({ cuota }: { cuota: CuotaPorPagar & { salon: string } }) {
           <p className="text-muted-foreground">Vence {fechaCorta(cuota.fechaVencimiento)}</p>
         </div>
         {cuota.atrasada && <span className="inline-flex items-center gap-1 text-sm font-semibold text-destructive"><AlertTriangle className="size-4" />Atrasada</span>}
+        {cuota.eventoId ? (
+          <Button asChild variant="outline" size="sm" className="shrink-0">
+            <Link href={`/evento?id=${encodeURIComponent(cuota.eventoId)}`} prefetch={false} onClick={onAbrirEvento} aria-label={`Ir al evento ${cuota.evento}, cuota ${cuota.numero}`}>Ir al evento</Link>
+          </Button>
+        ) : <Button variant="outline" size="sm" disabled title="No se pudo identificar el evento. Volvé a abrir la lista.">Ir al evento</Button>}
       </div>
     </li>
   )
@@ -122,7 +128,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
                 <div className="flex flex-col gap-3">
                   <p className="text-sm text-muted-foreground">Ordenadas por evento más próximo a más lejano</p>
                   <ul id="lista-cuotas-pendientes" className="rounded-lg border bg-card text-card-foreground" aria-label="Cuotas por fecha del evento">
-                    {cuotasMostradas.map((cuota, i) => <CuotaFila key={`${cuota.salon}-${cuota.evento}-${cuota.fechaEvento}-${cuota.numero}-${i}`} cuota={cuota} />)}
+                    {cuotasMostradas.map((cuota, i) => <CuotaFila key={`${cuota.eventoId}-${cuota.numero}-${i}`} cuota={cuota} onAbrirEvento={() => onOpenChange(false)} />)}
                   </ul>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-muted-foreground" aria-live="polite">Mostrando {cuotasMostradas.length} de {cuotas.length} cuotas</p>

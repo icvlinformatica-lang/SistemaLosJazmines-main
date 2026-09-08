@@ -78,7 +78,7 @@ test("cuenta cada cuota y divide por salón en columnas de cinco sin duplicados"
   movimientos = []
   const cuotas = Array.from({ length: 14 }, (_, i) => ({ numero: i + 1, fechaVencimiento: i < 3 ? "2026-08-10" : "2026-09-10", montoCuota: 100, pagada: i === 12 }))
   eventos = [
-    { nombre: "Evento A", salon: "Salon", fecha: "2026-12-01", estado: "pendiente", plan_de_cuotas: { numeroCuotas: 14, montoCuota: 100, cuotasPagadas: [14], cuotas } },
+    { id: "evento-a", nombre: "Evento A", salon: "Salon", fecha: "2026-12-01", estado: "pendiente", plan_de_cuotas: { numeroCuotas: 14, montoCuota: 100, cuotasPagadas: [14], cuotas } },
     { nombre: "Evento B", salon: "Quinta", fecha: "2026-12-02", estado: "pendiente", plan_de_cuotas: { numeroCuotas: 1, montoCuota: 200, cuotas: [{ numero: 1, fechaVencimiento: "2026-09-11", montoCuota: 200 }] } },
     { nombre: "Cancelado", salon: "Salon", estado: "cancelado", plan_de_cuotas: { numeroCuotas: 14, cuotas } },
   ]
@@ -87,6 +87,8 @@ test("cuenta cada cuota y divide por salón en columnas de cinco sin duplicados"
   const grupos = agruparCuotasPorSalon(resumen.vienenAPagar)
   const salon = grupos.find((g) => g.salon === "Salon")
   assert.equal(salon.cuotas.length, 12)
+  assert.ok(salon.cuotas.every((cuota) => cuota.eventoId === "evento-a"))
+  assert.ok(consultas.some(({ query }) => /SELECT id, nombre,/.test(query)))
   assert.equal(salon.cantidadSemana, 9)
   assert.equal(salon.cantidadAtrasada, 3)
   assert.equal(salon.totalSemana, 900)
@@ -120,7 +122,7 @@ test("la vista muestra filtros, cantidades y cinco filas con Ver más", () => {
   }
   const cuotasPendientes = Array.from({ length: 12 }, (_, i) => ({ numero: i + 1, fechaVencimiento: "2026-09-10", monto: 100, atrasada: i < 2 }))
   Module._load = function (request, ...args) {
-    if (request === "swr") return { __esModule: true, default: () => ({ data: { vienenAPagar: [{ evento: "Evento test", salon: "Salón", salonId: "Salon", fechaEvento: "2026-12-01", cuotasPendientes }] }, isLoading: false, mutate: () => {} }) }
+    if (request === "swr") return { __esModule: true, default: () => ({ data: { vienenAPagar: [{ eventoId: "evento test&1", evento: "Evento test", salon: "Salón", salonId: "Salon", fechaEvento: "2026-12-01", cuotasPendientes }] }, isLoading: false, mutate: () => {} }) }
     if (request === "@/lib/store-context") return { useStore: () => ({ state: { eventos: [] }, configuracionCajas: { salones: {} } }) }
     return load.call(this, request, ...args)
   }
@@ -136,6 +138,8 @@ test("la vista muestra filtros, cantidades y cinco filas con Ver más", () => {
     assert.match(html, /Ver más/)
     assert.doesNotMatch(html, /Columnas de cuotas|overflow-x-auto/)
     assert.equal((html.match(/<li /g) || []).length, 5)
+    assert.equal((html.match(/href="\/evento\?id=evento%20test%261"/g) || []).length, 5)
+    assert.match(html, /Ir al evento Evento test, cuota 1/)
     const { FindeModal } = require("../components/finde-modal.tsx")
     const finde = renderToStaticMarkup(React.createElement(FindeModal, { open: true, onOpenChange: () => {} }))
     assert.match(finde, /Fin de semana anterior/)
