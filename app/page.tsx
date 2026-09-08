@@ -99,7 +99,7 @@ export default function HomePage() {
       </div>
 
       <NovedadesModal open={novedadesOpen} onOpenChange={setNovedadesOpen} />
-      <ResumenDiarioModal open={resumenOpen} onOpenChange={setResumenOpen} />
+      <ResumenDiarioModal open={resumenOpen} onOpenChange={setResumenOpen} soloDiario={perfilActivo?.id === "cobro"} />
       <FindeModal open={findeOpen} onOpenChange={setFindeOpen} />
       <VienenAPagarModal open={pagarOpen} onOpenChange={setPagarOpen} />
     </div>
