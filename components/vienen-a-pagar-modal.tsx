@@ -49,7 +49,6 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
           )}
           <p className="text-muted-foreground">Vence {fechaCorta(cuota.fechaVencimiento)}</p>
         </div>
-        {cuota.atrasada && <span className="inline-flex items-center gap-1 text-sm font-semibold text-destructive"><AlertTriangle className="size-4" />Atrasada</span>}
         {cuota.eventoId ? (
           <Button asChild variant="outline" size="sm" className="shrink-0">
             <Link href={`/eventos/pagos?evento=${encodeURIComponent(cuota.eventoId)}`} prefetch={false} onClick={onAbrirEvento} aria-label={`Ir al evento ${cuota.evento}, cuota ${cuota.numero}`}>Ir al evento</Link>
