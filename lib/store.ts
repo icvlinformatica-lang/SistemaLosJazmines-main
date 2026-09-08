@@ -987,6 +987,8 @@ export interface Vendedor {
   comisionPct: number
   /** Fecha de pago del sueldo (YYYY-MM-DD): alimenta las alertas de vencimiento de Caja Jazmines */
   sueldoFechaPago?: string
+  /** Anotación libre del vendedor (nota rápida editable en Eventos > Vendedores) */
+  anotacion?: string
 }
 
 /** Vendedores por defecto del equipo */
