@@ -12,7 +12,8 @@ require.extensions[".ts"] = (mod, filename) => {
   const result = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } })
   mod._compile(result.outputText, filename)
 }
-const { fechaResumenValida, cambiarDiaResumen, fechaArgentina } = require("../lib/resumen-fecha.ts")
+const { fechaResumenValida, cambiarDiaResumen, fechaArgentina, rangoFinde } = require("../lib/resumen-fecha.ts")
+const { agruparCuotasPorSalon } = require("../lib/vienen-a-pagar.ts")
 const consultas = []
 let movimientos = []
 let eventos = []
@@ -67,6 +68,67 @@ test("API rechaza fechas inválidas antes de consultar", async () => {
     assert.equal(response.status, 400)
   }
   assert.equal(consultas.length, 0)
+})
+test("el finde elegido comprende viernes a domingo y permite cambiar de año", () => {
+  for (const fecha of ["2026-09-07", "2026-09-11", "2026-09-12", "2026-09-13"]) assert.deepEqual(rangoFinde(fecha), { desde: "2026-09-11", hasta: "2026-09-13" })
+  assert.deepEqual(rangoFinde("2025-12-31"), { desde: "2026-01-02", hasta: "2026-01-04" })
+  assert.deepEqual(rangoFinde(cambiarDiaResumen("2026-01-02", -7)), { desde: "2025-12-26", hasta: "2025-12-28" })
+})
+test("cuenta cada cuota y divide por salón en columnas de cinco sin duplicados", async () => {
+  movimientos = []
+  const cuotas = Array.from({ length: 14 }, (_, i) => ({ numero: i + 1, fechaVencimiento: i < 3 ? "2026-08-10" : "2026-09-10", montoCuota: 100, pagada: i === 12 }))
+  eventos = [
+    { nombre: "Evento A", salon: "Salon", fecha: "2026-12-01", estado: "pendiente", plan_de_cuotas: { numeroCuotas: 14, montoCuota: 100, cuotasPagadas: [14], cuotas } },
+    { nombre: "Evento B", salon: "Quinta", fecha: "2026-12-02", estado: "pendiente", plan_de_cuotas: { numeroCuotas: 1, montoCuota: 200, cuotas: [{ numero: 1, fechaVencimiento: "2026-09-11", montoCuota: 200 }] } },
+    { nombre: "Cancelado", salon: "Salon", estado: "cancelado", plan_de_cuotas: { numeroCuotas: 14, cuotas } },
+  ]
+  const resumen = await buildResumenDiario("2026-09-08")
+  assert.equal(resumen.vienenAPagar.length, 2)
+  const grupos = agruparCuotasPorSalon(resumen.vienenAPagar)
+  const salon = grupos.find((g) => g.salon === "Salon")
+  assert.equal(salon.cuotas.length, 12)
+  assert.equal(salon.cantidadSemana, 9)
+  assert.equal(salon.cantidadAtrasada, 3)
+  assert.equal(salon.totalSemana, 900)
+  assert.equal(salon.totalAtrasado, 300)
+  assert.deepEqual(salon.columnas.map((c) => c.length), [5, 5, 2])
+  assert.equal(new Set(salon.columnas.flat().map((c) => c.numero)).size, 12)
+  assert.equal(grupos.find((g) => g.salon === "Quinta").totalSemana, 200)
+  assert.equal(grupos.filter((g) => g.salon === "Casona").length, 0)
+  assert.deepEqual(agruparCuotasPorSalon([]), [])
+})
+test("la vista muestra filtros, cantidades y columnas con hasta cinco cuotas", () => {
+  const React = require("react")
+  const { renderToStaticMarkup } = require("react-dom/server")
+  require.extensions[".tsx"] = (mod, filename) => {
+    const result = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } })
+    mod._compile(result.outputText, filename)
+  }
+  const cuotasPendientes = Array.from({ length: 12 }, (_, i) => ({ numero: i + 1, fechaVencimiento: "2026-09-10", monto: 100, atrasada: i < 2 }))
+  Module._load = function (request, ...args) {
+    if (request === "swr") return { __esModule: true, default: () => ({ data: { vienenAPagar: [{ evento: "Evento test", salon: "Salón", salonId: "Salon", fechaEvento: "2026-12-01", cuotasPendientes }] }, isLoading: false, mutate: () => {} }) }
+    if (request === "@/lib/store-context") return { useStore: () => ({ state: { eventos: [] }, configuracionCajas: { salones: {} } }) }
+    return load.call(this, request, ...args)
+  }
+  try {
+    const store = require("../lib/store.ts")
+    store.setSalonNombresCustom({ salones: { Salon: { nombre: "Salón personalizado" } } })
+    const { VienenAPagarModal } = require("../components/vienen-a-pagar-modal.tsx")
+    const html = renderToStaticMarkup(React.createElement(VienenAPagarModal, { open: true, onOpenChange: () => {} }))
+    assert.match(html, /Filtrar por salón/)
+    assert.match(html, /12 cuotas por pagar/)
+    assert.match(html, /Salón personalizado/)
+    assert.match(html, /aria-label="Cuotas 1 a 5"/)
+    assert.match(html, /aria-label="Cuotas 6 a 10"/)
+    assert.match(html, /aria-label="Cuotas 11 a 12"/)
+    assert.equal((html.match(/<li /g) || []).length, 12)
+    const { FindeModal } = require("../components/finde-modal.tsx")
+    const finde = renderToStaticMarkup(React.createElement(FindeModal, { open: true, onOpenChange: () => {} }))
+    assert.match(finde, /Fin de semana anterior/)
+    assert.match(finde, /Fin de semana siguiente/)
+    assert.match(finde, /id="fecha-finde"/)
+    store.setSalonNombresCustom(null)
+  } finally { Module._load = load }
 })
 test("API transmite fecha elegida; sin fecha conserva hoy para el cron", async () => {
   movimientos = []; eventos = []

@@ -35,6 +35,8 @@ export interface VieneAPagar {
   evento: string
   salon: string
   fechaEvento: string // YYYY-MM-DD
+  salonId: string
+  cuotasPendientes: Array<{ numero: number; fechaVencimiento: string; monto: number; atrasada: boolean }>
   /** Próxima cuota que vence esta semana (si hay) */
   cuotaSemana: { numero: number; fechaVencimiento: string; monto: number } | null
   /** Deuda de cuotas vencidas sin pagar (semana pasada o antes) */
@@ -252,26 +254,31 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
     }
 
     let cuotaSemana: VieneAPagar["cuotaSemana"] = null
+    const cuotasPendientes: VieneAPagar["cuotasPendientes"] = []
     let montoAtrasado = 0
     let cuotasAtrasadas = 0
 
     for (let n = 1; n <= numeroCuotas; n++) {
-      if (cuotasPagadas.includes(n)) continue
+      if (cuotasPagadas.includes(n) || detalle.some((c) => Number(c.numero) === n && c.pagada === true)) continue
       const venc = fechaDeCuota(n)
-      if (!venc) continue
-      if (venc < inicioSemana) {
+      if (!venc || venc > finSemana) continue
+      const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana }
+      cuotasPendientes.push(cuota)
+      if (cuota.atrasada) {
         // Vencida antes de esta semana y sin pagar => atrasada
-        montoAtrasado += montoDeCuota(n)
+        montoAtrasado += cuota.monto
         cuotasAtrasadas++
-      } else if (venc >= inicioSemana && venc <= finSemana && !cuotaSemana) {
-        cuotaSemana = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n) }
+      } else if (!cuotaSemana || venc < cuotaSemana.fechaVencimiento) {
+        cuotaSemana = { numero: n, fechaVencimiento: venc, monto: cuota.monto }
       }
     }
 
-    if (cuotaSemana || montoAtrasado > 0) {
+    if (cuotasPendientes.length > 0) {
       vienenAPagar.push({
         evento: String(ev.nombre || ev.nombre_pareja || "Sin nombre"),
         salon: salonLegible(ev.salon),
+        salonId: String(ev.salon || "").trim(),
+        cuotasPendientes,
         fechaEvento: diaDe(ev.fecha),
         cuotaSemana,
         montoAtrasado,

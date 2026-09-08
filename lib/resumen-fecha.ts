@@ -12,6 +12,14 @@ export function cambiarDiaResumen(fecha: string, dias: number): string {
   return fechaResumenValida(siguiente) ? siguiente : fecha
 }
 
+/** Viernes a domingo de la semana de la fecha elegida. */
+export function rangoFinde(fecha = fechaArgentina()): { desde: string; hasta: string } {
+  const base = fechaResumenValida(fecha) ? fecha : fechaArgentina()
+  const dia = new Date(`${base}T12:00:00Z`).getUTCDay()
+  const desde = cambiarDiaResumen(base, dia === 0 ? -2 : 5 - dia)
+  return { desde, hasta: cambiarDiaResumen(desde, 2) }
+}
+
 export function fechaArgentina(ahora = new Date()): string {
   return ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
 }

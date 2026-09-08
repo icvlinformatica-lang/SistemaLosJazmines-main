@@ -4,8 +4,12 @@
 // domingo) con su salón y un pequeño desglose de costos calculado en vivo
 // con los mismos criterios que la pantalla Costos del evento.
 
-import { useMemo } from "react"
-import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { cambiarDiaResumen, fechaArgentina, fechaResumenValida, rangoFinde } from "@/lib/resumen-fecha"
 import { useStore } from "@/lib/store-context"
 import {
   calcularComprasSegmentadas,
@@ -19,29 +23,13 @@ function fmt(n: number): string {
   return "$" + Math.round(n).toLocaleString("es-AR")
 }
 
-/** Rango [viernes, domingo] del fin de semana actual o próximo (hora AR). */
-function rangoFinde(): { desde: string; hasta: string } {
-  const hoyStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-  const hoy = new Date(hoyStr + "T12:00:00")
-  const dia = hoy.getDay() // 0 = domingo
-  let offsetViernes: number
-  if (dia === 0) offsetViernes = -2 // domingo: el finde arrancó el viernes pasado
-  else if (dia === 6) offsetViernes = -1 // sábado
-  else offsetViernes = 5 - dia // lunes a viernes: el viernes que viene (o hoy)
-  const viernes = new Date(hoy)
-  viernes.setDate(hoy.getDate() + offsetViernes)
-  const domingo = new Date(viernes)
-  domingo.setDate(viernes.getDate() + 2)
-  const toStr = (d: Date) => d.toISOString().slice(0, 10)
-  return { desde: toStr(viernes), hasta: toStr(domingo) }
-}
-
 function fechaCorta(fecha: string): string {
   try {
     return new Date(fecha + "T12:00:00").toLocaleDateString("es-AR", {
       weekday: "long",
       day: "numeric",
       month: "short",
+      year: "numeric",
     })
   } catch {
     return fecha
@@ -56,7 +44,11 @@ interface Props {
 export function FindeModal({ open, onOpenChange }: Props) {
   const { state } = useStore()
 
-  const { desde, hasta } = useMemo(() => rangoFinde(), [])
+  const [fechaElegida, setFechaElegida] = useState<string | null>(null)
+  const fecha = fechaElegida ?? fechaArgentina()
+  const { desde, hasta } = rangoFinde(fecha)
+  const actual = rangoFinde()
+  useEffect(() => { if (!open) setFechaElegida(null) }, [open])
 
   const eventosFinde = useMemo(() => {
     return (state.eventos || [])
@@ -131,7 +123,19 @@ export function FindeModal({ open, onOpenChange }: Props) {
           </button>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
+          <div className="rounded-lg border bg-background p-3 text-foreground">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="fecha-finde">Elegir fecha</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="icon" aria-label="Fin de semana anterior" disabled={desde < "0001-01-08"} onClick={() => setFechaElegida(cambiarDiaResumen(desde, -7))}><ChevronLeft /></Button>
+                <Input id="fecha-finde" className="w-40" type="date" min="0001-01-01" max="9999-12-31" value={fecha} onChange={(e) => { if (fechaResumenValida(e.target.value)) setFechaElegida(e.target.value) }} />
+                <Button variant="outline" size="icon" aria-label="Fin de semana siguiente" disabled={desde > "9999-12-24"} onClick={() => setFechaElegida(cambiarDiaResumen(desde, 7))}><ChevronRight /></Button>
+                <Button variant="ghost" size="sm" disabled={desde === actual.desde} onClick={() => setFechaElegida(null)}>Este finde</Button>
+              </div>
+              <p className="text-sm text-muted-foreground" aria-live="polite">{eventosFinde.length} eventos · viernes a domingo de la semana elegida.</p>
+            </div>
+          </div>
           {eventosFinde.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-gray-400">
               <PartyPopper className="h-8 w-8" />

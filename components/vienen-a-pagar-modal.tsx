@@ -5,27 +5,41 @@
 // vencidas de semanas anteriores, se marca ATRASADO con el monto adeudado.
 
 import { useEffect, useState } from "react"
+import useSWR from "swr"
 import { X, Users, Loader2, AlertTriangle, CalendarDays } from "lucide-react"
-
-interface VieneAPagar {
-  evento: string
-  salon: string
-  fechaEvento: string
-  cuotaSemana: { numero: number; fechaVencimiento: string; monto: number } | null
-  montoAtrasado: number
-  cuotasAtrasadas: number
-}
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SalonDot } from "@/components/salon-badge"
+import { useStore } from "@/lib/store-context"
+import { SALON_COLORES_DEFAULT, salonLabel, salonColor } from "@/lib/store"
+import { agruparCuotasPorSalon, type CuotaPorPagar } from "@/lib/vienen-a-pagar"
+import type { ResumenDiario } from "@/lib/resumen-diario"
 
 function fmt(n: number): string {
   return "$" + Math.round(n).toLocaleString("es-AR")
 }
 
 function fechaCorta(ymd: string): string {
-  try {
-    return new Date(ymd + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })
-  } catch {
-    return ymd
-  }
+  if (!ymd) return "Sin fecha"
+  return new Date(ymd + "T12:00:00Z").toLocaleDateString("es-AR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" })
+}
+
+function CuotaCard({ cuota }: { cuota: CuotaPorPagar }) {
+  return (
+    <li className="rounded-lg border bg-card p-3 text-card-foreground">
+      <div className="flex flex-col gap-1">
+        <p className="break-words text-sm font-semibold">{cuota.evento}</p>
+        <p className="flex items-center gap-1 text-sm text-muted-foreground"><CalendarDays className="size-4 shrink-0" />Evento {fechaCorta(cuota.fechaEvento)}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm">Cuota {cuota.numero}</span>
+          <span className="text-sm font-bold tabular-nums">{fmt(cuota.monto)}</span>
+        </div>
+        <p className="text-sm text-muted-foreground">Vence {fechaCorta(cuota.fechaVencimiento)}</p>
+        {cuota.atrasada && <p className="flex items-center gap-1 text-sm font-semibold text-destructive"><AlertTriangle className="size-4" />Atrasada · sin pagar</p>}
+      </div>
+    </li>
+  )
 }
 
 interface Props {
@@ -34,120 +48,92 @@ interface Props {
 }
 
 export function VienenAPagarModal({ open, onOpenChange }: Props) {
-  const [lista, setLista] = useState<VieneAPagar[] | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      setLoading(true)
-      fetch("/api/resumen-diario")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          setLista(data && !data.error ? data.vienenAPagar || [] : null)
-          setLoading(false)
-        })
-        .catch(() => {
-          setLista(null)
-          setLoading(false)
-        })
-    }
-  }, [open])
+  const { configuracionCajas } = useStore()
+  const [salonFiltro, setSalonFiltro] = useState("todos")
+  const { data, isLoading, error, mutate } = useSWR<ResumenDiario>(open ? "/api/resumen-diario" : null, async (url: string) => {
+    const response = await fetch(url, { cache: "no-store" })
+    if (!response.ok) throw new Error("No se pudo cargar la lista")
+    const resumen = await response.json()
+    if (!Array.isArray(resumen.vienenAPagar) || resumen.vienenAPagar.some((v: { cuotasPendientes?: unknown }) => !Array.isArray(v.cuotasPendientes))) throw new Error("Respuesta de cuotas incompleta")
+    return resumen
+  })
+  useEffect(() => { if (!open) setSalonFiltro("todos") }, [open])
 
   if (!open) return null
 
-  const totalSemana = (lista || []).reduce((s, v) => s + (v.cuotaSemana?.monto || 0), 0)
-  const totalAtrasado = (lista || []).reduce((s, v) => s + v.montoAtrasado, 0)
+  const grupos = agruparCuotasPorSalon(data?.vienenAPagar ?? [])
+  const salones = [...new Set([...Object.keys(SALON_COLORES_DEFAULT), ...Object.keys(configuracionCajas?.salones ?? {}), ...grupos.map((g) => g.salon)])]
+  const visibles = grupos.filter((g) => salonFiltro === "todos" || (g.salon || "general") === salonFiltro)
+  const totalSemana = visibles.reduce((s, g) => s + g.totalSemana, 0)
+  const totalAtrasado = visibles.reduce((s, g) => s + g.totalAtrasado, 0)
+  const cantidadSemana = visibles.reduce((s, g) => s + g.cantidadSemana, 0)
+  const cantidadAtrasada = visibles.reduce((s, g) => s + g.cantidadAtrasada, 0)
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={() => onOpenChange(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Vienen a pagar esta semana"
-    >
-      <div
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-[#f5f0e8] shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false) }} role="dialog" aria-modal="true" aria-labelledby="titulo-vienen-pagar" onKeyDown={(e) => { if (e.key === "Escape") onOpenChange(false) }}>
+      <div className="flex max-h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-2xl">
         {/* Header */}
-        <div className="flex items-start justify-between gap-2 bg-[#2d5a3d] px-5 py-4 text-[#f5f0e8]">
-          <div>
-            <h2 className="text-lg font-bold">Vienen a pagar</h2>
-            <p className="text-xs opacity-90">Cuotas que vencen esta semana y deudas atrasadas</p>
+        <div className="bg-primary px-5 py-4 text-primary-foreground">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 id="titulo-vienen-pagar" className="text-lg font-bold">Vienen a pagar</h2>
+              <p className="text-sm">Cuotas que vencen esta semana y deudas atrasadas</p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} aria-label="Cerrar"><X /></Button>
           </div>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/10"
-            aria-label="Cerrar"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-5">
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#2d5a3d]">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Buscando cuotas de la semana...
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="salon-cuotas">Filtrar por salón</Label>
+              <Select value={salonFiltro} onValueChange={setSalonFiltro}>
+                <SelectTrigger id="salon-cuotas" className="w-64 max-w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  <SelectItem value="todos">Todos los salones</SelectItem>
+                  {salones.map((salon) => <SelectItem key={salon || "general"} value={salon || "general"}><SalonDot salon={salon} />{salonLabel(salon)}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
             </div>
-          ) : !lista ? (
-            <p className="py-10 text-center text-sm text-gray-500">No se pudo cargar la lista.</p>
-          ) : lista.length === 0 ? (
-            <p className="py-10 text-center text-sm text-gray-500">
-              Nadie tiene cuotas por pagar esta semana ni deudas atrasadas.
-            </p>
+            {!isLoading && !error && data && <p className="text-sm font-semibold" aria-live="polite">{cantidadSemana + cantidadAtrasada} cuotas por pagar</p>}
+          </div>
+
+          {isLoading ? (
+            <div role="status" className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="size-4 animate-spin" />Buscando cuotas de la semana...</div>
+          ) : error || !data ? (
+            <div role="alert" className="flex flex-col items-center gap-3 py-6"><p>No se pudo cargar la lista.</p><Button variant="outline" onClick={() => void mutate()}>Reintentar</Button></div>
           ) : (
             <>
               {/* Totales rápidos */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-[#2d5a3d]/20 bg-white p-3">
-                  <p className="text-xs font-semibold text-gray-600">Por cobrar esta semana</p>
-                  <p className="text-sm font-bold text-emerald-700">{fmt(totalSemana)}</p>
-                </div>
-                <div className="rounded-lg border border-red-200 bg-white p-3">
-                  <p className="text-xs font-semibold text-gray-600">Deuda atrasada</p>
-                  <p className="text-sm font-bold text-red-600">{fmt(totalAtrasado)}</p>
-                </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-live="polite">
+                <div className="rounded-lg border bg-card p-3 text-card-foreground"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} cuotas</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
+                <div className="rounded-lg border bg-card p-3 text-card-foreground"><p className="text-sm text-muted-foreground">Deuda atrasada · {cantidadAtrasada} cuotas</p><p className="font-bold tabular-nums text-destructive">{fmt(totalAtrasado)}</p></div>
               </div>
 
               {/* Lista */}
-              <div className="rounded-lg border border-[#2d5a3d]/20 bg-white">
-                {lista.map((v, i) => (
-                  <div key={i} className="border-b border-gray-100 px-3 py-2.5 last:border-b-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate text-sm font-semibold text-gray-800">{v.evento}</span>
-                        <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                          <CalendarDays className="h-3 w-3" />
-                          {v.salon} · evento {fechaCorta(v.fechaEvento)}
-                        </span>
-                      </span>
-                      {v.cuotaSemana && (
-                        <span className="shrink-0 text-right">
-                          <span className="block text-sm font-bold text-[#2d5a3d]">{fmt(v.cuotaSemana.monto)}</span>
-                          <span className="block text-[11px] text-gray-400">
-                            Cuota {v.cuotaSemana.numero} · vence {fechaCorta(v.cuotaSemana.fechaVencimiento)}
-                          </span>
-                        </span>
-                      )}
+              {visibles.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No hay cuotas por pagar esta semana ni atrasadas{salonFiltro !== "todos" ? " para este salón" : ""}.</p> : visibles.map((grupo) => (
+                <section key={grupo.salon} className="min-w-0 rounded-lg border bg-card p-3 text-card-foreground" aria-label={`Cuotas de ${salonLabel(grupo.salon)}`}>
+                  <div className="flex flex-col gap-3">
+                    <div className="rounded-md p-3" style={{ backgroundColor: `${salonColor(grupo.salon, configuracionCajas)}20` }}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="flex items-center gap-2 font-semibold"><SalonDot salon={grupo.salon} />{salonLabel(grupo.salon)}</h3>
+                        <p className="text-sm font-semibold">{grupo.cuotas.length} cuotas · {grupo.cantidadSemana} de la semana · {grupo.cantidadAtrasada} atrasadas</p>
+                      </div>
                     </div>
-                    {v.montoAtrasado > 0 && (
-                      <p className="mt-1.5 flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                        Atrasado: debe {fmt(v.montoAtrasado)} ({v.cuotasAtrasadas} cuota
-                        {v.cuotasAtrasadas === 1 ? "" : "s"} vencida{v.cuotasAtrasadas === 1 ? "" : "s"})
-                      </p>
-                    )}
+                    <div className="overflow-x-auto pb-2" role="region" aria-label={`Columnas de cuotas de ${salonLabel(grupo.salon)}`} tabIndex={0}>
+                      <div className="flex items-start gap-3">
+                        {grupo.columnas.map((columna, i) => <div key={i} className="w-64 shrink-0">
+                          <div className="flex flex-col gap-2">
+                            <p className="text-sm text-muted-foreground">Cuotas {i * 5 + 1}–{i * 5 + columna.length} de {grupo.cuotas.length}</p>
+                            <ul className="flex flex-col gap-2" aria-label={`Cuotas ${i * 5 + 1} a ${i * 5 + columna.length}`}>{columna.map((cuota, j) => <CuotaCard key={`${i}-${j}`} cuota={cuota} />)}</ul>
+                          </div>
+                        </div>)}
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
-
-              <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                <Users className="h-3 w-3" />
-                Semana actual de lunes a domingo. Los atrasos incluyen todas las cuotas vencidas sin pagar.
-              </p>
+                </section>
+              ))}
+              <p className="flex items-start gap-2 text-sm text-muted-foreground"><Users className="size-4 shrink-0" />Semana actual de lunes a domingo. Los atrasos incluyen todas las cuotas vencidas sin pagar. Cada columna muestra hasta 5 cuotas; deslizá horizontalmente para ver más.</p>
             </>
           )}
         </div>
