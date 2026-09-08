@@ -1017,6 +1017,7 @@ export async function fetchVendedores(strict = false): Promise<Vendedor[]> {
     sueldo: Number(v.sueldo) || 0,
     comisionPct: Number(v.comision_pct) || 0,
     sueldoFechaPago: v.sueldo_fecha_pago || undefined,
+    anotacion: v.anotacion || undefined,
   }))
 }
 
@@ -1028,6 +1029,7 @@ export async function upsertVendedor(vendedor: Vendedor): Promise<boolean> {
     sueldo: vendedor.sueldo || 0,
     comision_pct: vendedor.comisionPct || 0,
     sueldo_fecha_pago: vendedor.sueldoFechaPago || null,
+    anotacion: vendedor.anotacion ?? null,
     updated_at: new Date().toISOString(),
   })
 

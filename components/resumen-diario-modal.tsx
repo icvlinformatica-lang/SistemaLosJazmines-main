@@ -67,10 +67,12 @@ function fmt(n: number): string {
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
+  soloDiario?: boolean
 }
 
-export function ResumenDiarioModal({ open, onOpenChange }: Props) {
-  const [tab, setTab] = useState("diario")
+export function ResumenDiarioModal({ open, onOpenChange, soloDiario = false }: Props) {
+  const [tabElegida, setTab] = useState("diario")
+  const tab = soloDiario ? "diario" : tabElegida
   const [fechaElegida, setFechaElegida] = useState<string | null>(null)
   const hoy = fechaArgentina()
   const fecha = fechaElegida ?? hoy
@@ -90,7 +92,7 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent showCloseButton={false} className={cn("flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-xl p-0", tab === "mensual" ? "sm:max-w-[calc(100%-2rem)]" : "bg-[#f5f0e8] sm:max-w-lg")}>
-        <DialogDescription className="sr-only">Consultá el resumen diario o mensual de las cajas por salón.</DialogDescription>
+        <DialogDescription className="sr-only">{soloDiario ? "Consultá el resumen diario de las cajas por salón." : "Consultá el resumen diario o mensual de las cajas por salón."}</DialogDescription>
         {/* Header */}
         <div className="flex items-start justify-between gap-2 bg-[#2d5a3d] px-5 py-4 text-[#f5f0e8]">
           <div>
@@ -112,12 +114,12 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
               onTouchEnd={(e) => {
                 if (touchX.current !== null) {
                   const distancia = e.changedTouches[0].clientX - touchX.current
-                  if (Math.abs(distancia) > 45) setTab(distancia < 0 ? "mensual" : "diario")
+                  if (!soloDiario && Math.abs(distancia) > 45) setTab(distancia < 0 ? "mensual" : "diario")
                 }
                 touchX.current = null
               }}>
               <TabsTrigger value="diario">Diario</TabsTrigger>
-              <TabsTrigger value="mensual">Mensual</TabsTrigger>
+              {!soloDiario && <TabsTrigger value="mensual">Mensual</TabsTrigger>}
             </TabsList>
           </div>
         <TabsContent value="diario" className="min-h-0 overflow-y-auto">
@@ -266,9 +268,9 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
           )}
         </div>
         </TabsContent>
-        <TabsContent value="mensual" className="min-h-0 overflow-y-auto">
+        {!soloDiario && <TabsContent value="mensual" className="min-h-0 overflow-y-auto">
           {tab === "mensual" && <ResumenMensual />}
-        </TabsContent>
+        </TabsContent>}
         </Tabs>
       </DialogContent>
     </Dialog>
