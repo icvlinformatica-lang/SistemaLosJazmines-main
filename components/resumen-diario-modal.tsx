@@ -3,7 +3,12 @@
 // Sección "Resumen diario" de Inicio: mismo contenido que el mail de las
 // 21:00 — dinero por caja, movimientos importantes y cuotas del día.
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import useSWR from "swr"
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from "@/components/ui/dialog"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { ResumenMensual } from "@/components/resumen-mensual"
+import { cn } from "@/lib/utils"
 import { X, Wallet, TrendingUp, TrendingDown, CreditCard, Mail, Loader2, MapPin } from "lucide-react"
 
 interface MovimientoResumen {
@@ -61,56 +66,54 @@ interface Props {
 }
 
 export function ResumenDiarioModal({ open, onOpenChange }: Props) {
-  const [resumen, setResumen] = useState<ResumenDiario | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      setLoading(true)
-      fetch("/api/resumen-diario")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          setResumen(data && !data.error ? data : null)
-          setLoading(false)
-        })
-        .catch(() => {
-          setResumen(null)
-          setLoading(false)
-        })
-    }
-  }, [open])
+  const [tab, setTab] = useState("diario")
+  const touchX = useRef<number | null>(null)
+  const { data: resumen, isLoading: loading } = useSWR<ResumenDiario>(open ? "/api/resumen-diario" : null, async (url: string) => {
+    const respuesta = await fetch(url, { cache: "no-store" })
+    if (!respuesta.ok) throw new Error("No se pudo cargar el resumen")
+    const data = await respuesta.json()
+    if (data.error) throw new Error("No se pudo cargar el resumen")
+    return data
+  })
+  useEffect(() => { if (!open) setTab("diario") }, [open])
 
   if (!open) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={() => onOpenChange(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Resumen diario"
-    >
-      <div
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-[#f5f0e8] shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showCloseButton={false} className={cn("flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-xl p-0", tab === "mensual" ? "sm:max-w-[calc(100%-2rem)]" : "bg-[#f5f0e8] sm:max-w-lg")}>
+        <DialogDescription className="sr-only">Consultá el resumen diario o mensual de las cajas por salón.</DialogDescription>
         {/* Header */}
         <div className="flex items-start justify-between gap-2 bg-[#2d5a3d] px-5 py-4 text-[#f5f0e8]">
           <div>
-            <h2 className="text-lg font-bold">Resumen diario</h2>
-            <p className="text-xs opacity-90 capitalize">{resumen?.fechaLegible || "Hoy"}</p>
+            <DialogTitle className="text-lg font-bold">Resumen</DialogTitle>
+            <p className="text-xs opacity-90 capitalize">{tab === "diario" ? resumen?.fechaLegible || "Hoy" : "Ingresos y egresos por salón"}</p>
           </div>
-          <button
+          <DialogClose
             type="button"
-            onClick={() => onOpenChange(false)}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/10"
             aria-label="Cerrar"
           >
             <X className="h-4 w-4" />
-          </button>
+          </DialogClose>
         </div>
-
-        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+        <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
+          <div className="bg-background p-3 text-foreground">
+            <TabsList className="w-full" aria-label="Tipo de resumen"
+              onTouchStart={(e) => { touchX.current = e.touches[0].clientX }}
+              onTouchEnd={(e) => {
+                if (touchX.current !== null) {
+                  const distancia = e.changedTouches[0].clientX - touchX.current
+                  if (Math.abs(distancia) > 45) setTab(distancia < 0 ? "mensual" : "diario")
+                }
+                touchX.current = null
+              }}>
+              <TabsTrigger value="diario">Diario</TabsTrigger>
+              <TabsTrigger value="mensual">Mensual</TabsTrigger>
+            </TabsList>
+          </div>
+        <TabsContent value="diario" className="min-h-0 overflow-y-auto">
+        <div className="flex-1 space-y-4 p-5">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#2d5a3d]">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -243,7 +246,12 @@ export function ResumenDiarioModal({ open, onOpenChange }: Props) {
             </>
           )}
         </div>
-      </div>
-    </div>
+        </TabsContent>
+        <TabsContent value="mensual" className="min-h-0 overflow-y-auto">
+          {tab === "mensual" && <ResumenMensual />}
+        </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   )
 }

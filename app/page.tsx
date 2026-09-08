@@ -60,7 +60,7 @@ export default function HomePage() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2d5a3d] hover:bg-[#3a6f4e] text-[#f5f0e8] text-sm font-medium transition-colors shadow-lg"
         >
           <FileBarChart className="h-4 w-4" />
-          <span>Resumen diario</span>
+          <span>Resumen</span>
         </button>
         <button
           type="button"

@@ -110,7 +110,11 @@ function mesLabel(d: Date): string {
 // ============================================================
 export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Date): CajaEventosData {
   const ahoraMs = ahora ? ahora.getTime() : null
-  return useMemo(() => {
+  return useMemo(() => calcularCajaEventos(state, salonFiltro, ahora), [state, salonFiltro, ahoraMs])
+}
+
+/** incluirPagados permite presupuestar obligaciones completas sin modificar su estado. */
+export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora?: Date, incluirPagados = false): CajaEventosData {
     const salonSel = salonFiltro && salonFiltro !== "todos" ? salonFiltro : null
     const hoy = ahora ? new Date(ahora) : new Date()
     hoy.setHours(0, 0, 0, 0)
@@ -150,7 +154,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
     const ingresosPendientes: IngresoPendiente[] = []
 
     for (const evento of eventos) {
-      if (evento.estado === "cancelado" || evento.estado === "completado") continue
+      if (evento.estado === "cancelado" || (!incluirPagados && evento.estado === "completado")) continue
       const plan = evento.planDeCuotas
       if (!plan) continue
 
@@ -214,7 +218,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
     const egresosPendientes: EgresoPendienteServicio[] = []
 
     for (const evento of eventos) {
-      if (evento.estado === "cancelado" || evento.estado === "completado") continue
+      if (evento.estado === "cancelado" || (!incluirPagados && evento.estado === "completado")) continue
       const serviciosEvento = evento.servicios ?? []
       const eventoNombre = evento.nombrePareja || evento.nombre || evento.tipoEvento || "Evento"
 
@@ -253,7 +257,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
 
         const menuPagado = evento.cocinaPagada === true
 
-        if (!menuPagado) {
+        if (incluirPagados || !menuPagado) {
           egresosPendientes.push({
             id: `${evento.id}-menu`,
             eventoId: evento.id,
@@ -293,7 +297,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
 
         const barraPagada = evento.barraPagada === true
 
-        if (!barraPagada) {
+        if (incluirPagados || !barraPagada) {
           egresosPendientes.push({
             id: `${evento.id}-barra`,
             eventoId: evento.id,
@@ -315,10 +319,10 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       // --- COMPROMISOS de personal asignados manualmente (Finanzas → Personal) ---
       // Vencen en su fechaLimitePago (por defecto, el día del evento).
       const compromisosEvento = (state.pagosPersonal || []).filter(
-        (pp) => pp.eventoId === evento.id && pp.estado !== "pagado"
+        (pp) => pp.eventoId === evento.id && (incluirPagados || pp.estado !== "pagado")
       )
       for (const pp of compromisosEvento) {
-        const montoPendiente = pp.montoTotal - (pp.montoSeña || 0)
+        const montoPendiente = pp.montoTotal - (incluirPagados ? 0 : (pp.montoSeña || 0))
         if (montoPendiente <= 0) continue
         // Prioridad: fecha límite editada > fecha ACTUAL del evento (en vivo,
         // por si se reprogramó) > foto de la fecha guardada en el compromiso.
@@ -351,7 +355,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         const fechaEvento = parseLocalDate(evento.fecha)
         const fechaEventoStr = evento.fecha
         for (const pe of personalDelEvento) {
-          if (pe.pagado) continue
+          if (!incluirPagados && pe.pagado) continue
           // Sueldo EN VIVO desde el roster (Finanzas → Personal): si cambia la
           // tarifa base, los sueldos pendientes de todos los eventos se
           // actualizan solos (salvo montos personalizados por evento).
@@ -406,10 +410,10 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         // Montos EN VIVO desde el catálogo (Finanzas → Servicios): si cambia
         // el costo o el % de seña, los eventos se actualizan solos.
         const { montoSeña: montoSeñaLive, saldoPendiente: saldoPendienteLive } =
-          calcularSeñaSaldoServicio(srv, state)
+          calcularSeñaSaldoServicio(incluirPagados && srv.estadoPago === "pagado_total" ? { ...srv, estadoPago: "señado", pagado: false } : srv, state)
 
         if (
-          estadoPago === "sin_seña" &&
+          (incluirPagados || estadoPago === "sin_seña") &&
           montoSeñaLive > 0 &&
           fechaSeñaFinal
         ) {
@@ -433,7 +437,7 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
         }
 
         if (
-          estadoPago !== "pagado_total" &&
+          (incluirPagados || estadoPago !== "pagado_total") &&
           saldoPendienteLive > 0 &&
           fechaSaldoFinal
         ) {
@@ -574,5 +578,5 @@ export function useCajaEventos(state: AppState, salonFiltro?: string, ahora?: Da
       totalPorPagar,
       mesActualLabel,
     }
-  }, [state.movimientosCaja, state.eventos, state.cocteles, state.insumosBarra, state.recetas, state.insumos, state.servicios, state.pagosPersonal, salonFiltro, ahoraMs])
+
 }
