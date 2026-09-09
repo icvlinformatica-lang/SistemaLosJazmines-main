@@ -37,7 +37,7 @@ export interface VieneAPagar {
   salon: string
   fechaEvento: string // YYYY-MM-DD
   salonId: string
-  cuotasPendientes: Array<{ numero: number; fechaVencimiento: string; monto: number; atrasada: boolean }>
+  cuotasPendientes: Array<{ numero: number; fechaVencimiento: string; monto: number; atrasada: boolean; diasAtraso: number; recargo: number }>
   /** Próxima cuota que vence esta semana (si hay) */
   cuotaSemana: { numero: number; fechaVencimiento: string; monto: number } | null
   /** Deuda de cuotas vencidas sin pagar (semana pasada o antes) */
@@ -263,7 +263,12 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
       if (cuotasPagadas.includes(n) || detalle.some((c) => Number(c.numero) === n && c.pagada === true)) continue
       const venc = fechaDeCuota(n)
       if (!venc || venc > finSemana) continue
-      const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana }
+      // Recargo por atraso: $3.000 fijos por cada día vencido (mismo criterio que Cobrar Cuota).
+      // Va POR SEPARADO del monto de la cuota; solo aplica a cuotas ya vencidas.
+      const RECARGO_POR_DIA_ATRASO = 3000
+      const diasAtraso = Math.max(0, Math.floor((new Date(hoy + "T00:00:00").getTime() - new Date(venc + "T00:00:00").getTime()) / 86400000))
+      const recargo = diasAtraso * RECARGO_POR_DIA_ATRASO
+      const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana, diasAtraso, recargo }
       cuotasPendientes.push(cuota)
       if (cuota.atrasada) {
         // Vencida antes de esta semana y sin pagar => atrasada

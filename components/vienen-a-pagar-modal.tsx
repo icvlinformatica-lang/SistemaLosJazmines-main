@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
-import { X, Users, Loader2, AlertTriangle } from "lucide-react"
+import { X, Users, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -39,9 +39,16 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
         </div>
         <div className="flex flex-col gap-1 text-right text-sm">
           <p>Cuota {cuota.numero} · <strong className="tabular-nums">{fmt(cuota.monto)}</strong></p>
+          {cuota.recargo > 0 && (
+            <p className="font-semibold text-destructive tabular-nums">
+              + {fmt(cuota.recargo)} recargo <span className="font-normal">({cuota.diasAtraso} {cuota.diasAtraso === 1 ? "día" : "días"} de atraso)</span>
+            </p>
+          )}
+          {cuota.recargo > 0 && (
+            <p className="tabular-nums">Total con recargo: <strong>{fmt(cuota.monto + cuota.recargo)}</strong></p>
+          )}
           <p className="text-muted-foreground">Vence {fechaCorta(cuota.fechaVencimiento)}</p>
         </div>
-        {cuota.atrasada && <span className="inline-flex items-center gap-1 text-sm font-semibold text-destructive"><AlertTriangle className="size-4" />Atrasada</span>}
         {cuota.eventoId ? (
           <Button asChild variant="outline" size="sm" className="shrink-0">
             <Link href={`/eventos/pagos?evento=${encodeURIComponent(cuota.eventoId)}`} prefetch={false} onClick={onAbrirEvento} aria-label={`Ir al evento ${cuota.evento}, cuota ${cuota.numero}`}>Ir al evento</Link>
