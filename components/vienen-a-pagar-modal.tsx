@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
-import { X, Users, Loader2, AlertTriangle } from "lucide-react"
+import { X, Users, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
