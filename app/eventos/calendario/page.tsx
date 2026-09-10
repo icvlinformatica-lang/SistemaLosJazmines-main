@@ -585,6 +585,10 @@ export default function CalendarioPage() {
   // --- Payment handlers ---
   const handleAddPago = () => {
     if (!selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor) return
+    if (selectedEvento.planDeCuotas?.ajustaPorIPC === true) {
+      router.push(`/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`)
+      return
+    }
     const newPago: PagoEvento = {
       id: generateId(),
       monto: pagoForm.monto,
@@ -609,6 +613,10 @@ export default function CalendarioPage() {
 
   const handleDeletePago = (pagoId: string) => {
     if (!selectedEvento) return
+    if (selectedEvento.planDeCuotas?.ajustaPorIPC === true) {
+      router.push(`/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`)
+      return
+    }
     const pago = (selectedEvento.pagos || []).find((p) => p.id === pagoId)
     const updatedPagos = (selectedEvento.pagos || []).filter((p) => p.id !== pagoId)
 
@@ -1594,7 +1602,8 @@ export default function CalendarioPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 px-2 text-destructive hover:text-destructive"
-                                onClick={() => handleDeletePago(pago.id)}
+                                title={selectedEvento.planDeCuotas?.ajustaPorIPC ? "Gestionar anulación desde Pagos" : "Eliminar pago"}
+                            onClick={() => handleDeletePago(pago.id)}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>

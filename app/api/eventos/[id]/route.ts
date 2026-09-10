@@ -4,6 +4,8 @@ import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
+import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
+import { aplicaIPC, numerosPagados, type EventoIPC } from "@/lib/ipc-cuotas"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -90,8 +92,8 @@ const SELECT_COLS = `
   versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
 `
 
-async function fetchEvento(id: string) {
-  const rows = await sql`
+async function fetchEvento(id: string, db = sql) {
+  const rows = await db`
     SELECT
       id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
       dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
@@ -126,6 +128,74 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params
     const updates = await req.json()
+    return await sql.begin(async (tx) => {
+    const db = tx as unknown as typeof sql
+    const rows = await db`SELECT id, salon, plan_de_cuotas, pagos, estado FROM eventos WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    const original = rows[0]
+    if (!original) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const actual: EventoIPC = {
+      estado: original.estado,
+      planDeCuotas: parseJsonField(original.plan_de_cuotas, undefined),
+      pagos: parseJsonField(original.pagos, []),
+    }
+    const movimientosCobro = updates._movimientosCobro
+    const operacionCobro = updates._operacionCobro
+    if (typeof operacionCobro === "string" && operacionCobro && actual.planDeCuotas?.ultimaOperacionCobro === operacionCobro) {
+      return NextResponse.json(fromRow((await fetchEvento(id, db))!))
+    }
+    if ((aplicaIPC(actual) || movimientosCobro !== undefined) && ("planDeCuotas" in updates || "pagos" in updates)) {
+      const mismoJSON = (a: unknown, b: unknown): boolean => {
+        const ordenar = (v: any): any => Array.isArray(v) ? v.map(ordenar) : v && typeof v === "object"
+          ? Object.fromEntries(Object.keys(v).sort().map(k => [k, ordenar(v[k])])) : v
+        return JSON.stringify(ordenar(a)) === JSON.stringify(ordenar(b))
+      }
+      if (!mismoJSON(updates._planEsperado, actual.planDeCuotas) || !mismoJSON(updates._pagosEsperados, actual.pagos)) {
+        return NextResponse.json({ error: "El evento cambió en otra sesión. Actualizá la página antes de guardar." }, { status: 409 })
+      }
+      const historial = await db`SELECT mes, anio, porcentaje FROM historial_ipc FOR SHARE`
+      const errorIPC = validarCobroIPC(actual, updates, historial.map(h => ({
+        mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0,
+      })))
+      if (errorIPC) return NextResponse.json({ error: errorIPC }, { status: 409 })
+      if (updates.planDeCuotas) {
+        if (Array.isArray(updates.pagos)) {
+          const anulados = (actual.pagos ?? []).filter(p => !updates.pagos.some((nuevo: any) => nuevo.id === p.id))
+          if (anulados.length) updates.planDeCuotas.pagosAnulados = [
+            ...(actual.planDeCuotas?.pagosAnulados ?? []), ...anulados.map(p => ({ ...p, anuladoAt: new Date().toISOString() })),
+          ]
+        }
+        delete updates.planDeCuotas.ipcVigente
+        // Al anular, limpiar ambas marcas y el neto que ya no es un pago vigente.
+        const pagadas = updates.planDeCuotas.cuotasPagadas ?? []
+        updates.planDeCuotas.cuotas = updates.planDeCuotas.cuotas?.map((c: any) => {
+          if (numerosPagados(actual).includes(c.numero) && !pagadas.includes(c.numero)) {
+            const { fechaPagoReal, montoPagadoNeto, calculoIPC, ...resto } = c
+            return { ...resto, pagada: false }
+          }
+          return c
+        })
+      }
+    }
+
+    const nuevasCuotas = numerosPagados({ ...actual, ...updates }).filter(n => !numerosPagados(actual).includes(n))
+    if (aplicaIPC(actual) && nuevasCuotas.length && movimientosCobro === undefined) {
+      return NextResponse.json({ error: "La cuota y sus movimientos deben confirmarse juntos." }, { status: 400 })
+    }
+    if (movimientosCobro !== undefined) {
+      const pagosNuevos = (updates.pagos ?? []).filter((p: any) => !(actual.pagos ?? []).some(a => a.id === p.id))
+      const cuota = updates.planDeCuotas?.cuotas?.find((c: any) => c.numero === nuevasCuotas[0])
+      const total = pagosNuevos.length === 1 ? pagosNuevos[0].monto : cuota?.montoPagadoNeto
+      const valido = Array.isArray(movimientosCobro) && movimientosCobro.length > 0 && movimientosCobro.length <= 2 &&
+        nuevasCuotas.length === 1 && Number.isFinite(total) && total > 0 && typeof operacionCobro === "string" && operacionCobro.length <= 200 &&
+        new Set(movimientosCobro.map((m: any) => m.cajaDestino)).size === movimientosCobro.length &&
+        movimientosCobro.every((m: any) => typeof m.id === "string" && m.id.length > 0 && m.id.length <= 80 &&
+          m.eventoId === id && m.salon === original.salon && m.tipo === "ingreso" &&
+          ["caja_eventos", "caja_jazmines"].includes(m.cajaDestino) && Number.isFinite(m.monto) && m.monto > 0 &&
+          typeof m.fecha === "string" && Number.isFinite(Date.parse(m.fecha))) &&
+        Math.abs(movimientosCobro.reduce((s: number, m: any) => s + m.monto, 0) - total) < 0.005
+      if (!valido) return NextResponse.json({ error: "El total de caja debe coincidir con la cuota y su mora. Revisá el salón y los importes." }, { status: 400 })
+      updates.planDeCuotas.ultimaOperacionCobro = operacionCobro
+    }
 
     if ("fecha" in updates) {
       const validacionAnio = validarAnioEvento(updates.fecha)
@@ -189,14 +259,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     setClauses.push(`updated_at = NOW()`)
     values.push(id)
     const setClausesStr = setClauses.join(", ")
-    await sql.unsafe(
-      `UPDATE eventos SET ${setClausesStr} WHERE id = $${idx}`,
+    await db.unsafe(
+      `UPDATE eventos SET ${setClausesStr} WHERE id = $${idx} AND deleted_at IS NULL`,
       values as string[]
     )
 
-    const updated = await fetchEvento(id)
+    if (movimientosCobro) {
+      for (const m of movimientosCobro) {
+        await db`INSERT INTO movimientos_caja (id, salon, tipo, monto, concepto, fecha, evento_id, caja_destino, saldo_resultante)
+          VALUES (${m.id}, ${m.salon}, 'ingreso', ${m.monto}, ${m.concepto ?? "Cobro de cuota"}, ${m.fecha}, ${id}, ${m.cajaDestino}, ${m.saldoResultante ?? 0})`
+      }
+    }
+    const updated = await fetchEvento(id, db)
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json(fromRow(updated))
+    })
   } catch (err) {
     console.error("[API] Error patching evento:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -208,6 +285,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params
     const ev = await req.json()
+    const previo = await fetchEvento(id)
+    if (previo && aplicaIPC({ estado: previo.estado, planDeCuotas: parseJsonField(previo.plan_de_cuotas, undefined) })) {
+      return NextResponse.json({ error: "Los eventos ajustables se guardan mediante PATCH con control de concurrencia, no por reemplazo completo." }, { status: 409 })
+    }
     const nombre = ev.nombrePareja || ev.nombre || "Sin nombre"
 
     const validacionAnio = validarAnioEvento(ev.fecha)

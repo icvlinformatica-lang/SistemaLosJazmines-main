@@ -6,6 +6,8 @@
 
 import { sql } from "@/lib/db"
 import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
+import { calcularIPCPeriodo } from "@/lib/ipc-cuotas"
+import type { EventoGuardado, HistorialIPCEntry } from "@/lib/store"
 
 const TZ = "America/Argentina/Buenos_Aires"
 
@@ -37,7 +39,7 @@ export interface VieneAPagar {
   salon: string
   fechaEvento: string // YYYY-MM-DD
   salonId: string
-  cuotasPendientes: Array<{ numero: number; fechaVencimiento: string; monto: number; atrasada: boolean; diasAtraso: number; recargo: number }>
+  cuotasPendientes: Array<{ numero: number; fechaVencimiento: string; monto: number; atrasada: boolean; diasAtraso: number; recargo: number; ipcPendiente?: string }>
   /** Próxima cuota que vence esta semana (si hay) */
   cuotaSemana: { numero: number; fechaVencimiento: string; monto: number } | null
   /** Deuda de cuotas vencidas sin pagar (semana pasada o antes) */
@@ -218,6 +220,8 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
   const inicioSemana = toYmd(lunes)
   const finSemana = toYmd(domingo)
 
+  const ipcRows = await sql`SELECT mes, anio, porcentaje FROM historial_ipc`
+  const historialIPC: HistorialIPCEntry[] = ipcRows.map(h => ({ mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0 }))
   const vienenAPagar: VieneAPagar[] = []
   for (const ev of evRows) {
     // Solo eventos activos (no archivados ni cancelados)
@@ -227,6 +231,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
     const plan = parseJson<Record<string, unknown> | null>(ev.plan_de_cuotas, null)
     if (!plan || !Number(plan.numeroCuotas)) continue
 
+    const resultadoIPC = calcularIPCPeriodo({ estado, planDeCuotas: plan as EventoGuardado["planDeCuotas"], pagos: parseJson(ev.pagos, []) }, historialIPC, hoy)
     const numeroCuotas = Number(plan.numeroCuotas) || 0
     const montoCuotaBase = Number(plan.montoCuota) || (Number(plan.montoTotal) || 0) / (numeroCuotas || 1)
     const cuotasPagadas = parseJson<number[]>(plan.cuotasPagadas, [])
@@ -249,6 +254,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
       return `${año}-${String(mes + 1).padStart(2, "0")}-${String(Math.min(diaVencimiento, ultimoDia)).padStart(2, "0")}`
     }
     const montoDeCuota = (n: number): number => {
+      if (resultadoIPC.estado === "listo") return resultadoIPC.calculo.monto
       const d = detalle.find((c) => Number(c.numero) === n)
       const m = Number(d?.montoCuota)
       return m > 0 ? m : montoCuotaBase
@@ -268,7 +274,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
       const RECARGO_POR_DIA_ATRASO = 3000
       const diasAtraso = Math.max(0, Math.floor((new Date(hoy + "T00:00:00").getTime() - new Date(venc + "T00:00:00").getTime()) / 86400000))
       const recargo = diasAtraso * RECARGO_POR_DIA_ATRASO
-      const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana, diasAtraso, recargo }
+      const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana, diasAtraso, recargo, ipcPendiente: resultadoIPC.estado === "pendiente" ? resultadoIPC.motivo : undefined }
       cuotasPendientes.push(cuota)
       if (cuota.atrasada) {
         // Vencida antes de esta semana y sin pagar => atrasada

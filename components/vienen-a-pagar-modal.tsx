@@ -38,13 +38,14 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
           </p>
         </div>
         <div className="flex flex-col gap-1 text-right text-sm">
-          <p>Cuota {cuota.numero} · <strong className="tabular-nums">{fmt(cuota.monto)}</strong></p>
+          <p>Cuota {cuota.numero} · <strong className="tabular-nums">{cuota.ipcPendiente ? "A definir" : fmt(cuota.monto)}</strong></p>
+          {cuota.ipcPendiente && <p className="text-destructive">{cuota.ipcPendiente}</p>}
           {cuota.recargo > 0 && (
             <p className="font-semibold text-destructive tabular-nums">
               + {fmt(cuota.recargo)} recargo <span className="font-normal">({cuota.diasAtraso} {cuota.diasAtraso === 1 ? "día" : "días"} de atraso)</span>
             </p>
           )}
-          {cuota.recargo > 0 && (
+          {cuota.recargo > 0 && !cuota.ipcPendiente && (
             <p className="tabular-nums">Total con recargo: <strong>{fmt(cuota.monto + cuota.recargo)}</strong></p>
           )}
           <p className="text-muted-foreground">Vence {fechaCorta(cuota.fechaVencimiento)}</p>
@@ -143,7 +144,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
                   </div>
                 </div>
               )}
-              <p className="flex items-start gap-2 text-sm text-muted-foreground"><Users className="size-4 shrink-0" />Semana actual de lunes a domingo. Los atrasos incluyen todas las cuotas vencidas sin pagar. Los totales incluyen todas las cuotas del salón seleccionado.</p>
+              <p className="flex items-start gap-2 text-sm text-muted-foreground"><Users className="size-4 shrink-0" />Semana actual de lunes a domingo. Los atrasos incluyen todas las cuotas vencidas sin pagar. Los totales incluyen todas las cuotas del salón seleccionado. Si una cuota está a definir, su último importe guardado integra el total solo como referencia; no es un importe confirmado para cobrar.</p>
             </>
           )}
         </div>

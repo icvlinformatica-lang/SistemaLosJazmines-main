@@ -22,7 +22,7 @@ Module._load = function (request, ...args) {
   if (request === "@/lib/db") return { sql: async (parts, ...values) => {
     const query = parts.join("?")
     consultas.push({ query, values })
-    return query.includes("FROM movimientos_caja") ? movimientos : eventos
+    return query.includes("FROM movimientos_caja") ? movimientos : query.includes("FROM historial_ipc") ? [] : eventos
   } }
   return load.call(this, request, ...args)
 }

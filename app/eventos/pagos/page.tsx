@@ -20,6 +20,7 @@ import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
 import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
 import { ContratoPanel } from "@/components/contrato-panel"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
+import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numerosPagados } from "@/lib/ipc-cuotas"
 import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -106,6 +107,10 @@ function PaymentReceipt({
   // Mes al que corresponde el IPC aplicado como recargo: el último IPC cargado
   // (>IPC) con fecha igual o anterior a la fecha del pago. Se toma automáticamente.
   const ipcMesLabel = (() => {
+    if (pago.calculoIPC) {
+      const [anio, mes] = pago.calculoIPC.periodo.split("-").map(Number)
+      return `${MESES_RECIBO[mes - 1]} ${anio}`
+    }
     if (!(pago.porcentajeIPC > 0) || historialIPC.length === 0) return ""
     const fechaPago = pago.fecha ? new Date(pago.fecha).getTime() : Date.now()
     const aplicables = historialIPC
@@ -405,7 +410,7 @@ function PagosPageContent() {
   const initialSearch = searchParams.get("evento") || ""
   // Si llegó con ?evento= viene desde la Lista de Eventos: la flecha vuelve allá.
   const vieneDeLista = Boolean(initialSearch)
-  const { eventos, updateEvento, configuracionCajas, movimientosCaja, addMovimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
+  const { eventos, updateEvento, configuracionCajas, movimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
   const { toast } = useToast()
   const { setSidebarOpen } = useUI()
 
@@ -475,12 +480,16 @@ function PagosPageContent() {
 
   // Payment dialog
   const [showPagoDialog, setShowPagoDialog] = useState(false)
+  const [guardandoPago, setGuardandoPago] = useState(false)
+  const guardandoPagoRef = useRef(false)
+  const numeroPagoRef = useRef<number | null>(null)
+  const [moraPago, setMoraPago] = useState(0)
   const [montoCuotaBase, setMontoCuotaBase] = useState(0) // Original cuota amount before IPC
   // Permite quitar con un click el recargo por días de atraso del próximo pago
   const [recargoAtrasoOmitido, setRecargoAtrasoOmitido] = useState(false)
   const [pagoForm, setPagoForm] = useState({
     monto: 0,
-    fecha: new Date().toISOString().split("T")[0],
+    fecha: fechaNegocio(),
     pagadoPor: "",
     dni: "",
     porcentajeIPC: 0,
@@ -584,8 +593,20 @@ function PagosPageContent() {
     cargarPlanDesdeEvento(ev)
   }
 
-  const handleAddPago = () => {
-    if (!selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()) return
+  const handleAddPago = async () => {
+    if (guardandoPagoRef.current || !selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()) return
+    const calculo = calcularIPCPeriodo(selectedEvento, historialIPC, pagoForm.fecha)
+    if (calculo.estado === "pendiente") {
+      toast({ title: "No se puede confirmar el cobro", description: calculo.motivo, variant: "destructive" })
+      return
+    }
+    if (calculo.estado === "listo" && (calculo.calculo.monto !== montoCuotaBase || pagoForm.monto !== montoCuotaBase + moraPago)) {
+      toast({ title: "El importe cambió", description: "Cerrá el formulario y revisá el nuevo desglose antes de cobrar.", variant: "destructive" })
+      return
+    }
+    guardandoPagoRef.current = true
+    setGuardandoPago(true)
+    try {
     const vueltoCalculado = pagoForm.montoRecibido > pagoForm.monto ? Math.round((pagoForm.montoRecibido - pagoForm.monto) * 100) / 100 : 0
     const newPago: PagoEvento = {
       id: generateId(),
@@ -593,7 +614,10 @@ function PagosPageContent() {
       fecha: pagoForm.fecha,
       pagadoPor: pagoForm.pagadoPor,
       dni: pagoForm.dni || undefined,
-      porcentajeIPC: pagoForm.porcentajeIPC,
+      porcentajeIPC: calculo.estado === "listo" ? calculo.calculo.porcentaje : pagoForm.porcentajeIPC,
+      montoCuotaNeto: montoCuotaBase,
+      montoMora: moraPago,
+      calculoIPC: calculo.estado === "listo" ? calculo.calculo : undefined,
       notas: pagoForm.notas || undefined,
       montoRecibido: pagoForm.montoRecibido > 0 ? pagoForm.montoRecibido : undefined,
       vuelto: vueltoCalculado > 0 ? vueltoCalculado : undefined,
@@ -606,32 +630,27 @@ function PagosPageContent() {
     let updatedPlanDeCuotas = selectedEvento.planDeCuotas
     let cuotaPagadaNumero: number | null = null
     if (updatedPlanDeCuotas && updatedPlanDeCuotas.numeroCuotas > 0) {
-      const cuotasPagadasArr = updatedPlanDeCuotas.cuotasPagadas || []
+      const cuotasPagadasArr = numerosPagados(selectedEvento)
       // Find the next unpaid cuota number
       const nextUnpaid = Array.from({ length: updatedPlanDeCuotas.numeroCuotas }, (_, i) => i + 1)
         .find(n => !cuotasPagadasArr.includes(n))
-      if (nextUnpaid) {
-        cuotaPagadaNumero = nextUnpaid
-        updatedPlanDeCuotas = {
-          ...updatedPlanDeCuotas,
-          cuotasPagadas: [...cuotasPagadasArr, nextUnpaid],
-        }
+      if (!nextUnpaid || (numeroPagoRef.current !== null && numeroPagoRef.current !== nextUnpaid)) {
+        toast({ title: "La cuota ya cambió", description: "Volvé a abrir el formulario con el evento actualizado.", variant: "destructive" })
+        return
+      }
+      cuotaPagadaNumero = nextUnpaid
+      newPago.numeroCuota = nextUnpaid
+      updatedPlanDeCuotas = {
+        ...updatedPlanDeCuotas,
+        cuotasPagadas: [...cuotasPagadasArr, nextUnpaid],
+        cuotas: updatedPlanDeCuotas.cuotas?.map(c => c.numero === nextUnpaid ? {
+          ...c, pagada: true, montoCuota: montoCuotaBase, montoPagadoNeto: montoCuotaBase,
+          fechaPagoReal: pagoForm.fecha, calculoIPC: newPago.calculoIPC,
+        } : c),
       }
     }
 
-    updateEvento(selectedEvento.id, {
-      pagos: updatedPagos,
-      planCuotas: cuotasTotal,
-      montoTotalPlan: montoTotal,
-      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
-    })
-    setSelectedEvento({
-      ...selectedEvento,
-      pagos: updatedPagos,
-      planCuotas: cuotasTotal,
-      montoTotalPlan: montoTotal,
-      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
-    })
+    const movimientosDelCobro: MovimientoCaja[] = []
 
     // Generar los movimientos de caja del ingreso, repartidos según la regla del
     // evento: nuevos -> costo del evento + 5% a Caja Eventos y el resto a Caja
@@ -686,8 +705,16 @@ function PagosPageContent() {
         cajaDestino: "caja_jazmines",
         saldoResultante: saldoPrevJazmines + mitadJazmines,
       }
-      addMovimientosCaja([movEventos, movJazmines])
+      movimientosDelCobro.push(...[movEventos, movJazmines].filter(m => m.monto > 0))
     }
+
+    const guardado = await updateEvento(selectedEvento.id, {
+      pagos: updatedPagos,
+      planCuotas: cuotasTotal,
+      montoTotalPlan: montoTotal,
+      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
+    }, movimientosDelCobro)
+    if (!guardado) return
 
     // Registrar en el historial de actividad (manejo de dinero)
     const nombreEventoLog = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
@@ -728,7 +755,7 @@ function PagosPageContent() {
     setMontoCuotaBase(0)
     setPagoForm({
       monto: 0,
-      fecha: new Date().toISOString().split("T")[0],
+      fecha: fechaNegocio(),
       pagadoPor: "",
       dni: "",
       porcentajeIPC: 0,
@@ -737,9 +764,13 @@ function PagosPageContent() {
       recibidoPor: "",
     })
     setShowPagoDialog(false)
+    } finally {
+      guardandoPagoRef.current = false
+      setGuardandoPago(false)
+    }
   }
 
-  const handleDeletePago = (pagoId: string) => {
+  const handleDeletePago = async (pagoId: string) => {
     if (!selectedEvento) return
     const pago = (selectedEvento.pagos || []).find((p) => p.id === pagoId)
     if (!pago) return
@@ -749,7 +780,7 @@ function PagosPageContent() {
     // detecta, la cuota quedaría marcada como pagada para siempre tras eliminar el pago.
     const matchCuota = /Cuota\s+(\d+)/i.exec(pago.notas || "")
     const esPagoUnicoNota = /pago\s+(único|unico|completo)/i.test(pago.notas || "")
-    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : esPagoUnicoNota ? 1 : null
+    const numeroCuota = pago.numeroCuota ?? (matchCuota ? parseInt(matchCuota[1], 10) : esPagoUnicoNota ? 1 : null)
     const etiquetaCuota = numeroCuota ? `Cuota ${numeroCuota}` : "Pago"
 
     // 2) Revertir los movimientos de caja que se habían sumado por este pago.
@@ -757,6 +788,7 @@ function PagosPageContent() {
     //    movimiento cuyo monto más se acerca a la parte proporcional que le
     //    correspondió (costo + 5% a Eventos, resto a Jazmines).
     let cajasRevertidas = false
+    const movimientosARevertir: string[] = []
     const candidatos = movimientosCaja.filter(
       (m: MovimientoCaja) =>
         m.eventoId === selectedEvento.id &&
@@ -782,8 +814,7 @@ function PagosPageContent() {
       const elegido = delCaja.reduce((best, m) =>
         Math.abs(m.monto - objetivo) < Math.abs(best.monto - objetivo) ? m : best,
       )
-      deleteMovimientoCaja(elegido.id)
-      cajasRevertidas = true
+      movimientosARevertir.push(elegido.id)
     })
 
     // 3) Marcar la cuota como NO pagada de nuevo (vuelve a adeudarse)
@@ -797,15 +828,14 @@ function PagosPageContent() {
 
     // 4) Quitar el pago del evento
     const updatedPagos = (selectedEvento.pagos || []).filter((p) => p.id !== pagoId)
-    updateEvento(selectedEvento.id, {
+    const guardado = await updateEvento(selectedEvento.id, {
       pagos: updatedPagos,
       ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
     })
-    setSelectedEvento({
-      ...selectedEvento,
-      pagos: updatedPagos,
-      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
-    })
+    if (!guardado) return
+    const reversiones = await Promise.all(movimientosARevertir.map(id => deleteMovimientoCaja(id)))
+    cajasRevertidas = reversiones.length > 0 && reversiones.every(Boolean)
+    if (reversiones.some(ok => !ok)) toast({ title: "Revisar caja", description: "El pago se anuló, pero algún movimiento no pudo revertirse.", variant: "destructive" })
 
     // 5) Registrar en el historial de actividad (manejo de dinero)
     const nombreEventoLog = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
@@ -822,8 +852,8 @@ function PagosPageContent() {
   const totalIPCAcumulado = selectedEvento
     ? (selectedEvento.pagos || []).reduce((acc, p) => {
         if (p.porcentajeIPC > 0) {
-          const montoBase = p.monto / (1 + p.porcentajeIPC / 100)
-          return acc + (p.monto - montoBase)
+          const montoBase = p.calculoIPC?.base ?? p.monto / (1 + p.porcentajeIPC / 100)
+          return acc + ((p.montoCuotaNeto ?? p.monto) - montoBase)
         }
         return acc
       }, 0)
@@ -1480,9 +1510,10 @@ function PagosPageContent() {
               const freshEvento = eventos.find(e => e.id === selectedEvento.id) || selectedEvento
               const calendarioCuotas = generarCalendarioCuotas(freshEvento)
               const proximaCuota = calendarioCuotas.find(c => !c.pagada)
-              const montoCuotaOriginal = freshEvento.planDeCuotas?.montoCuota || 0
+              const resultadoIPC = calcularIPCPeriodo(freshEvento, historialIPC)
+              const montoCuotaOriginal = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.base : freshEvento.planDeCuotas?.montoCuota || 0
               // Estricto: solo eventos marcados explícitamente como ajustables por IPC
-              const ajustaPorIPC = freshEvento.planDeCuotas?.ajustaPorIPC === true
+              const ajustaPorIPC = aplicaIPC(freshEvento)
               const cuotaFueAjustada = ajustaPorIPC && proximaCuota != null && montoCuotaOriginal > 0 && proximaCuota.monto > montoCuotaOriginal
 
               const esPagoUnico = freshEvento.planDeCuotas?.modalidadPago === "completo"
@@ -1560,25 +1591,22 @@ function PagosPageContent() {
                           {cuotaFueAjustada && (
                             <p className="text-sm text-muted-foreground line-through">{formatCurrency(montoCuotaOriginal)}</p>
                           )}
-                          <p className="text-2xl font-bold text-primary">{formatCurrency(totalSimulado)}</p>
+                          <p className="text-2xl font-bold text-primary">{resultadoIPC.estado === "pendiente" ? "A definir" : formatCurrency(totalSimulado)}</p>
                           <Button
                             size="sm"
                             className="mt-2"
+                            disabled={resultadoIPC.estado === "pendiente"}
                             onClick={() => {
-                              // IPC acumulado que ya incrementó el precio de esta cuota, calculado
-                              // automáticamente: monto ajustado vs monto original del plan (>IPC).
-                              // Queda guardado en el pago para que el comprobante imprimible lo detalle.
-                              const ipcAcumulado =
-                                cuotaFueAjustada && montoCuotaOriginal > 0
-                                  ? Math.round(((proximaCuota.monto - montoCuotaOriginal) / montoCuotaOriginal) * 10000) / 100
-                                  : 0
+                              const ipcAcumulado = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : 0
+                              numeroPagoRef.current = proximaCuota.numeroCuota
+                              setMoraPago(recargoAtraso)
                               setMontoCuotaBase(proximaCuota.monto)
                               const notaBase = esPagoUnico
                                 ? "Pago único (pago completo)"
                                 : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
                               setPagoForm({
                                 monto: totalSimulado,
-                                fecha: new Date().toISOString().split("T")[0],
+                                fecha: fechaNegocio(),
                                 pagadoPor: "",
                                 dni: selectedEvento?.dniNovio1 || "",
                                 porcentajeIPC: ipcAcumulado,
@@ -1599,10 +1627,8 @@ function PagosPageContent() {
 
                       {/* Nota: costo simulado (desglose de cómo se llega al total) */}
                       <DesgloseIPCPago
-                        montoBase={montoCuotaOriginal}
+                        resultado={resultadoIPC}
                         montoCuota={proximaCuota.monto}
-                        ajustaPorIPC={ajustaPorIPC}
-                        historialIPC={historialIPC}
                         diasAtraso={diasAtraso}
                         recargoPorDia={RECARGO_POR_DIA_ATRASO}
                         recargoOmitido={recargoAtrasoOmitido}
@@ -1671,8 +1697,8 @@ function PagosPageContent() {
                               )}
                             </div>
                             {pago.porcentajeIPC > 0 && (() => {
-                              const montoBase = pago.monto / (1 + pago.porcentajeIPC / 100)
-                              const ipcMonto = pago.monto - montoBase
+                              const montoBase = pago.calculoIPC?.base ?? pago.monto / (1 + pago.porcentajeIPC / 100)
+                              const ipcMonto = (pago.montoCuotaNeto ?? pago.monto) - montoBase
                               return (
                                 <p className="text-xs text-amber-600 mt-0.5">
                                   Cuota base: {formatCurrency(montoBase)} + IPC: {formatCurrency(ipcMonto)}
@@ -1798,7 +1824,17 @@ function PagosPageContent() {
                 <Input
                   type="date"
                   value={pagoForm.fecha}
-                  onChange={(e) => setPagoForm({ ...pagoForm, fecha: e.target.value })}
+                  onChange={(e) => {
+                      const fecha = e.target.value
+                      const resultado = selectedEvento ? calcularIPCPeriodo(selectedEvento, historialIPC, fecha) : null
+                      if (resultado?.estado === "listo") {
+                        setMontoCuotaBase(resultado.calculo.monto)
+                        setPagoForm({ ...pagoForm, fecha, monto: resultado.calculo.monto + moraPago, porcentajeIPC: resultado.calculo.porcentaje })
+                      } else {
+                        setPagoForm({ ...pagoForm, fecha })
+                        if (resultado?.estado === "pendiente") toast({ title: "IPC pendiente", description: resultado.motivo, variant: "destructive" })
+                      }
+                    }}
                   className="h-9"
                 />
                 <p className="text-[11px] text-muted-foreground leading-tight">
@@ -1820,8 +1856,9 @@ function PagosPageContent() {
               <div className="grid gap-1">
                 <Label className="text-xs">Monto Final ($)</Label>
                 <MoneyInput
-                  value={pagoForm.monto}
-                  onValueChange={(monto) => setPagoForm({ ...pagoForm, monto })}
+                    value={pagoForm.monto}
+                    disabled={selectedEvento ? aplicaIPC(selectedEvento) : false}
+                    onValueChange={(monto) => setPagoForm({ ...pagoForm, monto })}
                   placeholder="0"
                   className="h-10 text-base font-semibold"
                 />
@@ -1916,7 +1953,7 @@ function PagosPageContent() {
           </div>
           <DialogFooter className="px-5 pb-4 pt-2 border-t border-border">
             <Button variant="outline" size="sm" onClick={() => setShowPagoDialog(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleAddPago} disabled={pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
+            <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
               Registrar {formatCurrency(pagoForm.monto)}
             </Button>
           </DialogFooter>
