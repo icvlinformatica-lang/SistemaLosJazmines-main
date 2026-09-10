@@ -1,5 +1,5 @@
 import type { EventoGuardado, HistorialIPCEntry } from "./store"
-import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numeroCuotaPago, numerosPagados, type EventoIPC } from "./ipc-cuotas"
+import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numeroCuotaPago, numerosPagados, resolverCalculoCobro, type EventoIPC } from "./ipc-cuotas"
 
 export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuardado>, historial: HistorialIPCEntry[]): string | null {
   if (!aplicaIPC(actual)) return null
@@ -20,10 +20,17 @@ export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuarda
   if (pagosNuevos.length && !pago) return "El pago no corresponde a la cuota indicada."
   const fecha = pago?.fecha ?? cuota.fechaPagoReal
   if (!fecha || fecha > fechaNegocio()) return "Indicá la fecha real de cobro; no puede ser futura."
-  const resultado = calcularIPCPeriodo(actual, historial, fecha)
-  if (resultado.estado === "pendiente") return resultado.motivo
-  if (resultado.estado !== "listo") return "No se pudo calcular la cuota."
-  const calculo = resultado.calculo
+  // El navegador solo elige si aplica el IPC y, cuando el automático quedó pendiente, la base manual.
+  // Todo lo demás (porcentaje, período, redondeo) lo recalcula el servidor.
+  const enviado = pago?.calculoIPC ?? cuota.calculoIPC
+  const aplicarIPC = !enviado?.ipcOmitido
+  const automatico = calcularIPCPeriodo(actual, historial, fecha)
+  if (automatico.estado === "pendiente" && enviado?.origen !== "manual") return automatico.motivo
+  const baseManual = enviado?.origen === "manual" && Number.isFinite(enviado.base) && enviado.base > 0 ? enviado.base : undefined
+  const resuelto = resolverCalculoCobro(actual, historial, fecha, { aplicarIPC, baseManual })
+  if ("error" in resuelto) return resuelto.error
+  if (!resuelto.calculo) return "No se pudo calcular la cuota."
+  const calculo = resuelto.calculo
   const neto = pago?.montoCuotaNeto ?? cuota.montoPagadoNeto
   if (neto !== calculo.monto || cuota.montoCuota !== calculo.monto) return "La cuota cambió. Actualizá el desglose antes de confirmar el cobro."
   if (pago && (!Number.isFinite(pago.montoMora) || pago.montoMora! < 0 || pago.monto !== neto + pago.montoMora!)) return "El importe debe separar cuota neta y mora."
@@ -34,7 +41,7 @@ export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuarda
   cuota.pagada = true
   if (pago) {
     pago.calculoIPC = calculo
-    pago.porcentajeIPC = calculo.porcentaje
+    pago.porcentajeIPC = calculo.ipcOmitido ? 0 : calculo.porcentaje
     pago.numeroCuota = numero
   }
   return null

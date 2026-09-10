@@ -20,8 +20,9 @@ import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
 import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
 import { ContratoPanel } from "@/components/contrato-panel"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
-import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numerosPagados } from "@/lib/ipc-cuotas"
+import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numerosPagados, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
 import { SalonDot } from "@/components/salon-badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -487,6 +488,10 @@ function PagosPageContent() {
   const [montoCuotaBase, setMontoCuotaBase] = useState(0) // Original cuota amount before IPC
   // Permite quitar con un click el recargo por días de atraso del próximo pago
   const [recargoAtrasoOmitido, setRecargoAtrasoOmitido] = useState(false)
+  // Tildes del próximo cobro: aplicar el IPC del mes y, si el automático quedó
+  // pendiente, la base elegida a mano (null = usar la sugerida).
+  const [aplicarIPCCobro, setAplicarIPCCobro] = useState(true)
+  const [baseManualCobro, setBaseManualCobro] = useState<number | null>(null)
   const [pagoForm, setPagoForm] = useState({
     monto: 0,
     fecha: fechaNegocio(),
@@ -590,17 +595,23 @@ function PagosPageContent() {
     setSearchTerm("")
     setFiltroFecha("")
     setFiltroSalon("todos")
+    setAplicarIPCCobro(true)
+    setBaseManualCobro(null)
+    setRecargoAtrasoOmitido(false)
     cargarPlanDesdeEvento(ev)
   }
 
   const handleAddPago = async () => {
     if (guardandoPagoRef.current || !selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()) return
-    const calculo = calcularIPCPeriodo(selectedEvento, historialIPC, pagoForm.fecha)
-    if (calculo.estado === "pendiente") {
-      toast({ title: "No se puede confirmar el cobro", description: calculo.motivo, variant: "destructive" })
+    const resuelto = resolverCalculoCobro(selectedEvento, historialIPC, pagoForm.fecha, {
+      aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined,
+    })
+    if ("error" in resuelto) {
+      toast({ title: "No se puede confirmar el cobro", description: resuelto.error, variant: "destructive" })
       return
     }
-    if (calculo.estado === "listo" && (calculo.calculo.monto !== montoCuotaBase || pagoForm.monto !== montoCuotaBase + moraPago)) {
+    const calculoCobro = resuelto.calculo
+    if (calculoCobro && (calculoCobro.monto !== montoCuotaBase || pagoForm.monto !== montoCuotaBase + moraPago)) {
       toast({ title: "El importe cambió", description: "Cerrá el formulario y revisá el nuevo desglose antes de cobrar.", variant: "destructive" })
       return
     }
@@ -614,10 +625,10 @@ function PagosPageContent() {
       fecha: pagoForm.fecha,
       pagadoPor: pagoForm.pagadoPor,
       dni: pagoForm.dni || undefined,
-      porcentajeIPC: calculo.estado === "listo" ? calculo.calculo.porcentaje : pagoForm.porcentajeIPC,
+      porcentajeIPC: calculoCobro ? (calculoCobro.ipcOmitido ? 0 : calculoCobro.porcentaje) : pagoForm.porcentajeIPC,
       montoCuotaNeto: montoCuotaBase,
       montoMora: moraPago,
-      calculoIPC: calculo.estado === "listo" ? calculo.calculo : undefined,
+      calculoIPC: calculoCobro ?? undefined,
       notas: pagoForm.notas || undefined,
       montoRecibido: pagoForm.montoRecibido > 0 ? pagoForm.montoRecibido : undefined,
       vuelto: vueltoCalculado > 0 ? vueltoCalculado : undefined,
@@ -1529,7 +1540,19 @@ function PagosPageContent() {
                 const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
                 // Con un click se puede quitar el recargo (queda en $0 pero se muestra que fue quitado)
                 const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
-                const totalSimulado = proximaCuota.monto + recargoAtraso
+                // Cálculo que se va a guardar, según lo tildado (IPC sí/no y base manual si el automático quedó pendiente)
+                const sugerencia = resultadoIPC.estado === "pendiente" ? sugerirBaseManual(freshEvento, historialIPC) : null
+                const resuelto = ajustaPorIPC
+                  ? resolverCalculoCobro(freshEvento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
+                  : { calculo: null }
+                const calculoCobro = "calculo" in resuelto ? resuelto.calculo : null
+                const errorCobro = "error" in resuelto ? resuelto.error : null
+                const esManual = resultadoIPC.estado === "pendiente"
+                const baseMostrada = baseManualCobro ?? sugerencia?.base ?? 0
+                const porcentajeMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : sugerencia?.porcentaje ?? null
+                const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
+                const totalSimulado = cuotaNeta + recargoAtraso
+                const puedeCobrar = !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
 
                 return (
                   <Card className="border-2 border-primary/30 bg-primary/5">
@@ -1591,16 +1614,16 @@ function PagosPageContent() {
                           {cuotaFueAjustada && (
                             <p className="text-sm text-muted-foreground line-through">{formatCurrency(montoCuotaOriginal)}</p>
                           )}
-                          <p className="text-2xl font-bold text-primary">{resultadoIPC.estado === "pendiente" ? "A definir" : formatCurrency(totalSimulado)}</p>
+                          <p className="text-2xl font-bold text-primary">{puedeCobrar ? formatCurrency(totalSimulado) : "A definir"}</p>
                           <Button
                             size="sm"
                             className="mt-2"
-                            disabled={resultadoIPC.estado === "pendiente"}
+                            disabled={!puedeCobrar}
                             onClick={() => {
-                              const ipcAcumulado = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : 0
+                              const ipcAcumulado = calculoCobro && !calculoCobro.ipcOmitido ? calculoCobro.porcentaje : 0
                               numeroPagoRef.current = proximaCuota.numeroCuota
                               setMoraPago(recargoAtraso)
-                              setMontoCuotaBase(proximaCuota.monto)
+                              setMontoCuotaBase(cuotaNeta)
                               const notaBase = esPagoUnico
                                 ? "Pago único (pago completo)"
                                 : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
@@ -1625,6 +1648,63 @@ function PagosPageContent() {
                         </div>
                       </div>
 
+                      {ajustaPorIPC && (
+                        <fieldset className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-background p-4 text-sm">
+                          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Qué se cobra</legend>
+                          {esManual && (
+                            <div className="grid gap-1">
+                              <Label htmlFor="base-manual-cobro" className="text-xs">Base de la cuota (sin mora)</Label>
+                              <MoneyInput
+                                id="base-manual-cobro"
+                                value={baseMostrada}
+                                onValueChange={(valor) => setBaseManualCobro(valor > 0 ? valor : null)}
+                                className="h-9 font-mono"
+                              />
+                              <p className="text-[11px] leading-tight text-muted-foreground">
+                                {sugerencia?.origen === "pago" ? "Sugerida desde el último pago registrado." : "Sugerida desde la cuota original del plan."} Podés corregirla.
+                              </p>
+                            </div>
+                          )}
+                          <label className="flex cursor-pointer items-start gap-3">
+                            <Checkbox
+                              checked={aplicarIPCCobro}
+                              onCheckedChange={(v) => setAplicarIPCCobro(v === true)}
+                              aria-label="Aplicar el IPC del mes"
+                              className="mt-0.5"
+                            />
+                            <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
+                              <span>
+                                Aplicar IPC del mes
+                                {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                                {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                              </span>
+                              <span className="font-mono font-semibold">
+                                {porcentajeMes != null && baseMostrada > 0
+                                  ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
+                                  : resultadoIPC.estado === "listo" ? formatCurrency(resultadoIPC.calculo.monto) : "—"}
+                              </span>
+                            </span>
+                          </label>
+                          <label className="flex cursor-pointer items-start gap-3">
+                            <Checkbox
+                              checked={!recargoAtrasoOmitido}
+                              disabled={diasAtraso === 0}
+                              onCheckedChange={(v) => setRecargoAtrasoOmitido(v !== true)}
+                              aria-label="Aplicar mora por atraso"
+                              className="mt-0.5"
+                            />
+                            <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
+                              <span>
+                                Aplicar mora
+                                <span className="text-muted-foreground"> ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
+                              </span>
+                              <span className="font-mono font-semibold">{formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}</span>
+                            </span>
+                          </label>
+                          {errorCobro && <p role="alert" className="text-xs font-medium text-destructive">{errorCobro}</p>}
+                        </fieldset>
+                      )}
+
                       {/* Nota: costo simulado (desglose de cómo se llega al total) */}
                       <DesgloseIPCPago
                         resultado={resultadoIPC}
@@ -1632,6 +1712,8 @@ function PagosPageContent() {
                         diasAtraso={diasAtraso}
                         recargoPorDia={RECARGO_POR_DIA_ATRASO}
                         recargoOmitido={recargoAtrasoOmitido}
+                        manual={esManual ? calculoCobro : null}
+                        aplicarIPC={aplicarIPCCobro}
                       />
                     </CardContent>
                   </Card>
@@ -1826,13 +1908,16 @@ function PagosPageContent() {
                   value={pagoForm.fecha}
                   onChange={(e) => {
                       const fecha = e.target.value
-                      const resultado = selectedEvento ? calcularIPCPeriodo(selectedEvento, historialIPC, fecha) : null
-                      if (resultado?.estado === "listo") {
-                        setMontoCuotaBase(resultado.calculo.monto)
-                        setPagoForm({ ...pagoForm, fecha, monto: resultado.calculo.monto + moraPago, porcentajeIPC: resultado.calculo.porcentaje })
+                      const resuelto = selectedEvento && aplicaIPC(selectedEvento)
+                        ? resolverCalculoCobro(selectedEvento, historialIPC, fecha, { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
+                        : null
+                      if (resuelto && "calculo" in resuelto && resuelto.calculo) {
+                        const { calculo } = resuelto
+                        setMontoCuotaBase(calculo.monto)
+                        setPagoForm({ ...pagoForm, fecha, monto: calculo.monto + moraPago, porcentajeIPC: calculo.ipcOmitido ? 0 : calculo.porcentaje })
                       } else {
                         setPagoForm({ ...pagoForm, fecha })
-                        if (resultado?.estado === "pendiente") toast({ title: "IPC pendiente", description: resultado.motivo, variant: "destructive" })
+                        if (resuelto && "error" in resuelto) toast({ title: "IPC pendiente", description: resuelto.error, variant: "destructive" })
                       }
                     }}
                   className="h-9"

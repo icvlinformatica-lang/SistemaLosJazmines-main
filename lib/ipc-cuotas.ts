@@ -5,12 +5,25 @@ export interface CalculoIPC {
   version: "ultima-cuota-v1"
   periodo: string
   base: number
-  origen: "plan" | "pago"
+  origen: "plan" | "pago" | "manual"
   pagoOrigenId?: string
   cuotaOrigen?: number
   porcentaje: number
   monto: number
   aplicadoEsteMes: boolean
+  /** true cuando quien cobra destildó el IPC: la cuota queda igual a la base. */
+  ipcOmitido?: boolean
+}
+export interface OpcionesCobro {
+  aplicarIPC: boolean
+  /** Base elegida a mano cuando el cálculo automático quedó pendiente. */
+  baseManual?: number
+}
+export interface SugerenciaManual {
+  base: number
+  origen: "pago" | "plan"
+  porcentaje: number | null
+  periodo: string
 }
 export type ResultadoIPC =
   | { estado: "no_aplica" }
@@ -116,6 +129,63 @@ export function calcularIPCPeriodo(
     version: "ultima-cuota-v1", periodo, base, origen: ultima ? "pago" : "plan",
     pagoOrigenId: ultima?.id, cuotaOrigen: ultima?.numero, porcentaje,
     monto: Math.round(base * (1 + porcentaje / 100)), aplicadoEsteMes: false,
+  } }
+}
+
+function indiceDelPeriodo(historial: HistorialIPCEntry[], periodo: string): number | null {
+  const [anio, mes] = periodo.split("-").map(Number)
+  const indices = historial.filter(h => h.anio === anio && h.mes === mes - 1)
+  return indices.length === 1 && Number.isFinite(indices[0].porcentaje) && indices[0].porcentaje > -100 ? indices[0].porcentaje : null
+}
+
+/**
+ * Cuando el cálculo automático queda pendiente, propone una base para cobrar a mano:
+ * el último pago registrado (neto si se conoce, si no su importe) o la cuota original del plan.
+ * Es solo una sugerencia editable; nunca se guarda por sí sola.
+ */
+export function sugerirBaseManual(evento: EventoIPC, historial: HistorialIPCEntry[], fecha = fechaNegocio()): SugerenciaManual | null {
+  const plan = evento.planDeCuotas
+  if (!plan) return null
+  const periodo = (fechaValida(fecha) ?? fechaNegocio()).slice(0, 7)
+  const pagos = (evento.pagos ?? [])
+    .filter(p => !/^(seña|sena|extra)/i.test(p.notas ?? ""))
+    .map(p => ({ fecha: fechaValida(p.fecha) ?? "", neto: netoHistorico(p) ?? (p.monto > 0 ? p.monto : null) }))
+    .filter(p => p.fecha && p.neto)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const ultimo = pagos.at(-1)
+  const base = ultimo?.neto ?? plan.montoCuota
+  if (!Number.isFinite(base) || base <= 0) return null
+  return { base, origen: ultimo ? "pago" : "plan", porcentaje: indiceDelPeriodo(historial, periodo), periodo }
+}
+
+/**
+ * Resuelve el cálculo que se va a guardar con un cobro, respetando lo que tildó quien cobra:
+ * - automático listo: usa la base auditada; si se destilda el IPC, la cuota queda en la base.
+ * - automático pendiente: permite una base manual (sugerida o editada) y queda marcado como "manual".
+ */
+export function resolverCalculoCobro(
+  evento: EventoIPC,
+  historial: HistorialIPCEntry[],
+  fecha: string,
+  opciones: OpcionesCobro,
+): { calculo: CalculoIPC } | { error: string } | { calculo: null } {
+  const resultado = calcularIPCPeriodo(evento, historial, fecha)
+  if (resultado.estado === "no_aplica") return { calculo: null }
+  if (resultado.estado === "listo") {
+    const calculo = resultado.calculo
+    return { calculo: opciones.aplicarIPC ? calculo : { ...calculo, monto: calculo.base, ipcOmitido: true } }
+  }
+  const sugerencia = sugerirBaseManual(evento, historial, fecha)
+  const base = opciones.baseManual ?? sugerencia?.base
+  if (!sugerencia || !Number.isFinite(base) || base! <= 0) return { error: resultado.motivo }
+  if (opciones.aplicarIPC && sugerencia.porcentaje === null) {
+    return { error: `IPC de ${sugerencia.periodo} pendiente de definición o duplicado. Cargalo o destildá el IPC para cobrar sin ajuste.` }
+  }
+  const porcentaje = sugerencia.porcentaje ?? 0
+  return { calculo: {
+    version: "ultima-cuota-v1", periodo: sugerencia.periodo, base: base!, origen: "manual", porcentaje,
+    monto: opciones.aplicarIPC ? Math.round(base! * (1 + porcentaje / 100)) : base!,
+    aplicadoEsteMes: false, ipcOmitido: !opciones.aplicarIPC,
   } }
 }
 

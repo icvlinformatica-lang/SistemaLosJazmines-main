@@ -1,19 +1,29 @@
 import { Info, TrendingUp } from "lucide-react"
 import { formatCurrency } from "@/lib/store"
-import type { ResultadoIPC } from "@/lib/ipc-cuotas"
+import type { CalculoIPC, ResultadoIPC } from "@/lib/ipc-cuotas"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-export function DesgloseIPCPago({ resultado, montoCuota, diasAtraso, recargoPorDia, recargoOmitido }: {
+export function DesgloseIPCPago({ resultado, montoCuota, diasAtraso, recargoPorDia, recargoOmitido, manual = null, aplicarIPC = true }: {
   resultado: ResultadoIPC
   montoCuota: number
   diasAtraso: number
   recargoPorDia: number
   recargoOmitido: boolean
+  /** Cálculo elegido a mano cuando el automático quedó pendiente. */
+  manual?: CalculoIPC | null
+  /** false cuando quien cobra destildó el IPC del mes. */
+  aplicarIPC?: boolean
 }) {
-  const calculo = resultado.estado === "listo" ? resultado.calculo : null
+  const calculo = resultado.estado === "listo" ? resultado.calculo : resultado.estado === "pendiente" ? manual : null
+  const esManual = resultado.estado === "pendiente" && manual != null
+  const bloqueado = resultado.estado === "pendiente" && manual == null
   const recargo = recargoOmitido ? 0 : diasAtraso * recargoPorDia
   const mes = calculo ? new Date(`${calculo.periodo}-01T12:00:00Z`).toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "America/Argentina/Buenos_Aires" }) : ""
-  const cuota = calculo?.monto ?? montoCuota
+  const cuota = calculo ? (aplicarIPC ? Math.round(calculo.base * (1 + calculo.porcentaje / 100)) : calculo.base) : montoCuota
+  const incremento = calculo && aplicarIPC ? cuota - calculo.base : 0
+  const etiquetaBase = esManual
+    ? calculo?.origen === "plan" ? "Base tomada del plan (revisar)" : "Base tomada del último pago (revisar)"
+    : calculo?.origen === "pago" ? "Última cuota pagada (sin mora)" : "Base original del plan"
   return (
     <section aria-label="Desglose del próximo pago" className="mt-4 rounded-lg border border-border bg-background p-4 text-sm leading-relaxed text-foreground">
       <div className="flex min-w-0 flex-col gap-4">
@@ -21,22 +31,34 @@ export function DesgloseIPCPago({ resultado, montoCuota, diasAtraso, recargoPorD
           <TrendingUp className="size-5 shrink-0" aria-hidden="true" />
           IPC antes de registrar el pago
         </h3>
-        {resultado.estado === "pendiente" ? (
+        {bloqueado && (
           <Alert variant="destructive">
             <Info aria-hidden="true" />
             <AlertTitle>Cálculo pendiente — cobro bloqueado</AlertTitle>
-            <AlertDescription>{resultado.motivo}</AlertDescription>
+            <AlertDescription>{resultado.estado === "pendiente" ? resultado.motivo : null}</AlertDescription>
           </Alert>
-        ) : (
+        )}
+        {esManual && (
+          <Alert>
+            <Info aria-hidden="true" />
+            <AlertTitle>Cálculo manual</AlertTitle>
+            <AlertDescription>
+              {resultado.estado === "pendiente" ? resultado.motivo : null} Se propone una base para que puedas cobrar igual; revisala y elegí si aplicás el IPC y la mora.
+            </AlertDescription>
+          </Alert>
+        )}
+        {!bloqueado && (
           <dl className="flex flex-col gap-3">
             {calculo && <>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <dt>{calculo.origen === "pago" ? "Última cuota pagada (sin mora)" : "Base original del plan"}</dt>
+                <dt>{etiquetaBase}</dt>
                 <dd className="font-mono font-semibold">{formatCurrency(calculo.base)}</dd>
               </div>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <dt>IPC de {mes}: {calculo.porcentaje.toLocaleString("es-AR")}%</dt>
-                <dd className="font-mono font-semibold">{formatCurrency(calculo.monto - calculo.base)}</dd>
+                <dt className={aplicarIPC ? undefined : "text-muted-foreground"}>
+                  IPC de {mes}: {calculo.porcentaje.toLocaleString("es-AR")}%{aplicarIPC ? "" : " (sin aplicar)"}
+                </dt>
+                <dd className="font-mono font-semibold">{formatCurrency(incremento)}</dd>
               </div>
             </>}
             <div className="flex flex-wrap items-baseline justify-between gap-2">

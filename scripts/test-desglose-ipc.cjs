@@ -99,10 +99,22 @@ test("quitar mora no cambia la cuota", () => {
   assert.match(html, /\(quitada\)/)
   assert.doesNotMatch(html, /664\.472/)
 })
-test("base ambigua bloquea el cobro sin mostrar un total inventado", () => {
+test("base ambigua sin cálculo manual bloquea el cobro sin mostrar un total inventado", () => {
   const html = render({ resultado: { estado: "pendiente", motivo: "Falta acreditar la base" } })
   assert.match(html, /cobro bloqueado/)
   assert.doesNotMatch(html, /Total a pagar|664\.472|NaN|Infinity/)
+})
+test("cálculo manual muestra base sugerida, IPC tildado/destildado y mora", () => {
+  const manual = { version: "ultima-cuota-v1", periodo: "2026-09", base: 1180341.2, origen: "manual", porcentaje: 1.7, monto: 1200407, aplicadoEsteMes: false }
+  const conIPC = render({ resultado: { estado: "pendiente", motivo: "Hay pagos sin cuota identificada." }, manual, aplicarIPC: true })
+  assert.match(conIPC, /Cálculo manual/); assert.match(conIPC, /1\.200\.407/); assert.match(conIPC, /Total a pagar/)
+  assert.doesNotMatch(conIPC, /cobro bloqueado/)
+  const sinIPC = render({ resultado: { estado: "pendiente", motivo: "x" }, manual: { ...manual, monto: manual.base, ipcOmitido: true }, aplicarIPC: false })
+  assert.match(sinIPC, /sin aplicar/); assert.doesNotMatch(sinIPC, /1\.200\.407/)
+})
+test("destildar IPC en cálculo automático deja la cuota en la base", () => {
+  const html = render({ aplicarIPC: false })
+  assert.match(html, /647\.465/); assert.doesNotMatch(html, /658\.472/)
 })
 test("primera cuota ignora montos inflados de las pendientes", () => {
   assert.equal(calcular(evento()).calculo.monto, 102000)
@@ -188,6 +200,46 @@ test("cobro compartido distingue fecha real de fecha contable y bloquea importe 
   assert.equal(result.planUpdate.planDeCuotas.cuotas[0].fechaPagoReal, "2026-09-10")
   assert.match(result.movimientos[0].fecha, /^2026-07-10/)
   assert.ok(construirCobroCuota(ev, 1, 180000, undefined, [], undefined, [registro(8, 2)], "2026-09-10").error)
+})
+const { resolverCalculoCobro, sugerirBaseManual } = require("../lib/ipc-cuotas.ts")
+const gaia = () => ({ estado: "pendiente", planDeCuotas: {
+  numeroCuotas: 5, montoCuota: 1180341.2, montoTotal: 13060039, ajustaPorIPC: true, cuotasPagadas: [1], modalidadPago: "sena",
+  cuotas: Array.from({ length: 5 }, (_, i) => ({ numero: i + 1, montoCuota: i ? 1248902 : 1180341.2, pagada: false })),
+}, pagos: [{ id: "g1", monto: 1180341.2, fecha: "2026-08-10", pagadoPor: ".", porcentajeIPC: 0, notas: "ABONAN $1.158.000", montoRecibido: 1180342, vuelto: 0.8 }] })
+test("Gaia: pago sin cuota identificada queda pendiente pero sugiere base y permite cobrar a mano", () => {
+  const ev = gaia()
+  assert.equal(calcular(ev, [registro(8, 1.7)]).estado, "pendiente")
+  assert.deepEqual(sugerirBaseManual(ev, [registro(8, 1.7)], "2026-09-10"), { base: 1180341.2, origen: "pago", porcentaje: 1.7, periodo: "2026-09" })
+  const conIPC = resolverCalculoCobro(ev, [registro(8, 1.7)], "2026-09-10", { aplicarIPC: true }).calculo
+  assert.equal(conIPC.monto, 1200407); assert.equal(conIPC.origen, "manual"); assert.equal(conIPC.ipcOmitido, false)
+  const sinIPC = resolverCalculoCobro(ev, [registro(8, 1.7)], "2026-09-10", { aplicarIPC: false }).calculo
+  assert.equal(sinIPC.monto, 1180341.2); assert.equal(sinIPC.ipcOmitido, true)
+  const editada = resolverCalculoCobro(ev, [registro(8, 1.7)], "2026-09-10", { aplicarIPC: true, baseManual: 1158000 }).calculo
+  assert.equal(editada.monto, Math.round(1158000 * 1.017))
+  assert.match(resolverCalculoCobro(ev, [], "2026-09-10", { aplicarIPC: true }).error, /destildá/)
+  assert.equal(resolverCalculoCobro(ev, [], "2026-09-10", { aplicarIPC: false }).calculo.monto, 1180341.2)
+})
+test("servidor acepta cobro manual con base declarada y rechaza importes que no coinciden", () => {
+  const ev = gaia()
+  const calculo = resolverCalculoCobro(ev, [registro(8, 1.7)], "2026-09-10", { aplicarIPC: true, baseManual: 1158000 }).calculo
+  const pago = { id: "g2", numeroCuota: 2, fecha: "2026-09-10", monto: calculo.monto + 3000, montoCuotaNeto: calculo.monto, montoMora: 3000, porcentajeIPC: 1.7, calculoIPC: calculo }
+  const updates = { pagos: [...ev.pagos, pago], planDeCuotas: { ...ev.planDeCuotas, cuotasPagadas: [1, 2],
+    cuotas: ev.planDeCuotas.cuotas.map(c => c.numero === 2 ? { ...c, pagada: true, montoCuota: calculo.monto, montoPagadoNeto: calculo.monto, fechaPagoReal: "2026-09-10", calculoIPC: calculo } : c) } }
+  assert.equal(validarCobroIPC(ev, structuredClone(updates), [registro(8, 1.7)]), null)
+  const manipulado = structuredClone(updates); manipulado.pagos[1].montoCuotaNeto = 1; manipulado.pagos[1].monto = 3001
+  assert.match(validarCobroIPC(ev, manipulado, [registro(8, 1.7)]), /cambió/)
+  const sinBase = structuredClone(updates); delete sinBase.pagos[1].calculoIPC; sinBase.planDeCuotas.cuotas[1].calculoIPC = undefined
+  assert.match(validarCobroIPC(ev, sinBase, [registro(8, 1.7)]), /sin cuota identificada/)
+})
+test("servidor acepta destildar IPC en cálculo automático y guarda porcentaje 0", () => {
+  const ev = evento()
+  const calculo = resolverCalculoCobro(ev, [registro(8, 2)], "2026-09-01", { aplicarIPC: false }).calculo
+  assert.equal(calculo.monto, 100000)
+  const pago = { id: "n1", numeroCuota: 1, fecha: "2026-09-01", monto: 100000, montoCuotaNeto: 100000, montoMora: 0, porcentajeIPC: 0, calculoIPC: calculo }
+  const updates = { pagos: [pago], planDeCuotas: { ...ev.planDeCuotas, cuotasPagadas: [1],
+    cuotas: ev.planDeCuotas.cuotas.map(c => c.numero === 1 ? { ...c, pagada: true, montoCuota: 100000, montoPagadoNeto: 100000, fechaPagoReal: "2026-09-01", calculoIPC: calculo } : c) } }
+  assert.equal(validarCobroIPC(ev, updates, [registro(8, 2)]), null)
+  assert.equal(updates.pagos[0].porcentajeIPC, 0)
 })
 test("servidor recalcula base y rechaza montos manipulados", () => {
   const ev = evento()
