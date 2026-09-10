@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useStore } from "@/lib/store-context"
 import { useToast } from "@/hooks/use-toast"
+import { PersonalAgenda } from "@/components/personal-agenda"
 import { generarMovimientoEgreso, FUNCIONES_PERSONAL } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -525,6 +526,7 @@ export default function PersonalPage() {
                         {persona.telefono}
                       </p>
                     )}
+                    <PersonalAgenda personalId={persona.id} nombre={`${persona.nombre} ${persona.apellido}`} eventos={eventos} />
                   </td>
 
                   {/* Funcion */}
