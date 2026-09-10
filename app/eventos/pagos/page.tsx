@@ -19,6 +19,7 @@ import {
 import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
 import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
 import { ContratoPanel } from "@/components/contrato-panel"
+import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
 import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1497,7 +1498,6 @@ function PagosPageContent() {
                 const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
                 // Con un click se puede quitar el recargo (queda en $0 pero se muestra que fue quitado)
                 const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
-                const ipcIncluido = cuotaFueAjustada ? proximaCuota.monto - montoCuotaOriginal : 0
                 const totalSimulado = proximaCuota.monto + recargoAtraso
 
                 return (
@@ -1598,50 +1598,15 @@ function PagosPageContent() {
                       </div>
 
                       {/* Nota: costo simulado (desglose de cómo se llega al total) */}
-                      <div className="mt-4 rounded-md border border-dashed border-primary/40 bg-background/60 p-3">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Costo simulado
-                        </p>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-muted-foreground">Monto estipulado (plan original)</span>
-                            <span className="font-mono font-medium">{formatCurrency(montoCuotaOriginal || proximaCuota.monto)}</span>
-                          </div>
-                          {ipcIncluido > 0 && (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-muted-foreground">+ IPC acumulado (compuesto mes a mes)</span>
-                              <span className="font-mono font-medium text-emerald-700">+ {formatCurrency(ipcIncluido)}</span>
-                            </div>
-                          )}
-                          {recargoAtraso > 0 && (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-muted-foreground">
-                                + Recargo por atraso ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} x {formatCurrency(RECARGO_POR_DIA_ATRASO)})
-                              </span>
-                              <span className="font-mono font-medium text-red-600">+ {formatCurrency(recargoAtraso)}</span>
-                            </div>
-                          )}
-                          {diasAtraso > 0 && recargoAtrasoOmitido && (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-muted-foreground line-through">
-                                Recargo por atraso ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} x {formatCurrency(RECARGO_POR_DIA_ATRASO)}) — quitado
-                              </span>
-                              <span className="font-mono font-medium text-muted-foreground line-through">
-                                {formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5 font-semibold">
-                            <span>Total simulado a hoy</span>
-                            <span className="font-mono">{formatCurrency(totalSimulado)}</span>
-                          </div>
-                        </div>
-                        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                          El IPC de cada mes aumenta el valor de las cuotas pendientes de forma acumulativa (el de agosto se
-                          calcula sobre la cuota ya ajustada en julio). El recargo por atraso de {formatCurrency(RECARGO_POR_DIA_ATRASO)} por
-                          día es un pago extraordinario que va por separado: no se acumula mes a mes, solo se suma al total.
-                        </p>
-                      </div>
+                      <DesgloseIPCPago
+                        montoBase={montoCuotaOriginal}
+                        montoCuota={proximaCuota.monto}
+                        ajustaPorIPC={ajustaPorIPC}
+                        historialIPC={historialIPC}
+                        diasAtraso={diasAtraso}
+                        recargoPorDia={RECARGO_POR_DIA_ATRASO}
+                        recargoOmitido={recargoAtrasoOmitido}
+                      />
                     </CardContent>
                   </Card>
                 )
