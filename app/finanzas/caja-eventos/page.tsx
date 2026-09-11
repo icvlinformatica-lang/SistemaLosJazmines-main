@@ -104,6 +104,18 @@ function formatFecha(dateStr: string): string {
   })
 }
 
+// Igual que formatFecha, pero incluye el año. Se usa puntualmente en la
+// columna de fecha del evento de la tabla "Por pagar" (renderFilasPagar),
+// donde el año es relevante para no confundir eventos de años distintos.
+function formatFechaEvento(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })
+}
+
 // Fecha de carga de un evento (created_at, viene como timestamp ISO completo
 // desde la base — a diferencia de formatFecha, que espera "YYYY-MM-DD").
 function formatFechaCarga(dateStr?: string): string {
@@ -1288,7 +1300,7 @@ useStore()
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">{formatFechaCarga(fila.eventoFechaCarga)}</TableCell>
         <TableCell className="text-sm text-muted-foreground">
-          {fila.eventoFecha ? formatFecha(fila.eventoFecha) : "—"}
+                  {fila.eventoFecha ? formatFechaEvento(fila.eventoFecha) : "—"}
         </TableCell>
         <TableCell>
           <p className="text-sm">{fila.eventoNombre}</p>
