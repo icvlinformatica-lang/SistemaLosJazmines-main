@@ -1811,42 +1811,42 @@ function PagosPageContent() {
                                   </p>
                                 </div>
                               )}
-                              <label className="flex cursor-pointer items-start gap-3">
-                                <Checkbox
-                                  checked={aplicarIPCCobro}
-                                  onCheckedChange={(v) => setAplicarIPCCobro(v === true)}
-                                  aria-label="Aplicar el IPC del mes"
-                                  className="mt-0.5"
-                                />
-                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                                  <span>
-                                    Aplicar IPC del mes
-                                    {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
-                                    {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <label className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
+                                  <Checkbox
+                                    checked={aplicarIPCCobro}
+                                    onCheckedChange={(v) => setAplicarIPCCobro(v === true)}
+                                    aria-label="Aplicar el IPC del mes"
+                                  />
+                                  <span className="flex min-w-0 flex-col">
+                                    <span className="truncate">
+                                      Aplicar IPC del mes
+                                      {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                                      {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                                    </span>
+                                    <span className="font-mono font-semibold">
+                                      {porcentajeMes != null && baseMostrada > 0
+                                        ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
+                                        : resultadoIPC.estado === "listo" ? formatCurrency(resultadoIPC.calculo.monto) : "—"}
+                                    </span>
                                   </span>
-                                  <span className="font-mono font-semibold">
-                                    {porcentajeMes != null && baseMostrada > 0
-                                      ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
-                                      : resultadoIPC.estado === "listo" ? formatCurrency(resultadoIPC.calculo.monto) : "—"}
+                                </label>
+                                <label className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
+                                  <Checkbox
+                                    checked={!recargoAtrasoOmitido}
+                                    disabled={diasAtraso === 0}
+                                    onCheckedChange={(v) => setRecargoAtrasoOmitido(v !== true)}
+                                    aria-label="Aplicar mora por atraso"
+                                  />
+                                  <span className="flex min-w-0 flex-col">
+                                    <span className="truncate">
+                                      Aplicar mora
+                                      <span className="text-muted-foreground"> ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
+                                    </span>
+                                    <span className="font-mono font-semibold">{formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}</span>
                                   </span>
-                                </span>
-                              </label>
-                              <label className="flex cursor-pointer items-start gap-3">
-                                <Checkbox
-                                  checked={!recargoAtrasoOmitido}
-                                  disabled={diasAtraso === 0}
-                                  onCheckedChange={(v) => setRecargoAtrasoOmitido(v !== true)}
-                                  aria-label="Aplicar mora por atraso"
-                                  className="mt-0.5"
-                                />
-                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                                  <span>
-                                    Aplicar mora
-                                    <span className="text-muted-foreground"> ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
-                                  </span>
-                                  <span className="font-mono font-semibold">{formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}</span>
-                                </span>
-                              </label>
+                                </label>
+                              </div>
                               {errorCobro && <p role="alert" className="text-xs font-medium text-destructive">{errorCobro}</p>}
                             </fieldset>
 
@@ -2181,15 +2181,15 @@ function PagosPageContent() {
                 {ajustaPorIPC ? (
                   <fieldset className="grid gap-2.5 rounded-lg border border-border bg-background p-3 text-sm">
                     <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Qué se cobra</legend>
-                    <label className="flex cursor-pointer items-start gap-3">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <label className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
                       <Checkbox
                         checked={aplicarIPCCobro}
                         onCheckedChange={(v) => recalcularCobro({ aplicarIPC: v === true })}
                         aria-label="Aplicar el IPC del mes"
-                        className="mt-0.5"
                       />
-                      <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                        <span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">
                           Aplicar IPC del mes
                           {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
                           {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
@@ -2199,22 +2199,22 @@ function PagosPageContent() {
                         </span>
                       </span>
                     </label>
-                    <label className="flex cursor-pointer items-start gap-3">
+                    <label className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
                       <Checkbox
                         checked={!recargoAtrasoOmitido}
                         disabled={diasAtrasoPago === 0}
                         onCheckedChange={(v) => recalcularCobro({ recargoOmitido: v !== true })}
                         aria-label="Aplicar mora por atraso"
-                        className="mt-0.5"
                       />
-                      <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                        <span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">
                           Aplicar mora
                           <span className="text-muted-foreground"> ({diasAtrasoPago} {diasAtrasoPago === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
                         </span>
                         <span className="font-mono font-semibold">{formatCurrency(diasAtrasoPago * RECARGO_POR_DIA_ATRASO)}</span>
                       </span>
                     </label>
+                  </div>
                   </fieldset>
                 ) : (
                   <div className="grid gap-1">
