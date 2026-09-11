@@ -74,12 +74,10 @@ export function ResumenMensual() {
               <TableHeader><TableRow>
                 <TableHead scope="col" className="sticky left-0 z-10 min-w-32 bg-background">Caja</TableHead>
                 {resumen.salones.map((salon) => <TableHead key={salon} scope="col" className="border-t-4 px-4 py-3 text-foreground" style={{ borderTopColor: salonColor(salon, configuracionCajas), backgroundColor: `${salonColor(salon, configuracionCajas)}20` }}><span className="flex items-center gap-2"><SalonDot salon={salon} />{salon === GENERAL ? "General / Sin asignar" : salonLabel(salon)}</span></TableHead>)}
-                <TableHead scope="col" className="px-4 py-3">Total</TableHead>
               </TableRow></TableHeader>
               <TableBody>{CAJAS_RESUMEN.map((caja) => <TableRow key={caja}>
                 <TableHead scope="row" className="sticky left-0 z-10 bg-background align-top py-4 font-semibold">{nombreCaja[caja]}</TableHead>
                 {resumen.salones.map((salon) => <TableCell key={salon} className="border-l p-4 align-top text-foreground" style={{ backgroundColor: `${salonColor(salon, configuracionCajas)}0d` }}><ImportesCelda valores={resumen.cajas[caja][salon]} /></TableCell>)}
-                <TableCell className="border-l bg-muted p-4 align-top text-foreground"><ImportesCelda valores={resumen.totales[caja]} /></TableCell>
               </TableRow>)}</TableBody>
             </Table>
           </div>
