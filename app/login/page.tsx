@@ -172,28 +172,30 @@ export default function LoginPage() {
               {mostrarQuien && (
                 <div className="w-full flex flex-col items-center gap-2 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
                   <p className="text-xs font-semibold text-[#1a3a2a] text-center">{"¿Quién ingresa?"}</p>
-                  <div className="w-full flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleElegirQuien("Diego")}
-                      disabled={cargando}
-                      className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
-                    >
-                      Diego
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleElegirQuien("Leila")}
-                      disabled={cargando}
-                      className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
-                    >
-                      Leila
-                    </button>
+                  <div className="w-full flex flex-col gap-2">
+                    <div className="w-full flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleElegirQuien("Diego")}
+                        disabled={cargando}
+                        className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
+                      >
+                        Diego
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleElegirQuien("Leila")}
+                        disabled={cargando}
+                        className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
+                      >
+                        Leila
+                      </button>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleElegirQuien("Ricky")}
                       disabled={cargando}
-                      className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
+                      className="w-full rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
                     >
                       Ricky
                     </button>
