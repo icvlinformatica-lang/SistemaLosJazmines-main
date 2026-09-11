@@ -56,7 +56,7 @@ import {
 import { SalonDot } from "@/components/salon-badge"
 import { SaldoHerramientasEventos } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
-import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
+import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
   EgresoPendienteServicio,
@@ -194,21 +194,28 @@ function agruparFilasPago(
       map.set(key, fila)
     }
 
+    // La fecha real de pago de una seña/saldo ya abonado se guarda en el
+    // propio servicio del evento (no en el egreso) — se busca ahí para
+    // poder mostrarla junto al monto.
+    const evento = eventos.find((e) => e.id === eg.eventoId)
+    const srv = evento?.servicios?.find((s) => s.servicioId === eg.servicioId)
+
     if (eg.tipo === "seña") {
-      fila.seña = { monto: eg.monto, pagado: false, egreso: eg }
+      // eg.estadoPago refleja el estado REAL del servicio: al incluir también
+      // los egresos ya pagados (ver `serviciosPagados`), esto ya no es
+      // siempre "sin_seña" como cuando la lista solo traía pendientes.
+      const pagado = eg.estadoPago !== "sin_seña"
+      fila.seña = { monto: eg.monto, pagado, fecha: pagado ? srv?.fechaPagoSeña : undefined, egreso: eg }
     } else {
       // saldo, menú, barra y sueldo son pagos únicos: van en la columna "Saldo restante".
-      fila.saldo = { monto: eg.monto, pagado: false, egreso: eg }
+      const pagado = eg.tipo === "saldo" && eg.estadoPago === "pagado_total"
+      fila.saldo = { monto: eg.monto, pagado, fecha: pagado ? srv?.fechaPagoSaldo : undefined, egreso: eg }
       // Si el saldo de un servicio sigue pendiente pero su seña ya se pagó,
       // esa seña ya no aparece en egresosPendientes (se saca de la lista al
       // pagarla) — la recuperamos desde el propio servicio del evento para
       // poder mostrarla en verde en la misma fila.
-      if (eg.tipo === "saldo" && eg.estadoPago && eg.estadoPago !== "sin_seña" && !fila.seña) {
-        const evento = eventos.find((e) => e.id === eg.eventoId)
-        const srv = evento?.servicios?.find((s) => s.servicioId === eg.servicioId)
-        if (srv?.montoSeña) {
-          fila.seña = { monto: srv.montoSeña, pagado: true, fecha: srv.fechaPagoSeña }
-        }
+      if (eg.tipo === "saldo" && eg.estadoPago && eg.estadoPago !== "sin_seña" && !fila.seña && srv?.montoSeña) {
+        fila.seña = { monto: srv.montoSeña, pagado: true, fecha: srv.fechaPagoSeña }
       }
     }
   }
@@ -949,6 +956,43 @@ useStore()
   )
   const totalPorPagarFiltrado = egresosProximosFiltrados.reduce((s, e) => s + e.monto, 0)
 
+  // Historial de servicios (seña + saldo) YA pagados, para completar la lista
+  // de "Por pagar" al final una vez que se agotan los pendientes en "Ver
+  // más". `incluirPagados=true` hace que calcularCajaEventos también genere
+  // estas entradas con su estadoPago real en lugar de omitirlas.
+  const dataConHistorialServicios = useMemo(
+    () => calcularCajaEventos(state, salonFiltro, ahora, true),
+    [state, salonFiltro, ahora],
+  )
+  // Solo servicios completamente pagados (seña Y saldo). Los parcialmente
+  // pagados (solo seña) ya se muestran correctamente en la lista de
+  // pendientes de arriba (agruparFilasPago recupera esa seña pagada en la
+  // misma fila del saldo pendiente); incluirlos aquí de nuevo duplicaría la fila.
+  const serviciosPagados = useMemo(
+    () =>
+      dataConHistorialServicios.egresosPendientes.filter(
+        (eg) => (eg.tipo === "seña" || eg.tipo === "saldo") && eg.estadoPago === "pagado_total",
+      ),
+    [dataConHistorialServicios],
+  )
+  const serviciosPagadosFiltrados = useMemo(
+    () => filtrarEgresos(serviciosPagados, filtroPagar),
+    [serviciosPagados, filtroPagar],
+  )
+  // Total combinado (pendientes + ya pagados) para la paginación de "Ver
+  // más" en la tabla plana de "Por pagar" (solo aplica con un salón elegido).
+  const totalFilasPagarCombinado = egresosProximosFiltrados.length + serviciosPagadosFiltrados.length
+  const etiquetaVerMasPagar = (actual: number) => {
+    const restantes = totalFilasPagarCombinado - actual
+    const restantesPendientes = Math.max(0, egresosProximosFiltrados.length - actual)
+    const restantesPagados = restantes - restantesPendientes
+    if (actual > LIMITE_FILAS + 10) return `Ver todo (${restantes} más)`
+    const siguientePaso = actual <= LIMITE_FILAS ? Math.min(10, restantes) : Math.min(15, restantes)
+    return restantesPendientes > 0
+      ? `Ver más (${siguientePaso} más de ${restantesPendientes} pendientes)`
+      : `Ver más (${siguientePaso} más de ${restantesPagados} servicios ya pagados)`
+  }
+
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
   // (así el dashboard "por pagar" del mes se actualiza al instante).
@@ -1440,14 +1484,32 @@ useStore()
     )
   }
 
-  const renderFilasPagar = (items: EgresoPendienteServicio[]) =>
+  // esHistorial: filas de servicios YA pagados (seña y saldo completos) que
+  // se muestran atenuadas al final de la lista, tras agotar los pendientes.
+  const renderFilasPagar = (items: EgresoPendienteServicio[], esHistorial = false) =>
     agruparFilasPago(items, state.eventos ?? []).map((fila) => (
-      <TableRow key={fila.key}>
+      <TableRow key={fila.key} className={esHistorial ? "bg-muted/40 text-muted-foreground" : undefined}>
         <TableCell className="pl-6 w-[180px] max-w-[180px]">
-          <Badge variant="outline" className={CATEGORIA_PAGO[fila.categoria].className}>
-            {CATEGORIA_PAGO[fila.categoria].label}
-          </Badge>
-          <p className="font-medium text-sm mt-1 whitespace-normal break-words">{fila.servicioNombre}</p>
+          <div className="flex items-center gap-1.5">
+            {esHistorial && (
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+            )}
+            <Badge
+              variant="outline"
+              className={
+                esHistorial
+                  ? "bg-muted text-muted-foreground border-border text-[11px]"
+                  : CATEGORIA_PAGO[fila.categoria].className
+              }
+            >
+              {CATEGORIA_PAGO[fila.categoria].label}
+            </Badge>
+          </div>
+          <p
+            className={`font-medium text-sm mt-1 whitespace-normal break-words ${esHistorial ? "text-muted-foreground" : ""}`}
+          >
+            {fila.servicioNombre}
+          </p>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">{formatFechaCarga(fila.eventoFechaCarga)}</TableCell>
         <TableCell className="text-sm text-muted-foreground">
@@ -2068,11 +2130,11 @@ useStore()
                   }}
                 />
               )}
-              {egresosProximos.length === 0 ? (
+              {egresosProximos.length === 0 && serviciosPagados.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos a proveedores pendientes.
                 </p>
-              ) : egresosProximosFiltrados.length === 0 ? (
+              ) : egresosProximosFiltrados.length === 0 && serviciosPagadosFiltrados.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos pendientes que coincidan con el filtro.
                 </p>
@@ -2167,20 +2229,29 @@ useStore()
                       <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>{renderFilasPagar(egresosProximosFiltrados.slice(0, filasPagar))}</TableBody>
+                  <TableBody>
+                    {renderFilasPagar(egresosProximosFiltrados.slice(0, filasPagar))}
+                    {renderFilasPagar(
+                      serviciosPagadosFiltrados.slice(
+                        0,
+                        Math.max(0, filasPagar - egresosProximosFiltrados.length),
+                      ),
+                      true,
+                    )}
+                  </TableBody>
                 </Table>
               )}
-              {salonFiltro !== "todos" && egresosProximosFiltrados.length > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && totalFilasPagarCombinado > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
-                  {filasPagar < egresosProximosFiltrados.length ? (
+                  {filasPagar < totalFilasPagarCombinado ? (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setFilasPagar(siguientePasoPagar(egresosProximosFiltrados.length))}
+                      onClick={() => setFilasPagar(siguientePasoPagar(totalFilasPagarCombinado))}
                       className="w-full text-xs text-muted-foreground hover:text-foreground"
                     >
                       <ChevronDown className="h-3.5 w-3.5 mr-1" />
-                      {etiquetaVerMas(filasPagar, egresosProximosFiltrados.length)}
+                      {etiquetaVerMasPagar(filasPagar)}
                     </Button>
                   ) : (
                     <Button
