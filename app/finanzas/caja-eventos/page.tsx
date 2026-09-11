@@ -800,14 +800,14 @@ useStore()
   const operacionEnCurso = useRef(false)
   const [guardandoOperacion, setGuardandoOperacion] = useState(false)
 
-  async function guardarOperacion(guardarEstado: () => Promise<boolean>, movimientos: MovimientoCaja[]) {
+  async function guardarOperacion(guardarEstado: () => Promise<boolean>, movimientos: MovimientoCaja[] = []) {
     if (operacionEnCurso.current) return false
     operacionEnCurso.current = true
     setGuardandoOperacion(true)
     try {
       return await syncGuard.run(async () => {
         if (!await guardarEstado()) return false
-        if (!await addMovimientosCaja(movimientos)) {
+        if (movimientos.length > 0 && !await addMovimientosCaja(movimientos)) {
           toast({
             title: "Operación incompleta: revisar caja",
             description: "El estado del evento se guardó, pero no se pudo confirmar el movimiento. Revisá el historial antes de volver a cobrar o pagar.",
@@ -834,7 +834,7 @@ useStore()
       toast({ title: "Falta el salón del evento", description: "Asigná un salón antes de registrar el cobro en caja.", variant: "destructive" })
       return
     }
-    const { yaCobrada, planUpdate, movimientos } = construirCobroCuota(
+    const { yaCobrada, planUpdate, movimientos, error } = construirCobroCuota(
       evento,
       ing.numeroCuota,
       ing.montoTotal,
@@ -847,12 +847,17 @@ useStore()
         cocteles: state.cocteles || [],
         servicios: state.servicios || [],
       },
+      state.historialIPC || [],
     )
+    if (error) {
+      toast({ title: "No se puede cobrar", description: error, variant: "destructive" })
+      return
+    }
     if (yaCobrada) {
       toast({ title: "Esta cuota ya figura como cobrada." })
       return
     }
-    if (!planUpdate || !await guardarOperacion(() => updateEvento(ing.eventoId, planUpdate), movimientos)) return
+    if (!planUpdate || !await guardarOperacion(() => updateEvento(ing.eventoId, planUpdate, movimientos))) return
     toast({
       title: "Cuota marcada como cobrada",
       description: `Cuota ${ing.numeroCuota}/${ing.totalCuotas} · ${ing.eventoNombre}`,

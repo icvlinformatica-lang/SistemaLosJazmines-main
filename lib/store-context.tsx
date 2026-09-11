@@ -1,6 +1,7 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
+import { fechaNegocio, proyectarIPC } from "./ipc-cuotas"
 import { StoreSyncGuard, mergeRemoteStore, type RemoteStoreData } from "./store-sync"
 import {
   type AppState,
@@ -34,7 +35,6 @@ import {
   obtenerPreciosServicio,
   calcularSeñaSaldoServicio,
   actualizarCuotasIPC,
-  revertirCuotasIPC,
   congelarCostosEvento,
   generateNextCodigo,
   RECETA_CODIGO_PREFIX,
@@ -106,7 +106,7 @@ interface StoreContextType {
   updateEventoActual: (updates: Partial<Evento>) => void
   // Eventos (calendario)
   addEvento: (evento: EventoGuardado) => Promise<boolean>
-  updateEvento: (id: string, updates: Partial<EventoGuardado>) => Promise<boolean>
+  updateEvento: (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[]) => Promise<boolean>
   deleteEvento: (id: string, motivo?: string) => Promise<boolean>
   setEventos: (eventos: EventoGuardado[]) => void
   // Servicios
@@ -1312,7 +1312,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const updateEvento = async (id: string, updates: Partial<EventoGuardado>) => {
+  const updateEvento = async (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[]) => {
     // --- ARCHIVO: congelar/descongelar costos según el cambio de estado ---
     // Al pasar a "completado" (archivo) se guarda una foto congelada de los
     // costos calculados en ese momento; al sacarlo del archivo se descarta la
@@ -1342,17 +1342,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const res = await fetchWithRetry(`/api/eventos/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatesFinal),
+        body: JSON.stringify({ ...updatesFinal, _planEsperado: evPrevio?.planDeCuotas, _pagosEsperados: evPrevio?.pagos ?? [],
+          ...(movimientosCobro ? { _movimientosCobro: movimientosCobro, _operacionCobro: movimientosCobro.map(m => m.id).join(":") } : {}),
+        }),
       })
-      if (!res.ok) throw new Error(`Error al actualizar evento (${res.status})`)
+      const respuesta = await res.json()
+      if (!res.ok) throw new Error(respuesta.error || `Error al actualizar evento (${res.status})`)
       setState((prev) => ({
         ...prev,
-        eventos: prev.eventos.map((e) => e.id === id ? { ...e, ...updatesFinal } : e),
+        eventos: prev.eventos.map((e) => e.id === id ? { ...e, ...updatesFinal, ...respuesta } : e),
+        movimientosCaja: movimientosCobro ? [...(prev.movimientosCaja || []).filter(m => !movimientosCobro.some(n => n.id === m.id)), ...movimientosCobro] : prev.movimientosCaja,
       }))
       return true
     } catch (err) {
       console.error("[v0] Error updating evento:", err)
-      toast({ title: "Error al guardar", description: "No se pudo confirmar el guardado. Revisá la conexión y volvé a intentar.", variant: "destructive" })
+      toast({ title: "No se pudo guardar", description: err instanceof Error ? err.message : "Revisá la conexión y volvé a intentar.", variant: "destructive" })
       return false
     }
   }
@@ -1567,6 +1571,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * de carga (fechaAplicacion) es solo informativa y no afecta el orden.
    */
   const aplicarIPC = (porcentaje: number, mes: number, anio: number): number => {
+    if (!Number.isFinite(porcentaje) || porcentaje <= -100 || !Number.isInteger(mes) || mes < 0 || mes > 11 || !Number.isInteger(anio)) {
+      toast({ title: "IPC inválido", description: "Revisá el período y el porcentaje.", variant: "destructive" })
+      return 0
+    }
     // Regla: un solo IPC por mes. Si ya existe ese mes/año, no se aplica.
     const yaExiste = (state.historialIPC || []).some((h) => h.mes === mes && h.anio === anio)
     if (yaExiste) {
@@ -1578,11 +1586,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return 0
     }
 
-    const eventosPrevios = state.eventos || []
-    const { eventos: eventosActualizados, eventosActualizados: eventosConIPC } = actualizarCuotasIPC(
-      eventosPrevios,
-      porcentaje,
-    )
+    const fecha = fechaNegocio()
+    const esMesVigente = fecha.slice(0, 7) === `${anio}-${String(mes + 1).padStart(2, "0")}`
+    const eventosConIPC = esMesVigente
+      ? actualizarCuotasIPC(state.eventos || [], porcentaje, fecha).eventosActualizados : 0
 
     const nuevaEntrada: HistorialIPCEntry = {
       id: crypto.randomUUID(),
@@ -1596,25 +1603,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Optimistic local update
     setState((prev) => ({
       ...prev,
-      eventos: eventosActualizados,
       historialIPC: [...(prev.historialIPC || []), nuevaEntrada],
       ultimoMesIPC: { mes, anio },
     }))
 
-    // Persistir en Supabase solo los eventos cuyo planDeCuotas cambió
-    const eventosParaPersistir = eventosActualizados.filter((e, i) => e !== eventosPrevios[i])
+    // Las pendientes se proyectan desde el historial; no se sobrescriben contratos ni pagos.
     void syncGuard.run(async () => {
-      for (const evento of eventosParaPersistir) {
-        try {
-          await fetchWithRetry(`/api/eventos/${evento.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
-          })
-        } catch (err) {
-          console.error("[v0] Error persistiendo IPC en evento:", evento.id, err)
-        }
-      }
 
       // Persistir la entrada del historial IPC en Supabase (fuente de verdad compartida)
       try {
@@ -1622,6 +1616,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await db.insertHistorialIPC(nuevaEntrada)
       } catch (err) {
         console.error("[v0] Error persistiendo historial IPC en Supabase:", err)
+        setState(prev => ({ ...prev, historialIPC: (prev.historialIPC || []).filter(h => h.id !== nuevaEntrada.id), ultimoMesIPC: state.ultimoMesIPC }))
+        toast({ title: "IPC no confirmado", description: "No se pudo guardar el índice. Se mantiene el historial anterior.", variant: "destructive" })
+        return
       }
 
       toast({
@@ -1645,16 +1642,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   /**
-   * Deshace un ajuste de IPC: revierte las cuotas restantes a su valor previo,
-   * elimina la entrada del historial y recalcula el último mes aplicado.
-   * Solo debe usarse sobre el ajuste más reciente (la reversión es compuesta).
+   * Elimina el índice y vuelve a proyectar las pendientes desde el historial restante.
+   * No divide importes ni modifica cuotas cobradas; un mes sin índice queda pendiente.
    */
   const eliminarIPC = (entry: HistorialIPCEntry): number => {
-    const eventosPrevios = state.eventos || []
-    const { eventos: eventosRevertidos, eventosActualizados: eventosAfectados } = revertirCuotasIPC(
-      eventosPrevios,
-      entry.porcentaje,
-    )
+    const eventosAfectados = 0
 
     const historialRestante = (state.historialIPC || []).filter((h) =>
       entry.id ? h.id !== entry.id : h.fechaAplicacion !== entry.fechaAplicacion,
@@ -1668,25 +1660,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Optimistic local update
     setState((prev) => ({
       ...prev,
-      eventos: eventosRevertidos,
       historialIPC: historialRestante,
       ultimoMesIPC: nuevoUltimo ? { mes: nuevoUltimo.mes, anio: nuevoUltimo.anio } : null,
     }))
 
-    // Persistir en Supabase: eventos revertidos + borrar la entrada del historial
-    const eventosParaPersistir = eventosRevertidos.filter((e, i) => e !== eventosPrevios[i])
     void syncGuard.run(async () => {
-      for (const evento of eventosParaPersistir) {
-        try {
-          await fetchWithRetry(`/api/eventos/${evento.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ planDeCuotas: evento.planDeCuotas }),
-          })
-        } catch (err) {
-          console.error("[v0] Error revirtiendo IPC en evento:", evento.id, err)
-        }
-      }
 
       if (entry.id) {
         try {
@@ -1694,12 +1672,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           await db.deleteHistorialIPC(entry.id)
         } catch (err) {
           console.error("[v0] Error eliminando historial IPC en Supabase:", err)
+          setState(prev => ({ ...prev, historialIPC: [...(prev.historialIPC || []).filter(h => h.id !== entry.id), entry], ultimoMesIPC: state.ultimoMesIPC }))
+          toast({ title: "No se pudo eliminar el IPC", description: "El índice se conserva hasta confirmar su eliminación.", variant: "destructive" })
+          return
         }
       }
 
       toast({
         title: "IPC deshecho",
-        description: `Se revirtieron las cuotas restantes de ${eventosAfectados} evento(s) a su valor anterior.`,
+        description: "Índice eliminado. Los pagos no cambian; si falta el IPC vigente, el cobro queda pendiente de definición.",
       })
     })
 
@@ -1719,6 +1700,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setPorcentajeIPC("")
   }
 
+  const [fechaIPC, setFechaIPC] = useState(() => fechaNegocio())
+  useEffect(() => {
+    const refrescar = () => setFechaIPC(fechaNegocio())
+    const intervalo = setInterval(refrescar, 30000)
+    window.addEventListener("focus", refrescar)
+    return () => { clearInterval(intervalo); window.removeEventListener("focus", refrescar) }
+  }, [])
+  const eventosVigentes = useMemo(() => (state.eventos || []).map(e =>
+    proyectarIPC(e, state.historialIPC || [], fechaIPC)), [state.eventos, state.historialIPC, fechaIPC])
+  const estadoVigente = useMemo(() => ({ ...state, eventos: eventosVigentes }), [state, eventosVigentes])
+
   if (!isHydrated) {
     return null
   }
@@ -1726,14 +1718,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const rawValue: StoreContextType = {
         syncGuard,
         applyRemoteState,
-        state,
+        state: estadoVigente,
         loading: !isHydrated,
         insumos: state.insumos,
         insumosBarra: state.insumosBarra,
         recetas: state.recetas,
         cocteles: state.cocteles,
         barrasTemplates: state.barrasTemplates || [],
-        eventos: state.eventos || [],
+        eventos: eventosVigentes,
         historial: state.historial || [],
         servicios: state.servicios || [],
         costosOperativos: state.costosOperativos || [],
@@ -1841,7 +1833,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           <DialogHeader>
             <DialogTitle>Cargar IPC de un mes</DialogTitle>
             <DialogDescription>
-              Elegí el mes al que corresponde el IPC y su porcentaje. Se permite un solo IPC por mes y se aplica solo a las cuotas restantes (no pagadas) de los eventos ajustables, de forma compuesta.
+              Elegí el mes y su porcentaje. Las cuotas ajustables usan la última cuota pagada sin mora más únicamente el IPC vigente, una sola vez por mes. Los meses sin pagos no se acumulan.
             </DialogDescription>
           </DialogHeader>
           {(() => {

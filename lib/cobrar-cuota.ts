@@ -1,3 +1,5 @@
+import { calcularIPCPeriodo, fechaNegocio } from "./ipc-cuotas"
+import type { HistorialIPCEntry } from "./store"
 import {
   generateId,
   calcularCostoInsumosEvento,
@@ -12,6 +14,7 @@ import {
 } from "./store"
 
 export interface CobroCuotaResultado {
+  error?: string
   /** true si la cuota ya figuraba como cobrada (no se hace nada) */
   yaCobrada: boolean
   /** patch para updateEvento (marca la cuota en cuotasPagadas) */
@@ -105,6 +108,8 @@ export function construirCobroCuota(
   fechaVencimientoCuota: string | undefined,
   movimientosCaja: MovimientoCaja[],
   datosCostos?: DatosCostosEvento,
+  historialIPC: HistorialIPCEntry[] = [],
+  fechaReal = fechaNegocio(),
 ): CobroCuotaResultado {
   const plan = evento.planDeCuotas
   const cuotasPagadas = plan?.cuotasPagadas ?? []
@@ -113,8 +118,17 @@ export function construirCobroCuota(
     return { yaCobrada: true, planUpdate: null, movimientos: [] }
   }
 
+  const resultado = calcularIPCPeriodo(evento, historialIPC, fechaReal)
+  if (resultado.estado === "pendiente" || (resultado.estado === "listo" && resultado.calculo.monto !== montoCuotaCompleta)) {
+    return { yaCobrada: false, planUpdate: null, movimientos: [], error: resultado.estado === "pendiente" ? resultado.motivo : "La cuota cambió. Actualizá el desglose antes de cobrar." }
+  }
   const planUpdate = plan
-    ? { planDeCuotas: { ...plan, cuotasPagadas: [...cuotasPagadas, numeroCuota] } }
+    ? { planDeCuotas: { ...plan, cuotasPagadas: [...cuotasPagadas, numeroCuota],
+      cuotas: plan.cuotas?.map(c => c.numero === numeroCuota ? {
+        ...c, pagada: true, montoCuota: montoCuotaCompleta, montoPagadoNeto: montoCuotaCompleta,
+        fechaPagoReal: fechaReal, calculoIPC: resultado.estado === "listo" ? resultado.calculo : undefined,
+      } : c),
+    } }
     : null
 
   const movimientos: MovimientoCaja[] = []

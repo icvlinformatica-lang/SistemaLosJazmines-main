@@ -1,5 +1,7 @@
 "use client"
 
+import { fechaNegocio, proyectarIPC } from "./ipc-cuotas"
+
 // Data Store for Los Jazmines Catering System
 // Uses localStorage for persistence
 
@@ -198,12 +200,15 @@ export interface Evento {
     diaVencimiento: number
     fechaInicioPlan: string
     cuotasPagadas?: number[]
+    ipcVigente?: import("./ipc-cuotas").ResultadoIPC
+    ultimaOperacionCobro?: string
+    pagosAnulados?: Array<PagoEvento & { anuladoAt: string }>
     modalidadPago?: "completo" | "sena" | "cuotas" | "fija" | "ipc" | "sena_fija" | "sena_ipc"
     montoSena?: number
     porcentajeRecargo?: number
     porcentajeIPC?: number
-  // Si es true (o undefined = default), las cuotas restantes se ajustan cada mes por IPC.
-  // Si es false, las cuotas son fijas y nunca se modifican por inflación.
+  // Solo true habilita IPC: última cuota pagada más el índice vigente, sin acumular meses sin pagos.
+  // false o undefined mantienen las cuotas fijas.
   ajustaPorIPC?: boolean
   /**
    * Flag legado de la regla de división entre cajas. HOY SE IGNORA: todos los
@@ -218,6 +223,9 @@ export interface Evento {
       montoCuota: number
       fechaVencimiento?: string
       pagada?: boolean
+      fechaPagoReal?: string
+      montoPagadoNeto?: number
+      calculoIPC?: import("./ipc-cuotas").CalculoIPC
     }>
   }
 }
@@ -225,6 +233,10 @@ export interface Evento {
 // --- Pagos ---
 
 export interface PagoEvento {
+  numeroCuota?: number
+  montoCuotaNeto?: number
+  montoMora?: number
+  calculoIPC?: import("./ipc-cuotas").CalculoIPC
   id: string
   monto: number
   fecha: string
@@ -1067,103 +1079,28 @@ export function eventoAjustaPorIPC(evento: { planDeCuotas?: EventoGuardado["plan
   return tieneCuotas && enCuotas
 }
 
-/**
- * Aplica el IPC del mes a las cuotas RESTANTES (no pagadas) de los eventos ajustables.
- * - Las cuotas ya pagadas quedan congeladas (no se tocan).
- * - El aumento es compuesto: se aplica sobre el monto vigente de cada cuota, por lo que
- *   mes a mes crece de forma exponencial tomando como base el valor ya aumentado.
- */
-export function actualizarCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"]; estado?: string }>(
-  eventos: T[],
-  porcentajeDelMes: number
+/** Proyecta únicamente el período solicitado desde una base acreditada; nunca capitaliza pendientes. */
+export function actualizarCuotasIPC<T extends import("./ipc-cuotas").EventoIPC>(
+  eventos: T[], porcentajeDelMes: number, fecha = fechaNegocio(),
 ): { eventos: T[]; eventosActualizados: number } {
-  const factor = 1 + porcentajeDelMes / 100
+  const [anio, mes] = fecha.split("-").map(Number)
+  const historial: HistorialIPCEntry[] = [{ mes: mes - 1, anio, porcentaje: porcentajeDelMes, fechaAplicacion: fecha, eventosActualizados: 0 }]
   let eventosActualizados = 0
-
   const nuevos = eventos.map(evento => {
-    // Los eventos archivados quedan congelados: el IPC no los toca
-    if (evento.estado === "completado") return evento
-    if (!eventoAjustaPorIPC(evento)) return evento
-
-    const plan = evento.planDeCuotas!
-    const pagadas = plan.cuotasPagadas ?? []
-    const cuotasBase = plan.cuotas ?? []
-    if (cuotasBase.length === 0) return evento
-
-    let cambiada = false
-    const cuotasActualizadas = cuotasBase.map(cuota => {
-      const estaPagada = cuota.pagada === true || pagadas.includes(cuota.numero)
-      if (estaPagada) return cuota
-      cambiada = true
-      return {
-        ...cuota,
-        montoCuota: Math.round(cuota.montoCuota * factor),
-      }
-    })
-
-    if (!cambiada) return evento
+    const proyectado = proyectarIPC(evento, historial, fecha)
+    if (proyectado.planDeCuotas?.ipcVigente?.estado !== "listo") return evento
+    if (JSON.stringify(proyectado.planDeCuotas?.cuotas) === JSON.stringify(evento.planDeCuotas?.cuotas)) return evento
     eventosActualizados++
-
-    return {
-      ...evento,
-      planDeCuotas: {
-        ...plan,
-        cuotas: cuotasActualizadas,
-      },
-    }
+    return proyectado
   })
-
   return { eventos: nuevos, eventosActualizados }
 }
 
-/**
- * Revierte (deshace) un ajuste de IPC en las cuotas RESTANTES (no pagadas).
- * Es la operación inversa de actualizarCuotasIPC: divide el monto vigente por el factor,
- * devolviendo las cuotas pendientes a su valor previo a ese ajuste.
- * Las cuotas ya pagadas no se tocan (se cobraron a su valor de ese momento).
- */
-export function revertirCuotasIPC<T extends { planDeCuotas?: EventoGuardado["planDeCuotas"]; estado?: string }>(
-  eventos: T[],
-  porcentajeDelMes: number
+/** Eliminar un índice invalida la propuesta; nunca divide importes ni altera pagos. */
+export function revertirCuotasIPC<T extends import("./ipc-cuotas").EventoIPC>(
+  eventos: T[], _porcentajeDelMes: number,
 ): { eventos: T[]; eventosActualizados: number } {
-  const factor = 1 + porcentajeDelMes / 100
-  if (factor <= 0) return { eventos, eventosActualizados: 0 }
-  let eventosActualizados = 0
-
-  const nuevos = eventos.map(evento => {
-    // Los eventos archivados quedan congelados: el IPC no los toca
-    if (evento.estado === "completado") return evento
-    if (!eventoAjustaPorIPC(evento)) return evento
-
-    const plan = evento.planDeCuotas!
-    const pagadas = plan.cuotasPagadas ?? []
-    const cuotasBase = plan.cuotas ?? []
-    if (cuotasBase.length === 0) return evento
-
-    let cambiada = false
-    const cuotasActualizadas = cuotasBase.map(cuota => {
-      const estaPagada = cuota.pagada === true || pagadas.includes(cuota.numero)
-      if (estaPagada) return cuota
-      cambiada = true
-      return {
-        ...cuota,
-        montoCuota: Math.round(cuota.montoCuota / factor),
-      }
-    })
-
-    if (!cambiada) return evento
-    eventosActualizados++
-
-    return {
-      ...evento,
-      planDeCuotas: {
-        ...plan,
-        cuotas: cuotasActualizadas,
-      },
-    }
-  })
-
-  return { eventos: nuevos, eventosActualizados }
+  return { eventos, eventosActualizados: 0 }
 }
 
 export interface CalculoCompra {
@@ -2656,7 +2593,7 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
       numeroCuota: cuotaNum,
       fechaVencimiento: resolverFecha(cuotaNum),
       monto: resolverMonto(cuotaNum),
-      pagada: cuotasPagadas.includes(cuotaNum),
+      pagada: cuotasPagadas.includes(cuotaNum) || cuotas.some(c => c.numero === cuotaNum && c.pagada === true),
     }
   })
 }
