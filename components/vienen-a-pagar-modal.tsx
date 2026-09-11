@@ -7,8 +7,9 @@
 import { useEffect, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
-import { X, Users, Loader2 } from "lucide-react"
+import { X, Users, Loader2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SalonDot } from "@/components/salon-badge"
@@ -68,6 +69,7 @@ interface Props {
 export function VienenAPagarModal({ open, onOpenChange }: Props) {
   const { configuracionCajas } = useStore()
   const [salonFiltro, setSalonFiltro] = useState("todos")
+  const [busqueda, setBusqueda] = useState("")
   const [ampliaciones, setAmpliaciones] = useState(0)
   const { data, isLoading, error, mutate } = useSWR<ResumenDiario>(open ? "/api/resumen-diario" : null, async (url: string) => {
     const response = await fetch(url, { cache: "no-store" })
@@ -76,17 +78,24 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
     if (!Array.isArray(resumen.vienenAPagar) || resumen.vienenAPagar.some((v: { cuotasPendientes?: unknown }) => !Array.isArray(v.cuotasPendientes))) throw new Error("Respuesta de cuotas incompleta")
     return resumen
   })
-  useEffect(() => { if (!open) { setSalonFiltro("todos"); setAmpliaciones(0) } }, [open])
+  useEffect(() => { if (!open) { setSalonFiltro("todos"); setBusqueda(""); setAmpliaciones(0) } }, [open])
 
   if (!open) return null
 
   const grupos = agruparCuotasPorSalon(data?.vienenAPagar ?? [])
   const salones = [...new Set([...Object.keys(SALON_COLORES_DEFAULT), ...Object.keys(configuracionCajas?.salones ?? {}), ...grupos.map((g) => g.salon)])]
   const visibles = grupos.filter((g) => salonFiltro === "todos" || (g.salon || "general") === salonFiltro)
-  const cuotas = ordenarCuotasPorEvento(visibles)
+  const textoBusqueda = busqueda.trim().toLowerCase()
+  const cuotasOrdenadas = ordenarCuotasPorEvento(visibles)
+  const cuotas = textoBusqueda
+    ? cuotasOrdenadas.filter((cuota) =>
+        cuota.evento.toLowerCase().includes(textoBusqueda) ||
+        cuota.fechaEvento.toLowerCase().includes(textoBusqueda) ||
+        fechaCorta(cuota.fechaEvento).toLowerCase().includes(textoBusqueda),
+      )
+    : cuotasOrdenadas
   const cuotasMostradas = cuotas.slice(0, limiteCuotasVisibles(ampliaciones))
   const totalSemana = visibles.reduce((s, g) => s + g.totalSemana, 0)
-  const totalAtrasado = visibles.reduce((s, g) => s + g.totalAtrasado, 0)
   const cantidadSemana = visibles.reduce((s, g) => s + g.cantidadSemana, 0)
   const cantidadAtrasada = visibles.reduce((s, g) => s + g.cantidadAtrasada, 0)
 
@@ -126,9 +135,19 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
           ) : (
             <>
               {/* Totales rápidos */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-live="polite">
-                <div className="rounded-lg border bg-card p-3 text-card-foreground"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} cuotas</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
-                <div className="rounded-lg border bg-card p-3 text-card-foreground"><p className="text-sm text-muted-foreground">Deuda atrasada · {cantidadAtrasada} cuotas</p><p className="font-bold tabular-nums text-destructive">{fmt(totalAtrasado)}</p></div>
+              <div className="flex flex-col gap-3">
+                <div className="rounded-lg border bg-card p-3 text-card-foreground" aria-live="polite"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} cuotas</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    type="search"
+                    value={busqueda}
+                    onChange={(e) => { setBusqueda(e.target.value); setAmpliaciones(0) }}
+                    placeholder="Buscar por nombre, fecha o salón..."
+                    aria-label="Buscar por nombre o fecha"
+                    className="pl-9"
+                  />
+                </div>
               </div>
 
               {/* Lista */}
