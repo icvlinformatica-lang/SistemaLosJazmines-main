@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -145,6 +146,8 @@ interface FilaPagoUnificada {
   key: string
   categoria: "servicio" | "menu" | "barra" | "sueldo"
   servicioNombre: string
+  /** id del servicio contratado (solo presente cuando categoria === "servicio"), usado para corregir/revertir la seña ya pagada */
+  servicioId?: string
   eventoId: string
   eventoNombre: string
   eventoTipo?: string
@@ -180,6 +183,7 @@ function agruparFilasPago(
         key,
         categoria,
         servicioNombre: eg.servicioNombre,
+        servicioId: categoria === "servicio" ? eg.servicioId : undefined,
         eventoId: eg.eventoId,
         eventoNombre: eg.eventoNombre,
         eventoTipo: eg.eventoTipo,
@@ -808,6 +812,14 @@ useStore()
   const [marcarCobrada, setMarcarCobrada] = useState(false)
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
+  const hoyStr = ahora.toISOString().split("T")[0]
+  // Fecha elegida (por egreso.id) para marcar como pagada una seña pendiente,
+  // por defecto hoy pero editable para poder cargar pagos atrasados/viejos.
+  const [fechasPagoManual, setFechasPagoManual] = useState<Record<string, string>>({})
+  // Fila (fila.key) de seña ya pagada cuyo popover de corrección/reversión está abierto,
+  // junto con la fecha en edición dentro de ese popover.
+  const [edicionSeñaAbierta, setEdicionSeñaAbierta] = useState<string | null>(null)
+  const [fechaCorreccionSeña, setFechaCorreccionSeña] = useState(hoyStr)
   const { toast } = useToast()
   const operacionEnCurso = useRef(false)
   const [guardandoOperacion, setGuardandoOperacion] = useState(false)
@@ -940,11 +952,13 @@ useStore()
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
   // (así el dashboard "por pagar" del mes se actualiza al instante).
-  const handleMarcarPagado = async (egreso: EgresoPendienteServicio) => {
+  const handleMarcarPagado = async (egreso: EgresoPendienteServicio, fechaPagoOverride?: string) => {
     const evento = state.eventos.find((e) => e.id === egreso.eventoId)
     if (!evento || !egresosPendientes.some((pendiente) => pendiente.id === egreso.id)) return false
-    const hoyISO = new Date().toISOString()
-    const fechaPago = hoyISO.split("T")[0]
+    // fechaPagoOverride permite cargar pagos atrasados/viejos con su fecha real
+    // en vez de la fecha de hoy (usado hoy solo para señas, desde renderCeldaPago).
+    const fechaPago = fechaPagoOverride || new Date().toISOString().split("T")[0]
+    const fechaISO = fechaPagoOverride ? new Date(`${fechaPagoOverride}T12:00:00`).toISOString() : new Date().toISOString()
     let guardarEstado: () => Promise<boolean>
 
     if (egreso.tipo === "menu") {
@@ -1006,7 +1020,7 @@ useStore()
 
     const movimiento: MovimientoCaja = {
       id: generateId(),
-      fecha: hoyISO,
+      fecha: fechaISO,
       tipo: "egreso",
       concepto: conceptoEgreso,
       monto: egreso.monto,
@@ -1018,9 +1032,41 @@ useStore()
     return await guardarOperacion(guardarEstado, [movimiento])
   }
 
+  // Corrige solo la fecha de una seña YA pagada (servicio.fechaPagoSeña y, si existe,
+  // la fecha del movimiento de egreso correspondiente), sin tocar montos ni crear un
+  // movimiento nuevo. Como no existe una API para editar un movimiento existente, se
+  // recrea el mismo movimiento (mismo id, monto y demás campos) solo con la fecha corregida.
+  const handleCorregirFechaPagoSeña = async (eventoId: string, servicioId: string, nuevaFecha: string) => {
+    const evento = state.eventos.find((e) => e.id === eventoId)
+    const servicio = evento?.servicios?.find((s) => s.servicioId === servicioId)
+    if (!evento || !servicio) return false
+
+    const nuevosServicios = (evento.servicios ?? []).map((s) =>
+      s.servicioId === servicioId ? { ...s, fechaPagoSeña: nuevaFecha } : s,
+    )
+    const conceptoEgreso = `Pago seña ${servicio.nombre} - ${evento.nombrePareja || evento.nombre || "Evento"}`
+    const movimiento = (state.movimientosCaja ?? []).find(
+      (m) => m.tipo === "egreso" && m.cajaDestino === "caja_eventos" && m.eventoId === eventoId && m.concepto === conceptoEgreso,
+    )
+
+    const ok = await updateEvento(eventoId, { servicios: nuevosServicios })
+    if (ok && movimiento) {
+      const nuevaFechaISO = new Date(`${nuevaFecha}T12:00:00`).toISOString()
+      await deleteMovimientoCaja(movimiento.id)
+      await addMovimientosCaja([{ ...movimiento, fecha: nuevaFechaISO }])
+    }
+    return ok
+  }
+
   // Confirma el pago desde el diálogo: ejecuta el marcado y muestra la animación de check.
   const confirmarMarcarPagado = async () => {
-    if (!pagoConfirmar || !await handleMarcarPagado(pagoConfirmar)) return
+    if (!pagoConfirmar) return
+    const fechaElegida = fechasPagoManual[pagoConfirmar.id]
+    if (!await handleMarcarPagado(pagoConfirmar, fechaElegida)) return
+    setFechasPagoManual((prev) => {
+      const { [pagoConfirmar.id]: _omitida, ...resto } = prev
+      return resto
+    })
     setPagoConfirmar(null)
     setPagoExito(true)
     setTimeout(() => setPagoExito(false), 1400)
@@ -1267,25 +1313,130 @@ useStore()
 
   // Celda clicable de Seña / Saldo restante: pendiente (roja, click para
   // pagar) o pagada (verde, muestra cuánto y cuándo se pagó).
-  const renderCeldaPago = (dato?: FilaPagoUnificada["seña"]) => {
+  // campo indica qué columna se está renderizando: solo la seña admite fecha manual
+  // (elegir/corregir/revertir); saldo, menú, barra y sueldo mantienen el comportamiento anterior.
+  const renderCeldaPago = (fila: FilaPagoUnificada, campo: "seña" | "saldo") => {
+    const dato = fila[campo]
     if (!dato) return <span className="text-xs text-muted-foreground">—</span>
+    const esSeña = campo === "seña"
+
     if (dato.pagado) {
+      if (!esSeña || !fila.servicioId) {
+        return (
+          <div className="inline-flex flex-col items-end gap-0.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1">
+            <span className="text-xs font-bold text-emerald-700">{formatCurrency(dato.monto)}</span>
+            {dato.fecha && <span className="text-[10px] text-emerald-600">{formatFecha(dato.fecha)}</span>}
+          </div>
+        )
+      }
+      const servicioId = fila.servicioId
       return (
-        <div className="inline-flex flex-col items-end gap-0.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1">
-          <span className="text-xs font-bold text-emerald-700">{formatCurrency(dato.monto)}</span>
-          {dato.fecha && <span className="text-[10px] text-emerald-600">{formatFecha(dato.fecha)}</span>}
-        </div>
+        <Popover
+          open={edicionSeñaAbierta === fila.key}
+          onOpenChange={(open) => {
+            setEdicionSeñaAbierta(open ? fila.key : null)
+            if (open) setFechaCorreccionSeña(dato.fecha ?? hoyStr)
+          }}
+        >
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              title="Corregir fecha o destildar el pago de la seña"
+              className="inline-flex flex-col items-end gap-0.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 transition-colors hover:bg-emerald-100"
+            >
+              <span className="text-xs font-bold text-emerald-700">{formatCurrency(dato.monto)}</span>
+              {dato.fecha && <span className="text-[10px] text-emerald-600">{formatFecha(dato.fecha)}</span>}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Corregir fecha de pago</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  max={hoyStr}
+                  value={fechaCorreccionSeña}
+                  onChange={(e) => setFechaCorreccionSeña(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <Button
+                  size="sm"
+                  className="h-8 shrink-0"
+                  disabled={guardandoOperacion || !fechaCorreccionSeña}
+                  onClick={async () => {
+                    if (await handleCorregirFechaPagoSeña(fila.eventoId, servicioId, fechaCorreccionSeña)) {
+                      setEdicionSeñaAbierta(null)
+                    }
+                  }}
+                >
+                  Guardar
+                </Button>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-red-600 hover:text-red-700"
+              disabled={guardandoOperacion}
+              onClick={() => {
+                setEdicionSeñaAbierta(null)
+                handleRevertirPago({
+                  id: `seña-${fila.eventoId}-${servicioId}`,
+                  eventoId: fila.eventoId,
+                  eventoNombre: fila.eventoNombre,
+                  tipoPago: "seña",
+                  servicioNombre: fila.servicioNombre,
+                  fecha: dato.fecha ?? hoyStr,
+                  concepto: `Pago seña ${fila.servicioNombre} - ${fila.eventoNombre}`,
+                  salon: fila.salon,
+                  monto: dato.monto,
+                })
+              }}
+            >
+              Destildar pago
+            </Button>
+          </PopoverContent>
+        </Popover>
       )
     }
+
+    if (!esSeña) {
+      return (
+        <button
+          type="button"
+          title="Marcar como pagado"
+          onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
+          className="inline-flex flex-col items-end gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-right transition-colors hover:bg-yellow-100"
+        >
+          <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
+        </button>
+      )
+    }
+
+    // Seña pendiente: permite elegir la fecha real de pago (para cargar pagos
+    // atrasados/viejos) antes de confirmar, en vez de usar siempre la fecha de hoy.
+    const egresoId = dato.egreso?.id
+    const fechaElegida = (egresoId && fechasPagoManual[egresoId]) || hoyStr
     return (
-      <button
-        type="button"
-        title="Marcar como pagado"
-        onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
-        className="inline-flex flex-col items-end gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-right transition-colors hover:bg-yellow-100"
-      >
-        <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
-      </button>
+      <div className="inline-flex flex-col items-end gap-1">
+        <input
+          type="date"
+          value={fechaElegida}
+          max={hoyStr}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => egresoId && setFechasPagoManual((prev) => ({ ...prev, [egresoId]: e.target.value }))}
+          className="h-6 rounded border border-yellow-300 bg-white px-1 text-[10px] text-yellow-800"
+        />
+        <button
+          type="button"
+          title="Marcar como pagado"
+          onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
+          className="inline-flex items-center gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 transition-colors hover:bg-yellow-100"
+        >
+          <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
+        </button>
+      </div>
     )
   }
 
@@ -1318,8 +1469,8 @@ useStore()
             <span className="text-muted-foreground">—</span>
           )}
         </TableCell>
-        <TableCell className="text-right">{renderCeldaPago(fila.seña)}</TableCell>
-        <TableCell className="text-right">{renderCeldaPago(fila.saldo)}</TableCell>
+        <TableCell className="text-right">{renderCeldaPago(fila, "seña")}</TableCell>
+        <TableCell className="text-right">{renderCeldaPago(fila, "saldo")}</TableCell>
         <TableCell className="text-right pr-4 w-10">
           {fila.eventoId ? (
             <DropdownMenu>
@@ -2465,7 +2616,14 @@ useStore()
             </DialogTitle>
             <DialogDescription>
               {pagoConfirmar
-                ? `¿Estás seguro que querés marcar como pagado "${pagoConfirmar.servicioNombre}" por ${formatCurrency(pagoConfirmar.monto)}? Esta acción registra el egreso en Caja Eventos.`
+                ? (() => {
+                    const fechaElegida = fechasPagoManual[pagoConfirmar.id]
+                    const conFecha =
+                      fechaElegida && fechaElegida !== hoyStr
+                        ? ` con fecha ${formatFecha(fechaElegida)}`
+                        : ""
+                    return `¿Estás seguro que querés marcar como pagado "${pagoConfirmar.servicioNombre}" por ${formatCurrency(pagoConfirmar.monto)}${conFecha}? Esta acción registra el egreso en Caja Eventos.`
+                  })()
                 : ""}
             </DialogDescription>
           </DialogHeader>
