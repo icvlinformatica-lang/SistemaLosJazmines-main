@@ -1811,42 +1811,42 @@ function PagosPageContent() {
                                   </p>
                                 </div>
                               )}
-                              <label className="flex cursor-pointer items-start gap-3">
-                                <Checkbox
-                                  checked={aplicarIPCCobro}
-                                  onCheckedChange={(v) => setAplicarIPCCobro(v === true)}
-                                  aria-label="Aplicar el IPC del mes"
-                                  className="mt-0.5"
-                                />
-                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                                  <span>
-                                    Aplicar IPC del mes
-                                    {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
-                                    {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <label className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
+                                  <Checkbox
+                                    checked={aplicarIPCCobro}
+                                    onCheckedChange={(v) => setAplicarIPCCobro(v === true)}
+                                    aria-label="Aplicar el IPC del mes"
+                                  />
+                                  <span className="flex min-w-0 flex-col">
+                                    <span className="truncate">
+                                      Aplicar IPC del mes
+                                      {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                                      {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                                    </span>
+                                    <span className="font-mono font-semibold">
+                                      {porcentajeMes != null && baseMostrada > 0
+                                        ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
+                                        : resultadoIPC.estado === "listo" ? formatCurrency(resultadoIPC.calculo.monto) : "—"}
+                                    </span>
                                   </span>
-                                  <span className="font-mono font-semibold">
-                                    {porcentajeMes != null && baseMostrada > 0
-                                      ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
-                                      : resultadoIPC.estado === "listo" ? formatCurrency(resultadoIPC.calculo.monto) : "—"}
+                                </label>
+                                <label className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
+                                  <Checkbox
+                                    checked={!recargoAtrasoOmitido}
+                                    disabled={diasAtraso === 0}
+                                    onCheckedChange={(v) => setRecargoAtrasoOmitido(v !== true)}
+                                    aria-label="Aplicar mora por atraso"
+                                  />
+                                  <span className="flex min-w-0 flex-col">
+                                    <span className="truncate">
+                                      Aplicar mora
+                                      <span className="text-muted-foreground"> ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
+                                    </span>
+                                    <span className="font-mono font-semibold">{formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}</span>
                                   </span>
-                                </span>
-                              </label>
-                              <label className="flex cursor-pointer items-start gap-3">
-                                <Checkbox
-                                  checked={!recargoAtrasoOmitido}
-                                  disabled={diasAtraso === 0}
-                                  onCheckedChange={(v) => setRecargoAtrasoOmitido(v !== true)}
-                                  aria-label="Aplicar mora por atraso"
-                                  className="mt-0.5"
-                                />
-                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                                  <span>
-                                    Aplicar mora
-                                    <span className="text-muted-foreground"> ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
-                                  </span>
-                                  <span className="font-mono font-semibold">{formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}</span>
-                                </span>
-                              </label>
+                                </label>
+                              </div>
                               {errorCobro && <p role="alert" className="text-xs font-medium text-destructive">{errorCobro}</p>}
                             </fieldset>
 
@@ -2060,7 +2060,7 @@ function PagosPageContent() {
           }
         }}
       >
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0">
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden p-0">
           <DialogHeader className="px-5 pt-5 pb-2">
             <DialogTitle className="text-base">
               {modoHistorico ? "Registrar pago histórico" : "Registrar Pago"}
@@ -2080,7 +2080,7 @@ function PagosPageContent() {
               Paso {pasoPago} de 3 — {pasoPago === 1 ? "Cuándo y cuánto" : pasoPago === 2 ? "Quién paga y quién recibe" : "Monto entregado"}
             </p>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-5 pb-2">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 pb-2">
             {pasoPago === 1 && (() => {
               const ajustaPorIPC = selectedEvento ? aplicaIPC(selectedEvento) : false
               const resultadoIPC = selectedEvento ? calcularIPCPeriodo(selectedEvento, historialIPC, pagoForm.fecha) : { estado: "no_aplica" as const }
@@ -2096,40 +2096,10 @@ function PagosPageContent() {
                     Elegí la fecha real en que se cobró esta cuota, no la de hoy.
                   </p>
                 )}
-                {modoHistorico && (
-                  historialIPC.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No hay ningún IPC cargado todavía en Finanzas &gt; IPC.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {[...historialIPC]
-                        .sort((a, b) => (a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes))
-                        .map((entry) => {
-                          const fechaActual = pagoForm.fecha ? new Date(pagoForm.fecha + "T00:00:00") : null
-                          const esActivo =
-                            !!fechaActual && fechaActual.getMonth() === entry.mes && fechaActual.getFullYear() === entry.anio
-                          return (
-                            <button
-                              key={entry.id ?? `${entry.mes}-${entry.anio}`}
-                              type="button"
-                              onClick={() => {
-                                const dia15 = new Date(entry.anio, entry.mes, 15)
-                                const fechaISO = `${dia15.getFullYear()}-${String(dia15.getMonth() + 1).padStart(2, "0")}-15`
-                                recalcularCobro({ fecha: fechaISO })
-                              }}
-                              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                                esActivo
-                                  ? "border-amber-400 bg-amber-200 text-amber-900"
-                                  : "border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
-                              }`}
-                            >
-                              {MESES_RECIBO[entry.mes]} {entry.anio} · {entry.porcentaje}%
-                            </button>
-                          )
-                        })}
-                    </div>
-                  )
+                {modoHistorico && historialIPC.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No hay ningún IPC cargado todavía en Finanzas &gt; IPC.
+                  </p>
                 )}
                 {/* Fecha */}
                 <div className="grid gap-1">
@@ -2179,40 +2149,83 @@ function PagosPageContent() {
                 </div>
 
                 {ajustaPorIPC ? (
-                  <fieldset className="grid gap-2.5 rounded-lg border border-border bg-background p-3 text-sm">
+                  <fieldset className="grid gap-2 rounded-lg border border-border bg-background p-3 text-sm">
                     <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Qué se cobra</legend>
-                    <label className="flex cursor-pointer items-start gap-3">
-                      <Checkbox
-                        checked={aplicarIPCCobro}
-                        onCheckedChange={(v) => recalcularCobro({ aplicarIPC: v === true })}
-                        aria-label="Aplicar el IPC del mes"
-                        className="mt-0.5"
-                      />
-                      <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                        <span>
-                          Aplicar IPC del mes
-                          {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
-                          {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                    {modoHistorico && historialIPC.length > 0 ? (
+                      [...historialIPC]
+                        .sort((a, b) => (a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes))
+                        .map((entry) => {
+                          const fechaActual = pagoForm.fecha ? new Date(pagoForm.fecha + "T00:00:00") : null
+                          const esMesActivo =
+                            !!fechaActual && fechaActual.getMonth() === entry.mes && fechaActual.getFullYear() === entry.anio
+                          const marcado = esMesActivo && aplicarIPCCobro
+                          const montoEsteMes = baseActual > 0 ? Math.round(baseActual * (1 + entry.porcentaje / 100)) : null
+                          return (
+                            <label
+                              key={entry.id ?? `${entry.mes}-${entry.anio}`}
+                              className="flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2"
+                            >
+                              <Checkbox
+                                checked={marcado}
+                                onCheckedChange={(v) => {
+                                  if (v === true) {
+                                    const dia15 = new Date(entry.anio, entry.mes, 15)
+                                    const fechaISO = `${dia15.getFullYear()}-${String(dia15.getMonth() + 1).padStart(2, "0")}-15`
+                                    recalcularCobro({ fecha: fechaISO, aplicarIPC: true })
+                                  } else {
+                                    recalcularCobro({ aplicarIPC: false })
+                                  }
+                                }}
+                                aria-label={`Aplicar IPC de ${MESES_RECIBO[entry.mes]} ${entry.anio}`}
+                              />
+                              <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                                <span className="truncate">
+                                  {MESES_RECIBO[entry.mes]} {entry.anio}
+                                  <span className="text-muted-foreground"> ({entry.porcentaje}%)</span>
+                                </span>
+                                <span className="shrink-0 font-mono font-semibold">
+                                  {esMesActivo && montoConIPC != null
+                                    ? formatCurrency(montoConIPC)
+                                    : montoEsteMes != null
+                                      ? formatCurrency(montoEsteMes)
+                                      : "—"}
+                                </span>
+                              </span>
+                            </label>
+                          )
+                        })
+                    ) : (
+                      <label className="flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
+                        <Checkbox
+                          checked={aplicarIPCCobro}
+                          onCheckedChange={(v) => recalcularCobro({ aplicarIPC: v === true })}
+                          aria-label="Aplicar el IPC del mes"
+                        />
+                        <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                          <span className="truncate">
+                            Aplicar IPC del mes
+                            {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                            {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                          </span>
+                          <span className="shrink-0 font-mono font-semibold">
+                            {montoConIPC != null ? formatCurrency(montoConIPC) : "—"}
+                          </span>
                         </span>
-                        <span className="font-mono font-semibold">
-                          {montoConIPC != null ? formatCurrency(montoConIPC) : "—"}
-                        </span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-start gap-3">
+                      </label>
+                    )}
+                    <label className="flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2">
                       <Checkbox
                         checked={!recargoAtrasoOmitido}
                         disabled={diasAtrasoPago === 0}
                         onCheckedChange={(v) => recalcularCobro({ recargoOmitido: v !== true })}
                         aria-label="Aplicar mora por atraso"
-                        className="mt-0.5"
                       />
-                      <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                        <span>
+                      <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                        <span className="truncate">
                           Aplicar mora
                           <span className="text-muted-foreground"> ({diasAtrasoPago} {diasAtrasoPago === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
                         </span>
-                        <span className="font-mono font-semibold">{formatCurrency(diasAtrasoPago * RECARGO_POR_DIA_ATRASO)}</span>
+                        <span className="shrink-0 font-mono font-semibold">{formatCurrency(diasAtrasoPago * RECARGO_POR_DIA_ATRASO)}</span>
                       </span>
                     </label>
                   </fieldset>
