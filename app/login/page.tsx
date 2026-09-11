@@ -4,6 +4,14 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { PERFILES, useProfile, tieneAccesoRapido, olvidarAccesosRapidos } from "@/lib/profile-context"
 
+// Perfiles que primero preguntan quién ingresa antes de pedir el PIN o usar
+// el acceso rápido. Cada perfil listado aquí muestra un paso extra con un
+// botón por nombre; todos comparten el mismo PIN del perfil.
+const NOMBRES_POR_PERFIL: Record<string, string[]> = {
+  administracion: ["Diego", "Leila", "Ricky"],
+  cobro: ["Aylin", "Salón"],
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const { seleccionarPerfil, seleccionarPerfilRapido } = useProfile()
@@ -14,8 +22,8 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [cargando, setCargando] = useState(false)
 
-  // Para Administración: primero se elige quién ingresa (Diego, Leila o Ricky)
-  // y recién después se pide el PIN. Todos usan el mismo PIN.
+  // Para los perfiles listados en NOMBRES_POR_PERFIL: primero se elige quién
+  // ingresa y recién después se pide el PIN. Todos usan el mismo PIN del perfil.
   const [quienIngresa, setQuienIngresa] = useState<string | null>(null)
 
   useEffect(() => {
@@ -27,15 +35,15 @@ export default function LoginPage() {
   }, [])
 
   const handleCardClick = async (id: string) => {
-    // Administración: preguntar quién ingresa antes de pedir el PIN o
-    // usar el acceso rápido.
-    if (id === "administracion" && !quienIngresa) {
+    // Perfiles con selección de usuario: preguntar quién ingresa antes de
+    // pedir el PIN o usar el acceso rápido.
+    if (NOMBRES_POR_PERFIL[id] && !quienIngresa) {
       setPerfilSeleccionado(id)
       setPinInput("")
       setError("")
       return
     }
-    if (id !== "administracion") {
+    if (!NOMBRES_POR_PERFIL[id]) {
       setQuienIngresa(null)
       if (id === "soporte") {
         // Soporte también deja registro con su nombre en la actividad
@@ -65,24 +73,25 @@ export default function LoginPage() {
     }
   }
 
-  // Elegir Diego o Leila para el perfil Administración. Se guarda quién
-  // ingresó y luego sigue el flujo normal (acceso rápido o PIN).
-  const handleElegirQuien = async (nombre: string) => {
+  // Elegir quién ingresa dentro de un perfil con selección de usuario (ver
+  // NOMBRES_POR_PERFIL). Se guarda quién ingresó y luego sigue el flujo
+  // normal (acceso rápido o PIN) para ese perfil.
+  const handleElegirQuien = async (perfilId: string, nombre: string) => {
     setQuienIngresa(nombre)
     try {
       sessionStorage.setItem("admin_usuario", nombre)
     } catch {}
-  // Cookie que el servidor lee para atribuir cada registro de actividad
-  // a la persona que ingresó (Diego, Leila o Ricky). Dura 30 días.
+    // Cookie que el servidor lee para atribuir cada registro de actividad
+    // a la persona que ingresó. Dura 30 días.
     document.cookie = `lj_usuario=${encodeURIComponent(nombre)}; path=/; max-age=${60 * 60 * 24 * 30}`
-    if (pinsGuardados["administracion"]) {
+    if (pinsGuardados[perfilId]) {
       setCargando(true)
-      const ok = await seleccionarPerfilRapido("administracion")
+      const ok = await seleccionarPerfilRapido(perfilId)
       setCargando(false)
       if (ok) {
         router.push("/")
       } else {
-        setPinsGuardados((prev) => ({ ...prev, administracion: false }))
+        setPinsGuardados((prev) => ({ ...prev, [perfilId]: false }))
         setPinInput("")
         setError("")
       }
@@ -125,9 +134,11 @@ export default function LoginPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-5 w-full max-w-4xl items-start">
         {PERFILES.map((perfil) => {
           const pinGuardado = pinsGuardados[perfil.id]
-          const esAdmin = perfil.id === "administracion"
-          const mostrarQuien = esAdmin && perfilSeleccionado === perfil.id && !quienIngresa
-          const esSeleccionado = perfilSeleccionado === perfil.id && !pinGuardado && (!esAdmin || !!quienIngresa)
+          const nombresPerfil = NOMBRES_POR_PERFIL[perfil.id]
+          const tieneSeleccionUsuario = !!nombresPerfil
+          const mostrarQuien = tieneSeleccionUsuario && perfilSeleccionado === perfil.id && !quienIngresa
+          const esSeleccionado =
+            perfilSeleccionado === perfil.id && !pinGuardado && (!tieneSeleccionUsuario || !!quienIngresa)
           const esDorado = perfil.id === "cobro"
 
           return (
@@ -168,37 +179,33 @@ export default function LoginPage() {
                 )}
               </button>
 
-              {/* Paso previo para Administración: elegir quién ingresa */}
-              {mostrarQuien && (
+              {/* Paso previo para perfiles con selección de usuario: elegir
+                  quién ingresa. Los nombres se apilan de a pares por fila;
+                  si sobra uno solo al final, ocupa el ancho completo. Esto
+                  evita que los botones corten texto sin importar cuántos
+                  nombres tenga el perfil. */}
+              {mostrarQuien && nombresPerfil && (
                 <div className="w-full flex flex-col items-center gap-2 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
                   <p className="text-xs font-semibold text-[#1a3a2a] text-center">{"¿Quién ingresa?"}</p>
                   <div className="w-full flex flex-col gap-2">
-                    <div className="w-full flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleElegirQuien("Diego")}
-                        disabled={cargando}
-                        className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
-                      >
-                        Diego
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleElegirQuien("Leila")}
-                        disabled={cargando}
-                        className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
-                      >
-                        Leila
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleElegirQuien("Ricky")}
-                      disabled={cargando}
-                      className="w-full rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
-                    >
-                      Ricky
-                    </button>
+                    {Array.from({ length: Math.ceil(nombresPerfil.length / 2) }).map((_, filaIdx) => {
+                      const nombresFila = nombresPerfil.slice(filaIdx * 2, filaIdx * 2 + 2)
+                      return (
+                        <div key={filaIdx} className="w-full flex gap-2">
+                          {nombresFila.map((nombre) => (
+                            <button
+                              key={nombre}
+                              type="button"
+                              onClick={() => handleElegirQuien(perfil.id, nombre)}
+                              disabled={cargando}
+                              className="flex-1 rounded-lg px-2 py-2 text-sm font-semibold text-[#1a3a2a] border border-[#1a3a2a]/30 hover:bg-[#1a3a2a] hover:text-white transition-colors disabled:opacity-60"
+                            >
+                              {nombre}
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    })}
                   </div>
                   {cargando && <p className="text-xs text-gray-400">Verificando...</p>}
                 </div>
@@ -207,7 +214,7 @@ export default function LoginPage() {
               {/* Input PIN inline si seleccionado */}
               {esSeleccionado && (
                 <div className="w-full flex flex-col items-center gap-2 mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                  {esAdmin && quienIngresa && (
+                  {tieneSeleccionUsuario && quienIngresa && (
                     <p className="text-xs text-gray-500">
                       Ingresa: <span className="font-semibold text-[#1a3a2a]">{quienIngresa}</span>
                     </p>
