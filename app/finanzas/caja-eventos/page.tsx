@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -55,7 +56,7 @@ import {
 import { SalonDot } from "@/components/salon-badge"
 import { SaldoHerramientasEventos } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
-import { useCajaEventos } from "@/lib/hooks/use-caja-eventos"
+import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
   EgresoPendienteServicio,
@@ -145,6 +146,8 @@ interface FilaPagoUnificada {
   key: string
   categoria: "servicio" | "menu" | "barra" | "sueldo"
   servicioNombre: string
+  /** id del servicio contratado (solo presente cuando categoria === "servicio"), usado para corregir/revertir la seña ya pagada */
+  servicioId?: string
   eventoId: string
   eventoNombre: string
   eventoTipo?: string
@@ -180,6 +183,7 @@ function agruparFilasPago(
         key,
         categoria,
         servicioNombre: eg.servicioNombre,
+        servicioId: categoria === "servicio" ? eg.servicioId : undefined,
         eventoId: eg.eventoId,
         eventoNombre: eg.eventoNombre,
         eventoTipo: eg.eventoTipo,
@@ -190,21 +194,28 @@ function agruparFilasPago(
       map.set(key, fila)
     }
 
+    // La fecha real de pago de una seña/saldo ya abonado se guarda en el
+    // propio servicio del evento (no en el egreso) — se busca ahí para
+    // poder mostrarla junto al monto.
+    const evento = eventos.find((e) => e.id === eg.eventoId)
+    const srv = evento?.servicios?.find((s) => s.servicioId === eg.servicioId)
+
     if (eg.tipo === "seña") {
-      fila.seña = { monto: eg.monto, pagado: false, egreso: eg }
+      // eg.estadoPago refleja el estado REAL del servicio: al incluir también
+      // los egresos ya pagados (ver `serviciosPagados`), esto ya no es
+      // siempre "sin_seña" como cuando la lista solo traía pendientes.
+      const pagado = eg.estadoPago !== "sin_seña"
+      fila.seña = { monto: eg.monto, pagado, fecha: pagado ? srv?.fechaPagoSeña : undefined, egreso: eg }
     } else {
       // saldo, menú, barra y sueldo son pagos únicos: van en la columna "Saldo restante".
-      fila.saldo = { monto: eg.monto, pagado: false, egreso: eg }
+      const pagado = eg.tipo === "saldo" && eg.estadoPago === "pagado_total"
+      fila.saldo = { monto: eg.monto, pagado, fecha: pagado ? srv?.fechaPagoSaldo : undefined, egreso: eg }
       // Si el saldo de un servicio sigue pendiente pero su seña ya se pagó,
       // esa seña ya no aparece en egresosPendientes (se saca de la lista al
       // pagarla) — la recuperamos desde el propio servicio del evento para
       // poder mostrarla en verde en la misma fila.
-      if (eg.tipo === "saldo" && eg.estadoPago && eg.estadoPago !== "sin_seña" && !fila.seña) {
-        const evento = eventos.find((e) => e.id === eg.eventoId)
-        const srv = evento?.servicios?.find((s) => s.servicioId === eg.servicioId)
-        if (srv?.montoSeña) {
-          fila.seña = { monto: srv.montoSeña, pagado: true, fecha: srv.fechaPagoSeña }
-        }
+      if (eg.tipo === "saldo" && eg.estadoPago && eg.estadoPago !== "sin_seña" && !fila.seña && srv?.montoSeña) {
+        fila.seña = { monto: srv.montoSeña, pagado: true, fecha: srv.fechaPagoSeña }
       }
     }
   }
@@ -808,6 +819,14 @@ useStore()
   const [marcarCobrada, setMarcarCobrada] = useState(false)
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
+  const hoyStr = ahora.toISOString().split("T")[0]
+  // Fecha elegida (por egreso.id) para marcar como pagada una seña pendiente,
+  // por defecto hoy pero editable para poder cargar pagos atrasados/viejos.
+  const [fechasPagoManual, setFechasPagoManual] = useState<Record<string, string>>({})
+  // Fila (fila.key) de seña ya pagada cuyo popover de corrección/reversión está abierto,
+  // junto con la fecha en edición dentro de ese popover.
+  const [edicionSeñaAbierta, setEdicionSeñaAbierta] = useState<string | null>(null)
+  const [fechaCorreccionSeña, setFechaCorreccionSeña] = useState(hoyStr)
   const { toast } = useToast()
   const operacionEnCurso = useRef(false)
   const [guardandoOperacion, setGuardandoOperacion] = useState(false)
@@ -937,14 +956,53 @@ useStore()
   )
   const totalPorPagarFiltrado = egresosProximosFiltrados.reduce((s, e) => s + e.monto, 0)
 
+  // Historial de servicios (seña + saldo) YA pagados, para completar la lista
+  // de "Por pagar" al final una vez que se agotan los pendientes en "Ver
+  // más". `incluirPagados=true` hace que calcularCajaEventos también genere
+  // estas entradas con su estadoPago real en lugar de omitirlas.
+  const dataConHistorialServicios = useMemo(
+    () => calcularCajaEventos(state, salonFiltro, ahora, true),
+    [state, salonFiltro, ahora],
+  )
+  // Solo servicios completamente pagados (seña Y saldo). Los parcialmente
+  // pagados (solo seña) ya se muestran correctamente en la lista de
+  // pendientes de arriba (agruparFilasPago recupera esa seña pagada en la
+  // misma fila del saldo pendiente); incluirlos aquí de nuevo duplicaría la fila.
+  const serviciosPagados = useMemo(
+    () =>
+      dataConHistorialServicios.egresosPendientes.filter(
+        (eg) => (eg.tipo === "seña" || eg.tipo === "saldo") && eg.estadoPago === "pagado_total",
+      ),
+    [dataConHistorialServicios],
+  )
+  const serviciosPagadosFiltrados = useMemo(
+    () => filtrarEgresos(serviciosPagados, filtroPagar),
+    [serviciosPagados, filtroPagar],
+  )
+  // Total combinado (pendientes + ya pagados) para la paginación de "Ver
+  // más" en la tabla plana de "Por pagar" (solo aplica con un salón elegido).
+  const totalFilasPagarCombinado = egresosProximosFiltrados.length + serviciosPagadosFiltrados.length
+  const etiquetaVerMasPagar = (actual: number) => {
+    const restantes = totalFilasPagarCombinado - actual
+    const restantesPendientes = Math.max(0, egresosProximosFiltrados.length - actual)
+    const restantesPagados = restantes - restantesPendientes
+    if (actual > LIMITE_FILAS + 10) return `Ver todo (${restantes} más)`
+    const siguientePaso = actual <= LIMITE_FILAS ? Math.min(10, restantes) : Math.min(15, restantes)
+    return restantesPendientes > 0
+      ? `Ver más (${siguientePaso} más de ${restantesPendientes} pendientes)`
+      : `Ver más (${siguientePaso} más de ${restantesPagados} servicios ya pagados)`
+  }
+
   // Marcar egreso de proveedor como pagado: registra la fecha de pago, actualiza
   // el estado del servicio y crea el movimiento de egreso real en Caja Eventos
   // (así el dashboard "por pagar" del mes se actualiza al instante).
-  const handleMarcarPagado = async (egreso: EgresoPendienteServicio) => {
+  const handleMarcarPagado = async (egreso: EgresoPendienteServicio, fechaPagoOverride?: string) => {
     const evento = state.eventos.find((e) => e.id === egreso.eventoId)
     if (!evento || !egresosPendientes.some((pendiente) => pendiente.id === egreso.id)) return false
-    const hoyISO = new Date().toISOString()
-    const fechaPago = hoyISO.split("T")[0]
+    // fechaPagoOverride permite cargar pagos atrasados/viejos con su fecha real
+    // en vez de la fecha de hoy (usado hoy solo para señas, desde renderCeldaPago).
+    const fechaPago = fechaPagoOverride || new Date().toISOString().split("T")[0]
+    const fechaISO = fechaPagoOverride ? new Date(`${fechaPagoOverride}T12:00:00`).toISOString() : new Date().toISOString()
     let guardarEstado: () => Promise<boolean>
 
     if (egreso.tipo === "menu") {
@@ -1006,7 +1064,7 @@ useStore()
 
     const movimiento: MovimientoCaja = {
       id: generateId(),
-      fecha: hoyISO,
+      fecha: fechaISO,
       tipo: "egreso",
       concepto: conceptoEgreso,
       monto: egreso.monto,
@@ -1018,9 +1076,41 @@ useStore()
     return await guardarOperacion(guardarEstado, [movimiento])
   }
 
+  // Corrige solo la fecha de una seña YA pagada (servicio.fechaPagoSeña y, si existe,
+  // la fecha del movimiento de egreso correspondiente), sin tocar montos ni crear un
+  // movimiento nuevo. Como no existe una API para editar un movimiento existente, se
+  // recrea el mismo movimiento (mismo id, monto y demás campos) solo con la fecha corregida.
+  const handleCorregirFechaPagoSeña = async (eventoId: string, servicioId: string, nuevaFecha: string) => {
+    const evento = state.eventos.find((e) => e.id === eventoId)
+    const servicio = evento?.servicios?.find((s) => s.servicioId === servicioId)
+    if (!evento || !servicio) return false
+
+    const nuevosServicios = (evento.servicios ?? []).map((s) =>
+      s.servicioId === servicioId ? { ...s, fechaPagoSeña: nuevaFecha } : s,
+    )
+    const conceptoEgreso = `Pago seña ${servicio.nombre} - ${evento.nombrePareja || evento.nombre || "Evento"}`
+    const movimiento = (state.movimientosCaja ?? []).find(
+      (m) => m.tipo === "egreso" && m.cajaDestino === "caja_eventos" && m.eventoId === eventoId && m.concepto === conceptoEgreso,
+    )
+
+    const ok = await updateEvento(eventoId, { servicios: nuevosServicios })
+    if (ok && movimiento) {
+      const nuevaFechaISO = new Date(`${nuevaFecha}T12:00:00`).toISOString()
+      await deleteMovimientoCaja(movimiento.id)
+      await addMovimientosCaja([{ ...movimiento, fecha: nuevaFechaISO }])
+    }
+    return ok
+  }
+
   // Confirma el pago desde el diálogo: ejecuta el marcado y muestra la animación de check.
   const confirmarMarcarPagado = async () => {
-    if (!pagoConfirmar || !await handleMarcarPagado(pagoConfirmar)) return
+    if (!pagoConfirmar) return
+    const fechaElegida = fechasPagoManual[pagoConfirmar.id]
+    if (!await handleMarcarPagado(pagoConfirmar, fechaElegida)) return
+    setFechasPagoManual((prev) => {
+      const { [pagoConfirmar.id]: _omitida, ...resto } = prev
+      return resto
+    })
     setPagoConfirmar(null)
     setPagoExito(true)
     setTimeout(() => setPagoExito(false), 1400)
@@ -1267,36 +1357,159 @@ useStore()
 
   // Celda clicable de Seña / Saldo restante: pendiente (roja, click para
   // pagar) o pagada (verde, muestra cuánto y cuándo se pagó).
-  const renderCeldaPago = (dato?: FilaPagoUnificada["seña"]) => {
+  // campo indica qué columna se está renderizando: solo la seña admite fecha manual
+  // (elegir/corregir/revertir); saldo, menú, barra y sueldo mantienen el comportamiento anterior.
+  const renderCeldaPago = (fila: FilaPagoUnificada, campo: "seña" | "saldo") => {
+    const dato = fila[campo]
     if (!dato) return <span className="text-xs text-muted-foreground">—</span>
+    const esSeña = campo === "seña"
+
     if (dato.pagado) {
+      if (!esSeña || !fila.servicioId) {
+        return (
+          <div className="inline-flex flex-col items-end gap-0.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1">
+            <span className="text-xs font-bold text-emerald-700">{formatCurrency(dato.monto)}</span>
+            {dato.fecha && <span className="text-[10px] text-emerald-600">{formatFecha(dato.fecha)}</span>}
+          </div>
+        )
+      }
+      const servicioId = fila.servicioId
       return (
-        <div className="inline-flex flex-col items-end gap-0.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1">
-          <span className="text-xs font-bold text-emerald-700">{formatCurrency(dato.monto)}</span>
-          {dato.fecha && <span className="text-[10px] text-emerald-600">{formatFecha(dato.fecha)}</span>}
-        </div>
+        <Popover
+          open={edicionSeñaAbierta === fila.key}
+          onOpenChange={(open) => {
+            setEdicionSeñaAbierta(open ? fila.key : null)
+            if (open) setFechaCorreccionSeña(dato.fecha ?? hoyStr)
+          }}
+        >
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              title="Corregir fecha o destildar el pago de la seña"
+              className="inline-flex flex-col items-end gap-0.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 transition-colors hover:bg-emerald-100"
+            >
+              <span className="text-xs font-bold text-emerald-700">{formatCurrency(dato.monto)}</span>
+              {dato.fecha && <span className="text-[10px] text-emerald-600">{formatFecha(dato.fecha)}</span>}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Corregir fecha de pago</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  max={hoyStr}
+                  value={fechaCorreccionSeña}
+                  onChange={(e) => setFechaCorreccionSeña(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <Button
+                  size="sm"
+                  className="h-8 shrink-0"
+                  disabled={guardandoOperacion || !fechaCorreccionSeña}
+                  onClick={async () => {
+                    if (await handleCorregirFechaPagoSeña(fila.eventoId, servicioId, fechaCorreccionSeña)) {
+                      setEdicionSeñaAbierta(null)
+                    }
+                  }}
+                >
+                  Guardar
+                </Button>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-red-600 hover:text-red-700"
+              disabled={guardandoOperacion}
+              onClick={() => {
+                setEdicionSeñaAbierta(null)
+                handleRevertirPago({
+                  id: `seña-${fila.eventoId}-${servicioId}`,
+                  eventoId: fila.eventoId,
+                  eventoNombre: fila.eventoNombre,
+                  tipoPago: "seña",
+                  servicioNombre: fila.servicioNombre,
+                  fecha: dato.fecha ?? hoyStr,
+                  concepto: `Pago seña ${fila.servicioNombre} - ${fila.eventoNombre}`,
+                  salon: fila.salon,
+                  monto: dato.monto,
+                })
+              }}
+            >
+              Destildar pago
+            </Button>
+          </PopoverContent>
+        </Popover>
       )
     }
+
+    if (!esSeña) {
+      return (
+        <button
+          type="button"
+          title="Marcar como pagado"
+          onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
+          className="inline-flex flex-col items-end gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-right transition-colors hover:bg-yellow-100"
+        >
+          <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
+        </button>
+      )
+    }
+
+    // Seña pendiente: permite elegir la fecha real de pago (para cargar pagos
+    // atrasados/viejos) antes de confirmar, en vez de usar siempre la fecha de hoy.
+    const egresoId = dato.egreso?.id
+    const fechaElegida = (egresoId && fechasPagoManual[egresoId]) || hoyStr
     return (
-      <button
-        type="button"
-        title="Marcar como pagado"
-        onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
-        className="inline-flex flex-col items-end gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-right transition-colors hover:bg-yellow-100"
-      >
-        <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
-      </button>
+      <div className="inline-flex flex-col items-end gap-1">
+        <input
+          type="date"
+          value={fechaElegida}
+          max={hoyStr}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => egresoId && setFechasPagoManual((prev) => ({ ...prev, [egresoId]: e.target.value }))}
+          className="h-6 rounded border border-yellow-300 bg-white px-1 text-[10px] text-yellow-800"
+        />
+        <button
+          type="button"
+          title="Marcar como pagado"
+          onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
+          className="inline-flex items-center gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 transition-colors hover:bg-yellow-100"
+        >
+          <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
+        </button>
+      </div>
     )
   }
 
-  const renderFilasPagar = (items: EgresoPendienteServicio[]) =>
+  // esHistorial: filas de servicios YA pagados (seña y saldo completos) que
+  // se muestran atenuadas al final de la lista, tras agotar los pendientes.
+  const renderFilasPagar = (items: EgresoPendienteServicio[], esHistorial = false) =>
     agruparFilasPago(items, state.eventos ?? []).map((fila) => (
-      <TableRow key={fila.key}>
+      <TableRow key={fila.key} className={esHistorial ? "bg-muted/40 text-muted-foreground" : undefined}>
         <TableCell className="pl-6 w-[180px] max-w-[180px]">
-          <Badge variant="outline" className={CATEGORIA_PAGO[fila.categoria].className}>
-            {CATEGORIA_PAGO[fila.categoria].label}
-          </Badge>
-          <p className="font-medium text-sm mt-1 whitespace-normal break-words">{fila.servicioNombre}</p>
+          <div className="flex items-center gap-1.5">
+            {esHistorial && (
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+            )}
+            <Badge
+              variant="outline"
+              className={
+                esHistorial
+                  ? "bg-muted text-muted-foreground border-border text-[11px]"
+                  : CATEGORIA_PAGO[fila.categoria].className
+              }
+            >
+              {CATEGORIA_PAGO[fila.categoria].label}
+            </Badge>
+          </div>
+          <p
+            className={`font-medium text-sm mt-1 whitespace-normal break-words ${esHistorial ? "text-muted-foreground" : ""}`}
+          >
+            {fila.servicioNombre}
+          </p>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">{formatFechaCarga(fila.eventoFechaCarga)}</TableCell>
         <TableCell className="text-sm text-muted-foreground">
@@ -1318,8 +1531,8 @@ useStore()
             <span className="text-muted-foreground">—</span>
           )}
         </TableCell>
-        <TableCell className="text-right">{renderCeldaPago(fila.seña)}</TableCell>
-        <TableCell className="text-right">{renderCeldaPago(fila.saldo)}</TableCell>
+        <TableCell className="text-right">{renderCeldaPago(fila, "seña")}</TableCell>
+        <TableCell className="text-right">{renderCeldaPago(fila, "saldo")}</TableCell>
         <TableCell className="text-right pr-4 w-10">
           {fila.eventoId ? (
             <DropdownMenu>
@@ -1917,11 +2130,11 @@ useStore()
                   }}
                 />
               )}
-              {egresosProximos.length === 0 ? (
+              {egresosProximos.length === 0 && serviciosPagados.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos a proveedores pendientes.
                 </p>
-              ) : egresosProximosFiltrados.length === 0 ? (
+              ) : egresosProximosFiltrados.length === 0 && serviciosPagadosFiltrados.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos pendientes que coincidan con el filtro.
                 </p>
@@ -2016,20 +2229,29 @@ useStore()
                       <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>{renderFilasPagar(egresosProximosFiltrados.slice(0, filasPagar))}</TableBody>
+                  <TableBody>
+                    {renderFilasPagar(egresosProximosFiltrados.slice(0, filasPagar))}
+                    {renderFilasPagar(
+                      serviciosPagadosFiltrados.slice(
+                        0,
+                        Math.max(0, filasPagar - egresosProximosFiltrados.length),
+                      ),
+                      true,
+                    )}
+                  </TableBody>
                 </Table>
               )}
-              {salonFiltro !== "todos" && egresosProximosFiltrados.length > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && totalFilasPagarCombinado > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
-                  {filasPagar < egresosProximosFiltrados.length ? (
+                  {filasPagar < totalFilasPagarCombinado ? (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setFilasPagar(siguientePasoPagar(egresosProximosFiltrados.length))}
+                      onClick={() => setFilasPagar(siguientePasoPagar(totalFilasPagarCombinado))}
                       className="w-full text-xs text-muted-foreground hover:text-foreground"
                     >
                       <ChevronDown className="h-3.5 w-3.5 mr-1" />
-                      {etiquetaVerMas(filasPagar, egresosProximosFiltrados.length)}
+                      {etiquetaVerMasPagar(filasPagar)}
                     </Button>
                   ) : (
                     <Button
@@ -2465,7 +2687,14 @@ useStore()
             </DialogTitle>
             <DialogDescription>
               {pagoConfirmar
-                ? `¿Estás seguro que querés marcar como pagado "${pagoConfirmar.servicioNombre}" por ${formatCurrency(pagoConfirmar.monto)}? Esta acción registra el egreso en Caja Eventos.`
+                ? (() => {
+                    const fechaElegida = fechasPagoManual[pagoConfirmar.id]
+                    const conFecha =
+                      fechaElegida && fechaElegida !== hoyStr
+                        ? ` con fecha ${formatFecha(fechaElegida)}`
+                        : ""
+                    return `¿Estás seguro que querés marcar como pagado "${pagoConfirmar.servicioNombre}" por ${formatCurrency(pagoConfirmar.monto)}${conFecha}? Esta acción registra el egreso en Caja Eventos.`
+                  })()
                 : ""}
             </DialogDescription>
           </DialogHeader>
