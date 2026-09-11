@@ -627,7 +627,7 @@ function PagosPageContent() {
   // evento, respetando los tildes actuales de IPC/mora. Devuelve null cuando
   // no hay cuota pendiente o cuando el cálculo automático quedó bloqueado
   // (base ambigua sin resolver a mano).
-  const construirProximoCobro = (evento: EventoGuardado) => {
+  const construirProximoCobro = (evento: EventoGuardado, baseManualOverride?: number | null) => {
     const calendarioCuotas = generarCalendarioCuotas(evento)
     const proximaCuota = calendarioCuotas.find((c) => !c.pagada)
     if (!proximaCuota || !proximaCuota.fechaVencimiento) return null
@@ -639,8 +639,11 @@ function PagosPageContent() {
     const fechaVenc = new Date(proximaCuota.fechaVencimiento + "T00:00:00")
     const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
     const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
+    // baseManualOverride se usa cuando se pasa explícitamente (incluso null), para
+    // no dejar que la base corregida a mano de una cuota anterior se le pegue a esta.
+    const baseManualAUsar = baseManualOverride !== undefined ? baseManualOverride : baseManualCobro
     const resuelto = ajustaPorIPC
-      ? resolverCalculoCobro(evento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
+      ? resolverCalculoCobro(evento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualAUsar ?? undefined })
       : { calculo: null }
     const calculoCobro = "calculo" in resuelto ? resuelto.calculo : null
     const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
@@ -654,7 +657,9 @@ function PagosPageContent() {
   // un evento. Se usa tanto desde el botón "Registrar este pago" como, en modo
   // histórico, para reabrir automáticamente con la cuota siguiente al guardar.
   const abrirCobroPara = (evento: EventoGuardado) => {
-    const datos = construirProximoCobro(evento)
+    // Se fuerza el cálculo automático limpio (baseManualOverride: null) para que
+    // la base corregida a mano en una cuota anterior no se le pegue a esta.
+    const datos = construirProximoCobro(evento, null)
     if (!datos) return false
     const { proximaCuota, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso } = datos
     const ipcAcumulado = calculoCobro && !calculoCobro.ipcOmitido ? calculoCobro.porcentaje : 0
@@ -663,6 +668,7 @@ function PagosPageContent() {
     setMontoCuotaBase(cuotaNeta)
     setDiasAtrasoPago(diasAtraso)
     setEditandoBaseCobro(false)
+    setBaseManualCobro(null)
     const notaBase = esPagoUnico
       ? "Pago único (pago completo)"
       : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
@@ -2089,6 +2095,41 @@ function PagosPageContent() {
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 leading-relaxed">
                     Elegí la fecha real en que se cobró esta cuota, no la de hoy.
                   </p>
+                )}
+                {modoHistorico && (
+                  historialIPC.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No hay ningún IPC cargado todavía en Finanzas &gt; IPC.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {[...historialIPC]
+                        .sort((a, b) => (a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes))
+                        .map((entry) => {
+                          const fechaActual = pagoForm.fecha ? new Date(pagoForm.fecha + "T00:00:00") : null
+                          const esActivo =
+                            !!fechaActual && fechaActual.getMonth() === entry.mes && fechaActual.getFullYear() === entry.anio
+                          return (
+                            <button
+                              key={entry.id ?? `${entry.mes}-${entry.anio}`}
+                              type="button"
+                              onClick={() => {
+                                const dia15 = new Date(entry.anio, entry.mes, 15)
+                                const fechaISO = `${dia15.getFullYear()}-${String(dia15.getMonth() + 1).padStart(2, "0")}-15`
+                                recalcularCobro({ fecha: fechaISO })
+                              }}
+                              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                esActivo
+                                  ? "border-amber-400 bg-amber-200 text-amber-900"
+                                  : "border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
+                              }`}
+                            >
+                              {MESES_RECIBO[entry.mes]} {entry.anio} · {entry.porcentaje}%
+                            </button>
+                          )
+                        })}
+                    </div>
+                  )
                 )}
                 {/* Fecha */}
                 <div className="grid gap-1">
