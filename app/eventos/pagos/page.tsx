@@ -23,6 +23,7 @@ import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
 import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numerosPagados, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
 import { SalonDot } from "@/components/salon-badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -492,6 +493,13 @@ function PagosPageContent() {
   // pendiente, la base elegida a mano (null = usar la sugerida).
   const [aplicarIPCCobro, setAplicarIPCCobro] = useState(true)
   const [baseManualCobro, setBaseManualCobro] = useState<number | null>(null)
+  // Modo para cargar deuda vieja: cuotas que vencieron en el pasado y nunca se
+  // asentaron. La mora se omite por defecto (no tiene sentido cobrar recargo
+  // por atraso al cargar algo que ya pasó) y, al guardar, se reabre el
+  // formulario con la cuota siguiente para encadenar la carga.
+  const [modoHistorico, setModoHistorico] = useState(false)
+  const [mostrarDetalleCalculo, setMostrarDetalleCalculo] = useState(false)
+  const [pasoPago, setPasoPago] = useState<1 | 2 | 3>(1)
   const [pagoForm, setPagoForm] = useState({
     monto: 0,
     fecha: fechaNegocio(),
@@ -502,10 +510,16 @@ function PagosPageContent() {
     montoRecibido: 0,
     recibidoPor: "",
   })
+  // Recargo fijo por cada día de atraso desde el vencimiento de la cuota. Es un
+  // pago extraordinario que va por separado del IPC: no se acumula ni
+  // capitaliza mes a mes, solo se suma una vez al total.
+  const RECARGO_POR_DIA_ATRASO = 3000
 
-  // Al cambiar de evento, el recargo por atraso vuelve a aplicarse por defecto
+  // Al cambiar de evento, el recargo por atraso y el modo histórico vuelven al estado por defecto
   useEffect(() => {
     setRecargoAtrasoOmitido(false)
+    setModoHistorico(false)
+    setMostrarDetalleCalculo(false)
   }, [selectedEvento?.id])
 
   // Cuotas config (solo lectura — se edita desde Contratos)
@@ -598,7 +612,68 @@ function PagosPageContent() {
     setAplicarIPCCobro(true)
     setBaseManualCobro(null)
     setRecargoAtrasoOmitido(false)
+    setModoHistorico(false)
+    setMostrarDetalleCalculo(false)
     cargarPlanDesdeEvento(ev)
+  }
+
+  // Calcula cuánto correspondería cobrar por la próxima cuota pendiente de un
+  // evento, respetando los tildes actuales de IPC/mora. Devuelve null cuando
+  // no hay cuota pendiente o cuando el cálculo automático quedó bloqueado
+  // (base ambigua sin resolver a mano).
+  const construirProximoCobro = (evento: EventoGuardado) => {
+    const calendarioCuotas = generarCalendarioCuotas(evento)
+    const proximaCuota = calendarioCuotas.find((c) => !c.pagada)
+    if (!proximaCuota || !proximaCuota.fechaVencimiento) return null
+    const resultadoIPC = calcularIPCPeriodo(evento, historialIPC)
+    const ajustaPorIPC = aplicaIPC(evento)
+    const esPagoUnico = evento.planDeCuotas?.modalidadPago === "completo"
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+    const fechaVenc = new Date(proximaCuota.fechaVencimiento + "T00:00:00")
+    const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
+    const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
+    const resuelto = ajustaPorIPC
+      ? resolverCalculoCobro(evento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
+      : { calculo: null }
+    const calculoCobro = "calculo" in resuelto ? resuelto.calculo : null
+    const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
+    const totalSimulado = cuotaNeta + recargoAtraso
+    const puedeCobrar = !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
+    if (!puedeCobrar) return null
+    return { proximaCuota, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso }
+  }
+
+  // Prepara y abre el formulario de cobro para la próxima cuota pendiente de
+  // un evento. Se usa tanto desde el botón "Registrar este pago" como, en modo
+  // histórico, para reabrir automáticamente con la cuota siguiente al guardar.
+  const abrirCobroPara = (evento: EventoGuardado) => {
+    const datos = construirProximoCobro(evento)
+    if (!datos) return false
+    const { proximaCuota, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso } = datos
+    const ipcAcumulado = calculoCobro && !calculoCobro.ipcOmitido ? calculoCobro.porcentaje : 0
+    numeroPagoRef.current = proximaCuota.numeroCuota
+    setMoraPago(recargoAtraso)
+    setMontoCuotaBase(cuotaNeta)
+    const notaBase = esPagoUnico
+      ? "Pago único (pago completo)"
+      : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
+    setPagoForm({
+      monto: totalSimulado,
+      fecha: fechaNegocio(),
+      pagadoPor: "",
+      dni: selectedEvento?.dniNovio1 || "",
+      porcentajeIPC: ipcAcumulado,
+      notas:
+        recargoAtraso > 0
+          ? `${notaBase} + recargo por atraso ${formatCurrency(recargoAtraso)} (${diasAtraso} ${diasAtraso === 1 ? "día" : "días"} x ${formatCurrency(RECARGO_POR_DIA_ATRASO)})`
+          : notaBase,
+      montoRecibido: 0,
+      recibidoPor: "",
+    })
+    setPasoPago(1)
+    setShowPagoDialog(true)
+    return true
   }
 
   const handleAddPago = async () => {
@@ -763,18 +838,30 @@ function PagosPageContent() {
       }),
     }).catch(() => {})
 
-    setMontoCuotaBase(0)
-    setPagoForm({
-      monto: 0,
-      fecha: fechaNegocio(),
-      pagadoPor: "",
-      dni: "",
-      porcentajeIPC: 0,
-      notas: "",
-      montoRecibido: 0,
-      recibidoPor: "",
-    })
-    setShowPagoDialog(false)
+    // En modo histórico, en vez de cerrar, se reabre directo con la cuota
+    // siguiente para encadenar la carga de meses atrasados sin recuotearse.
+    const evolucionado: EventoGuardado = {
+      ...selectedEvento,
+      pagos: updatedPagos,
+      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
+    }
+    const siguienteAbierto = modoHistorico && abrirCobroPara(evolucionado)
+    if (siguienteAbierto) {
+      toast({ title: "Pago cargado", description: "Se abrió la cuota siguiente para seguir cargando." })
+    } else {
+      setMontoCuotaBase(0)
+      setPagoForm({
+        monto: 0,
+        fecha: fechaNegocio(),
+        pagadoPor: "",
+        dni: "",
+        porcentajeIPC: 0,
+        notas: "",
+        montoRecibido: 0,
+        recibidoPor: "",
+      })
+      setShowPagoDialog(false)
+    }
     } finally {
       guardandoPagoRef.current = false
       setGuardandoPago(false)
@@ -1530,10 +1617,6 @@ function PagosPageContent() {
               const esPagoUnico = freshEvento.planDeCuotas?.modalidadPago === "completo"
 
               if (proximaCuota && proximaCuota.fechaVencimiento) {
-                // Recargo por atraso: $3.000 fijos por cada día de atraso.
-                // Es un pago extraordinario que va POR SEPARADO del IPC:
-                // no se acumula ni capitaliza mes a mes, solo se suma al total.
-                const RECARGO_POR_DIA_ATRASO = 3000
                 const hoy = new Date()
                 hoy.setHours(0, 0, 0, 0)
                 const fechaVenc = new Date(proximaCuota.fechaVencimiento + "T00:00:00")
@@ -1553,14 +1636,49 @@ function PagosPageContent() {
                 const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
                 const totalSimulado = cuotaNeta + recargoAtraso
                 const puedeCobrar = !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
+                const detalleAbierto = mostrarDetalleCalculo || esManual || !!errorCobro
 
                 return (
                   <Card className="border-2 border-primary/30 bg-primary/5">
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Clock className="h-5 w-5 text-primary" />
-                        {esPagoUnico ? "Pago único" : "Proximo Pago"}
-                      </CardTitle>
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Clock className="h-5 w-5 text-primary" />
+                          {esPagoUnico ? "Pago único" : "Proximo Pago"}
+                        </CardTitle>
+                        {!esPagoUnico && (
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={modoHistorico}
+                            onClick={() => {
+                              setModoHistorico((v) => !v)
+                              setRecargoAtrasoOmitido(!modoHistorico)
+                            }}
+                            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                              modoHistorico
+                                ? "border-amber-300 bg-amber-100 text-amber-800"
+                                : "border-border text-muted-foreground hover:bg-muted"
+                            }`}
+                          >
+                            <span
+                              className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${modoHistorico ? "bg-amber-500" : "bg-muted-foreground/30"}`}
+                            >
+                              <span
+                                className={`absolute top-0.5 h-3 w-3 rounded-full bg-background shadow transition-transform ${modoHistorico ? "translate-x-3.5" : "translate-x-0.5"}`}
+                              />
+                            </span>
+                            {modoHistorico ? "Cargando pagos atrasados" : "Cargar pago atrasado"}
+                          </button>
+                        )}
+                      </div>
+                      {modoHistorico && (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mt-2 leading-relaxed">
+                          Elegí la fecha real en que se cobró cada cuota (no la de hoy). Cargalas en orden, de la más
+                          vieja a la más nueva: el sistema calcula cada una en base a la anterior. Si este evento solo
+                          tiene una seña grande registrada, no la cargues acá — empezá directo por la Cuota 1.
+                        </p>
+                      )}
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center justify-between">
@@ -1619,29 +1737,7 @@ function PagosPageContent() {
                             size="sm"
                             className="mt-2"
                             disabled={!puedeCobrar}
-                            onClick={() => {
-                              const ipcAcumulado = calculoCobro && !calculoCobro.ipcOmitido ? calculoCobro.porcentaje : 0
-                              numeroPagoRef.current = proximaCuota.numeroCuota
-                              setMoraPago(recargoAtraso)
-                              setMontoCuotaBase(cuotaNeta)
-                              const notaBase = esPagoUnico
-                                ? "Pago único (pago completo)"
-                                : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
-                              setPagoForm({
-                                monto: totalSimulado,
-                                fecha: fechaNegocio(),
-                                pagadoPor: "",
-                                dni: selectedEvento?.dniNovio1 || "",
-                                porcentajeIPC: ipcAcumulado,
-                                notas:
-                                  recargoAtraso > 0
-                                    ? `${notaBase} + recargo por atraso ${formatCurrency(recargoAtraso)} (${diasAtraso} ${diasAtraso === 1 ? "día" : "días"} x ${formatCurrency(RECARGO_POR_DIA_ATRASO)})`
-                                    : notaBase,
-                                montoRecibido: 0,
-                                recibidoPor: "",
-                              })
-                              setShowPagoDialog(true)
-                            }}
+                            onClick={() => abrirCobroPara(freshEvento)}
                           >
                             <Plus className="h-4 w-4 mr-1" /> {esPagoUnico ? "Registrar pago" : "Registrar este pago"}
                           </Button>
@@ -1649,72 +1745,97 @@ function PagosPageContent() {
                       </div>
 
                       {ajustaPorIPC && (
-                        <fieldset className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-background p-4 text-sm">
-                          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Qué se cobra</legend>
-                          {esManual && (
-                            <div className="grid gap-1">
-                              <Label htmlFor="base-manual-cobro" className="text-xs">Base de la cuota (sin mora)</Label>
-                              <MoneyInput
-                                id="base-manual-cobro"
-                                value={baseMostrada}
-                                onValueChange={(valor) => setBaseManualCobro(valor > 0 ? valor : null)}
-                                className="h-9 font-mono"
-                              />
-                              <p className="text-[11px] leading-tight text-muted-foreground">
-                                {sugerencia?.origen === "pago" ? "Sugerida desde el último pago registrado." : "Sugerida desde la cuota original del plan."} Podés corregirla.
-                              </p>
-                            </div>
-                          )}
-                          <label className="flex cursor-pointer items-start gap-3">
-                            <Checkbox
-                              checked={aplicarIPCCobro}
-                              onCheckedChange={(v) => setAplicarIPCCobro(v === true)}
-                              aria-label="Aplicar el IPC del mes"
-                              className="mt-0.5"
-                            />
-                            <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                              <span>
-                                Aplicar IPC del mes
-                                {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
-                                {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
-                              </span>
-                              <span className="font-mono font-semibold">
-                                {porcentajeMes != null && baseMostrada > 0
-                                  ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
-                                  : resultadoIPC.estado === "listo" ? formatCurrency(resultadoIPC.calculo.monto) : "—"}
-                              </span>
-                            </span>
-                          </label>
-                          <label className="flex cursor-pointer items-start gap-3">
-                            <Checkbox
-                              checked={!recargoAtrasoOmitido}
-                              disabled={diasAtraso === 0}
-                              onCheckedChange={(v) => setRecargoAtrasoOmitido(v !== true)}
-                              aria-label="Aplicar mora por atraso"
-                              className="mt-0.5"
-                            />
-                            <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
-                              <span>
-                                Aplicar mora
-                                <span className="text-muted-foreground"> ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
-                              </span>
-                              <span className="font-mono font-semibold">{formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}</span>
-                            </span>
-                          </label>
-                          {errorCobro && <p role="alert" className="text-xs font-medium text-destructive">{errorCobro}</p>}
-                        </fieldset>
-                      )}
+                        <Collapsible open={detalleAbierto} onOpenChange={setMostrarDetalleCalculo} className="mt-4">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground"
+                            >
+                              <span>{detalleAbierto ? "Ocultar detalle del cálculo" : "Ver detalle del cálculo"}</span>
+                              <span aria-hidden="true">{detalleAbierto ? "−" : "+"}</span>
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="space-y-3">
+                            <fieldset className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-background p-4 text-sm">
+                              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Qué se cobra</legend>
+                              {esManual && (
+                                <div className="grid gap-1">
+                                  <Label htmlFor="base-manual-cobro" className="text-xs">Base de la cuota (sin mora)</Label>
+                                  <MoneyInput
+                                    id="base-manual-cobro"
+                                    value={baseMostrada}
+                                    onValueChange={(valor) => setBaseManualCobro(valor > 0 ? valor : null)}
+                                    className="h-9 font-mono"
+                                  />
+                                  <p className="text-[11px] leading-tight text-muted-foreground">
+                                    {sugerencia?.origen === "pago" ? "Sugerida desde el último pago registrado." : "Sugerida desde la cuota original del plan."} Podés corregirla.
+                                  </p>
+                                </div>
+                              )}
+                              <label className="flex cursor-pointer items-start gap-3">
+                                <Checkbox
+                                  checked={aplicarIPCCobro}
+                                  onCheckedChange={(v) => setAplicarIPCCobro(v === true)}
+                                  aria-label="Aplicar el IPC del mes"
+                                  className="mt-0.5"
+                                />
+                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
+                                  <span>
+                                    Aplicar IPC del mes
+                                    {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                                    {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                                  </span>
+                                  <span className="font-mono font-semibold">
+                                    {porcentajeMes != null && baseMostrada > 0
+                                      ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
+                                      : resultadoIPC.estado === "listo" ? formatCurrency(resultadoIPC.calculo.monto) : "—"}
+                                  </span>
+                                </span>
+                              </label>
+                              <label className="flex cursor-pointer items-start gap-3">
+                                <Checkbox
+                                  checked={!recargoAtrasoOmitido}
+                                  disabled={diasAtraso === 0}
+                                  onCheckedChange={(v) => setRecargoAtrasoOmitido(v !== true)}
+                                  aria-label="Aplicar mora por atraso"
+                                  className="mt-0.5"
+                                />
+                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2">
+                                  <span>
+                                    Aplicar mora
+                                    <span className="text-muted-foreground"> ({diasAtraso} {diasAtraso === 1 ? "día" : "días"} × {formatCurrency(RECARGO_POR_DIA_ATRASO)})</span>
+                                  </span>
+                                  <span className="font-mono font-semibold">{formatCurrency(diasAtraso * RECARGO_POR_DIA_ATRASO)}</span>
+                                </span>
+                              </label>
+                              {errorCobro && <p role="alert" className="text-xs font-medium text-destructive">{errorCobro}</p>}
+                            </fieldset>
 
-                      {/* Nota: costo simulado (desglose de cómo se llega al total) */}
-                      <DesgloseIPCPago
-                        resultado={resultadoIPC}
-                        montoCuota={proximaCuota.monto}
-                        diasAtraso={diasAtraso}
-                        recargoPorDia={RECARGO_POR_DIA_ATRASO}
-                        recargoOmitido={recargoAtrasoOmitido}
-                        manual={esManual ? calculoCobro : null}
-                        aplicarIPC={aplicarIPCCobro}
-                      />
+                            {/* Nota: costo simulado (desglose de cómo se llega al total) */}
+                            <DesgloseIPCPago
+                              resultado={resultadoIPC}
+                              montoCuota={proximaCuota.monto}
+                              diasAtraso={diasAtraso}
+                              recargoPorDia={RECARGO_POR_DIA_ATRASO}
+                              recargoOmitido={recargoAtrasoOmitido}
+                              manual={esManual ? calculoCobro : null}
+                              aplicarIPC={aplicarIPCCobro}
+                            />
+
+                            {cuotaNeta > 0 && proximaCuota.numeroCuota < calendarioCuotas.length && (
+                              <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                                <span className="font-semibold text-foreground">Estimado para el mes que viene:</span>{" "}
+                                si el IPC se mantiene en {porcentajeMes != null ? `${porcentajeMes.toLocaleString("es-AR")}%` : "el valor de este mes"},
+                                la cuota {proximaCuota.numeroCuota + 1} rondaría{" "}
+                                <span className="font-mono font-semibold text-foreground">
+                                  {formatCurrency(Math.round(cuotaNeta * (1 + (porcentajeMes ?? 0) / 100)))}
+                                </span>
+                                . Es solo una referencia: el valor real depende del IPC que se publique ese mes.
+                              </p>
+                            )}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
                     </CardContent>
                   </Card>
                 )
@@ -1890,157 +2011,209 @@ function PagosPageContent() {
       </main>
 
       {/* Payment Registration Dialog */}
-      <Dialog open={showPagoDialog} onOpenChange={setShowPagoDialog}>
+      <Dialog
+        open={showPagoDialog}
+        onOpenChange={(open) => {
+          setShowPagoDialog(open)
+          if (!open) setPasoPago(1)
+        }}
+      >
         <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0">
           <DialogHeader className="px-5 pt-5 pb-2">
-            <DialogTitle className="text-base">Registrar Pago</DialogTitle>
+            <DialogTitle className="text-base">
+              {modoHistorico ? "Registrar pago histórico" : "Registrar Pago"}
+            </DialogTitle>
             <DialogDescription className="text-xs">
               {selectedEvento?.nombre || selectedEvento?.tipoEvento || "Este evento"}
             </DialogDescription>
+            <div className="flex items-center gap-1.5 pt-2">
+              {[1, 2, 3].map((n) => (
+                <span
+                  key={n}
+                  className={`h-1.5 flex-1 rounded-full transition-colors ${n <= pasoPago ? "bg-primary" : "bg-muted"}`}
+                />
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground pt-1">
+              Paso {pasoPago} de 3 — {pasoPago === 1 ? "Cuándo y cuánto" : pasoPago === 2 ? "Quién paga y quién recibe" : "Monto entregado"}
+            </p>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-5 pb-2">
-            <div className="grid gap-3">
-              {/* Fecha */}
-              <div className="grid gap-1">
-                <Label className="text-xs">Fecha de cobro</Label>
-                <Input
-                  type="date"
-                  value={pagoForm.fecha}
-                  onChange={(e) => {
-                      const fecha = e.target.value
-                      const resuelto = selectedEvento && aplicaIPC(selectedEvento)
-                        ? resolverCalculoCobro(selectedEvento, historialIPC, fecha, { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
-                        : null
-                      if (resuelto && "calculo" in resuelto && resuelto.calculo) {
-                        const { calculo } = resuelto
-                        setMontoCuotaBase(calculo.monto)
-                        setPagoForm({ ...pagoForm, fecha, monto: calculo.monto + moraPago, porcentajeIPC: calculo.ipcOmitido ? 0 : calculo.porcentaje })
-                      } else {
-                        setPagoForm({ ...pagoForm, fecha })
-                        if (resuelto && "error" in resuelto) toast({ title: "IPC pendiente", description: resuelto.error, variant: "destructive" })
-                      }
-                    }}
-                  className="h-9"
-                />
-                <p className="text-[11px] text-muted-foreground leading-tight">
-                  El ingreso se registra en las cajas con esta fecha. Para cuotas atrasadas, elegí el mes real en que se cobró.
-                </p>
-              </div>
-
-              {/* Total a pagar (el IPC ya se aplica automáticamente al monto de la cuota) */}
-              {montoCuotaBase > 0 && (
-                <div className="rounded-md border border-border bg-muted/50 px-3 py-2 flex items-center justify-between text-xs">
-                  <span className="font-semibold">Total a pagar</span>
-                  <span className="font-mono font-bold text-sm text-primary">
-                    {formatCurrency(pagoForm.monto)}
-                  </span>
-                </div>
-              )}
-
-              {/* Monto final */}
-              <div className="grid gap-1">
-                <Label className="text-xs">Monto Final ($)</Label>
-                <MoneyInput
-                    value={pagoForm.monto}
-                    disabled={selectedEvento ? aplicaIPC(selectedEvento) : false}
-                    onValueChange={(monto) => setPagoForm({ ...pagoForm, monto })}
-                  placeholder="0"
-                  className="h-10 text-base font-semibold"
-                />
-              </div>
-
-              {/* Pagado por + DNI */}
-              <div className="grid grid-cols-2 gap-3">
+            {pasoPago === 1 && (
+              <div className="grid gap-3">
+                {modoHistorico && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 leading-relaxed">
+                    Elegí la fecha real en que se cobró esta cuota, no la de hoy.
+                  </p>
+                )}
+                {/* Fecha */}
                 <div className="grid gap-1">
-                  <Label className="text-xs">Pagado por</Label>
+                  <Label className="text-xs">Fecha de cobro</Label>
                   <Input
-                    value={pagoForm.pagadoPor}
-                    onChange={(e) => setPagoForm({ ...pagoForm, pagadoPor: e.target.value })}
-                    placeholder="Nombre de quien paga"
+                    type="date"
+                    value={pagoForm.fecha}
+                    onChange={(e) => {
+                        const fecha = e.target.value
+                        const resuelto = selectedEvento && aplicaIPC(selectedEvento)
+                          ? resolverCalculoCobro(selectedEvento, historialIPC, fecha, { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
+                          : null
+                        if (resuelto && "calculo" in resuelto && resuelto.calculo) {
+                          const { calculo } = resuelto
+                          setMontoCuotaBase(calculo.monto)
+                          setPagoForm({ ...pagoForm, fecha, monto: calculo.monto + moraPago, porcentajeIPC: calculo.ipcOmitido ? 0 : calculo.porcentaje })
+                        } else {
+                          setPagoForm({ ...pagoForm, fecha })
+                          if (resuelto && "error" in resuelto) toast({ title: "IPC pendiente", description: resuelto.error, variant: "destructive" })
+                        }
+                      }}
                     className="h-9"
                   />
+                  <p className="text-[11px] text-muted-foreground leading-tight">
+                    El ingreso se registra en las cajas con esta fecha. Para cuotas atrasadas, elegí el mes real en que se cobró.
+                  </p>
                 </div>
-                <div className="grid gap-1">
-                  <Label className="text-xs">D.N.I.</Label>
-                  <Input
-                    value={pagoForm.dni}
-                    onChange={(e) => setPagoForm({ ...pagoForm, dni: e.target.value })}
-                    placeholder="DNI de quien paga"
-                    inputMode="numeric"
-                    className="h-9"
-                  />
-                </div>
-              </div>
 
-              {/* Quién registra/recibe el pago (obligatorio) */}
-              <div className="grid gap-1">
-                <Label className="text-xs">
-                  {"¿Quién registra el pago?"} <span className="text-red-600">*</span>
-                </Label>
-                <Input
-                  value={pagoForm.recibidoPor}
-                  onChange={(e) => setPagoForm({ ...pagoForm, recibidoPor: e.target.value })}
-                  placeholder="Nombre de quien recibe el pago"
-                  className={`h-9 ${!pagoForm.recibidoPor.trim() ? "border-red-300" : ""}`}
-                />
-                <p className="text-[11px] text-muted-foreground leading-tight">
-                  Obligatorio: queda asentado en el registro de actividad y en el comprobante.
-                </p>
-              </div>
-
-              {/* Notas */}
-              <div className="grid gap-1">
-                <Label className="text-xs">Notas (opcional)</Label>
-                <Input
-                  value={pagoForm.notas}
-                  onChange={(e) => setPagoForm({ ...pagoForm, notas: e.target.value })}
-                  placeholder="Observaciones..."
-                  className="h-9"
-                />
-              </div>
-
-              {/* Monto Recibido y Vuelto */}
-              <div className="rounded-md border border-dashed border-border px-3 py-2.5 space-y-2">
-                <div className="grid gap-1">
-                  <Label className="text-xs text-muted-foreground font-semibold">Monto que entrega el cliente ($)</Label>
-                  <MoneyInput
-                    value={pagoForm.montoRecibido}
-                    onValueChange={(montoRecibido) => setPagoForm({ ...pagoForm, montoRecibido })}
-                    placeholder="Ej: 100.000"
-                    className="h-10 text-base"
-                  />
-                </div>
-                {pagoForm.montoRecibido > 0 && pagoForm.monto > 0 && (
-                  <div className={`rounded-md px-3 py-2 text-center ${
-                    pagoForm.montoRecibido >= pagoForm.monto
-                      ? "bg-emerald-50 border border-emerald-200"
-                      : "bg-red-50 border border-red-200"
-                  }`}>
-                    {pagoForm.montoRecibido >= pagoForm.monto ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Vuelto</span>
-                        <span className="text-xl font-bold text-emerald-700">
-                          {formatCurrency(Math.round((pagoForm.montoRecibido - pagoForm.monto) * 100) / 100)}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-red-600 font-medium">Faltan</span>
-                        <span className="text-base font-bold text-red-700">
-                          {formatCurrency(Math.round((pagoForm.monto - pagoForm.montoRecibido) * 100) / 100)}
-                        </span>
-                      </div>
-                    )}
+                {/* Total a pagar (el IPC ya se aplica automáticamente al monto de la cuota) */}
+                {montoCuotaBase > 0 && (
+                  <div className="rounded-md border border-border bg-muted/50 px-3 py-2 flex items-center justify-between text-xs">
+                    <span className="font-semibold">Total a pagar</span>
+                    <span className="font-mono font-bold text-sm text-primary">
+                      {formatCurrency(pagoForm.monto)}
+                    </span>
                   </div>
                 )}
+
+                {/* Monto final */}
+                <div className="grid gap-1">
+                  <Label className="text-xs">Monto Final ($)</Label>
+                  <MoneyInput
+                      value={pagoForm.monto}
+                      disabled={selectedEvento ? aplicaIPC(selectedEvento) : false}
+                      onValueChange={(monto) => setPagoForm({ ...pagoForm, monto })}
+                    placeholder="0"
+                    className="h-10 text-base font-semibold"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {pasoPago === 2 && (
+              <div className="grid gap-3">
+                {/* Pagado por + DNI */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1">
+                    <Label className="text-xs">Pagado por</Label>
+                    <Input
+                      value={pagoForm.pagadoPor}
+                      onChange={(e) => setPagoForm({ ...pagoForm, pagadoPor: e.target.value })}
+                      placeholder="Nombre de quien paga"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-xs">D.N.I.</Label>
+                    <Input
+                      value={pagoForm.dni}
+                      onChange={(e) => setPagoForm({ ...pagoForm, dni: e.target.value })}
+                      placeholder="DNI de quien paga"
+                      inputMode="numeric"
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+
+                {/* Quién registra/recibe el pago (obligatorio) */}
+                <div className="grid gap-1">
+                  <Label className="text-xs">
+                    {"¿Quién registra el pago?"} <span className="text-red-600">*</span>
+                  </Label>
+                  <Input
+                    value={pagoForm.recibidoPor}
+                    onChange={(e) => setPagoForm({ ...pagoForm, recibidoPor: e.target.value })}
+                    placeholder="Nombre de quien recibe el pago"
+                    className={`h-9 ${!pagoForm.recibidoPor.trim() ? "border-red-300" : ""}`}
+                  />
+                  <p className="text-[11px] text-muted-foreground leading-tight">
+                    Obligatorio: queda asentado en el registro de actividad y en el comprobante.
+                  </p>
+                </div>
+
+                {/* Notas */}
+                <div className="grid gap-1">
+                  <Label className="text-xs">Notas (opcional)</Label>
+                  <Input
+                    value={pagoForm.notas}
+                    onChange={(e) => setPagoForm({ ...pagoForm, notas: e.target.value })}
+                    placeholder="Observaciones..."
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            )}
+
+            {pasoPago === 3 && (
+              <div className="grid gap-3">
+                <div className="rounded-md border border-border bg-muted/50 px-3 py-2 flex items-center justify-between text-xs">
+                  <span className="font-semibold">Total a pagar</span>
+                  <span className="font-mono font-bold text-sm text-primary">{formatCurrency(pagoForm.monto)}</span>
+                </div>
+                {/* Monto Recibido y Vuelto */}
+                <div className="rounded-md border border-dashed border-border px-3 py-2.5 space-y-2">
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground font-semibold">Monto que entrega el cliente ($)</Label>
+                    <MoneyInput
+                      value={pagoForm.montoRecibido}
+                      onValueChange={(montoRecibido) => setPagoForm({ ...pagoForm, montoRecibido })}
+                      placeholder="Ej: 100.000"
+                      className="h-10 text-base"
+                    />
+                  </div>
+                  {pagoForm.montoRecibido > 0 && pagoForm.monto > 0 && (
+                    <div className={`rounded-md px-3 py-2 text-center ${
+                      pagoForm.montoRecibido >= pagoForm.monto
+                        ? "bg-emerald-50 border border-emerald-200"
+                        : "bg-red-50 border border-red-200"
+                    }`}>
+                      {pagoForm.montoRecibido >= pagoForm.monto ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Vuelto</span>
+                          <span className="text-xl font-bold text-emerald-700">
+                            {formatCurrency(Math.round((pagoForm.montoRecibido - pagoForm.monto) * 100) / 100)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-red-600 font-medium">Faltan</span>
+                          <span className="text-base font-bold text-red-700">
+                            {formatCurrency(Math.round((pagoForm.monto - pagoForm.montoRecibido) * 100) / 100)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-          <DialogFooter className="px-5 pb-4 pt-2 border-t border-border">
-            <Button variant="outline" size="sm" onClick={() => setShowPagoDialog(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
-              Registrar {formatCurrency(pagoForm.monto)}
-            </Button>
+          <DialogFooter className="px-5 pb-4 pt-2 border-t border-border flex items-center justify-between gap-2 sm:justify-between">
+            {pasoPago === 1 ? (
+              <Button variant="outline" size="sm" onClick={() => setShowPagoDialog(false)}>Cancelar</Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setPasoPago((p) => (p - 1) as 1 | 2 | 3)}>Atrás</Button>
+            )}
+            {pasoPago < 3 ? (
+              <Button
+                size="sm"
+                onClick={() => setPasoPago((p) => (p + 1) as 1 | 2 | 3)}
+                disabled={pasoPago === 1 ? pagoForm.monto <= 0 : !pagoForm.pagadoPor.trim() || !pagoForm.recibidoPor.trim()}
+              >
+                Siguiente
+              </Button>
+            ) : (
+              <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
+                Registrar {formatCurrency(pagoForm.monto)}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
