@@ -173,6 +173,16 @@ export function resolverCalculoCobro(
   if (resultado.estado === "no_aplica") return { calculo: null }
   if (resultado.estado === "listo") {
     const calculo = resultado.calculo
+    // Quien cobra puede corregir la base a mano (ej. un descuento puntual) antes
+    // de aplicar el IPC y la mora, incluso cuando el cálculo automático está listo.
+    if (opciones.baseManual != null && Number.isFinite(opciones.baseManual) && opciones.baseManual > 0 && opciones.baseManual !== calculo.base) {
+      const base = opciones.baseManual
+      return { calculo: {
+        version: "ultima-cuota-v1", periodo: calculo.periodo, base, origen: "manual", porcentaje: calculo.porcentaje,
+        monto: opciones.aplicarIPC ? Math.round(base * (1 + calculo.porcentaje / 100)) : base,
+        aplicadoEsteMes: false, ipcOmitido: !opciones.aplicarIPC,
+      } }
+    }
     return { calculo: opciones.aplicarIPC ? calculo : { ...calculo, monto: calculo.base, ipcOmitido: true } }
   }
   const sugerencia = sugerirBaseManual(evento, historial, fecha)
