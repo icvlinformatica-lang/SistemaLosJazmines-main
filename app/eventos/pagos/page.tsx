@@ -23,6 +23,7 @@ import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
 import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numerosPagados, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
 import { SalonDot } from "@/components/salon-badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1685,29 +1686,23 @@ function PagosPageContent() {
                           {esPagoUnico ? "Pago único" : "Proximo Pago"}
                         </CardTitle>
                         {!esPagoUnico && (
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={modoHistorico}
-                            onClick={() => {
-                              setModoHistorico((v) => !v)
-                              setRecargoAtrasoOmitido(!modoHistorico)
-                            }}
-                            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                          <label
+                            className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                               modoHistorico
                                 ? "border-amber-300 bg-amber-100 text-amber-800"
                                 : "border-border text-muted-foreground hover:bg-muted"
                             }`}
                           >
-                            <span
-                              className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${modoHistorico ? "bg-amber-500" : "bg-muted-foreground/30"}`}
-                            >
-                              <span
-                                className={`absolute top-0.5 h-3 w-3 rounded-full bg-background shadow transition-transform ${modoHistorico ? "translate-x-3.5" : "translate-x-0.5"}`}
-                              />
-                            </span>
+                            <Switch
+                              checked={modoHistorico}
+                              onCheckedChange={(checked) => {
+                                setModoHistorico(checked)
+                                setRecargoAtrasoOmitido(!checked)
+                              }}
+                              className="data-[state=checked]:bg-amber-500 data-[state=unchecked]:bg-muted-foreground/30"
+                            />
                             {modoHistorico ? "Cargando pagos atrasados" : "Cargar pago atrasado"}
-                          </button>
+                          </label>
                         )}
                       </div>
                       {modoHistorico && (
