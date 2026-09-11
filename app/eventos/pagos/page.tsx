@@ -499,6 +499,12 @@ function PagosPageContent() {
   // pendiente, la base elegida a mano (null = usar la sugerida).
   const [aplicarIPCCobro, setAplicarIPCCobro] = useState(true)
   const [baseManualCobro, setBaseManualCobro] = useState<number | null>(null)
+  // Mes ("YYYY-MM") que le corresponde cronológicamente a la cuota que se está
+  // cobrando, según su fechaVencimiento. Se usa en modo histórico para avisar
+  // si se tilda un IPC de un mes distinto al esperado (rompe el orden del cálculo).
+  const [mesEsperadoPago, setMesEsperadoPago] = useState<string | null>(null)
+  // Confirmación explícita de que se quiere usar un mes de IPC fuera de orden.
+  const [confirmoSaltoMes, setConfirmoSaltoMes] = useState(false)
   // Modo para cargar deuda vieja: cuotas que vencieron en el pasado y nunca se
   // asentaron. La mora se omite por defecto (no tiene sentido cobrar recargo
   // por atraso al cargar algo que ya pasó) y, al guardar, se reabre el
@@ -546,6 +552,12 @@ function PagosPageContent() {
     cargarPlanDesdeEvento(fresh)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventos])
+
+  // En modo histórico, ¿el mes de IPC tildado no es el que le corresponde
+  // cronológicamente a esta cuota? Si es así, hay que confirmar el riesgo
+  // antes de poder avanzar (rompe el orden del cálculo de las cuotas siguientes).
+  const saltaOrden =
+    modoHistorico && aplicarIPCCobro && mesEsperadoPago != null && pagoForm.fecha.slice(0, 7) !== mesEsperadoPago
 
   // ¿Hay una búsqueda activa según el modo?
   const hayBusquedaActiva =
@@ -669,6 +681,8 @@ function PagosPageContent() {
     setDiasAtrasoPago(diasAtraso)
     setEditandoBaseCobro(false)
     setBaseManualCobro(null)
+    setMesEsperadoPago(proximaCuota.fechaVencimiento.slice(0, 7))
+    setConfirmoSaltoMes(false)
     const notaBase = esPagoUnico
       ? "Pago único (pago completo)"
       : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
@@ -707,6 +721,7 @@ function PagosPageContent() {
     const error = "error" in resuelto ? resuelto.error : null
     const cuotaNeta = calculo ? calculo.monto : ajusta ? 0 : montoCuotaBase
     const nuevaMora = recargoOmitidoNuevo ? 0 : diasAtrasoPago * RECARGO_POR_DIA_ATRASO
+    if (cambios.fecha !== undefined) setConfirmoSaltoMes(false)
     setAplicarIPCCobro(aplicarIPCNuevo)
     setRecargoAtrasoOmitido(recargoOmitidoNuevo)
     setBaseManualCobro(baseManualNuevo)
@@ -2160,10 +2175,14 @@ function PagosPageContent() {
                             !!fechaActual && fechaActual.getMonth() === entry.mes && fechaActual.getFullYear() === entry.anio
                           const marcado = esMesActivo && aplicarIPCCobro
                           const montoEsteMes = baseActual > 0 ? Math.round(baseActual * (1 + entry.porcentaje / 100)) : null
+                          const periodoEntry = `${entry.anio}-${String(entry.mes + 1).padStart(2, "0")}`
+                          const esElEsperado = mesEsperadoPago === periodoEntry
                           return (
                             <label
                               key={entry.id ?? `${entry.mes}-${entry.anio}`}
-                              className="flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-3 py-2"
+                              className={`flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 ${
+                                esElEsperado ? "border-emerald-400 bg-emerald-50" : "border-border/60"
+                              }`}
                             >
                               <Checkbox
                                 checked={marcado}
@@ -2182,6 +2201,11 @@ function PagosPageContent() {
                                 <span className="truncate">
                                   {MESES_RECIBO[entry.mes]} {entry.anio}
                                   <span className="text-muted-foreground"> ({entry.porcentaje}%)</span>
+                                  {esElEsperado && (
+                                    <span className="ml-1.5 rounded-full bg-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                      Corresponde
+                                    </span>
+                                  )}
                                 </span>
                                 <span className="shrink-0 font-mono font-semibold">
                                   {esMesActivo && montoConIPC != null
@@ -2228,6 +2252,28 @@ function PagosPageContent() {
                         <span className="shrink-0 font-mono font-semibold">{formatCurrency(diasAtrasoPago * RECARGO_POR_DIA_ATRASO)}</span>
                       </span>
                     </label>
+                    {saltaOrden && (
+                      <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 space-y-2">
+                        <p className="leading-relaxed">
+                          El mes elegido no es el que corresponde cronológicamente a esta cuota
+                          {mesEsperadoPago && (
+                            <>
+                              {" "}(correspondería {MESES_RECIBO[Number(mesEsperadoPago.slice(5, 7)) - 1]}{" "}
+                              {mesEsperadoPago.slice(0, 4)})
+                            </>
+                          )}
+                          . Usar un mes distinto altera el orden del cálculo de IPC para las cuotas siguientes.
+                        </p>
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <Checkbox
+                            checked={confirmoSaltoMes}
+                            onCheckedChange={(v) => setConfirmoSaltoMes(v === true)}
+                            aria-label="Entiendo el riesgo y quiero usar este mes igual"
+                          />
+                          <span>Entiendo el riesgo y quiero usar este mes igual</span>
+                        </label>
+                      </div>
+                    )}
                   </fieldset>
                 ) : (
                   <div className="grid gap-1">
@@ -2352,7 +2398,11 @@ function PagosPageContent() {
               <Button
                 size="sm"
                 onClick={() => setPasoPago((p) => (p + 1) as 1 | 2 | 3)}
-                disabled={pasoPago === 1 ? pagoForm.monto <= 0 : !pagoForm.pagadoPor.trim() || !pagoForm.recibidoPor.trim()}
+                disabled={
+                  pasoPago === 1
+                    ? pagoForm.monto <= 0 || (saltaOrden && !confirmoSaltoMes)
+                    : !pagoForm.pagadoPor.trim() || !pagoForm.recibidoPor.trim()
+                }
               >
                 Siguiente
               </Button>
