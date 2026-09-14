@@ -291,6 +291,8 @@ export default function EventosListaPage() {
   const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
   const [finalizandoId, setFinalizandoId] = useState<string | null>(null)
   const [finalizadoAnimacion, setFinalizadoAnimacion] = useState<string | null>(null)
+  const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false)
+  const [eventoAFinalizarId, setEventoAFinalizarId] = useState<string | null>(null)
 
   const handleFinalizar = async (eventoId: string) => {
     setFinalizandoId(eventoId)
@@ -299,6 +301,20 @@ export default function EventosListaPage() {
     setFinalizadoAnimacion(eventoId)
     // Mostrar animacion 2.5s luego ocultar la fila
     setTimeout(() => setFinalizadoAnimacion(null), 2500)
+  }
+
+  // Pedimos confirmacion antes de finalizar: un click accidental archivaria
+  // el evento y lo sacaria de la lista sin aviso.
+  const handleFinalizarClick = (eventoId: string) => {
+    setEventoAFinalizarId(eventoId)
+    setFinalizarDialogOpen(true)
+  }
+
+  const confirmFinalizar = () => {
+    if (!eventoAFinalizarId) return
+    setFinalizarDialogOpen(false)
+    handleFinalizar(eventoAFinalizarId)
+    setEventoAFinalizarId(null)
   }
 
   // Buscador de eventos en el selector de salón: encuentra por nombre o fecha
@@ -1292,7 +1308,7 @@ export default function EventosListaPage() {
                                 className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-700 scale-110" : "text-emerald-700/60 hover:text-emerald-800 hover:bg-emerald-50"}`}
                                 title="Marcar como finalizado"
                                 disabled={estaFinalizando}
-                                onClick={() => handleFinalizar(evento.id)}
+                                onClick={() => handleFinalizarClick(evento.id)}
                               >
                                 {estaAnimando ? (
                                   <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
@@ -1330,6 +1346,27 @@ export default function EventosListaPage() {
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               Si, Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Finalizar Dialog */}
+      <AlertDialog open={finalizarDialogOpen} onOpenChange={setFinalizarDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Seguro que querés finalizar este evento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Va a desaparecer de esta lista e irá al archivo de eventos completados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmFinalizar}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              Sí, finalizar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
