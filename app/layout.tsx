@@ -1,5 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
+// Prueba de flujo: GitHub -> Pull Request -> Merge -> Deploy en Vercel
 import { Geist, Geist_Mono } from "next/font/google"
 import { UIProvider } from "@/lib/ui-context"
 import { ProfileProvider } from "@/lib/profile-context"
