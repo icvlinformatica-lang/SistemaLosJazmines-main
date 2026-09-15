@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { calcularComprasBarras, calcularComprasSegmentadas, calcularMontoPersonalDelEvento, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
 import { calcularProporcionCajaEventos } from "../cobrar-cuota"
+import { estadoDeCuota, saldoRestanteCuota } from "../estado-cuotas"
 
 // ============================================================
 // Tipos de salida
@@ -25,8 +26,14 @@ export interface IngresoPendiente {
   totalCuotas: number
   fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
-  monto: number // parte proporcional de la cuota que va a Caja Eventos (costo + 5%)
-  montoTotal: number // cuota completa
+  monto: number // parte proporcional del SALDO pendiente que va a Caja Eventos (costo + 5%)
+  montoTotal: number // cuota completa (oficial, no el saldo)
+  /** Estado de la cuota: pendiente (nunca cobrada) o parcial (con pagos, pero sin completar). */
+  estado: "pendiente" | "parcial"
+  /** Saldo total (sin prorratear entre cajas) que falta cobrar de esta cuota. */
+  saldoRestante: number
+  /** true cuando el saldo de una cuota parcial se dejó "aparte": se lista separado del resto. */
+  esAparte: boolean
   contacto: ClienteContacto
   esEstaSemana: boolean
   esVencida: boolean // fecha de vencimiento ya pasó (debería haberse cobrado)
@@ -182,6 +189,11 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
         if (cuotasPagadasArr.includes(cuota.numero)) continue
         if (!cuota.fechaVencimiento) continue
 
+        const estadoCuota = estadoDeCuota(cuota)
+        if (estadoCuota === "pagada") continue
+        const saldoRestante = saldoRestanteCuota(cuota)
+        if (saldoRestante <= 0) continue
+
         const fechaVenc = parseLocalDate(cuota.fechaVencimiento)
         const diasRestantes = Math.ceil(
           (fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
@@ -201,8 +213,12 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
           totalCuotas: plan.numeroCuotas,
           fechaVencimiento: cuota.fechaVencimiento,
           diasRestantes,
-          monto: cuota.montoCuota * proporcionEventos,
+          // Muestra el SALDO restante (no la cuota completa) prorrateado entre cajas.
+          monto: saldoRestante * proporcionEventos,
           montoTotal: cuota.montoCuota,
+          estado: estadoCuota,
+          saldoRestante,
+          esAparte: cuota.saldoDecision === "aparte",
           contacto,
           esEstaSemana,
           esVencida,

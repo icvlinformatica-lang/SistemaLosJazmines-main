@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import type { AppState, CostoOperativo, MovimientoCaja, RegistroMonto } from "../store"
 import { salonLabel, calcularCostoServiciosContratados, PORCENTAJE_COMISION_VENDEDOR } from "../store"
 import { calcularProporcionCajaEventos } from "../cobrar-cuota"
+import { saldoRestanteCuota } from "../estado-cuotas"
 
 // ============================================================
 // Tipos de salida
@@ -468,10 +469,14 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         if (cuota.pagada) continue
         if (cuotasPagadasArr.includes(cuota.numero)) continue
         if (!cuota.fechaVencimiento) continue
+        // Con pagos parciales, lo que falta cobrar es el SALDO restante, no
+        // la cuota completa.
+        const saldoRestante = saldoRestanteCuota(cuota)
+        if (saldoRestante <= 0) continue
 
         const fechaVenc = parseLocalDate(cuota.fechaVencimiento)
         if (fechaVenc >= hoy && fechaVenc <= en30Dias) {
-          ingresosProyectados30Dias += cuota.montoCuota * propJazmines
+          ingresosProyectados30Dias += saldoRestante * propJazmines
         }
 
         cuotasPorCobrar.push({
@@ -484,7 +489,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           fechaVencimiento: cuota.fechaVencimiento,
           diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
           montoCuota: cuota.montoCuota,
-          montoJazmines: cuota.montoCuota * propJazmines,
+          montoJazmines: saldoRestante * propJazmines,
         })
       }
     }

@@ -5,7 +5,7 @@ import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
-import { aplicaIPC, numerosPagados, type EventoIPC } from "@/lib/ipc-cuotas"
+import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -160,33 +160,60 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (updates.planDeCuotas) {
         if (Array.isArray(updates.pagos)) {
           const anulados = (actual.pagos ?? []).filter(p => !updates.pagos.some((nuevo: any) => nuevo.id === p.id))
-          if (anulados.length) updates.planDeCuotas.pagosAnulados = [
-            ...(actual.planDeCuotas?.pagosAnulados ?? []), ...anulados.map(p => ({ ...p, anuladoAt: new Date().toISOString() })),
-          ]
+          if (anulados.length) {
+            updates.planDeCuotas.pagosAnulados = [
+              ...(actual.planDeCuotas?.pagosAnulados ?? []), ...anulados.map(p => ({ ...p, anuladoAt: new Date().toISOString() })),
+            ]
+            // Recalcular, por cuota afectada, el acumulado a partir de los
+            // pagos que REALMENTE quedan (fuente de verdad): anular uno de
+            // varios pagos parciales solo resta esa parte, no borra el
+            // historial de los demás pagos de la misma cuota.
+            const numerosAfectados = new Set(
+              anulados.map(p => numeroCuotaPago(p)).filter((n): n is number => Number.isInteger(n) && n! > 0),
+            )
+            updates.planDeCuotas.cuotas = updates.planDeCuotas.cuotas?.map((c: any) => {
+              if (!numerosAfectados.has(c.numero)) return c
+              const pagosRestantes = updates.pagos.filter((p: any) => numeroCuotaPago(p) === c.numero)
+              if (!pagosRestantes.length) {
+                // No queda ningún pago contra esta cuota: se libera del todo, incluida su cifra oficial.
+                const { fechaPagoReal, montoPagadoNeto, calculoIPC, saldoDecision, recargoSaldo, ...resto } = c
+                return { ...resto, pagada: false, estado: "pendiente" }
+              }
+              const acumulado = Math.round(pagosRestantes.reduce((s: number, p: any) => s + (p.montoCuotaNeto ?? 0), 0) * 100) / 100
+              const pagada = acumulado >= c.montoCuota - 0.01
+              return {
+                ...c, montoPagadoNeto: acumulado, pagada, estado: pagada ? "pagada" : "parcial",
+                ...(pagada ? { saldoDecision: undefined, recargoSaldo: undefined } : {}),
+              }
+            })
+            updates.planDeCuotas.cuotasPagadas = (updates.planDeCuotas.cuotasPagadas ?? actual.planDeCuotas?.cuotasPagadas ?? [])
+              .filter((n: number) => !numerosAfectados.has(n) || updates.planDeCuotas.cuotas?.find((c: any) => c.numero === n)?.pagada)
+          }
         }
         delete updates.planDeCuotas.ipcVigente
-        // Al anular, limpiar ambas marcas y el neto que ya no es un pago vigente.
-        const pagadas = updates.planDeCuotas.cuotasPagadas ?? []
-        updates.planDeCuotas.cuotas = updates.planDeCuotas.cuotas?.map((c: any) => {
-          if (numerosPagados(actual).includes(c.numero) && !pagadas.includes(c.numero)) {
-            const { fechaPagoReal, montoPagadoNeto, calculoIPC, ...resto } = c
-            return { ...resto, pagada: false }
-          }
-          return c
-        })
       }
     }
 
-    const nuevasCuotas = numerosPagados({ ...actual, ...updates }).filter(n => !numerosPagados(actual).includes(n))
-    if (aplicaIPC(actual) && nuevasCuotas.length && movimientosCobro === undefined) {
+    // Cuota(s) tocadas por pagos NUEVOS en esta operación (cubre tanto una
+    // cuota que recién recibe su primer pago como una cuota ya "parcial" que
+    // recibe otro pago). Si no hay pagos nuevos (ej. el botón rápido de Caja
+    // Eventos, que marca una cuota cobrada sin pasar por pagos[]), se cae al
+    // criterio anterior basado en planDeCuotas.
+    const pagosNuevosGlobal = Array.isArray(updates.pagos) ? updates.pagos.filter((p: any) => !(actual.pagos ?? []).some(a => a.id === p.id)) : []
+    const cuotasDesdePagos = [...new Set(
+      pagosNuevosGlobal.map((p: any) => numeroCuotaPago(p)).filter((n: unknown): n is number => Number.isInteger(n) && (n as number) > 0),
+    )]
+    const cuotasDesdePlan = numerosPagados({ ...actual, ...updates }).filter(n => !numerosPagados(actual).includes(n))
+    const cuotasTocadas = cuotasDesdePagos.length ? cuotasDesdePagos : cuotasDesdePlan
+    if (aplicaIPC(actual) && cuotasTocadas.length && movimientosCobro === undefined) {
       return NextResponse.json({ error: "La cuota y sus movimientos deben confirmarse juntos." }, { status: 400 })
     }
     if (movimientosCobro !== undefined) {
-      const pagosNuevos = (updates.pagos ?? []).filter((p: any) => !(actual.pagos ?? []).some(a => a.id === p.id))
-      const cuota = updates.planDeCuotas?.cuotas?.find((c: any) => c.numero === nuevasCuotas[0])
+      const pagosNuevos = pagosNuevosGlobal
+      const cuota = updates.planDeCuotas?.cuotas?.find((c: any) => c.numero === cuotasTocadas[0])
       const total = pagosNuevos.length === 1 ? pagosNuevos[0].monto : cuota?.montoPagadoNeto
       const valido = Array.isArray(movimientosCobro) && movimientosCobro.length > 0 && movimientosCobro.length <= 2 &&
-        nuevasCuotas.length === 1 && Number.isFinite(total) && total > 0 && typeof operacionCobro === "string" && operacionCobro.length <= 200 &&
+        cuotasTocadas.length === 1 && Number.isFinite(total) && total > 0 && typeof operacionCobro === "string" && operacionCobro.length <= 200 &&
         new Set(movimientosCobro.map((m: any) => m.cajaDestino)).size === movimientosCobro.length &&
         movimientosCobro.every((m: any) => typeof m.id === "string" && m.id.length > 0 && m.id.length <= 80 &&
           m.eventoId === id && m.salon === original.salon && m.tipo === "ingreso" &&
