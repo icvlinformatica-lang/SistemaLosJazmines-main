@@ -1,4 +1,5 @@
 import type { EventoGuardado, HistorialIPCEntry, PagoEvento } from "./store"
+import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota } from "./estado-cuotas"
 
 export type EventoIPC = Pick<EventoGuardado, "planDeCuotas" | "pagos"> & { estado?: string }
 export interface CalculoIPC {
@@ -96,19 +97,31 @@ export function calcularIPCPeriodo(
   if (pagos.some(p => !numeroCuotaPago(p) && !/^(seña|sena|extra|pago único)/i.test(p.notas ?? ""))) {
     return pendiente("Hay pagos sin cuota identificada. Revisá su importe neto antes de recalcular.")
   }
-  const acreditados: Array<{ numero: number; fecha: string; neto: number; id?: string; ipc?: CalculoIPC }> = []
+  // Cadena de bases mes a mes. Con pagos parciales, una cuota puede tener
+  // varios pagos: la base para la cuota SIGUIENTE es siempre la cifra
+  // OFICIAL ya fijada de esta cuota (cuota.montoCuota), nunca la suma de lo
+  // efectivamente acreditado. Por eso "neto" acá viene de montoCuota, no de
+  // netoHistorico(pago) — ese último solo sirve de resguardo para datos
+  // viejos sin detalle de cuotas[] (antes de esta regla existir).
+  const acreditados: Array<{ numero: number; fecha: string; neto: number; ipc?: CalculoIPC }> = []
   for (const numero of numerosPagados(evento)) {
     const cuota = plan.cuotas?.find(c => c.numero === numero)
-    const candidatos = pagos.filter(p => numeroCuotaPago(p) === numero)
-    if (candidatos.length > 1) return pendiente(`La cuota ${numero} tiene más de un pago asociado. Revisá su base neta.`)
-    const pago = candidatos[0]
-    const fechaReal = fechaValida(pago?.fecha ?? cuota?.fechaPagoReal)
-    const neto = pago ? netoHistorico(pago) : cuota?.montoPagadoNeto
-    if (!fechaReal || !Number.isFinite(neto) || neto! <= 0) return pendiente(`Falta acreditar el importe sin mora o la fecha real de la cuota ${numero}. No se modifican las pendientes.`)
-    if (fechaReal > dia) return pendiente("Hay pagos posteriores a la fecha elegida. Revisá la fecha antes de cobrar.")
-    acreditados.push({ numero, fecha: fechaReal, neto: neto!, id: pago?.id, ipc: pago?.calculoIPC ?? cuota?.calculoIPC })
+    const pagosCuota = pagos
+      .filter(p => numeroCuotaPago(p) === numero)
+      .map(p => ({ pago: p, fecha: fechaValida(p.fecha) }))
+      .filter((p): p is { pago: PagoEvento; fecha: string } => !!p.fecha)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    // El primer pago cronológico es el que fija la base oficial de la cuota.
+    const primerPago = pagosCuota[0]?.pago
+    const fechaFijacion = fechaValida(primerPago?.fecha ?? cuota?.fechaPagoReal)
+    const neto = cuota?.montoCuota ?? (primerPago ? netoHistorico(primerPago) : cuota?.montoPagadoNeto)
+    if (!fechaFijacion || !Number.isFinite(neto) || neto! <= 0) return pendiente(`Falta acreditar el importe sin mora o la fecha real de la cuota ${numero}. No se modifican las pendientes.`)
+    // Ningún pago acreditado contra esta cuota puede ser posterior a la fecha elegida.
+    const fechaMasNueva = pagosCuota.at(-1)?.fecha ?? fechaFijacion
+    if (fechaMasNueva > dia) return pendiente("Hay pagos posteriores a la fecha elegida. Revisá la fecha antes de cobrar.")
+    acreditados.push({ numero, fecha: fechaFijacion, neto: neto!, ipc: primerPago?.calculoIPC ?? cuota?.calculoIPC })
   }
-  acreditados.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero || (a.id ?? "").localeCompare(b.id ?? ""))
+  acreditados.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero)
   const delMes = acreditados.filter(p => p.fecha.slice(0, 7) === periodo)
   const primeroDelMes = delMes[0]
   if (primeroDelMes) {
@@ -116,7 +129,10 @@ export function calcularIPCPeriodo(
     if (!foto || foto.version !== "ultima-cuota-v1" || foto.periodo !== periodo) {
       return pendiente("Hay una cuota cobrada este mes sin base mensual auditada. Confirmá esa base antes de aplicar la nueva regla.")
     }
-    if (foto.origen === "pago" && !acreditados.some(p => foto.pagoOrigenId ? p.id === foto.pagoOrigenId : p.numero === foto.cuotaOrigen)) {
+    // No se audita por id de pago puntual (una cuota puede tener varios
+    // pagos parciales): alcanza con que la cuota que originó la base siga
+    // teniendo al menos un pago acreditado.
+    if (foto.origen === "pago" && !acreditados.some(p => p.numero === foto.cuotaOrigen)) {
       return pendiente("La base mensual depende de un pago anulado. Revisá la base antes de cobrar otra cuota.")
     }
     if (!Number.isFinite(foto.base) || foto.base <= 0) return pendiente("La base mensual guardada no es válida.")
@@ -127,7 +143,7 @@ export function calcularIPCPeriodo(
   if (!Number.isFinite(base) || base <= 0) return pendiente("La cuota base original del plan no está disponible.")
   return { estado: "listo", calculo: {
     version: "ultima-cuota-v1", periodo, base, origen: ultima ? "pago" : "plan",
-    pagoOrigenId: ultima?.id, cuotaOrigen: ultima?.numero, porcentaje,
+    cuotaOrigen: ultima?.numero, porcentaje,
     monto: Math.round(base * (1 + porcentaje / 100)), aplicadoEsteMes: false,
   } }
 }
@@ -197,6 +213,20 @@ export function resolverCalculoCobro(
     monto: opciones.aplicarIPC ? Math.round(base! * (1 + porcentaje / 100)) : base!,
     aplicadoEsteMes: false, ipcOmitido: !opciones.aplicarIPC,
   } }
+}
+
+/** Cuánto falta para completar una cuota puntual del plan (0 si no existe o ya está paga). */
+export function saldoDeCuota(evento: EventoIPC, numero: number): number {
+  const cuota = evento.planDeCuotas?.cuotas?.find(c => c.numero === numero)
+  if (!cuota) return 0
+  return saldoRestanteCuota(cuota)
+}
+
+/** Estado (pendiente/parcial/pagada) de una cuota puntual del plan. */
+export function estadoCuotaPlan(evento: EventoIPC, numero: number): EstadoCuota {
+  const cuota = evento.planDeCuotas?.cuotas?.find(c => c.numero === numero)
+  if (!cuota) return "pendiente"
+  return estadoDeCuota(cuota)
 }
 
 /** Proyección de lectura: no guarda, no cambia cobros ni inventa importes cuando falta evidencia. */

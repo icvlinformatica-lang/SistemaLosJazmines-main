@@ -1331,6 +1331,11 @@ useStore()
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {ing.numeroCuota}/{ing.totalCuotas}
+          {ing.estado === "parcial" && (
+            <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${ing.esAparte ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
+              {ing.esAparte ? "aparte" : "parcial"}
+            </span>
+          )}
         </TableCell>
         <TableCell>
           <button
@@ -2498,6 +2503,13 @@ useStore()
 
               {/* Marcar como ya cobrada (para eventos viejos) */}
               <div className="border-t border-border pt-3 space-y-3">
+                {clienteSel.estado === "parcial" ? (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 leading-relaxed">
+                    Esta cuota ya tiene pagos parciales registrados (saldo {formatCurrency(clienteSel.saldoRestante)}).
+                    Completala desde el perfil del evento (Cobrar cuota), no desde acá.
+                  </p>
+                ) : (
+                  <>
                 <label className="flex items-start gap-2.5 cursor-pointer">
                   <Checkbox
                     checked={marcarCobrada}
@@ -2519,6 +2531,8 @@ useStore()
                   <CheckCircle2 className="h-4 w-4" />
                   Confirmar cobro
                 </Button>
+                  </>
+                )}
               </div>
             </div>
           )}

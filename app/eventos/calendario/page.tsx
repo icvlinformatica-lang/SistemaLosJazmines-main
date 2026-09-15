@@ -583,65 +583,17 @@ export default function CalendarioPage() {
   }
 
   // --- Payment handlers ---
+  // Registrar y anular pagos de cuotas (con o sin IPC) vive todo en "Cobrar
+  // cuota" (perfil del evento): ahí está la lógica de saldo, pagos parciales
+  // y reparto entre cajas. Esta pantalla solo redirige.
   const handleAddPago = () => {
-    if (!selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor) return
-    if (selectedEvento.planDeCuotas?.ajustaPorIPC === true) {
-      router.push(`/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`)
-      return
-    }
-    const newPago: PagoEvento = {
-      id: generateId(),
-      monto: pagoForm.monto,
-      fecha: pagoForm.fecha,
-      pagadoPor: pagoForm.pagadoPor,
-      porcentajeIPC: pagoForm.porcentajeIPC,
-      notas: pagoForm.notas || undefined,
-    }
-    const currentPagos = selectedEvento.pagos || []
-    const updatedPagos = [...currentPagos, newPago]
-    updateEvento(selectedEvento.id, { pagos: updatedPagos })
-    setSelectedEvento({ ...selectedEvento, pagos: updatedPagos })
-    setPagoForm({
-      monto: 0,
-      fecha: new Date().toISOString().split("T")[0],
-      pagadoPor: "",
-      porcentajeIPC: 0,
-      notas: "",
-    })
-    setShowPagoDialog(false)
+    if (!selectedEvento) return
+    router.push(`/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`)
   }
 
-  const handleDeletePago = (pagoId: string) => {
+  const handleDeletePago = (_pagoId: string) => {
     if (!selectedEvento) return
-    if (selectedEvento.planDeCuotas?.ajustaPorIPC === true) {
-      router.push(`/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`)
-      return
-    }
-    const pago = (selectedEvento.pagos || []).find((p) => p.id === pagoId)
-    const updatedPagos = (selectedEvento.pagos || []).filter((p) => p.id !== pagoId)
-
-    // Desmarcar la cuota correspondiente para que vuelva a figurar como impaga
-    // (misma lógica que la página de pagos; un "Pago único" equivale a la cuota 1).
-    const matchCuota = /Cuota\s+(\d+)/i.exec(pago?.notas || "")
-    const esPagoUnicoNota = /pago\s+(único|unico|completo)/i.test(pago?.notas || "")
-    const numeroCuota = matchCuota ? parseInt(matchCuota[1], 10) : esPagoUnicoNota ? 1 : null
-    let updatedPlanDeCuotas = selectedEvento.planDeCuotas
-    if (updatedPlanDeCuotas && numeroCuota) {
-      updatedPlanDeCuotas = {
-        ...updatedPlanDeCuotas,
-        cuotasPagadas: (updatedPlanDeCuotas.cuotasPagadas || []).filter((n) => n !== numeroCuota),
-      }
-    }
-
-    updateEvento(selectedEvento.id, {
-      pagos: updatedPagos,
-      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
-    })
-    setSelectedEvento({
-      ...selectedEvento,
-      pagos: updatedPagos,
-      ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
-    })
+    router.push(`/eventos/pagos?evento=${encodeURIComponent(selectedEvento.id)}`)
   }
 
   // --- Calendar Grid (Month) ---

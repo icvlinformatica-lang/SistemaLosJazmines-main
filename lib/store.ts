@@ -1,6 +1,7 @@
 "use client"
 
 import { fechaNegocio, proyectarIPC } from "./ipc-cuotas"
+import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota, type DecisionSaldoCuota, type RecargoSaldoCuota } from "./estado-cuotas"
 
 // Data Store for Los Jazmines Catering System
 // Uses localStorage for persistence
@@ -224,8 +225,25 @@ export interface Evento {
       fechaVencimiento?: string
       pagada?: boolean
       fechaPagoReal?: string
+      /**
+       * Neto ACUMULADO hasta ahora contra esta cuota (suma de los pagos
+       * vigentes con este número de cuota, sin mora). Antes de pagos
+       * parciales este valor coincidía siempre con el neto del único pago
+       * que la completaba; con pagos parciales puede ser menor a montoCuota.
+       */
       montoPagadoNeto?: number
       calculoIPC?: import("./ipc-cuotas").CalculoIPC
+      /** Estado derivado (pendiente/parcial/pagada). Ver lib/estado-cuotas.ts. */
+      estado?: import("./estado-cuotas").EstadoCuota
+      /**
+       * Qué se decidió sobre el saldo que quedó sin cobrar cuando la cuota
+       * quedó "parcial": se suma a la cuota siguiente (acumular) o se cobra
+       * aparte, sin mezclarse con la cuota que viene (aparte). Se puede
+       * cambiar mientras la cuota siga sin completarse.
+       */
+      saldoDecision?: import("./estado-cuotas").DecisionSaldoCuota
+      /** Si ese saldo pendiente sigue generando IPC/interés o queda congelado. */
+      recargoSaldo?: import("./estado-cuotas").RecargoSaldoCuota
     }>
   }
 }
@@ -2541,6 +2559,11 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
   fechaVencimiento: string // YYYY-MM-DD
   monto: number
   pagada: boolean
+  estado: EstadoCuota
+  montoAcumulado: number
+  saldoRestante: number
+  saldoDecision?: DecisionSaldoCuota
+  recargoSaldo?: RecargoSaldoCuota
 }> {
   if (!evento.planDeCuotas || !evento.planDeCuotas.numeroCuotas || evento.planDeCuotas.numeroCuotas <= 0) {
     return []
@@ -2587,13 +2610,27 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
     return `${año}-${mes}-${dia}`
   }
 
+  const detallePorCuota = new Map(cuotas.map(c => [c.numero, c]))
+
   return Array.from({ length: numeroCuotas }).map((_, idx) => {
     const cuotaNum = idx + 1
+    const monto = resolverMonto(cuotaNum)
+    const detalle = detallePorCuota.get(cuotaNum)
+    const pagadaLegado = cuotasPagadas.includes(cuotaNum) || detalle?.pagada === true
+    // Compat: eventos viejos sin detalle.montoPagadoNeto (solo cuotasPagadas
+    // legado) se tratan como completamente pagados sin pasar por "parcial".
+    const montoAcumulado = detalle?.montoPagadoNeto ?? (pagadaLegado ? monto : 0)
+    const estado = estadoDeCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado })
     return {
       numeroCuota: cuotaNum,
       fechaVencimiento: resolverFecha(cuotaNum),
-      monto: resolverMonto(cuotaNum),
-      pagada: cuotasPagadas.includes(cuotaNum) || cuotas.some(c => c.numero === cuotaNum && c.pagada === true),
+      monto,
+      pagada: pagadaLegado || estado === "pagada",
+      estado,
+      montoAcumulado,
+      saldoRestante: saldoRestanteCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado }),
+      saldoDecision: detalle?.saldoDecision,
+      recargoSaldo: detalle?.recargoSaldo,
     }
   })
 }

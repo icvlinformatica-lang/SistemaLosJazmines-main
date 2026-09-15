@@ -617,6 +617,15 @@ function EventoPageContent() {
         const montoConRecargo = montoFinanciado * (1 + recargoEfectivo / 100)
         const montoCuotaCalc = cuotasEfectivas > 0 ? Math.round((montoConRecargo / cuotasEfectivas) * 100) / 100 : 0
         const cuotasPagadasPrev = evento.planDeCuotas?.cuotasPagadas || []
+        // Cuotas que ya tuvieron algún pago (parcial o completo): su cifra
+        // oficial queda fija para siempre, aunque se edite el contrato
+        // después. Si no se preservara, editar el plan borraría el
+        // historial de pagos parciales ya registrados.
+        const cuotasConProgresoPrev = new Map(
+          (evento.planDeCuotas?.cuotas || [])
+            .filter((c) => (c.montoPagadoNeto ?? 0) > 0)
+            .map((c) => [c.numero, c]),
+        )
 
         // Generar el detalle de cuotas con fechas de vencimiento.
         // Esto es lo que consumen las cajas (caja_eventos / caja_jazmines) para
@@ -640,12 +649,22 @@ function EventoPageContent() {
           const ultimoDia = new Date(añoVenc, mesAjustado + 1, 0).getDate()
           const diaAjustado = Math.min(diaVenc, ultimoDia)
           const fechaCuota = new Date(añoVenc, mesAjustado, diaAjustado)
-          cuotasDetalle.push({
-            numero: numeroCuota,
-            montoCuota: montoCuotaCalc,
-            fechaVencimiento: fechaCuota.toISOString().split("T")[0],
-            pagada: cuotasPagadasPrev.includes(numeroCuota),
-          })
+          const conProgreso = cuotasConProgresoPrev.get(numeroCuota)
+          cuotasDetalle.push(
+            conProgreso
+              ? conProgreso
+              : {
+                  numero: numeroCuota,
+                  montoCuota: montoCuotaCalc,
+                  fechaVencimiento: fechaCuota.toISOString().split("T")[0],
+                  pagada: cuotasPagadasPrev.includes(numeroCuota),
+                },
+          )
+        }
+        // Si el nuevo plan tiene menos cuotas que antes, no se pueden perder
+        // cuotas de más allá que ya tenían pagos registrados.
+        for (const [numero, cuota] of cuotasConProgresoPrev) {
+          if (numero > cuotasEfectivas) cuotasDetalle.push(cuota)
         }
 
         return {

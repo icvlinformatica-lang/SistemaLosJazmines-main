@@ -113,9 +113,18 @@ export function construirCobroCuota(
 ): CobroCuotaResultado {
   const plan = evento.planDeCuotas
   const cuotasPagadas = plan?.cuotasPagadas ?? []
+  const cuotaExistente = plan?.cuotas?.find((cuota) => cuota.numero === numeroCuota)
 
-  if (cuotasPagadas.includes(numeroCuota) || plan?.cuotas?.some((cuota) => cuota.numero === numeroCuota && cuota.pagada)) {
+  if (cuotasPagadas.includes(numeroCuota) || cuotaExistente?.pagada) {
     return { yaCobrada: true, planUpdate: null, movimientos: [] }
+  }
+  // Esta acción rápida es solo para cargar de una vez una cuota que nunca
+  // recibió ningún pago (ej. deuda vieja de eventos cargados de golpe). Si
+  // ya tiene un pago parcial, completarla tiene que pasar por "Cobrar
+  // cuota" (perfil del evento), donde vive toda la lógica de saldo y de
+  // qué se decide sobre el resto.
+  if ((cuotaExistente?.montoPagadoNeto ?? 0) > 0) {
+    return { yaCobrada: false, planUpdate: null, movimientos: [], error: "Esta cuota tiene pagos parciales registrados: completala desde el perfil del evento (Cobrar cuota)." }
   }
 
   const resultado = calcularIPCPeriodo(evento, historialIPC, fechaReal)
@@ -125,56 +134,63 @@ export function construirCobroCuota(
   const planUpdate = plan
     ? { planDeCuotas: { ...plan, cuotasPagadas: [...cuotasPagadas, numeroCuota],
       cuotas: plan.cuotas?.map(c => c.numero === numeroCuota ? {
-        ...c, pagada: true, montoCuota: montoCuotaCompleta, montoPagadoNeto: montoCuotaCompleta,
+        ...c, pagada: true, estado: "pagada" as const, montoCuota: montoCuotaCompleta, montoPagadoNeto: montoCuotaCompleta,
         fechaPagoReal: fechaReal, calculoIPC: resultado.estado === "listo" ? resultado.calculo : undefined,
       } : c),
     } }
     : null
 
-  const movimientos: MovimientoCaja[] = []
-
-  if (evento.salon && montoCuotaCompleta > 0) {
-    const proporcion = calcularProporcionCajaEventos(evento, datosCostos)
-    const { montoEventos, montoJazmines } = repartirEntreCajas(montoCuotaCompleta, proporcion)
-    const fecha = fechaVencimientoCuota
-      ? new Date(fechaVencimientoCuota + "T12:00:00").toISOString()
-      : new Date().toISOString()
-    const nombreEvento = evento.nombrePareja || evento.nombre || "Evento"
-
-    const saldoPrevEventos = movimientosCaja
-      .filter((m) => m.cajaDestino === "caja_eventos" && m.salon === evento.salon)
-      .reduce((s, m) => (m.tipo === "ingreso" ? s + m.monto : s - m.monto), 0)
-    const saldoPrevJazmines = movimientosCaja
-      .filter((m) => m.cajaDestino === "caja_jazmines")
-      .reduce((s, m) => (m.tipo === "ingreso" ? s + m.monto : s - m.monto), 0)
-
-    if (montoEventos > 0) {
-      movimientos.push({
-        id: generateId(),
-        fecha,
-        tipo: "ingreso",
-        concepto: `Cuota ${numeroCuota} - ${nombreEvento} (Caja Eventos)`,
-        monto: montoEventos,
-        salon: evento.salon,
-        eventoId: evento.id,
-        cajaDestino: "caja_eventos",
-        saldoResultante: saldoPrevEventos + montoEventos,
-      })
-    }
-    if (montoJazmines > 0) {
-      movimientos.push({
-        id: generateId(),
-        fecha,
-        tipo: "ingreso",
-        concepto: `Cuota ${numeroCuota} - ${nombreEvento} (Caja Jazmines)`,
-        monto: montoJazmines,
-        salon: evento.salon,
-        eventoId: evento.id,
-        cajaDestino: "caja_jazmines",
-        saldoResultante: saldoPrevJazmines + montoJazmines,
-      })
-    }
-  }
+  const movimientos = construirMovimientosPago(
+    evento, `Cuota ${numeroCuota}`, montoCuotaCompleta, fechaVencimientoCuota || fechaReal, movimientosCaja, datosCostos,
+  )
 
   return { yaCobrada: false, planUpdate, movimientos }
+}
+
+/**
+ * Reparte UN pago (parcial o completo) entre las dos cajas según la regla
+ * proporcional del evento. La usan tanto construirCobroCuota (cobro
+ * completo, carga rápida desde Caja Eventos) como el alta y la reversión
+ * de un pago en "Cobrar cuota" (perfil del evento), para que las tres
+ * cuentas usen exactamente la misma fórmula.
+ */
+export function construirMovimientosPago(
+  evento: EventoGuardado,
+  etiqueta: string,
+  montoPago: number,
+  fecha: string,
+  movimientosCaja: MovimientoCaja[],
+  datosCostos?: DatosCostosEvento,
+): MovimientoCaja[] {
+  if (!evento.salon || montoPago <= 0) return []
+  const proporcion = calcularProporcionCajaEventos(evento, datosCostos)
+  const { montoEventos, montoJazmines } = repartirEntreCajas(montoPago, proporcion)
+  const nombreEvento = evento.nombrePareja || evento.nombre || "Evento"
+  const fechaMov = fecha ? new Date(`${fecha}T12:00:00`).toISOString() : new Date().toISOString()
+
+  const saldoPrevEventos = movimientosCaja
+    .filter((m) => m.cajaDestino === "caja_eventos" && m.salon === evento.salon)
+    .reduce((s, m) => (m.tipo === "ingreso" ? s + m.monto : s - m.monto), 0)
+  const saldoPrevJazmines = movimientosCaja
+    .filter((m) => m.cajaDestino === "caja_jazmines")
+    .reduce((s, m) => (m.tipo === "ingreso" ? s + m.monto : s - m.monto), 0)
+
+  const movimientos: MovimientoCaja[] = []
+  if (montoEventos > 0) {
+    movimientos.push({
+      id: generateId(), fecha: fechaMov, tipo: "ingreso",
+      concepto: `${etiqueta} - ${nombreEvento} (Caja Eventos)`,
+      monto: montoEventos, salon: evento.salon, eventoId: evento.id,
+      cajaDestino: "caja_eventos", saldoResultante: saldoPrevEventos + montoEventos,
+    })
+  }
+  if (montoJazmines > 0) {
+    movimientos.push({
+      id: generateId(), fecha: fechaMov, tipo: "ingreso",
+      concepto: `${etiqueta} - ${nombreEvento} (Caja Jazmines)`,
+      monto: montoJazmines, salon: evento.salon, eventoId: evento.id,
+      cajaDestino: "caja_jazmines", saldoResultante: saldoPrevJazmines + montoJazmines,
+    })
+  }
+  return movimientos
 }

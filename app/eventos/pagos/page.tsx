@@ -17,12 +17,14 @@ import {
   type HistorialIPCEntry,
 } from "@/lib/store"
 import { buildUltimaVersionContratoHTML } from "@/lib/contract-html"
-import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
+import { calcularProporcionCajaEventos, repartirEntreCajas, construirMovimientosPago } from "@/lib/cobrar-cuota"
+import { estadoDeCuota, saldoRestanteCuota } from "@/lib/estado-cuotas"
 import { ContratoPanel } from "@/components/contrato-panel"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
-import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numerosPagados, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
+import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
 import { SalonDot } from "@/components/salon-badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Button } from "@/components/ui/button"
@@ -102,10 +104,14 @@ function PaymentReceipt({
 }) {
   const receiptRef = useRef<HTMLDivElement>(null)
 
-  const totalCuotas = evento.cantidadCuotas || 0
+  const totalCuotas = evento.planDeCuotas?.numeroCuotas || 0
+  // Con pagos parciales, varios pagos pueden corresponder a la MISMA cuota:
+  // el número real es pago.numeroCuota, no la posición del pago en la lista.
   const pagoIndex = (evento.pagos || []).findIndex((p) => p.id === pago.id)
-  const cuotaActual = pagoIndex >= 0 ? pagoIndex + 1 : (evento.pagos || []).length
+  const cuotaActual = pago.numeroCuota ?? (pagoIndex >= 0 ? pagoIndex + 1 : (evento.pagos || []).length)
   const cuotasFaltantes = Math.max(0, totalCuotas - cuotaActual)
+  const cuotaPlan = evento.planDeCuotas?.cuotas?.find((c) => c.numero === cuotaActual)
+  const esPagoParcial = !!cuotaPlan && (cuotaPlan.montoPagadoNeto ?? 0) > 0 && (cuotaPlan.montoPagadoNeto ?? 0) < cuotaPlan.montoCuota - 0.01
 
   // Mes al que corresponde el IPC aplicado como recargo: el último IPC cargado
   // (>IPC) con fecha igual o anterior a la fecha del pago. Se toma automáticamente.
@@ -132,7 +138,7 @@ function PaymentReceipt({
     valor: formatCurrency(pago.monto),
     sumaPesos: `${numeroALetras(Math.round(pago.monto))} (${formatCurrency(pago.monto)})`,
     espacio: "CENTENERA 1789, DEL VISO",
-    concepto: `Cuota ${cuotaActual}${totalCuotas > 0 ? ` de ${totalCuotas}` : ""}${pago.porcentajeIPC > 0 ? ` - incluye IPC ${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}` : ""}`,
+    concepto: `Cuota ${cuotaActual}${totalCuotas > 0 ? ` de ${totalCuotas}` : ""}${esPagoParcial ? " (pago parcial)" : ""}${pago.porcentajeIPC > 0 ? ` - incluye IPC ${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}` : ""}`,
   })
 
   const [editOpen, setEditOpen] = useState(false)
@@ -491,8 +497,6 @@ function PagosPageContent() {
   // Días de atraso de la próxima cuota al momento de abrir el formulario (fijo:
   // no depende de la fecha de cobro elegida, solo del vencimiento vs. hoy).
   const [diasAtrasoPago, setDiasAtrasoPago] = useState(0)
-  // Muestra el campo para corregir a mano la base de la cuota antes de aplicar IPC y mora
-  const [editandoBaseCobro, setEditandoBaseCobro] = useState(false)
   // Permite quitar con un click el recargo por días de atraso del próximo pago
   const [recargoAtrasoOmitido, setRecargoAtrasoOmitido] = useState(false)
   // Tildes del próximo cobro: aplicar el IPC del mes y, si el automático quedó
@@ -511,6 +515,20 @@ function PagosPageContent() {
   // formulario con la cuota siguiente para encadenar la carga.
   const [modoHistorico, setModoHistorico] = useState(false)
   const [mostrarDetalleCalculo, setMostrarDetalleCalculo] = useState(false)
+  // Cuota elegida como destino de este cobro (puede ser la corriente o un
+  // saldo parcial/aparte de una cuota vieja). Cuando hay más de una opción
+  // disponible, se elige con un selector al abrir el formulario.
+  const [destinoCobro, setDestinoCobro] = useState<number | null>(null)
+  // true cuando el destino ya tiene su cifra oficial fijada (algún pago
+  // previo): no hay IPC ni mora para recalcular, solo se pide un monto
+  // contra el saldo que quedó pendiente.
+  const [topeParcialCobro, setTopeParcialCobro] = useState(false)
+  const [acumuladoPrevioCobro, setAcumuladoPrevioCobro] = useState(0)
+  const [totalSugeridoCobro, setTotalSugeridoCobro] = useState(0)
+  // Decisión sobre el resto cuando el monto a pagar no cubre el saldo:
+  // se puede cambiar mientras la cuota siga sin completarse.
+  const [saldoDecisionCobro, setSaldoDecisionCobro] = useState<"acumular" | "aparte" | null>(null)
+  const [recargoSaldoCobro, setRecargoSaldoCobro] = useState<"acumula" | "congelado" | null>(null)
   const [pasoPago, setPasoPago] = useState<1 | 2 | 3>(1)
   const [pagoForm, setPagoForm] = useState({
     monto: 0,
@@ -540,6 +558,8 @@ function PagosPageContent() {
 
   // Confirmación de eliminación de comprobante/pago
   const [pagoToDelete, setPagoToDelete] = useState<PagoEvento | null>(null)
+  const [borrandoPago, setBorrandoPago] = useState(false)
+  const borrandoPagoRef = useRef(false)
 
   // Mantener el evento seleccionado sincronizado con el store: si el plan de
   // cuotas se editó desde Contratos (otra modalidad de financiación, montos o
@@ -635,20 +655,41 @@ function PagosPageContent() {
     cargarPlanDesdeEvento(ev)
   }
 
-  // Calcula cuánto correspondería cobrar por la próxima cuota pendiente de un
-  // evento, respetando los tildes actuales de IPC/mora. Devuelve null cuando
-  // no hay cuota pendiente o cuando el cálculo automático quedó bloqueado
-  // (base ambigua sin resolver a mano).
-  const construirProximoCobro = (evento: EventoGuardado, baseManualOverride?: number | null) => {
+  // Cuotas disponibles como destino de un cobro: la "corriente" (la más
+  // chica que nunca recibió ningún pago) y, aparte, cualquier cuota que ya
+  // quedó "parcial" (sea que se decidió acumular o dejar aparte) — esas
+  // siguen siendo un destino propio hasta que se completen.
+  const opcionesCobro = (evento: EventoGuardado) => {
+    const calendario = generarCalendarioCuotas(evento)
+    const parciales = calendario.filter((c) => c.estado === "parcial")
+    const corriente = calendario.find((c) => c.estado === "pendiente")
+    return corriente ? [corriente, ...parciales] : parciales
+  }
+
+  // Calcula cuánto correspondería cobrar contra una cuota puntual (destino),
+  // respetando los tildes actuales de IPC/mora. Devuelve null cuando no se
+  // puede cobrar (cálculo automático bloqueado sin resolver a mano).
+  const construirProximoCobro = (evento: EventoGuardado, destino: number, baseManualOverride?: number | null) => {
     const calendarioCuotas = generarCalendarioCuotas(evento)
-    const proximaCuota = calendarioCuotas.find((c) => !c.pagada)
-    if (!proximaCuota || !proximaCuota.fechaVencimiento) return null
-    const resultadoIPC = calcularIPCPeriodo(evento, historialIPC)
+    const cuotaDestino = calendarioCuotas.find((c) => c.numeroCuota === destino)
+    if (!cuotaDestino || cuotaDestino.estado === "pagada" || !cuotaDestino.fechaVencimiento) return null
+
+    if (cuotaDestino.estado === "parcial") {
+      // Ya tiene su cifra oficial fijada por un pago anterior: no se
+      // recalcula IPC ni mora, solo se pide un monto contra el saldo.
+      return {
+        cuotaDestino, calendarioCuotas, calculoCobro: null,
+        cuotaNeta: cuotaDestino.saldoRestante, recargoAtraso: 0,
+        totalSimulado: cuotaDestino.saldoRestante, esPagoUnico: false, diasAtraso: 0,
+        esParcial: true,
+      }
+    }
+
     const ajustaPorIPC = aplicaIPC(evento)
     const esPagoUnico = evento.planDeCuotas?.modalidadPago === "completo"
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
-    const fechaVenc = new Date(proximaCuota.fechaVencimiento + "T00:00:00")
+    const fechaVenc = new Date(cuotaDestino.fechaVencimiento + "T00:00:00")
     const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
     const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
     // baseManualOverride se usa cuando se pasa explícitamente (incluso null), para
@@ -658,34 +699,45 @@ function PagosPageContent() {
       ? resolverCalculoCobro(evento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualAUsar ?? undefined })
       : { calculo: null }
     const calculoCobro = "calculo" in resuelto ? resuelto.calculo : null
-    const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
+    const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : cuotaDestino.monto
     const totalSimulado = cuotaNeta + recargoAtraso
     const puedeCobrar = !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
     if (!puedeCobrar) return null
-    return { proximaCuota, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso }
+    return { cuotaDestino, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso, esParcial: false }
   }
 
-  // Prepara y abre el formulario de cobro para la próxima cuota pendiente de
-  // un evento. Se usa tanto desde el botón "Registrar este pago" como, en modo
-  // histórico, para reabrir automáticamente con la cuota siguiente al guardar.
-  const abrirCobroPara = (evento: EventoGuardado) => {
+  // Prepara y abre el formulario de cobro para un destino puntual (por
+  // defecto, la primera opción disponible). Se usa tanto desde el botón
+  // "Registrar este pago" como, en modo histórico, para reabrir
+  // automáticamente con la cuota siguiente al guardar.
+  const abrirCobroPara = (evento: EventoGuardado, destinoOverride?: number) => {
+    const opciones = opcionesCobro(evento)
+    if (!opciones.length) return false
+    const destino = destinoOverride ?? opciones[0].numeroCuota
     // Se fuerza el cálculo automático limpio (baseManualOverride: null) para que
     // la base corregida a mano en una cuota anterior no se le pegue a esta.
-    const datos = construirProximoCobro(evento, null)
+    const datos = construirProximoCobro(evento, destino, null)
     if (!datos) return false
-    const { proximaCuota, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso } = datos
+    const { cuotaDestino, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso, esParcial } = datos
     const ipcAcumulado = calculoCobro && !calculoCobro.ipcOmitido ? calculoCobro.porcentaje : 0
-    numeroPagoRef.current = proximaCuota.numeroCuota
+    numeroPagoRef.current = cuotaDestino.numeroCuota
+    setDestinoCobro(cuotaDestino.numeroCuota)
+    setTopeParcialCobro(esParcial)
+    setAcumuladoPrevioCobro(cuotaDestino.montoAcumulado)
+    setTotalSugeridoCobro(totalSimulado)
+    setSaldoDecisionCobro(cuotaDestino.saldoDecision ?? null)
+    setRecargoSaldoCobro(cuotaDestino.recargoSaldo ?? null)
     setMoraPago(recargoAtraso)
     setMontoCuotaBase(cuotaNeta)
     setDiasAtrasoPago(diasAtraso)
-    setEditandoBaseCobro(false)
     setBaseManualCobro(null)
-    setMesEsperadoPago(proximaCuota.fechaVencimiento.slice(0, 7))
+    setMesEsperadoPago(esParcial ? null : cuotaDestino.fechaVencimiento.slice(0, 7))
     setConfirmoSaltoMes(false)
-    const notaBase = esPagoUnico
-      ? "Pago único (pago completo)"
-      : `Cuota ${proximaCuota.numeroCuota}/${calendarioCuotas.length}`
+    const notaBase = esParcial
+      ? `Cuota ${cuotaDestino.numeroCuota}/${calendarioCuotas.length} (saldo pendiente)`
+      : esPagoUnico
+        ? "Pago único (pago completo)"
+        : `Cuota ${cuotaDestino.numeroCuota}/${calendarioCuotas.length}`
     setPagoForm({
       monto: totalSimulado,
       fecha: fechaNegocio(),
@@ -704,12 +756,17 @@ function PagosPageContent() {
     return true
   }
 
-  // Recalcula el total del formulario de cobro cuando cambia la fecha, se
-  // tilda/destilda IPC o mora, o se corrige la base a mano. Los "..." no
-  // pasados conservan el valor actual (tildes o fecha ya elegidos).
+  // Recalcula el total sugerido cuando cambia la fecha, se tilda/destilda
+  // IPC o mora, o se corrige la base a mano. No aplica a un saldo parcial
+  // (esa cifra ya está fija: no hay IPC ni mora que recalcular ahí). Los
+  // "..." no pasados conservan el valor actual (tildes o fecha ya elegidos).
   const recalcularCobro = (cambios: { aplicarIPC?: boolean; recargoOmitido?: boolean; baseManual?: number | null; fecha?: string }) => {
     if (!selectedEvento) return
     const fecha = cambios.fecha ?? pagoForm.fecha
+    if (topeParcialCobro) {
+      if (cambios.fecha !== undefined) setPagoForm((prev) => ({ ...prev, fecha }))
+      return
+    }
     const aplicarIPCNuevo = cambios.aplicarIPC ?? aplicarIPCCobro
     const recargoOmitidoNuevo = cambios.recargoOmitido ?? recargoAtrasoOmitido
     const baseManualNuevo = cambios.baseManual !== undefined ? cambios.baseManual : baseManualCobro
@@ -727,6 +784,7 @@ function PagosPageContent() {
     setBaseManualCobro(baseManualNuevo)
     setMontoCuotaBase(cuotaNeta)
     setMoraPago(nuevaMora)
+    setTotalSugeridoCobro(cuotaNeta + nuevaMora)
     setPagoForm((prev) => ({
       ...prev,
       fecha,
@@ -736,20 +794,94 @@ function PagosPageContent() {
     if (error) toast({ title: "IPC pendiente", description: error, variant: "destructive" })
   }
 
+  // Sub-formulario para decidir qué pasa con el resto cuando el monto a
+  // pagar no cubre el saldo de la cuota. Se puede cambiar más adelante
+  // mientras la cuota siga sin completarse (no se calcula automáticamente:
+  // es una elección de quien cobra).
+  const renderSaldoDecisionForm = () => (
+    <fieldset className="grid gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+      <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+        Queda un saldo pendiente: ¿qué hacemos?
+      </legend>
+      <RadioGroup value={saldoDecisionCobro ?? ""} onValueChange={(v) => setSaldoDecisionCobro(v as "acumular" | "aparte")} className="grid grid-cols-2 gap-2">
+        <label className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs ${saldoDecisionCobro === "acumular" ? "border-primary bg-primary/5" : "border-border/60 bg-background"}`}>
+          <RadioGroupItem value="acumular" /> Acumular a la cuota siguiente
+        </label>
+        <label className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs ${saldoDecisionCobro === "aparte" ? "border-primary bg-primary/5" : "border-border/60 bg-background"}`}>
+          <RadioGroupItem value="aparte" /> Dejarlo aparte
+        </label>
+      </RadioGroup>
+      <RadioGroup value={recargoSaldoCobro ?? ""} onValueChange={(v) => setRecargoSaldoCobro(v as "acumula" | "congelado")} className="grid grid-cols-2 gap-2">
+        <label className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs ${recargoSaldoCobro === "acumula" ? "border-primary bg-primary/5" : "border-border/60 bg-background"}`}>
+          <RadioGroupItem value="acumula" /> Sigue generando IPC
+        </label>
+        <label className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs ${recargoSaldoCobro === "congelado" ? "border-primary bg-primary/5" : "border-border/60 bg-background"}`}>
+          <RadioGroupItem value="congelado" /> Queda congelado
+        </label>
+      </RadioGroup>
+      <p className="text-[11px] leading-tight text-amber-800">
+        Se puede cambiar más adelante mientras esta cuota siga sin completarse.
+      </p>
+    </fieldset>
+  )
+
   const handleAddPago = async () => {
-    if (guardandoPagoRef.current || !selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()) return
-    const resuelto = resolverCalculoCobro(selectedEvento, historialIPC, pagoForm.fecha, {
-      aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined,
-    })
-    if ("error" in resuelto) {
-      toast({ title: "No se puede confirmar el cobro", description: resuelto.error, variant: "destructive" })
+    if (guardandoPagoRef.current || !selectedEvento || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim() || destinoCobro == null) return
+
+    // Releer la cuota destino desde el evento MÁS FRESCO (no desde el momento
+    // en que se abrió el formulario), para no duplicar un acumulado si algo
+    // cambió entretanto.
+    const cuotaVigente = selectedEvento.planDeCuotas?.cuotas?.find((c) => c.numero === destinoCobro)
+    if (!cuotaVigente && !topeParcialCobro) {
+      toast({ title: "La cuota ya cambió", description: "Volvé a abrir el formulario con el evento actualizado.", variant: "destructive" })
       return
     }
-    const calculoCobro = resuelto.calculo
-    if (calculoCobro && (calculoCobro.monto !== montoCuotaBase || pagoForm.monto !== montoCuotaBase + moraPago)) {
-      toast({ title: "El importe cambió", description: "Cerrá el formulario y revisá el nuevo desglose antes de cobrar.", variant: "destructive" })
+    const estadoVigente = cuotaVigente ? estadoDeCuota(cuotaVigente) : "pendiente"
+    if (estadoVigente === "pagada") {
+      toast({ title: "Esa cuota ya está paga", description: "Volvé a abrir el formulario con el evento actualizado.", variant: "destructive" })
       return
     }
+    const acumuladoVigente = cuotaVigente?.montoPagadoNeto ?? 0
+
+    let calculoCobro: import("@/lib/ipc-cuotas").CalculoIPC | null = null
+    let montoOficial = montoCuotaBase
+    if (topeParcialCobro) {
+      // Cifra ya fijada por un pago anterior: no se recalcula.
+      calculoCobro = cuotaVigente?.calculoIPC ?? null
+      montoOficial = cuotaVigente?.montoCuota ?? montoCuotaBase
+    } else {
+      const resuelto = resolverCalculoCobro(selectedEvento, historialIPC, pagoForm.fecha, {
+        aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined,
+      })
+      if ("error" in resuelto) {
+        toast({ title: "No se puede confirmar el cobro", description: resuelto.error, variant: "destructive" })
+        return
+      }
+      calculoCobro = resuelto.calculo
+      if (calculoCobro && calculoCobro.monto !== montoCuotaBase) {
+        toast({ title: "El importe cambió", description: "Cerrá el formulario y revisá el nuevo desglose antes de cobrar.", variant: "destructive" })
+        return
+      }
+      montoOficial = montoCuotaBase
+    }
+
+    const netoAPagar = Math.round((pagoForm.monto - moraPago) * 100) / 100
+    const saldoRestanteVigente = saldoRestanteCuota({ montoCuota: montoOficial, montoPagadoNeto: acumuladoVigente })
+    if (netoAPagar <= 0) {
+      toast({ title: "Importe inválido", description: "El monto a cobrar debe ser mayor a la mora.", variant: "destructive" })
+      return
+    }
+    if (netoAPagar > saldoRestanteVigente + 0.01) {
+      toast({ title: "El importe cambió", description: "El monto supera el saldo pendiente de la cuota. Volvé a abrir el formulario.", variant: "destructive" })
+      return
+    }
+    const acumuladoNuevo = Math.round((acumuladoVigente + netoAPagar) * 100) / 100
+    const quedaCompleta = acumuladoNuevo >= montoOficial - 0.01
+    if (!quedaCompleta && (saldoDecisionCobro == null || recargoSaldoCobro == null)) {
+      toast({ title: "Falta una decisión", description: "Elegí qué pasa con el saldo que queda pendiente de esta cuota.", variant: "destructive" })
+      return
+    }
+
     guardandoPagoRef.current = true
     setGuardandoPago(true)
     try {
@@ -761,98 +893,48 @@ function PagosPageContent() {
       pagadoPor: pagoForm.pagadoPor,
       dni: pagoForm.dni || undefined,
       porcentajeIPC: calculoCobro ? (calculoCobro.ipcOmitido ? 0 : calculoCobro.porcentaje) : pagoForm.porcentajeIPC,
-      montoCuotaNeto: montoCuotaBase,
+      montoCuotaNeto: netoAPagar,
       montoMora: moraPago,
       calculoIPC: calculoCobro ?? undefined,
       notas: pagoForm.notas || undefined,
       montoRecibido: pagoForm.montoRecibido > 0 ? pagoForm.montoRecibido : undefined,
       vuelto: vueltoCalculado > 0 ? vueltoCalculado : undefined,
       recibidoPor: pagoForm.recibidoPor.trim(),
+      numeroCuota: destinoCobro,
     }
     const currentPagos = selectedEvento.pagos || []
     const updatedPagos = [...currentPagos, newPago]
 
-    // Also mark the next pending cuota as paid in planDeCuotas
+    const cuotaPagadaNumero = destinoCobro
     let updatedPlanDeCuotas = selectedEvento.planDeCuotas
-    let cuotaPagadaNumero: number | null = null
-    if (updatedPlanDeCuotas && updatedPlanDeCuotas.numeroCuotas > 0) {
-      const cuotasPagadasArr = numerosPagados(selectedEvento)
-      // Find the next unpaid cuota number
-      const nextUnpaid = Array.from({ length: updatedPlanDeCuotas.numeroCuotas }, (_, i) => i + 1)
-        .find(n => !cuotasPagadasArr.includes(n))
-      if (!nextUnpaid || (numeroPagoRef.current !== null && numeroPagoRef.current !== nextUnpaid)) {
-        toast({ title: "La cuota ya cambió", description: "Volvé a abrir el formulario con el evento actualizado.", variant: "destructive" })
-        return
-      }
-      cuotaPagadaNumero = nextUnpaid
-      newPago.numeroCuota = nextUnpaid
+    if (updatedPlanDeCuotas) {
       updatedPlanDeCuotas = {
         ...updatedPlanDeCuotas,
-        cuotasPagadas: [...cuotasPagadasArr, nextUnpaid],
-        cuotas: updatedPlanDeCuotas.cuotas?.map(c => c.numero === nextUnpaid ? {
-          ...c, pagada: true, montoCuota: montoCuotaBase, montoPagadoNeto: montoCuotaBase,
-          fechaPagoReal: pagoForm.fecha, calculoIPC: newPago.calculoIPC,
+        cuotasPagadas: quedaCompleta
+          ? [...new Set([...(updatedPlanDeCuotas.cuotasPagadas ?? []), destinoCobro])]
+          : (updatedPlanDeCuotas.cuotasPagadas ?? []).filter((n) => n !== destinoCobro),
+        cuotas: updatedPlanDeCuotas.cuotas?.map(c => c.numero === destinoCobro ? {
+          ...c,
+          pagada: quedaCompleta,
+          estado: quedaCompleta ? "pagada" as const : "parcial" as const,
+          montoCuota: montoOficial,
+          montoPagadoNeto: acumuladoNuevo,
+          fechaPagoReal: pagoForm.fecha,
+          calculoIPC: calculoCobro ?? c.calculoIPC,
+          saldoDecision: quedaCompleta ? undefined : saldoDecisionCobro ?? undefined,
+          recargoSaldo: quedaCompleta ? undefined : recargoSaldoCobro ?? undefined,
         } : c),
       }
     }
 
-    const movimientosDelCobro: MovimientoCaja[] = []
-
-    // Generar los movimientos de caja del ingreso, repartidos según la regla del
-    // evento: nuevos -> costo del evento + 5% a Caja Eventos y el resto a Caja
-    // Jazmines (proporcional en cada pago, costo recalculado en vivo) para TODOS los eventos.
-    if (selectedEvento.salon && pagoForm.monto > 0) {
-      const nombreEvento = selectedEvento.nombre || selectedEvento.nombrePareja || "Evento"
-      const etiquetaCuota = cuotaPagadaNumero ? `Cuota ${cuotaPagadaNumero}` : "Pago"
-      const proporcionEventos = calcularProporcionCajaEventos(selectedEvento, {
-        insumos: state.insumos || [],
-        insumosBarra: state.insumosBarra || [],
-        recetas: state.recetas || [],
-        cocteles: state.cocteles || [],
-        servicios: state.servicios || [],
-      })
-      const { montoEventos: mitadEventos, montoJazmines: mitadJazmines } = repartirEntreCajas(
-        pagoForm.monto,
-        proporcionEventos,
-      )
-      // Usar la fecha real de cobro elegida en el formulario (no la fecha de hoy),
-      // así los pagos de cuotas atrasadas quedan asentados en el mes correcto.
-      // Se fija el mediodía para evitar corrimientos de día por zona horaria.
-      const fechaMov = pagoForm.fecha
-        ? new Date(`${pagoForm.fecha}T12:00:00`).toISOString()
-        : new Date().toISOString()
-
-      const saldoPrevEventos = movimientosCaja
-        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === selectedEvento.salon)
-        .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
-      const saldoPrevJazmines = movimientosCaja
-        .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
-        .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
-
-      const movEventos: MovimientoCaja = {
-        id: generateId(),
-        fecha: fechaMov,
-        tipo: "ingreso",
-        concepto: `${etiquetaCuota} - ${nombreEvento} (Caja Eventos)`,
-        monto: mitadEventos,
-        salon: selectedEvento.salon,
-        eventoId: selectedEvento.id,
-        cajaDestino: "caja_eventos",
-        saldoResultante: saldoPrevEventos + mitadEventos,
-      }
-      const movJazmines: MovimientoCaja = {
-        id: generateId(),
-        fecha: fechaMov,
-        tipo: "ingreso",
-        concepto: `${etiquetaCuota} - ${nombreEvento} (Caja Jazmines)`,
-        monto: mitadJazmines,
-        salon: selectedEvento.salon,
-        eventoId: selectedEvento.id,
-        cajaDestino: "caja_jazmines",
-        saldoResultante: saldoPrevJazmines + mitadJazmines,
-      }
-      movimientosDelCobro.push(...[movEventos, movJazmines].filter(m => m.monto > 0))
-    }
+    // Concepto único por pago (incluye su id) para poder revertir el
+    // movimiento EXACTO de este pago si más tarde se anula, sin depender de
+    // heurísticas por monto cuando una misma cuota tiene varios pagos.
+    const etiquetaCuota = `Cuota ${destinoCobro} #${newPago.id.slice(0, 8)}`
+    const movimientosDelCobro = construirMovimientosPago(
+      selectedEvento, etiquetaCuota, pagoForm.monto, pagoForm.fecha, movimientosCaja,
+      { insumos: state.insumos || [], insumosBarra: state.insumosBarra || [], recetas: state.recetas || [], cocteles: state.cocteles || [], servicios: state.servicios || [] },
+    )
 
     const guardado = await updateEvento(selectedEvento.id, {
       pagos: updatedPagos,
@@ -929,9 +1011,16 @@ function PagosPageContent() {
   }
 
   const handleDeletePago = async (pagoId: string) => {
-    if (!selectedEvento) return
+    // Un doble click (o un segundo click mientras la operación anterior
+    // todavía está en vuelo) dispara dos borrados concurrentes: el primero
+    // aplica bien, el segundo llega con el evento ya desactualizado y el
+    // servidor lo rechaza con "El evento cambió en otra sesión".
+    if (borrandoPagoRef.current || !selectedEvento) return
     const pago = (selectedEvento.pagos || []).find((p) => p.id === pagoId)
     if (!pago) return
+    borrandoPagoRef.current = true
+    setBorrandoPago(true)
+    try {
 
     // 1) Determinar a qué cuota corresponde el pago (para revertirla y hallar sus movimientos)
     // Un "Pago único (pago completo)" corresponde siempre a la cuota 1: si no se
@@ -940,19 +1029,27 @@ function PagosPageContent() {
     const esPagoUnicoNota = /pago\s+(único|unico|completo)/i.test(pago.notas || "")
     const numeroCuota = pago.numeroCuota ?? (matchCuota ? parseInt(matchCuota[1], 10) : esPagoUnicoNota ? 1 : null)
     const etiquetaCuota = numeroCuota ? `Cuota ${numeroCuota}` : "Pago"
+    // Los pagos nuevos llevan su propio id en el concepto del movimiento
+    // (ver handleAddPago), así se revierte el movimiento EXACTO de este pago
+    // y no el que "más se parece" — necesario cuando una cuota tiene varios
+    // pagos parciales con montos similares.
+    const etiquetaPagoExacta = `${etiquetaCuota} #${pagoId.slice(0, 8)}`
 
     // 2) Revertir los movimientos de caja que se habían sumado por este pago.
-    //    Se buscan por evento + etiqueta de la cuota, tomando por cada caja el
-    //    movimiento cuyo monto más se acerca a la parte proporcional que le
-    //    correspondió (costo + 5% a Eventos, resto a Jazmines).
     let cajasRevertidas = false
     const movimientosARevertir: string[] = []
-    const candidatos = movimientosCaja.filter(
+    const candidatosExactos = movimientosCaja.filter(
       (m: MovimientoCaja) =>
-        m.eventoId === selectedEvento.id &&
-        m.tipo === "ingreso" &&
-        typeof m.concepto === "string" &&
-        m.concepto.startsWith(`${etiquetaCuota} - `),
+        m.eventoId === selectedEvento.id && m.tipo === "ingreso" &&
+        typeof m.concepto === "string" && m.concepto.startsWith(`${etiquetaPagoExacta} - `),
+    )
+    // Pagos de antes de esta función no llevan el id en el concepto: se cae
+    // al criterio anterior (monto más cercano), válido porque en esos casos
+    // había un único pago por cuota.
+    const candidatos = candidatosExactos.length > 0 ? candidatosExactos : movimientosCaja.filter(
+      (m: MovimientoCaja) =>
+        m.eventoId === selectedEvento.id && m.tipo === "ingreso" &&
+        typeof m.concepto === "string" && m.concepto.startsWith(`${etiquetaCuota} - `),
     )
     const propEventos = calcularProporcionCajaEventos(selectedEvento, {
       insumos: state.insumos || [],
@@ -975,17 +1072,39 @@ function PagosPageContent() {
       movimientosARevertir.push(elegido.id)
     })
 
-    // 3) Marcar la cuota como NO pagada de nuevo (vuelve a adeudarse)
+    // 3) Recalcular la cuota a partir de los pagos que REALMENTE quedan (no
+    //    resetear del todo): anular uno de varios pagos parciales solo resta
+    //    esa parte, no borra el historial de los demás pagos de la cuota.
+    const updatedPagos = (selectedEvento.pagos || []).filter((p) => p.id !== pagoId)
     let updatedPlanDeCuotas = selectedEvento.planDeCuotas
     if (updatedPlanDeCuotas && numeroCuota) {
+      const pagosRestantes = updatedPagos.filter((p) => (p.numeroCuota ?? (esPagoUnicoNota ? 1 : undefined)) === numeroCuota)
+      let cuotaResultante: any = null
+      const cuotasNuevas = updatedPlanDeCuotas.cuotas?.map((c) => {
+        if (c.numero !== numeroCuota) return c
+        if (!pagosRestantes.length) {
+          const { fechaPagoReal, montoPagadoNeto, calculoIPC, saldoDecision, recargoSaldo, ...resto } = c
+          cuotaResultante = { ...resto, pagada: false, estado: "pendiente" }
+        } else {
+          const acumulado = Math.round(pagosRestantes.reduce((s, p) => s + (p.montoCuotaNeto ?? 0), 0) * 100) / 100
+          const pagada = acumulado >= c.montoCuota - 0.01
+          cuotaResultante = {
+            ...c, montoPagadoNeto: acumulado, pagada, estado: pagada ? "pagada" : "parcial",
+            ...(pagada ? { saldoDecision: undefined, recargoSaldo: undefined } : {}),
+          }
+        }
+        return cuotaResultante
+      })
       updatedPlanDeCuotas = {
         ...updatedPlanDeCuotas,
-        cuotasPagadas: (updatedPlanDeCuotas.cuotasPagadas || []).filter((n) => n !== numeroCuota),
+        cuotas: cuotasNuevas,
+        cuotasPagadas: cuotaResultante?.pagada
+          ? [...new Set([...(updatedPlanDeCuotas.cuotasPagadas || []), numeroCuota])]
+          : (updatedPlanDeCuotas.cuotasPagadas || []).filter((n) => n !== numeroCuota),
       }
     }
 
-    // 4) Quitar el pago del evento
-    const updatedPagos = (selectedEvento.pagos || []).filter((p) => p.id !== pagoId)
+    // 4) Guardar
     const guardado = await updateEvento(selectedEvento.id, {
       pagos: updatedPagos,
       ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
@@ -1004,6 +1123,10 @@ function PagosPageContent() {
     )
 
     setPagoToDelete(null)
+    } finally {
+      borrandoPagoRef.current = false
+      setBorrandoPago(false)
+    }
   }
 
   const totalPagos = selectedEvento ? (selectedEvento.pagos || []).reduce((s, p) => s + p.monto, 0) : 0
@@ -1667,7 +1790,12 @@ function PagosPageContent() {
               // Get the fresh event data from the store to compute next cuota
               const freshEvento = eventos.find(e => e.id === selectedEvento.id) || selectedEvento
               const calendarioCuotas = generarCalendarioCuotas(freshEvento)
-              const proximaCuota = calendarioCuotas.find(c => !c.pagada)
+              const opcionesCobroEvento = opcionesCobro(freshEvento)
+              const proximaCuota = opcionesCobroEvento[0]
+              // Otras cuotas parciales, aparte de la principal (ej. una cuota
+              // vieja dejada "aparte" mientras el evento ya sigue con las
+              // siguientes): se listan como saldos independientes más abajo.
+              const otrosSaldosAbiertos = opcionesCobroEvento.slice(1)
               const resultadoIPC = calcularIPCPeriodo(freshEvento, historialIPC)
               const montoCuotaOriginal = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.base : freshEvento.planDeCuotas?.montoCuota || 0
               // Estricto: solo eventos marcados explícitamente como ajustables por IPC
@@ -1677,26 +1805,33 @@ function PagosPageContent() {
               const esPagoUnico = freshEvento.planDeCuotas?.modalidadPago === "completo"
 
               if (proximaCuota && proximaCuota.fechaVencimiento) {
+                // Si la principal ya es una cuota parcial (saldo de un pago
+                // anterior), su cifra oficial ya está fija: no hay IPC ni
+                // mora para recalcular, solo un saldo pendiente a cobrar.
+                const esParcialDestino = proximaCuota.estado === "parcial"
                 const hoy = new Date()
                 hoy.setHours(0, 0, 0, 0)
                 const fechaVenc = new Date(proximaCuota.fechaVencimiento + "T00:00:00")
-                const diasAtraso = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
+                const diasAtraso = esParcialDestino ? 0 : Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
                 // Con un click se puede quitar el recargo (queda en $0 pero se muestra que fue quitado)
-                const recargoAtraso = recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
+                const recargoAtraso = esParcialDestino || recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
                 // Cálculo que se va a guardar, según lo tildado (IPC sí/no y base manual si el automático quedó pendiente)
-                const sugerencia = resultadoIPC.estado === "pendiente" ? sugerirBaseManual(freshEvento, historialIPC) : null
-                const resuelto = ajustaPorIPC
+                const sugerencia = !esParcialDestino && resultadoIPC.estado === "pendiente" ? sugerirBaseManual(freshEvento, historialIPC) : null
+                const resuelto = ajustaPorIPC && !esParcialDestino
                   ? resolverCalculoCobro(freshEvento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
                   : { calculo: null }
                 const calculoCobro = "calculo" in resuelto ? resuelto.calculo : null
                 const errorCobro = "error" in resuelto ? resuelto.error : null
-                const esManual = resultadoIPC.estado === "pendiente"
+                const esManual = !esParcialDestino && resultadoIPC.estado === "pendiente"
                 const baseMostrada = baseManualCobro ?? sugerencia?.base ?? 0
                 const porcentajeMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : sugerencia?.porcentaje ?? null
-                const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
+                const cuotaNeta = esParcialDestino ? proximaCuota.saldoRestante : calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
                 const totalSimulado = cuotaNeta + recargoAtraso
-                const puedeCobrar = !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
-                const detalleAbierto = mostrarDetalleCalculo || esManual || !!errorCobro
+                const puedeCobrar = esParcialDestino || !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
+                // Siempre arranca plegado al entrar; solo se abre si lo pide
+                // quien está cobrando (aunque el cálculo automático esté
+                // pendiente o haya un error, que se avisan igual más arriba).
+                const detalleAbierto = mostrarDetalleCalculo
 
                 return (
                   <Card className="border-2 border-primary/30 bg-primary/5">
@@ -1791,14 +1926,21 @@ function PagosPageContent() {
                             size="sm"
                             className="mt-2"
                             disabled={!puedeCobrar}
-                            onClick={() => abrirCobroPara(freshEvento)}
+                            onClick={() => abrirCobroPara(freshEvento, proximaCuota.numeroCuota)}
                           >
-                            <Plus className="h-4 w-4 mr-1" /> {esPagoUnico ? "Registrar pago" : "Registrar este pago"}
+                            <Plus className="h-4 w-4 mr-1" /> {esParcialDestino ? "Cobrar saldo" : esPagoUnico ? "Registrar pago" : "Registrar este pago"}
                           </Button>
                         </div>
                       </div>
 
-                      {ajustaPorIPC && (
+                      {esParcialDestino && (
+                        <p className="mt-3 text-xs text-muted-foreground rounded-md border border-dashed border-border bg-muted/30 px-3 py-2">
+                          Esta cuota ya tiene pagos parciales registrados (llevás {formatCurrency(proximaCuota.montoAcumulado)} de {formatCurrency(proximaCuota.monto)}).
+                          El saldo no lleva IPC ni mora nuevos: es lo que quedó pendiente de la cifra ya fijada.
+                        </p>
+                      )}
+
+                      {ajustaPorIPC && !esParcialDestino && (
                         <Collapsible open={detalleAbierto} onOpenChange={setMostrarDetalleCalculo} className="mt-4">
                           <CollapsibleTrigger asChild>
                             <button
@@ -1919,6 +2061,40 @@ function PagosPageContent() {
               }
 
               return null
+            })()}
+
+            {/* Otros saldos abiertos: cuotas viejas parciales aparte de la
+                principal (ej. se dejaron "aparte" mientras el evento sigue
+                con las cuotas siguientes). Cada una se cobra por separado. */}
+            {(() => {
+              const freshEvento = eventos.find(e => e.id === selectedEvento.id) || selectedEvento
+              const otros = opcionesCobro(freshEvento).slice(1)
+              if (!otros.length) return null
+              return (
+                <Card className="border-amber-300 bg-amber-50/60">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2 text-amber-800">
+                      <Clock className="h-4 w-4" /> Otros saldos pendientes (aparte)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {otros.map((c) => (
+                      <div key={c.numeroCuota} className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-background px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">Cuota {c.numeroCuota}/{freshEvento.planDeCuotas?.numeroCuotas ?? 0}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Saldo {formatCurrency(c.saldoRestante)} de {formatCurrency(c.monto)}
+                            {c.saldoDecision === "aparte" ? " · dejado aparte" : c.saldoDecision === "acumular" ? " · acumulado a la siguiente" : ""}
+                          </p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => abrirCobroPara(freshEvento, c.numeroCuota)}>
+                          Cobrar saldo
+                        </Button>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )
             })()}
 
             {/* Payments List */}
@@ -2069,10 +2245,7 @@ function PagosPageContent() {
         open={showPagoDialog}
         onOpenChange={(open) => {
           setShowPagoDialog(open)
-          if (!open) {
-            setPasoPago(1)
-            setEditandoBaseCobro(false)
-          }
+          if (!open) setPasoPago(1)
         }}
       >
         <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden p-0">
@@ -2104,6 +2277,51 @@ function PagosPageContent() {
               const porcentajeMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : sugerencia?.porcentaje ?? null
               const montoConIPC = porcentajeMes != null && baseActual > 0 ? Math.round(baseActual * (1 + porcentajeMes / 100)) : null
 
+              // Saldo de una cuota que ya tiene su cifra oficial fijada por un
+              // pago anterior: no hay IPC ni mora para recalcular, solo se
+              // pide un monto contra lo que quedó pendiente.
+              if (topeParcialCobro) {
+                const saldoObjetivo = montoCuotaBase
+                const dentroDelRango = pagoForm.monto > 0 && pagoForm.monto <= saldoObjetivo + 0.01
+                const quedaCompleta = pagoForm.monto >= saldoObjetivo - 0.01
+                return (
+                  <div className="grid gap-3">
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Fecha de cobro</Label>
+                      <Input
+                        type="date"
+                        value={pagoForm.fecha}
+                        onChange={(e) => recalcularCobro({ fecha: e.target.value })}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/50 px-3 py-2 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold">Saldo pendiente de esta cuota</span>
+                        <span className="font-mono font-bold text-sm text-primary">{formatCurrency(saldoObjetivo)}</span>
+                      </div>
+                      <p className="text-[11px] leading-tight text-muted-foreground">
+                        Ya lleva {formatCurrency(acumuladoPrevioCobro)} de {formatCurrency(acumuladoPrevioCobro + saldoObjetivo)} pagados.
+                        Esta cifra ya está fija: no lleva IPC ni mora nuevos.
+                      </p>
+                    </div>
+                    <div className="grid gap-1">
+                      <Label className="text-xs">¿Cuánto se cobra ahora? ($)</Label>
+                      <MoneyInput
+                        value={pagoForm.monto}
+                        onValueChange={(monto) => setPagoForm((prev) => ({ ...prev, monto: Math.max(0, Math.min(monto, saldoObjetivo)) }))}
+                        placeholder="0"
+                        className="h-10 text-base font-semibold"
+                      />
+                      {!dentroDelRango && pagoForm.monto > 0 && (
+                        <p className="text-[11px] text-destructive">No puede superar el saldo pendiente.</p>
+                      )}
+                    </div>
+                    {!quedaCompleta && pagoForm.monto > 0 && renderSaldoDecisionForm()}
+                  </div>
+                )
+              }
+
               return (
               <div className="grid gap-3">
                 {modoHistorico && (
@@ -2130,37 +2348,12 @@ function PagosPageContent() {
                   </p>
                 </div>
 
-                {/* Total a pagar, con lápiz para corregir la base a mano antes de IPC y mora */}
-                <div className="rounded-md border border-border bg-muted/50 px-3 py-2 space-y-2">
+                {/* Total sugerido (cuota + mora) */}
+                <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold">Total a pagar</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono font-bold text-sm text-primary">{formatCurrency(pagoForm.monto)}</span>
-                      {ajustaPorIPC && (
-                        <button
-                          type="button"
-                          onClick={() => setEditandoBaseCobro((v) => !v)}
-                          title="Corregir el monto a mano antes de aplicar IPC y mora"
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    <span className="font-semibold">Total sugerido</span>
+                    <span className="font-mono font-bold text-sm text-primary">{formatCurrency(totalSugeridoCobro)}</span>
                   </div>
-                  {ajustaPorIPC && editandoBaseCobro && (
-                    <div className="grid gap-1 border-t border-border/60 pt-2">
-                      <Label className="text-[11px] text-muted-foreground">Monto base (antes de IPC y mora)</Label>
-                      <MoneyInput
-                        value={baseActual}
-                        onValueChange={(v) => recalcularCobro({ baseManual: v > 0 ? v : null })}
-                        className="h-9 font-mono"
-                      />
-                      <p className="text-[11px] leading-tight text-muted-foreground">
-                        Se usa para calcular el IPC y la mora de esta cuota. No afecta otras cuotas.
-                      </p>
-                    </div>
-                  )}
                 </div>
 
                 {ajustaPorIPC ? (
@@ -2280,12 +2473,31 @@ function PagosPageContent() {
                     <Label className="text-xs">Monto Final ($)</Label>
                     <MoneyInput
                       value={pagoForm.monto}
-                      onValueChange={(monto) => setPagoForm({ ...pagoForm, monto })}
+                      onValueChange={(monto) => setPagoForm({ ...pagoForm, monto: Math.max(0, Math.min(monto, totalSugeridoCobro)) })}
                       placeholder="0"
                       className="h-10 text-base font-semibold"
                     />
                   </div>
                 )}
+
+                {/* Monto a cobrar ahora: por defecto el total sugerido, pero se
+                    puede reducir para dejar un pago parcial. La mora (si hay)
+                    siempre se cobra completa: lo que se reduce es la cuota. */}
+                {ajustaPorIPC && (
+                  <div className="grid gap-1">
+                    <Label className="text-xs">¿Cuánto se cobra ahora? ($)</Label>
+                    <MoneyInput
+                      value={pagoForm.monto}
+                      onValueChange={(monto) => setPagoForm((prev) => ({ ...prev, monto: Math.max(0, Math.min(monto, totalSugeridoCobro)) }))}
+                      placeholder="0"
+                      className="h-10 text-base font-semibold"
+                    />
+                    {pagoForm.monto > 0 && pagoForm.monto <= moraPago && (
+                      <p className="text-[11px] text-destructive">El monto tiene que superar la mora para cubrir algo de la cuota.</p>
+                    )}
+                  </div>
+                )}
+                {pagoForm.monto > 0 && pagoForm.monto < totalSugeridoCobro - 0.01 && renderSaldoDecisionForm()}
               </div>
               )
             })()}
@@ -2400,14 +2612,15 @@ function PagosPageContent() {
                 onClick={() => setPasoPago((p) => (p + 1) as 1 | 2 | 3)}
                 disabled={
                   pasoPago === 1
-                    ? pagoForm.monto <= 0 || (saltaOrden && !confirmoSaltoMes)
+                    ? pagoForm.monto <= moraPago || (saltaOrden && !confirmoSaltoMes) ||
+                      (pagoForm.monto < totalSugeridoCobro - 0.01 && (saldoDecisionCobro == null || recargoSaldoCobro == null))
                     : !pagoForm.pagadoPor.trim() || !pagoForm.recibidoPor.trim()
                 }
               >
                 Siguiente
               </Button>
             ) : (
-              <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto <= 0 || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
+              <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto <= moraPago || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
                 Registrar {formatCurrency(pagoForm.monto)}
               </Button>
             )}
@@ -2438,14 +2651,15 @@ function PagosPageContent() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPagoToDelete(null)}>
+            <Button variant="outline" disabled={borrandoPago} onClick={() => setPagoToDelete(null)}>
               Cancelar
             </Button>
             <Button
               variant="destructive"
+              disabled={borrandoPago}
               onClick={() => pagoToDelete && handleDeletePago(pagoToDelete.id)}
             >
-              Eliminar pago
+              {borrandoPago ? "Eliminando..." : "Eliminar pago"}
             </Button>
           </DialogFooter>
         </DialogContent>
