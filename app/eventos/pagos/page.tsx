@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import { useUI } from "@/lib/ui-context"
+import { useProfile } from "@/lib/profile-context"
 import {
   generateId,
   formatCurrency,
@@ -422,6 +423,10 @@ function PagosPageContent() {
   const { eventos, updateEvento, configuracionCajas, movimientosCaja, deleteMovimientoCaja, historialIPC, state } = useStore()
   const { toast } = useToast()
   const { setSidebarOpen } = useUI()
+  const { perfilActivo } = useProfile()
+  const puedeEditarNotaStaff = ["administracion", "soporte"].includes(perfilActivo?.id ?? "")
+  const [notaStaffDraft, setNotaStaffDraft] = useState("")
+  const [guardandoNotaStaff, setGuardandoNotaStaff] = useState(false)
 
   // Ocultar automáticamente el panel lateral al entrar (se reabre con hover)
   useEffect(() => {
@@ -550,7 +555,22 @@ function PagosPageContent() {
     setRecargoAtrasoOmitido(false)
     setModoHistorico(false)
     setMostrarDetalleCalculo(false)
+    setNotaStaffDraft(selectedEvento?.notaStaff || "")
   }, [selectedEvento?.id])
+
+  const guardarNotaStaff = async () => {
+    if (!selectedEvento || guardandoNotaStaff) return
+    setGuardandoNotaStaff(true)
+    try {
+      const guardado = await updateEvento(selectedEvento.id, { notaStaff: notaStaffDraft })
+      if (guardado) {
+        setSelectedEvento({ ...selectedEvento, notaStaff: notaStaffDraft })
+        toast({ title: "Nota para staff guardada" })
+      }
+    } finally {
+      setGuardandoNotaStaff(false)
+    }
+  }
 
   // Cuotas config (solo lectura — se edita desde Contratos)
   const [cuotasTotal, setCuotasTotal] = useState(1)
@@ -1624,6 +1644,35 @@ function PagosPageContent() {
                       </Button>
                     </div>
                     <p className="text-sm text-amber-900 whitespace-pre-line">{selectedEvento.notasInternas}</p>
+                  </div>
+                )}
+                {puedeEditarNotaStaff && (
+                  <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                    <Label className="text-xs font-semibold text-sky-800 mb-1.5 block">
+                      Nota para staff (DJ/Foto/Vestido/Pantalla/Coordinación)
+                    </Label>
+                    <Textarea
+                      value={notaStaffDraft}
+                      onChange={(e) => setNotaStaffDraft(e.target.value)}
+                      placeholder="Instrucciones o info para el staff del evento (visible solo para ellos, de solo lectura)..."
+                      className="bg-white text-sm"
+                      rows={2}
+                    />
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-sky-700/80">
+                        La ven, de solo lectura, DJ/Fotógrafo/Vestido/Pantalla/Coordinación en su calendario.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 bg-white"
+                        disabled={guardandoNotaStaff || notaStaffDraft === (selectedEvento.notaStaff || "")}
+                        onClick={guardarNotaStaff}
+                      >
+                        {guardandoNotaStaff ? "Guardando..." : "Guardar"}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>
