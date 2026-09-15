@@ -953,33 +953,6 @@ function PagosPageContent() {
       `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""} | Recibido por: ${pagoForm.recibidoPor.trim()}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
     )
 
-    // Enviar automáticamente el comprobante por email (Resend) a los
-    // mails configurados: quién pagó, cuándo, cuánto, cuánto le resta
-    // y quién recibió el pago. Fire-and-forget: no bloquea el registro.
-    const totalPagosNuevo = updatedPagos.reduce((s, p) => s + p.monto, 0)
-    const senaCubierta =
-      selectedEvento.planDeCuotas?.modalidadPago?.startsWith("sena")
-        ? selectedEvento.planDeCuotas.montoSena || 0
-        : 0
-    const totalPlanResumen = montoTotal > 0 ? montoTotal : selectedEvento.montoTotalPlan || 0
-    const restanteResumen = Math.max(0, totalPlanResumen - (totalPagosNuevo + senaCubierta))
-    const fechaLegible = pagoForm.fecha
-      ? new Date(`${pagoForm.fecha}T12:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
-      : new Date().toLocaleDateString("es-AR")
-    fetch("/api/comprobante-pago", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        evento: nombreEventoLog,
-        concepto: etiquetaLog,
-        pagadoPor: pagoForm.pagadoPor,
-        fecha: fechaLegible,
-        monto: formatCurrency(pagoForm.monto),
-        restante: totalPlanResumen > 0 ? formatCurrency(restanteResumen) : null,
-        recibidoPor: pagoForm.recibidoPor.trim(),
-      }),
-    }).catch(() => {})
-
     // En modo histórico, en vez de cerrar, se reabre directo con la cuota
     // siguiente para encadenar la carga de meses atrasados sin recuotearse.
     const evolucionado: EventoGuardado = {

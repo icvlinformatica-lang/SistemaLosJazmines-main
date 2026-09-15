@@ -1,8 +1,13 @@
 // Resumen diario del sistema: dinero que ingresó a cada caja, movimientos
 // importantes y desglose de cada cuota cobrada en el día.
 // Se usa en dos lugares: la sección "Resumen diario" de Inicio (vía
-// /api/resumen-diario) y el mail automático de las 21:00 (vía el cron
-// /api/cron/resumen-diario). Corre SOLO en el servidor.
+// /api/resumen-diario, con todos los datos) y el mail automático de las
+// 21:00 (vía el cron /api/cron/resumen-diario) — el mail muestra SOLO las
+// cuotas del día agrupadas por salón (ver buildEmailHtml más abajo); el
+// resto de la info (dinero por caja, movimientos importantes, a cobrar
+// esta semana) quedó solo para Inicio, no se manda más por mail todos los
+// días (eso ahora va en el resumen semanal, ver lib/resumen-semanal.ts).
+// Corre SOLO en el servidor.
 
 import { sql } from "@/lib/db"
 import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
@@ -204,13 +209,48 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
   }
   cuotasDelDia.sort((a, b) => b.monto - a.monto)
 
-  // ------------------------------------------
-  // VIENEN A PAGAR ESTA SEMANA (+ atrasados)
-  // ------------------------------------------
-  // Semana actual: de lunes a domingo (hora argentina). Una cuota sin pagar
-  // que vence dentro de la semana => "viene a pagar". Cuotas sin pagar que
-  // vencieron ANTES del lunes => deuda atrasada (se suma el monto).
-  const hoyDate = new Date(hoy + "T12:00:00")
+  const { vienenAPagar } = await buildVienenAPagar(hoy)
+
+  return {
+    fecha: hoy,
+    fechaLegible: fechaLegible(hoy),
+    ingresoCajaJazmines,
+    ingresoCajaEventos,
+    egresoCajaJazmines,
+    egresoCajaEventos,
+    ingresosPorSalon,
+    movimientosImportantes,
+    cuotasDelDia,
+    totalCuotas: cuotasDelDia.reduce((s, c) => s + c.monto, 0),
+    cantidadMovimientos: movsHoy.length,
+    vienenAPagar,
+  }
+}
+
+export interface VienenAPagarResumen {
+  inicioSemana: string
+  finSemana: string
+  vienenAPagar: VieneAPagar[]
+}
+
+/**
+ * Quiénes tienen una cuota que vence en la semana de `referencia` (lunes a
+ * domingo), más la deuda atrasada de cuotas vencidas antes de esa semana.
+ * Se usa tanto para "esta semana" (resumen diario / Inicio, referencia =
+ * hoy) como para "la semana que arranca" (resumen semanal de los viernes,
+ * referencia = el lunes siguiente).
+ */
+export async function buildVienenAPagar(referencia: string): Promise<VienenAPagarResumen> {
+  const evRows = (await sql`
+    SELECT id, nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas
+    FROM eventos
+    WHERE deleted_at IS NULL
+  `) as unknown as Record<string, unknown>[]
+
+  // Semana de la referencia: de lunes a domingo (hora argentina). Una cuota
+  // sin pagar que vence dentro de la semana => "viene a pagar". Cuotas sin
+  // pagar que vencieron ANTES del lunes => deuda atrasada (se suma el monto).
+  const hoyDate = new Date(referencia + "T12:00:00")
   const diaSemana = (hoyDate.getDay() + 6) % 7 // 0 = lunes
   const lunes = new Date(hoyDate)
   lunes.setDate(hoyDate.getDate() - diaSemana)
@@ -219,6 +259,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
   const toYmd = (d: Date) => d.toLocaleDateString("en-CA")
   const inicioSemana = toYmd(lunes)
   const finSemana = toYmd(domingo)
+  const hoy = referencia
 
   const ipcRows = await sql`SELECT mes, anio, porcentaje FROM historial_ipc`
   const historialIPC: HistorialIPCEntry[] = ipcRows.map(h => ({ mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0 }))
@@ -307,20 +348,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
     return b.montoAtrasado - a.montoAtrasado
   })
 
-  return {
-    fecha: hoy,
-    fechaLegible: fechaLegible(hoy),
-    ingresoCajaJazmines,
-    ingresoCajaEventos,
-    egresoCajaJazmines,
-    egresoCajaEventos,
-    ingresosPorSalon,
-    movimientosImportantes,
-    cuotasDelDia,
-    totalCuotas: cuotasDelDia.reduce((s, c) => s + c.monto, 0),
-    cantidadMovimientos: movsHoy.length,
-    vienenAPagar,
-  }
+  return { inicioSemana, finSemana, vienenAPagar }
 }
 
 // ==========================================
@@ -331,131 +359,72 @@ function fmt(n: number): string {
   return "$" + Math.round(n).toLocaleString("es-AR")
 }
 
+/**
+ * Mail diario: SOLO las cuotas que entraron hoy, agrupadas por salón, con
+ * el detalle de quién pagó cada una y el total por salón + total general.
+ * El resto de la info (dinero por caja, movimientos importantes, a cobrar
+ * esta semana) sigue disponible en la sección "Resumen diario" de Inicio,
+ * pero ya no se manda por mail todos los días.
+ */
 function buildEmailHtml(r: ResumenDiario): string {
-  const filaCaja = (nombre: string, ingreso: number, egreso: number) => `
-    <tr>
-      <td style="padding:8px 12px;color:#374151;font-size:14px;border-bottom:1px solid #e5e7eb;">${nombre}</td>
-      <td style="padding:8px 12px;color:#16a34a;font-size:14px;font-weight:700;border-bottom:1px solid #e5e7eb;text-align:right;">+ ${fmt(ingreso)}</td>
-      <td style="padding:8px 12px;color:#dc2626;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;text-align:right;">- ${fmt(egreso)}</td>
-    </tr>`
+  const porSalon = new Map<string, CuotaResumen[]>()
+  for (const c of r.cuotasDelDia) {
+    const lista = porSalon.get(c.salon) ?? []
+    lista.push(c)
+    porSalon.set(c.salon, lista)
+  }
+  const gruposOrdenados = [...porSalon.entries()].sort(
+    (a, b) => b[1].reduce((s, c) => s + c.monto, 0) - a[1].reduce((s, c) => s + c.monto, 0),
+  )
 
-  const salonRows = r.ingresosPorSalon.length
-    ? r.ingresosPorSalon
-        .map(
-          (s) => `
-        <tr>
-          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">${s.salon}</td>
-          <td style="padding:6px 12px;color:#16a34a;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">+ ${fmt(s.total)}</td>
-        </tr>`
-        )
-        .join("")
-    : `<tr><td colspan="2" style="padding:10px 12px;color:#9ca3af;font-size:13px;">Sin ingresos registrados hoy.</td></tr>`
-
-  const movRows = r.movimientosImportantes.length
-    ? r.movimientosImportantes
-        .map(
-          (m) => `
-        <tr>
-          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">${m.concepto}</td>
-          <td style="padding:6px 12px;color:#6b7280;font-size:12px;border-bottom:1px solid #f3f4f6;">${m.salon}<br/><span style="font-size:11px;color:#9ca3af;">${m.caja}</span></td>
-          <td style="padding:6px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f3f4f6;text-align:right;color:${m.tipo === "ingreso" ? "#16a34a" : "#dc2626"};">${m.tipo === "ingreso" ? "+" : "-"} ${fmt(m.monto)}</td>
-        </tr>`
-        )
-        .join("")
-    : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">Sin movimientos registrados hoy.</td></tr>`
-
-  const cuotaRows = r.cuotasDelDia.length
-    ? r.cuotasDelDia
-        .map(
-          (c) => `
+  const seccionSalon = (salon: string, cuotas: CuotaResumen[]): string => {
+    const subtotal = cuotas.reduce((s, c) => s + c.monto, 0)
+    const filas = cuotas
+      .map(
+        (c) => `
         <tr>
           <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">
-            ${c.evento}
-            ${c.notas ? `<br/><span style="color:#9ca3af;font-size:11px;">${c.notas}</span>` : ""}
+            ${c.pagadoPor || "Sin dato"}
+            <br/><span style="color:#9ca3af;font-size:11px;">${c.evento}${c.notas ? ` — ${c.notas}` : ""}</span>
           </td>
-          <td style="padding:6px 12px;color:#6b7280;font-size:12px;border-bottom:1px solid #f3f4f6;">${c.salon}</td>
           <td style="padding:6px 12px;color:#16a34a;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${fmt(c.monto)}</td>
-        </tr>`
-        )
-        .join("") +
-      `<tr>
-        <td colspan="2" style="padding:8px 12px;color:#111827;font-size:13px;font-weight:700;">Total cuotas del día</td>
-        <td style="padding:8px 12px;color:#16a34a;font-size:14px;font-weight:700;text-align:right;">${fmt(r.totalCuotas)}</td>
-      </tr>`
-    : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">No entraron cuotas hoy.</td></tr>`
-
-  // A cobrar esta semana, agrupado por salón (sin desglose por persona):
-  // suma de cuotas que vencen esta semana + deuda atrasada de cada salón.
-  const cobrarPorSalon = new Map<string, { semana: number; atrasado: number }>()
-  for (const v of r.vienenAPagar) {
-    const acc = cobrarPorSalon.get(v.salon) || { semana: 0, atrasado: 0 }
-    if (v.cuotaSemana) acc.semana += v.cuotaSemana.monto
-    acc.atrasado += v.montoAtrasado
-    cobrarPorSalon.set(v.salon, acc)
-  }
-  const cobrarEntries = [...cobrarPorSalon.entries()].sort((a, b) => b[1].semana - a[1].semana)
-  const totalSemana = cobrarEntries.reduce((s, [, v]) => s + v.semana, 0)
-  const totalAtrasado = cobrarEntries.reduce((s, [, v]) => s + v.atrasado, 0)
-
-  const pagarRows = cobrarEntries.length
-    ? cobrarEntries
-        .map(
-          ([salon, v]) => `
+        </tr>`,
+      )
+      .join("")
+    return `
+      <h3 style="margin:20px 0 8px;font-size:14px;color:#111827;">${salon}</h3>
+      <table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+        ${filas}
         <tr>
-          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">${salon}</td>
-          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${v.semana > 0 ? fmt(v.semana) : "-"}</td>
-          <td style="padding:6px 12px;color:#dc2626;font-size:13px;font-weight:600;border-bottom:1px solid #f3f4f6;text-align:right;">${v.atrasado > 0 ? fmt(v.atrasado) : "-"}</td>
-        </tr>`
-        )
-        .join("") +
-      `<tr>
-        <td style="padding:8px 12px;color:#111827;font-size:13px;font-weight:700;">Total</td>
-        <td style="padding:8px 12px;color:#111827;font-size:14px;font-weight:700;text-align:right;">${fmt(totalSemana)}</td>
-        <td style="padding:8px 12px;color:#dc2626;font-size:14px;font-weight:700;text-align:right;">${totalAtrasado > 0 ? fmt(totalAtrasado) : "-"}</td>
-      </tr>`
-    : `<tr><td colspan="3" style="padding:10px 12px;color:#9ca3af;font-size:13px;">No hay cuotas por cobrar esta semana.</td></tr>`
+          <td style="padding:8px 12px;color:#111827;font-size:13px;font-weight:700;">Total ${salon}</td>
+          <td style="padding:8px 12px;color:#16a34a;font-size:14px;font-weight:700;text-align:right;">${fmt(subtotal)}</td>
+        </tr>
+      </table>`
+  }
 
-  const seccion = (titulo: string, contenido: string) => `
-    <h3 style="margin:20px 0 8px;font-size:14px;color:#111827;">${titulo}</h3>
-    <table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
-      ${contenido}
-    </table>`
+  const cuerpo = gruposOrdenados.length
+    ? gruposOrdenados.map(([salon, cuotas]) => seccionSalon(salon, cuotas)).join("")
+    : `<p style="color:#9ca3af;font-size:13px;margin:16px 0;">No entraron cuotas hoy.</p>`
 
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
       <div style="background:#2d5a3d;color:#ffffff;padding:16px 20px;border-radius:8px;">
-        <h2 style="margin:0;font-size:18px;">Resumen diario</h2>
+        <h2 style="margin:0;font-size:18px;">Cuotas del día</h2>
         <p style="margin:4px 0 0;font-size:13px;opacity:0.9;">Sistema Los Jazmines — ${r.fechaLegible}</p>
       </div>
-      ${seccion(
-        "Dinero por caja",
-        `<tr>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Caja</th>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Ingresó</th>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Salió</th>
-        </tr>` +
-          filaCaja("Caja Jazmines", r.ingresoCajaJazmines, r.egresoCajaJazmines) +
-          filaCaja("Caja Eventos", r.ingresoCajaEventos, r.egresoCajaEventos)
-      )}
-      ${seccion(
-        "Ingresos por salón",
-        `<tr>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Salón</th>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Ingresó hoy</th>
-        </tr>` + salonRows
-      )}
-      ${seccion("Movimientos importantes del día", movRows)}
-      ${seccion("Cuotas que entraron hoy", cuotaRows)}
-      ${seccion(
-        "A cobrar esta semana por salón",
-        `<tr>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Salón</th>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Esta semana</th>
-          <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Atrasado</th>
-        </tr>` + pagarRows
-      )}
+      ${cuerpo}
+      ${
+        gruposOrdenados.length
+          ? `<table style="width:100%;border-collapse:collapse;margin-top:8px;">
+              <tr>
+                <td style="padding:8px 12px;color:#111827;font-size:14px;font-weight:700;">Total del día</td>
+                <td style="padding:8px 12px;color:#16a34a;font-size:15px;font-weight:700;text-align:right;">${fmt(r.totalCuotas)}</td>
+              </tr>
+            </table>`
+          : ""
+      }
       <p style="color:#9ca3af;font-size:12px;margin-top:16px;">
-        Resumen automático generado a las 21:00 (hora argentina). ${r.cantidadMovimientos} movimiento${r.cantidadMovimientos === 1 ? "" : "s"} en el día.
+        Resumen automático generado a las 21:00 (hora argentina).
       </p>
     </div>`
 }
@@ -485,7 +454,7 @@ export async function sendResumenDiarioEmail(resumen?: ResumenDiario): Promise<b
       body: JSON.stringify({
         from: "Sistema Los Jazmines <onboarding@resend.dev>",
         to,
-        subject: `Resumen diario — ${r.fechaLegible}`,
+        subject: `Cuotas del día — ${r.fechaLegible}`,
         html: buildEmailHtml(r),
       }),
     })
