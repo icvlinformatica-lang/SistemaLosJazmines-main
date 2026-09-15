@@ -13,6 +13,10 @@ export interface Perfil {
 
 // NOTA DE SEGURIDAD: los PINs ya NO viven en el cliente.
 // La verificación se hace en el servidor (/api/auth/login) contra lib/auth/server.ts.
+// Orden pensado para la grilla de 5 columnas del login: dos filas de 5.
+// Fila 1: cocina, barra, administración, coordinación, cobrar cuota.
+// Fila 2: dj, fotógrafo, vestido, pantalla, soporte (soporte queda
+// abajo a la derecha, justo debajo de "Cobrar cuota").
 export const PERFILES: Perfil[] = [
   {
     id: "cocina",
@@ -37,12 +41,11 @@ export const PERFILES: Perfil[] = [
     rutasExcluidas: ["/eventos/produccion"],
   },
   {
-    id: "soporte",
-    nombre: "Soporte",
-    color: "#1a3a2a",
-    emoji: "🛠️",
-    rutas: ["*"],
-    rutasExcluidas: ["/eventos/produccion"],
+    id: "coordinacion",
+    nombre: "Coordinación",
+    color: "#f39c12",
+    emoji: "📋",
+    rutas: ["/eventos/staff"],
   },
   {
     id: "cobro",
@@ -82,11 +85,12 @@ export const PERFILES: Perfil[] = [
     rutas: ["/eventos/staff"],
   },
   {
-    id: "coordinacion",
-    nombre: "Coordinación",
-    color: "#f39c12",
-    emoji: "📋",
-    rutas: ["/eventos/staff"],
+    id: "soporte",
+    nombre: "Soporte",
+    color: "#1a3a2a",
+    emoji: "🛠️",
+    rutas: ["*"],
+    rutasExcluidas: ["/eventos/produccion"],
   },
 ]
 
