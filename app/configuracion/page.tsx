@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck, Wallet, Search, X } from "lucide-react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck, Wallet, Search, X, KeyRound } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
@@ -26,6 +26,7 @@ import type { Insumo, Receta } from "@/lib/store"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { SalonesNombresCard } from "@/components/salones-nombres-card"
+import { PERFILES } from "@/lib/profile-context"
 
 type ActivityEntry = {
   id: string
@@ -86,6 +87,22 @@ export default function ConfiguracionPage() {
 
   const [isRespaldoOpen, setIsRespaldoOpen] = useState(false)
   const [isConfigOpen, setIsConfigOpen] = useState(false)
+  const [isPasswordsOpen, setIsPasswordsOpen] = useState(false)
+  const [pins, setPins] = useState<Record<string, string> | null>(null)
+  const [loadingPins, setLoadingPins] = useState(false)
+
+  // Carga los PINs reales (ya resueltos desde variables de entorno) recién
+  // la primera vez que se abre la carpeta — el endpoint solo responde si
+  // el perfil activo es administración o soporte.
+  useEffect(() => {
+    if (!isPasswordsOpen || pins || loadingPins) return
+    setLoadingPins(true)
+    fetch("/api/auth/pins")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setPins(data))
+      .catch(() => setPins(null))
+      .finally(() => setLoadingPins(false))
+  }, [isPasswordsOpen, pins, loadingPins])
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<Record<string, { count: number; synced: boolean }>>({
@@ -555,6 +572,76 @@ export default function ConfiguracionPage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-8">
+        {/* Section -1: Contraseñas (colapsable) — solo visible para
+            administración y soporte, que son los únicos perfiles con
+            acceso a esta pantalla. */}
+        <Collapsible open={isPasswordsOpen} onOpenChange={setIsPasswordsOpen}>
+        <Card>
+          <CardHeader className="pb-4">
+            <CollapsibleTrigger asChild>
+              <button className="w-full text-left">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <KeyRound className="h-6 w-6" />
+                      Contraseñas
+                    </CardTitle>
+                    <CardDescription className="text-base mt-1">
+                      PIN de acceso de cada perfil
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {isPasswordsOpen ? (
+                      <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                </div>
+              </button>
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CollapsibleContent>
+          <CardContent className="space-y-4 pt-0">
+            {loadingPins && (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                <Loader2 className="h-4 w-4 animate-spin" /> Cargando...
+              </div>
+            )}
+            {!loadingPins && !pins && (
+              <p className="text-sm text-muted-foreground py-4">
+                No se pudieron cargar los PINs. Solo administración y soporte pueden verlos.
+              </p>
+            )}
+            {pins && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {PERFILES.map((perfil) => (
+                  <div
+                    key={perfil.id}
+                    className="flex items-center gap-3 p-3 border rounded-lg"
+                  >
+                    <div
+                      className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-base"
+                      style={{ backgroundColor: perfil.color }}
+                    >
+                      {perfil.emoji}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{perfil.nombre}</p>
+                      <p className="text-lg font-mono font-bold tracking-wider">{pins[perfil.id] ?? "—"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Se pueden cambiar por variable de entorno (PIN_COCINA, PIN_BARRA, etc.) sin tocar código.
+            </p>
+          </CardContent>
+          </CollapsibleContent>
+        </Card>
+        </Collapsible>
+
         {/* Section 0: Estado de Guardado (colapsable) */}
         <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen}>
         <Card>

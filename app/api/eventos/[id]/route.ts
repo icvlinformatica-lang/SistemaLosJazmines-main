@@ -57,6 +57,7 @@ function fromRow(r: Record<string, any>) {
     costoServicios: r.costo_servicios != null ? Number(r.costo_servicios) : undefined,
     costoOperativo: r.costo_operativo != null ? Number(r.costo_operativo) : undefined,
     notasInternas: r.notas_internas,
+    notaStaff: r.nota_staff,
     pagos: parseJsonField(r.pagos, []),
     asignaciones: parseJsonField(r.asignaciones, []),
     costosCalculados: parseJsonField(r.costos_calculados, null),
@@ -87,7 +88,7 @@ const SELECT_COLS = `
   descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
   precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
-  notas_internas, pagos, asignaciones, costos_calculados,
+  notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
   stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, created_at, updated_at, deleted_at,
   versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
 `
@@ -102,7 +103,7 @@ async function fetchEvento(id: string, db = sql) {
       descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
       condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
       precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
-      notas_internas, pagos, asignaciones, costos_calculados,
+      notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
       stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at, deleted_at,
       versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
     FROM eventos WHERE id = ${id} AND deleted_at IS NULL
@@ -248,7 +249,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       estado: "estado", colorTag: "color_tag",
       precioVenta: "precio_venta", costoPersonal: "costo_personal",
       costoInsumos: "costo_insumos", costoServicios: "costo_servicios", costoOperativo: "costo_operativo",
-      notasInternas: "notas_internas", pagos: "pagos", asignaciones: "asignaciones",
+      notasInternas: "notas_internas", notaStaff: "nota_staff", pagos: "pagos", asignaciones: "asignaciones",
       costosCalculados: "costos_calculados",
       stockDescontado: "stock_descontado", fechaImpresion: "fecha_impresion",
       cocinaPagada: "cocina_pagada", barraPagada: "barra_pagada",

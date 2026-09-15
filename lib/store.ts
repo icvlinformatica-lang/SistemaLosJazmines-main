@@ -588,6 +588,8 @@ export interface EventoGuardado extends Evento {
   costoServicios?: number
   costoOperativo?: number
   notasInternas?: string
+  /** Nota privada para el staff externo (DJ/Foto/Vestido/Pantalla/Coordinación), separada de notasInternas. */
+  notaStaff?: string
   pagos?: PagoEvento[]
   planCuotas?: number
   montoTotalPlan?: number

@@ -3,7 +3,10 @@ import { NextResponse } from "next/server"
 import { verifyPin, verifyToken, signToken, signQuickToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/server"
 import { chequearLimite, registrarFallo, registrarExito, obtenerIp } from "@/lib/auth/rate-limit"
 
-const PERFILES_VALIDOS = ["cocina", "barra", "administracion", "soporte", "cobro"]
+const PERFILES_VALIDOS = [
+  "cocina", "barra", "administracion", "soporte", "cobro",
+  "dj", "fotografo", "vestido", "pantalla", "coordinacion",
+]
 
 // POST { perfilId, pin } — login con PIN
 // POST { perfilId, quickToken } — acceso rápido con token firmado previamente

@@ -65,6 +65,12 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
     ]
   }
 
+  // Perfiles de staff externo (solo lectura): un único acceso directo al
+  // calendario de próximos eventos con su servicio resaltado.
+  if (["dj", "fotografo", "vestido", "pantalla", "coordinacion"].includes(perfilId ?? "")) {
+    return [{ href: "/eventos/staff", label: "Próximos eventos", icon: Calendar }]
+  }
+
   // Perfil "Cocina": accesos directos sin carpetas, visibles al instante.
   if (perfilId === "cocina") {
     return [
