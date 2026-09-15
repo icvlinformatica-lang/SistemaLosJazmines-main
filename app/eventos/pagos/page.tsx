@@ -497,8 +497,6 @@ function PagosPageContent() {
   // Días de atraso de la próxima cuota al momento de abrir el formulario (fijo:
   // no depende de la fecha de cobro elegida, solo del vencimiento vs. hoy).
   const [diasAtrasoPago, setDiasAtrasoPago] = useState(0)
-  // Muestra el campo para corregir a mano la base de la cuota antes de aplicar IPC y mora
-  const [editandoBaseCobro, setEditandoBaseCobro] = useState(false)
   // Permite quitar con un click el recargo por días de atraso del próximo pago
   const [recargoAtrasoOmitido, setRecargoAtrasoOmitido] = useState(false)
   // Tildes del próximo cobro: aplicar el IPC del mes y, si el automático quedó
@@ -730,7 +728,6 @@ function PagosPageContent() {
     setMoraPago(recargoAtraso)
     setMontoCuotaBase(cuotaNeta)
     setDiasAtrasoPago(diasAtraso)
-    setEditandoBaseCobro(false)
     setBaseManualCobro(null)
     setMesEsperadoPago(esParcial ? null : cuotaDestino.fechaVencimiento.slice(0, 7))
     setConfirmoSaltoMes(false)
@@ -2232,10 +2229,7 @@ function PagosPageContent() {
         open={showPagoDialog}
         onOpenChange={(open) => {
           setShowPagoDialog(open)
-          if (!open) {
-            setPasoPago(1)
-            setEditandoBaseCobro(false)
-          }
+          if (!open) setPasoPago(1)
         }}
       >
         <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden p-0">
@@ -2338,37 +2332,12 @@ function PagosPageContent() {
                   </p>
                 </div>
 
-                {/* Total sugerido (cuota + mora), con lápiz para corregir la base a mano antes de IPC y mora */}
-                <div className="rounded-md border border-border bg-muted/50 px-3 py-2 space-y-2">
+                {/* Total sugerido (cuota + mora) */}
+                <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold">Total sugerido</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono font-bold text-sm text-primary">{formatCurrency(totalSugeridoCobro)}</span>
-                      {ajustaPorIPC && (
-                        <button
-                          type="button"
-                          onClick={() => setEditandoBaseCobro((v) => !v)}
-                          title="Corregir el monto a mano antes de aplicar IPC y mora"
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    <span className="font-mono font-bold text-sm text-primary">{formatCurrency(totalSugeridoCobro)}</span>
                   </div>
-                  {ajustaPorIPC && editandoBaseCobro && (
-                    <div className="grid gap-1 border-t border-border/60 pt-2">
-                      <Label className="text-[11px] text-muted-foreground">Monto base (antes de IPC y mora)</Label>
-                      <MoneyInput
-                        value={baseActual}
-                        onValueChange={(v) => recalcularCobro({ baseManual: v > 0 ? v : null })}
-                        className="h-9 font-mono"
-                      />
-                      <p className="text-[11px] leading-tight text-muted-foreground">
-                        Se usa para calcular el IPC y la mora de esta cuota. No afecta otras cuotas.
-                      </p>
-                    </div>
-                  )}
                 </div>
 
                 {ajustaPorIPC ? (
