@@ -558,6 +558,8 @@ function PagosPageContent() {
 
   // Confirmación de eliminación de comprobante/pago
   const [pagoToDelete, setPagoToDelete] = useState<PagoEvento | null>(null)
+  const [borrandoPago, setBorrandoPago] = useState(false)
+  const borrandoPagoRef = useRef(false)
 
   // Mantener el evento seleccionado sincronizado con el store: si el plan de
   // cuotas se editó desde Contratos (otra modalidad de financiación, montos o
@@ -1009,9 +1011,16 @@ function PagosPageContent() {
   }
 
   const handleDeletePago = async (pagoId: string) => {
-    if (!selectedEvento) return
+    // Un doble click (o un segundo click mientras la operación anterior
+    // todavía está en vuelo) dispara dos borrados concurrentes: el primero
+    // aplica bien, el segundo llega con el evento ya desactualizado y el
+    // servidor lo rechaza con "El evento cambió en otra sesión".
+    if (borrandoPagoRef.current || !selectedEvento) return
     const pago = (selectedEvento.pagos || []).find((p) => p.id === pagoId)
     if (!pago) return
+    borrandoPagoRef.current = true
+    setBorrandoPago(true)
+    try {
 
     // 1) Determinar a qué cuota corresponde el pago (para revertirla y hallar sus movimientos)
     // Un "Pago único (pago completo)" corresponde siempre a la cuota 1: si no se
@@ -1114,6 +1123,10 @@ function PagosPageContent() {
     )
 
     setPagoToDelete(null)
+    } finally {
+      borrandoPagoRef.current = false
+      setBorrandoPago(false)
+    }
   }
 
   const totalPagos = selectedEvento ? (selectedEvento.pagos || []).reduce((s, p) => s + p.monto, 0) : 0
@@ -1815,7 +1828,10 @@ function PagosPageContent() {
                 const cuotaNeta = esParcialDestino ? proximaCuota.saldoRestante : calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
                 const totalSimulado = cuotaNeta + recargoAtraso
                 const puedeCobrar = esParcialDestino || !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
-                const detalleAbierto = mostrarDetalleCalculo || esManual || !!errorCobro
+                // Siempre arranca plegado al entrar; solo se abre si lo pide
+                // quien está cobrando (aunque el cálculo automático esté
+                // pendiente o haya un error, que se avisan igual más arriba).
+                const detalleAbierto = mostrarDetalleCalculo
 
                 return (
                   <Card className="border-2 border-primary/30 bg-primary/5">
@@ -2635,14 +2651,15 @@ function PagosPageContent() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPagoToDelete(null)}>
+            <Button variant="outline" disabled={borrandoPago} onClick={() => setPagoToDelete(null)}>
               Cancelar
             </Button>
             <Button
               variant="destructive"
+              disabled={borrandoPago}
               onClick={() => pagoToDelete && handleDeletePago(pagoToDelete.id)}
             >
-              Eliminar pago
+              {borrandoPago ? "Eliminando..." : "Eliminar pago"}
             </Button>
           </DialogFooter>
         </DialogContent>
