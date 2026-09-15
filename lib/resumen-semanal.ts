@@ -10,6 +10,11 @@
 import { sql } from "@/lib/db"
 import { hoyArgentina, buildVienenAPagar, type MovimientoResumen, type VieneAPagar } from "@/lib/resumen-diario"
 
+// Mismos 5 salones que lib/store.ts (SALONES). Se repite acá en vez de
+// importar ese módulo (tiene "use client") para no arrastrarlo a este
+// código de servidor.
+const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
+
 function fmt(n: number): string {
   return "$" + Math.round(n).toLocaleString("es-AR")
 }
@@ -69,6 +74,9 @@ export interface CajaSalonResumen {
   egresoCajaEventos: number
   ingresoCajaJazmines: number
   egresoCajaJazmines: number
+  /** Saldo acumulado histórico (todos los ingresos menos todos los egresos), no solo de esta semana. */
+  saldoCajaEventos: number
+  saldoCajaJazmines: number
 }
 
 export interface ResumenSemanal {
@@ -98,19 +106,20 @@ export async function buildResumenSemanal(hoy = hoyArgentina()): Promise<Resumen
     return d >= inicio && d <= fin
   })
 
+  // Los 5 salones siempre aparecen, tengan o no movimientos esta semana.
   const porSalonMap = new Map<string, CajaSalonResumen>()
-  const getSalon = (nombre: string): CajaSalonResumen => {
-    let entry = porSalonMap.get(nombre)
-    if (!entry) {
-      entry = { salon: nombre, ingresoCajaEventos: 0, egresoCajaEventos: 0, ingresoCajaJazmines: 0, egresoCajaJazmines: 0 }
-      porSalonMap.set(nombre, entry)
-    }
-    return entry
+  for (const salon of SALONES) {
+    porSalonMap.set(salon, {
+      salon, ingresoCajaEventos: 0, egresoCajaEventos: 0, ingresoCajaJazmines: 0, egresoCajaJazmines: 0,
+      saldoCajaEventos: 0, saldoCajaJazmines: 0,
+    })
   }
   for (const m of movsSemana) {
+    const salonRaw = String(m.salon || "").trim()
+    const entry = porSalonMap.get(salonRaw)
+    if (!entry) continue // "admin" y sin salón no se reparten entre los 5 salones
     const monto = Number(m.monto) || 0
     const caja = cajaDe(m)
-    const entry = getSalon(salonLegible(m.salon))
     if (m.tipo === "ingreso") {
       if (caja === "Caja Jazmines") entry.ingresoCajaJazmines += monto
       else entry.ingresoCajaEventos += monto
@@ -119,9 +128,27 @@ export async function buildResumenSemanal(hoy = hoyArgentina()): Promise<Resumen
       else entry.egresoCajaEventos += monto
     }
   }
-  const porSalon = [...porSalonMap.values()].sort(
-    (a, b) => (b.ingresoCajaEventos + b.ingresoCajaJazmines) - (a.ingresoCajaEventos + a.ingresoCajaJazmines),
-  )
+
+  // Saldo acumulado (histórico, no solo de la semana): se agrega en la base
+  // para no traer todos los movimientos de siempre a memoria.
+  const saldoRows = (await sql`
+    SELECT salon, caja_destino, tipo, SUM(monto)::float AS total
+    FROM movimientos_caja
+    WHERE salon = ANY(${SALONES as unknown as string[]})
+    GROUP BY salon, caja_destino, tipo
+  `) as unknown as Record<string, unknown>[]
+  for (const r of saldoRows) {
+    const salonRaw = String(r.salon || "").trim()
+    const entry = porSalonMap.get(salonRaw)
+    if (!entry) continue
+    const monto = Number(r.total) || 0
+    const caja = cajaDe(r)
+    const signo = r.tipo === "egreso" ? -1 : r.tipo === "ingreso" ? 1 : 0
+    if (caja === "Caja Jazmines") entry.saldoCajaJazmines += signo * monto
+    else entry.saldoCajaEventos += signo * monto
+  }
+
+  const porSalon = SALONES.map((salon) => porSalonMap.get(salon)!)
 
   const movimientosImportantes: MovimientoResumen[] = [...movsSemana]
     .sort((a, b) => (Number(b.monto) || 0) - (Number(a.monto) || 0))
@@ -156,32 +183,37 @@ function buildEmailHtml(r: ResumenSemanal): string {
       ${contenido}
     </table>`
 
-  // Una tabla por salón: nunca se suman entre sí.
-  const salonesHtml = r.porSalon.length
-    ? r.porSalon
-        .map(
-          (s) => `
-        <h3 style="margin:20px 0 8px;font-size:14px;color:#111827;">${s.salon}</h3>
-        <table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
-          <tr>
-            <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Caja</th>
-            <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Ingresó</th>
-            <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Salió</th>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px;color:#374151;font-size:14px;border-bottom:1px solid #f3f4f6;">Caja Eventos</td>
-            <td style="padding:8px 12px;color:#16a34a;font-size:14px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">+ ${fmt(s.ingresoCajaEventos)}</td>
-            <td style="padding:8px 12px;color:#dc2626;font-size:14px;font-weight:600;border-bottom:1px solid #f3f4f6;text-align:right;">- ${fmt(s.egresoCajaEventos)}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px;color:#374151;font-size:14px;">Caja Jazmines</td>
-            <td style="padding:8px 12px;color:#16a34a;font-size:14px;font-weight:700;text-align:right;">+ ${fmt(s.ingresoCajaJazmines)}</td>
-            <td style="padding:8px 12px;color:#dc2626;font-size:14px;font-weight:600;text-align:right;">- ${fmt(s.egresoCajaJazmines)}</td>
-          </tr>
-        </table>`,
-        )
-        .join("")
-    : `<p style="color:#9ca3af;font-size:13px;margin:16px 0;">Sin movimientos registrados esta semana.</p>`
+  // Una sola tabla con los 5 salones (Caja Eventos + Caja Jazmines cada
+  // uno), con una fila vacía de separación entre salones. Los montos de un
+  // salón NUNCA se suman con los de otro.
+  const filaSalon = (s: CajaSalonResumen) => `
+        <tr>
+          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;">${salonLegible(s.salon)}</td>
+          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">Caja Eventos</td>
+          <td style="padding:6px 12px;color:#16a34a;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">+ ${fmt(s.ingresoCajaEventos)}</td>
+          <td style="padding:6px 12px;color:#dc2626;font-size:13px;font-weight:600;border-bottom:1px solid #f3f4f6;text-align:right;">- ${fmt(s.egresoCajaEventos)}</td>
+          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${fmt(s.saldoCajaEventos)}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;">${salonLegible(s.salon)}</td>
+          <td style="padding:6px 12px;color:#374151;font-size:13px;border-bottom:1px solid #f3f4f6;">Caja Jazmines</td>
+          <td style="padding:6px 12px;color:#16a34a;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">+ ${fmt(s.ingresoCajaJazmines)}</td>
+          <td style="padding:6px 12px;color:#dc2626;font-size:13px;font-weight:600;border-bottom:1px solid #f3f4f6;text-align:right;">- ${fmt(s.egresoCajaJazmines)}</td>
+          <td style="padding:6px 12px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f3f4f6;text-align:right;">${fmt(s.saldoCajaJazmines)}</td>
+        </tr>
+        <tr><td colspan="5" style="padding:6px 0;">&nbsp;</td></tr>`
+
+  const salonesHtml = `
+    <table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+      <tr>
+        <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Salón</th>
+        <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:left;border-bottom:1px solid #e5e7eb;">Caja</th>
+        <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Entró esta semana</th>
+        <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Salió esta semana</th>
+        <th style="padding:8px 12px;color:#6b7280;font-size:12px;text-align:right;border-bottom:1px solid #e5e7eb;">Saldo actual</th>
+      </tr>
+      ${r.porSalon.map(filaSalon).join("")}
+    </table>`
 
   const movRows = r.movimientosImportantes.length
     ? r.movimientosImportantes
@@ -224,6 +256,7 @@ function buildEmailHtml(r: ResumenSemanal): string {
         <h2 style="margin:0;font-size:18px;">Resumen semanal</h2>
         <p style="margin:4px 0 0;font-size:13px;opacity:0.9;">Sistema Los Jazmines — ${r.rangoLegible}</p>
       </div>
+      <h3 style="margin:20px 0 8px;font-size:14px;color:#111827;">Caja por salón</h3>
       ${salonesHtml}
       ${seccion(
         "Movimientos importantes de la semana",
