@@ -319,6 +319,13 @@ export default function StaffPage() {
                   </div>
                 </div>
 
+                {selectedEvento.notaStaff && (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                    <p className="mb-1 text-xs font-semibold text-sky-800">Nota</p>
+                    <p className="whitespace-pre-line text-sm text-sky-900">{selectedEvento.notaStaff}</p>
+                  </div>
+                )}
+
                 <div>
                   <h4 className="mb-2 text-sm font-semibold">Servicios contratados</h4>
                   {(selectedEvento.servicios || []).length === 0 ? (

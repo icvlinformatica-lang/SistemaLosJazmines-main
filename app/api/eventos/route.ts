@@ -46,6 +46,7 @@ function toRow(ev: Record<string, unknown>) {
     costo_servicios: (ev.costoServicios as number) || null,
     costo_operativo: (ev.costoOperativo as number) || null,
     notas_internas: (ev.notasInternas as string) || null,
+    nota_staff: (ev.notaStaff as string) || null,
     pagos: JSON.stringify(ev.pagos || []),
     asignaciones: JSON.stringify(ev.asignaciones || []),
     costos_calculados: JSON.stringify(ev.costosCalculados || null),
@@ -109,6 +110,7 @@ function fromRow(r: Record<string, any>) {
     costoServicios: r.costo_servicios != null ? Number(r.costo_servicios) : undefined,
     costoOperativo: r.costo_operativo != null ? Number(r.costo_operativo) : undefined,
     notasInternas: r.notas_internas,
+    notaStaff: r.nota_staff,
     pagos: parseJsonField(r.pagos, []),
     asignaciones: parseJsonField(r.asignaciones, []),
     costosCalculados: parseJsonField(r.costos_calculados, null),
@@ -155,7 +157,7 @@ export async function GET() {
         descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
-        notas_internas, pagos, asignaciones, costos_calculados,
+        notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos
