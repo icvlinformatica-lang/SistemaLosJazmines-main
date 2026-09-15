@@ -51,6 +51,43 @@ export const PERFILES: Perfil[] = [
     emoji: "💰",
     rutas: ["/", "/eventos/pagos"],
   },
+  // Perfiles de solo lectura para staff externo: ven el calendario de
+  // próximos eventos con su servicio resaltado (ver app/eventos/staff).
+  {
+    id: "dj",
+    nombre: "DJ",
+    color: "#e74c3c",
+    emoji: "🎧",
+    rutas: ["/eventos/staff"],
+  },
+  {
+    id: "fotografo",
+    nombre: "Fotógrafo",
+    color: "#16a085",
+    emoji: "📸",
+    rutas: ["/eventos/staff"],
+  },
+  {
+    id: "vestido",
+    nombre: "Vestido",
+    color: "#d63384",
+    emoji: "👗",
+    rutas: ["/eventos/staff"],
+  },
+  {
+    id: "pantalla",
+    nombre: "Pantalla",
+    color: "#34495e",
+    emoji: "🖥️",
+    rutas: ["/eventos/staff"],
+  },
+  {
+    id: "coordinacion",
+    nombre: "Coordinación",
+    color: "#f39c12",
+    emoji: "📋",
+    rutas: ["/eventos/staff"],
+  },
 ]
 
 interface ProfileContextType {
