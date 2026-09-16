@@ -232,7 +232,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
         }
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {editandoVariableId
@@ -248,7 +248,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
             </DialogDescription>
           )}
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 overflow-y-auto flex-1 min-h-0 pr-1">
           {!editandoVariableId && (
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1">
               <button
