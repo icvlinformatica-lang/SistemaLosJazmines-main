@@ -354,12 +354,11 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
                 ? "Registrar retiro de caja"
                 : "Agendar gasto variable"}
           </DialogTitle>
-          {modoVariable === "retiro" && !editandoVariableId && (
-            <DialogDescription>
-              El retiro descuenta el dinero del saldo ahora mismo y queda asignado al salón que elijas. Se registra
-              en el Archivo Histórico y en Configuración → Actividad.
-            </DialogDescription>
-          )}
+          <DialogDescription>
+            {modoVariable === "retiro" && !editandoVariableId
+              ? "El retiro se descuenta de Caja Jazmines ahora mismo y queda asignado al salón que elijas. Se registra en el Archivo Histórico y en Configuración → Actividad."
+              : "Este gasto se carga en Caja Jazmines, no en Caja Eventos."}
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-1 min-h-0 flex-col md:flex-row gap-4 overflow-hidden">
         <div className="space-y-4 py-2 overflow-y-auto flex-1 min-h-0 pr-1">
