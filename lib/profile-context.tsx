@@ -332,3 +332,17 @@ export function olvidarAccesosRapidos() {
     } catch {}
   })
 }
+
+/**
+ * Nombre de la persona que eligió al entrar (Diego, Leila, Ricky, Aylin,
+ * Salón, Soporte), leído de la cookie `lj_usuario` seteada en el login.
+ * Vacío si el perfil actual no pide "¿quién ingresa?".
+ */
+export function usuarioActivo(): string {
+  try {
+    const match = document.cookie.match(/(?:^|;\s*)lj_usuario=([^;]+)/)
+    return match ? decodeURIComponent(match[1]).trim() : ""
+  } catch {
+    return ""
+  }
+}

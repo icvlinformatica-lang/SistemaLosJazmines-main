@@ -28,8 +28,9 @@ import { SALONES, salonLabel, generateId, type DistribucionSalon } from "@/lib/s
 import { SalonDot } from "@/components/salon-badge"
 import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salones-editor"
 import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
+import { usuarioActivo } from "@/lib/profile-context"
 import type { GastoVariable } from "@/lib/hooks/use-caja-jazmines"
-import { Plus, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, CalendarDays, Sparkles } from "lucide-react"
 
 /**
  * Paleta para carpetas de gastos variables creadas por el usuario; el color
@@ -45,6 +46,7 @@ interface ItemDelDia {
   salon: string | null | undefined
   tipo: "gasto" | "retiro"
   hora: string | null
+  cargadoPor: string | null
 }
 
 interface GastoRapidoModalProps {
@@ -92,6 +94,30 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
       .filter((c) => c !== "comisiones" && c !== "varios"),
   )]
 
+  // ── Sugerencia de carpeta para gastos que se repiten ─────────────────────
+  // Si el concepto tipeado ya se cargó antes (activo o archivado) y todavía
+  // está en "Varios", se ofrece crearle una carpeta propia con un clic.
+  const [sugerenciaDescartada, setSugerenciaDescartada] = useState<string | null>(null)
+  const nombreNormalizado = nuevoGasto.nombre.trim().toLowerCase()
+  const vecesCargadoAntes =
+    nombreNormalizado.length >= 2
+      ? (state.costosOperativos || []).filter(
+          (c) => c.esVariable && c.id !== editandoVariableId && c.concepto.trim().toLowerCase() === nombreNormalizado,
+        ).length +
+        (state.gastosArchivados || []).filter(
+          (g) =>
+            g.origen === "caja_jazmines_variable" &&
+            !g.concepto.startsWith("Retiro - ") &&
+            g.concepto.trim().toLowerCase() === nombreNormalizado,
+        ).length
+      : 0
+  const sugerirCarpeta =
+    modoVariable === "gasto" &&
+    !editandoVariableId &&
+    nuevoGasto.carpeta === "varios" &&
+    vecesCargadoAntes >= 1 &&
+    sugerenciaDescartada !== nombreNormalizado
+
   // ── Panel "Gastos de hoy" ────────────────────────────────────────────────
   // Muestra lo que se fue cargando (gastos agendados + retiros) el día
   // elegido, con flechas para viajar en el tiempo (mismo patrón que el
@@ -114,6 +140,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
       salon: c.salon,
       tipo: "gasto",
       hora: c.createdAt ? new Date(c.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : null,
+      cargadoPor: c.cargadoPor || null,
     }))
 
   const retirosDelPanel: ItemDelDia[] = (state.gastosArchivados || [])
@@ -125,6 +152,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
       salon: g.salon,
       tipo: "retiro",
       hora: null,
+      cargadoPor: g.cargadoPor || null,
     }))
 
   const itemsDelPanel = [...gastosDelPanel, ...retirosDelPanel].sort((a, b) => (b.hora || "").localeCompare(a.hora || ""))
@@ -188,6 +216,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
       eventoId: null,
       eventoNombre: null,
       refId: null,
+      cargadoPor: usuarioActivo() || null,
     })
 
     // Configuración > Actividad
@@ -263,6 +292,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
         distribucion: dist.length > 0 ? dist : undefined,
         categoria: nuevoGasto.carpeta,
         createdAt: new Date().toISOString(),
+        cargadoPor: usuarioActivo() || undefined,
       })
     }
     cerrarYResetear()
@@ -369,6 +399,39 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
               value={nuevoGasto.nombre}
               onChange={(e) => setNuevoGasto((p) => ({ ...p, nombre: e.target.value }))}
             />
+            {sugerirCarpeta && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+                <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
+                <div className="flex-1 space-y-1.5">
+                  <p>
+                    Venís cargando <span className="font-semibold">"{nuevoGasto.nombre.trim()}"</span> seguido. ¿Querés
+                    agendarlo como carpeta propia?
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-6 px-2 text-xs bg-amber-600 text-white hover:bg-amber-700"
+                      onClick={() => {
+                        setNuevoGasto((p) => ({ ...p, carpeta: nombreNormalizado }))
+                        setSugerenciaDescartada(nombreNormalizado)
+                      }}
+                    >
+                      Sí, crear carpeta
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs text-amber-700 hover:text-amber-900"
+                      onClick={() => setSugerenciaDescartada(nombreNormalizado)}
+                    >
+                      No, gracias
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="gv-monto">Monto (ARS)</Label>
@@ -569,11 +632,12 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
                       {formatCurrency(it.monto)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
                     <SalonDot salon={it.salon || "General"} size={6} />
                     <span className="truncate">{salonLabel(it.salon || "General")}</span>
                     {it.tipo === "retiro" && <span className="shrink-0 text-red-600">· retiro</span>}
                     {it.hora && <span className="shrink-0">· {it.hora}</span>}
+                    {it.cargadoPor && <span className="shrink-0">· {it.cargadoPor}</span>}
                   </div>
                 </div>
               ))
