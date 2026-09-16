@@ -271,6 +271,46 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
               </button>
             </div>
           )}
+          <div className="space-y-2">
+            {modoVariable !== "retiro" && (
+              <div className="flex items-center justify-between">
+                <Label htmlFor="gv-repartir">Repartir entre varios salones</Label>
+                <Switch
+                  id="gv-repartir"
+                  checked={nuevoGasto.repartir}
+                  onCheckedChange={(checked) => setNuevoGasto((p) => ({ ...p, repartir: checked }))}
+                />
+              </div>
+            )}
+            {modoVariable !== "retiro" && nuevoGasto.repartir ? (
+              <RepartoSalonesEditor
+                value={nuevoGasto.distribucion}
+                onChange={(v) => setNuevoGasto((p) => ({ ...p, distribucion: v }))}
+              />
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="gv-salon">{modoVariable === "retiro" ? "Salón del que se retira" : "Salón"}</Label>
+                <Select
+                  value={nuevoGasto.salon}
+                  onValueChange={(v) => setNuevoGasto((p) => ({ ...p, salon: v }))}
+                >
+                  <SelectTrigger id="gv-salon">
+                    <SelectValue placeholder="Seleccionar salón" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SALONES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        <span className="flex items-center gap-2">
+                          <SalonDot salon={s} size={8} />
+                          {salonLabel(s)}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="gv-concepto">{modoVariable === "retiro" ? "Motivo del retiro" : "Concepto"}</Label>
             <Input
@@ -393,46 +433,6 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
               )}
             </div>
           )}
-          <div className="space-y-2">
-            {modoVariable !== "retiro" && (
-              <div className="flex items-center justify-between">
-                <Label htmlFor="gv-repartir">Repartir entre varios salones</Label>
-                <Switch
-                  id="gv-repartir"
-                  checked={nuevoGasto.repartir}
-                  onCheckedChange={(checked) => setNuevoGasto((p) => ({ ...p, repartir: checked }))}
-                />
-              </div>
-            )}
-            {modoVariable !== "retiro" && nuevoGasto.repartir ? (
-              <RepartoSalonesEditor
-                value={nuevoGasto.distribucion}
-                onChange={(v) => setNuevoGasto((p) => ({ ...p, distribucion: v }))}
-              />
-            ) : (
-              <div className="space-y-1.5">
-                <Label htmlFor="gv-salon">{modoVariable === "retiro" ? "Salón del que se retira" : "Salón"}</Label>
-                <Select
-                  value={nuevoGasto.salon}
-                  onValueChange={(v) => setNuevoGasto((p) => ({ ...p, salon: v }))}
-                >
-                  <SelectTrigger id="gv-salon">
-                    <SelectValue placeholder="Seleccionar salón" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SALONES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        <span className="flex items-center gap-2">
-                          <SalonDot salon={s} size={8} />
-                          {salonLabel(s)}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
           {modoVariable !== "retiro" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
