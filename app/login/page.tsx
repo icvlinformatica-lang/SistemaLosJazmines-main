@@ -4,6 +4,9 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { PERFILES, useProfile, tieneAccesoRapido, olvidarAccesosRapidos } from "@/lib/profile-context"
 
+// Nota: los íconos de perfil (perfil.icon) son componentes de lucide-react
+// definidos junto con cada perfil en lib/profile-context.tsx.
+
 // Perfiles que primero preguntan quién ingresa antes de pedir el PIN o usar
 // el acceso rápido. Cada perfil listado aquí muestra un paso extra con un
 // botón por nombre; todos comparten el mismo PIN del perfil.
@@ -157,10 +160,14 @@ export default function LoginPage() {
                 className="group relative flex flex-col items-center gap-3 w-full focus:outline-none"
               >
                 <div
-                  className="relative w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow"
+                  className="relative w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow"
                   style={{ backgroundColor: esDorado ? "#ffffff" : perfil.color }}
                 >
-                  <span role="img" aria-label={perfil.nombre}>{perfil.emoji}</span>
+                  <perfil.icon
+                    className="w-7 h-7"
+                    aria-label={perfil.nombre}
+                    style={{ color: esDorado ? perfil.color : perfil.iconColor }}
+                  />
                   {pinGuardado && (
                     <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shadow">
                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">

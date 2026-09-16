@@ -474,10 +474,13 @@ export function Sidebar() {
             <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[#f5f0e8]/8 hover:bg-[#f5f0e8]/12 transition-colors group">
               {/* Avatar circular con color del perfil (blanco para "Cobrar cuota") */}
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 shadow-sm"
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm"
                 style={{ backgroundColor: perfilActivo.id === "cobro" ? "#ffffff" : perfilActivo.color }}
               >
-                {perfilActivo.emoji}
+                <perfilActivo.icon
+                  className="w-4 h-4"
+                  style={{ color: perfilActivo.id === "cobro" ? perfilActivo.color : perfilActivo.iconColor }}
+                />
               </div>
               {/* Nombre + acción */}
               <div className="flex-1 min-w-0 flex flex-col">
