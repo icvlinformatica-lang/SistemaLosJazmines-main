@@ -73,6 +73,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 import {
   Plus,
@@ -102,6 +109,7 @@ import {
   ChefHat,
   Wine,
   ConciergeBell,
+  MoreVertical,
 } from "lucide-react"
 import { generateId } from "@/lib/utils-client"
 
@@ -256,6 +264,136 @@ function formatFecha(fecha: string) {
   } catch {
     return fecha
   }
+}
+
+/**
+ * Indicador de "costos cubiertos" (cocina/barra/servicios/personal).
+ * Extraído tal cual estaba (misma lógica, mismo cálculo vía
+ * calcularCobertura) para poder reusarlo entre la tabla de desktop y las
+ * tarjetas de mobile sin duplicar el JSX.
+ */
+function CostosCubiertosIndicador({ evento, onVerCostos }: { evento: EventoGuardado; onVerCostos: () => void }) {
+  const { items, todoCubierto, algoAplica } = calcularCobertura(evento)
+  return (
+    <TooltipProvider delayDuration={150}>
+      <div className="flex items-center justify-center gap-1.5">
+        {items.map((item) => {
+          const Icon = item.icon
+          return (
+            <Tooltip key={item.label}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={onVerCostos}
+                  className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-transform hover:scale-110 ${
+                    !item.aplica
+                      ? "border-dashed border-border bg-transparent text-muted-foreground/30"
+                      : item.cubierto
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                        : item.pendienteAmarillo
+                          ? "border-yellow-300 bg-yellow-50 text-yellow-600"
+                          : item.senaPagada
+                            ? "border-orange-300 bg-orange-50 text-orange-500"
+                            : "border-rose-200 bg-rose-50 text-rose-500"
+                  }`}
+                  aria-label={`${item.label}: ${item.detalle} — ver costos del evento`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs font-medium">{item.label}</p>
+                <p className="text-xs text-muted-foreground">{item.detalle}</p>
+                <p className="text-xs text-teal-600">Clic para ver costos del evento</p>
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+        {algoAplica && (
+          <span
+            className={`ml-1 h-2 w-2 rounded-full ${todoCubierto ? "bg-emerald-500" : "bg-rose-400"}`}
+            title={todoCubierto ? "Todo cubierto" : "Pagos pendientes"}
+          />
+        )}
+      </div>
+    </TooltipProvider>
+  )
+}
+
+/**
+ * Acciones de un evento (fila de tabla o tarjeta): Imprimir y Ver/Editar
+ * quedan siempre visibles; Cobrar cuota, Marcar como finalizado y Eliminar
+ * pasan a un menú desplegable. Mismo componente para desktop y mobile, para
+ * no duplicar los handlers ni el marcado.
+ */
+function AccionesEvento({
+  evento,
+  estaFinalizando,
+  onImprimir,
+  onVerEditar,
+  onCobrarCuota,
+  onFinalizar,
+  onEliminar,
+}: {
+  evento: EventoGuardado
+  estaFinalizando: boolean
+  onImprimir: () => void
+  onVerEditar: () => void
+  onCobrarCuota: () => void
+  onFinalizar: () => void
+  onEliminar: () => void
+}) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+        title="Imprimir"
+        onClick={onImprimir}
+      >
+        <Printer className="h-4 w-4" />
+        <span className="sr-only">Imprimir</span>
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+        title="Ver / Editar"
+        onClick={onVerEditar}
+      >
+        <Eye className="h-4 w-4" />
+        <span className="sr-only">Ver / Editar</span>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            title="Más acciones"
+          >
+            <MoreVertical className="h-4 w-4" />
+            <span className="sr-only">Más acciones</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onCobrarCuota} className="gap-2">
+            <DollarSign className="h-4 w-4" /> Cobrar cuota
+          </DropdownMenuItem>
+          {evento.estado !== "completado" && (
+            <DropdownMenuItem onClick={onFinalizar} disabled={estaFinalizando} className="gap-2">
+              <CheckCircle2 className="h-4 w-4" /> Marcar como finalizado
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onEliminar} className="gap-2 text-destructive focus:text-destructive">
+            <Trash2 className="h-4 w-4" /> Eliminar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
 }
 
 export default function EventosListaPage() {
@@ -1116,7 +1254,8 @@ export default function EventosListaPage() {
                 )}
               </div>
             )}
-            <div className="overflow-x-auto">
+            {/* Tabla: solo desktop/tablet ancho (md+). En mobile se muestran tarjetas más abajo. */}
+            <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1209,121 +1348,101 @@ export default function EventosListaPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {(() => {
-                            const { items, todoCubierto, algoAplica } = calcularCobertura(evento)
-                            return (
-                              <TooltipProvider delayDuration={150}>
-                                <div className="flex items-center justify-center gap-1.5">
-                                  {items.map((item) => {
-                                    const Icon = item.icon
-                                    return (
-                                      <Tooltip key={item.label}>
-                                        <TooltipTrigger asChild>
-                                          <button
-                                            type="button"
-                                            onClick={() => router.push(`/eventos/costos?id=${evento.id}`)}
-                                            className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-transform hover:scale-110 ${
-                                              !item.aplica
-                                                ? "border-dashed border-border bg-transparent text-muted-foreground/30"
-                                                : item.cubierto
-                                                  ? "border-emerald-300 bg-emerald-50 text-emerald-600"
-                                                  : item.pendienteAmarillo
-                                                    ? "border-yellow-300 bg-yellow-50 text-yellow-600"
-                                                    : item.senaPagada
-                                                      ? "border-orange-300 bg-orange-50 text-orange-500"
-                                                      : "border-rose-200 bg-rose-50 text-rose-500"
-                                            }`}
-                                            aria-label={`${item.label}: ${item.detalle} — ver costos del evento`}
-                                          >
-                                            <Icon className="h-3.5 w-3.5" />
-                                          </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="text-xs font-medium">{item.label}</p>
-                                          <p className="text-xs text-muted-foreground">{item.detalle}</p>
-                                          <p className="text-xs text-teal-600">Clic para ver costos del evento</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    )
-                                  })}
-                                  {algoAplica && (
-                                    <span
-                                      className={`ml-1 h-2 w-2 rounded-full ${
-                                        todoCubierto ? "bg-emerald-500" : "bg-rose-400"
-                                      }`}
-                                      title={todoCubierto ? "Todo cubierto" : "Pagos pendientes"}
-                                    />
-                                  )}
-                                </div>
-                              </TooltipProvider>
-                            )
-                          })()}
+                          <CostosCubiertosIndicador
+                            evento={evento}
+                            onVerCostos={() => router.push(`/eventos/costos?id=${evento.id}`)}
+                          />
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              title="Imprimir"
-                              onClick={() => handleImprimirDocumento(evento.id)}
-                            >
-                              <Printer className="h-4 w-4" />
-                              <span className="sr-only">Imprimir</span>
-                            </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            title="Ver / Editar"
-                            onClick={() => handleVerEditar(evento)}
-                          >
-                            <Eye className="h-4 w-4" />
-                            <span className="sr-only">Ver / Editar</span>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"
-                            title="Cobrar cuota"
-                            onClick={() => router.push(`/eventos/pagos?evento=${evento.id}`)}
-                          >
-                            <DollarSign className="h-4 w-4" />
-                            <span className="sr-only">Cobrar cuota</span>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            title="Eliminar"
-                            onClick={() => handleEliminar(evento.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Eliminar</span>
-                          </Button>
-                            {evento.estado !== "completado" && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={`h-8 w-8 transition-all ${estaAnimando ? "text-emerald-700 scale-110" : "text-emerald-700/60 hover:text-emerald-800 hover:bg-emerald-50"}`}
-                                title="Marcar como finalizado"
-                                disabled={estaFinalizando}
-                                onClick={() => handleFinalizarClick(evento.id)}
-                              >
-                                {estaAnimando ? (
-                                  <CheckCircle2 className="h-5 w-5 fill-emerald-100" />
-                                ) : (
-                                  <CheckCircle2 className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                          </div>
+                          <AccionesEvento
+                            evento={evento}
+                            estaFinalizando={estaFinalizando}
+                            onImprimir={() => handleImprimirDocumento(evento.id)}
+                            onVerEditar={() => handleVerEditar(evento)}
+                            onCobrarCuota={() => router.push(`/eventos/pagos?evento=${evento.id}`)}
+                            onFinalizar={() => handleFinalizarClick(evento.id)}
+                            onEliminar={() => handleEliminar(evento.id)}
+                          />
                         </TableCell>
                       </TableRow>
                     )
                   })}
                 </TableBody>
               </Table>
+            </div>
+
+            {/* Tarjetas: solo mobile (debajo de md). Misma info y acciones que la tabla, sin scroll horizontal. */}
+            <div className="md:hidden divide-y divide-border">
+              {eventosFiltrados.map((evento) => {
+                const config = estadoConfig[evento.estado] ?? { label: evento.estado ?? "Sin estado", className: "bg-muted text-muted-foreground border-border" }
+                const totalInvitados = getTotalInvitados(evento)
+                const displayName = evento.nombrePareja || evento.nombre || "Sin nombre"
+                const estaFinalizando = finalizandoId === evento.id
+                const estaAnimando = finalizadoAnimacion === evento.id
+                return (
+                  <div
+                    key={evento.id}
+                    data-evento-id={evento.id}
+                    className={`space-y-3 p-4 transition-all duration-500 ${modoConsolidar && eventosSeleccionados.has(evento.id) ? "bg-sky-50" : ""} ${evento.estado === "completado" ? "opacity-60" : ""} ${estaAnimando ? "bg-emerald-50" : ""} ${eventoResaltado === evento.id ? "bg-amber-50" : ""}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-start gap-2">
+                        {modoConsolidar && (
+                          <Checkbox
+                            className="mt-1"
+                            checked={eventosSeleccionados.has(evento.id)}
+                            onCheckedChange={() => toggleEventoSeleccionado(evento.id)}
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-foreground">{displayName}</p>
+                          {evento.tipoEvento && <p className="text-xs text-muted-foreground">{evento.tipoEvento}</p>}
+                          {evento.createdAt && (
+                            <Badge
+                              variant="outline"
+                              className="mt-1 border-border bg-muted/50 px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                            >
+                              Creado: {new Date(evento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className={`shrink-0 text-xs font-medium ${config.className}`}>
+                        {config.label}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="h-3.5 w-3.5" /> {formatFecha(evento.fecha)}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        {evento.salon ? <SalonDot salon={evento.salon} size={9} /> : <Building2 className="h-3.5 w-3.5" />}
+                        {evento.salon ? salonLabel(evento.salon) : "-"}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5" /> {totalInvitados}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+                      <CostosCubiertosIndicador
+                        evento={evento}
+                        onVerCostos={() => router.push(`/eventos/costos?id=${evento.id}`)}
+                      />
+                      <AccionesEvento
+                        evento={evento}
+                        estaFinalizando={estaFinalizando}
+                        onImprimir={() => handleImprimirDocumento(evento.id)}
+                        onVerEditar={() => handleVerEditar(evento)}
+                        onCobrarCuota={() => router.push(`/eventos/pagos?evento=${evento.id}`)}
+                        onFinalizar={() => handleFinalizarClick(evento.id)}
+                        onEliminar={() => handleEliminar(evento.id)}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </Card>
         )}
