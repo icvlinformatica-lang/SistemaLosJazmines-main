@@ -621,10 +621,10 @@ export default function ConfiguracionPage() {
                     className="flex items-center gap-3 p-3 border rounded-lg"
                   >
                     <div
-                      className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-base"
+                      className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center"
                       style={{ backgroundColor: perfil.color }}
                     >
-                      {perfil.emoji}
+                      <perfil.icon className="w-4 h-4" style={{ color: perfil.iconColor }} />
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{perfil.nombre}</p>

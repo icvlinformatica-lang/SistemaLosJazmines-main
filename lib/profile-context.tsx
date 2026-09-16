@@ -1,15 +1,35 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useState } from "react"
+import {
+  ChefHat,
+  Wine,
+  BarChart2,
+  ClipboardList,
+  DollarSign,
+  Headphones,
+  Camera,
+  Shirt,
+  Monitor,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react"
 
 export interface Perfil {
   id: string
   nombre: string
   color: string
-  emoji: string
+  icon: LucideIcon
+  iconColor: string
   rutas: string[]
   rutasExcluidas?: string[]
 }
+
+// Paleta de marca: negro / crema / dorado sobre fondo verde oscuro.
+const NEGRO = "#1a1a1a"
+const CREMA = "#f5f0e8"
+const DORADO = "#c9a227"
+const VERDE = "#2d5a3d"
 
 // NOTA DE SEGURIDAD: los PINs ya NO viven en el cliente.
 // La verificación se hace en el servidor (/api/auth/login) contra lib/auth/server.ts.
@@ -21,37 +41,42 @@ export const PERFILES: Perfil[] = [
   {
     id: "cocina",
     nombre: "Cocina",
-    color: "#e67e22",
-    emoji: "👨‍🍳",
+    color: VERDE,
+    icon: ChefHat,
+    iconColor: CREMA,
     rutas: ["/admin/almacen", "/admin/recetario", "/eventos/produccion"],
   },
   {
     id: "barra",
     nombre: "Barra",
-    color: "#2980b9",
-    emoji: "🍹",
+    color: DORADO,
+    icon: Wine,
+    iconColor: NEGRO,
     rutas: ["/admin/barra", "/admin/cocteles", "/eventos/produccion"],
   },
   {
     id: "administracion",
     nombre: "Administración",
-    color: "#8e44ad",
-    emoji: "📊",
+    color: NEGRO,
+    icon: BarChart2,
+    iconColor: DORADO,
     rutas: ["*"],
     rutasExcluidas: ["/eventos/produccion"],
   },
   {
     id: "coordinacion",
     nombre: "Coordinación",
-    color: "#f39c12",
-    emoji: "📋",
+    color: CREMA,
+    icon: ClipboardList,
+    iconColor: VERDE,
     rutas: ["/eventos/staff"],
   },
   {
     id: "cobro",
     nombre: "Cobrar cuota",
-    color: "#c9a227",
-    emoji: "💰",
+    color: VERDE,
+    icon: DollarSign,
+    iconColor: CREMA,
     rutas: ["/", "/eventos/pagos"],
   },
   // Perfiles de solo lectura para staff externo: ven el calendario de
@@ -59,36 +84,41 @@ export const PERFILES: Perfil[] = [
   {
     id: "dj",
     nombre: "DJ",
-    color: "#e74c3c",
-    emoji: "🎧",
+    color: NEGRO,
+    icon: Headphones,
+    iconColor: DORADO,
     rutas: ["/eventos/staff"],
   },
   {
     id: "fotografo",
     nombre: "Fotógrafo",
-    color: "#16a085",
-    emoji: "📸",
+    color: CREMA,
+    icon: Camera,
+    iconColor: VERDE,
     rutas: ["/eventos/staff"],
   },
   {
     id: "vestido",
     nombre: "Vestido",
-    color: "#d63384",
-    emoji: "👗",
+    color: DORADO,
+    icon: Shirt,
+    iconColor: NEGRO,
     rutas: ["/eventos/staff"],
   },
   {
     id: "pantalla",
     nombre: "Pantalla",
-    color: "#34495e",
-    emoji: "🖥️",
+    color: VERDE,
+    icon: Monitor,
+    iconColor: CREMA,
     rutas: ["/eventos/staff"],
   },
   {
     id: "soporte",
     nombre: "Soporte",
-    color: "#1a3a2a",
-    emoji: "🛠️",
+    color: NEGRO,
+    icon: Wrench,
+    iconColor: DORADO,
     rutas: ["*"],
     rutasExcluidas: ["/eventos/produccion"],
   },

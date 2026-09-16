@@ -4,6 +4,9 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { PERFILES, useProfile, tieneAccesoRapido, olvidarAccesosRapidos } from "@/lib/profile-context"
 
+// Nota: los íconos de perfil (perfil.icon) son componentes de lucide-react
+// definidos junto con cada perfil en lib/profile-context.tsx.
+
 // Perfiles que primero preguntan quién ingresa antes de pedir el PIN o usar
 // el acceso rápido. Cada perfil listado aquí muestra un paso extra con un
 // botón por nombre; todos comparten el mismo PIN del perfil.
@@ -21,6 +24,9 @@ export default function LoginPage() {
   const [pinInput, setPinInput] = useState("")
   const [error, setError] = useState("")
   const [cargando, setCargando] = useState(false)
+  // Por defecto se ven solo los íconos; al tocar el fondo (fuera de las
+  // tarjetas) se despliega el nombre de cada perfil.
+  const [mostrarNombres, setMostrarNombres] = useState(false)
 
   // Para los perfiles listados en NOMBRES_POR_PERFIL: primero se elige quién
   // ingresa y recién después se pide el PIN. Todos usan el mismo PIN del perfil.
@@ -119,10 +125,39 @@ export default function LoginPage() {
     setQuienIngresa(null)
   }
 
+  // Tocar el fondo (fuera de las tarjetas): pliega la tarjeta abierta (si
+  // había una mostrando el input de PIN o el paso "¿Quién ingresa?") y
+  // alterna si se ven los nombres de perfil.
+  const handleFondoClick = () => {
+    setMostrarNombres((v) => !v)
+    if (perfilSeleccionado || quienIngresa) {
+      setPerfilSeleccionado(null)
+      setPinInput("")
+      setError("")
+      setQuienIngresa(null)
+    }
+  }
+
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 bg-[#1a3a2a]">
+    <div
+      className="relative min-h-screen w-full overflow-hidden"
+      onClick={handleFondoClick}
+    >
+      {/* Fondo: misma foto que se usa en Inicio */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: 'url("/background.jpg")' }}
+      />
+      <div
+        className="absolute inset-0 bg-cover bg-top bg-no-repeat md:hidden"
+        style={{ backgroundImage: 'url("/background-mobile.jpg")' }}
+      />
+      {/* Oscurecer un poco para que el texto y las tarjetas se lean bien */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6 py-12">
 
       {/* Header */}
       <div className="mb-10 text-center">
@@ -144,6 +179,7 @@ export default function LoginPage() {
           return (
             <div
               key={perfil.id}
+              onClick={(e) => e.stopPropagation()}
               className={`flex flex-col items-center rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 px-4 pt-6 pb-5 gap-3 ${
                 esDorado
                   ? "bg-gradient-to-b from-[#fdf6e3] to-[#f3e2a9] border border-[#d4af37]"
@@ -157,10 +193,14 @@ export default function LoginPage() {
                 className="group relative flex flex-col items-center gap-3 w-full focus:outline-none"
               >
                 <div
-                  className="relative w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow"
+                  className="relative w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-200 group-hover:scale-105 group-active:scale-95 shadow"
                   style={{ backgroundColor: esDorado ? "#ffffff" : perfil.color }}
                 >
-                  <span role="img" aria-label={perfil.nombre}>{perfil.emoji}</span>
+                  <perfil.icon
+                    className="w-7 h-7"
+                    aria-label={perfil.nombre}
+                    style={{ color: esDorado ? perfil.color : perfil.iconColor }}
+                  />
                   {pinGuardado && (
                     <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shadow">
                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
@@ -170,10 +210,14 @@ export default function LoginPage() {
                   )}
                 </div>
 
-                <span className="text-[#1a3a2a] text-sm font-bold text-center leading-tight">{perfil.nombre}</span>
+                {mostrarNombres && (
+                  <span className="text-[#1a3a2a] text-sm font-bold text-center leading-tight animate-in fade-in zoom-in-75 duration-200">
+                    {perfil.nombre}
+                  </span>
+                )}
 
-                {pinGuardado && (
-                  <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 -mt-1">
+                {mostrarNombres && pinGuardado && (
+                  <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 -mt-1 animate-in fade-in zoom-in-75 duration-200">
                     Acceso rapido
                   </span>
                 )}
@@ -250,7 +294,7 @@ export default function LoginPage() {
 
       {/* Pie - solo si hay al menos un PIN guardado */}
       {Object.values(pinsGuardados).some(Boolean) && (
-        <div className="mt-12">
+        <div className="mt-12" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={handleOlvidarPins}
@@ -260,6 +304,7 @@ export default function LoginPage() {
           </button>
         </div>
       )}
+      </div>
     </div>
   )
 }
