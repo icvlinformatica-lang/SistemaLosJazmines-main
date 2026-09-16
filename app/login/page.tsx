@@ -125,7 +125,20 @@ export default function LoginPage() {
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 bg-[#1a3a2a]">
+    <div className="relative min-h-screen w-full overflow-hidden">
+      {/* Fondo: misma foto que se usa en Inicio */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: 'url("/background.jpg")' }}
+      />
+      <div
+        className="absolute inset-0 bg-cover bg-top bg-no-repeat md:hidden"
+        style={{ backgroundImage: 'url("/background-mobile.jpg")' }}
+      />
+      {/* Oscurecer un poco para que el texto y las tarjetas se lean bien */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6 py-12">
 
       {/* Header */}
       <div className="mb-10 text-center">
@@ -267,6 +280,7 @@ export default function LoginPage() {
           </button>
         </div>
       )}
+      </div>
     </div>
   )
 }
