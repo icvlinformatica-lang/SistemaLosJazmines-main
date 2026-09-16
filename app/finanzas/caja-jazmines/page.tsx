@@ -3783,6 +3783,7 @@ export default function CajaJazminePage() {
           if (!open) setCostoAEditarVariable(null)
         }}
         costoAEditar={costoAEditarVariable}
+        salonActual={salonFiltro !== "todos" ? salonFiltro : undefined}
       />
 
       {/* ── Evolución de gastos fijos: ventana automática de historial ──��── */}

@@ -54,6 +54,11 @@ interface GastoRapidoModalProps {
   onOpenChange: (open: boolean) => void
   /** Si se pasa, el modal abre en modo edición con los datos de este gasto. */
   costoAEditar?: GastoVariable | null
+  /** Salón que se está mirando (ej. el filtro de Caja Jazmines). Si se pasa,
+   *  el panel "Gastos de hoy" muestra solo lo que corresponde a ese salón
+   *  (incluida la porción prorrateada de los gastos repartidos). Sin este
+   *  prop (ej. desde Inicio) el panel muestra todos los salones. */
+  salonActual?: string
 }
 
 /**
@@ -61,7 +66,7 @@ interface GastoRapidoModalProps {
  * Caja Jazmines. Usado desde Caja Jazmines (con edición) y desde el botón
  * "Cargar gastos" de Inicio (siempre en modo alta).
  */
-export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapidoModalProps) {
+export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual }: GastoRapidoModalProps) {
   const { state, updateCostoOperativo, addCostoOperativo, archivarGasto, addMovimientosCaja } = useStore()
   const { toast } = useToast()
 
@@ -133,18 +138,47 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
 
   const gastosDelPanel: ItemDelDia[] = (state.costosOperativos || [])
     .filter((c) => c.esVariable && c.createdAt && c.createdAt.slice(0, 10) === fechaPanelActual)
-    .map((c) => ({
-      id: c.id,
-      concepto: c.concepto,
-      monto: c.monto,
-      salon: c.salon,
-      tipo: "gasto",
-      hora: c.createdAt ? new Date(c.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : null,
-      cargadoPor: c.cargadoPor || null,
-    }))
+    .flatMap((c) => {
+      const hora = c.createdAt ? new Date(c.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : null
+      const dist = (c.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
+      if (!salonActual) {
+        return [{
+          id: c.id,
+          concepto: c.concepto,
+          monto: c.monto,
+          salon: c.salon,
+          tipo: "gasto" as const,
+          hora,
+          cargadoPor: c.cargadoPor || null,
+        }]
+      }
+      if (dist.length > 0) {
+        const entry = dist.find((d) => d.salon === salonActual)
+        if (!entry) return []
+        return [{
+          id: c.id,
+          concepto: `${c.concepto} · ${entry.porcentaje}%`,
+          monto: Math.round((c.monto * entry.porcentaje) / 100),
+          salon: salonActual,
+          tipo: "gasto" as const,
+          hora,
+          cargadoPor: c.cargadoPor || null,
+        }]
+      }
+      if (c.salon !== salonActual) return []
+      return [{
+        id: c.id,
+        concepto: c.concepto,
+        monto: c.monto,
+        salon: c.salon,
+        tipo: "gasto" as const,
+        hora,
+        cargadoPor: c.cargadoPor || null,
+      }]
+    })
 
   const retirosDelPanel: ItemDelDia[] = (state.gastosArchivados || [])
-    .filter((g) => g.origen === "caja_jazmines_variable" && g.fecha === fechaPanelActual)
+    .filter((g) => g.origen === "caja_jazmines_variable" && g.fecha === fechaPanelActual && (!salonActual || g.salon === salonActual))
     .map((g) => ({
       id: g.id,
       concepto: g.concepto,
@@ -576,6 +610,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
           <div className="space-y-1.5">
             <Label className="text-sm font-semibold">
               {fechaPanelActual === hoyPanelISO ? "Gastos de hoy" : "Gastos cargados"}
+              {salonActual ? ` · ${salonLabel(salonActual)}` : ""}
             </Label>
             <div className="flex items-center gap-1">
               <Button
