@@ -125,12 +125,25 @@ export default function LoginPage() {
     setQuienIngresa(null)
   }
 
+  // Tocar el fondo (fuera de las tarjetas): pliega la tarjeta abierta (si
+  // había una mostrando el input de PIN o el paso "¿Quién ingresa?") y
+  // alterna si se ven los nombres de perfil.
+  const handleFondoClick = () => {
+    setMostrarNombres((v) => !v)
+    if (perfilSeleccionado || quienIngresa) {
+      setPerfilSeleccionado(null)
+      setPinInput("")
+      setError("")
+      setQuienIngresa(null)
+    }
+  }
+
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
 
   return (
     <div
       className="relative min-h-screen w-full overflow-hidden"
-      onClick={() => setMostrarNombres((v) => !v)}
+      onClick={handleFondoClick}
     >
       {/* Fondo: misma foto que se usa en Inicio */}
       <div
