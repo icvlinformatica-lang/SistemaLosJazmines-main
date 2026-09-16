@@ -419,6 +419,8 @@ export interface CostoOperativo {
    * al último valor pagado, que pasa a ser la referencia del mes próximo.
    */
   historialMontos?: RegistroMonto[]
+  /** Fecha/hora en que se creó el registro (ISO). La pone la base al insertar. */
+  createdAt?: string
 }
 
 /** Una porción del reparto de un gasto: qué salón y qué porcentaje le corresponde. */

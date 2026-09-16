@@ -27,8 +27,9 @@ import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonLabel, generateId, type DistribucionSalon } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salones-editor"
+import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
 import type { GastoVariable } from "@/lib/hooks/use-caja-jazmines"
-import { Plus } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react"
 
 /**
  * Paleta para carpetas de gastos variables creadas por el usuario; el color
@@ -36,6 +37,15 @@ import { Plus } from "lucide-react"
  * (Misma paleta que usa la lista de carpetas en Caja Jazmines.)
  */
 const COLORES_CARPETAS_CUSTOM = ["#7c3aed", "#0369a1", "#be185d", "#4d7c0f", "#b91c1c", "#0e7490"]
+
+interface ItemDelDia {
+  id: string
+  concepto: string
+  monto: number
+  salon: string | null | undefined
+  tipo: "gasto" | "retiro"
+  hora: string | null
+}
 
 interface GastoRapidoModalProps {
   open: boolean
@@ -81,6 +91,44 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
       .map((c) => c.categoria || "varios")
       .filter((c) => c !== "comisiones" && c !== "varios"),
   )]
+
+  // ── Panel "Gastos de hoy" ────────────────────────────────────────────────
+  // Muestra lo que se fue cargando (gastos agendados + retiros) el día
+  // elegido, con flechas para viajar en el tiempo (mismo patrón que el
+  // selector de fecha de Resumen diario).
+  const hoyPanelISO = new Date().toISOString().slice(0, 10)
+  const [fechaPanel, setFechaPanel] = useState<string | null>(null)
+  const fechaPanelActual = fechaPanel ?? hoyPanelISO
+
+  // Siempre arranca mostrando "hoy" cada vez que se abre el modal.
+  useEffect(() => {
+    if (open) setFechaPanel(null)
+  }, [open])
+
+  const gastosDelPanel: ItemDelDia[] = (state.costosOperativos || [])
+    .filter((c) => c.esVariable && c.createdAt && c.createdAt.slice(0, 10) === fechaPanelActual)
+    .map((c) => ({
+      id: c.id,
+      concepto: c.concepto,
+      monto: c.monto,
+      salon: c.salon,
+      tipo: "gasto",
+      hora: c.createdAt ? new Date(c.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : null,
+    }))
+
+  const retirosDelPanel: ItemDelDia[] = (state.gastosArchivados || [])
+    .filter((g) => g.origen === "caja_jazmines_variable" && g.fecha === fechaPanelActual)
+    .map((g) => ({
+      id: g.id,
+      concepto: g.concepto,
+      monto: g.monto,
+      salon: g.salon,
+      tipo: "retiro",
+      hora: null,
+    }))
+
+  const itemsDelPanel = [...gastosDelPanel, ...retirosDelPanel].sort((a, b) => (b.hora || "").localeCompare(a.hora || ""))
+  const totalDelPanel = itemsDelPanel.reduce((s, it) => s + it.monto, 0)
 
   // Al abrir en modo edición, precarga los campos con los datos del gasto.
   useEffect(() => {
@@ -214,6 +262,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
         pagado: false,
         distribucion: dist.length > 0 ? dist : undefined,
         categoria: nuevoGasto.carpeta,
+        createdAt: new Date().toISOString(),
       })
     }
     cerrarYResetear()
@@ -232,7 +281,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
         }
       }}
     >
-      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {editandoVariableId
@@ -248,6 +297,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
             </DialogDescription>
           )}
         </DialogHeader>
+        <div className="flex flex-1 min-h-0 flex-col md:flex-row gap-4 overflow-hidden">
         <div className="space-y-4 py-2 overflow-y-auto flex-1 min-h-0 pr-1">
           {!editandoVariableId && (
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1">
@@ -458,6 +508,84 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar }: GastoRapi
               </p>
             </div>
           )}
+        </div>
+        <div className="flex flex-col gap-3 border-t pt-3 md:w-64 md:shrink-0 md:border-t-0 md:border-l md:pt-0 md:pl-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">
+              {fechaPanelActual === hoyPanelISO ? "Gastos de hoy" : "Gastos cargados"}
+            </Label>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                aria-label="Día anterior"
+                onClick={() => setFechaPanel(cambiarDiaResumen(fechaPanelActual, -1))}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Input
+                type="date"
+                className="h-7 flex-1 px-2 text-xs"
+                value={fechaPanelActual}
+                onChange={(e) => {
+                  if (fechaResumenValida(e.target.value)) setFechaPanel(e.target.value)
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                aria-label="Día siguiente"
+                onClick={() => setFechaPanel(cambiarDiaResumen(fechaPanelActual, 1))}
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {fechaPanelActual !== hoyPanelISO && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-2 text-xs text-muted-foreground"
+                onClick={() => setFechaPanel(null)}
+              >
+                <CalendarDays className="h-3 w-3" />
+                Volver a hoy
+              </Button>
+            )}
+          </div>
+          <div className="space-y-1.5 overflow-y-auto pr-1">
+            {itemsDelPanel.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sin gastos cargados este día.</p>
+            ) : (
+              itemsDelPanel.map((it) => (
+                <div key={`${it.tipo}-${it.id}`} className="rounded-md border border-border p-2 text-xs">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate font-medium">{it.concepto}</span>
+                    <span className={`shrink-0 font-semibold ${it.tipo === "retiro" ? "text-red-600" : "text-foreground"}`}>
+                      {formatCurrency(it.monto)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <SalonDot salon={it.salon || "General"} size={6} />
+                    <span className="truncate">{salonLabel(it.salon || "General")}</span>
+                    {it.tipo === "retiro" && <span className="shrink-0 text-red-600">· retiro</span>}
+                    {it.hora && <span className="shrink-0">· {it.hora}</span>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {itemsDelPanel.length > 0 && (
+            <div className="flex items-center justify-between border-t border-border pt-1.5 text-xs font-semibold">
+              <span>Total</span>
+              <span>{formatCurrency(totalDelPanel)}</span>
+            </div>
+          )}
+        </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

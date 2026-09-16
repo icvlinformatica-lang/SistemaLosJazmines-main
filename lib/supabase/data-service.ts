@@ -647,6 +647,7 @@ export async function fetchCostosOperativos(strict = false): Promise<CostoOperat
     pagado: c.pagado ?? false,
     distribucion: Array.isArray(c.distribucion) ? c.distribucion : undefined,
     historialMontos: Array.isArray(c.historial_montos) ? c.historial_montos : undefined,
+    createdAt: c.created_at ?? undefined,
   }))
 }
 
@@ -701,6 +702,7 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     pagado: data.pagado ?? false,
     distribucion: Array.isArray(data.distribucion) ? data.distribucion : undefined,
     historialMontos: Array.isArray(data.historial_montos) ? data.historial_montos : undefined,
+    createdAt: data.created_at ?? undefined,
   } : null
 }
 
