@@ -198,13 +198,13 @@ export default function LoginPage() {
                 </div>
 
                 {mostrarNombres && (
-                  <span className="text-[#1a3a2a] text-sm font-bold text-center leading-tight animate-in fade-in duration-150">
+                  <span className="text-[#1a3a2a] text-sm font-bold text-center leading-tight animate-in fade-in zoom-in-75 duration-200">
                     {perfil.nombre}
                   </span>
                 )}
 
                 {mostrarNombres && pinGuardado && (
-                  <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 -mt-1">
+                  <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 -mt-1 animate-in fade-in zoom-in-75 duration-200">
                     Acceso rapido
                   </span>
                 )}
