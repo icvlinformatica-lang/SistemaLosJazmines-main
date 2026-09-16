@@ -647,6 +647,8 @@ export async function fetchCostosOperativos(strict = false): Promise<CostoOperat
     pagado: c.pagado ?? false,
     distribucion: Array.isArray(c.distribucion) ? c.distribucion : undefined,
     historialMontos: Array.isArray(c.historial_montos) ? c.historial_montos : undefined,
+    createdAt: c.created_at ?? undefined,
+    cargadoPor: c.cargado_por ?? undefined,
   }))
 }
 
@@ -669,6 +671,7 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     pagado: costo.pagado ?? false,
     distribucion: costo.distribucion && costo.distribucion.length > 0 ? costo.distribucion : null,
     historial_montos: costo.historialMontos && costo.historialMontos.length > 0 ? costo.historialMontos : null,
+    cargado_por: costo.cargadoPor ?? null,
     updated_at: new Date().toISOString(),
   }
   
@@ -701,6 +704,8 @@ export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Prom
     pagado: data.pagado ?? false,
     distribucion: Array.isArray(data.distribucion) ? data.distribucion : undefined,
     historialMontos: Array.isArray(data.historial_montos) ? data.historial_montos : undefined,
+    createdAt: data.created_at ?? undefined,
+    cargadoPor: data.cargado_por ?? undefined,
   } : null
 }
 
@@ -823,6 +828,7 @@ function mapGastoArchivado(g: Record<string, any>): GastoArchivado {
     eventoId: g.evento_id ?? null,
     eventoNombre: g.evento_nombre ?? null,
     refId: g.ref_id ?? null,
+    cargadoPor: g.cargado_por ?? null,
   }
 }
 
@@ -852,6 +858,7 @@ export async function insertGastoArchivado(g: GastoArchivado): Promise<GastoArch
     evento_id: g.eventoId ?? null,
     evento_nombre: g.eventoNombre ?? null,
     ref_id: g.refId ?? null,
+    cargado_por: g.cargadoPor ?? null,
   }
   const { data, error } = await supabase
     .from("gastos_archivados")

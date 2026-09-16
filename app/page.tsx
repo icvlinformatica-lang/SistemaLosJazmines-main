@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Bell, HelpCircle, FileBarChart, PartyPopper, HandCoins } from "lucide-react"
+import { Bell, HelpCircle, FileBarChart, PartyPopper, HandCoins, Receipt } from "lucide-react"
 import { NovedadesModal } from "@/components/novedades-modal"
 import { ResumenDiarioModal } from "@/components/resumen-diario-modal"
 import { FindeModal } from "@/components/finde-modal"
 import { VienenAPagarModal } from "@/components/vienen-a-pagar-modal"
 import { ChatAyuda } from "@/components/chat-ayuda"
+import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
 
@@ -15,8 +16,10 @@ export default function HomePage() {
   const [resumenOpen, setResumenOpen] = useState(false)
   const [findeOpen, setFindeOpen] = useState(false)
   const [pagarOpen, setPagarOpen] = useState(false)
+  const [gastoOpen, setGastoOpen] = useState(false)
   const { toggleSidebar } = useUI()
   const { perfilActivo } = useProfile()
+  const puedeCargarGastos = perfilActivo?.id === "administracion" || perfilActivo?.id === "cobro"
 
   const handleBackgroundClick = () => {
     toggleSidebar()
@@ -78,6 +81,16 @@ export default function HomePage() {
           <HandCoins className="h-4 w-4" />
           <span>Vienen a pagar</span>
         </button>
+        {puedeCargarGastos && (
+          <button
+            type="button"
+            onClick={() => setGastoOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2d5a3d] hover:bg-[#3a6f4e] text-[#f5f0e8] text-sm font-medium transition-colors shadow-lg"
+          >
+            <Receipt className="h-4 w-4" />
+            <span>Cargar gastos</span>
+          </button>
+        )}
       </div>
 
       {/* Chat de ayuda con IA - solo perfil Soporte, centrado abajo */}
@@ -102,6 +115,7 @@ export default function HomePage() {
       <ResumenDiarioModal open={resumenOpen} onOpenChange={setResumenOpen} soloDiario={perfilActivo?.id === "cobro"} />
       <FindeModal open={findeOpen} onOpenChange={setFindeOpen} />
       <VienenAPagarModal open={pagarOpen} onOpenChange={setPagarOpen} />
+      <GastoRapidoModal open={gastoOpen} onOpenChange={setGastoOpen} />
     </div>
   )
 }

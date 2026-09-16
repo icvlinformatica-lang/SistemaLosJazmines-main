@@ -36,6 +36,12 @@ interface IngresoSalonResumen {
   total: number
 }
 
+interface SaldoPorSalonResumen {
+  salon: string
+  saldoCajaJazmines: number
+  saldoCajaEventos: number
+}
+
 interface VieneAPagar {
   evento: string
   salon: string
@@ -53,6 +59,7 @@ interface ResumenDiario {
   egresoCajaJazmines: number
   egresoCajaEventos: number
   ingresosPorSalon: IngresoSalonResumen[]
+  saldoPorSalon: SaldoPorSalonResumen[]
   movimientosImportantes: MovimientoResumen[]
   cuotasDelDia: CuotaResumen[]
   totalCuotas: number
@@ -152,8 +159,8 @@ export function ResumenDiarioModal({ open, onOpenChange, soloDiario = false }: P
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { nombre: "Caja Jazmines", ingreso: resumen.ingresoCajaJazmines, egreso: resumen.egresoCajaJazmines },
-                    { nombre: "Caja Eventos", ingreso: resumen.ingresoCajaEventos, egreso: resumen.egresoCajaEventos },
+                    { nombre: "Caja Jazmines", ingreso: resumen.ingresoCajaJazmines, egreso: resumen.egresoCajaJazmines, key: "saldoCajaJazmines" as const },
+                    { nombre: "Caja Eventos", ingreso: resumen.ingresoCajaEventos, egreso: resumen.egresoCajaEventos, key: "saldoCajaEventos" as const },
                   ].map((caja) => (
                     <div key={caja.nombre} className="rounded-lg border border-[#2d5a3d]/20 bg-white p-3">
                       <p className="mb-1.5 text-xs font-semibold text-gray-600">{caja.nombre}</p>
@@ -165,6 +172,16 @@ export function ResumenDiarioModal({ open, onOpenChange, soloDiario = false }: P
                         <TrendingDown className="h-3 w-3" />
                         {fmt(caja.egreso)}
                       </p>
+                      {resumen.saldoPorSalon && resumen.saldoPorSalon.length > 0 && (
+                        <div className="mt-2 space-y-0.5 border-t border-gray-100 pt-1.5">
+                          {resumen.saldoPorSalon.map((s) => (
+                            <div key={s.salon} className="flex items-center justify-between gap-2 text-[11px] text-gray-500">
+                              <span className="truncate">{s.salon}</span>
+                              <span className="font-semibold text-gray-700">{fmt(s[caja.key])}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -16,6 +16,11 @@ import type { EventoGuardado, HistorialIPCEntry } from "@/lib/store"
 
 const TZ = "America/Argentina/Buenos_Aires"
 
+// Mismos 5 salones que lib/store.ts (SALONES). Se repite acá en vez de
+// importar ese módulo (tiene "use client") para no arrastrarlo a este
+// código de servidor.
+const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"] as const
+
 export interface MovimientoResumen {
   tipo: string
   concepto: string
@@ -35,6 +40,13 @@ export interface CuotaResumen {
 export interface IngresoSalonResumen {
   salon: string
   total: number
+}
+
+/** Saldo actual (histórico, no solo del día) de cada salón, por caja. */
+export interface SaldoPorSalonResumen {
+  salon: string
+  saldoCajaJazmines: number
+  saldoCajaEventos: number
 }
 
 /** Evento que tiene cuota por pagar esta semana (o cuotas atrasadas). */
@@ -61,6 +73,8 @@ export interface ResumenDiario {
   egresoCajaEventos: number
   /** Total que ingresó hoy a cada salón */
   ingresosPorSalon: IngresoSalonResumen[]
+  /** Saldo actual (histórico) de cada uno de los 5 salones, por caja. */
+  saldoPorSalon: SaldoPorSalonResumen[]
   movimientosImportantes: MovimientoResumen[]
   cuotasDelDia: CuotaResumen[]
   totalCuotas: number
@@ -173,6 +187,31 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
     .map(([salon, total]) => ({ salon, total }))
     .sort((a, b) => b.total - a.total)
 
+  // Saldo actual (histórico, no solo del día) de cada uno de los 5 salones,
+  // por caja. Se agrega en la base para no traer todos los movimientos de
+  // siempre a memoria (mismo criterio que el resumen semanal).
+  const saldoPorSalonMap = new Map<string, SaldoPorSalonResumen>()
+  for (const salon of SALONES) {
+    saldoPorSalonMap.set(salon, { salon, saldoCajaJazmines: 0, saldoCajaEventos: 0 })
+  }
+  const saldoRows = (await sql`
+    SELECT salon, caja_destino, tipo, SUM(monto)::float AS total
+    FROM movimientos_caja
+    WHERE salon = ANY(${SALONES as unknown as string[]})
+    GROUP BY salon, caja_destino, tipo
+  `) as unknown as Record<string, unknown>[]
+  for (const r of saldoRows) {
+    const salonRaw = String(r.salon || "").trim()
+    const entry = saldoPorSalonMap.get(salonRaw)
+    if (!entry) continue
+    const monto = Number(r.total) || 0
+    const caja = cajaDe(r)
+    const signo = r.tipo === "egreso" ? -1 : r.tipo === "ingreso" ? 1 : 0
+    if (caja === "Caja Jazmines") entry.saldoCajaJazmines += signo * monto
+    else entry.saldoCajaEventos += signo * monto
+  }
+  const saldoPorSalon = SALONES.map((salon) => saldoPorSalonMap.get(salon)!)
+
   // Movimientos importantes: los de mayor monto del día (hasta 10)
   const movimientosImportantes: MovimientoResumen[] = [...movsHoy]
     .sort((a, b) => (Number(b.monto) || 0) - (Number(a.monto) || 0))
@@ -219,6 +258,7 @@ export async function buildResumenDiario(hoy = hoyArgentina()): Promise<ResumenD
     egresoCajaJazmines,
     egresoCajaEventos,
     ingresosPorSalon,
+    saldoPorSalon,
     movimientosImportantes,
     cuotasDelDia,
     totalCuotas: cuotasDelDia.reduce((s, c) => s + c.monto, 0),
