@@ -24,6 +24,9 @@ export default function LoginPage() {
   const [pinInput, setPinInput] = useState("")
   const [error, setError] = useState("")
   const [cargando, setCargando] = useState(false)
+  // Por defecto se ven solo los íconos; al tocar el fondo (fuera de las
+  // tarjetas) se despliega el nombre de cada perfil.
+  const [mostrarNombres, setMostrarNombres] = useState(false)
 
   // Para los perfiles listados en NOMBRES_POR_PERFIL: primero se elige quién
   // ingresa y recién después se pide el PIN. Todos usan el mismo PIN del perfil.
@@ -125,7 +128,10 @@ export default function LoginPage() {
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden">
+    <div
+      className="relative min-h-screen w-full overflow-hidden"
+      onClick={() => setMostrarNombres((v) => !v)}
+    >
       {/* Fondo: misma foto que se usa en Inicio */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -160,6 +166,7 @@ export default function LoginPage() {
           return (
             <div
               key={perfil.id}
+              onClick={(e) => e.stopPropagation()}
               className={`flex flex-col items-center rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 px-4 pt-6 pb-5 gap-3 ${
                 esDorado
                   ? "bg-gradient-to-b from-[#fdf6e3] to-[#f3e2a9] border border-[#d4af37]"
@@ -190,9 +197,13 @@ export default function LoginPage() {
                   )}
                 </div>
 
-                <span className="text-[#1a3a2a] text-sm font-bold text-center leading-tight">{perfil.nombre}</span>
+                {mostrarNombres && (
+                  <span className="text-[#1a3a2a] text-sm font-bold text-center leading-tight animate-in fade-in duration-150">
+                    {perfil.nombre}
+                  </span>
+                )}
 
-                {pinGuardado && (
+                {mostrarNombres && pinGuardado && (
                   <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 -mt-1">
                     Acceso rapido
                   </span>
@@ -270,7 +281,7 @@ export default function LoginPage() {
 
       {/* Pie - solo si hay al menos un PIN guardado */}
       {Object.values(pinsGuardados).some(Boolean) && (
-        <div className="mt-12">
+        <div className="mt-12" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={handleOlvidarPins}
