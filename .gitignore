@@ -12,3 +12,6 @@ node_modules/
 .DS_Store
 .vercel
 .env*
+
+# Memoria local de Claude Code (no subir)
+CLAUDE.md

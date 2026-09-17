@@ -284,3 +284,16 @@
     size: A4;
   }
 }
+
+/* Oculta la scrollbar nativa en un contenedor con scroll interno, sin
+ * quitarle la posibilidad de scrollear (ver DESIGN.md, regla 4: "sin
+ * scrollbars nativas visibles en contenedores internos"). Usar junto con
+ * un indicador propio (fade, flechas, etc.) para que siga siendo obvio
+ * que hay más contenido. */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Edge/IE viejos */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge nuevo */
+}

@@ -18,6 +18,7 @@ import {
 export interface Perfil {
   id: string
   nombre: string
+  categoria: "gestion" | "evento"
   color: string
   icon: LucideIcon
   iconColor: string
@@ -28,8 +29,12 @@ export interface Perfil {
 // Paleta de marca: negro / crema / dorado sobre fondo verde oscuro.
 const NEGRO = "#1a1a1a"
 const CREMA = "#f5f0e8"
+// Color por categoría (no por perfil individual): "gestión" (backoffice,
+// dinero, coordinación) en dorado, "evento" (operativo/proveedores del día
+// del evento) en verde. Cobrar cuota mantiene además su propio tratamiento
+// especial de tarjeta (ver esDorado en app/login/page.tsx).
 const DORADO = "#c9a227"
-const VERDE = "#2d5a3d"
+const VERDE_EVENTO = "#2f8f5b"
 
 // NOTA DE SEGURIDAD: los PINs ya NO viven en el cliente.
 // La verificación se hace en el servidor (/api/auth/login) contra lib/auth/server.ts.
@@ -41,7 +46,8 @@ export const PERFILES: Perfil[] = [
   {
     id: "cocina",
     nombre: "Cocina",
-    color: VERDE,
+    categoria: "evento",
+    color: VERDE_EVENTO,
     icon: ChefHat,
     iconColor: CREMA,
     rutas: ["/admin/almacen", "/admin/recetario", "/eventos/produccion"],
@@ -49,34 +55,38 @@ export const PERFILES: Perfil[] = [
   {
     id: "barra",
     nombre: "Barra",
-    color: DORADO,
+    categoria: "evento",
+    color: VERDE_EVENTO,
     icon: Wine,
-    iconColor: NEGRO,
+    iconColor: CREMA,
     rutas: ["/admin/barra", "/admin/cocteles", "/eventos/produccion"],
   },
   {
     id: "administracion",
     nombre: "Administración",
-    color: NEGRO,
+    categoria: "gestion",
+    color: DORADO,
     icon: BarChart2,
-    iconColor: DORADO,
+    iconColor: NEGRO,
     rutas: ["*"],
     rutasExcluidas: ["/eventos/produccion"],
   },
   {
     id: "coordinacion",
     nombre: "Coordinación",
-    color: CREMA,
+    categoria: "gestion",
+    color: DORADO,
     icon: ClipboardList,
-    iconColor: VERDE,
+    iconColor: NEGRO,
     rutas: ["/eventos/staff"],
   },
   {
     id: "cobro",
     nombre: "Cobrar cuota",
-    color: VERDE,
+    categoria: "gestion",
+    color: DORADO,
     icon: DollarSign,
-    iconColor: CREMA,
+    iconColor: NEGRO,
     rutas: ["/", "/eventos/pagos"],
   },
   // Perfiles de solo lectura para staff externo: ven el calendario de
@@ -84,31 +94,35 @@ export const PERFILES: Perfil[] = [
   {
     id: "dj",
     nombre: "DJ",
-    color: NEGRO,
+    categoria: "evento",
+    color: VERDE_EVENTO,
     icon: Headphones,
-    iconColor: DORADO,
+    iconColor: CREMA,
     rutas: ["/eventos/staff"],
   },
   {
     id: "fotografo",
     nombre: "Fotógrafo",
-    color: CREMA,
+    categoria: "evento",
+    color: VERDE_EVENTO,
     icon: Camera,
-    iconColor: VERDE,
+    iconColor: CREMA,
     rutas: ["/eventos/staff"],
   },
   {
     id: "vestido",
     nombre: "Vestido",
-    color: DORADO,
+    categoria: "evento",
+    color: VERDE_EVENTO,
     icon: Shirt,
-    iconColor: NEGRO,
+    iconColor: CREMA,
     rutas: ["/eventos/staff"],
   },
   {
     id: "pantalla",
     nombre: "Pantalla",
-    color: VERDE,
+    categoria: "evento",
+    color: VERDE_EVENTO,
     icon: Monitor,
     iconColor: CREMA,
     rutas: ["/eventos/staff"],
@@ -116,9 +130,10 @@ export const PERFILES: Perfil[] = [
   {
     id: "soporte",
     nombre: "Soporte",
-    color: NEGRO,
+    categoria: "gestion",
+    color: DORADO,
     icon: Wrench,
-    iconColor: DORADO,
+    iconColor: NEGRO,
     rutas: ["*"],
     rutasExcluidas: ["/eventos/produccion"],
   },
