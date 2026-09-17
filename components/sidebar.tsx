@@ -71,10 +71,12 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
     return [{ href: "/eventos/staff", label: "Próximos eventos", icon: Calendar }]
   }
 
-  // Perfil "Vendedor": placeholder por ahora (Etapa 1). Las etapas
-  // siguientes agregan acá "Cotizar" y "Paquetes".
+  // Perfil "Vendedor". La Etapa 4 agrega acá "Paquetes".
   if (perfilId === "vendedor") {
-    return [{ href: "/vendedor", label: "Inicio", icon: Briefcase }]
+    return [
+      { href: "/vendedor", label: "Inicio", icon: Briefcase },
+      { href: "/vendedor/cotizar", label: "Cotizar", icon: FileText },
+    ]
   }
 
   // Perfil "Cocina": accesos directos sin carpetas, visibles al instante.

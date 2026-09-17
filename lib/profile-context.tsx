@@ -100,7 +100,7 @@ export const PERFILES: Perfil[] = [
     // OJO: nunca dejar `rutas: []` — components/app-shell.tsx y
     // components/sidebar.tsx tratan un array vacío como "acceso total"
     // (mismo criterio que "*"), no como "sin acceso".
-    rutas: ["/vendedor"],
+    rutas: ["/vendedor", "/vendedor/cotizar"],
   },
   // Perfiles de solo lectura para staff externo: ven el calendario de
   // próximos eventos con su servicio resaltado (ver app/eventos/staff).
