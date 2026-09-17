@@ -7,26 +7,47 @@
 // servicios — acá solo se muestra un preview con la misma fórmula, nunca el
 // desglose de costos internos (eso vive en costos_internos, que este
 // endpoint ni siquiera devuelve).
+//
+// Mismo lenguaje visual que app/evento/page.tsx (Planificador de Evento):
+// secciones colapsables con ícono + título + subtítulo, botones de salón
+// coloreados, caja de "Comensales" y tabla de servicios — sin tocar ese
+// archivo, solo replicando su estilo acá.
 
-import { Fragment, useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import Link from "next/link"
+import {
+  ArrowLeft,
+  Baby,
+  Briefcase,
+  Building2,
+  Calendar as CalendarIcon,
+  CheckCircle,
+  Heart,
+  Save,
+  User,
+  UserCheck,
+  Users,
+  UtensilsCrossed,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { SALONES, salonLabel } from "@/lib/store"
+import { SALONES, salonColor, salonLabel } from "@/lib/store"
 
 const TIPOS_EVENTO = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
 
 type Segmento = "adultos" | "adolescentes" | "ninos" | "dietasEspeciales"
 const SEGMENTOS: { key: Segmento; label: string }[] = [
   { key: "adultos", label: "Adultos" },
-  { key: "adolescentes", label: "Adolescentes" },
+  { key: "adolescentes", label: "Adolesc." },
   { key: "ninos", label: "Niños" },
-  { key: "dietasEspeciales", label: "Dietas especiales" },
+  { key: "dietasEspeciales", label: "Dietas" },
 ]
 
 interface ServicioCatalogo {
@@ -55,6 +76,48 @@ function agruparPorCategoria<T extends { categoria: string }>(items: T[]): Array
   return Array.from(grupos.entries()).map(([categoria, items]) => ({ categoria, items }))
 }
 
+// Misma cascara que SectionCard en app/evento/page.tsx: icono + titulo +
+// subtitulo colapsables, sin las variantes de bloqueo (acá no aplican).
+function Seccion({
+  icon,
+  title,
+  subtitle,
+  children,
+  defaultOpen = true,
+}: {
+  icon: ReactNode
+  title: string
+  subtitle?: string
+  children: ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div className="rounded-xl border border-border bg-card overflow-hidden transition-shadow hover:shadow-md">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none"
+          >
+            <div className="shrink-0">{icon}</div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-semibold text-card-foreground truncate">{title}</h2>
+              {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+            </div>
+            <ChevronDown
+              className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+            />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t border-border px-5 py-5 overflow-hidden">{children}</div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  )
+}
+
 export default function CotizarPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -75,6 +138,7 @@ export default function CotizarPage() {
 
   // Invitados
   const [invitados, setInvitados] = useState({ adultos: 0, adolescentes: 0, ninos: 0, personasDietasEspeciales: 0 })
+  const totalPersonas = invitados.adultos + invitados.adolescentes + invitados.ninos + invitados.personasDietasEspeciales
 
   // Menú por segmento: recetaId[] por segmento
   const [recetasElegidas, setRecetasElegidas] = useState<Record<Segmento, string[]>>({
@@ -83,6 +147,7 @@ export default function CotizarPage() {
     ninos: [],
     dietasEspeciales: [],
   })
+  const totalPlatos = SEGMENTOS.reduce((sum, s) => sum + recetasElegidas[s.key].length, 0)
 
   // Servicios elegidos: servicioId -> cantidad (solo importa para "Por Hora"/"Por Cantidad")
   const [serviciosElegidos, setServiciosElegidos] = useState<Record<string, number>>({})
@@ -91,6 +156,7 @@ export default function CotizarPage() {
   const [estado, setEstado] = useState<"borrador" | "lista_para_revisar">("borrador")
   const [guardando, setGuardando] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  const bloqueado = estado !== "borrador"
 
   useEffect(() => {
     fetch("/api/vendedor/catalogo")
@@ -107,6 +173,7 @@ export default function CotizarPage() {
   }, [])
 
   const toggleReceta = (segmento: Segmento, recetaId: string) => {
+    if (bloqueado) return
     setRecetasElegidas((prev) => {
       const actual = prev[segmento]
       const yaEsta = actual.includes(recetaId)
@@ -115,6 +182,7 @@ export default function CotizarPage() {
   }
 
   const toggleServicio = (servicioId: string) => {
+    if (bloqueado) return
     setServiciosElegidos((prev) => {
       if (servicioId in prev) {
         const { [servicioId]: _quitado, ...resto } = prev
@@ -143,7 +211,7 @@ export default function CotizarPage() {
     return { serviciosConPrecio: conPrecio, totalServicios: total, precioBaseSalon: base, precioVentaSugerido: base + total }
   }, [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta])
 
-  const puedeGuardar = clienteNombre.trim().length > 0 && estado === "borrador"
+  const puedeGuardar = clienteNombre.trim().length > 0 && !bloqueado
 
   const guardar = async (accion: "guardar" | "enviar") => {
     if (!clienteNombre.trim()) {
@@ -175,11 +243,7 @@ export default function CotizarPage() {
       }
       setCotizacionId(data.id)
       setEstado(data.estado)
-      if (accion === "enviar") {
-        toast({ title: "Cotización enviada a revisión" })
-      } else {
-        toast({ title: "Borrador guardado" })
-      }
+      toast({ title: accion === "enviar" ? "Cotización enviada a revisión" : "Borrador guardado" })
     } catch {
       toast({ title: "Error de conexión", variant: "destructive" })
     } finally {
@@ -189,260 +253,382 @@ export default function CotizarPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[#1a3a2a]">Nueva cotización</h1>
-        <Button variant="ghost" size="sm" onClick={() => router.push("/vendedor")}>
-          Volver
-        </Button>
-      </div>
-
-      {estado === "lista_para_revisar" && (
-        <Card className="border-emerald-300 bg-emerald-50">
-          <CardContent className="py-3 text-sm text-emerald-800">
-            Esta cotización ya se envió a revisión. Administración te va a avisar si necesita algún ajuste.
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Cliente</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Nombre *</Label>
-            <Input
-              value={clienteNombre}
-              onChange={(e) => setClienteNombre(e.target.value)}
-              disabled={estado !== "borrador"}
-              placeholder="Nombre y apellido"
-            />
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
+        <div className="mx-auto max-w-4xl flex items-center gap-3">
+          <Link href="/vendedor" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-semibold truncate">Nueva cotización</h1>
+            {clienteNombre && <p className="text-sm text-muted-foreground truncate">{clienteNombre}</p>}
           </div>
-          <div className="space-y-1.5">
-            <Label>Teléfono</Label>
-            <Input
-              value={clienteTelefono}
-              onChange={(e) => setClienteTelefono(e.target.value)}
-              disabled={estado !== "borrador"}
-              placeholder="Opcional"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Evento</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label>Fecha</Label>
-            <Input
-              type="date"
-              value={fechaEvento}
-              onChange={(e) => setFechaEvento(e.target.value)}
-              disabled={estado !== "borrador"}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Salón</Label>
-            <Select value={salon} onValueChange={setSalon} disabled={estado !== "borrador"}>
-              <SelectTrigger>
-                <SelectValue placeholder="Elegir salón" />
-              </SelectTrigger>
-              <SelectContent>
-                {SALONES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {salonLabel(s)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Tipo de evento</Label>
-            <Select value={tipoEvento} onValueChange={setTipoEvento} disabled={estado !== "borrador"}>
-              <SelectTrigger>
-                <SelectValue placeholder="Elegir tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                {TIPOS_EVENTO.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Invitados</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {(
-            [
-              { key: "adultos", label: "Adultos" },
-              { key: "adolescentes", label: "Adolescentes" },
-              { key: "ninos", label: "Niños" },
-              { key: "personasDietasEspeciales", label: "Dietas especiales" },
-            ] as const
-          ).map(({ key, label }) => (
-            <div key={key} className="space-y-1.5">
-              <Label>{label}</Label>
-              <Input
-                type="number"
-                min={0}
-                value={invitados[key]}
-                onChange={(e) => setInvitados((prev) => ({ ...prev, [key]: Math.max(0, Number(e.target.value) || 0) }))}
-                disabled={estado !== "borrador"}
-              />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Menú</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {cargandoCatalogo ? (
-            <p className="text-sm text-muted-foreground">Cargando...</p>
-          ) : recetas.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay recetas cargadas en el catálogo.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="py-2 pr-3 text-left font-semibold text-muted-foreground">Receta</th>
-                    {SEGMENTOS.map((s) => (
-                      <th key={s.key} className="py-2 px-2 text-center font-semibold text-muted-foreground">
-                        {s.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {agruparPorCategoria(recetas).map((grupo) => (
-                    <Fragment key={grupo.categoria}>
-                      <tr>
-                        <td colSpan={SEGMENTOS.length + 1} className="py-1.5 px-1 text-xs font-bold uppercase tracking-wide text-[#2d5a3d]">
-                          {grupo.categoria}
-                        </td>
-                      </tr>
-                      {grupo.items.map((receta) => (
-                        <tr key={receta.id} className="border-b border-border/40">
-                          <td className="py-1.5 pr-3">{receta.nombre}</td>
-                          {SEGMENTOS.map((s) => (
-                            <td key={s.key} className="py-1.5 px-2 text-center">
-                              <Checkbox
-                                checked={recetasElegidas[s.key].includes(receta.id)}
-                                onCheckedChange={() => toggleReceta(s.key, receta.id)}
-                                disabled={estado !== "borrador"}
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {estado === "lista_para_revisar" && (
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs shrink-0">
+              Enviada a revisión
+            </Badge>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Servicios</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {cargandoCatalogo ? (
-            <p className="text-sm text-muted-foreground">Cargando...</p>
-          ) : servicios.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay servicios activos en el catálogo.</p>
-          ) : (
-            <div className="space-y-1">
-              {agruparPorCategoria(servicios).map((grupo) => (
-                <div key={grupo.categoria}>
-                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-[#2d5a3d]">{grupo.categoria}</p>
-                  {grupo.items.map((s) => {
-                    const seleccionado = s.id in serviciosElegidos
-                    const usaCantidad = s.unidad === "Por Hora" || s.unidad === "Por Cantidad"
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        {bloqueado && (
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Esta cotización ya se envió a revisión. Administración te va a avisar si necesita algún ajuste.
+          </div>
+        )}
+
+        <div className="space-y-4 mb-8">
+          <Seccion
+            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10"><User className="h-5 w-5 text-blue-700" /></div>}
+            title="Cliente"
+            subtitle={clienteTelefono ? `${clienteNombre || "Sin nombre"} · ${clienteTelefono}` : clienteNombre || "Datos de contacto"}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="clienteNombre" className="text-sm font-medium">Nombre *</Label>
+                <Input
+                  id="clienteNombre"
+                  value={clienteNombre}
+                  onChange={(e) => setClienteNombre(e.target.value)}
+                  disabled={bloqueado}
+                  placeholder="Nombre y apellido"
+                  className="h-11 text-base"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="clienteTelefono" className="text-sm font-medium">Teléfono</Label>
+                <Input
+                  id="clienteTelefono"
+                  value={clienteTelefono}
+                  onChange={(e) => setClienteTelefono(e.target.value)}
+                  disabled={bloqueado}
+                  placeholder="Opcional"
+                  className="h-11 text-base"
+                />
+              </div>
+            </div>
+          </Seccion>
+
+          <Seccion
+            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600/10"><CalendarIcon className="h-5 w-5 text-emerald-700" /></div>}
+            title="Detalles del Evento"
+            subtitle={tipoEvento || "Configurá la fecha, salón y comensales"}
+          >
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Tipo de Evento</Label>
+                  <Select value={tipoEvento} onValueChange={setTipoEvento} disabled={bloqueado}>
+                    <SelectTrigger className="h-11 text-base">
+                      <SelectValue placeholder="Seleccionar tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIPOS_EVENTO.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fechaEvento" className="text-sm font-medium">Fecha</Label>
+                  <Input
+                    id="fechaEvento"
+                    type="date"
+                    value={fechaEvento}
+                    onChange={(e) => setFechaEvento(e.target.value)}
+                    disabled={bloqueado}
+                    className="h-11 text-base"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  Salón
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {SALONES.map((s) => {
+                    const active = salon === s
+                    const color = salonColor(s)
                     return (
-                      <div key={s.id} className="flex items-center gap-3 border-b border-border/40 py-1.5">
-                        <Checkbox
-                          checked={seleccionado}
-                          onCheckedChange={() => toggleServicio(s.id)}
-                          disabled={estado !== "borrador"}
-                        />
-                        <span className="flex-1 text-sm">{s.nombre}</span>
-                        {seleccionado && usaCantidad && (
-                          <Input
-                            type="number"
-                            min={1}
-                            value={serviciosElegidos[s.id]}
-                            onChange={(e) => cambiarCantidadServicio(s.id, Number(e.target.value))}
-                            disabled={estado !== "borrador"}
-                            className="w-20"
-                          />
-                        )}
-                        <span className="w-28 text-right text-sm tabular-nums text-emerald-700">
-                          {fmt(s.precioVenta)}
-                          {usaCantidad ? "/u" : ""}
-                        </span>
-                      </div>
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={bloqueado}
+                        onClick={() => setSalon(s)}
+                        className="flex-1 min-w-[100px] rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
+                        style={{
+                          borderColor: color,
+                          backgroundColor: active ? color : `color-mix(in srgb, ${color} 8%, white)`,
+                          color: active ? "white" : color,
+                        }}
+                      >
+                        {salonLabel(s)}
+                      </button>
                     )
                   })}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </div>
 
-      <Card className="border-[#c9a227]">
-        <CardContent className="flex flex-col gap-1 py-4">
-          {precioBaseSalon > 0 && (
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Precio base del salón</span>
-              <span className="tabular-nums">{fmt(precioBaseSalon)}</span>
+              {precioBaseSalon > 0 && (
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
+                  <UserCheck className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <p className="text-sm font-semibold text-emerald-800">
+                    Precio base del salón: {fmt(precioBaseSalon)}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-3 rounded-lg border border-emerald-100 bg-white/70 p-4">
+                <h4 className="font-semibold text-base text-foreground">Comensales</h4>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {(
+                    [
+                      { key: "adultos", label: "Adultos", icon: Users },
+                      { key: "adolescentes", label: "Adolescentes", icon: UserCheck },
+                      { key: "ninos", label: "Niños", icon: Baby },
+                      { key: "personasDietasEspeciales", label: "Dietas Esp.", icon: Heart },
+                    ] as const
+                  ).map(({ key, label, icon: Icon }) => (
+                    <div key={key} className="space-y-1.5">
+                      <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={invitados[key]}
+                        onChange={(e) => setInvitados((prev) => ({ ...prev, [key]: Math.max(0, Number(e.target.value) || 0) }))}
+                        disabled={bloqueado}
+                        className="h-11 text-center text-lg font-semibold"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-lg bg-secondary p-3 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base">Total personas:</span>
+                    <span className="text-2xl font-bold">{totalPersonas}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
-          {serviciosConPrecio.map((s) => (
-            <div key={s.id} className="flex justify-between text-sm text-muted-foreground">
-              <span>
-                {s.nombre}
-                {s.usaCantidad ? ` × ${s.cantidad}` : ""}
-              </span>
-              <span className="tabular-nums">{fmt(s.precioTotal)}</span>
+          </Seccion>
+
+          <Seccion
+            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10"><UtensilsCrossed className="h-5 w-5 text-orange-600" /></div>}
+            title="Menú del Evento"
+            subtitle={`${totalPlatos} plato${totalPlatos !== 1 ? "s" : ""} seleccionado${totalPlatos !== 1 ? "s" : ""}`}
+          >
+            {cargandoCatalogo ? (
+              <p className="text-sm text-muted-foreground">Cargando...</p>
+            ) : recetas.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
+                <UtensilsCrossed className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No hay recetas en el catálogo</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="py-2.5 px-3 text-left font-medium text-muted-foreground">Plato</th>
+                        {SEGMENTOS.map((s) => (
+                          <th key={s.key} className="py-2.5 px-2 text-center font-medium text-muted-foreground">
+                            {s.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agruparPorCategoria(recetas).map((grupo) => (
+                        <Fragment key={grupo.categoria}>
+                          <tr>
+                            <td colSpan={SEGMENTOS.length + 1} className="py-2 px-3 text-xs font-bold uppercase tracking-wider text-white" style={{ backgroundColor: "#2d5a3d" }}>
+                              {grupo.categoria}
+                            </td>
+                          </tr>
+                          {grupo.items.map((receta, idx) => (
+                            <tr key={receta.id} className={`border-b border-border/50 ${idx % 2 === 0 ? "" : "bg-muted/10"}`}>
+                              <td className="py-2 px-3 font-medium">{receta.nombre}</td>
+                              {SEGMENTOS.map((s) => {
+                                const selected = recetasElegidas[s.key].includes(receta.id)
+                                return (
+                                  <td key={s.key} className="py-1.5 px-2 text-center">
+                                    <button
+                                      type="button"
+                                      disabled={bloqueado}
+                                      onClick={() => toggleReceta(s.key, receta.id)}
+                                      className={`w-8 h-8 mx-auto flex items-center justify-center rounded border transition-colors disabled:opacity-50 ${
+                                        selected
+                                          ? "bg-emerald-600 border-emerald-600"
+                                          : "border-dashed border-border hover:border-[#2d5a3d] hover:bg-emerald-50"
+                                      }`}
+                                      aria-label={`${receta.nombre} para ${s.label}`}
+                                    >
+                                      {selected && <CheckCircle className="h-4 w-4 text-white" strokeWidth={3} />}
+                                    </button>
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-4 py-2.5 text-sm">
+                  <span className="text-muted-foreground">
+                    Total: <strong>{invitados.adultos}</strong> adultos · <strong>{invitados.adolescentes}</strong> adolesc. ·{" "}
+                    <strong>{invitados.ninos}</strong> niños · <strong>{invitados.personasDietasEspeciales}</strong> especiales
+                  </span>
+                  <span className="font-medium text-foreground">
+                    {totalPlatos} plato{totalPlatos !== 1 ? "s" : ""} seleccionado{totalPlatos !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              </div>
+            )}
+          </Seccion>
+
+          <Seccion
+            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
+            title="Servicios del Evento"
+            subtitle={
+              Object.keys(serviciosElegidos).length > 0
+                ? `${Object.keys(serviciosElegidos).length} servicio${Object.keys(serviciosElegidos).length > 1 ? "s" : ""} agregado${Object.keys(serviciosElegidos).length > 1 ? "s" : ""}`
+                : "Agregá servicios al evento"
+            }
+          >
+            {cargandoCatalogo ? (
+              <p className="text-sm text-muted-foreground">Cargando...</p>
+            ) : servicios.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
+                <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No hay servicios en el catálogo</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/70 border-b border-border">
+                      <th className="w-10 px-3 py-2" />
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Servicio</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Categoría</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700 uppercase tracking-wide">Precio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {servicios.map((s, idx) => {
+                      const seleccionado = s.id in serviciosElegidos
+                      const usaCantidad = s.unidad === "Por Hora" || s.unidad === "Por Cantidad"
+                      const cantidad = usaCantidad ? Math.max(1, serviciosElegidos[s.id] || 1) : 1
+                      const precioTotal = usaCantidad ? s.precioVenta * cantidad : s.precioVenta
+                      return (
+                        <tr
+                          key={s.id}
+                          onClick={() => toggleServicio(s.id)}
+                          className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
+                            seleccionado ? "bg-emerald-50/70 hover:bg-emerald-50" : idx % 2 === 0 ? "hover:bg-muted/40" : "bg-muted/10 hover:bg-muted/40"
+                          } ${bloqueado ? "cursor-default pointer-events-none opacity-70" : ""}`}
+                        >
+                          <td className="w-10 px-3 py-2.5">
+                            <div
+                              className={`w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
+                                seleccionado ? "bg-emerald-600 border-emerald-600" : "border-muted-foreground/30 bg-background"
+                              }`}
+                            >
+                              {seleccionado && <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>{s.nombre}</span>
+                            {usaCantidad && seleccionado && (
+                              <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                <label className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {s.unidad === "Por Hora" ? "Horas:" : "Cantidad:"}
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={cantidad}
+                                  disabled={bloqueado}
+                                  onChange={(e) => cambiarCantidadServicio(s.id, Number(e.target.value))}
+                                  className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
+                                />
+                                {s.unidad === "Por Hora" && <span className="text-xs text-muted-foreground">h</span>}
+                              </div>
+                            )}
+                            {usaCantidad && !seleccionado && (
+                              <p className="text-[11px] text-muted-foreground/70 mt-0.5">{s.unidad === "Por Hora" ? "Por hora" : "Por cantidad"}</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 hidden sm:table-cell">
+                            <Badge variant="outline" className="text-[11px]">{s.categoria}</Badge>
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                            {fmt(precioTotal)}
+                            {usaCantidad && seleccionado && cantidad > 1 && (
+                              <span className="block text-[11px] font-normal text-muted-foreground">
+                                {fmt(s.precioVenta)}
+                                {s.unidad === "Por Hora" ? "/h" : "/u"} × {cantidad}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  {serviciosConPrecio.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-muted/60 border-t-2 border-border">
+                        <td colSpan={3} className="px-3 py-2 text-xs font-semibold text-muted-foreground">
+                          {serviciosConPrecio.length} servicio{serviciosConPrecio.length !== 1 ? "s" : ""} seleccionado{serviciosConPrecio.length !== 1 ? "s" : ""}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-emerald-700">{fmt(totalServicios)}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            )}
+          </Seccion>
+        </div>
+
+        <div className="rounded-xl border-2 border-[#c9a227] bg-amber-50/40 overflow-hidden shadow-sm mb-6">
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between">
+              <span className="text-base font-semibold text-[#7a5c0e]">Precio de venta sugerido</span>
+              <span className="text-2xl font-bold text-[#1a3a2a]">{fmt(precioVentaSugerido)}</span>
             </div>
-          ))}
-          <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold text-[#1a3a2a]">
-            <span>Precio de venta sugerido</span>
-            <span className="tabular-nums">{fmt(precioVentaSugerido)}</span>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <div className="flex flex-col-reverse gap-2 pb-8 sm:flex-row sm:justify-end">
-        <Button variant="outline" disabled={!puedeGuardar || guardando || enviando} onClick={() => guardar("guardar")}>
-          {guardando ? "Guardando..." : "Guardar borrador"}
-        </Button>
-        <Button
-          className="bg-[#1a3a2a] hover:bg-[#25503c]"
-          disabled={!puedeGuardar || guardando || enviando}
-          onClick={() => guardar("enviar")}
-        >
-          {enviando ? "Enviando..." : "Enviar a revisión"}
-        </Button>
-      </div>
+        <div className="space-y-4 pb-8">
+          <Button
+            onClick={() => guardar("enviar")}
+            className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
+            disabled={!puedeGuardar || guardando || enviando}
+          >
+            <Save className="h-6 w-6 mr-2" />
+            {enviando ? "Enviando..." : "Enviar a revisión"}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full h-12"
+            disabled={!puedeGuardar || guardando || enviando}
+            onClick={() => guardar("guardar")}
+          >
+            {guardando ? "Guardando..." : "Guardar borrador"}
+          </Button>
+        </div>
+      </main>
     </div>
   )
 }
