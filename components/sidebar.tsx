@@ -104,6 +104,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
         // La página /eventos/contratos sigue existiendo por URL directa.
         // { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
         { href: "/eventos/vendedores", label: "Vendedores", icon: Users, locked: !tieneAccesoTotal },
+        { href: "/eventos/cotizaciones", label: "Cotizaciones", icon: FileText, locked: !tieneAccesoTotal },
         { href: "/eventos/finalizados", label: "Archivo", icon: Archive },
       ],
     },
