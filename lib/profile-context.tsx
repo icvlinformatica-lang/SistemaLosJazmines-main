@@ -12,6 +12,7 @@ import {
   Shirt,
   Monitor,
   Wrench,
+  Briefcase,
   type LucideIcon,
 } from "lucide-react"
 
@@ -88,6 +89,18 @@ export const PERFILES: Perfil[] = [
     icon: DollarSign,
     iconColor: NEGRO,
     rutas: ["/", "/eventos/pagos"],
+  },
+  {
+    id: "vendedor",
+    nombre: "Vendedor",
+    categoria: "gestion",
+    color: DORADO,
+    icon: Briefcase,
+    iconColor: NEGRO,
+    // OJO: nunca dejar `rutas: []` — components/app-shell.tsx y
+    // components/sidebar.tsx tratan un array vacío como "acceso total"
+    // (mismo criterio que "*"), no como "sin acceso".
+    rutas: ["/vendedor"],
   },
   // Perfiles de solo lectura para staff externo: ven el calendario de
   // próximos eventos con su servicio resaltado (ver app/eventos/staff).

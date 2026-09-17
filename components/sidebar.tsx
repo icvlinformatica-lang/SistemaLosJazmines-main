@@ -71,6 +71,12 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
     return [{ href: "/eventos/staff", label: "Próximos eventos", icon: Calendar }]
   }
 
+  // Perfil "Vendedor": placeholder por ahora (Etapa 1). Las etapas
+  // siguientes agregan acá "Cotizar" y "Paquetes".
+  if (perfilId === "vendedor") {
+    return [{ href: "/vendedor", label: "Inicio", icon: Briefcase }]
+  }
+
   // Perfil "Cocina": accesos directos sin carpetas, visibles al instante.
   if (perfilId === "cocina") {
     return [
@@ -455,7 +461,7 @@ export function Sidebar() {
         </nav>
 
         {/* Generar Contrato Button */}
-        {!["cocina", "barra", "cobro"].includes(perfilActivo?.id ?? "") && (
+        {!["cocina", "barra", "cobro", "vendedor"].includes(perfilActivo?.id ?? "") && (
           <div className="px-3 pb-3 -mt-[10px]">
             <button
               type="button"

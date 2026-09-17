@@ -2,7 +2,7 @@
 // Los PINs NUNCA deben estar en código del cliente: viven aquí (solo servidor)
 // y pueden sobreescribirse con variables de entorno (PIN_COCINA, PIN_BARRA,
 // PIN_ADMINISTRACION, PIN_SOPORTE, PIN_COBRO, PIN_DJ, PIN_FOTOGRAFO,
-// PIN_VESTIDO, PIN_PANTALLA, PIN_COORDINACION) sin tocar el código.
+// PIN_VESTIDO, PIN_PANTALLA, PIN_COORDINACION, PIN_VENDEDOR) sin tocar el código.
 // Usa Web Crypto (crypto.subtle) para que funcione tanto en Node como en Edge middleware.
 
 export const SESSION_COOKIE = "lj_session"
@@ -36,6 +36,7 @@ export function getPins(): Record<string, string> {
     vestido: process.env.PIN_VESTIDO || "9003",
     pantalla: process.env.PIN_PANTALLA || "9004",
     coordinacion: process.env.PIN_COORDINACION || "9005",
+    vendedor: process.env.PIN_VENDEDOR || "9006",
   }
 }
 
