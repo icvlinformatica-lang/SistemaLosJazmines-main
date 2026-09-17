@@ -17,8 +17,8 @@
 // coloreados, caja de "Comensales" y tabla de servicios — sin tocar ese
 // archivo, solo replicando su estilo acá.
 
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+import { Fragment, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -44,6 +44,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
+import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
 
 const TIPOS_EVENTO = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
 
@@ -90,19 +91,23 @@ function agruparPorCategoria<T extends { categoria: string }>(items: T[]): Array
 }
 
 // Misma cascara que SectionCard en app/evento/page.tsx: icono + titulo +
-// subtitulo colapsables, sin las variantes de bloqueo (acá no aplican).
+// subtitulo colapsables. "disabled" deshabilita los controles de ADENTRO
+// (fieldset) pero nunca el botón de abrir/cerrar la sección — si no, en
+// modo solo lectura (una cotización ya enviada) no se podría ni mirar.
 function Seccion({
   icon,
   title,
   subtitle,
   children,
   defaultOpen = false,
+  disabled = false,
 }: {
   icon: ReactNode
   title: string
   subtitle?: string
   children: ReactNode
   defaultOpen?: boolean
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -124,15 +129,19 @@ function Seccion({
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t border-border px-5 py-5 overflow-hidden">{children}</div>
+          <div className="border-t border-border px-5 py-5 overflow-hidden">
+            <fieldset disabled={disabled} className="contents">{children}</fieldset>
+          </div>
         </CollapsibleContent>
       </div>
     </Collapsible>
   )
 }
 
-export default function CotizarPage() {
+function CotizarPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const cotizacionIdParam = searchParams.get("id")
   const { toast } = useToast()
 
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true)
@@ -177,6 +186,14 @@ export default function CotizarPage() {
   const [guardando, setGuardando] = useState(false)
   const [generando, setGenerando] = useState(false)
 
+  // Al reabrir una cotización guardada (?id=...): "borrador"/"rechazada" se
+  // pueden seguir editando, cualquier otro estado queda de solo lectura
+  // (ya está en revisión o ya fue procesada por Administración).
+  const [cargandoCotizacion, setCargandoCotizacion] = useState(!!cotizacionIdParam)
+  const [estadoCotizacion, setEstadoCotizacion] = useState<EstadoCotizacion>("borrador")
+  const [comentarioAdmin, setComentarioAdmin] = useState<string | null>(null)
+  const soloLectura = !["borrador", "rechazada"].includes(estadoCotizacion)
+
   useEffect(() => {
     fetch("/api/vendedor/catalogo")
       .then((res) => (res.ok ? res.json() : null))
@@ -198,7 +215,41 @@ export default function CotizarPage() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (!cotizacionIdParam) return
+    fetch(`/api/vendedor/cotizaciones/${cotizacionIdParam}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.ok) {
+          toast({ title: "No se pudo abrir la cotización", variant: "destructive" })
+          return
+        }
+        const c = data.cotizacion
+        setCotizacionId(c.id)
+        setClienteNombre(c.clienteNombre || "")
+        setClienteTelefono(c.clienteTelefono || "")
+        setFechaEvento(c.fechaEvento || "")
+        setHorario(c.horario || "")
+        setHorarioFin(c.horarioFin || "")
+        setSalon(c.salon || "")
+        setTipoEvento(c.tipoEvento || "")
+        setNombreFestejados(c.nombreFestejados || "")
+        setPaqueteAplicadoId(c.paqueteId || null)
+        setInvitados(c.invitados)
+        setRecetasElegidas(c.recetasElegidas)
+        setServiciosElegidos(Object.fromEntries(c.serviciosElegidos.map((s: { servicioId: string; cantidad: number }) => [s.servicioId, s.cantidad])))
+        setEstadoCotizacion(c.estado)
+        setComentarioAdmin(c.comentarioAdmin)
+      })
+      .catch(() => {
+        toast({ title: "Error de conexión al abrir la cotización", variant: "destructive" })
+      })
+      .finally(() => setCargandoCotizacion(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cotizacionIdParam])
+
   const aplicarPaquete = (paquete: PaqueteVendedor) => {
+    if (soloLectura) return
     setSalon(paquete.salon)
     setServiciosElegidos(Object.fromEntries(paquete.servicios.map((s) => [s.servicioId, s.cantidad])))
     setPaqueteAplicadoId(paquete.id)
@@ -206,6 +257,7 @@ export default function CotizarPage() {
   }
 
   const toggleReceta = (segmento: Segmento, recetaId: string) => {
+    if (soloLectura) return
     setRecetasElegidas((prev) => {
       const actual = prev[segmento]
       const yaEsta = actual.includes(recetaId)
@@ -214,6 +266,7 @@ export default function CotizarPage() {
   }
 
   const toggleServicio = (servicioId: string) => {
+    if (soloLectura) return
     setServiciosElegidos((prev) => {
       if (servicioId in prev) {
         const { [servicioId]: _quitado, ...resto } = prev
@@ -224,6 +277,7 @@ export default function CotizarPage() {
   }
 
   const cambiarCantidadServicio = (servicioId: string, cantidad: number) => {
+    if (soloLectura) return
     setServiciosElegidos((prev) => ({ ...prev, [servicioId]: Math.max(1, cantidad || 1) }))
   }
 
@@ -242,7 +296,7 @@ export default function CotizarPage() {
     return { serviciosConPrecio: conPrecio, totalServicios: total, precioBaseSalon: base, precioVentaSugerido: base + total }
   }, [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta])
 
-  const puedeGuardar = clienteNombre.trim().length > 0
+  const puedeGuardar = clienteNombre.trim().length > 0 && !soloLectura
 
   // Guarda siempre en estado "borrador" (mandar a revisión es una acción
   // aparte, disponible desde la tarjeta en /vendedor/paquetes). "Generar
@@ -292,26 +346,51 @@ export default function CotizarPage() {
     }
   }
 
+  if (cargandoCotizacion) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Cargando cotización...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
-          <Link href="/vendedor" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+          <Link href="/vendedor/paquetes" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-semibold truncate">Nueva cotización</h1>
+            <h1 className="text-lg font-semibold truncate">{cotizacionId ? "Cotización" : "Nueva cotización"}</h1>
             {clienteNombre && <p className="text-sm text-muted-foreground truncate">{clienteNombre}</p>}
           </div>
+          {cotizacionId && (
+            <Badge variant="outline" className={`text-xs shrink-0 ${ESTADO_COTIZACION_CLASE[estadoCotizacion]}`}>
+              {ESTADO_COTIZACION_LABEL[estadoCotizacion]}
+            </Badge>
+          )}
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        {soloLectura && (
+          <div className="mb-4 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            Esta cotización ya no se puede editar desde acá — {ESTADO_COTIZACION_LABEL[estadoCotizacion].toLowerCase()}.
+          </div>
+        )}
+        {comentarioAdmin && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-semibold">Administración pidió un ajuste:</p>
+            <p>{comentarioAdmin}</p>
+          </div>
+        )}
         <div className="space-y-4 mb-8">
           <Seccion
             icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10"><User className="h-5 w-5 text-blue-700" /></div>}
             title="Cliente"
             subtitle={clienteTelefono ? `${clienteNombre || "Sin nombre"} · ${clienteTelefono}` : clienteNombre || "Datos de contacto"}
+            disabled={soloLectura}
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -341,6 +420,7 @@ export default function CotizarPage() {
             icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600/10"><CalendarIcon className="h-5 w-5 text-emerald-700" /></div>}
             title="Detalles del Evento"
             subtitle={tipoEvento ? `${tipoEvento}${nombreFestejados ? ` - ${nombreFestejados}` : ""}` : "Configurá la fecha, salón y comensales"}
+            disabled={soloLectura}
           >
             <div className="space-y-5">
               {/* Fila 1: Tipo de Evento + Nombre de los Festejados */}
@@ -493,6 +573,7 @@ export default function CotizarPage() {
             icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10"><UtensilsCrossed className="h-5 w-5 text-orange-600" /></div>}
             title="Menú del Evento"
             subtitle={`${totalPlatos} plato${totalPlatos !== 1 ? "s" : ""} seleccionado${totalPlatos !== 1 ? "s" : ""}`}
+            disabled={soloLectura}
           >
             {cargandoCatalogo ? (
               <p className="text-sm text-muted-foreground">Cargando...</p>
@@ -573,6 +654,7 @@ export default function CotizarPage() {
                 ? `${Object.keys(serviciosElegidos).length} servicio${Object.keys(serviciosElegidos).length > 1 ? "s" : ""} agregado${Object.keys(serviciosElegidos).length > 1 ? "s" : ""}`
                 : "Agregá servicios al evento"
             }
+            disabled={soloLectura}
           >
             {paquetes.length > 0 && (
               <div className="mb-4 space-y-2">
@@ -633,7 +715,7 @@ export default function CotizarPage() {
                           onClick={() => toggleServicio(s.id)}
                           className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
                             seleccionado ? "bg-emerald-50/70 hover:bg-emerald-50" : idx % 2 === 0 ? "hover:bg-muted/40" : "bg-muted/10 hover:bg-muted/40"
-                          }`}
+                          } ${soloLectura ? "cursor-default pointer-events-none opacity-70" : ""}`}
                         >
                           <td className="w-10 px-3 py-2.5">
                             <div
@@ -706,28 +788,40 @@ export default function CotizarPage() {
           </div>
         </div>
 
-        <div className="space-y-4 pb-8">
-          <Button
-            onClick={() => guardar("paquetes")}
-            className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
-            disabled={!puedeGuardar || guardando || generando}
-          >
-            <Package className="h-6 w-6 mr-2" />
-            {generando ? "Generando..." : "Generar paquete"}
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full h-12"
-            disabled={!puedeGuardar || guardando || generando}
-            onClick={() => guardar("quedarse")}
-          >
-            {guardando ? "Guardando..." : "Guardar borrador"}
-          </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            "Generar paquete" guarda todo y te lleva a verlo en Paquetes — desde ahí lo mandás a revisión.
-          </p>
-        </div>
+        {!soloLectura && (
+          <div className="space-y-4 pb-8">
+            <Button
+              onClick={() => guardar("paquetes")}
+              className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
+              disabled={!puedeGuardar || guardando || generando}
+            >
+              <Package className="h-6 w-6 mr-2" />
+              {generando ? "Generando..." : "Generar paquete"}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full h-12"
+              disabled={!puedeGuardar || guardando || generando}
+              onClick={() => guardar("quedarse")}
+            >
+              {guardando ? "Guardando..." : "Guardar borrador"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              "Generar paquete" guarda todo y te lleva a verlo en Paquetes — desde ahí lo mandás a revisión.
+            </p>
+          </div>
+        )}
       </main>
     </div>
   )
 }
+
+function CotizarPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <CotizarPageContent />
+    </Suspense>
+  )
+}
+
+export default CotizarPage

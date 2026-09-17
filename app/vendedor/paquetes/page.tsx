@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
+import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
 
 interface ServicioCatalogo {
   id: string
@@ -54,25 +55,9 @@ interface CotizacionGenerada {
   nombreFestejados: string | null
   totalPersonas: number
   precioVentaSugerido: number
-  estado: "borrador" | "lista_para_revisar" | "aprobada" | "rechazada" | "convertida"
+  estado: EstadoCotizacion
   comentarioAdmin: string | null
   updatedAt: string
-}
-
-const ESTADO_LABEL: Record<CotizacionGenerada["estado"], string> = {
-  borrador: "Sin enviar",
-  lista_para_revisar: "Enviada — esperando revisión",
-  aprobada: "Aprobada",
-  rechazada: "Rechazada — necesita ajustes",
-  convertida: "Convertida en evento",
-}
-
-const ESTADO_CLASE: Record<CotizacionGenerada["estado"], string> = {
-  borrador: "bg-muted text-muted-foreground border-border",
-  lista_para_revisar: "bg-amber-50 text-amber-700 border-amber-300",
-  aprobada: "bg-emerald-50 text-emerald-700 border-emerald-300",
-  rechazada: "bg-red-50 text-red-700 border-red-300",
-  convertida: "bg-blue-50 text-blue-700 border-blue-300",
 }
 
 const fmt = (n: number) =>
@@ -244,8 +229,8 @@ export default function PaquetesPage() {
                   <div className="px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-semibold text-card-foreground">{c.clienteNombre}</p>
-                      <Badge variant="outline" className={`text-[11px] shrink-0 ${ESTADO_CLASE[c.estado]}`}>
-                        {ESTADO_LABEL[c.estado]}
+                      <Badge variant="outline" className={`text-[11px] shrink-0 ${ESTADO_COTIZACION_CLASE[c.estado]}`}>
+                        {ESTADO_COTIZACION_LABEL[c.estado]}
                       </Badge>
                     </div>
                     {c.nombreFestejados && <p className="text-sm text-muted-foreground mt-0.5">{c.nombreFestejados}</p>}
@@ -277,14 +262,21 @@ export default function PaquetesPage() {
                       </p>
                     )}
                   </div>
-                  <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-2 flex-wrap">
                     <span className="text-lg font-bold text-emerald-700">{fmt(c.precioVentaSugerido)}</span>
-                    {c.estado === "borrador" && (
-                      <Button size="sm" onClick={() => enviarARevision(c.id)} disabled={enviandoId === c.id}>
-                        <Send className="h-3.5 w-3.5 mr-1.5" />
-                        {enviandoId === c.id ? "Enviando..." : "Enviar a revisión"}
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Link href={`/vendedor/cotizar?id=${c.id}`}>
+                        <Button size="sm" variant="outline">
+                          {c.estado === "borrador" || c.estado === "rechazada" ? "Editar" : "Ver"}
+                        </Button>
+                      </Link>
+                      {(c.estado === "borrador" || c.estado === "rechazada") && (
+                        <Button size="sm" onClick={() => enviarARevision(c.id)} disabled={enviandoId === c.id}>
+                          <Send className="h-3.5 w-3.5 mr-1.5" />
+                          {enviandoId === c.id ? "Enviando..." : "Enviar a revisión"}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

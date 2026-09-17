@@ -9,14 +9,17 @@ import { sql } from "@/lib/db"
  * mande el cliente. costos_internos se guarda pero nunca viaja de vuelta
  * en la respuesta.
  *
- * POST siempre guarda en estado "borrador" (tanto "Guardar borrador" como
- * "Generar paquete" en /vendedor/cotizar pegan acá) — mandar a revisión es
- * una acción aparte, ver [id]/enviar/route.ts, que se dispara desde la
- * tarjeta en /vendedor/paquetes ("Mis cotizaciones generadas"), no desde
- * esta pantalla.
+ * POST nunca toca el estado (tanto "Guardar borrador" como "Generar
+ * paquete" en /vendedor/cotizar pegan acá): una cotización nueva nace en
+ * "borrador", y una que ya estaba "rechazada" (Administración pidió un
+ * ajuste) se puede seguir editando y guardando sin perder ese estado hasta
+ * que el vendedor la reenvía. Mandar a revisión es una acción aparte, ver
+ * [id]/enviar/route.ts, que se dispara desde la tarjeta en
+ * /vendedor/paquetes ("Mis cotizaciones generadas"), no desde esta pantalla.
+ * Para reabrir una cotización guardada, ver [id]/route.ts (GET).
  *
  * body: {
- *   id?: string                     // si viene, actualiza (solo si sigue en "borrador")
+ *   id?: string                     // si viene, actualiza (solo si sigue en "borrador" o "rechazada")
  *   clienteNombre: string
  *   clienteTelefono?: string
  *   fechaEvento?: string
@@ -187,13 +190,13 @@ export async function POST(req: Request) {
           precio_venta_sugerido = ${precioVentaSugerido},
           costos_internos = ${costosInternosJson}::jsonb,
           updated_at = now()
-        WHERE id = ${id} AND estado = 'borrador'
+        WHERE id = ${id} AND estado IN ('borrador', 'rechazada')
         RETURNING id, estado
       `) as unknown as Array<{ id: string; estado: string }>
 
       if (!filas.length) {
         return NextResponse.json(
-          { ok: false, error: "Esta cotización ya no se puede editar (no está en borrador)" },
+          { ok: false, error: "Esta cotización ya no se puede editar (Administración ya la está revisando o ya fue procesada)" },
           { status: 409 },
         )
       }
