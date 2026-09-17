@@ -406,7 +406,7 @@ export default function CotizarPage() {
                   <Building2 className="h-4 w-4 text-muted-foreground" />
                   Salón
                 </Label>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex gap-2">
                   {SALONES.map((s) => {
                     const active = salon === s
                     const color = salonColor(s)
@@ -416,7 +416,7 @@ export default function CotizarPage() {
                         type="button"
                         disabled={bloqueado}
                         onClick={() => setSalon(s)}
-                        className="flex-1 min-w-[100px] rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
+                        className="flex-1 rounded-lg border px-2 py-2.5 text-xs sm:text-sm font-medium transition-colors disabled:opacity-60"
                         style={{
                           borderColor: color,
                           backgroundColor: active ? color : `color-mix(in srgb, ${color} 8%, white)`,
@@ -659,7 +659,7 @@ export default function CotizarPage() {
 
         <div className="rounded-xl border-2 border-[#c9a227] bg-amber-50/40 overflow-hidden shadow-sm mb-6">
           <div className="px-5 py-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-base font-semibold text-[#7a5c0e]">Precio de venta sugerido</span>
               <span className="text-2xl font-bold text-[#1a3a2a]">{fmt(precioVentaSugerido)}</span>
             </div>
