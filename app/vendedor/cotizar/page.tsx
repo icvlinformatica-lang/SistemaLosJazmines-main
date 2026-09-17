@@ -14,7 +14,6 @@
 // archivo, solo replicando su estilo acá.
 
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -23,6 +22,7 @@ import {
   Building2,
   Calendar as CalendarIcon,
   CheckCircle,
+  Clock,
   Heart,
   Save,
   User,
@@ -83,7 +83,7 @@ function Seccion({
   title,
   subtitle,
   children,
-  defaultOpen = true,
+  defaultOpen = false,
 }: {
   icon: ReactNode
   title: string
@@ -119,7 +119,6 @@ function Seccion({
 }
 
 export default function CotizarPage() {
-  const router = useRouter()
   const { toast } = useToast()
 
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true)
@@ -131,10 +130,16 @@ export default function CotizarPage() {
   const [clienteNombre, setClienteNombre] = useState("")
   const [clienteTelefono, setClienteTelefono] = useState("")
 
-  // Evento
+  // Evento — mismos campos que "Detalles del Evento" en app/evento/page.tsx.
+  // Acá van sin obligar a completarlos (a diferencia del planificador real):
+  // cuando Administración apruebe la cotización (Etapa 5) y la convierta en
+  // evento real, ahí sí va a pedir los que falten antes de crear el evento.
   const [fechaEvento, setFechaEvento] = useState("")
+  const [horario, setHorario] = useState("")
+  const [horarioFin, setHorarioFin] = useState("")
   const [salon, setSalon] = useState<string>("")
   const [tipoEvento, setTipoEvento] = useState<string>("")
+  const [nombreFestejados, setNombreFestejados] = useState("")
 
   // Invitados
   const [invitados, setInvitados] = useState({ adultos: 0, adolescentes: 0, ninos: 0, personasDietasEspeciales: 0 })
@@ -228,8 +233,11 @@ export default function CotizarPage() {
           clienteNombre,
           clienteTelefono,
           fechaEvento,
+          horario,
+          horarioFin,
           salon,
           tipoEvento,
+          nombreFestejados,
           invitados,
           recetasElegidas,
           serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
@@ -313,9 +321,10 @@ export default function CotizarPage() {
           <Seccion
             icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600/10"><CalendarIcon className="h-5 w-5 text-emerald-700" /></div>}
             title="Detalles del Evento"
-            subtitle={tipoEvento || "Configurá la fecha, salón y comensales"}
+            subtitle={tipoEvento ? `${tipoEvento}${nombreFestejados ? ` - ${nombreFestejados}` : ""}` : "Configurá la fecha, salón y comensales"}
           >
             <div className="space-y-5">
+              {/* Fila 1: Tipo de Evento + Nombre de los Festejados */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Tipo de Evento</Label>
@@ -333,12 +342,59 @@ export default function CotizarPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="fechaEvento" className="text-sm font-medium">Fecha</Label>
+                  <Label htmlFor="nombreFestejados" className="text-sm font-medium">Nombre de los Festejados</Label>
+                  <Input
+                    id="nombreFestejados"
+                    placeholder="Ej: Juan y María"
+                    value={nombreFestejados}
+                    onChange={(e) => setNombreFestejados(e.target.value)}
+                    disabled={bloqueado}
+                    className="h-11 text-base"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+
+              {/* Fila 2: Fecha + Hora inicio + Hora fin */}
+              <div className="grid gap-4 grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="fechaEvento" className="flex items-center gap-1.5 text-sm font-medium">
+                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                    Fecha
+                  </Label>
                   <Input
                     id="fechaEvento"
                     type="date"
                     value={fechaEvento}
                     onChange={(e) => setFechaEvento(e.target.value)}
+                    disabled={bloqueado}
+                    className="h-11 text-base"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="horario" className="flex items-center gap-1.5 text-sm font-medium">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    Hora inicio
+                  </Label>
+                  <Input
+                    id="horario"
+                    type="time"
+                    value={horario}
+                    onChange={(e) => setHorario(e.target.value)}
+                    disabled={bloqueado}
+                    className="h-11 text-base"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="horarioFin" className="flex items-center gap-1.5 text-sm font-medium">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    Hora fin
+                  </Label>
+                  <Input
+                    id="horarioFin"
+                    type="time"
+                    value={horarioFin}
+                    onChange={(e) => setHorarioFin(e.target.value)}
                     disabled={bloqueado}
                     className="h-11 text-base"
                   />

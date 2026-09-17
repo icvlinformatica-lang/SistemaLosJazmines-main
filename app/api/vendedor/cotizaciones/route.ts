@@ -52,6 +52,9 @@ export async function POST(req: Request) {
       fechaEvento,
       salon,
       tipoEvento,
+      nombreFestejados,
+      horario,
+      horarioFin,
       invitados,
       recetasElegidas,
       serviciosElegidos,
@@ -171,6 +174,9 @@ export async function POST(req: Request) {
           fecha_evento = ${fechaEvento || null},
           salon = ${salon || null},
           tipo_evento = ${tipoEvento || null},
+          nombre_festejados = ${nombreFestejados || null},
+          horario = ${horario || null},
+          horario_fin = ${horarioFin || null},
           invitados = ${invitadosJson}::jsonb,
           servicios_elegidos = ${serviciosElegidosJson}::jsonb,
           precio_venta_sugerido = ${precioVentaSugerido},
@@ -193,9 +199,11 @@ export async function POST(req: Request) {
     const filas = (await sql`
       INSERT INTO cotizaciones (
         vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
+        nombre_festejados, horario, horario_fin,
         invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
       ) VALUES (
         ${vendedor}, ${clienteNombre.trim()}, ${clienteTelefono || null}, ${fechaEvento || null}, ${salon || null}, ${tipoEvento || null},
+        ${nombreFestejados || null}, ${horario || null}, ${horarioFin || null},
         ${invitadosJson}::jsonb, ${serviciosElegidosJson}::jsonb, ${precioVentaSugerido}, ${costosInternosJson}::jsonb, ${estadoFinal}
       )
       RETURNING id, estado
