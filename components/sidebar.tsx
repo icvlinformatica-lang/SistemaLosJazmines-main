@@ -71,11 +71,12 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
     return [{ href: "/eventos/staff", label: "Próximos eventos", icon: Calendar }]
   }
 
-  // Perfil "Vendedor". La Etapa 4 agrega acá "Paquetes".
+  // Perfil "Vendedor"
   if (perfilId === "vendedor") {
     return [
       { href: "/vendedor", label: "Inicio", icon: Briefcase },
       { href: "/vendedor/cotizar", label: "Cotizar", icon: FileText },
+      { href: "/vendedor/paquetes", label: "Paquetes", icon: Package },
     ]
   }
 

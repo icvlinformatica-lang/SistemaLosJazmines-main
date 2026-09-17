@@ -24,6 +24,7 @@ import {
   CheckCircle,
   Clock,
   Heart,
+  Package,
   Save,
   User,
   UserCheck,
@@ -62,6 +63,14 @@ interface RecetaCatalogo {
   id: string
   nombre: string
   categoria: string
+}
+
+interface PaqueteVendedor {
+  id: string
+  salon: string
+  nombre: string
+  precioVenta: number
+  servicios: Array<{ servicioId: string; nombre: string; cantidad: number; precioVenta: number }>
 }
 
 const fmt = (n: number) =>
@@ -125,6 +134,8 @@ export default function CotizarPage() {
   const [servicios, setServicios] = useState<ServicioCatalogo[]>([])
   const [recetas, setRecetas] = useState<RecetaCatalogo[]>([])
   const [preciosVenta, setPreciosVenta] = useState<Record<string, Record<string, number>>>({})
+  const [paquetes, setPaquetes] = useState<PaqueteVendedor[]>([])
+  const [paqueteAplicadoId, setPaqueteAplicadoId] = useState<string | null>(null)
 
   // Cliente
   const [clienteNombre, setClienteNombre] = useState("")
@@ -175,7 +186,22 @@ export default function CotizarPage() {
       })
       .catch(() => {})
       .finally(() => setCargandoCatalogo(false))
+
+    fetch("/api/vendedor/paquetes")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok) setPaquetes(data.paquetes || [])
+      })
+      .catch(() => {})
   }, [])
+
+  const aplicarPaquete = (paquete: PaqueteVendedor) => {
+    if (bloqueado) return
+    setSalon(paquete.salon)
+    setServiciosElegidos(Object.fromEntries(paquete.servicios.map((s) => [s.servicioId, s.cantidad])))
+    setPaqueteAplicadoId(paquete.id)
+    toast({ title: `Paquete "${paquete.nombre}" aplicado`, description: "Podés seguir ajustando los servicios." })
+  }
 
   const toggleReceta = (segmento: Segmento, recetaId: string) => {
     if (bloqueado) return
@@ -236,6 +262,7 @@ export default function CotizarPage() {
           horario,
           horarioFin,
           salon,
+          paqueteId: paqueteAplicadoId,
           tipoEvento,
           nombreFestejados,
           invitados,
@@ -562,6 +589,35 @@ export default function CotizarPage() {
                 : "Agregá servicios al evento"
             }
           >
+            {paquetes.length > 0 && !bloqueado && (
+              <div className="mb-4 space-y-2">
+                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  Partir de un paquete guardado
+                </Label>
+                <Select
+                  value={paqueteAplicadoId || ""}
+                  onValueChange={(id) => {
+                    const p = paquetes.find((x) => x.id === id)
+                    if (p) aplicarPaquete(p)
+                  }}
+                >
+                  <SelectTrigger className="h-11 text-base">
+                    <SelectValue placeholder="Elegir paquete (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paquetes.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nombre} — {salonLabel(p.salon)} ({fmt(p.precioVenta)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Reemplaza el salón y los servicios elegidos por los del paquete — después podés seguir ajustando.
+                </p>
+              </div>
+            )}
             {cargandoCatalogo ? (
               <p className="text-sm text-muted-foreground">Cargando...</p>
             ) : servicios.length === 0 ? (

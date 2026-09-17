@@ -55,6 +55,7 @@ export async function POST(req: Request) {
       nombreFestejados,
       horario,
       horarioFin,
+      paqueteId,
       invitados,
       recetasElegidas,
       serviciosElegidos,
@@ -177,6 +178,7 @@ export async function POST(req: Request) {
           nombre_festejados = ${nombreFestejados || null},
           horario = ${horario || null},
           horario_fin = ${horarioFin || null},
+          paquete_id = ${paqueteId || null},
           invitados = ${invitadosJson}::jsonb,
           servicios_elegidos = ${serviciosElegidosJson}::jsonb,
           precio_venta_sugerido = ${precioVentaSugerido},
@@ -199,11 +201,11 @@ export async function POST(req: Request) {
     const filas = (await sql`
       INSERT INTO cotizaciones (
         vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
-        nombre_festejados, horario, horario_fin,
+        nombre_festejados, horario, horario_fin, paquete_id,
         invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
       ) VALUES (
         ${vendedor}, ${clienteNombre.trim()}, ${clienteTelefono || null}, ${fechaEvento || null}, ${salon || null}, ${tipoEvento || null},
-        ${nombreFestejados || null}, ${horario || null}, ${horarioFin || null},
+        ${nombreFestejados || null}, ${horario || null}, ${horarioFin || null}, ${paqueteId || null},
         ${invitadosJson}::jsonb, ${serviciosElegidosJson}::jsonb, ${precioVentaSugerido}, ${costosInternosJson}::jsonb, ${estadoFinal}
       )
       RETURNING id, estado
