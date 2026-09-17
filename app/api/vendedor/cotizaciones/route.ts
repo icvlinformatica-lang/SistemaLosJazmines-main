@@ -9,6 +9,12 @@ import { sql } from "@/lib/db"
  * mande el cliente. costos_internos se guarda pero nunca viaja de vuelta
  * en la respuesta.
  *
+ * POST siempre guarda en estado "borrador" (tanto "Guardar borrador" como
+ * "Generar paquete" en /vendedor/cotizar pegan acá) — mandar a revisión es
+ * una acción aparte, ver [id]/enviar/route.ts, que se dispara desde la
+ * tarjeta en /vendedor/paquetes ("Mis cotizaciones generadas"), no desde
+ * esta pantalla.
+ *
  * body: {
  *   id?: string                     // si viene, actualiza (solo si sigue en "borrador")
  *   clienteNombre: string
@@ -19,8 +25,11 @@ import { sql } from "@/lib/db"
  *   invitados: { adultos, adolescentes, ninos, personasDietasEspeciales }
  *   recetasElegidas: { adultos: string[], adolescentes: string[], ninos: string[], dietasEspeciales: string[] }
  *   serviciosElegidos: { servicioId: string, cantidad: number }[]
- *   accion: "guardar" | "enviar"    // "enviar" pasa el estado a lista_para_revisar
  * }
+ *
+ * GET devuelve "Mis cotizaciones generadas": las cotizaciones del vendedor
+ * que entró con esta sesión (por nombre, vía cookie lj_usuario), saneadas
+ * (nunca costos_internos).
  */
 
 function usuarioDesdeCookie(req: Request): string {
@@ -59,14 +68,10 @@ export async function POST(req: Request) {
       invitados,
       recetasElegidas,
       serviciosElegidos,
-      accion,
     } = body || {}
 
     if (typeof clienteNombre !== "string" || !clienteNombre.trim()) {
       return NextResponse.json({ ok: false, error: "Falta el nombre del cliente" }, { status: 400 })
-    }
-    if (accion !== "guardar" && accion !== "enviar") {
-      return NextResponse.json({ ok: false, error: "Acción inválida" }, { status: 400 })
     }
 
     const vendedor = usuarioDesdeCookie(req)
@@ -165,8 +170,6 @@ export async function POST(req: Request) {
       // solo calcula el costo interno de los servicios contratados.
     })
 
-    const estadoFinal = accion === "enviar" ? "lista_para_revisar" : "borrador"
-
     if (id) {
       const filas = (await sql`
         UPDATE cotizaciones SET
@@ -183,7 +186,6 @@ export async function POST(req: Request) {
           servicios_elegidos = ${serviciosElegidosJson}::jsonb,
           precio_venta_sugerido = ${precioVentaSugerido},
           costos_internos = ${costosInternosJson}::jsonb,
-          estado = ${estadoFinal},
           updated_at = now()
         WHERE id = ${id} AND estado = 'borrador'
         RETURNING id, estado
@@ -202,11 +204,11 @@ export async function POST(req: Request) {
       INSERT INTO cotizaciones (
         vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         nombre_festejados, horario, horario_fin, paquete_id,
-        invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
+        invitados, servicios_elegidos, precio_venta_sugerido, costos_internos
       ) VALUES (
         ${vendedor}, ${clienteNombre.trim()}, ${clienteTelefono || null}, ${fechaEvento || null}, ${salon || null}, ${tipoEvento || null},
         ${nombreFestejados || null}, ${horario || null}, ${horarioFin || null}, ${paqueteId || null},
-        ${invitadosJson}::jsonb, ${serviciosElegidosJson}::jsonb, ${precioVentaSugerido}, ${costosInternosJson}::jsonb, ${estadoFinal}
+        ${invitadosJson}::jsonb, ${serviciosElegidosJson}::jsonb, ${precioVentaSugerido}, ${costosInternosJson}::jsonb
       )
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>
@@ -214,6 +216,70 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, id: filas[0].id, estado: filas[0].estado, precioVentaSugerido })
   } catch (err) {
     console.error("[API] Error en vendedor/cotizaciones:", err)
+    return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })
+  }
+}
+
+interface CotizacionFila {
+  id: string
+  cliente_nombre: string
+  cliente_telefono: string | null
+  fecha_evento: string | null
+  salon: string | null
+  tipo_evento: string | null
+  nombre_festejados: string | null
+  invitados: unknown
+  precio_venta_sugerido: number
+  estado: string
+  comentario_admin: string | null
+  updated_at: string
+}
+
+// El driver a veces entrega jsonb como string sin parsear (ver mismo caso
+// en /api/vendedor/paquetes) — se parsea defensivamente.
+function parseInvitados(raw: unknown): { adultos: number; adolescentes: number; ninos: number; personasDietasEspeciales: number } {
+  const obj = typeof raw === "string" ? JSON.parse(raw) : raw
+  return {
+    adultos: Number(obj?.adultos) || 0,
+    adolescentes: Number(obj?.adolescentes) || 0,
+    ninos: Number(obj?.ninos) || 0,
+    personasDietasEspeciales: Number(obj?.personasDietasEspeciales) || 0,
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const vendedor = usuarioDesdeCookie(req)
+    const filas = (await sql`
+      SELECT id, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento, nombre_festejados,
+             invitados, precio_venta_sugerido, estado, comentario_admin, updated_at
+      FROM cotizaciones
+      WHERE vendedor = ${vendedor}
+      ORDER BY updated_at DESC
+    `) as unknown as CotizacionFila[]
+
+    return NextResponse.json({
+      ok: true,
+      cotizaciones: filas.map((f) => {
+        const invitados = parseInvitados(f.invitados)
+        return {
+          id: f.id,
+          clienteNombre: f.cliente_nombre,
+          clienteTelefono: f.cliente_telefono,
+          fechaEvento: f.fecha_evento,
+          salon: f.salon,
+          tipoEvento: f.tipo_evento,
+          nombreFestejados: f.nombre_festejados,
+          totalPersonas: invitados.adultos + invitados.adolescentes + invitados.ninos + invitados.personasDietasEspeciales,
+          precioVentaSugerido: Number(f.precio_venta_sugerido) || 0,
+          estado: f.estado,
+          comentarioAdmin: f.comentario_admin,
+          updatedAt: f.updated_at,
+        }
+      }),
+    })
+  } catch (err) {
+    console.error("[API] Error en vendedor/cotizaciones GET:", err)
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })
   }
 }

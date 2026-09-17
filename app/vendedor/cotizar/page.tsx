@@ -1,12 +1,16 @@
 "use client"
 
 // Pantalla de cotización para el perfil Vendedor (Etapa 3). Arma una fila en
-// la tabla "cotizaciones" (estado "borrador" / "lista_para_revisar"),
-// NUNCA en "eventos". El precio final se calcula siempre del lado del
-// servidor (/api/vendedor/cotizaciones) a partir del catálogo real de
-// servicios — acá solo se muestra un preview con la misma fórmula, nunca el
-// desglose de costos internos (eso vive en costos_internos, que este
-// endpoint ni siquiera devuelve).
+// la tabla "cotizaciones", siempre en estado "borrador" — NUNCA en "eventos".
+// El precio final se calcula siempre del lado del servidor
+// (/api/vendedor/cotizaciones) a partir del catálogo real de servicios —
+// acá solo se muestra un preview con la misma fórmula, nunca el desglose de
+// costos internos (eso vive en costos_internos, que este endpoint ni
+// siquiera devuelve).
+//
+// Acá NUNCA se manda a revisión: "Generar paquete" guarda todo y lleva a
+// /vendedor/paquetes ("Mis cotizaciones generadas"), donde un botón aparte
+// en la tarjeta dispara el envío a revisión de Administración.
 //
 // Mismo lenguaje visual que app/evento/page.tsx (Planificador de Evento):
 // secciones colapsables con ícono + título + subtítulo, botones de salón
@@ -14,6 +18,7 @@
 // archivo, solo replicando su estilo acá.
 
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -25,7 +30,6 @@ import {
   Clock,
   Heart,
   Package,
-  Save,
   User,
   UserCheck,
   Users,
@@ -128,6 +132,7 @@ function Seccion({
 }
 
 export default function CotizarPage() {
+  const router = useRouter()
   const { toast } = useToast()
 
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true)
@@ -169,10 +174,8 @@ export default function CotizarPage() {
   const [serviciosElegidos, setServiciosElegidos] = useState<Record<string, number>>({})
 
   const [cotizacionId, setCotizacionId] = useState<string | null>(null)
-  const [estado, setEstado] = useState<"borrador" | "lista_para_revisar">("borrador")
   const [guardando, setGuardando] = useState(false)
-  const [enviando, setEnviando] = useState(false)
-  const bloqueado = estado !== "borrador"
+  const [generando, setGenerando] = useState(false)
 
   useEffect(() => {
     fetch("/api/vendedor/catalogo")
@@ -196,7 +199,6 @@ export default function CotizarPage() {
   }, [])
 
   const aplicarPaquete = (paquete: PaqueteVendedor) => {
-    if (bloqueado) return
     setSalon(paquete.salon)
     setServiciosElegidos(Object.fromEntries(paquete.servicios.map((s) => [s.servicioId, s.cantidad])))
     setPaqueteAplicadoId(paquete.id)
@@ -204,7 +206,6 @@ export default function CotizarPage() {
   }
 
   const toggleReceta = (segmento: Segmento, recetaId: string) => {
-    if (bloqueado) return
     setRecetasElegidas((prev) => {
       const actual = prev[segmento]
       const yaEsta = actual.includes(recetaId)
@@ -213,7 +214,6 @@ export default function CotizarPage() {
   }
 
   const toggleServicio = (servicioId: string) => {
-    if (bloqueado) return
     setServiciosElegidos((prev) => {
       if (servicioId in prev) {
         const { [servicioId]: _quitado, ...resto } = prev
@@ -242,14 +242,17 @@ export default function CotizarPage() {
     return { serviciosConPrecio: conPrecio, totalServicios: total, precioBaseSalon: base, precioVentaSugerido: base + total }
   }, [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta])
 
-  const puedeGuardar = clienteNombre.trim().length > 0 && !bloqueado
+  const puedeGuardar = clienteNombre.trim().length > 0
 
-  const guardar = async (accion: "guardar" | "enviar") => {
+  // Guarda siempre en estado "borrador" (mandar a revisión es una acción
+  // aparte, disponible desde la tarjeta en /vendedor/paquetes). "Generar
+  // paquete" hace este mismo guardado y además te lleva a verlo ahí.
+  const guardar = async (destino: "quedarse" | "paquetes") => {
     if (!clienteNombre.trim()) {
       toast({ title: "Falta el nombre del cliente", variant: "destructive" })
       return
     }
-    accion === "enviar" ? setEnviando(true) : setGuardando(true)
+    destino === "paquetes" ? setGenerando(true) : setGuardando(true)
     try {
       const res = await fetch("/api/vendedor/cotizaciones", {
         method: "POST",
@@ -268,7 +271,6 @@ export default function CotizarPage() {
           invitados,
           recetasElegidas,
           serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
-          accion,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -277,13 +279,16 @@ export default function CotizarPage() {
         return
       }
       setCotizacionId(data.id)
-      setEstado(data.estado)
-      toast({ title: accion === "enviar" ? "Cotización enviada a revisión" : "Borrador guardado" })
+      if (destino === "paquetes") {
+        router.push("/vendedor/paquetes")
+      } else {
+        toast({ title: "Borrador guardado" })
+      }
     } catch {
       toast({ title: "Error de conexión", variant: "destructive" })
     } finally {
       setGuardando(false)
-      setEnviando(false)
+      setGenerando(false)
     }
   }
 
@@ -298,21 +303,10 @@ export default function CotizarPage() {
             <h1 className="text-lg font-semibold truncate">Nueva cotización</h1>
             {clienteNombre && <p className="text-sm text-muted-foreground truncate">{clienteNombre}</p>}
           </div>
-          {estado === "lista_para_revisar" && (
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs shrink-0">
-              Enviada a revisión
-            </Badge>
-          )}
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        {bloqueado && (
-          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Esta cotización ya se envió a revisión. Administración te va a avisar si necesita algún ajuste.
-          </div>
-        )}
-
         <div className="space-y-4 mb-8">
           <Seccion
             icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10"><User className="h-5 w-5 text-blue-700" /></div>}
@@ -326,7 +320,6 @@ export default function CotizarPage() {
                   id="clienteNombre"
                   value={clienteNombre}
                   onChange={(e) => setClienteNombre(e.target.value)}
-                  disabled={bloqueado}
                   placeholder="Nombre y apellido"
                   className="h-11 text-base"
                 />
@@ -337,7 +330,6 @@ export default function CotizarPage() {
                   id="clienteTelefono"
                   value={clienteTelefono}
                   onChange={(e) => setClienteTelefono(e.target.value)}
-                  disabled={bloqueado}
                   placeholder="Opcional"
                   className="h-11 text-base"
                 />
@@ -355,7 +347,7 @@ export default function CotizarPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Tipo de Evento</Label>
-                  <Select value={tipoEvento} onValueChange={setTipoEvento} disabled={bloqueado}>
+                  <Select value={tipoEvento} onValueChange={setTipoEvento}>
                     <SelectTrigger className="h-11 text-base">
                       <SelectValue placeholder="Seleccionar tipo" />
                     </SelectTrigger>
@@ -375,8 +367,7 @@ export default function CotizarPage() {
                     placeholder="Ej: Juan y María"
                     value={nombreFestejados}
                     onChange={(e) => setNombreFestejados(e.target.value)}
-                    disabled={bloqueado}
-                    className="h-11 text-base"
+                      className="h-11 text-base"
                     autoComplete="off"
                   />
                 </div>
@@ -394,8 +385,7 @@ export default function CotizarPage() {
                     type="date"
                     value={fechaEvento}
                     onChange={(e) => setFechaEvento(e.target.value)}
-                    disabled={bloqueado}
-                    className="h-11 text-base"
+                      className="h-11 text-base"
                   />
                 </div>
                 <div className="space-y-2">
@@ -408,8 +398,7 @@ export default function CotizarPage() {
                     type="time"
                     value={horario}
                     onChange={(e) => setHorario(e.target.value)}
-                    disabled={bloqueado}
-                    className="h-11 text-base"
+                      className="h-11 text-base"
                   />
                 </div>
                 <div className="space-y-2">
@@ -422,8 +411,7 @@ export default function CotizarPage() {
                     type="time"
                     value={horarioFin}
                     onChange={(e) => setHorarioFin(e.target.value)}
-                    disabled={bloqueado}
-                    className="h-11 text-base"
+                      className="h-11 text-base"
                   />
                 </div>
               </div>
@@ -441,8 +429,7 @@ export default function CotizarPage() {
                       <button
                         key={s}
                         type="button"
-                        disabled={bloqueado}
-                        onClick={() => setSalon(s)}
+                              onClick={() => setSalon(s)}
                         className="flex-1 rounded-lg border px-2 py-2.5 text-xs sm:text-sm font-medium transition-colors disabled:opacity-60"
                         style={{
                           borderColor: color,
@@ -487,8 +474,7 @@ export default function CotizarPage() {
                         min={0}
                         value={invitados[key]}
                         onChange={(e) => setInvitados((prev) => ({ ...prev, [key]: Math.max(0, Number(e.target.value) || 0) }))}
-                        disabled={bloqueado}
-                        className="h-11 text-center text-lg font-semibold"
+                              className="h-11 text-center text-lg font-semibold"
                       />
                     </div>
                   ))}
@@ -546,8 +532,7 @@ export default function CotizarPage() {
                                   <td key={s.key} className="py-1.5 px-2 text-center">
                                     <button
                                       type="button"
-                                      disabled={bloqueado}
-                                      onClick={() => toggleReceta(s.key, receta.id)}
+                                                          onClick={() => toggleReceta(s.key, receta.id)}
                                       className={`w-8 h-8 mx-auto flex items-center justify-center rounded border transition-colors disabled:opacity-50 ${
                                         selected
                                           ? "bg-emerald-600 border-emerald-600"
@@ -589,7 +574,7 @@ export default function CotizarPage() {
                 : "Agregá servicios al evento"
             }
           >
-            {paquetes.length > 0 && !bloqueado && (
+            {paquetes.length > 0 && (
               <div className="mb-4 space-y-2">
                 <Label className="flex items-center gap-1.5 text-sm font-medium">
                   <Package className="h-4 w-4 text-muted-foreground" />
@@ -648,7 +633,7 @@ export default function CotizarPage() {
                           onClick={() => toggleServicio(s.id)}
                           className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
                             seleccionado ? "bg-emerald-50/70 hover:bg-emerald-50" : idx % 2 === 0 ? "hover:bg-muted/40" : "bg-muted/10 hover:bg-muted/40"
-                          } ${bloqueado ? "cursor-default pointer-events-none opacity-70" : ""}`}
+                          }`}
                         >
                           <td className="w-10 px-3 py-2.5">
                             <div
@@ -670,8 +655,7 @@ export default function CotizarPage() {
                                   type="number"
                                   min={1}
                                   value={cantidad}
-                                  disabled={bloqueado}
-                                  onChange={(e) => cambiarCantidadServicio(s.id, Number(e.target.value))}
+                                                  onChange={(e) => cambiarCantidadServicio(s.id, Number(e.target.value))}
                                   className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
                                 />
                                 {s.unidad === "Por Hora" && <span className="text-xs text-muted-foreground">h</span>}
@@ -724,21 +708,24 @@ export default function CotizarPage() {
 
         <div className="space-y-4 pb-8">
           <Button
-            onClick={() => guardar("enviar")}
+            onClick={() => guardar("paquetes")}
             className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
-            disabled={!puedeGuardar || guardando || enviando}
+            disabled={!puedeGuardar || guardando || generando}
           >
-            <Save className="h-6 w-6 mr-2" />
-            {enviando ? "Enviando..." : "Enviar a revisión"}
+            <Package className="h-6 w-6 mr-2" />
+            {generando ? "Generando..." : "Generar paquete"}
           </Button>
           <Button
             variant="outline"
             className="w-full h-12"
-            disabled={!puedeGuardar || guardando || enviando}
-            onClick={() => guardar("guardar")}
+            disabled={!puedeGuardar || guardando || generando}
+            onClick={() => guardar("quedarse")}
           >
             {guardando ? "Guardando..." : "Guardar borrador"}
           </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            "Generar paquete" guarda todo y te lleva a verlo en Paquetes — desde ahí lo mandás a revisión.
+          </p>
         </div>
       </main>
     </div>

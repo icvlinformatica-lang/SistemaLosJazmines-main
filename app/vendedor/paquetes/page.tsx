@@ -1,21 +1,27 @@
 "use client"
 
-// Pantalla de paquetes para el perfil Vendedor (Etapa 4). Lee y crea filas
-// en "paquetes_salones" — la misma tabla que usa Administración en
-// /admin/servicios — pero siempre a través de /api/vendedor/paquetes, que
-// nunca expone precioInterno/costoTotal/ganancia/margen por servicio (eso
-// sigue siendo exclusivo de Administración).
+// Pantalla de paquetes para el perfil Vendedor (Etapa 4). Dos secciones:
+//
+// "Mis cotizaciones generadas": las cotizaciones completas (cliente, fecha,
+// menú, servicios) que el vendedor generó desde /vendedor/cotizar con el
+// botón "Generar paquete" — nunca se envían a revisión desde Cotizar, eso
+// pasa acá, con el botón "Enviar a revisión" en la tarjeta.
+//
+// "Paquetes reutilizables por salón": la grilla original de la Etapa 4,
+// leída de "paquetes_salones" — la misma tabla que usa Administración en
+// /admin/servicios — siempre a través de /api/vendedor/paquetes, que nunca
+// expone precioInterno/costoTotal/ganancia/margen por servicio (eso sigue
+// siendo exclusivo de Administración).
 
 import { Fragment, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Briefcase, CheckCircle, Package, Plus, Users } from "lucide-react"
+import { ArrowLeft, Briefcase, CalendarClock, CheckCircle, Package, Phone, Plus, Send, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 
@@ -38,6 +44,37 @@ interface PaqueteVendedor {
   servicios: Array<{ servicioId: string; nombre: string; categoria: string; unidad: string; cantidad: number; precioVenta: number }>
 }
 
+interface CotizacionGenerada {
+  id: string
+  clienteNombre: string
+  clienteTelefono: string | null
+  fechaEvento: string | null
+  salon: string | null
+  tipoEvento: string | null
+  nombreFestejados: string | null
+  totalPersonas: number
+  precioVentaSugerido: number
+  estado: "borrador" | "lista_para_revisar" | "aprobada" | "rechazada" | "convertida"
+  comentarioAdmin: string | null
+  updatedAt: string
+}
+
+const ESTADO_LABEL: Record<CotizacionGenerada["estado"], string> = {
+  borrador: "Sin enviar",
+  lista_para_revisar: "Enviada — esperando revisión",
+  aprobada: "Aprobada",
+  rechazada: "Rechazada — necesita ajustes",
+  convertida: "Convertida en evento",
+}
+
+const ESTADO_CLASE: Record<CotizacionGenerada["estado"], string> = {
+  borrador: "bg-muted text-muted-foreground border-border",
+  lista_para_revisar: "bg-amber-50 text-amber-700 border-amber-300",
+  aprobada: "bg-emerald-50 text-emerald-700 border-emerald-300",
+  rechazada: "bg-red-50 text-red-700 border-red-300",
+  convertida: "bg-blue-50 text-blue-700 border-blue-300",
+}
+
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -55,9 +92,11 @@ export default function PaquetesPage() {
 
   const [cargando, setCargando] = useState(true)
   const [paquetes, setPaquetes] = useState<PaqueteVendedor[]>([])
+  const [cotizaciones, setCotizaciones] = useState<CotizacionGenerada[]>([])
   const [servicios, setServicios] = useState<ServicioCatalogo[]>([])
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const [enviandoId, setEnviandoId] = useState<string | null>(null)
 
   // Formulario del nuevo paquete
   const [nombre, setNombre] = useState("")
@@ -72,16 +111,36 @@ export default function PaquetesPage() {
     Promise.all([
       fetch("/api/vendedor/paquetes").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/vendedor/catalogo").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/vendedor/cotizaciones").then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([paquetesData, catalogoData]) => {
+      .then(([paquetesData, catalogoData, cotizacionesData]) => {
         if (paquetesData?.ok) setPaquetes(paquetesData.paquetes || [])
         if (catalogoData?.ok) setServicios(catalogoData.servicios || [])
+        if (cotizacionesData?.ok) setCotizaciones(cotizacionesData.cotizaciones || [])
       })
       .catch(() => {})
       .finally(() => setCargando(false))
   }
 
   useEffect(cargarDatos, [])
+
+  const enviarARevision = async (id: string) => {
+    setEnviandoId(id)
+    try {
+      const res = await fetch(`/api/vendedor/cotizaciones/${id}/enviar`, { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) {
+        toast({ title: data.error || "No se pudo enviar", variant: "destructive" })
+        return
+      }
+      toast({ title: "Cotización enviada a revisión" })
+      cargarDatos()
+    } catch {
+      toast({ title: "Error de conexión", variant: "destructive" })
+    } finally {
+      setEnviandoId(null)
+    }
+  }
 
   const paquetesPorSalon = useMemo(() => {
     const grupos = new Map<string, PaqueteVendedor[]>()
@@ -158,7 +217,83 @@ export default function PaquetesPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-6">
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-8">
+        <div className="space-y-3">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Mis cotizaciones generadas</h2>
+          {cargando ? (
+            <p className="text-sm text-muted-foreground">Cargando...</p>
+          ) : cotizaciones.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center border border-dashed rounded-lg">
+              <Package className="h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">
+                Todavía no generaste ninguna. Armala en{" "}
+                <Link href="/vendedor/cotizar" className="underline">
+                  Cotizar
+                </Link>{" "}
+                y tocá "Generar paquete".
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {cotizaciones.map((c) => (
+                <div
+                  key={c.id}
+                  className="rounded-xl border-l-4 border border-border bg-card overflow-hidden"
+                  style={{ borderLeftColor: c.salon ? salonColor(c.salon) : "#6b7280" }}
+                >
+                  <div className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-card-foreground">{c.clienteNombre}</p>
+                      <Badge variant="outline" className={`text-[11px] shrink-0 ${ESTADO_CLASE[c.estado]}`}>
+                        {ESTADO_LABEL[c.estado]}
+                      </Badge>
+                    </div>
+                    {c.nombreFestejados && <p className="text-sm text-muted-foreground mt-0.5">{c.nombreFestejados}</p>}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                      {c.salon && <span>{salonLabel(c.salon)}</span>}
+                      {c.tipoEvento && <span>{c.tipoEvento}</span>}
+                      {c.fechaEvento && (
+                        <span className="flex items-center gap-1">
+                          <CalendarClock className="h-3 w-3" />
+                          {c.fechaEvento}
+                        </span>
+                      )}
+                      {c.totalPersonas > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {c.totalPersonas}
+                        </span>
+                      )}
+                      {c.clienteTelefono && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {c.clienteTelefono}
+                        </span>
+                      )}
+                    </div>
+                    {c.estado === "rechazada" && c.comentarioAdmin && (
+                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 mt-2">
+                        {c.comentarioAdmin}
+                      </p>
+                    )}
+                  </div>
+                  <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-3">
+                    <span className="text-lg font-bold text-emerald-700">{fmt(c.precioVentaSugerido)}</span>
+                    {c.estado === "borrador" && (
+                      <Button size="sm" onClick={() => enviarARevision(c.id)} disabled={enviandoId === c.id}>
+                        <Send className="h-3.5 w-3.5 mr-1.5" />
+                        {enviandoId === c.id ? "Enviando..." : "Enviar a revisión"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Paquetes reutilizables por salón</h2>
         {cargando ? (
           <p className="text-sm text-muted-foreground">Cargando...</p>
         ) : paquetesPorSalon.length === 0 ? (
@@ -214,6 +349,7 @@ export default function PaquetesPage() {
             </div>
           ))
         )}
+        </div>
       </main>
 
       <Dialog
