@@ -46,14 +46,14 @@ interface MenuItem {
   href: string
   label: string
   icon: React.ElementType
-  children?: { href: string; label: string; icon: React.ElementType; locked?: boolean }[]
+  children?: { href: string; label: string; icon: React.ElementType; locked?: boolean; badge?: boolean }[]
   locked?: boolean
 }
 
 // IDs de perfiles que tienen acceso completo (incluyendo secciones financieras)
 const PERFILES_ACCESO_TOTAL = ["administracion", "soporte"]
 
-const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
+const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes: boolean): MenuItem[] => {
   const tieneAccesoTotal = PERFILES_ACCESO_TOTAL.includes(perfilId ?? "")
 
   // Perfil "Cobrar cuota": menú mínimo con acceso directo, sin la carpeta
@@ -104,7 +104,7 @@ const buildMenuItems = (perfilId: string | undefined): MenuItem[] => {
         // La página /eventos/contratos sigue existiendo por URL directa.
         // { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
         { href: "/eventos/vendedores", label: "Vendedores", icon: Users, locked: !tieneAccesoTotal },
-        { href: "/eventos/cotizaciones", label: "Cotizaciones", icon: FileText, locked: !tieneAccesoTotal },
+        { href: "/eventos/cotizaciones", label: "Cotizaciones", icon: FileText, locked: !tieneAccesoTotal, badge: tieneAccesoTotal && hayCotizacionesPendientes },
         { href: "/eventos/finalizados", label: "Archivo", icon: Archive },
       ],
     },
@@ -166,6 +166,29 @@ export function Sidebar() {
   const { ahora: fechaActual } = useClock()
   const [expandedSections, setExpandedSections] = useState<string[]>([])
 
+  // Puntito rojo en "Cotizaciones" cuando hay alguna esperando revisión.
+  // Solo se consulta para los perfiles que pueden ver esa pantalla — se
+  // refresca cada 30s para que Administración lo note sin recargar.
+  const [hayCotizacionesPendientes, setHayCotizacionesPendientes] = useState(false)
+  useEffect(() => {
+    if (!PERFILES_ACCESO_TOTAL.includes(perfilActivo?.id ?? "")) return
+    let cancelado = false
+    const consultar = () => {
+      fetch("/api/administracion/cotizaciones/pendientes")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!cancelado && data?.ok) setHayCotizacionesPendientes((data.count || 0) > 0)
+        })
+        .catch(() => {})
+    }
+    consultar()
+    const intervalo = setInterval(consultar, 30000)
+    return () => {
+      cancelado = true
+      clearInterval(intervalo)
+    }
+  }, [perfilActivo?.id])
+
   // --- Apertura/cierre automático por hover ---
   // El panel se abre al acercar el mouse al borde y SIEMPRE se pliega solo
   // cuando el mouse queda fuera de él por más de 1 segundo (sin importar
@@ -222,7 +245,7 @@ export function Sidebar() {
   }, [sidebarOpen])
 
   // Construir items del menú según perfil activo
-  const menuItems = buildMenuItems(perfilActivo?.id)
+  const menuItems = buildMenuItems(perfilActivo?.id, hayCotizacionesPendientes)
 
   // Filtra los items del menú según rutas del perfil activo
   const rutasPermitidas = perfilActivo?.rutas ?? ["*"]
@@ -436,7 +459,10 @@ export function Sidebar() {
                             )}
                           >
                             <ChildIcon className="h-4 w-4 shrink-0" />
-                            <span>{child.label}</span>
+                            <span className="flex-1">{child.label}</span>
+                            {child.badge && (
+                              <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Hay cotizaciones esperando revisión" />
+                            )}
                           </Link>
                         )
                       })}
