@@ -8,9 +8,16 @@
 // costos internos (eso vive en costos_internos, que este endpoint ni
 // siquiera devuelve).
 //
-// Acá NUNCA se manda a revisión: "Generar paquete" guarda todo y lleva a
+// Acá NUNCA se manda a revisión: "Generar cotización" guarda todo y lleva a
 // /vendedor/paquetes ("Mis cotizaciones generadas"), donde un botón aparte
 // en la tarjeta dispara el envío a revisión de Administración.
+//
+// "Generar paquete" (botón dorado) es una acción aparte: toma el salón y los
+// servicios ya elegidos acá y los guarda como plantilla reutilizable en
+// "paquetes_salones" (vía /api/vendedor/paquetes) — nunca toca ni guarda la
+// cotización en curso. Reemplaza al viejo formulario de creación en
+// /vendedor/paquetes (Etapa 4), que solo dejaba marcar servicios sin
+// cantidad ("Por Hora"/"Por Cantidad" siempre en 1).
 //
 // Mismo lenguaje visual que app/evento/page.tsx (Planificador de Evento):
 // secciones colapsables con ícono + título + subtítulo, botones de salón
@@ -28,6 +35,7 @@ import {
   Calendar as CalendarIcon,
   CheckCircle,
   Clock,
+  FileText,
   Heart,
   Package,
   User,
@@ -40,6 +48,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -201,6 +210,12 @@ function CotizarPageContent() {
   const [guardando, setGuardando] = useState(false)
   const [generando, setGenerando] = useState(false)
 
+  // "Generar paquete" (botón dorado): guarda salón + servicios de acá como
+  // plantilla reutilizable, sin tocar la cotización en curso.
+  const [dialogoPaqueteAbierto, setDialogoPaqueteAbierto] = useState(false)
+  const [nombrePaquete, setNombrePaquete] = useState("")
+  const [generandoPaquete, setGenerandoPaquete] = useState(false)
+
   // Al reabrir una cotización guardada (?id=...): "borrador"/"rechazada" se
   // pueden seguir editando, cualquier otro estado queda de solo lectura
   // (ya está en revisión o ya fue procesada por Administración).
@@ -334,10 +349,11 @@ function CotizarPageContent() {
   }, [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, preciosBaseSalon])
 
   const puedeGuardar = clienteNombre.trim().length > 0 && !soloLectura
+  const puedeGenerarPaquete = !soloLectura && !!salon && Object.keys(serviciosElegidos).length > 0
 
   // Guarda siempre en estado "borrador" (mandar a revisión es una acción
   // aparte, disponible desde la tarjeta en /vendedor/paquetes). "Generar
-  // paquete" hace este mismo guardado y además te lleva a verlo ahí.
+  // cotización" hace este mismo guardado y además te lleva a verla ahí.
   const guardar = async (destino: "quedarse" | "paquetes") => {
     if (!clienteNombre.trim()) {
       toast({ title: "Falta el nombre del cliente", variant: "destructive" })
@@ -381,6 +397,36 @@ function CotizarPageContent() {
     } finally {
       setGuardando(false)
       setGenerando(false)
+    }
+  }
+
+  // Genera un paquete reutilizable a partir del salón y los servicios ya
+  // elegidos acá — no toca ni guarda la cotización del cliente en curso.
+  const generarPaquete = async () => {
+    if (!nombrePaquete.trim() || !puedeGenerarPaquete) return
+    setGenerandoPaquete(true)
+    try {
+      const res = await fetch("/api/vendedor/paquetes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: nombrePaquete.trim(),
+          salon,
+          servicios: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) {
+        toast({ title: data.error || "No se pudo generar el paquete", variant: "destructive" })
+        return
+      }
+      toast({ title: `Paquete "${nombrePaquete.trim()}" generado` })
+      setDialogoPaqueteAbierto(false)
+      setNombrePaquete("")
+    } catch {
+      toast({ title: "Error de conexión", variant: "destructive" })
+    } finally {
+      setGenerandoPaquete(false)
     }
   }
 
@@ -885,8 +931,17 @@ function CotizarPageContent() {
               className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
               disabled={!puedeGuardar || guardando || generando}
             >
+              <FileText className="h-6 w-6 mr-2" />
+              {generando ? "Generando..." : "Generar cotización"}
+            </Button>
+            <Button
+              onClick={() => setDialogoPaqueteAbierto(true)}
+              className="w-full h-16 text-lg text-white"
+              style={{ backgroundColor: "#c9a227" }}
+              disabled={!puedeGenerarPaquete}
+            >
               <Package className="h-6 w-6 mr-2" />
-              {generando ? "Generando..." : "Generar paquete"}
+              Generar paquete
             </Button>
             <Button
               variant="outline"
@@ -897,11 +952,43 @@ function CotizarPageContent() {
               {guardando ? "Guardando..." : "Guardar borrador"}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
-              "Generar paquete" guarda todo y te lleva a verlo en Paquetes — desde ahí lo mandás a revisión.
+              "Generar cotización" guarda todo y te lleva a verla en Paquetes — desde ahí la mandás a revisión.
+              "Generar paquete" toma el salón y los servicios de acá y los guarda como plantilla reutilizable, sin
+              tocar los datos del cliente.
             </p>
           </div>
         )}
       </main>
+
+      <Dialog open={dialogoPaqueteAbierto} onOpenChange={(open) => { setDialogoPaqueteAbierto(open); if (!open) setNombrePaquete("") }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Generar paquete reutilizable</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="nombrePaquete">Nombre del paquete</Label>
+            <Input
+              id="nombrePaquete"
+              value={nombrePaquete}
+              onChange={(e) => setNombrePaquete(e.target.value)}
+              placeholder="Ej: Paquete Casamiento Clásico"
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              Se guarda con el salón ({salon ? salonLabel(salon) : "sin elegir"}) y los {Object.keys(serviciosElegidos).length}{" "}
+              servicio{Object.keys(serviciosElegidos).length !== 1 ? "s" : ""} de esta cotización.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogoPaqueteAbierto(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={generarPaquete} disabled={generandoPaquete || !nombrePaquete.trim()} style={{ backgroundColor: "#c9a227" }} className="text-white hover:opacity-90">
+              {generandoPaquete ? "Generando..." : "Generar paquete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
