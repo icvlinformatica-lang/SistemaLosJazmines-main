@@ -79,6 +79,7 @@ export async function GET() {
         totalPersonas,
         recetasElegidas: serviciosElegidos.recetas || { adultos: [], adolescentes: [], ninos: [], dietasEspeciales: [] },
         servicios: Array.isArray(serviciosElegidos.servicios) ? serviciosElegidos.servicios : [],
+        personalSeleccionado: Array.isArray(serviciosElegidos.personal) ? serviciosElegidos.personal : [],
         precioVentaSugerido: Number(f.precio_venta_sugerido) || 0,
         // Desglose interno: SOLO esta pantalla lo recibe.
         precioBaseSalon: Number(costosInternos.precioBaseSalon) || 0,

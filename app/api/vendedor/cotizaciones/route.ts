@@ -71,6 +71,7 @@ export async function POST(req: Request) {
       invitados,
       recetasElegidas,
       serviciosElegidos,
+      personalSeleccionado,
     } = body || {}
 
     if (typeof clienteNombre !== "string" || !clienteNombre.trim()) {
@@ -137,13 +138,22 @@ export async function POST(req: Request) {
       })
     }
 
-    // Precio base del salón para esa fecha (tabla precios_venta), si existe.
+    // Precio base del salón para esa fecha (tabla precios_venta); si esa
+    // fecha no tiene precio cargado, cae al precio base de respaldo por
+    // salón (precios_base_salones, configurado en Eventos > Cotizaciones)
+    // en vez de salir en $0.
     let precioBaseSalon = 0
     if (salon && fechaEvento) {
       const filas = (await sql`
         SELECT precio FROM precios_venta WHERE salon = ${salon} AND fecha = ${fechaEvento} LIMIT 1
       `) as unknown as Array<{ precio: number }>
       precioBaseSalon = filas.length ? Number(filas[0].precio) || 0 : 0
+    }
+    if (!precioBaseSalon && salon) {
+      const filasBase = (await sql`
+        SELECT precio FROM precios_base_salones WHERE salon = ${salon} LIMIT 1
+      `) as unknown as Array<{ precio: number }>
+      precioBaseSalon = filasBase.length ? Number(filasBase[0].precio) || 0 : 0
     }
 
     const precioVentaSugerido = precioBaseSalon + totalServicios
@@ -155,6 +165,13 @@ export async function POST(req: Request) {
       personasDietasEspeciales: Number(invitados?.personasDietasEspeciales) || 0,
     })
 
+    // "personal" acá son solo IDs del roster (Finanzas → Personal) que el
+    // vendedor marcó como necesarios — nunca un monto, eso lo define
+    // Administración al aprobar (ver [id]/aprobar/route.ts).
+    const personalIds: string[] = Array.isArray(personalSeleccionado)
+      ? personalSeleccionado.filter((x: unknown) => typeof x === "string")
+      : []
+
     const serviciosElegidosJson = JSON.stringify({
       recetas: {
         adultos: Array.isArray(recetasElegidas?.adultos) ? recetasElegidas.adultos : [],
@@ -163,6 +180,7 @@ export async function POST(req: Request) {
         dietasEspeciales: Array.isArray(recetasElegidas?.dietasEspeciales) ? recetasElegidas.dietasEspeciales : [],
       },
       servicios: serviciosDetalle,
+      personal: personalIds,
     })
 
     const costosInternosJson = JSON.stringify({

@@ -78,6 +78,13 @@ interface PaqueteVendedor {
   servicios: Array<{ servicioId: string; nombre: string; cantidad: number; precioVenta: number }>
 }
 
+interface PersonalCatalogo {
+  id: string
+  nombre: string
+  apellido: string
+  funcion: string
+}
+
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -149,6 +156,8 @@ function CotizarPageContent() {
   const [servicios, setServicios] = useState<ServicioCatalogo[]>([])
   const [recetas, setRecetas] = useState<RecetaCatalogo[]>([])
   const [preciosVenta, setPreciosVenta] = useState<Record<string, Record<string, number>>>({})
+  const [preciosBaseSalon, setPreciosBaseSalon] = useState<Record<string, number>>({})
+  const [personalCatalogo, setPersonalCatalogo] = useState<PersonalCatalogo[]>([])
   const [paquetes, setPaquetes] = useState<PaqueteVendedor[]>([])
   const [paqueteAplicadoId, setPaqueteAplicadoId] = useState<string | null>(null)
   const [paqueteUrlAplicado, setPaqueteUrlAplicado] = useState(false)
@@ -184,6 +193,10 @@ function CotizarPageContent() {
   // Servicios elegidos: servicioId -> cantidad (solo importa para "Por Hora"/"Por Cantidad")
   const [serviciosElegidos, setServiciosElegidos] = useState<Record<string, number>>({})
 
+  // Personal solicitado: solo IDs del roster, nunca un monto (eso lo define
+  // Administración al aprobar la cotización).
+  const [personalSeleccionado, setPersonalSeleccionado] = useState<string[]>([])
+
   const [cotizacionId, setCotizacionId] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [generando, setGenerando] = useState(false)
@@ -204,6 +217,8 @@ function CotizarPageContent() {
           setServicios(data.servicios || [])
           setRecetas(data.recetas || [])
           setPreciosVenta(data.preciosVenta || {})
+          setPreciosBaseSalon(data.preciosBaseSalon || {})
+          setPersonalCatalogo(data.personal || [])
         }
       })
       .catch(() => {})
@@ -240,6 +255,7 @@ function CotizarPageContent() {
         setInvitados(c.invitados)
         setRecetasElegidas(c.recetasElegidas)
         setServiciosElegidos(Object.fromEntries(c.serviciosElegidos.map((s: { servicioId: string; cantidad: number }) => [s.servicioId, s.cantidad])))
+        setPersonalSeleccionado(Array.isArray(c.personalSeleccionado) ? c.personalSeleccionado : [])
         setEstadoCotizacion(c.estado)
         setComentarioAdmin(c.comentarioAdmin)
       })
@@ -294,6 +310,11 @@ function CotizarPageContent() {
     setServiciosElegidos((prev) => ({ ...prev, [servicioId]: Math.max(1, cantidad || 1) }))
   }
 
+  const togglePersonal = (personalId: string) => {
+    if (soloLectura) return
+    setPersonalSeleccionado((prev) => (prev.includes(personalId) ? prev.filter((id) => id !== personalId) : [...prev, personalId]))
+  }
+
   // Preview de precio: misma fórmula que usa el planificador real
   // (app/evento/page.tsx) y que vuelve a calcular el servidor al guardar.
   const { serviciosConPrecio, totalServicios, precioBaseSalon, precioVentaSugerido } = useMemo(() => {
@@ -305,9 +326,12 @@ function CotizarPageContent() {
         return { ...s, cantidad, usaCantidad, precioTotal: s.precioVenta * cantidad }
       })
     const total = conPrecio.reduce((sum, s) => sum + s.precioTotal, 0)
-    const base = salon && fechaEvento ? preciosVenta[salon]?.[fechaEvento] ?? 0 : 0
+    // Si la fecha no tiene precio cargado en el Calendario de Precios, cae
+    // al precio base de respaldo del salón (configurado en Eventos >
+    // Cotizaciones) en vez de mostrar $0.
+    const base = salon ? preciosVenta[salon]?.[fechaEvento] ?? preciosBaseSalon[salon] ?? 0 : 0
     return { serviciosConPrecio: conPrecio, totalServicios: total, precioBaseSalon: base, precioVentaSugerido: base + total }
-  }, [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta])
+  }, [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, preciosBaseSalon])
 
   const puedeGuardar = clienteNombre.trim().length > 0 && !soloLectura
 
@@ -338,6 +362,7 @@ function CotizarPageContent() {
           invitados,
           recetasElegidas,
           serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
+          personalSeleccionado,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -787,6 +812,58 @@ function CotizarPageContent() {
                     </tfoot>
                   )}
                 </table>
+              </div>
+            )}
+          </Seccion>
+
+          <Seccion
+            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10"><UserCheck className="h-5 w-5 text-indigo-600" /></div>}
+            title="Personal del Evento"
+            subtitle={
+              personalSeleccionado.length > 0
+                ? `${personalSeleccionado.length} persona${personalSeleccionado.length > 1 ? "s" : ""} solicitada${personalSeleccionado.length > 1 ? "s" : ""}`
+                : "Marcá quién hace falta para este evento"
+            }
+            disabled={soloLectura}
+          >
+            <p className="text-xs text-muted-foreground mb-3">
+              Solo marcás quién hace falta — Administración define el costo de cada uno cuando revisa la cotización.
+            </p>
+            {cargandoCatalogo ? (
+              <p className="text-sm text-muted-foreground">Cargando...</p>
+            ) : personalCatalogo.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
+                <UserCheck className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No hay personal cargado en el sistema</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border overflow-hidden">
+                {personalCatalogo.map((p, idx) => {
+                  const seleccionado = personalSeleccionado.includes(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => togglePersonal(p.id)}
+                      disabled={soloLectura}
+                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm border-b border-border/50 last:border-b-0 transition-colors disabled:cursor-default disabled:opacity-70 ${
+                        seleccionado ? "bg-indigo-50/70 hover:bg-indigo-50" : idx % 2 === 0 ? "hover:bg-muted/40" : "bg-muted/10 hover:bg-muted/40"
+                      }`}
+                    >
+                      <div
+                        className={`w-[18px] h-[18px] shrink-0 rounded border-2 flex items-center justify-center ${
+                          seleccionado ? "bg-indigo-600 border-indigo-600" : "border-muted-foreground/30 bg-background"
+                        }`}
+                      >
+                        {seleccionado && <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                      </div>
+                      <span className={`flex-1 font-medium ${seleccionado ? "text-indigo-900" : ""}`}>
+                        {p.nombre} {p.apellido}
+                      </span>
+                      <Badge variant="outline" className="text-[11px] shrink-0">{p.funcion}</Badge>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </Seccion>

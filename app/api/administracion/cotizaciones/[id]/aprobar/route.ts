@@ -27,6 +27,7 @@ function parseJson(raw: unknown): any {
 interface CotizacionFila {
   id: string
   cliente_nombre: string
+  cliente_telefono: string | null
   fecha_evento: string | null
   horario: string | null
   horario_fin: string | null
@@ -40,18 +41,31 @@ interface CotizacionFila {
   estado: string
 }
 
+interface PersonalEventoBody {
+  personalId: string
+  nombre: string
+  funcion: string
+  monto: number
+}
+
+interface PersonalRosterFila {
+  id: string
+  tarifa_base: number
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await req.json().catch(() => ({}))
     const vendedor = typeof body.vendedor === "string" ? body.vendedor.trim() : ""
+    const personalEventoBody: PersonalEventoBody[] = Array.isArray(body.personalEvento) ? body.personalEvento : []
 
     if (!vendedor) {
       return NextResponse.json({ ok: false, error: "Elegí el vendedor para la comisión" }, { status: 400 })
     }
 
     const filas = (await sql`
-      SELECT id, cliente_nombre, fecha_evento, horario, horario_fin, salon, tipo_evento,
+      SELECT id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
              nombre_festejados, invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
       FROM cotizaciones
       WHERE id = ${id}
@@ -70,6 +84,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const recetas = serviciosElegidos.recetas || {}
     const servicios = Array.isArray(serviciosElegidos.servicios) ? serviciosElegidos.servicios : []
     const costosInternos = parseJson(c.costos_internos) || {}
+
+    // El vendedor solo eligió ROLES (sin montos, ver /api/vendedor/catalogo).
+    // Acá Administración ya definió el monto de cada uno en el body — se
+    // compara contra la tarifa vigente del roster para decidir si queda
+    // "personalizado" (fijo) o sigue la tarifa base en vivo, mismo criterio
+    // que usa app/evento/page.tsx (togglePersonalEvento/updateMontoPersonalEvento).
+    let personalEvento: Array<{
+      id: string
+      personalId: string
+      nombre: string
+      funcion: string
+      monto: number
+      montoPersonalizado: boolean
+    }> = []
+    if (personalEventoBody.length > 0) {
+      const roster = (await sql`
+        SELECT id, tarifa_base FROM personal WHERE id = ANY(${personalEventoBody.map((p) => p.personalId)})
+      `) as unknown as PersonalRosterFila[]
+      personalEvento = personalEventoBody.map((p) => {
+        const tarifaVigente = Number(roster.find((r) => r.id === p.personalId)?.tarifa_base) || 0
+        return {
+          id: crypto.randomUUID(),
+          personalId: p.personalId,
+          nombre: p.nombre,
+          funcion: p.funcion,
+          monto: Number(p.monto) || 0,
+          montoPersonalizado: Number(p.monto) !== tarifaVigente,
+        }
+      })
+    }
 
     const eventoId = crypto.randomUUID()
     const eventoPayload = {
@@ -97,7 +141,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       })),
       precioVenta: Number(c.precio_venta_sugerido) || 0,
       costoServicios: Number(costosInternos.totalCostoServicios) || 0,
-      contrato: { vendedor },
+      personalEvento,
+      contrato: { vendedor, telefono: c.cliente_telefono || undefined },
       notasInternas: `Convertido desde una cotización generada por ${vendedor}.`,
     }
 

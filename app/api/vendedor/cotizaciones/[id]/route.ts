@@ -51,6 +51,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const serviciosElegidosData = parseJson(f.servicios_elegidos) || {}
     const recetasElegidas = serviciosElegidosData.recetas || {}
     const servicios = Array.isArray(serviciosElegidosData.servicios) ? serviciosElegidosData.servicios : []
+    const personalSeleccionado = Array.isArray(serviciosElegidosData.personal) ? serviciosElegidosData.personal : []
 
     return NextResponse.json({
       ok: true,
@@ -81,6 +82,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           servicioId: s.servicioId,
           cantidad: s.cantidad || 1,
         })),
+        personalSeleccionado,
         precioVentaSugerido: Number(f.precio_venta_sugerido) || 0,
         estado: f.estado,
         comentarioAdmin: f.comentario_admin,

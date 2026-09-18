@@ -12,16 +12,17 @@
 // "Rechazar / pedir ajuste" vuelve la cotización a "rechazada" con un
 // comentario para que el vendedor la corrija desde /vendedor/paquetes.
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Users, XCircle } from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, UserCheck, Users, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useToast } from "@/hooks/use-toast"
 import { useStore } from "@/lib/store-context"
-import { salonColor, salonLabel } from "@/lib/store"
+import { SALONES, salonColor, salonLabel } from "@/lib/store"
 
 interface CotizacionPendiente {
   id: string
@@ -38,6 +39,7 @@ interface CotizacionPendiente {
   invitados: { adultos: number; adolescentes: number; ninos: number; personasDietasEspeciales: number }
   recetasElegidas: { adultos: string[]; adolescentes: string[]; ninos: string[]; dietasEspeciales: string[] }
   servicios: Array<{ servicioId: string; nombre: string; unidad: string; cantidad: number; precioVenta: number; precioTotal: number }>
+  personalSeleccionado: string[]
   precioVentaSugerido: number
   precioBaseSalon: number
   costosServicios: Array<{ servicioId: string; nombre: string; cantidad: number; costoTotal: number }>
@@ -49,11 +51,21 @@ const fmt = (n: number) =>
 
 export default function CotizacionesPendientesPage() {
   const { toast } = useToast()
-  const { recetas, vendedores } = useStore()
+  const { recetas, vendedores, personal } = useStore()
 
   const [cargando, setCargando] = useState(true)
   const [cotizaciones, setCotizaciones] = useState<CotizacionPendiente[]>([])
   const [abiertaId, setAbiertaId] = useState<string | null>(null)
+
+  // Precio base de respaldo por salón (Calendario de Precios cubre fecha
+  // exacta; esto es lo que se usa cuando esa fecha no tiene precio cargado).
+  const [preciosBase, setPreciosBase] = useState<Record<string, number>>({})
+  const [guardandoPrecios, setGuardandoPrecios] = useState(false)
+
+  // Montos de personal por cotización: cotizacionId -> personalId -> monto.
+  // El vendedor solo eligió roles (sin plata); acá se sugiere la tarifa
+  // vigente del roster y Administración la puede ajustar antes de aprobar.
+  const [montosPersonal, setMontosPersonal] = useState<Record<string, Record<string, number>>>({})
 
   // Aprobar
   const [vendedorElegido, setVendedorElegido] = useState<Record<string, string>>({})
@@ -77,7 +89,55 @@ export default function CotizacionesPendientesPage() {
 
   useEffect(cargar, [])
 
+  useEffect(() => {
+    fetch("/api/administracion/precios-base")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok) setPreciosBase(data.precios || {})
+      })
+      .catch(() => {})
+  }, [])
+
+  // Sugiere la tarifa vigente del roster la primera vez que se ve cada
+  // cotización — si Administración ya la tocó a mano, no la pisa de nuevo.
+  useEffect(() => {
+    setMontosPersonal((prev) => {
+      const siguiente = { ...prev }
+      for (const c of cotizaciones) {
+        if (siguiente[c.id]) continue
+        const montos: Record<string, number> = {}
+        for (const personalId of c.personalSeleccionado) {
+          montos[personalId] = personal.find((p) => p.id === personalId)?.tarifaBase || 0
+        }
+        siguiente[c.id] = montos
+      }
+      return siguiente
+    })
+  }, [cotizaciones, personal])
+
   const nombreReceta = (id: string) => recetas.find((r) => r.id === id)?.nombre || id
+  const personaDelRoster = (id: string) => personal.find((p) => p.id === id)
+
+  const guardarPreciosBase = async () => {
+    setGuardandoPrecios(true)
+    try {
+      const res = await fetch("/api/administracion/precios-base", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ precios: preciosBase }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) {
+        toast({ title: data.error || "No se pudo guardar", variant: "destructive" })
+        return
+      }
+      toast({ title: "Precio base guardado" })
+    } catch {
+      toast({ title: "Error de conexión", variant: "destructive" })
+    } finally {
+      setGuardandoPrecios(false)
+    }
+  }
 
   const aprobar = async (c: CotizacionPendiente) => {
     const vendedor = vendedorElegido[c.id]
@@ -87,10 +147,19 @@ export default function CotizacionesPendientesPage() {
     }
     setAprobandoId(c.id)
     try {
+      const personalEvento = c.personalSeleccionado.map((personalId) => {
+        const persona = personaDelRoster(personalId)
+        return {
+          personalId,
+          nombre: persona ? `${persona.nombre} ${persona.apellido}` : "Sin nombre",
+          funcion: persona?.funcion || "",
+          monto: montosPersonal[c.id]?.[personalId] ?? persona?.tarifaBase ?? 0,
+        }
+      })
       const res = await fetch(`/api/administracion/cotizaciones/${c.id}/aprobar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendedor }),
+        body: JSON.stringify({ vendedor, personalEvento }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.ok) {
@@ -159,6 +228,42 @@ export default function CotizacionesPendientesPage() {
               &gt; Lista, con el vendedor que elijas para la comisión). <strong>Rechazar</strong> se la devuelve al
               vendedor con tu comentario para que la corrija y la vuelva a mandar.
             </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <p className="font-semibold text-sm">Precio base por salón</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Se usa en las cotizaciones cuando la fecha elegida todavía no tiene un precio cargado en el{" "}
+              <Link href="/admin/precios" className="underline">
+                Calendario de Precios
+              </Link>
+              .
+            </p>
+          </div>
+          <div className="p-4 grid gap-3 sm:grid-cols-2">
+            {SALONES.map((s) => (
+              <div key={s} className="flex items-center gap-2">
+                <span className="text-sm font-medium w-24 shrink-0" style={{ color: salonColor(s) }}>
+                  {salonLabel(s)}
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={preciosBase[s] || ""}
+                  onChange={(e) => setPreciosBase((prev) => ({ ...prev, [s]: Number(e.target.value) || 0 }))}
+                  placeholder="0"
+                  className="h-9"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="px-4 pb-4 flex justify-end">
+            <Button size="sm" onClick={guardarPreciosBase} disabled={guardandoPrecios}>
+              <Save className="h-3.5 w-3.5 mr-1.5" />
+              {guardandoPrecios ? "Guardando..." : "Guardar precios base"}
+            </Button>
           </div>
         </div>
 
@@ -251,6 +356,43 @@ export default function CotizacionesPendientesPage() {
                                     {" / "}
                                     <span className="text-emerald-700">{fmt(s.precioTotal)}</span>
                                   </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Personal solicitado por el vendedor: sin montos hasta acá.
+                          Administración sugiere/ajusta el monto de cada uno antes
+                          de aprobar — eso es lo que termina en Personal del Evento. */}
+                      {c.personalSeleccionado.length > 0 && (
+                        <div className="text-sm">
+                          <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1.5">
+                            <UserCheck className="h-3.5 w-3.5" />
+                            Personal solicitado
+                          </p>
+                          <div className="space-y-1.5">
+                            {c.personalSeleccionado.map((personalId) => {
+                              const persona = personaDelRoster(personalId)
+                              return (
+                                <div key={personalId} className="flex items-center justify-between gap-2">
+                                  <span className="text-muted-foreground">
+                                    {persona ? `${persona.nombre} ${persona.apellido}` : "Persona eliminada del roster"}
+                                    {persona?.funcion && <span className="text-xs"> · {persona.funcion}</span>}
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={montosPersonal[c.id]?.[personalId] ?? ""}
+                                    onChange={(e) =>
+                                      setMontosPersonal((prev) => ({
+                                        ...prev,
+                                        [c.id]: { ...prev[c.id], [personalId]: Number(e.target.value) || 0 },
+                                      }))
+                                    }
+                                    className="h-8 w-32 text-right"
+                                  />
                                 </div>
                               )
                             })}
