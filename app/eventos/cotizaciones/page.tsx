@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Phone, Users, XCircle } from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Users, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -149,6 +149,19 @@ export default function CotizacionesPendientesPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-4">
+        <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <Info className="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
+          <div className="text-sm text-blue-900">
+            <p className="font-semibold">Cómo funciona esta pantalla</p>
+            <p className="text-blue-800/80 mt-0.5">
+              Acá llegan las cotizaciones que los vendedores mandaron a revisión. Abrí una para ver el detalle completo,
+              con los costos internos incluidos. <strong>Aprobar</strong> la convierte en un evento real (aparece en Eventos
+              &gt; Lista, con el vendedor que elijas para la comisión). <strong>Rechazar</strong> se la devuelve al
+              vendedor con tu comentario para que la corrija y la vuelva a mandar.
+            </p>
+          </div>
+        </div>
+
         {cargando ? (
           <p className="text-sm text-muted-foreground">Cargando...</p>
         ) : cotizaciones.length === 0 ? (
