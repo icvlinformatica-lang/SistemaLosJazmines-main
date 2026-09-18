@@ -14,7 +14,7 @@ import {
   calcularCostosOperativos,
   calcularFechaCuota,
   calcularTotalesPaquete,
-  getPrecioVentaConRespaldo,
+  getPrecioVenta,
   calcularVentaServicios,
   generateId,
   generarMovimientoIngreso,
@@ -180,19 +180,6 @@ function EventoPageContent() {
     
     fetchEvento()
   }, [editingEventoId, state.eventoActual, setEventoActual, router, eventos, loading])
-
-  // Precio base de respaldo por salón (Eventos > Cotizaciones): se usa cuando
-  // la fecha elegida no tiene precio en el Calendario de Precios, igual que
-  // en el cotizador del vendedor (ver getPrecioVentaConRespaldo).
-  const [preciosBaseSalon, setPreciosBaseSalon] = useState<Record<string, number>>({})
-  useEffect(() => {
-    fetch("/api/administracion/precios-base")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.ok && data.precios) setPreciosBaseSalon(data.precios)
-      })
-      .catch((err) => console.error("[evento] Error cargando precios base por salón:", err))
-  }, [])
 
   const evento = state.eventoActual
 
@@ -706,11 +693,12 @@ function EventoPageContent() {
       costoInsumos: costoInsumosCalc,
       costoServicios: costoServicios,
       costoOperativo: costoOperativo,
-      // Precio de venta = precio del salón (fecha o base de respaldo) +
-      // servicios a precio de venta del catálogo, igual que la cotización.
+      // Precio de venta = precio del salón (solo Calendario de Precios, nunca
+      // el precio base de los vendedores) + servicios a precio de venta del
+      // catálogo, igual que la cotización.
       precioVenta:
         (((evento.salon && evento.fecha)
-          ? getPrecioVentaConRespaldo(preciosVenta, preciosBaseSalon, evento.salon, evento.fecha)?.precio ?? 0
+          ? getPrecioVenta(preciosVenta, evento.salon, evento.fecha) ?? 0
           : 0) + calcularVentaServicios(evento.servicios || [], catalogoServicios || [])) || undefined,
     }
     
@@ -1734,9 +1722,9 @@ function EventoPageContent() {
 
             {/* Precio de Venta */}
             {evento.fecha && evento.salon && (() => {
-              const precioSalon = getPrecioVentaConRespaldo(preciosVenta, preciosBaseSalon, evento.salon, evento.fecha)
+              const precioSalon = getPrecioVenta(preciosVenta, evento.salon, evento.fecha)
               const ventaServicios = calcularVentaServicios(evento.servicios || [], catalogoServicios || [])
-              const total = (precioSalon?.precio ?? 0) + ventaServicios
+              const total = (precioSalon ?? 0) + ventaServicios
               return total > 0 ? (
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
                   <DollarSign className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -1745,15 +1733,13 @@ function EventoPageContent() {
                       Precio de venta: {formatCurrency(total)}
                     </p>
                     <p className="text-xs text-emerald-600">
-                      Salón: {precioSalon ? formatCurrency(precioSalon.precio) : "sin precio cargado"}
+                      Salón: {precioSalon !== null ? formatCurrency(precioSalon) : "sin precio cargado"}
                       {" · "}Servicios: {formatCurrency(ventaServicios)}
                     </p>
                     <p className="text-xs text-emerald-600">
-                      {precioSalon === null
-                        ? `${salonLabel(evento.salon)} no tiene precio para esa fecha ni precio base cargado`
-                        : precioSalon.origen === "fecha"
-                          ? `Precio del salón definido en Finanzas para ${salonLabel(evento.salon)} el ${evento.fecha}`
-                          : `Precio base de ${salonLabel(evento.salon)} (esa fecha no tiene precio cargado en el Calendario de Precios)`}
+                      {precioSalon !== null
+                        ? `Precio del salón definido en Finanzas para ${salonLabel(evento.salon)} el ${evento.fecha}`
+                        : `${salonLabel(evento.salon)} no tiene precio cargado para esa fecha`}
                     </p>
                   </div>
                 </div>
