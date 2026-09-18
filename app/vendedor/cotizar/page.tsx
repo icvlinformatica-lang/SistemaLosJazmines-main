@@ -857,7 +857,7 @@ function CotizarPageContent() {
                       >
                         {seleccionado && <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
                       </div>
-                      <span className={`flex-1 font-medium ${seleccionado ? "text-indigo-900" : ""}`}>
+                      <span className={`flex-1 min-w-0 truncate font-medium ${seleccionado ? "text-indigo-900" : ""}`}>
                         {p.nombre} {p.apellido}
                       </span>
                       <Badge variant="outline" className="text-[11px] shrink-0">{p.funcion}</Badge>

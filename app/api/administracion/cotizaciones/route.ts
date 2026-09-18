@@ -77,7 +77,12 @@ export async function GET() {
           personasDietasEspeciales: Number(invitados.personasDietasEspeciales) || 0,
         },
         totalPersonas,
-        recetasElegidas: serviciosElegidos.recetas || { adultos: [], adolescentes: [], ninos: [], dietasEspeciales: [] },
+        recetasElegidas: {
+          adultos: Array.isArray(serviciosElegidos.recetas?.adultos) ? serviciosElegidos.recetas.adultos : [],
+          adolescentes: Array.isArray(serviciosElegidos.recetas?.adolescentes) ? serviciosElegidos.recetas.adolescentes : [],
+          ninos: Array.isArray(serviciosElegidos.recetas?.ninos) ? serviciosElegidos.recetas.ninos : [],
+          dietasEspeciales: Array.isArray(serviciosElegidos.recetas?.dietasEspeciales) ? serviciosElegidos.recetas.dietasEspeciales : [],
+        },
         servicios: Array.isArray(serviciosElegidos.servicios) ? serviciosElegidos.servicios : [],
         personalSeleccionado: Array.isArray(serviciosElegidos.personal) ? serviciosElegidos.personal : [],
         precioVentaSugerido: Number(f.precio_venta_sugerido) || 0,

@@ -70,6 +70,11 @@ export default function CotizacionesPendientesPage() {
   // Aprobar
   const [vendedorElegido, setVendedorElegido] = useState<Record<string, string>>({})
   const [aprobandoId, setAprobandoId] = useState<string | null>(null)
+  // Si "Aprobar" falla porque la fecha no es válida (vacía o con año fuera
+  // de rango), se ofrece corregirla ahí mismo en vez de mandar a rechazar
+  // la cotización solo por eso.
+  const [errorFechaId, setErrorFechaId] = useState<string | null>(null)
+  const [fechaCorregida, setFechaCorregida] = useState<Record<string, string>>({})
 
   // Rechazar
   const [comentarioPorId, setComentarioPorId] = useState<Record<string, string>>({})
@@ -156,14 +161,22 @@ export default function CotizacionesPendientesPage() {
           monto: montosPersonal[c.id]?.[personalId] ?? persona?.tarifaBase ?? 0,
         }
       })
+      const body: Record<string, unknown> = { vendedor, personalEvento }
+      // Solo se manda si Administración la tocó a mano (corrigiendo un error
+      // previo) — si no, la cotización sigue con su fecha original.
+      if (c.id in fechaCorregida) body.fechaEvento = fechaCorregida[c.id]
       const res = await fetch(`/api/administracion/cotizaciones/${c.id}/aprobar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendedor, personalEvento }),
+        body: JSON.stringify(body),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.ok) {
         toast({ title: data.error || "No se pudo aprobar", variant: "destructive" })
+        if (data?.errorDeFecha) {
+          setErrorFechaId(c.id)
+          setFechaCorregida((prev) => (c.id in prev ? prev : { ...prev, [c.id]: c.fechaEvento || "" }))
+        }
         return
       }
       toast({ title: "Evento creado", description: `"${data.eventoNombre}" ya figura en Eventos > Lista.` })
@@ -377,7 +390,7 @@ export default function CotizacionesPendientesPage() {
                               const persona = personaDelRoster(personalId)
                               return (
                                 <div key={personalId} className="flex items-center justify-between gap-2">
-                                  <span className="text-muted-foreground">
+                                  <span className="text-muted-foreground flex-1 min-w-0 truncate">
                                     {persona ? `${persona.nombre} ${persona.apellido}` : "Persona eliminada del roster"}
                                     {persona?.funcion && <span className="text-xs"> · {persona.funcion}</span>}
                                   </span>
@@ -391,7 +404,7 @@ export default function CotizacionesPendientesPage() {
                                         [c.id]: { ...prev[c.id], [personalId]: Number(e.target.value) || 0 },
                                       }))
                                     }
-                                    className="h-8 w-32 text-right"
+                                    className="h-8 w-28 shrink-0 text-right"
                                   />
                                 </div>
                               )
@@ -424,6 +437,22 @@ export default function CotizacionesPendientesPage() {
                           No incluye costo de insumos/recetas (comida) — esta cotización solo calculó el costo de los servicios contratados.
                         </p>
                       </div>
+
+                      {/* Fecha inválida al aprobar: se corrige acá mismo en vez de
+                          tener que rechazar la cotización solo por eso. */}
+                      {errorFechaId === c.id && (
+                        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 space-y-2">
+                          <p className="text-sm text-amber-900">
+                            La fecha del evento {c.fechaEvento ? `("${c.fechaEvento}")` : "está vacía"} no es válida. Corregila para poder aprobar.
+                          </p>
+                          <Input
+                            type="date"
+                            value={fechaCorregida[c.id] ?? ""}
+                            onChange={(e) => setFechaCorregida((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                            className="h-9 max-w-[200px]"
+                          />
+                        </div>
+                      )}
 
                       {/* Acciones */}
                       {mostrarRechazoId === c.id ? (

@@ -59,6 +59,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const body = await req.json().catch(() => ({}))
     const vendedor = typeof body.vendedor === "string" ? body.vendedor.trim() : ""
     const personalEventoBody: PersonalEventoBody[] = Array.isArray(body.personalEvento) ? body.personalEvento : []
+    // Corrección opcional de la fecha antes de crear el evento — para cuando
+    // el vendedor la dejó vacía o la tipeó mal (año fuera de rango) y
+    // Administración la arregla acá mismo en vez de tener que rechazar la
+    // cotización solo por eso. Si viene, también se guarda en la cotización.
+    const fechaEventoOverride = typeof body.fechaEvento === "string" ? body.fechaEvento.trim() : undefined
 
     if (!vendedor) {
       return NextResponse.json({ ok: false, error: "Elegí el vendedor para la comisión" }, { status: 400 })
@@ -115,12 +120,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       })
     }
 
+    const fechaEvento = fechaEventoOverride !== undefined ? fechaEventoOverride : c.fecha_evento || ""
+
     const eventoId = crypto.randomUUID()
     const eventoPayload = {
       id: eventoId,
       nombre: c.nombre_festejados || c.cliente_nombre,
       nombrePareja: c.nombre_festejados || "",
-      fecha: c.fecha_evento || "",
+      fecha: fechaEvento,
       horario: c.horario || "",
       horarioFin: c.horario_fin || "",
       salon: c.salon || undefined,
@@ -159,10 +166,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
     const eventoData = await eventosRes.json().catch(() => ({}))
     if (!eventosRes.ok) {
-      return NextResponse.json(
-        { ok: false, error: eventoData?.error || "No se pudo crear el evento (revisá que la cotización tenga fecha válida)" },
-        { status: eventosRes.status },
-      )
+      const mensaje: string = eventoData?.error || "No se pudo crear el evento (revisá que la cotización tenga fecha válida)"
+      const esErrorDeFecha = /año|fecha/i.test(mensaje)
+      return NextResponse.json({ ok: false, error: mensaje, errorDeFecha: esErrorDeFecha }, { status: eventosRes.status })
+    }
+
+    if (fechaEventoOverride !== undefined) {
+      await sql`UPDATE cotizaciones SET fecha_evento = ${fechaEvento || null}, updated_at = now() WHERE id = ${id}`
     }
 
     await sql`
