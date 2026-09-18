@@ -331,9 +331,14 @@ export default function PaquetesPage() {
                         </div>
                       ))}
                     </div>
-                    <div className="border-t border-border px-4 py-3 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-muted-foreground">Precio de venta</span>
+                    <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-2">
                       <span className="text-lg font-bold text-emerald-700">{fmt(p.precioVenta)}</span>
+                      <Link href={`/vendedor/cotizar?paqueteId=${p.id}`}>
+                        <Button size="sm">
+                          <Send className="h-3.5 w-3.5 mr-1.5" />
+                          Usar en el cotizador
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 ))}

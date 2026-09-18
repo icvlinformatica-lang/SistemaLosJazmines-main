@@ -142,6 +142,7 @@ function CotizarPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const cotizacionIdParam = searchParams.get("id")
+  const paqueteIdParam = searchParams.get("paqueteId")
   const { toast } = useToast()
 
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true)
@@ -150,6 +151,7 @@ function CotizarPageContent() {
   const [preciosVenta, setPreciosVenta] = useState<Record<string, Record<string, number>>>({})
   const [paquetes, setPaquetes] = useState<PaqueteVendedor[]>([])
   const [paqueteAplicadoId, setPaqueteAplicadoId] = useState<string | null>(null)
+  const [paqueteUrlAplicado, setPaqueteUrlAplicado] = useState(false)
 
   // Cliente
   const [clienteNombre, setClienteNombre] = useState("")
@@ -255,6 +257,17 @@ function CotizarPageContent() {
     setPaqueteAplicadoId(paquete.id)
     toast({ title: `Paquete "${paquete.nombre}" aplicado`, description: "Podés seguir ajustando los servicios." })
   }
+
+  // Venís del botón "Usar en el cotizador" en /vendedor/paquetes (?paqueteId=...):
+  // precarga el paquete en una cotización NUEVA, una sola vez. Nunca pisa una
+  // cotización ya guardada (?id=...) que se esté reabriendo.
+  useEffect(() => {
+    if (paqueteUrlAplicado || cotizacionIdParam || !paqueteIdParam || paquetes.length === 0) return
+    const p = paquetes.find((x) => x.id === paqueteIdParam)
+    if (p) aplicarPaquete(p)
+    setPaqueteUrlAplicado(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paquetes, paqueteIdParam, cotizacionIdParam, paqueteUrlAplicado])
 
   const toggleReceta = (segmento: Segmento, recetaId: string) => {
     if (soloLectura) return
