@@ -6,6 +6,7 @@ import { chequearLimite, registrarFallo, registrarExito, obtenerIp } from "@/lib
 const PERFILES_VALIDOS = [
   "cocina", "barra", "administracion", "soporte", "cobro",
   "dj", "fotografo", "vestido", "pantalla", "coordinacion",
+  "vendedor",
 ]
 
 // POST { perfilId, pin } — login con PIN

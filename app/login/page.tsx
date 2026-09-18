@@ -16,6 +16,11 @@ const NOMBRES_POR_PERFIL: Record<string, string[]> = {
   cobro: ["Aylin", "Salón"],
 }
 
+// A diferencia de NOMBRES_POR_PERFIL (fijo en el código), "vendedor" trae su
+// lista de nombres en vivo desde /api/auth/vendedores-nombres (tabla
+// "vendedores"), porque esa lista la edita Administración sin tocar código.
+const PERFILES_CON_SELECCION_USUARIO = new Set([...Object.keys(NOMBRES_POR_PERFIL), "vendedor"])
+
 export default function LoginPage() {
   const router = useRouter()
   const { seleccionarPerfil, seleccionarPerfilRapido } = useProfile()
@@ -29,9 +34,30 @@ export default function LoginPage() {
   // sesiones (se reabre siempre al recargar el login).
   const [eventoAbierto, setEventoAbierto] = useState(true)
 
-  // Para los perfiles listados en NOMBRES_POR_PERFIL: primero se elige quién
-  // ingresa y recién después se pide el PIN. Todos usan el mismo PIN del perfil.
+  // Para los perfiles en PERFILES_CON_SELECCION_USUARIO: primero se elige
+  // quién ingresa y recién después se pide el PIN. Todos usan el mismo PIN
+  // del perfil.
   const [quienIngresa, setQuienIngresa] = useState<string | null>(null)
+
+  // Nombres de vendedores traídos en vivo de /api/auth/vendedores-nombres
+  // (ver PERFILES_CON_SELECCION_USUARIO). Vacío mientras carga o si falla.
+  const [nombresVendedores, setNombresVendedores] = useState<string[]>([])
+
+  useEffect(() => {
+    fetch("/api/auth/vendedores-nombres")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok && Array.isArray(data.vendedores)) {
+          setNombresVendedores(data.vendedores.map((v: { nombre: string }) => v.nombre))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const obtenerNombresPerfil = (id: string): string[] | undefined => {
+    if (id === "vendedor") return nombresVendedores
+    return NOMBRES_POR_PERFIL[id]
+  }
 
   // Nombre de la tile bajo el mouse: tooltip individual por perfil, solo
   // desktop (mouseenter/mouseleave no dispara en touch, así que en mobile
@@ -80,13 +106,13 @@ export default function LoginPage() {
   const handleCardClick = async (id: string) => {
     // Perfiles con selección de usuario: preguntar quién ingresa antes de
     // pedir el PIN o usar el acceso rápido.
-    if (NOMBRES_POR_PERFIL[id] && !quienIngresa) {
+    if (PERFILES_CON_SELECCION_USUARIO.has(id) && !quienIngresa) {
       setPerfilSeleccionado(id)
       setPinInput("")
       setError("")
       return
     }
-    if (!NOMBRES_POR_PERFIL[id]) {
+    if (!PERFILES_CON_SELECCION_USUARIO.has(id)) {
       setQuienIngresa(null)
       if (id === "soporte") {
         // Soporte también deja registro con su nombre en la actividad
@@ -179,7 +205,7 @@ export default function LoginPage() {
 
   // El paso "¿Quién ingresa?"/PIN vive en un panel aparte, debajo de toda la
   // grilla (ver más abajo), para que ninguna tile cambie nunca de tamaño.
-  const nombresPerfilActual = perfilActual ? NOMBRES_POR_PERFIL[perfilActual.id] : undefined
+  const nombresPerfilActual = perfilActual ? obtenerNombresPerfil(perfilActual.id) : undefined
   const tieneSeleccionUsuarioActual = !!nombresPerfilActual
   const mostrarQuienPanel = !!perfilActual && tieneSeleccionUsuarioActual && !quienIngresa
   const esSeleccionadoPanel =
@@ -313,6 +339,9 @@ export default function LoginPage() {
               {mostrarQuienPanel && nombresPerfilActual && (
                 <div className="w-full flex flex-col items-center gap-2">
                   <p className="text-xs font-semibold text-[#1a3a2a] text-center">{"¿Quién ingresa?"}</p>
+                  {nombresPerfilActual.length === 0 && (
+                    <p className="text-xs text-gray-400">Cargando...</p>
+                  )}
                   <div className="w-full flex flex-col gap-2">
                     {Array.from({ length: Math.ceil(nombresPerfilActual.length / 2) }).map((_, filaIdx) => {
                       const nombresFila = nombresPerfilActual.slice(filaIdx * 2, filaIdx * 2 + 2)
