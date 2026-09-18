@@ -15,7 +15,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Briefcase, CalendarClock, CheckCircle, Package, Phone, Plus, Send, Users } from "lucide-react"
+import { ArrowLeft, Briefcase, CalendarClock, CheckCircle, Package, Phone, Plus, Send, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -82,6 +82,8 @@ export default function PaquetesPage() {
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [enviandoId, setEnviandoId] = useState<string | null>(null)
+  const [paqueteABorrar, setPaqueteABorrar] = useState<PaqueteVendedor | null>(null)
+  const [borrandoId, setBorrandoId] = useState<string | null>(null)
 
   // Formulario del nuevo paquete
   const [nombre, setNombre] = useState("")
@@ -124,6 +126,26 @@ export default function PaquetesPage() {
       toast({ title: "Error de conexión", variant: "destructive" })
     } finally {
       setEnviandoId(null)
+    }
+  }
+
+  const borrarPaquete = async () => {
+    if (!paqueteABorrar) return
+    setBorrandoId(paqueteABorrar.id)
+    try {
+      const res = await fetch(`/api/vendedor/paquetes/${paqueteABorrar.id}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) {
+        toast({ title: data.error || "No se pudo borrar el paquete", variant: "destructive" })
+        return
+      }
+      toast({ title: "Paquete borrado" })
+      setPaqueteABorrar(null)
+      cargarDatos()
+    } catch {
+      toast({ title: "Error de conexión", variant: "destructive" })
+    } finally {
+      setBorrandoId(null)
     }
   }
 
@@ -311,7 +333,17 @@ export default function PaquetesPage() {
                     style={{ borderLeftColor: salonColor(p.salon) }}
                   >
                     <div className="px-4 py-3">
-                      <p className="font-semibold text-card-foreground">{p.nombre}</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-card-foreground">{p.nombre}</p>
+                        <button
+                          type="button"
+                          onClick={() => setPaqueteABorrar(p)}
+                          className="shrink-0 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          aria-label={`Borrar paquete ${p.nombre}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                       {p.descripcion && <p className="text-sm text-muted-foreground mt-0.5">{p.descripcion}</p>}
                       {(p.capacidadMinima > 0 || p.capacidadMaxima > 0) && (
                         <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
@@ -453,6 +485,25 @@ export default function PaquetesPage() {
             </Button>
             <Button onClick={crearPaquete} disabled={guardando}>
               {guardando ? "Guardando..." : "Crear paquete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!paqueteABorrar} onOpenChange={(open) => !open && setPaqueteABorrar(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Borrar paquete</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            ¿Seguro que querés borrar "{paqueteABorrar?.nombre}"? Esta acción no se puede deshacer.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaqueteABorrar(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={borrarPaquete} disabled={borrandoId === paqueteABorrar?.id}>
+              {borrandoId === paqueteABorrar?.id ? "Borrando..." : "Borrar paquete"}
             </Button>
           </DialogFooter>
         </DialogContent>
