@@ -1,7 +1,7 @@
 "use client"
 
-// Placeholder del perfil Vendedor (Etapa 1: solo login). Las etapas
-// siguientes agregan acá el armado de cotizaciones y la grilla de paquetes.
+// Inicio del perfil Vendedor. Cotizar y Paquetes viven en sus propias
+// pantallas (ver sidebar); acá por ahora no hay más contenido que el fondo.
 
 import { Briefcase } from "lucide-react"
 
@@ -24,10 +24,6 @@ export default function VendedorPage() {
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#c9a227]">
             <Briefcase className="h-7 w-7 text-[#1a1a1a]" />
           </div>
-          <p className="text-sm text-muted-foreground">
-            La pantalla de cotizaciones y paquetes todavía no está lista. Por
-            ahora esto es solo un placeholder para probar el login.
-          </p>
         </div>
       </div>
     </div>
