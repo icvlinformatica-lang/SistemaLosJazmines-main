@@ -1839,6 +1839,47 @@ export function getPrecioVenta(preciosVenta: PreciosVentaMap, salon: string, fec
   return salonPrecios[fecha] ?? null
 }
 
+/**
+ * Precio de venta del salón para una fecha, con el mismo criterio que usa
+ * el cotizador del vendedor (app/api/vendedor/cotizaciones): primero el
+ * Calendario de Precios (precio exacto de esa fecha); si esa fecha no tiene
+ * precio cargado, el precio base de RESPALDO del salón (tabla
+ * precios_base_salones, se edita en Eventos > Cotizaciones). Un precio base
+ * en 0 cuenta como "sin precio". Devuelve también el origen para poder
+ * aclararlo en pantalla.
+ */
+export function getPrecioVentaConRespaldo(
+  preciosVenta: PreciosVentaMap,
+  preciosBaseSalon: Record<string, number>,
+  salon: string,
+  fecha: string,
+): { precio: number; origen: "fecha" | "base" } | null {
+  const porFecha = getPrecioVenta(preciosVenta, salon, fecha)
+  if (porFecha !== null) return { precio: porFecha, origen: "fecha" }
+  const base = preciosBaseSalon[salon]
+  return base ? { precio: base, origen: "base" } : null
+}
+
+/**
+ * Total de VENTA de los servicios contratados, con el precio de venta
+ * vigente del catálogo — mismo criterio que el cotizador del vendedor
+ * (app/api/vendedor/cotizaciones): "Fijo"/"Por Persona" cobran precioVenta
+ * tal cual, "Por Hora"/"Por Cantidad" lo multiplican por la cantidad
+ * (mínimo 1). Precio de venta del evento = precio del salón + esto.
+ */
+export function calcularVentaServicios(
+  servicios: Array<{ servicioId: string; cantidad?: number }>,
+  catalogo: Pick<Servicio, "id" | "precioVenta" | "unidad">[],
+): number {
+  return servicios.reduce((sum, s) => {
+    const cat = catalogo.find((c) => c.id === s.servicioId)
+    if (!cat) return sum
+    const usaCantidad = cat.unidad === "Por Hora" || cat.unidad === "Por Cantidad"
+    const cantidad = usaCantidad ? Math.max(1, Number(s.cantidad) || 1) : 1
+    return sum + (Number(cat.precioVenta) || 0) * cantidad
+  }, 0)
+}
+
 export function saveState(state: AppState): void {
   if (typeof window === "undefined") return
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
