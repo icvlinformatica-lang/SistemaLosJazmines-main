@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 
 /**
  * Alta/edición de cotizaciones (perfil Vendedor). El precio de venta
@@ -34,17 +35,6 @@ import { sql } from "@/lib/db"
  * que entró con esta sesión (por nombre, vía cookie lj_usuario), saneadas
  * (nunca costos_internos).
  */
-
-function usuarioDesdeCookie(req: Request): string {
-  const raw = req.headers.get("cookie") || ""
-  const match = raw.match(/(?:^|;\s*)lj_usuario=([^;]+)/)
-  if (!match) return "Vendedor"
-  try {
-    return decodeURIComponent(match[1]).trim() || "Vendedor"
-  } catch {
-    return "Vendedor"
-  }
-}
 
 interface ServicioCatalogo {
   id: string

@@ -161,6 +161,12 @@ export default function PaquetesPage() {
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-semibold truncate">Paquetes</h1>
           </div>
+          <Link href="/vendedor/papelera">
+            <Button size="sm" variant="outline">
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              Mi papelera
+            </Button>
+          </Link>
         </div>
       </header>
 
