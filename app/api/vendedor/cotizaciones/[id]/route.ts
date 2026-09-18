@@ -31,6 +31,21 @@ function parseJson(raw: unknown): any {
   return typeof raw === "string" ? JSON.parse(raw) : raw
 }
 
+// Borra una cotización propia — pensado para "cargué mal esta cotización y
+// no me sirve". Sin restricción de estado: incluso una ya aprobada
+// ("convertida") se puede borrar del historial del vendedor sin que eso
+// afecte al evento real ya creado (evento_id solo queda de referencia acá).
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    await sql`DELETE FROM cotizaciones WHERE id = ${id}`
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error("[API] Error en vendedor/cotizaciones/[id] DELETE:", err)
+    return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })
+  }
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
