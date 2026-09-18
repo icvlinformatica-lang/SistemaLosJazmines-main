@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, UserCheck, Users, XCircle } from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, Trash2, UserCheck, Users, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -227,6 +227,12 @@ export default function CotizacionesPendientesPage() {
             <h1 className="text-lg font-semibold truncate">Cotizaciones para revisar</h1>
             <p className="text-sm text-muted-foreground">{cotizaciones.length} esperando aprobación</p>
           </div>
+          <Link href="/eventos/papelera-vendedores">
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Papelera vendedores</span>
+            </Button>
+          </Link>
         </div>
       </header>
 

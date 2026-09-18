@@ -21,7 +21,7 @@ interface ServicioIncluidoRaw {
   precioOficial?: number
 }
 
-interface PaqueteRaw {
+export interface PaqueteRaw {
   salon: string
   nombre: string
   descripcion?: string
@@ -32,7 +32,7 @@ interface PaqueteRaw {
   activo?: boolean
 }
 
-function sanear(id: string, data: PaqueteRaw) {
+export function sanear(id: string, data: PaqueteRaw) {
   return {
     id,
     salon: data.salon,

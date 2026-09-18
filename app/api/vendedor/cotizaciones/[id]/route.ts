@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 
 /**
  * Trae una cotización completa para reabrirla en /vendedor/cotizar?id=...
@@ -35,10 +36,34 @@ function parseJson(raw: unknown): any {
 // no me sirve". Sin restricción de estado: incluso una ya aprobada
 // ("convertida") se puede borrar del historial del vendedor sin que eso
 // afecte al evento real ya creado (evento_id solo queda de referencia acá).
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+// No es un borrado definitivo: la fila se mueve a cotizaciones_eliminadas
+// (misma info + eliminado_at/eliminado_por) para poder recuperarla después
+// desde la papelera (ver /api/vendedor/papelera y .../papelera/cotizaciones).
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    await sql`DELETE FROM cotizaciones WHERE id = ${id}`
+    const eliminadoPor = usuarioDesdeCookie(req)
+    const filas = await sql`
+      WITH movida AS (
+        DELETE FROM cotizaciones WHERE id = ${id}
+        RETURNING *
+      )
+      INSERT INTO cotizaciones_eliminadas (
+        id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
+        invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
+        estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
+        evento_id, eliminado_por
+      )
+      SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
+        invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
+        estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
+        evento_id, ${eliminadoPor}
+      FROM movida
+      RETURNING id
+    `
+    if (!filas.length) {
+      return NextResponse.json({ ok: false, error: "No se encontró la cotización" }, { status: 404 })
+    }
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error("[API] Error en vendedor/cotizaciones/[id] DELETE:", err)
