@@ -162,6 +162,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const fechaEvento = fechaEventoOverride !== undefined ? fechaEventoOverride : c.fecha_evento || ""
 
+    // Precio de venta del evento = precio del salón SOLO del Calendario de
+    // Precios (precios_venta) para la fecha final + servicios tal como los
+    // cotizó el vendedor — mismo criterio que el planificador. NO se usa
+    // precio_venta_sugerido tal cual porque puede incluir el precio base de
+    // respaldo por salón (precios_base_salones), que es solo una referencia
+    // para que el vendedor estime, no un alquiler que se cargue al evento.
+    let precioSalonFecha = 0
+    if (c.salon && /^\d{4}-\d{2}-\d{2}$/.test(fechaEvento)) {
+      const precios = (await sql`
+        SELECT precio FROM precios_venta WHERE salon = ${c.salon} AND fecha = ${fechaEvento} LIMIT 1
+      `) as unknown as Array<{ precio: number }>
+      precioSalonFecha = precios.length ? Number(precios[0].precio) || 0 : 0
+    }
+    const ventaServicios = servicios.reduce(
+      (sum: number, s: { precioTotal?: number }) => sum + (Number(s.precioTotal) || 0),
+      0,
+    )
+
     const eventoPayload = {
       id: eventoId,
       nombre: c.nombre_festejados || c.cliente_nombre,
@@ -185,7 +203,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         unidad: s.unidad,
         cantidad: s.cantidad || 1,
       })),
-      precioVenta: Number(c.precio_venta_sugerido) || 0,
+      precioVenta: precioSalonFecha + ventaServicios,
       costoServicios: Number(costosInternos.totalCostoServicios) || 0,
       personalEvento,
       contrato: { vendedor, telefono: c.cliente_telefono || undefined },

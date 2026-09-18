@@ -1840,32 +1840,16 @@ export function getPrecioVenta(preciosVenta: PreciosVentaMap, salon: string, fec
 }
 
 /**
- * Precio de venta del salón para una fecha, con el mismo criterio que usa
- * el cotizador del vendedor (app/api/vendedor/cotizaciones): primero el
- * Calendario de Precios (precio exacto de esa fecha); si esa fecha no tiene
- * precio cargado, el precio base de RESPALDO del salón (tabla
- * precios_base_salones, se edita en Eventos > Cotizaciones). Un precio base
- * en 0 cuenta como "sin precio". Devuelve también el origen para poder
- * aclararlo en pantalla.
- */
-export function getPrecioVentaConRespaldo(
-  preciosVenta: PreciosVentaMap,
-  preciosBaseSalon: Record<string, number>,
-  salon: string,
-  fecha: string,
-): { precio: number; origen: "fecha" | "base" } | null {
-  const porFecha = getPrecioVenta(preciosVenta, salon, fecha)
-  if (porFecha !== null) return { precio: porFecha, origen: "fecha" }
-  const base = preciosBaseSalon[salon]
-  return base ? { precio: base, origen: "base" } : null
-}
-
-/**
  * Total de VENTA de los servicios contratados, con el precio de venta
  * vigente del catálogo — mismo criterio que el cotizador del vendedor
  * (app/api/vendedor/cotizaciones): "Fijo"/"Por Persona" cobran precioVenta
  * tal cual, "Por Hora"/"Por Cantidad" lo multiplican por la cantidad
  * (mínimo 1). Precio de venta del evento = precio del salón + esto.
+ *
+ * Ojo: el planificador toma el precio del salón SOLO del Calendario de
+ * Precios (getPrecioVenta). El precio base de respaldo por salón
+ * (precios_base_salones) es a propósito una referencia exclusiva del
+ * cotizador del vendedor — no se carga como alquiler en los eventos.
  */
 export function calcularVentaServicios(
   servicios: Array<{ servicioId: string; cantidad?: number }>,
