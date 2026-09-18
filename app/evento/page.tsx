@@ -14,7 +14,8 @@ import {
   calcularCostosOperativos,
   calcularFechaCuota,
   calcularTotalesPaquete,
-  getPrecioVenta,
+  getPrecioVentaConRespaldo,
+  calcularVentaServicios,
   generateId,
   generarMovimientoIngreso,
   obtenerPreciosServicio,
@@ -179,6 +180,19 @@ function EventoPageContent() {
     
     fetchEvento()
   }, [editingEventoId, state.eventoActual, setEventoActual, router, eventos, loading])
+
+  // Precio base de respaldo por salón (Eventos > Cotizaciones): se usa cuando
+  // la fecha elegida no tiene precio en el Calendario de Precios, igual que
+  // en el cotizador del vendedor (ver getPrecioVentaConRespaldo).
+  const [preciosBaseSalon, setPreciosBaseSalon] = useState<Record<string, number>>({})
+  useEffect(() => {
+    fetch("/api/administracion/precios-base")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.ok && data.precios) setPreciosBaseSalon(data.precios)
+      })
+      .catch((err) => console.error("[evento] Error cargando precios base por salón:", err))
+  }, [])
 
   const evento = state.eventoActual
 
@@ -692,7 +706,12 @@ function EventoPageContent() {
       costoInsumos: costoInsumosCalc,
       costoServicios: costoServicios,
       costoOperativo: costoOperativo,
-      precioVenta: (evento.salon && evento.fecha) ? (getPrecioVenta(preciosVenta, evento.salon, evento.fecha) || undefined) : undefined,
+      // Precio de venta = precio del salón (fecha o base de respaldo) +
+      // servicios a precio de venta del catálogo, igual que la cotización.
+      precioVenta:
+        (((evento.salon && evento.fecha)
+          ? getPrecioVentaConRespaldo(preciosVenta, preciosBaseSalon, evento.salon, evento.fecha)?.precio ?? 0
+          : 0) + calcularVentaServicios(evento.servicios || [], catalogoServicios || [])) || undefined,
     }
     
     if (isEditing && editingEventoId) {
@@ -1715,16 +1734,26 @@ function EventoPageContent() {
 
             {/* Precio de Venta */}
             {evento.fecha && evento.salon && (() => {
-              const precioVenta = getPrecioVenta(preciosVenta, evento.salon, evento.fecha)
-              return precioVenta !== null ? (
+              const precioSalon = getPrecioVentaConRespaldo(preciosVenta, preciosBaseSalon, evento.salon, evento.fecha)
+              const ventaServicios = calcularVentaServicios(evento.servicios || [], catalogoServicios || [])
+              const total = (precioSalon?.precio ?? 0) + ventaServicios
+              return total > 0 ? (
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
                   <DollarSign className="h-5 w-5 text-emerald-600 shrink-0" />
                   <div>
                     <p className="text-sm font-semibold text-emerald-800">
-                      Precio de venta: {formatCurrency(precioVenta)}
+                      Precio de venta: {formatCurrency(total)}
                     </p>
                     <p className="text-xs text-emerald-600">
-                      Definido en Finanzas para {salonLabel(evento.salon)} el {evento.fecha}
+                      Salón: {precioSalon ? formatCurrency(precioSalon.precio) : "sin precio cargado"}
+                      {" · "}Servicios: {formatCurrency(ventaServicios)}
+                    </p>
+                    <p className="text-xs text-emerald-600">
+                      {precioSalon === null
+                        ? `${salonLabel(evento.salon)} no tiene precio para esa fecha ni precio base cargado`
+                        : precioSalon.origen === "fecha"
+                          ? `Precio del salón definido en Finanzas para ${salonLabel(evento.salon)} el ${evento.fecha}`
+                          : `Precio base de ${salonLabel(evento.salon)} (esa fecha no tiene precio cargado en el Calendario de Precios)`}
                     </p>
                   </div>
                 </div>
