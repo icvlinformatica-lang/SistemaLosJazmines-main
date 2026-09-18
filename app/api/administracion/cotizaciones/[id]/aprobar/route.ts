@@ -17,6 +17,15 @@ import { sql } from "@/lib/db"
  *
  * Deja la cotización en "convertida" con evento_id apuntando al nuevo
  * evento — no se borra, queda como historial.
+ *
+ * Anti-duplicados: antes de crear el evento se "reserva" la cotización
+ * pasándola de "lista_para_revisar" a "aprobada" en un solo UPDATE
+ * condicional (atómico en Postgres). Si dos aprobaciones llegan juntas (dos
+ * pestañas, dos personas), solo una gana la reserva; la otra recibe 409 y no
+ * crea nada. "aprobada" es el estado transitorio "se está aprobando" — no se
+ * puede usar evento_id como reserva porque tiene FK a eventos. Si la creación
+ * del evento falla (y el evento de verdad no quedó creado), se devuelve a
+ * "lista_para_revisar" para poder reintentar.
  */
 
 function parseJson(raw: unknown): any {
@@ -53,7 +62,31 @@ interface PersonalRosterFila {
   tarifa_base: number
 }
 
+// Devuelve la cotización a revisión cuando la aprobación no llegó a crear el
+// evento. Si el evento sí quedó creado (ej. la respuesta de /api/eventos se
+// cortó pero el INSERT entró), NO se devuelve — así no se puede aprobar de
+// nuevo y duplicarlo; queda enlazada a ese evento como "convertida".
+async function liberarReserva(id: string, eventoId: string) {
+  try {
+    const existe = (await sql`SELECT 1 FROM eventos WHERE id = ${eventoId} LIMIT 1`) as unknown as unknown[]
+    if (existe.length) {
+      await sql`
+        UPDATE cotizaciones SET estado = 'convertida', evento_id = ${eventoId}, updated_at = now()
+        WHERE id = ${id} AND estado = 'aprobada'
+      `
+      return
+    }
+    await sql`
+      UPDATE cotizaciones SET estado = 'lista_para_revisar', updated_at = now()
+      WHERE id = ${id} AND estado = 'aprobada'
+    `
+  } catch (err) {
+    console.error("[API] No se pudo liberar la reserva de la cotización", id, err)
+  }
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  let reservada: { id: string; eventoId: string } | null = null
   try {
     const { id } = await params
     const body = await req.json().catch(() => ({}))
@@ -69,20 +102,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ ok: false, error: "Elegí el vendedor para la comisión" }, { status: 400 })
     }
 
+    // Reserva atómica: solo una aprobación puede pasar de acá (ver cabecera).
     const filas = (await sql`
-      SELECT id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
-             nombre_festejados, invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
-      FROM cotizaciones
-      WHERE id = ${id}
+      UPDATE cotizaciones SET estado = 'aprobada', updated_at = now()
+      WHERE id = ${id} AND estado = 'lista_para_revisar'
+      RETURNING id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
+                nombre_festejados, invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
     `) as unknown as CotizacionFila[]
 
     if (!filas.length) {
-      return NextResponse.json({ ok: false, error: "No se encontró la cotización" }, { status: 404 })
+      const existe = (await sql`SELECT 1 FROM cotizaciones WHERE id = ${id} LIMIT 1`) as unknown as unknown[]
+      if (!existe.length) {
+        return NextResponse.json({ ok: false, error: "No se encontró la cotización" }, { status: 404 })
+      }
+      return NextResponse.json(
+        { ok: false, error: "Esta cotización ya no está en revisión (puede que otra persona la esté aprobando)" },
+        { status: 409 },
+      )
     }
     const c = filas[0]
-    if (c.estado !== "lista_para_revisar") {
-      return NextResponse.json({ ok: false, error: "Esta cotización ya no está en revisión" }, { status: 409 })
-    }
+    const eventoId = crypto.randomUUID()
+    reservada = { id, eventoId }
 
     const invitados = parseJson(c.invitados) || {}
     const serviciosElegidos = parseJson(c.servicios_elegidos) || {}
@@ -122,7 +162,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const fechaEvento = fechaEventoOverride !== undefined ? fechaEventoOverride : c.fecha_evento || ""
 
-    const eventoId = crypto.randomUUID()
     const eventoPayload = {
       id: eventoId,
       nombre: c.nombre_festejados || c.cliente_nombre,
@@ -166,23 +205,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
     const eventoData = await eventosRes.json().catch(() => ({}))
     if (!eventosRes.ok) {
+      await liberarReserva(id, eventoId)
+      reservada = null
       const mensaje: string = eventoData?.error || "No se pudo crear el evento (revisá que la cotización tenga fecha válida)"
       const esErrorDeFecha = /año|fecha/i.test(mensaje)
       return NextResponse.json({ ok: false, error: mensaje, errorDeFecha: esErrorDeFecha }, { status: eventosRes.status })
     }
 
+    // A partir de acá el evento YA existe: pase lo que pase, la cotización
+    // no vuelve a revisión (liberarReserva detecta el evento y la cierra).
     if (fechaEventoOverride !== undefined) {
       await sql`UPDATE cotizaciones SET fecha_evento = ${fechaEvento || null}, updated_at = now() WHERE id = ${id}`
     }
 
     await sql`
       UPDATE cotizaciones SET estado = 'convertida', evento_id = ${eventoId}, updated_at = now()
-      WHERE id = ${id}
+      WHERE id = ${id} AND estado = 'aprobada'
     `
+    reservada = null
 
     return NextResponse.json({ ok: true, eventoId, eventoNombre: eventoData.nombre })
   } catch (err) {
     console.error("[API] Error en administracion/cotizaciones/[id]/aprobar:", err)
+    if (reservada) await liberarReserva(reservada.id, reservada.eventoId)
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })
   }
 }
