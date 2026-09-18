@@ -168,25 +168,46 @@ const SESSION_TOKEN_KEY = "lj_session_token"
 // Adjunta el token de sesión como header a todas las llamadas fetch a /api/*.
 // Necesario porque en la vista previa embebida (iframe) las cookies pueden
 // estar bloqueadas por el navegador (third-party cookie blocking).
+//
+// También reintenta una vez las llamadas a /api/db/* (el proxy a Supabase
+// que usa lib/supabase/data-service.ts) si vienen con error 5xx: en dev,
+// apenas arranca el servidor, StoreProvider dispara ~14 fetches en paralelo
+// y Next/Turbopack todavía puede estar compilando esa ruta bajo demanda —
+// la primera respuesta puede fallar aunque los datos estén bien (se ve como
+// "Error fetching X: {}" en la consola). Un solo reintento alcanza porque
+// una vez compilada la ruta, las siguientes llamadas ya funcionan solas.
 let fetchPatched = false
 function patchFetchWithSession() {
   if (fetchPatched || typeof window === "undefined") return
   fetchPatched = true
   const originalFetch = window.fetch.bind(window)
-  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Armar el request (agregar el header de sesión si corresponde) puede
+    // fallar por motivos ajenos a la red (ej: sessionStorage bloqueado) —
+    // ese try/catch queda separado del fetch en sí, para no confundir un
+    // fallo de red real con "no hacía falta parchear nada".
+    let finalInit = init
+    let esProxyDb = false
     try {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
       const esApiPropia = url.startsWith("/api/") || url.startsWith(`${window.location.origin}/api/`)
+      esProxyDb = url.includes("/api/db/")
       if (esApiPropia && !url.includes("/api/auth/login")) {
         const token = sessionStorage.getItem(SESSION_TOKEN_KEY)
         if (token) {
           const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined))
           if (!headers.has("x-lj-session")) headers.set("x-lj-session", token)
-          return originalFetch(input, { ...init, headers })
+          finalInit = { ...init, headers }
         }
       }
     } catch {}
-    return originalFetch(input, init)
+
+    const res = await originalFetch(input, finalInit)
+    if (esProxyDb && res.status >= 500) {
+      await new Promise((r) => setTimeout(r, 400))
+      return originalFetch(input, finalInit)
+    }
+    return res
   }
 }
 
