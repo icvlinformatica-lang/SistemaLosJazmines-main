@@ -3238,6 +3238,12 @@ export default function CajaJazminePage() {
                           ) : null}
                           {gasto.fechaGasto && gasto.fecha ? " · " : ""}
                           {gasto.fecha ? `vence ${formatFecha(gasto.fecha)}` : ""}
+                          {gasto.cargadoPor ? (
+                            <>
+                              {gasto.fechaGasto || gasto.fecha ? " · " : ""}
+                              {`cargó ${gasto.cargadoPor}`}
+                            </>
+                          ) : null}
                         </p>
                       )}
                     </div>
