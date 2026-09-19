@@ -38,17 +38,6 @@ export async function salonesConfigurados(): Promise<Map<string, string>> {
   return mapa
 }
 
-/** "21/10 05:40" en hora argentina. */
-export function fechaHoraCortaArgentina(d: Date): string {
-  const partes = new Intl.DateTimeFormat("es-AR", {
-    timeZone: "America/Argentina/Buenos_Aires",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(d)
-  // padStart: algunos motores devuelven el mes sin cero ("9") aun con "2-digit".
-  const p = (t: string) => (partes.find((x) => x.type === t)?.value ?? "").padStart(2, "0")
-  return `${p("day")}/${p("month")} ${p("hour")}:${p("minute")}`
-}
+// Movida a lib/stock-salones.ts (lógica pura) para poder usarla también en
+// las pantallas; se re-exporta acá para no cambiar a quien ya la importa.
+export { fechaHoraCortaArgentina } from "@/lib/stock-salones"

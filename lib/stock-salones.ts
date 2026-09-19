@@ -125,3 +125,59 @@ export function sectoresPermitidos(perfilId: string | null | undefined): SectorS
 export function puedeVerConsolidado(perfilId: string | null | undefined): boolean {
   return perfilId === "administracion" || perfilId === "soporte"
 }
+
+/** "21/10 05:40" en hora argentina. */
+export function fechaHoraCortaArgentina(d: Date): string {
+  const partes = new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d)
+  // padStart: algunos motores devuelven el mes sin cero ("9") aun con "2-digit".
+  const p = (t: string) => (partes.find((x) => x.type === t)?.value ?? "").padStart(2, "0")
+  return `${p("day")}/${p("month")} ${p("hour")}:${p("minute")}`
+}
+
+export interface FilaStockSalon {
+  insumoId: string
+  salon: string
+  cantidad: number
+  actualizadoPor: string | null
+  actualizadoEn: string
+}
+
+export interface ResumenStockInsumo {
+  insumoId: string
+  /** Suma de lo efectivamente contado (parcial si no contaron todos los salones). */
+  total: number
+  /** Cuántos salones tienen conteo (un 0 contado cuenta; "sin fila" no). */
+  salonesContados: number
+  detalle: Array<{ salon: string; cantidad: number; por: string | null; en: string }>
+}
+
+/**
+ * Agrupa las filas de stock_salones por insumo. Solo aparecen los insumos
+ * con al menos un conteo. Tres estados distintos por salón:
+ * - fila con cantidad > 0 → hay esa cantidad;
+ * - fila con cantidad 0 → contaron y no queda nada (se muestra 0);
+ * - sin fila → nadie contó todavía (se muestra "—", NUNCA 0).
+ * Por eso el total es la suma de lo contado, y hay que presentarlo como
+ * parcial cuando salonesContados < cantidad de salones.
+ */
+export function resumirStockPorInsumo(filas: FilaStockSalon[]): ResumenStockInsumo[] {
+  const porInsumo = new Map<string, ResumenStockInsumo>()
+  for (const f of filas) {
+    let r = porInsumo.get(f.insumoId)
+    if (!r) {
+      r = { insumoId: f.insumoId, total: 0, salonesContados: 0, detalle: [] }
+      porInsumo.set(f.insumoId, r)
+    }
+    r.total += f.cantidad
+    r.salonesContados += 1
+    r.detalle.push({ salon: f.salon, cantidad: f.cantidad, por: f.actualizadoPor, en: f.actualizadoEn })
+  }
+  return [...porInsumo.values()]
+}
