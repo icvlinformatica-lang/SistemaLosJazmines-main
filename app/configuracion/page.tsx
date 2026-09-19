@@ -27,10 +27,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { SalonesNombresCard } from "@/components/salones-nombres-card"
 import { PERFILES } from "@/lib/profile-context"
+import { StockSesionDetalleDialog } from "@/components/stock-sesion-detalle-dialog"
 
 type ActivityEntry = {
   id: string
-  tipo: "insumo" | "insumo_barra" | "receta" | "coctel" | "evento"
+  tipo: "insumo" | "insumo_barra" | "receta" | "coctel" | "evento" | "stock_sesion"
   accion: "creado" | "eliminado" | "modificado" | "planificado"
   nombre: string
   detalle?: string
@@ -49,6 +50,7 @@ const TIPO_LABELS: Record<string, string> = {
   vendedor: "Vendedor",
   caja: "Caja",
   servicio: "Servicio",
+  stock_sesion: "Stock por salón",
 }
 
 const ACCION_ICON: Record<string, React.ReactNode> = {
@@ -79,6 +81,7 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   vendedor: <UserCheck className="h-4 w-4 text-teal-600" />,
   caja: <Wallet className="h-4 w-4 text-red-600" />,
   servicio: <ClipboardList className="h-4 w-4 text-indigo-600" />,
+  stock_sesion: <ClipboardList className="h-4 w-4 text-emerald-600" />,
 }
 
 export default function ConfiguracionPage() {
@@ -118,6 +121,8 @@ export default function ConfiguracionPage() {
 
   // Activity log state
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([])
+  // Detalle de una carga de Stock por salón (el id de actividad = id de la sesión).
+  const [sesionStockAbierta, setSesionStockAbierta] = useState<string | null>(null)
   const [isLoadingActivity, setIsLoadingActivity] = useState(true)
   const [activitySearch, setActivitySearch] = useState("")
   const activitySearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -865,6 +870,15 @@ export default function ConfiguracionPage() {
                         {entry.detalle && (
                           <p className="text-xs text-muted-foreground mt-0.5">{entry.detalle}</p>
                         )}
+                        {entry.tipo === "stock_sesion" && (
+                          <button
+                            type="button"
+                            onClick={() => setSesionStockAbierta(entry.id)}
+                            className="mt-1 text-xs font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-900"
+                          >
+                            Ver detalle
+                          </button>
+                        )}
                       </div>
                       <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 pt-0.5">
                         {formatActivityTime(entry.created_at)}
@@ -876,6 +890,8 @@ export default function ConfiguracionPage() {
             )}
           </CardContent>
         </Card>
+
+        <StockSesionDetalleDialog sesionId={sesionStockAbierta} onClose={() => setSesionStockAbierta(null)} />
 
         {/* Nombres de Salones */}
         <SalonesNombresCard />
