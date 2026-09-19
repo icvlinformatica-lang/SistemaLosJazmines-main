@@ -117,10 +117,13 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
       children: [
         { href: "/admin/almacen", label: "Insumos Cocina", icon: Warehouse },
         { href: "/admin/barra", label: "Insumos Bebidas", icon: GlassWater },
-        // Conteo físico por salón (cargan Cocina/Barra/Administración) y su
-        // vista consolidada (solo Administración/Soporte, ver rutas del perfil).
-        { href: "/stock", label: "Stock por salón", icon: ClipboardList },
-        { href: "/admin/stock-salones", label: "Stock consolidado", icon: Table2 },
+        // Carga del conteo físico por salón. Este mismo menú es el que usa
+        // Barra (no tiene menú propio): para Barra es su acceso de carga. Se
+        // oculta solo para Administración/Soporte, que ven todo en "Stock";
+        // /stock sigue accesible por URL (sirve para corregir una carga).
+        ...(tieneAccesoTotal ? [] : [{ href: "/stock", label: "Stock por salón", icon: ClipboardList }]),
+        // Vista consolidada (solo Administración/Soporte, ver rutas del perfil).
+        { href: "/admin/stock-salones", label: "Stock", icon: Table2 },
       ],
     },
     {
