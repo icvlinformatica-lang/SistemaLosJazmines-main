@@ -105,7 +105,7 @@ export default function StockConsolidadoPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-            <Table2 className="h-6 w-6" /> Stock consolidado por salón
+            <Table2 className="h-6 w-6" /> Stock
           </h1>
           <p className="text-sm text-muted-foreground">Lo que Cocina y Barra contaron en cada salón.</p>
         </div>
