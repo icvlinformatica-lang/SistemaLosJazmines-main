@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { StockContadoCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,9 @@ const NUEVOS_INSUMOS = new Set([
 
 function BarraAlmacenContent() {
   const { insumosBarra, loading: isLoading, addInsumoBarra, updateInsumoBarra, deleteInsumoBarra } = useStore()
+  // Conteo físico por salón (solo lectura, solo Administración/Soporte).
+  // Independiente de stockActual, que se sigue mostrando y editando igual.
+  const stockContado = useStockContadoSalones("barra")
   const [searchTerm, setSearchTerm] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaInsumoBarra | "Todos">("Todos")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -289,6 +293,7 @@ function BarraAlmacenContent() {
           </div>
         </CardHeader>
         <CardContent>
+          {(stockContado.visible || stockContado.error) && <StockContadoNota error={stockContado.error} />}
           <div className="overflow-x-auto">
           <div className="rounded-lg border">
             <Table>
@@ -299,6 +304,7 @@ function BarraAlmacenContent() {
                   <TableHead className="w-[100px]">Categoria</TableHead>
                   <TableHead className="w-[80px]">Unidad</TableHead>
                   <TableHead className="w-[100px] text-right">Stock</TableHead>
+                  {stockContado.visible && <TableHead className="w-[170px] text-right">Contado en salones</TableHead>}
                   <TableHead className="w-[120px] text-right">Precio Unit.</TableHead>
                   <TableHead className="w-[100px]" />
                 </TableRow>
@@ -306,7 +312,7 @@ function BarraAlmacenContent() {
               <TableBody>
                 {filteredInsumos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={stockContado.visible ? 8 : 7} className="h-24 text-center text-muted-foreground">
                       No se encontraron insumos de barra
                     </TableCell>
                   </TableRow>
@@ -318,6 +324,15 @@ function BarraAlmacenContent() {
                       <TableCell className="text-sm text-muted-foreground">{insumo.categoria}</TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
+                      {stockContado.visible && (
+                        <TableCell className="text-right">
+                          <StockContadoCelda
+                            resumen={stockContado.porInsumo.get(insumo.id)}
+                            unidad={insumo.unidad}
+                            salones={stockContado.salones}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">{formatCurrency(insumo.precioUnitario)}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1">

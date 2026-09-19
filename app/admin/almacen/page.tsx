@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { StockContadoCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,9 @@ type SortDir = "asc" | "desc"
 
 function AlmacenContent() {
   const { insumos, recetas, loading: isLoading, addInsumo, updateInsumo, deleteInsumo } = useStore()
+  // Conteo físico por salón (solo lectura, solo Administración/Soporte).
+  // Independiente de stockActual, que se sigue mostrando y editando igual.
+  const stockContado = useStockContadoSalones("cocina")
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<SortField>("codigo")
@@ -375,6 +379,7 @@ function AlmacenContent() {
           </div>
         </CardHeader>
         <CardContent>
+          {(stockContado.visible || stockContado.error) && <StockContadoNota error={stockContado.error} />}
           <div className="overflow-x-auto">
           <div className="rounded-lg border">
             <Table>
@@ -384,6 +389,7 @@ function AlmacenContent() {
                   <TableHead>Descripción</TableHead>
                   <TableHead className="w-[80px]">Unidad</TableHead>
                   <TableHead className="w-[100px] text-right">Stock</TableHead>
+                  {stockContado.visible && <TableHead className="w-[170px] text-right">Contado en salones</TableHead>}
                   <TableHead className="w-[120px] text-right">Precio Unit.</TableHead>
                   <TableHead className="w-[130px]">Proveedor</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
@@ -392,7 +398,7 @@ function AlmacenContent() {
               <TableBody>
                 {filteredInsumos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={stockContado.visible ? 8 : 7} className="h-24 text-center text-muted-foreground">
                       No se encontraron insumos
                     </TableCell>
                   </TableRow>
@@ -403,6 +409,15 @@ function AlmacenContent() {
                       <TableCell className="font-medium">{insumo.descripcion}</TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
+                      {stockContado.visible && (
+                        <TableCell className="text-right">
+                          <StockContadoCelda
+                            resumen={stockContado.porInsumo.get(insumo.id)}
+                            unidad={insumo.unidad}
+                            salones={stockContado.salones}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">{formatCurrency(insumo.precioUnitario)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{insumo.proveedor || "-"}</TableCell>
                       <TableCell>
