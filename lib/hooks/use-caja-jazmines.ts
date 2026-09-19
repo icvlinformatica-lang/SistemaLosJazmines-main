@@ -51,6 +51,8 @@ export interface GastoVariable {
   esComision?: boolean
   /** Carpeta elegida al agendar el gasto: "comisiones", "varios" (default) o una creada por el usuario. */
   carpeta?: string
+  /** Quién cargó el gasto (Diego, Leila, Ricky, Aylin, Salón, Soporte). Vacío en gastos viejos. */
+  cargadoPor?: string
   /** Detalle de la comisión: quién comisionó, sobre qué evento y con qué % */
   comisionDetalle?: {
     vendedor: string
@@ -528,6 +530,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           monto: c.monto,
           estado,
           carpeta: c.categoria || "varios",
+          cargadoPor: c.cargadoPor || undefined,
         } as GastoVariable
       })
 

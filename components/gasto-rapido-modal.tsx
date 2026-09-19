@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonLabel, generateId, type DistribucionSalon } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salones-editor"
-import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
+import { cambiarDiaResumen, fechaArgentina, fechaResumenValida } from "@/lib/resumen-fecha"
 import { usuarioActivo } from "@/lib/profile-context"
 import type { GastoVariable } from "@/lib/hooks/use-caja-jazmines"
 import { Plus, ChevronLeft, ChevronRight, CalendarDays, Sparkles } from "lucide-react"
@@ -127,7 +127,10 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
   // Muestra lo que se fue cargando (gastos agendados + retiros) el día
   // elegido, con flechas para viajar en el tiempo (mismo patrón que el
   // selector de fecha de Resumen diario).
-  const hoyPanelISO = new Date().toISOString().slice(0, 10)
+  // Días en hora argentina (no UTC): con toISOString() el panel pasaba al
+  // día siguiente a las 21:00 y un gasto cargado a la noche aparecía en el
+  // día equivocado.
+  const hoyPanelISO = fechaArgentina()
   const [fechaPanel, setFechaPanel] = useState<string | null>(null)
   const fechaPanelActual = fechaPanel ?? hoyPanelISO
 
@@ -137,9 +140,11 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
   }, [open])
 
   const gastosDelPanel: ItemDelDia[] = (state.costosOperativos || [])
-    .filter((c) => c.esVariable && c.createdAt && c.createdAt.slice(0, 10) === fechaPanelActual)
+    .filter((c) => c.esVariable && c.createdAt && fechaArgentina(new Date(c.createdAt)) === fechaPanelActual)
     .flatMap((c) => {
-      const hora = c.createdAt ? new Date(c.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : null
+      const hora = c.createdAt
+        ? new Date(c.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Buenos_Aires" })
+        : null
       const dist = (c.distribucion || []).filter((d) => d && d.salon && d.porcentaje > 0)
       if (!salonActual) {
         return [{
@@ -219,7 +224,9 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     if (!monto || monto <= 0 || !concepto || !salon) return
 
     const hoyISO = new Date().toISOString()
-    const fechaCorta = hoyISO.slice(0, 10)
+    // Fecha del retiro en hora argentina: hoyISO.slice(0, 10) daba el día
+    // siguiente para retiros hechos después de las 21:00.
+    const fechaCorta = fechaArgentina()
     const conceptoMov = `Retiro - ${concepto}`
 
     const saldoPrev = (state.movimientosCaja ?? [])
