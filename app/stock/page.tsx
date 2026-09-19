@@ -3,13 +3,17 @@
 // Stock por salón — pantalla de carga del conteo físico de insumos que
 // quedaron en un salón al terminar un evento. La usan Cocina (solo insumos
 // de cocina), Barra (solo insumos de barra) y Administración/Soporte (los
-// dos). El servidor vuelve a controlar el perfil real al guardar.
+// dos), de madrugada y desde el celular. El servidor vuelve a controlar el
+// perfil real al guardar.
 //
-// Pasos: elegir salón → menú (Calendario actual / Carga de insumos, con el
-// aviso de evento terminado) → nombre de quien carga → carga.
-// La sesión se confirma TODA junta (ver /api/stock-salones/sesiones): nada
-// se guarda insumo por insumo. Esto NO toca el stock global (stock_actual)
-// de /admin/almacen ni /admin/barra.
+// Flujo: elegir salón → menú (Calendario actual / Carga de insumos, con el
+// aviso de evento terminado) → carga. La carga muestra TODOS los insumos del
+// sector con su casillero: se escribe el número y listo (1 paso por
+// insumo). Al confirmar se envían SOLO los que tienen un número escrito
+// (ver itemsParaEnviar en lib/stock-carga.ts): vacío = no contado, nunca 0.
+// El nombre de quien carga se pide en el diálogo de confirmación.
+// La sesión se confirma TODA junta (ver /api/stock-salones/sesiones). Esto
+// NO toca el stock global (stock_actual) de /admin/almacen ni /admin/barra.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
@@ -17,6 +21,7 @@ import { useStore } from "@/lib/store-context"
 import { useProfile, usuarioActivo } from "@/lib/profile-context"
 import { salonLabel } from "@/lib/store"
 import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+import { insumosVisibles, itemsParaEnviar, type InsumoCarga } from "@/lib/stock-carga"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { ConfirmAction } from "@/components/confirm-action"
@@ -24,21 +29,18 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
 import {
-  ArrowLeft,
-  CalendarDays,
-  ChefHat,
-  ClipboardList,
-  Loader2,
-  PartyPopper,
-  Plus,
-  Search,
-  Trash2,
-  Wine,
-} from "lucide-react"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { useToast } from "@/hooks/use-toast"
+import { ArrowLeft, CalendarDays, ChefHat, ChevronDown, Loader2, PartyPopper, Search, Wine } from "lucide-react"
 
-type Paso = "salon" | "menu" | "nombre" | "carga"
+type Paso = "salon" | "menu" | "carga"
 
 interface SaldoSalon {
   cantidad: number
@@ -49,13 +51,6 @@ interface SaldoSalon {
 interface EstadoSector {
   eventoPendiente: { id: string; nombre: string; fin: string } | null
   saldos: Record<string, SaldoSalon>
-}
-
-interface ItemCarga {
-  insumoId: string
-  descripcion: string
-  unidad: string
-  cantidad: string
 }
 
 const SECTOR_LABEL: Record<SectorStock, string> = { cocina: "cocina", barra: "barra" }
@@ -75,14 +70,6 @@ function fmtFechaHora(iso: string): string {
   })
 }
 
-/** Acepta coma o punto decimal. NaN si no es un número válido >= 0. */
-function parseCantidad(v: string): number {
-  const t = v.trim().replace(",", ".")
-  if (!t) return Number.NaN
-  const n = Number(t)
-  return Number.isFinite(n) && n >= 0 ? n : Number.NaN
-}
-
 export default function StockPorSalonPage() {
   const { state } = useStore()
   const { perfilActivo } = useProfile()
@@ -97,10 +84,16 @@ export default function StockPorSalonPage() {
 
   const [nombre, setNombre] = useState("")
   const [sesion, setSesion] = useState<{ id: string; iniciadaEn: string } | null>(null)
-  const [items, setItems] = useState<ItemCarga[]>([])
+  // Lo escrito en cada casillero: insumoId → texto. Vacío = no contado.
+  const [valores, setValores] = useState<Record<string, string>>({})
   const [busqueda, setBusqueda] = useState("")
+  // Cocina: "Los que ya conté acá" (true) o "Todos" (false).
+  const [soloContados, setSoloContados] = useState(false)
+  // Barra: categorías plegadas.
+  const [plegadas, setPlegadas] = useState<Set<string>>(new Set())
+  const [confirmando, setConfirmando] = useState(false)
   const [guardando, setGuardando] = useState(false)
-  const inputsRef = useRef<Record<string, HTMLInputElement | null>>({})
+  const inputsRef = useRef<Map<string, HTMLInputElement>>(new Map())
 
   const cargarEstados = useCallback(
     async (salonElegido: string) => {
@@ -124,31 +117,48 @@ export default function StockPorSalonPage() {
     [sectores.join(",")],
   )
 
+  const { items: itemsValidos, invalidos } = useMemo(() => itemsParaEnviar(valores), [valores])
+  const hayAlgoEscrito = Object.values(valores).some((v) => v.trim())
+
   // Aviso al cerrar/recargar la pestaña con una carga sin confirmar.
   useEffect(() => {
-    if (paso !== "carga" || items.length === 0) return
+    if (paso !== "carga" || !hayAlgoEscrito) return
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault()
       e.returnValue = ""
     }
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
-  }, [paso, items.length])
+  }, [paso, hayAlgoEscrito])
 
-  const catalogo = useMemo(() => {
+  const catalogo: InsumoCarga[] = useMemo(() => {
     if (sector === "cocina") return (state.insumos || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad }))
-    if (sector === "barra") return (state.insumosBarra || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad }))
+    if (sector === "barra")
+      return (state.insumosBarra || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad, categoria: i.categoria }))
     return []
   }, [sector, state.insumos, state.insumosBarra])
 
-  const resultadosBusqueda = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
-    if (!q) return []
-    const yaAgregados = new Set(items.map((i) => i.insumoId))
-    return catalogo
-      .filter((c) => !yaAgregados.has(c.id) && c.descripcion.toLowerCase().includes(q))
-      .slice(0, 12)
-  }, [busqueda, catalogo, items])
+  const saldos = (sector && estados[sector]?.saldos) || {}
+  const contados = useMemo(() => new Set(Object.keys(saldos)), [saldos])
+
+  const visibles = useMemo(
+    () => insumosVisibles(catalogo, { busqueda, soloContados: sector === "cocina" && soloContados, contados, valores }),
+    [catalogo, busqueda, soloContados, sector, contados, valores],
+  )
+
+  // Barra: secciones por categoría (Otros al final).
+  const grupos = useMemo(() => {
+    if (sector !== "barra") return [{ clave: "", items: visibles }]
+    const m = new Map<string, InsumoCarga[]>()
+    for (const i of visibles) {
+      const c = i.categoria || "Otros"
+      if (!m.has(c)) m.set(c, [])
+      m.get(c)!.push(i)
+    }
+    return [...m.entries()]
+      .sort(([a], [b]) => (a === "Otros" ? 1 : b === "Otros" ? -1 : a.localeCompare(b, "es")))
+      .map(([clave, items]) => ({ clave, items }))
+  }, [sector, visibles])
 
   if (sectores.length === 0) {
     return (
@@ -174,34 +184,28 @@ export default function StockPorSalonPage() {
   }
 
   const estadoSector = sector ? estados[sector] : undefined
-  const saldos = estadoSector?.saldos || {}
 
   const empezarCarga = (s: SectorStock) => {
     setSector(s)
     setNombre((prev) => prev || usuarioActivo())
-    setPaso("nombre")
-  }
-
-  const confirmarNombre = () => {
-    if (!nombre.trim()) return
     setSesion({ id: crypto.randomUUID(), iniciadaEn: new Date().toISOString() })
-    setItems([])
+    setValores({})
     setBusqueda("")
+    setPlegadas(new Set())
+    // Cocina: si el salón ya tiene conteos, arranca mostrando solo esos; si
+    // no, "Todos" (si no, la lista aparecería vacía).
+    setSoloContados(Object.keys(estados[s]?.saldos || {}).length > 0)
     setPaso("carga")
   }
 
-  const agregarItem = (c: { id: string; descripcion: string; unidad: string }) => {
-    setItems((prev) => [...prev, { insumoId: c.id, descripcion: c.descripcion, unidad: c.unidad, cantidad: "" }])
-    setBusqueda("")
-    // Llevar el foco directo al campo de cantidad del insumo recién agregado.
-    setTimeout(() => inputsRef.current[c.id]?.focus(), 50)
+  const salirDeCarga = () => {
+    setValores({})
+    setSesion(null)
+    setPaso("menu")
   }
 
-  const itemsInvalidos = items.filter((i) => Number.isNaN(parseCantidad(i.cantidad)))
-  const puedeConfirmar = items.length > 0 && itemsInvalidos.length === 0 && !guardando
-
   const confirmarSesion = async () => {
-    if (!sesion || !sector || !puedeConfirmar) return
+    if (!sesion || !sector || itemsValidos.length === 0 || invalidos.length > 0 || !nombre.trim() || guardando) return
     setGuardando(true)
     try {
       const res = await fetch("/api/stock-salones/sesiones", {
@@ -214,12 +218,13 @@ export default function StockPorSalonPage() {
           cargadoPor: nombre.trim(),
           eventoId: estadoSector?.eventoPendiente?.id || null,
           iniciadaEn: sesion.iniciadaEn,
-          items: items.map((i) => ({ insumoId: i.insumoId, cantidad: parseCantidad(i.cantidad) })),
+          // SOLO lo que tiene un número escrito (vacío = no contado).
+          items: itemsValidos,
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data?.ok) {
-        // La lista queda intacta y el mismo sesionId permite reintentar sin duplicar.
+        // Lo escrito queda intacto y el mismo sesionId permite reintentar sin duplicar.
         toast({
           title: "No se guardó la carga",
           description: data?.error || "Revisá la conexión y volvé a intentar. No se guardó nada.",
@@ -229,16 +234,15 @@ export default function StockPorSalonPage() {
       }
       toast({
         title: "Carga guardada",
-        description: `${items.length} ${items.length === 1 ? "insumo" : "insumos"} de ${SECTOR_LABEL[sector]} en ${salonLabel(salon)}.`,
+        description: `${itemsValidos.length} ${itemsValidos.length === 1 ? "insumo" : "insumos"} de ${SECTOR_LABEL[sector]} en ${salonLabel(salon)}.`,
       })
-      setItems([])
-      setSesion(null)
-      setPaso("menu")
+      setConfirmando(false)
+      salirDeCarga()
       cargarEstados(salon)
     } catch {
       toast({
         title: "No se guardó la carga",
-        description: "Se cortó la conexión. Tu lista sigue acá: volvé a intentar.",
+        description: "Se cortó la conexión. Lo que escribiste sigue acá: volvé a intentar.",
         variant: "destructive",
       })
     } finally {
@@ -246,27 +250,46 @@ export default function StockPorSalonPage() {
     }
   }
 
+  // Enter → siguiente casillero visible (carga rápida sin tocar la pantalla).
+  const irAlSiguiente = (insumoId: string) => {
+    const orden = grupos.filter((g) => !plegadas.has(g.clave)).flatMap((g) => g.items.map((i) => i.id))
+    const idx = orden.indexOf(insumoId)
+    const siguiente = idx >= 0 ? orden[idx + 1] : undefined
+    if (siguiente) inputsRef.current.get(siguiente)?.focus()
+    else inputsRef.current.get(insumoId)?.blur()
+  }
+
   const encabezado = (
     <div className="flex items-center gap-3">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-9 w-9 shrink-0"
-        aria-label="Volver"
-        onClick={() => {
-          if (paso === "menu") setPaso("salon")
-          else if (paso === "nombre") setPaso("menu")
-        }}
-        disabled={paso === "carga"}
-      >
-        <ArrowLeft className="h-4 w-4" />
-      </Button>
+      {paso === "menu" ? (
+        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Volver a elegir salón" onClick={() => setPaso("salon")}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+      ) : hayAlgoEscrito ? (
+        <ConfirmAction
+          title="¿Salir sin guardar?"
+          description="Se descarta lo que escribiste. No se guarda nada."
+          confirmLabel="Sí, salir"
+          destructive
+          onConfirm={salirDeCarga}
+        >
+          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Volver" disabled={guardando}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </ConfirmAction>
+      ) : (
+        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Volver" onClick={salirDeCarga}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+      )}
       <div className="min-w-0">
         <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
           <SalonDot salon={salon} size={10} />
           {salonLabel(salon)}
         </h1>
-        <p className="text-xs text-muted-foreground">Stock por salón</p>
+        <p className="text-xs text-muted-foreground">
+          {paso === "carga" && sector ? `Carga de ${SECTOR_LABEL[sector]}` : "Stock por salón"}
+        </p>
       </div>
     </div>
   )
@@ -313,7 +336,7 @@ export default function StockPorSalonPage() {
             const Icon = SECTOR_ICON[s]
             const conAviso = !!estados[s]?.eventoPendiente
             return (
-              <button key={s} type="button" onClick={() => empezarCarga(s)} className="block text-left">
+              <button key={s} type="button" onClick={() => empezarCarga(s)} className="block text-left" disabled={cargandoEstado}>
                 <Card className={`h-full transition-colors hover:border-foreground/40 ${conAviso ? "border-emerald-400" : ""}`}>
                   <CardContent className="flex items-center gap-3 p-4">
                     <Icon className={`h-5 w-5 ${conAviso ? "text-emerald-600" : "text-muted-foreground"}`} />
@@ -333,168 +356,200 @@ export default function StockPorSalonPage() {
     )
   }
 
-  // ── Paso 3: nombre de quien carga ───────────────────────────────────────
-  if (paso === "nombre") {
-    return (
-      <div className="mx-auto max-w-md space-y-5 p-4 sm:p-6">
+  // ── Paso 3: carga (lista completa con casillero) ────────────────────────
+  const hayConteosPrevios = contados.size > 0
+  return (
+    <div className="mx-auto max-w-2xl p-4 pb-0 sm:p-6 sm:pb-0">
+      <div className="space-y-4 pb-4">
         {encabezado}
-        <Card>
-          <CardContent className="space-y-3 p-4">
+
+        {estadoSector?.eventoPendiente ? (
+          <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+            <PartyPopper className="h-4 w-4 shrink-0 text-emerald-700" />
+            Después del evento de {estadoSector.eventoPendiente.nombre}
+          </p>
+        ) : null}
+
+        <p className="text-xs text-muted-foreground">
+          Escribí cuánto quedó de cada insumo que contaste. Lo que dejes vacío no se guarda (no es cero). Si contaste y no
+          queda nada, escribí 0.
+        </p>
+
+        {/* Buscador: SOLO filtra la lista visible, no agrega nada. */}
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Filtrar insumos..."
+            className="pl-9"
+            aria-label="Filtrar insumos"
+          />
+        </div>
+
+        {/* Cocina (sin categorías): "Los que ya conté acá" / "Todos". */}
+        {sector === "cocina" && (
+          <div className="inline-flex rounded-lg border p-1" role="group" aria-label="Qué insumos mostrar">
+            {[
+              { v: true, label: "Los que ya conté acá", disabled: !hayConteosPrevios },
+              { v: false, label: "Todos", disabled: false },
+            ].map((op) => (
+              <button
+                key={op.label}
+                type="button"
+                disabled={op.disabled}
+                onClick={() => setSoloContados(op.v)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                  soloContados === op.v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {op.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {visibles.length === 0 ? (
+          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            No hay insumos que coincidan.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {grupos.map((g) => {
+              const plegada = !!g.clave && plegadas.has(g.clave) && !busqueda.trim()
+              const escritosEnGrupo = g.items.filter((i) => (valores[i.id] || "").trim()).length
+              return (
+                <div key={g.clave || "todos"}>
+                  {g.clave ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlegadas((prev) => {
+                          const n = new Set(prev)
+                          if (n.has(g.clave)) n.delete(g.clave)
+                          else n.add(g.clave)
+                          return n
+                        })
+                      }
+                      className="mb-1.5 flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm font-semibold"
+                      aria-expanded={!plegada}
+                    >
+                      <ChevronDown className={`h-4 w-4 transition-transform ${plegada ? "-rotate-90" : ""}`} />
+                      {g.clave}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        ({g.items.length}
+                        {escritosEnGrupo > 0 ? ` · ${escritosEnGrupo} cargados` : ""})
+                      </span>
+                    </button>
+                  ) : null}
+                  {!plegada && (
+                    <div className="divide-y rounded-lg border bg-card">
+                      {g.items.map((it) => {
+                        const previo = saldos[it.id]
+                        const texto = valores[it.id] || ""
+                        const invalido = invalidos.includes(it.id)
+                        return (
+                          <div key={it.id} className="flex items-center gap-3 px-3 py-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium">{it.descripcion}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {previo
+                                  ? `antes: ${fmtCantidad(previo.cantidad)} (${previo.actualizadoPor || "sin nombre"}, ${fmtFechaHora(previo.actualizadoEn)})`
+                                  : "—"}
+                              </p>
+                            </div>
+                            <Input
+                              ref={(el) => {
+                                if (el) inputsRef.current.set(it.id, el)
+                                else inputsRef.current.delete(it.id)
+                              }}
+                              inputMode="decimal"
+                              enterKeyHint="next"
+                              value={texto}
+                              onChange={(e) => setValores((prev) => ({ ...prev, [it.id]: e.target.value }))}
+                              onFocus={(e) => {
+                                // Que el teclado del celular no tape el casillero en uso.
+                                const el = e.currentTarget
+                                setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 250)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault()
+                                  irAlSiguiente(it.id)
+                                }
+                              }}
+                              className={`h-10 w-24 shrink-0 text-right ${invalido ? "border-red-500 focus-visible:ring-red-500" : texto.trim() ? "border-emerald-500" : ""}`}
+                              aria-label={`Cantidad de ${it.descripcion} en ${it.unidad}`}
+                              aria-invalid={invalido}
+                            />
+                            <span className="w-8 shrink-0 text-xs font-medium text-muted-foreground">{it.unidad}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Barra de confirmación fija abajo, siempre visible. */}
+      <div className="sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm">
+            {invalidos.length > 0 ? (
+              <span className="font-medium text-red-600">
+                Revisá {invalidos.length} {invalidos.length === 1 ? "cantidad" : "cantidades"} (en rojo)
+              </span>
+            ) : (
+              <>
+                <span className="font-semibold">{itemsValidos.length}</span>{" "}
+                {itemsValidos.length === 1 ? "insumo cargado" : "insumos cargados"}
+              </>
+            )}
+          </p>
+          <Button disabled={itemsValidos.length === 0 || invalidos.length > 0 || guardando} onClick={() => setConfirmando(true)}>
+            Confirmar carga
+          </Button>
+        </div>
+      </div>
+
+      {/* Diálogo final: resumen + nombre de quien carga (obligatorio). */}
+      <Dialog open={confirmando} onOpenChange={(o) => !guardando && setConfirmando(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Confirmar la carga?</DialogTitle>
+            <DialogDescription>
+              Se guardan {itemsValidos.length} {itemsValidos.length === 1 ? "insumo" : "insumos"} de{" "}
+              {sector ? SECTOR_LABEL[sector] : ""} en {salonLabel(salon)}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
             <Label htmlFor="nombre-carga">¿Quién hace la carga?</Label>
             <Input
               id="nombre-carga"
-              autoFocus
               value={nombre}
               maxLength={60}
               placeholder="Tu nombre"
               onChange={(e) => setNombre(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") confirmarNombre()
+                if (e.key === "Enter") confirmarSesion()
               }}
             />
-            <Button className="w-full" disabled={!nombre.trim()} onClick={confirmarNombre}>
-              Empezar carga de {sector ? SECTOR_LABEL[sector] : ""}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // ── Paso 4: carga de insumos ────────────────────────────────────────────
-  const Icono = sector ? SECTOR_ICON[sector] : ClipboardList
-  return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 sm:p-6">
-      {encabezado}
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-        <span className="flex items-center gap-1.5 font-semibold">
-          <Icono className="h-4 w-4" /> Carga de {sector ? SECTOR_LABEL[sector] : ""}
-        </span>
-        <span className="text-muted-foreground">· carga {nombre.trim()}</span>
-      </div>
-
-      {/* Buscador sobre el catálogo del sector (nunca se mezclan cocina y barra) */}
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder={`Buscar insumo de ${sector ? SECTOR_LABEL[sector] : ""}...`}
-          className="pl-9"
-          aria-label="Buscar insumo"
-        />
-        {resultadosBusqueda.length > 0 && (
-          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border bg-popover shadow-md">
-            {resultadosBusqueda.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => agregarItem(c)}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-              >
-                <span className="truncate">{c.descripcion}</span>
-                <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                  {c.unidad}
-                  <Plus className="h-3.5 w-3.5" />
-                </span>
-              </button>
-            ))}
           </div>
-        )}
-        {busqueda.trim() && resultadosBusqueda.length === 0 && (
-          <p className="mt-1 text-xs text-muted-foreground">No hay insumos que coincidan (o ya están en la lista).</p>
-        )}
-      </div>
-
-      {/* Lista de la sesión */}
-      {items.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Buscá un insumo y agregalo para cargar cuánto quedó.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((it) => {
-            const previo = saldos[it.insumoId]
-            const invalido = it.cantidad.trim() !== "" && Number.isNaN(parseCantidad(it.cantidad))
-            return (
-              <div key={it.insumoId} className="flex items-center gap-3 rounded-lg border bg-card p-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{it.descripcion}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {previo
-                      ? `Antes: ${fmtCantidad(previo.cantidad)} ${it.unidad} (${previo.actualizadoPor || "sin nombre"}, ${fmtFechaHora(previo.actualizadoEn)})`
-                      : "Primera vez que se cuenta en este salón"}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Input
-                    ref={(el) => {
-                      inputsRef.current[it.insumoId] = el
-                    }}
-                    inputMode="decimal"
-                    value={it.cantidad}
-                    onChange={(e) =>
-                      setItems((prev) => prev.map((p) => (p.insumoId === it.insumoId ? { ...p, cantidad: e.target.value } : p)))
-                    }
-                    placeholder="0"
-                    className={`h-9 w-24 text-right ${invalido ? "border-red-500" : ""}`}
-                    aria-label={`Cantidad de ${it.descripcion} en ${it.unidad}`}
-                  />
-                  <span className="w-8 text-xs font-medium text-muted-foreground">{it.unidad}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-red-600"
-                    aria-label={`Sacar ${it.descripcion} de la lista`}
-                    onClick={() => setItems((prev) => prev.filter((p) => p.insumoId !== it.insumoId))}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
-        {items.length > 0 ? (
-          <ConfirmAction
-            title="¿Salir sin guardar?"
-            description="Se descarta la lista cargada. No se guarda nada."
-            confirmLabel="Sí, salir"
-            destructive
-            onConfirm={() => {
-              setItems([])
-              setSesion(null)
-              setPaso("menu")
-            }}
-          >
-            <Button variant="outline" disabled={guardando}>Cancelar</Button>
-          </ConfirmAction>
-        ) : (
-          <Button variant="outline" onClick={() => setPaso("menu")}>
-            Cancelar
-          </Button>
-        )}
-
-        <ConfirmAction
-          title="¿Confirmar la carga?"
-          description={`Se guardan ${items.length} ${items.length === 1 ? "insumo" : "insumos"} de ${sector ? SECTOR_LABEL[sector] : ""} en ${salonLabel(salon)}, a nombre de ${nombre.trim()}.`}
-          confirmLabel="Sí, guardar"
-          onConfirm={confirmarSesion}
-        >
-          <Button disabled={!puedeConfirmar}>
-            {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {guardando
-              ? "Guardando..."
-              : itemsInvalidos.length > 0 && items.length > 0
-                ? `Faltan cantidades (${itemsInvalidos.length})`
-                : `Confirmar carga (${items.length})`}
-          </Button>
-        </ConfirmAction>
-      </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmando(false)} disabled={guardando}>
+              Seguir cargando
+            </Button>
+            <Button onClick={confirmarSesion} disabled={!nombre.trim() || guardando}>
+              {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {guardando ? "Guardando..." : "Sí, guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
