@@ -28,6 +28,7 @@ import {
   Bell,
   Lock,
   ClipboardList,
+  Table2,
   BarChart2,
   Archive,
   Wallet,
@@ -87,6 +88,7 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
       { href: "/admin/recetario", label: "Recetas", icon: ChefHat },
       { href: "/admin/almacen", label: "Insumos", icon: Warehouse },
       { href: "/eventos/produccion", label: "Proximos eventos", icon: Calendar },
+      { href: "/stock", label: "Stock por salón", icon: ClipboardList },
     ]
   }
 
@@ -115,6 +117,10 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
       children: [
         { href: "/admin/almacen", label: "Insumos Cocina", icon: Warehouse },
         { href: "/admin/barra", label: "Insumos Bebidas", icon: GlassWater },
+        // Conteo físico por salón (cargan Cocina/Barra/Administración) y su
+        // vista consolidada (solo Administración/Soporte, ver rutas del perfil).
+        { href: "/stock", label: "Stock por salón", icon: ClipboardList },
+        { href: "/admin/stock-salones", label: "Stock consolidado", icon: Table2 },
       ],
     },
     {

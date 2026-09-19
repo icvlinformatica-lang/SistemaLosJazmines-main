@@ -14,11 +14,14 @@ export function SalonSelectorOverlay({
   titulo,
   onSelect,
   children,
+  sinTodos = false,
 }: {
   titulo: string
   onSelect: (salon: string) => void
   /** Contenido extra debajo de los salones (ej: buscador de eventos). */
   children?: React.ReactNode
+  /** Oculta "Todos los salones" (ej. Stock por salón: hay que elegir uno). */
+  sinTodos?: boolean
 }) {
   const { state } = useStore()
   const config = state.configuracionCajas
@@ -30,7 +33,7 @@ export function SalonSelectorOverlay({
       color: salonColor(salon, config),
       Icon: salonIcono(salon, config),
     })),
-    { id: "todos", nombre: "Todos los salones", color: SALON_COLOR_GENERAL, Icon: IconoTodos },
+    ...(sinTodos ? [] : [{ id: "todos", nombre: "Todos los salones", color: SALON_COLOR_GENERAL, Icon: IconoTodos }]),
   ]
 
   return (

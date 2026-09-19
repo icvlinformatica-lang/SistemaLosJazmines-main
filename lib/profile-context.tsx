@@ -51,7 +51,7 @@ export const PERFILES: Perfil[] = [
     color: VERDE_EVENTO,
     icon: ChefHat,
     iconColor: CREMA,
-    rutas: ["/admin/almacen", "/admin/recetario", "/eventos/produccion"],
+    rutas: ["/admin/almacen", "/admin/recetario", "/eventos/produccion", "/stock"],
   },
   {
     id: "barra",
@@ -60,7 +60,7 @@ export const PERFILES: Perfil[] = [
     color: VERDE_EVENTO,
     icon: Wine,
     iconColor: CREMA,
-    rutas: ["/admin/barra", "/admin/cocteles", "/eventos/produccion"],
+    rutas: ["/admin/barra", "/admin/cocteles", "/eventos/produccion", "/stock"],
   },
   {
     id: "administracion",

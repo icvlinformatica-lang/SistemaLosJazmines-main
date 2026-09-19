@@ -37,7 +37,7 @@ import {
   ArrowRight,
   RefreshCw,
 } from "lucide-react"
-import { salonLabel, type EventoGuardado } from "@/lib/store"
+import { SALONES, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { cn } from "@/lib/utils"
@@ -83,6 +83,16 @@ export default function ProduccionPage() {
   // Selector de salón estilo perfiles al entrar a la página
   const [selectorAbierto, setSelectorAbierto] = useState(true)
   const [filtroSalon, setFiltroSalon] = useState<string>("todos")
+
+  // Entrada directa a un salón (?salon=Casona), ej. desde "Calendario
+  // actual" en Stock por salón: se saltea el selector.
+  useEffect(() => {
+    const salon = new URLSearchParams(window.location.search).get("salon")
+    if (salon && (SALONES as readonly string[]).includes(salon)) {
+      setFiltroSalon(salon)
+      setSelectorAbierto(false)
+    }
+  }, [])
 
   // Vista calendario (por defecto) o lista
   const [vista, setVista] = useState<"calendario" | "lista">("calendario")

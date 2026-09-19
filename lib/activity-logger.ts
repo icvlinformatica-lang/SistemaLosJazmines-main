@@ -1,7 +1,7 @@
 import { sql } from "@/lib/db"
 import { cookies } from "next/headers"
 
-export type ActivityTipo = "insumo" | "insumo_barra" | "receta" | "coctel" | "evento"
+export type ActivityTipo = "insumo" | "insumo_barra" | "receta" | "coctel" | "evento" | "stock_sesion"
 export type ActivityAccion = "creado" | "eliminado" | "modificado" | "planificado"
 
 export async function logActivity(
