@@ -8,7 +8,7 @@ import {
   useProfile,
   tieneAccesoRapido,
   olvidarAccesosRapidos,
-  SESION_VENCIDA_KEY,
+  huboSesionVencida,
   type Perfil,
 } from "@/lib/profile-context"
 
@@ -52,15 +52,13 @@ export default function LoginPage() {
 
   // Aviso cuando llegamos acá porque la sesión venció y no se pudo renovar
   // sola (la marca la deja el fetch parcheado de lib/profile-context.tsx).
+  // Se lee en un efecto (no en el render) para no desencontrarse con el HTML
+  // del servidor, que no tiene acceso a sessionStorage. Que el valor no se
+  // pierda entre montajes lo garantiza huboSesionVencida(), que lo cachea.
   const [sesionVencida, setSesionVencida] = useState(false)
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(SESION_VENCIDA_KEY)) {
-        setSesionVencida(true)
-        sessionStorage.removeItem(SESION_VENCIDA_KEY)
-      }
-    } catch {}
+    setSesionVencida(huboSesionVencida())
   }, [])
 
   useEffect(() => {

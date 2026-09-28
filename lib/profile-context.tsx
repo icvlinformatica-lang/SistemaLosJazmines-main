@@ -166,7 +166,31 @@ const QUICK_TOKEN_KEY = (id: string) => `acceso_rapido_${id}`
 const SESSION_TOKEN_KEY = "lj_session_token"
 const PERFIL_ACTIVO_KEY = "perfil_activo"
 // Marca que lee el login para avisar "tu sesión venció" (ver app/login/page.tsx).
-export const SESION_VENCIDA_KEY = "lj_sesion_vencida"
+const SESION_VENCIDA_KEY = "lj_sesion_vencida"
+
+// Se resuelve una sola vez por carga de página. Hace falta cachearlo acá y no
+// leerlo directo en el componente: en desarrollo, StrictMode monta, desmonta y
+// vuelve a montar el login, así que el primer montaje se llevaba la marca y el
+// segundo ya no la encontraba (el aviso no aparecía nunca). Al vivir en el
+// módulo, los remontajes ven el mismo valor; una recarga real sí lo reinicia.
+let avisoSesionVencida: boolean | null = null
+
+/**
+ * ¿Llegamos al login porque la sesión venció y no se pudo renovar?
+ * Consume la marca: la primera llamada de esta carga de página la lee y la
+ * borra, y las siguientes devuelven ese mismo resultado.
+ */
+export function huboSesionVencida(): boolean {
+  if (avisoSesionVencida === null) {
+    try {
+      avisoSesionVencida = sessionStorage.getItem(SESION_VENCIDA_KEY) === "1"
+      sessionStorage.removeItem(SESION_VENCIDA_KEY)
+    } catch {
+      avisoSesionVencida = false
+    }
+  }
+  return avisoSesionVencida
+}
 
 // Borra los rastros locales de la sesión. Vive a nivel módulo (y no dentro de
 // ProfileProvider) porque también la usa el fetch parcheado de abajo, que
