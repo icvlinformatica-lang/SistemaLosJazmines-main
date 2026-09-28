@@ -164,6 +164,24 @@ const ProfileContext = createContext<ProfileContextType | null>(null)
 
 const QUICK_TOKEN_KEY = (id: string) => `acceso_rapido_${id}`
 const SESSION_TOKEN_KEY = "lj_session_token"
+const PERFIL_ACTIVO_KEY = "perfil_activo"
+// Marca que lee el login para avisar "tu sesión venció" (ver app/login/page.tsx).
+export const SESION_VENCIDA_KEY = "lj_sesion_vencida"
+
+// Borra los rastros locales de la sesión. Vive a nivel módulo (y no dentro de
+// ProfileProvider) porque también la usa el fetch parcheado de abajo, que
+// corre fuera de React y no puede llamar a cerrarSesion().
+function limpiarSesionLocal() {
+  try {
+    sessionStorage.removeItem(PERFIL_ACTIVO_KEY)
+    sessionStorage.removeItem(SESSION_TOKEN_KEY)
+    sessionStorage.removeItem("admin_usuario")
+  } catch {}
+  // Limpiar la atribución de actividad (Diego/Leila)
+  try {
+    document.cookie = "lj_usuario=; path=/; max-age=0"
+  } catch {}
+}
 
 // Adjunta el token de sesión como header a todas las llamadas fetch a /api/*.
 // Necesario porque en la vista previa embebida (iframe) las cookies pueden
@@ -176,7 +194,107 @@ const SESSION_TOKEN_KEY = "lj_session_token"
 // la primera respuesta puede fallar aunque los datos estén bien (se ve como
 // "Error fetching X: {}" en la consola). Un solo reintento alcanza porque
 // una vez compilada la ruta, las siguientes llamadas ya funcionan solas.
+//
+// Y, por último, renueva la sesión cuando vence estando la pestaña abierta.
+// La sesión dura 12 h (SESSION_DURATION_MS en lib/auth/server.ts) pero solo
+// se validaba al montar ProfileProvider: una pestaña abierta de un día para
+// el otro seguía pintada y funcionando en apariencia, mientras cada /api/*
+// rebotaba en middleware.ts con 401 "No autorizado" (ej: "Marcar como
+// finalizado" mostraba el toast "No se pudo guardar — No autorizado").
+// Ahora un 401 dispara una renovación con el token de acceso rápido (30 días)
+// y reintenta el pedido una sola vez; si no se puede renovar, va al login.
+//
+// SEGURIDAD (plata): el 401 lo corta el middleware ANTES de ejecutar la ruta,
+// así que el reintento es la primera ejecución real — no puede duplicar un
+// cobro ni un movimiento de caja. Además, cobrar cuota ya trae su propio
+// candado de idempotencia (_operacionCobro / planDeCuotas.ultimaOperacionCobro
+// en app/api/eventos/[id]/route.ts), que corta cualquier reejecución.
 let fetchPatched = false
+
+// Una sola renovación compartida: si varios pedidos vuelven 401 a la vez
+// (lo normal, porque las pantallas disparan varios fetches en paralelo),
+// todos esperan la misma promesa en vez de pedir un token cada uno.
+let renovacionEnCurso: Promise<string | null> | null = null
+
+function perfilActivoGuardado(): string | null {
+  try {
+    return sessionStorage.getItem(PERFIL_ACTIVO_KEY)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Renueva la sesión con el token de acceso rápido guardado en localStorage,
+ * igual que hace el useEffect de validación del ProfileProvider.
+ * Devuelve el sessionToken nuevo, o null si no se pudo renovar.
+ * Nunca lanza: las llamadas de arriba solo miran si vino token o no.
+ */
+function renovarSesion(originalFetch: typeof window.fetch): Promise<string | null> {
+  if (renovacionEnCurso) return renovacionEnCurso
+
+  const promesa = (async (): Promise<string | null> => {
+    const perfilId = perfilActivoGuardado()
+    if (!perfilId) return null
+    let quickToken: string | null = null
+    try {
+      quickToken = localStorage.getItem(QUICK_TOKEN_KEY(perfilId))
+    } catch {}
+    if (!quickToken) return null
+    try {
+      const res = await originalFetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ perfilId, quickToken }),
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      if (!data?.ok || !data.sessionToken) return null
+      try {
+        sessionStorage.setItem(SESSION_TOKEN_KEY, data.sessionToken)
+        if (data.quickToken) localStorage.setItem(QUICK_TOKEN_KEY(perfilId), data.quickToken)
+      } catch {}
+      return data.sessionToken as string
+    } catch {
+      return null
+    }
+  })()
+
+  renovacionEnCurso = promesa
+  promesa.finally(() => {
+    if (renovacionEnCurso === promesa) renovacionEnCurso = null
+  })
+  return promesa
+}
+
+/**
+ * Sesión imposible de renovar: limpiar y mandar al login con el aviso.
+ * No hace falta un flag de "ya estoy redirigiendo": limpiarSesionLocal() borra
+ * el perfil activo, y el 401 de arriba se corta antes de llegar acá cuando no
+ * hay perfil. Si dos 401 simultáneos llegan igual, asignar dos veces el mismo
+ * href es inofensivo — y así evitamos un flag global que quede pegado y termine
+ * bloqueando una redirección legítima más adelante.
+ */
+function mandarAlLogin() {
+  limpiarSesionLocal()
+  try {
+    sessionStorage.setItem(SESION_VENCIDA_KEY, "1")
+  } catch {}
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login"
+  }
+}
+
+/**
+ * ¿Se puede repetir este pedido tal cual? Un body ya consumido (FormData,
+ * stream, o un Request cuyo cuerpo se leyó) no se puede reenviar: en ese caso
+ * preferimos devolver el 401 antes que mandar un pedido incompleto.
+ */
+function sePuedeReintentar(input: RequestInfo | URL, init?: RequestInit): boolean {
+  if (input instanceof Request) return false
+  const body = init?.body
+  return body === undefined || body === null || typeof body === "string"
+}
 function patchFetchWithSession() {
   if (fetchPatched || typeof window === "undefined") return
   fetchPatched = true
@@ -188,11 +306,16 @@ function patchFetchWithSession() {
     // fallo de red real con "no hacía falta parchear nada".
     let finalInit = init
     let esProxyDb = false
+    // Las rutas de /api/auth/* quedan siempre fuera del manejo de 401: son
+    // las que usamos para renovar, y reintentarlas armaría un loop.
+    let manejar401 = false
     try {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
       const esApiPropia = url.startsWith("/api/") || url.startsWith(`${window.location.origin}/api/`)
       esProxyDb = url.includes("/api/db/")
-      if (esApiPropia && !url.includes("/api/auth/login")) {
+      const esAuth = url.includes("/api/auth/")
+      manejar401 = esApiPropia && !esAuth
+      if (esApiPropia && !esAuth) {
         const token = sessionStorage.getItem(SESSION_TOKEN_KEY)
         if (token) {
           const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined))
@@ -202,11 +325,31 @@ function patchFetchWithSession() {
       }
     } catch {}
 
-    const res = await originalFetch(input, finalInit)
+    let res = await originalFetch(input, finalInit)
     if (esProxyDb && res.status >= 500) {
       await new Promise((r) => setTimeout(r, 400))
-      return originalFetch(input, finalInit)
+      res = await originalFetch(input, finalInit)
     }
+
+    if (res.status === 401 && manejar401) {
+      // Sin perfil guardado no hay sesión que renovar: es alguien que todavía
+      // no entró. Devolvemos el 401 tal cual y dejamos que la app haga lo suyo
+      // (las páginas ya redirigen solas al login).
+      if (!perfilActivoGuardado()) return res
+
+      const nuevoToken = await renovarSesion(originalFetch)
+      if (!nuevoToken) {
+        mandarAlLogin()
+        return res
+      }
+      if (!sePuedeReintentar(input, init)) return res
+
+      // Un único reintento, con el token recién renovado.
+      const headers = new Headers(init?.headers)
+      headers.set("x-lj-session", nuevoToken)
+      return originalFetch(input, { ...init, headers })
+    }
+
     return res
   }
 }
@@ -284,7 +427,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const activar = (perfil: Perfil, quickToken?: string, sessionToken?: string) => {
     setPerfilActivo(perfil)
     try {
-      sessionStorage.setItem("perfil_activo", perfil.id)
+      sessionStorage.setItem(PERFIL_ACTIVO_KEY, perfil.id)
       if (quickToken) localStorage.setItem(QUICK_TOKEN_KEY(perfil.id), quickToken)
       if (sessionToken) sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken)
     } catch {}
@@ -341,13 +484,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   const cerrarSesion = () => {
     setPerfilActivo(null)
-    try {
-      sessionStorage.removeItem("perfil_activo")
-      sessionStorage.removeItem(SESSION_TOKEN_KEY)
-      sessionStorage.removeItem("admin_usuario")
-    } catch {}
-    // Limpiar la atribución de actividad (Diego/Leila)
-    document.cookie = "lj_usuario=; path=/; max-age=0"
+    limpiarSesionLocal()
     fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
   }
 
