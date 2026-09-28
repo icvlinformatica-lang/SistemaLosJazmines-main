@@ -41,6 +41,11 @@ function toRow(ev: Record<string, unknown>) {
     estado: (ev.estado as string) || "pendiente",
     color_tag: (ev.colorTag as string) || null,
     precio_venta: (ev.precioVenta as number) || null,
+    // Precio fijado desde una cotización aprobada: el planificador NO lo
+    // recalcula (ver app/evento/page.tsx). Los eventos cargados a mano
+    // siguen con false = comportamiento de siempre.
+    precio_venta_fijo: (ev.precioVentaFijo as boolean) || false,
+    cotizacion_id: (ev.cotizacionId as string) || null,
     costo_personal: (ev.costoPersonal as number) || null,
     costo_insumos: (ev.costoInsumos as number) || null,
     costo_servicios: (ev.costoServicios as number) || null,
@@ -105,6 +110,8 @@ function fromRow(r: Record<string, any>) {
     estado: r.estado ?? "pendiente",
     colorTag: r.color_tag,
     precioVenta: r.precio_venta != null ? Number(r.precio_venta) : undefined,
+    precioVentaFijo: !!r.precio_venta_fijo,
+    cotizacionId: r.cotizacion_id ?? undefined,
     costoPersonal: r.costo_personal != null ? Number(r.costo_personal) : undefined,
     costoInsumos: r.costo_insumos != null ? Number(r.costo_insumos) : undefined,
     costoServicios: r.costo_servicios != null ? Number(r.costo_servicios) : undefined,
@@ -140,7 +147,7 @@ const SELECT_COLS = `
   multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
   descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
-  precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+  precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
   notas_internas, pagos, asignaciones, costos_calculados,
   stock_descontado, fecha_impresion, created_at, updated_at
 `
@@ -156,7 +163,7 @@ export async function GET() {
         multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
         descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
-        precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+        precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
@@ -192,7 +199,7 @@ export async function POST(req: Request) {
         multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
         descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
-        precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+        precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
@@ -204,7 +211,7 @@ export async function POST(req: Request) {
         ${r.multipliers_adultos}, ${r.multipliers_adolescentes}, ${r.multipliers_ninos}, ${r.multipliers_dietas_especiales},
         ${r.descripcion_personalizada}, ${r.barras}, ${r.servicios}, ${r.paquetes_seleccionados}, ${r.personal_evento},
         ${r.condicion_iva}, ${r.contrato}, ${r.plan_de_cuotas}, ${r.estado}, ${r.color_tag},
-        ${r.precio_venta}, ${r.costo_personal}, ${r.costo_insumos}, ${r.costo_servicios}, ${r.costo_operativo},
+        ${r.precio_venta}, ${r.precio_venta_fijo}, ${r.cotizacion_id}, ${r.costo_personal}, ${r.costo_insumos}, ${r.costo_servicios}, ${r.costo_operativo},
         ${r.notas_internas}, ${r.pagos}, ${r.asignaciones}, ${r.costos_calculados},
         ${r.stock_descontado}, ${r.fecha_impresion},
         ${r.versiones_contrato}, ${r.generaciones_contrato}, ${r.servicios_contrato}, ${r.servicios_libres_contrato}
@@ -223,7 +230,7 @@ export async function POST(req: Request) {
         multipliers_adultos, multipliers_adolescentes, multipliers_ninos, multipliers_dietas_especiales,
         descripcion_personalizada, barras, servicios, paquetes_seleccionados, personal_evento,
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
-        precio_venta, costo_personal, costo_insumos, costo_servicios, costo_operativo,
+        precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion, created_at, updated_at,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato

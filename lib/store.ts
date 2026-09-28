@@ -307,6 +307,12 @@ export type CategoriaServicio =
   | "Pasteleria"
   | "Transporte"
   | "Papeleria"
+  // Menú y Barra las usa el cotizador del vendedor: un servicio por cada
+  // opción de menú/barra del flyer, editable desde Finanzas > Servicios.
+  // Con la modalidad "con catering y bebidas" se siguen eligiendo (cocina
+  // los necesita) pero no suman al precio (ver lib/tarifario-cotizador.ts).
+  | "Menú"
+  | "Barra"
   | "Otros"
 
 export interface Servicio {
@@ -589,6 +595,16 @@ export interface EventoGuardado extends Evento {
   estado: EstadoEvento
   colorTag?: string
   precioVenta?: number
+  /**
+   * El precio de venta vino de una cotización aprobada y NO se recalcula al
+   * guardar el evento (ver app/evento/page.tsx): lo que se le cotizó al
+   * cliente es lo que vale. Administración puede cambiarlo a mano igual.
+   * Los eventos cargados a mano quedan en false/undefined y se siguen
+   * recalculando como siempre.
+   */
+  precioVentaFijo?: boolean
+  /** Cotización de la que salió este evento, si vino de una. */
+  cotizacionId?: string
   costoPersonal?: number
   costoInsumos?: number
   costoServicios?: number

@@ -696,10 +696,19 @@ function EventoPageContent() {
       // Precio de venta = precio del salón (solo Calendario de Precios, nunca
       // el precio base de los vendedores) + servicios a precio de venta del
       // catálogo, igual que la cotización.
-      precioVenta:
-        (((evento.salon && evento.fecha)
-          ? getPrecioVenta(preciosVenta, evento.salon, evento.fecha) ?? 0
-          : 0) + calcularVentaServicios(evento.servicios || [], catalogoServicios || [])) || undefined,
+      //
+      // EXCEPCIÓN: si el evento vino de una cotización aprobada, el precio ya
+      // quedó fijado (precioVentaFijo) y se respeta tal cual — es lo que se le
+      // cotizó al cliente. Recalcularlo acá lo cambiaría, porque el cotizador
+      // usa otro criterio (multiplica "Por Persona" por los invitados y tiene
+      // su propia grilla de salón). Administración lo puede editar a mano.
+      precioVenta: (evento as Partial<EventoGuardado>).precioVentaFijo
+        ? (evento as Partial<EventoGuardado>).precioVenta
+        : (((evento.salon && evento.fecha)
+            ? getPrecioVenta(preciosVenta, evento.salon, evento.fecha) ?? 0
+            : 0) + calcularVentaServicios(evento.servicios || [], catalogoServicios || [])) || undefined,
+      precioVentaFijo: (evento as Partial<EventoGuardado>).precioVentaFijo,
+      cotizacionId: (evento as Partial<EventoGuardado>).cotizacionId,
     }
     
     if (isEditing && editingEventoId) {
@@ -1720,8 +1729,28 @@ function EventoPageContent() {
               </div>
             </div>
 
-            {/* Precio de Venta */}
-            {evento.fecha && evento.salon && (() => {
+            {/* Precio de Venta fijado desde una cotización aprobada: no se
+                recalcula, se muestra el número que se le cotizó al cliente. */}
+            {(evento as Partial<EventoGuardado>).precioVentaFijo &&
+              ((evento as Partial<EventoGuardado>).precioVenta ?? 0) > 0 && (
+              <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50">
+                <DollarSign className="h-5 w-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    Precio de venta: {formatCurrency((evento as Partial<EventoGuardado>).precioVenta ?? 0)}
+                  </p>
+                  <p className="text-xs text-amber-700">
+                    Precio de venta fijado desde cotización — no se recalcula solo al guardar.
+                  </p>
+                  <p className="text-xs text-amber-700">
+                    Si hay que cambiarlo, se edita a mano acá a propósito.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Precio de Venta calculado (eventos cargados a mano) */}
+            {!(evento as Partial<EventoGuardado>).precioVentaFijo && evento.fecha && evento.salon && (() => {
               const precioSalon = getPrecioVenta(preciosVenta, evento.salon, evento.fecha)
               const ventaServicios = calcularVentaServicios(evento.servicios || [], catalogoServicios || [])
               const total = (precioSalon ?? 0) + ventaServicios
