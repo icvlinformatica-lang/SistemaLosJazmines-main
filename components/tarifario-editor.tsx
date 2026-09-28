@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed } from "lucide-react"
+import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed, PackageCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -107,6 +107,9 @@ export function TarifarioEditor() {
   const [reglas, setReglas] = useState<ReglaPersonal[]>([])
   const [recetasPorServicio, setRecetasPorServicio] = useState<Record<string, string[]>>({})
   const [barraPorServicio, setBarraPorServicio] = useState<Record<string, string>>({})
+  const [incluidosServicio, setIncluidosServicio] = useState<string[]>([])
+  const [incluidosPersonal, setIncluidosPersonal] = useState<Array<{ personalId: string; dia: "viernes" | "sabado" }>>([])
+  const [personalCatalogo, setPersonalCatalogo] = useState<Array<{ id: string; nombre: string; apellido: string; funcion: string }>>([])
 
   const [servicios, setServicios] = useState<ServicioSimple[]>([])
   const [recetas, setRecetas] = useState<RecetaSimple[]>([])
@@ -126,10 +129,13 @@ export function TarifarioEditor() {
           setReglas(tarifario.reglasPersonal || [])
           setRecetasPorServicio(tarifario.recetasPorServicio || {})
           setBarraPorServicio(tarifario.barraTemplatePorServicio || {})
+          setIncluidosServicio(tarifario.serviciosIncluidosSalon || [])
+          setIncluidosPersonal(tarifario.personalIncluidoSalon || [])
         }
         if (catalogo?.ok) {
           setServicios(catalogo.servicios || [])
           setRecetas(catalogo.recetas || [])
+          setPersonalCatalogo(catalogo.personal || [])
           setFunciones([...new Set((catalogo.personal || []).map((p: { funcion: string }) => p.funcion))].sort() as string[])
         }
       })
@@ -182,6 +188,8 @@ export function TarifarioEditor() {
           reglasPersonal: reglas,
           recetasPorServicio,
           barraTemplatePorServicio: barraPorServicio,
+          serviciosIncluidosSalon: incluidosServicio,
+          personalIncluidoSalon: incluidosPersonal,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -384,6 +392,83 @@ export function TarifarioEditor() {
             })}
           </div>
         )}
+      </Bloque>
+
+      <div className="border-t border-border" />
+
+      <Bloque
+        icon={<PackageCheck className="h-5 w-5 text-muted-foreground" />}
+        title="Qué incluye el precio del salón"
+        subtitle="Lo tildado se agrega solo a la cotización y no se cobra aparte."
+      >
+        <div className="space-y-5">
+          <div>
+            <p className="text-sm font-semibold mb-2">Servicios incluidos</p>
+            <p className="text-xs text-muted-foreground mb-2">
+              Solo dejan de cobrarse si el salón se vende a precio de lista (grilla o Calendario de Precios). Si el
+              salón no tiene precio cargado, se cobran como cualquier adicional.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {servicios.map((sv) => {
+                const activo = incluidosServicio.includes(sv.id)
+                return (
+                  <button
+                    key={sv.id}
+                    type="button"
+                    onClick={() =>
+                      setIncluidosServicio((prev) =>
+                        activo ? prev.filter((id) => id !== sv.id) : [...prev, sv.id],
+                      )
+                    }
+                    className={`rounded-full px-2.5 py-1 text-xs border transition-colors ${
+                      activo ? "bg-sky-600 text-white border-sky-600" : "bg-white text-muted-foreground hover:bg-muted"
+                    }`}
+                    title={sv.categoria}
+                  >
+                    {sv.nombre}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold mb-2">Personal incluido, por día</p>
+            <p className="text-xs text-muted-foreground mb-2">
+              Domingo a jueves usan el juego de viernes. El personal no suma al precio de venta: es costo, y se
+              calcula en vivo como siempre.
+            </p>
+            <div className="space-y-1.5">
+              {personalCatalogo.map((p) => {
+                const actual = incluidosPersonal.find((i) => i.personalId === p.id)
+                const setDia = (dia: "viernes" | "sabado" | "ninguno") => {
+                  setIncluidosPersonal((prev) => {
+                    const sinEste = prev.filter((i) => i.personalId !== p.id)
+                    return dia === "ninguno" ? sinEste : [...sinEste, { personalId: p.id, dia }]
+                  })
+                }
+                return (
+                  <div key={p.id} className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm w-56 shrink-0 truncate" title={`${p.nombre} ${p.apellido} — ${p.funcion}`}>
+                      {p.nombre} {p.apellido}
+                      <span className="text-muted-foreground"> · {p.funcion}</span>
+                    </span>
+                    <Select value={actual?.dia ?? "ninguno"} onValueChange={(v) => setDia(v as "viernes" | "sabado" | "ninguno")}>
+                      <SelectTrigger className="h-8 w-40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ninguno">No incluido</SelectItem>
+                        <SelectItem value="viernes">Incluido viernes</SelectItem>
+                        <SelectItem value="sabado">Incluido sábado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       </Bloque>
 
       <div className="border-t border-border" />

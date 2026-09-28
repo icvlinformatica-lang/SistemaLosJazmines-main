@@ -69,6 +69,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { UnifiedDocument, type DocumentSections } from "@/components/unified-document"
 import { useToast } from "@/hooks/use-toast"
+import { useProfile } from "@/lib/profile-context"
 import {
   Users,
   UserCheck,
@@ -121,6 +122,14 @@ function EventoPageContent() {
   const { toast } = useToast()
   
   const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores } = useStore()
+  // Editar a mano el precio que quedó fijado desde una cotización. Solo
+  // Administración y Soporte: es el precio que se le cotizó al cliente, no
+  // algo que se cambie al pasar.
+  const { perfilActivo } = useProfile()
+  const puedeEditarPrecioFijo = ["administracion", "soporte"].includes(perfilActivo?.id ?? "")
+  const [dialogoPrecioAbierto, setDialogoPrecioAbierto] = useState(false)
+  const [precioFijoInput, setPrecioFijoInput] = useState("")
+  const [guardandoPrecioFijo, setGuardandoPrecioFijo] = useState(false)
   const [showUnifiedDoc, setShowUnifiedDoc] = useState(false)
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
@@ -1743,9 +1752,25 @@ function EventoPageContent() {
                     Precio de venta fijado desde cotización — no se recalcula solo al guardar.
                   </p>
                   <p className="text-xs text-amber-700">
-                    Si hay que cambiarlo, se edita a mano acá a propósito.
+                    {puedeEditarPrecioFijo
+                      ? "Si hay que cambiarlo, se edita a mano acá a propósito."
+                      : "Solo Administración puede cambiarlo."}
                   </p>
                 </div>
+                {puedeEditarPrecioFijo && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto shrink-0 border-amber-300 text-amber-900 hover:bg-amber-100"
+                    onClick={() => {
+                      setPrecioFijoInput(String((evento as Partial<EventoGuardado>).precioVenta ?? 0))
+                      setDialogoPrecioAbierto(true)
+                    }}
+                  >
+                    Editar precio
+                  </Button>
+                )}
               </div>
             )}
 
@@ -3101,6 +3126,62 @@ function EventoPageContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Editar a mano el precio fijado desde una cotización. Guarda el
+          número tal cual y MANTIENE precioVentaFijo = true: sigue sin
+          recalcularse al guardar el evento. */}
+      <Dialog open={dialogoPrecioAbierto} onOpenChange={setDialogoPrecioAbierto}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar el precio de venta</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Este precio vino de una cotización aprobada. Cambiarlo acá pisa lo que se le cotizó al cliente, así
+              que hacelo solo si lo hablaste con él.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="precio-fijo">Precio de venta</Label>
+              <Input
+                id="precio-fijo"
+                type="number"
+                min={0}
+                value={precioFijoInput}
+                onChange={(e) => setPrecioFijoInput(e.target.value)}
+                className="text-lg font-semibold tabular-nums"
+              />
+              {Number(precioFijoInput) >= 0 && (
+                <p className="text-xs text-muted-foreground">Queda en {formatCurrency(Number(precioFijoInput) || 0)}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogoPrecioAbierto(false)} disabled={guardandoPrecioFijo}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={guardandoPrecioFijo || !(Number(precioFijoInput) >= 0)}
+              onClick={async () => {
+                const nuevo = Number(precioFijoInput)
+                if (!(nuevo >= 0) || !editingEventoId) return
+                setGuardandoPrecioFijo(true)
+                try {
+                  const ok = await updateEvento(editingEventoId, { precioVenta: nuevo, precioVentaFijo: true })
+                  if (ok) {
+                    updateEventoActual({ precioVenta: nuevo } as Partial<EventoGuardado>)
+                    toast({ title: "Precio actualizado", description: formatCurrency(nuevo) })
+                    setDialogoPrecioAbierto(false)
+                  }
+                } finally {
+                  setGuardandoPrecioFijo(false)
+                }
+              }}
+            >
+              {guardandoPrecioFijo ? "Guardando..." : "Guardar precio"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

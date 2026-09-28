@@ -24,7 +24,7 @@
 // coloreados, caja de "Comensales" y tabla de servicios — sin tocar ese
 // archivo, solo replicando su estilo acá.
 
-import { Fragment, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
@@ -59,6 +59,10 @@ import {
   calcularCotizacion,
   calcularPersonalSugerido,
   servicioCorrespondeAlAnio,
+  personalIncluidoDelSalon,
+  ajustarPersonalDelSalonPorDia,
+  diaTarifario,
+  type DiaTarifario,
   type FilaTarifario,
   type ModalidadSalon,
   type ReglaPersonal,
@@ -179,6 +183,10 @@ function CotizarPageContent() {
   const [tarifario, setTarifario] = useState<FilaTarifario[]>([])
   const [reglasPersonal, setReglasPersonal] = useState<ReglaPersonal[]>([])
   const [recetasPorServicio, setRecetasPorServicio] = useState<Record<string, string[]>>({})
+  // Lo que el precio del salón ya incluye (mesas, DJ, decoración, suite) y
+  // la gente que viene con él según el día (portero, limpieza, coordinación).
+  const [serviciosIncluidosSalon, setServiciosIncluidosSalon] = useState<string[]>([])
+  const [personalIncluidoSalon, setPersonalIncluidoSalon] = useState<Array<{ personalId: string; dia: DiaTarifario }>>([])
   const [paquetes, setPaquetes] = useState<PaqueteVendedor[]>([])
   const [paqueteAplicadoId, setPaqueteAplicadoId] = useState<string | null>(null)
   const [paqueteUrlAplicado, setPaqueteUrlAplicado] = useState(false)
@@ -253,6 +261,8 @@ function CotizarPageContent() {
           setTarifario(data.tarifario || [])
           setReglasPersonal(data.reglasPersonal || [])
           setRecetasPorServicio(data.recetasPorServicio || {})
+          setServiciosIncluidosSalon(data.serviciosIncluidosSalon || [])
+          setPersonalIncluidoSalon(data.personalIncluidoSalon || [])
         }
       })
       .catch(() => {})
@@ -412,8 +422,9 @@ function CotizarPageContent() {
         tarifario,
         preciosVenta,
         preciosBaseSalon,
+        serviciosIncluidosSalon,
       }),
-    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, preciosBaseSalon, tarifario, modalidadSalon, totalPersonas],
+    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, preciosBaseSalon, tarifario, modalidadSalon, totalPersonas, serviciosIncluidosSalon],
   )
   const serviciosConPrecio = calculo.servicios
   const totalServicios = calculo.totalServicios
@@ -437,6 +448,57 @@ function CotizarPageContent() {
     () => serviciosMenu.some((s) => s.id in serviciosElegidos) || totalPlatos > 0,
     [serviciosMenu, serviciosElegidos, totalPlatos],
   )
+
+  // ── Lo que viene con el salón ──────────────────────────────────────────
+  // Al elegir salón se tildan solos los servicios que el precio ya incluye
+  // (mesas, DJ, decoración, suite) y la gente de ese día. El vendedor los
+  // puede destildar: por eso se agregan una sola vez por combinación de
+  // salón+día, y no se vuelven a imponer en cada render.
+  const personalDelDia = useMemo(
+    () => personalIncluidoDelSalon(personalIncluidoSalon, fechaEvento),
+    [personalIncluidoSalon, fechaEvento],
+  )
+  const diaDelEvento = useMemo(() => diaTarifario(fechaEvento), [fechaEvento])
+  const ultimaPrecargaSalon = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (soloLectura || !salon) return
+    const clave = `${salon}|${diaDelEvento}`
+    if (ultimaPrecargaSalon.current === clave) return
+    ultimaPrecargaSalon.current = clave
+
+    if (serviciosIncluidosSalon.length) {
+      setServiciosElegidos((prev) => {
+        const faltantes = serviciosIncluidosSalon.filter((id) => !(id in prev))
+        if (!faltantes.length) return prev
+        return { ...prev, ...Object.fromEntries(faltantes.map((id) => [id, 1])) }
+      })
+    }
+    // Cambiar de día cambia el juego de personal: entra el del día nuevo y
+    // sale el del otro día. La regla vive en ajustarPersonalDelSalonPorDia
+    // (lib/tarifario-cotizador.ts) justamente para poder probarla.
+    setPersonalSeleccionado((prev) => {
+      const ajustada = ajustarPersonalDelSalonPorDia(prev, personalIncluidoSalon, fechaEvento)
+      const igual = ajustada.length === prev.length && ajustada.every((id) => prev.includes(id))
+      return igual ? prev : ajustada
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salon, diaDelEvento, fechaEvento, serviciosIncluidosSalon, personalIncluidoSalon, soloLectura])
+
+  // Doble conteo: "PERSONAL DE SALON PARA 100" ya trae portero, maestranza y
+  // demás, así que sumarlo encima del personal incluido cobra dos veces lo
+  // mismo. No se bloquea (puede ser a propósito), pero se avisa.
+  const avisoDobleConteoPersonal = useMemo(() => {
+    const bulto = personalCatalogo.find((p) => p.funcion === "PERSONAL DE SALON PARA 100")
+    if (!bulto || !personalSeleccionado.includes(bulto.id)) return null
+    const incluidosTildados = personalDelDia.filter((id) => personalSeleccionado.includes(id))
+    if (!incluidosTildados.length) return null
+    const nombres = incluidosTildados
+      .map((id) => personalCatalogo.find((p) => p.id === id))
+      .filter(Boolean)
+      .map((p) => `${p!.nombre} ${p!.apellido}`.trim())
+    return `"PERSONAL DE SALON PARA 100" ya incluye portero y maestranza, y además están tildados: ${nombres.join(", ")}. Revisá que no se esté contando dos veces.`
+  }, [personalCatalogo, personalSeleccionado, personalDelDia])
 
   // Personal sugerido por la regla del tarifario (solo si hay menú).
   const personalSugerido = useMemo(
@@ -1091,7 +1153,16 @@ function CotizarPageContent() {
                       const seleccionado = s.id in serviciosElegidos
                       const usaCantidad = s.unidad === "Por Hora" || s.unidad === "Por Cantidad"
                       const cantidad = usaCantidad ? Math.max(1, serviciosElegidos[s.id] || 1) : 1
-                      const precioTotal = usaCantidad ? s.precioVenta * cantidad : s.precioVenta
+                      // Si el salón se vende a precio de lista, lo que ya trae
+                      // no se cobra aparte (lo decide lib/tarifario-cotizador.ts,
+                      // acá solo se refleja lo que esa función resolvió).
+                      const lineaCalculada = serviciosConPrecio.find((l) => l.servicioId === s.id)
+                      const vieneConElSalon = lineaCalculada?.motivoIncluido === "salon"
+                      const precioTotal = seleccionado
+                        ? lineaCalculada?.precioTotal ?? 0
+                        : usaCantidad
+                          ? s.precioVenta * cantidad
+                          : s.precioVenta
                       return (
                         <tr
                           key={s.id}
@@ -1111,6 +1182,11 @@ function CotizarPageContent() {
                           </td>
                           <td className="px-3 py-2.5">
                             <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>{s.nombre}</span>
+                            {vieneConElSalon && (
+                              <Badge className="ml-2 bg-sky-100 text-sky-800 border-sky-200 text-[11px] font-medium hover:bg-sky-100">
+                                Incluido en el salón
+                              </Badge>
+                            )}
                             {usaCantidad && seleccionado && (
                               <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
                                 <label className="text-xs text-muted-foreground whitespace-nowrap">
@@ -1133,8 +1209,8 @@ function CotizarPageContent() {
                           <td className="px-3 py-2.5 hidden sm:table-cell">
                             <Badge variant="outline" className="text-[11px]">{s.categoria}</Badge>
                           </td>
-                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
-                            {fmt(precioTotal)}
+                          <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${vieneConElSalon ? "text-sky-700" : "text-emerald-700"}`}>
+                            {vieneConElSalon ? "Incluido" : fmt(precioTotal)}
                             {usaCantidad && seleccionado && cantidad > 1 && (
                               <span className="block text-[11px] font-normal text-muted-foreground">
                                 {fmt(s.precioVenta)}
@@ -1185,6 +1261,29 @@ function CotizarPageContent() {
                   {personalSugerido.map((p) => `${p.funcion}: ${p.necesarios}`).join(" · ")}
                 </p>
                 <p className="text-xs text-emerald-700">Podés ajustarlo a mano.</p>
+              </div>
+            )}
+            {avisoDobleConteoPersonal && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                <p className="text-sm font-semibold text-amber-900">Puede estar contado dos veces</p>
+                <p className="text-xs text-amber-800 mt-0.5">{avisoDobleConteoPersonal}</p>
+              </div>
+            )}
+            {personalDelDia.length > 0 && (
+              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                <p className="text-sm font-semibold text-sky-900">
+                  Incluido en el salón ({diaDelEvento === "sabado" ? "sábado" : "viernes"})
+                </p>
+                <p className="text-xs text-sky-800 mt-0.5">
+                  {personalDelDia
+                    .map((id) => personalCatalogo.find((p) => p.id === id))
+                    .filter(Boolean)
+                    .map((p) => `${p!.nombre} ${p!.apellido}`.trim())
+                    .join(" · ")}
+                </p>
+                <p className="text-xs text-sky-700 mt-0.5">
+                  Ya está tildado y no suma al precio. Si cambiás la fecha se ajusta solo. Lo podés destildar.
+                </p>
               </div>
             )}
             {faltanEnRoster.length > 0 && (

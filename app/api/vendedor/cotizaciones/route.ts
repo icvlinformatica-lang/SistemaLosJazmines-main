@@ -91,16 +91,18 @@ export async function POST(req: Request) {
     // la misma función que usa el preview de /vendedor/cotizar, así el
     // vendedor nunca ve un número distinto del que queda guardado. Nunca se
     // confía en un precio que mande el cliente.
-    const [catalogoServicios, tarifarioDB, preciosVentaDB, preciosBaseDB] = (await Promise.all([
+    const [catalogoServicios, tarifarioDB, preciosVentaDB, preciosBaseDB, incluidosDB] = (await Promise.all([
       sql`SELECT id, nombre, categoria, unidad, precio_venta, costo_para_caja_eventos FROM servicios`,
       sql`SELECT salon, invitados_min, invitados_max, dia, modalidad, precio FROM tarifario_salon`,
       sql`SELECT salon, fecha, precio FROM precios_venta`,
       sql`SELECT salon, precio FROM precios_base_salones`,
+      sql`SELECT servicio_id FROM salon_incluye_servicio`,
     ])) as unknown as [
       ServicioCatalogo[],
       FilaTarifarioDB[],
       Array<{ salon: string; fecha: string; precio: number }>,
       Array<{ salon: string; precio: number }>,
+      Array<{ servicio_id: string }>,
     ]
 
     const seleccion: Array<{ servicioId: string; cantidad: number }> = Array.isArray(serviciosElegidos)
@@ -146,6 +148,7 @@ export async function POST(req: Request) {
       })),
       preciosVenta: preciosVentaMap,
       preciosBaseSalon: preciosBaseMap,
+      serviciosIncluidosSalon: incluidosDB.map((r) => r.servicio_id),
     })
 
     const serviciosDetalle = calculo.servicios.map((s) => ({
@@ -157,6 +160,7 @@ export async function POST(req: Request) {
       precioVenta: s.precioUnitario,
       precioTotal: s.precioTotal,
       incluidoEnPaquete: s.incluidoEnPaquete,
+      motivoIncluido: s.motivoIncluido,
     }))
 
     // Costo interno con la MISMA cantidad que la venta (un menú por persona

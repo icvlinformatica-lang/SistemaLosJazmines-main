@@ -43,7 +43,7 @@ export async function GET() {
       `,
     ])
 
-    const [tarifario, reglasPersonal, vinculosRecetas, vinculosBarra] = await Promise.all([
+    const [tarifario, reglasPersonal, vinculosRecetas, vinculosBarra, incluyeServicio, incluyePersonal] = await Promise.all([
       sql`
         SELECT salon, invitados_min, invitados_max, dia, modalidad, precio
         FROM tarifario_salon
@@ -57,6 +57,8 @@ export async function GET() {
       `,
       sql`SELECT servicio_id, receta_id FROM servicio_recetas`,
       sql`SELECT servicio_id, barra_template_id FROM servicio_barra_template`,
+      sql`SELECT servicio_id FROM salon_incluye_servicio`,
+      sql`SELECT personal_id, dia FROM salon_incluye_personal`,
     ])
 
     const preciosVentaMap: Record<string, Record<string, number>> = {}
@@ -116,6 +118,13 @@ export async function GET() {
         },
         {},
       ),
+      // Lo que el precio del salón ya incluye (mesas, DJ, decoración, suite,
+      // portero, limpieza, coordinación). Ver lib/tarifario-cotizador.ts.
+      serviciosIncluidosSalon: (incluyeServicio as unknown as Array<{ servicio_id: string }>).map((r) => r.servicio_id),
+      personalIncluidoSalon: (incluyePersonal as unknown as Array<{ personal_id: string; dia: string }>).map((r) => ({
+        personalId: r.personal_id,
+        dia: r.dia,
+      })),
       barraTemplatePorServicio: (vinculosBarra as unknown as Array<Record<string, string>>).reduce(
         (acc: Record<string, string>, v) => {
           acc[v.servicio_id] = v.barra_template_id

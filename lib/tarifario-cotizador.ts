@@ -54,6 +54,12 @@ export interface EntradaCotizacion {
   preciosVenta: Record<string, Record<string, number>>
   /** Precio base de respaldo por salón (precios_base_salones). */
   preciosBaseSalon: Record<string, number>
+  /**
+   * Servicios que el precio del salón ya incluye (mesas y sillas, DJ,
+   * decoración, suite…). Solo dejan de cobrarse si el salón se está
+   * vendiendo a precio de lista — ver origenEsPrecioDeLista().
+   */
+  serviciosIncluidosSalon?: string[]
 }
 
 export interface LineaVenta {
@@ -64,8 +70,10 @@ export interface LineaVenta {
   cantidad: number
   precioUnitario: number
   precioTotal: number
-  /** true = el paquete con catering ya lo incluye, así que no suma. */
+  /** true = ya está incluido en algún paquete, así que no suma. */
   incluidoEnPaquete: boolean
+  /** Por qué no suma: lo trae el salón o lo trae el catering. */
+  motivoIncluido?: "salon" | "catering"
 }
 
 export type OrigenPrecioSalon =
@@ -87,6 +95,17 @@ export interface ResultadoCotizacion {
 }
 
 export const AVISO_FUERA_DE_TARIFARIO = "Fuera de tarifario — confirmar con Administración"
+
+/**
+ * ¿El salón se está vendiendo a precio de lista? Solo entonces el paquete
+ * viene completo y lo que incluye no se cobra aparte.
+ *
+ * El precio base por salón (precios_base_salones) NO cuenta: es apenas una
+ * referencia para que el vendedor estime, no una lista de precios cerrada.
+ */
+export function origenEsPrecioDeLista(origen: OrigenPrecioSalon): boolean {
+  return origen === "calendario" || origen === "tarifario" || origen === "tarifario_aproximado"
+}
 
 /**
  * Día de tarifario de una fecha. Sábado tiene precio propio; domingo a
@@ -202,19 +221,28 @@ function resolverPrecioSalon(entrada: EntradaCotizacion): {
  */
 export function calcularCotizacion(entrada: EntradaCotizacion): ResultadoCotizacion {
   const { modalidad, totalInvitados, serviciosElegidos, catalogoServicios } = entrada
+  const incluidosSalon = entrada.serviciosIncluidosSalon ?? []
   const avisos: string[] = []
 
   const { precio: precioSalon, origen, avisos: avisosSalon } = resolverPrecioSalon(entrada)
   avisos.push(...avisosSalon)
+  const salonAPrecioDeLista = origenEsPrecioDeLista(origen)
 
   const servicios: LineaVenta[] = []
   for (const elegido of serviciosElegidos) {
     const cat = catalogoServicios.find((s) => s.id === elegido.servicioId)
     if (!cat) continue
 
-    const incluidoEnPaquete =
+    // Dos motivos para no cobrar un servicio:
+    //  1. el paquete con catering y bebidas ya trae menú y barra;
+    //  2. el precio de lista del salón ya trae mesas, DJ, decoración, etc.
+    // Si el salón no se vende a precio de lista, lo incluido se cobra como
+    // cualquier otro adicional.
+    const incluidoPorCatering =
       modalidad === "con_catering" &&
       (CATEGORIAS_INCLUIDAS_EN_CATERING as readonly string[]).includes(cat.categoria)
+    const incluidoPorSalon = salonAPrecioDeLista && incluidosSalon.includes(cat.id)
+    const incluidoEnPaquete = incluidoPorCatering || incluidoPorSalon
 
     let cantidad = 1
     if (cat.unidad === "Por Hora" || cat.unidad === "Por Cantidad") {
@@ -243,6 +271,7 @@ export function calcularCotizacion(entrada: EntradaCotizacion): ResultadoCotizac
       precioUnitario,
       precioTotal,
       incluidoEnPaquete,
+      motivoIncluido: incluidoPorSalon ? "salon" : incluidoPorCatering ? "catering" : undefined,
     })
   }
 
@@ -302,6 +331,44 @@ export interface SugerenciaPersonal {
  * devuelven las que hay y "faltan" dice cuántas quedaron sin cubrir — la
  * pantalla avisa y el vendedor ajusta.
  */
+/**
+ * El personal que ya viene con el salón, según el día del evento. El sábado
+ * tiene su propia gente; domingo a viernes usan el juego de viernes, igual
+ * que la grilla de precios.
+ *
+ * Devuelve ids del roster. No suma al precio de venta: es costo, y sigue
+ * calculándose en vivo como cualquier otro personal del evento.
+ */
+export function personalIncluidoDelSalon(
+  incluidos: Array<{ personalId: string; dia: DiaTarifario }>,
+  fechaISO: string,
+): string[] {
+  const dia = diaTarifario(fechaISO)
+  return incluidos.filter((p) => p.dia === dia).map((p) => p.personalId)
+}
+
+/**
+ * Deja en la selección el personal del salón que corresponde al día del
+ * evento: entra el del día nuevo y sale el del otro día. Lo que el vendedor
+ * haya agregado por su cuenta no se toca.
+ *
+ * Vive acá y no dentro del componente para poder probarlo: es la regla que
+ * hace que cambiar la fecha de un sábado a un viernes cambie el juego de
+ * portero, limpieza y coordinación.
+ */
+export function ajustarPersonalDelSalonPorDia(
+  seleccionActual: string[],
+  incluidos: Array<{ personalId: string; dia: DiaTarifario }>,
+  fechaISO: string,
+): string[] {
+  const dia = diaTarifario(fechaISO)
+  const delDia = incluidos.filter((p) => p.dia === dia).map((p) => p.personalId)
+  const deOtroDia = incluidos.filter((p) => p.dia !== dia).map((p) => p.personalId)
+  const sinElOtroDia = seleccionActual.filter((id) => !deOtroDia.includes(id))
+  const faltantes = delDia.filter((id) => !sinElOtroDia.includes(id))
+  return faltantes.length ? [...sinElOtroDia, ...faltantes] : sinElOtroDia
+}
+
 export function calcularPersonalSugerido(
   reglas: ReglaPersonal[],
   totalInvitados: number,

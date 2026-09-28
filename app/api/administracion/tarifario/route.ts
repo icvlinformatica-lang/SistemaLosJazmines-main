@@ -27,7 +27,7 @@ interface FilaGrilla {
 
 export async function GET() {
   try {
-    const [grilla, reglas, vinculosRecetas, vinculosBarra] = await Promise.all([
+    const [grilla, reglas, vinculosRecetas, vinculosBarra, incluyeServicio, incluyePersonal] = await Promise.all([
       sql`
         SELECT salon, invitados_min, invitados_max, dia, modalidad, precio
         FROM tarifario_salon
@@ -40,6 +40,8 @@ export async function GET() {
       `,
       sql`SELECT servicio_id, receta_id FROM servicio_recetas`,
       sql`SELECT servicio_id, barra_template_id FROM servicio_barra_template`,
+      sql`SELECT servicio_id FROM salon_incluye_servicio`,
+      sql`SELECT personal_id, dia FROM salon_incluye_personal`,
     ])
 
     return NextResponse.json({
@@ -72,6 +74,11 @@ export async function GET() {
         },
         {},
       ),
+      serviciosIncluidosSalon: (incluyeServicio as unknown as Array<{ servicio_id: string }>).map((r) => r.servicio_id),
+      personalIncluidoSalon: (incluyePersonal as unknown as Array<{ personal_id: string; dia: string }>).map((r) => ({
+        personalId: r.personal_id,
+        dia: r.dia,
+      })),
     })
   } catch (err) {
     console.error("[API] Error en administracion/tarifario GET:", err)
@@ -87,6 +94,15 @@ export async function POST(req: Request) {
       Array.isArray(body?.reglasPersonal) ? body.reglasPersonal : []
     const recetasPorServicio: Record<string, string[]> =
       body?.recetasPorServicio && typeof body.recetasPorServicio === "object" ? body.recetasPorServicio : {}
+    const serviciosIncluidosSalon: string[] = Array.isArray(body?.serviciosIncluidosSalon)
+      ? body.serviciosIncluidosSalon.filter((x: unknown) => typeof x === "string")
+      : []
+    const personalIncluidoSalon: Array<{ personalId: string; dia: string }> = Array.isArray(body?.personalIncluidoSalon)
+      ? body.personalIncluidoSalon.filter(
+          (p: { personalId?: unknown; dia?: unknown }) =>
+            typeof p?.personalId === "string" && (p.dia === "viernes" || p.dia === "sabado"),
+        )
+      : []
     const barraTemplatePorServicio: Record<string, string> =
       body?.barraTemplatePorServicio && typeof body.barraTemplatePorServicio === "object"
         ? body.barraTemplatePorServicio
@@ -181,6 +197,20 @@ export async function POST(req: Request) {
             ON CONFLICT DO NOTHING
           `
         }
+      }
+
+      await db`DELETE FROM salon_incluye_servicio`
+      for (const servicioId of serviciosIncluidosSalon) {
+        await db`INSERT INTO salon_incluye_servicio (servicio_id) VALUES (${servicioId}) ON CONFLICT DO NOTHING`
+      }
+
+      await db`DELETE FROM salon_incluye_personal`
+      for (const p of personalIncluidoSalon) {
+        await db`
+          INSERT INTO salon_incluye_personal (personal_id, dia)
+          VALUES (${p.personalId}, ${p.dia})
+          ON CONFLICT DO NOTHING
+        `
       }
 
       await db`DELETE FROM servicio_barra_template`
