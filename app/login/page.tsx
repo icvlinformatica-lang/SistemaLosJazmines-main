@@ -3,7 +3,14 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronUp, LogIn } from "lucide-react"
-import { PERFILES, useProfile, tieneAccesoRapido, olvidarAccesosRapidos, type Perfil } from "@/lib/profile-context"
+import {
+  PERFILES,
+  useProfile,
+  tieneAccesoRapido,
+  olvidarAccesosRapidos,
+  huboSesionVencida,
+  type Perfil,
+} from "@/lib/profile-context"
 
 // Nota: los íconos de perfil (perfil.icon) son componentes de lucide-react
 // definidos junto con cada perfil en lib/profile-context.tsx.
@@ -42,6 +49,17 @@ export default function LoginPage() {
   // Nombres de vendedores traídos en vivo de /api/auth/vendedores-nombres
   // (ver PERFILES_CON_SELECCION_USUARIO). Vacío mientras carga o si falla.
   const [nombresVendedores, setNombresVendedores] = useState<string[]>([])
+
+  // Aviso cuando llegamos acá porque la sesión venció y no se pudo renovar
+  // sola (la marca la deja el fetch parcheado de lib/profile-context.tsx).
+  // Se lee en un efecto (no en el render) para no desencontrarse con el HTML
+  // del servidor, que no tiene acceso a sessionStorage. Que el valor no se
+  // pierda entre montajes lo garantiza huboSesionVencida(), que lo cachea.
+  const [sesionVencida, setSesionVencida] = useState(false)
+
+  useEffect(() => {
+    setSesionVencida(huboSesionVencida())
+  }, [])
 
   useEffect(() => {
     fetch("/api/auth/vendedores-nombres")
@@ -310,6 +328,16 @@ export default function LoginPage() {
             misma altura para que la tarjeta de PIN arranque a la altura
             del label, no más arriba. */}
         <div className="order-1 md:order-2 shrink-0 md:self-start md:pt-[46px]">
+          {/* Chip de aviso (fondo sólido, no texto suelto sobre la foto —
+              ver DESIGN.md §3). Aparece solo si llegamos acá por sesión
+              vencida que no se pudo renovar sola. */}
+          {sesionVencida && (
+            <div className="mb-3 w-full rounded-xl bg-[#fdf6e3] border border-[#d4af37] px-3 py-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
+              <p className="text-xs font-semibold text-[#1a3a2a] text-center">
+                Tu sesión venció, volvé a entrar
+              </p>
+            </div>
+          )}
           {perfilActual && (mostrarQuienPanel || esSeleccionadoPanel) ? (
             <div
               className={`w-full rounded-2xl shadow-lg p-5 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-200 ${
