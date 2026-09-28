@@ -15,7 +15,13 @@ import { sql } from "@/lib/db"
  */
 export async function GET() {
   try {
-    const [servicios, recetas, preciosVenta, preciosBase, personal, tarifario, reglasPersonal, vinculosRecetas, vinculosBarra] = await Promise.all([
+    // Las consultas van en dos tandas y no todas juntas: el pooler de
+    // Supabase (modo transaction) toma una conexión por consulta simultánea,
+    // y esta ruta la piden varias pantallas a la vez. Con las nueve en
+    // paralelo aparecían CONNECT_TIMEOUT y "prepared statement does not
+    // exist" bajo carga. Las cuatro tablas del tarifario son chicas, así que
+    // van después, en su propia tanda.
+    const [servicios, recetas, preciosVenta, preciosBase, personal] = await Promise.all([
       sql`
         SELECT id, nombre, categoria, unidad, precio_venta
         FROM servicios
@@ -35,6 +41,9 @@ export async function GET() {
         WHERE activo = true
         ORDER BY orden ASC NULLS LAST, apellido ASC
       `,
+    ])
+
+    const [tarifario, reglasPersonal, vinculosRecetas, vinculosBarra] = await Promise.all([
       sql`
         SELECT salon, invitados_min, invitados_max, dia, modalidad, precio
         FROM tarifario_salon

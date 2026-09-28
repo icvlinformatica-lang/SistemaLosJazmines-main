@@ -76,7 +76,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params
     const filas = (await sql`
       SELECT id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
-             nombre_festejados, paquete_id, invitados, servicios_elegidos, precio_venta_sugerido, estado, comentario_admin
+             nombre_festejados, paquete_id, invitados, servicios_elegidos, precio_venta_sugerido, estado, comentario_admin,
+             modalidad_salon, fuera_de_tarifario, avisos
       FROM cotizaciones
       WHERE id = ${id}
       LIMIT 1
@@ -124,6 +125,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         })),
         personalSeleccionado,
         precioVentaSugerido: Number(f.precio_venta_sugerido) || 0,
+        modalidadSalon: (f as unknown as { modalidad_salon?: string }).modalidad_salon || "solo_salon",
+        fueraDeTarifario: !!(f as unknown as { fuera_de_tarifario?: boolean }).fuera_de_tarifario,
         estado: f.estado,
         comentarioAdmin: f.comentario_admin,
       },

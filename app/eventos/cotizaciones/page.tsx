@@ -23,6 +23,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useToast } from "@/hooks/use-toast"
 import { useStore } from "@/lib/store-context"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
+import { TarifarioEditor } from "@/components/tarifario-editor"
 
 interface CotizacionPendiente {
   id: string
@@ -285,6 +286,9 @@ export default function CotizacionesPendientesPage() {
             </Button>
           </div>
         </div>
+
+        {/* Tarifario del cotizador: grilla del salón + regla de personal. */}
+        <TarifarioEditor />
 
         {cargando ? (
           <p className="text-sm text-muted-foreground">Cargando...</p>
