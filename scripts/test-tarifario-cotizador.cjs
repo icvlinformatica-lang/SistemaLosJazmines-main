@@ -26,6 +26,9 @@ const {
   diaTarifario,
   servicioCorrespondeAlAnio,
   calcularPersonalSugerido,
+  personalIncluidoDelSalon,
+  ajustarPersonalDelSalonPorDia,
+  origenEsPrecioDeLista,
   AVISO_FUERA_DE_TARIFARIO,
 } = require(path.join(RAIZ, "lib/tarifario-cotizador.ts"))
 
@@ -54,7 +57,12 @@ const CATALOGO = [
   { id: "plataforma", nombre: "PLATAFORMA 360", categoria: "Decoracion", unidad: "Por Hora", precioVenta: 200000 },
   { id: "cartel", nombre: "CARTEL NEÓN", categoria: "Salon y Espacio", unidad: "Fijo", precioVenta: 0 },
   { id: "mesa-dulce", nombre: "MESA DULCE Y TORTA", categoria: "Pasteleria", unidad: "Fijo", precioVenta: 335000 },
+  { id: "mesas", nombre: "MESAS, SILLAS, VAJILLA Y MANTELERÍA", categoria: "Salon y Espacio", unidad: "Fijo", precioVenta: 180000 },
+  { id: "dj", nombre: "DJ, SONIDO, LUCES Y HUMO", categoria: "Salon y Espacio", unidad: "Fijo", precioVenta: 220000 },
 ]
+
+// Lo que el precio del salón ya trae (ver salon_incluye_servicio).
+const INCLUIDOS_SALON = ["mesas", "dj"]
 
 const base = (over = {}) => ({
   salon: "Quinta",
@@ -233,4 +241,145 @@ test("sin salón elegido no rompe: total 0 y aviso", () => {
   const r = calcularCotizacion(base({ salon: "" }))
   assert.equal(r.total, 0)
   assert.equal(r.origenPrecioSalon, "sin_precio")
+})
+
+
+// ─── Lo que incluye el salón ─────────────────────────────────────────────
+
+test("con precio de grilla, lo que trae el salón no se cobra", () => {
+  const r = calcularCotizacion(base({
+    serviciosIncluidosSalon: INCLUIDOS_SALON,
+    serviciosElegidos: [
+      { servicioId: "mesas", cantidad: 1 },
+      { servicioId: "dj", cantidad: 1 },
+      { servicioId: "pantalla", cantidad: 1 },
+    ],
+  }))
+  const mesas = r.servicios.find((s) => s.servicioId === "mesas")
+  const dj = r.servicios.find((s) => s.servicioId === "dj")
+  assert.equal(mesas.incluidoEnPaquete, true)
+  assert.equal(mesas.motivoIncluido, "salon")
+  assert.equal(mesas.precioTotal, 0)
+  assert.equal(dj.precioTotal, 0)
+  assert.equal(r.totalServicios, 400000, "solo la pantalla suma")
+  assert.equal(r.total, 4700000, "el precio del salón no cambia")
+})
+
+test("con precio del Calendario también van incluidos", () => {
+  const r = calcularCotizacion(base({
+    preciosVenta: { Quinta: { "2026-10-03": 5000000 } },
+    serviciosIncluidosSalon: INCLUIDOS_SALON,
+    serviciosElegidos: [{ servicioId: "mesas", cantidad: 1 }],
+  }))
+  assert.equal(r.origenPrecioSalon, "calendario")
+  assert.equal(r.servicios[0].precioTotal, 0)
+  assert.equal(r.total, 5000000)
+})
+
+test("sin precio de lista del salón, lo incluido se cobra como cualquier adicional", () => {
+  // Salón con precio base de respaldo (no es lista de precios cerrada)
+  const conBase = calcularCotizacion(base({
+    salon: "Casona",
+    preciosBaseSalon: { Casona: 2000000 },
+    serviciosIncluidosSalon: INCLUIDOS_SALON,
+    serviciosElegidos: [{ servicioId: "mesas", cantidad: 1 }],
+  }))
+  assert.equal(conBase.origenPrecioSalon, "precio_base")
+  assert.equal(conBase.servicios[0].incluidoEnPaquete, false)
+  assert.equal(conBase.servicios[0].precioTotal, 180000, "se cobra")
+  assert.equal(conBase.total, 2180000)
+
+  // Salón sin ningún precio cargado
+  const sinPrecio = calcularCotizacion(base({
+    salon: "Salon 5",
+    serviciosIncluidosSalon: INCLUIDOS_SALON,
+    serviciosElegidos: [{ servicioId: "dj", cantidad: 1 }],
+  }))
+  assert.equal(sinPrecio.servicios[0].precioTotal, 220000, "se cobra")
+})
+
+test("con catering, el menú se incluye por catering y las mesas por el salón", () => {
+  const r = calcularCotizacion(base({
+    modalidad: "con_catering",
+    serviciosIncluidosSalon: INCLUIDOS_SALON,
+    serviciosElegidos: [
+      { servicioId: "menu-asado", cantidad: 1 },
+      { servicioId: "mesas", cantidad: 1 },
+      { servicioId: "pantalla", cantidad: 1 },
+    ],
+  }))
+  assert.equal(r.servicios.find((s) => s.servicioId === "menu-asado").motivoIncluido, "catering")
+  assert.equal(r.servicios.find((s) => s.servicioId === "mesas").motivoIncluido, "salon")
+  assert.equal(r.totalServicios, 400000)
+  assert.equal(r.total, 8700000)
+})
+
+test("origenEsPrecioDeLista: grilla y calendario sí; precio base y sin precio no", () => {
+  assert.equal(origenEsPrecioDeLista("calendario"), true)
+  assert.equal(origenEsPrecioDeLista("tarifario"), true)
+  assert.equal(origenEsPrecioDeLista("tarifario_aproximado"), true)
+  assert.equal(origenEsPrecioDeLista("precio_base"), false)
+  assert.equal(origenEsPrecioDeLista("sin_precio"), false)
+})
+
+test("el personal del salón cambia con el día del evento", () => {
+  const incluidos = [
+    { personalId: "portero-v", dia: "viernes" },
+    { personalId: "limpieza-v", dia: "viernes" },
+    { personalId: "coord-v", dia: "viernes" },
+    { personalId: "portero-s", dia: "sabado" },
+    { personalId: "limpieza-s", dia: "sabado" },
+    { personalId: "coord-s", dia: "sabado" },
+  ]
+  assert.deepEqual(personalIncluidoDelSalon(incluidos, "2026-10-03"), ["portero-s", "limpieza-s", "coord-s"], "sábado")
+  assert.deepEqual(personalIncluidoDelSalon(incluidos, "2026-10-02"), ["portero-v", "limpieza-v", "coord-v"], "viernes")
+  assert.deepEqual(personalIncluidoDelSalon(incluidos, "2026-10-04"), ["portero-v", "limpieza-v", "coord-v"], "domingo = viernes")
+  assert.deepEqual(personalIncluidoDelSalon(incluidos, ""), ["portero-v", "limpieza-v", "coord-v"], "sin fecha = viernes")
+})
+
+test("cambiar la fecha cambia el juego de personal del salón", () => {
+  const incluidos = [
+    { personalId: "portero-v", dia: "viernes" },
+    { personalId: "limpieza-v", dia: "viernes" },
+    { personalId: "coord-v", dia: "viernes" },
+    { personalId: "portero-s", dia: "sabado" },
+    { personalId: "limpieza-s", dia: "sabado" },
+    { personalId: "coord-s", dia: "sabado" },
+  ]
+
+  // Arranca vacío y se elige un sábado: entran los tres del sábado.
+  const enSabado = ajustarPersonalDelSalonPorDia([], incluidos, "2026-10-03")
+  assert.deepEqual([...enSabado].sort(), ["coord-s", "limpieza-s", "portero-s"])
+
+  // Se pasa a viernes: salen los del sábado y entran los del viernes.
+  const enViernes = ajustarPersonalDelSalonPorDia(enSabado, incluidos, "2026-10-02")
+  assert.deepEqual([...enViernes].sort(), ["coord-v", "limpieza-v", "portero-v"])
+  assert.ok(!enViernes.includes("portero-s"), "el portero del sábado quedó destildado")
+  assert.ok(!enViernes.includes("limpieza-s"), "la limpieza del sábado quedó destildada")
+  assert.ok(!enViernes.includes("coord-s"), "la coordinación del sábado quedó destildada")
+
+  // Lo que el vendedor agregó a mano no se toca.
+  const conExtras = ajustarPersonalDelSalonPorDia(["mozo-1", "barman-1", ...enViernes], incluidos, "2026-10-03")
+  assert.ok(conExtras.includes("mozo-1") && conExtras.includes("barman-1"), "no se tocan los agregados a mano")
+  assert.deepEqual([...conExtras].sort(), ["barman-1", "coord-s", "limpieza-s", "mozo-1", "portero-s"])
+
+  // Si el vendedor destildó uno del día, volver a la misma fecha lo repone
+  // (es el mismo efecto que corre al cambiar salón o día).
+  const sinPortero = enViernes.filter((id) => id !== "portero-v")
+  assert.ok(ajustarPersonalDelSalonPorDia(sinPortero, incluidos, "2026-10-02").includes("portero-v"))
+
+  // Domingo y sin fecha usan el juego de viernes.
+  assert.deepEqual([...ajustarPersonalDelSalonPorDia([], incluidos, "2026-10-04")].sort(), ["coord-v", "limpieza-v", "portero-v"])
+  assert.deepEqual([...ajustarPersonalDelSalonPorDia([], incluidos, "")].sort(), ["coord-v", "limpieza-v", "portero-v"])
+})
+
+test("lo incluido por el salón no genera aviso de servicio en $0", () => {
+  const catalogo = [...CATALOGO.filter((s) => s.id !== "mesas"), { id: "mesas", nombre: "MESAS", categoria: "Salon y Espacio", unidad: "Fijo", precioVenta: 0 }]
+  const r = calcularCotizacion(base({
+    catalogoServicios: catalogo,
+    serviciosIncluidosSalon: ["mesas"],
+    serviciosElegidos: [{ servicioId: "mesas", cantidad: 1 }],
+  }))
+  assert.equal(r.fueraDeTarifario, false, "está incluido, que valga $0 no es un problema")
+  assert.deepEqual(r.avisos, [])
 })
