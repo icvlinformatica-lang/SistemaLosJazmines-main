@@ -42,6 +42,7 @@ import {
   UserCheck,
   Users,
   UtensilsCrossed,
+  Wine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +55,14 @@ import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
+import {
+  calcularCotizacion,
+  calcularPersonalSugerido,
+  servicioCorrespondeAlAnio,
+  type FilaTarifario,
+  type ModalidadSalon,
+  type ReglaPersonal,
+} from "@/lib/tarifario-cotizador"
 
 const TIPOS_EVENTO = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
 
@@ -167,6 +176,9 @@ function CotizarPageContent() {
   const [preciosVenta, setPreciosVenta] = useState<Record<string, Record<string, number>>>({})
   const [preciosBaseSalon, setPreciosBaseSalon] = useState<Record<string, number>>({})
   const [personalCatalogo, setPersonalCatalogo] = useState<PersonalCatalogo[]>([])
+  const [tarifario, setTarifario] = useState<FilaTarifario[]>([])
+  const [reglasPersonal, setReglasPersonal] = useState<ReglaPersonal[]>([])
+  const [recetasPorServicio, setRecetasPorServicio] = useState<Record<string, string[]>>({})
   const [paquetes, setPaquetes] = useState<PaqueteVendedor[]>([])
   const [paqueteAplicadoId, setPaqueteAplicadoId] = useState<string | null>(null)
   const [paqueteUrlAplicado, setPaqueteUrlAplicado] = useState(false)
@@ -185,6 +197,10 @@ function CotizarPageContent() {
   const [salon, setSalon] = useState<string>("")
   const [tipoEvento, setTipoEvento] = useState<string>("")
   const [nombreFestejados, setNombreFestejados] = useState("")
+
+  // Modalidad del salón: cambia el precio de la grilla y hace que menú y
+  // barra queden incluidos (se siguen eligiendo para cocina, pero no suman).
+  const [modalidadSalon, setModalidadSalon] = useState<ModalidadSalon>("solo_salon")
 
   // Invitados
   const [invitados, setInvitados] = useState({ adultos: 0, adolescentes: 0, ninos: 0, personasDietasEspeciales: 0 })
@@ -234,6 +250,9 @@ function CotizarPageContent() {
           setPreciosVenta(data.preciosVenta || {})
           setPreciosBaseSalon(data.preciosBaseSalon || {})
           setPersonalCatalogo(data.personal || [])
+          setTarifario(data.tarifario || [])
+          setReglasPersonal(data.reglasPersonal || [])
+          setRecetasPorServicio(data.recetasPorServicio || {})
         }
       })
       .catch(() => {})
@@ -271,6 +290,7 @@ function CotizarPageContent() {
         setRecetasElegidas(c.recetasElegidas)
         setServiciosElegidos(Object.fromEntries(c.serviciosElegidos.map((s: { servicioId: string; cantidad: number }) => [s.servicioId, s.cantidad])))
         setPersonalSeleccionado(Array.isArray(c.personalSeleccionado) ? c.personalSeleccionado : [])
+        setModalidadSalon(c.modalidadSalon === "con_catering" ? "con_catering" : "solo_salon")
         setEstadoCotizacion(c.estado)
         setComentarioAdmin(c.comentarioAdmin)
       })
@@ -309,6 +329,52 @@ function CotizarPageContent() {
     })
   }
 
+  /**
+   * Elegir un menú del flyer: agrega el servicio y premarca sus recetas (las
+   * que Administración vinculó en el tarifario) para adultos. El vendedor
+   * después puede tocar la tabla plato por plato como siempre.
+   * "Personalizado" es no elegir ninguno: se arma a mano desde la tabla.
+   */
+  const elegirMenu = (servicioId: string) => {
+    if (soloLectura) return
+    const yaEsta = servicioId in serviciosElegidos
+    setServiciosElegidos((prev) => {
+      // Un solo menú por evento: al elegir otro, se reemplaza.
+      const sinMenus = Object.fromEntries(
+        Object.entries(prev).filter(([id]) => !serviciosMenu.some((m) => m.id === id)),
+      )
+      return yaEsta ? sinMenus : { ...sinMenus, [servicioId]: 1 }
+    })
+    if (!yaEsta) {
+      const recetasDelMenu = recetasPorServicio[servicioId] || []
+      if (recetasDelMenu.length) {
+        setRecetasElegidas((prev) => ({
+          ...prev,
+          adultos: [...new Set([...prev.adultos, ...recetasDelMenu])],
+        }))
+      }
+    }
+  }
+
+  const elegirBarra = (servicioId: string) => {
+    if (soloLectura) return
+    const yaEsta = servicioId in serviciosElegidos
+    setServiciosElegidos((prev) => {
+      const sinBarras = Object.fromEntries(
+        Object.entries(prev).filter(([id]) => !serviciosBarra.some((b) => b.id === id)),
+      )
+      return yaEsta ? sinBarras : { ...sinBarras, [servicioId]: 1 }
+    })
+  }
+
+  /** "Seleccionar todo" de la sección Menú: marca todas las recetas de todos los menús. */
+  const marcarTodasLasRecetasDeMenus = () => {
+    if (soloLectura) return
+    const todas = serviciosMenu.flatMap((m) => recetasPorServicio[m.id] || [])
+    if (!todas.length) return
+    setRecetasElegidas((prev) => ({ ...prev, adultos: [...new Set([...prev.adultos, ...todas])] }))
+  }
+
   const toggleServicio = (servicioId: string) => {
     if (soloLectura) return
     setServiciosElegidos((prev) => {
@@ -330,23 +396,66 @@ function CotizarPageContent() {
     setPersonalSeleccionado((prev) => (prev.includes(personalId) ? prev.filter((id) => id !== personalId) : [...prev, personalId]))
   }
 
-  // Preview de precio: misma fórmula que usa el planificador real
-  // (app/evento/page.tsx) y que vuelve a calcular el servidor al guardar.
-  const { serviciosConPrecio, totalServicios, precioBaseSalon, precioVentaSugerido } = useMemo(() => {
-    const conPrecio = servicios
-      .filter((s) => s.id in serviciosElegidos)
-      .map((s) => {
-        const usaCantidad = s.unidad === "Por Hora" || s.unidad === "Por Cantidad"
-        const cantidad = usaCantidad ? Math.max(1, serviciosElegidos[s.id] || 1) : 1
-        return { ...s, cantidad, usaCantidad, precioTotal: s.precioVenta * cantidad }
-      })
-    const total = conPrecio.reduce((sum, s) => sum + s.precioTotal, 0)
-    // Si la fecha no tiene precio cargado en el Calendario de Precios, cae
-    // al precio base de respaldo del salón (configurado en Eventos >
-    // Cotizaciones) en vez de mostrar $0.
-    const base = salon ? preciosVenta[salon]?.[fechaEvento] ?? preciosBaseSalon[salon] ?? 0 : 0
-    return { serviciosConPrecio: conPrecio, totalServicios: total, precioBaseSalon: base, precioVentaSugerido: base + total }
-  }, [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, preciosBaseSalon])
+  // Preview de precio: EXACTAMENTE la misma función que usa el servidor al
+  // guardar (lib/tarifario-cotizador.ts), así el número que ve el vendedor es
+  // el que queda en la cotización. Se recalcula solo con cada cambio de menú,
+  // barra, modalidad, invitados, fecha o salón.
+  const calculo = useMemo(
+    () =>
+      calcularCotizacion({
+        salon,
+        fechaEvento,
+        modalidad: modalidadSalon,
+        totalInvitados: totalPersonas,
+        serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
+        catalogoServicios: servicios,
+        tarifario,
+        preciosVenta,
+        preciosBaseSalon,
+      }),
+    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, preciosBaseSalon, tarifario, modalidadSalon, totalPersonas],
+  )
+  const serviciosConPrecio = calculo.servicios
+  const totalServicios = calculo.totalServicios
+  const precioBaseSalon = calculo.precioSalon
+  const precioVentaSugerido = calculo.total
+
+  // Servicios que se ofrecen para la fecha elegida: los que llevan un año en
+  // el nombre (VESTIDO 2027) solo aparecen si es el año del evento.
+  const serviciosDisponibles = useMemo(
+    () => servicios.filter((s) => servicioCorrespondeAlAnio(s.nombre, fechaEvento)),
+    [servicios, fechaEvento],
+  )
+  const serviciosMenu = useMemo(() => serviciosDisponibles.filter((s) => s.categoria === "Menú"), [serviciosDisponibles])
+  const serviciosBarra = useMemo(() => serviciosDisponibles.filter((s) => s.categoria === "Barra"), [serviciosDisponibles])
+  // "Adicionales" = todo lo que no es menú ni barra (esos tienen su propia sección).
+  const serviciosAdicionales = useMemo(
+    () => serviciosDisponibles.filter((s) => s.categoria !== "Menú" && s.categoria !== "Barra"),
+    [serviciosDisponibles],
+  )
+  const hayMenuElegido = useMemo(
+    () => serviciosMenu.some((s) => s.id in serviciosElegidos) || totalPlatos > 0,
+    [serviciosMenu, serviciosElegidos, totalPlatos],
+  )
+
+  // Personal sugerido por la regla del tarifario (solo si hay menú).
+  const personalSugerido = useMemo(
+    () => (hayMenuElegido ? calcularPersonalSugerido(reglasPersonal, totalPersonas, personalCatalogo) : []),
+    [hayMenuElegido, reglasPersonal, totalPersonas, personalCatalogo],
+  )
+  const faltanEnRoster = personalSugerido.filter((p) => p.faltan > 0)
+
+  // Precargar el personal que pide la regla, sin pisar lo que el vendedor ya
+  // tocó a mano: solo agrega los que faltan.
+  useEffect(() => {
+    if (soloLectura || personalSugerido.length === 0) return
+    const sugeridos = personalSugerido.flatMap((p) => p.personalIds)
+    setPersonalSeleccionado((prev) => {
+      const faltantes = sugeridos.filter((id) => !prev.includes(id))
+      return faltantes.length ? [...prev, ...faltantes] : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personalSugerido, soloLectura])
 
   const puedeGuardar = clienteNombre.trim().length > 0 && !soloLectura
   const puedeGenerarPaquete = !soloLectura && !!salon && Object.keys(serviciosElegidos).length > 0
@@ -379,6 +488,7 @@ function CotizarPageContent() {
           recetasElegidas,
           serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
           personalSeleccionado,
+          modalidadSalon,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -608,12 +718,70 @@ function CotizarPageContent() {
                 </div>
               </div>
 
+              {/* Modalidad: cambia la grilla de precio del salón. Con catering,
+                  el menú y la barra quedan incluidos y no suman aparte. */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  Modalidad
+                </Label>
+                <div className="flex gap-2">
+                  {([
+                    ["solo_salon", "Solo salón"],
+                    ["con_catering", "Salón con catering y bebidas"],
+                  ] as Array<[ModalidadSalon, string]>).map(([valor, label]) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      onClick={() => setModalidadSalon(valor)}
+                      className={`flex-1 rounded-lg border px-2 py-2.5 text-xs sm:text-sm font-medium transition-colors disabled:opacity-60 ${
+                        modalidadSalon === valor
+                          ? "bg-[#2d5a3d] text-white border-[#2d5a3d]"
+                          : "bg-white hover:bg-muted border-border"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {modalidadSalon === "con_catering" && (
+                  <p className="text-xs text-muted-foreground">
+                    Incluye menú y barra. No incluye mesa dulce.
+                  </p>
+                )}
+              </div>
+
               {precioBaseSalon > 0 && (
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
                   <UserCheck className="h-5 w-5 text-emerald-600 shrink-0" />
-                  <p className="text-sm font-semibold text-emerald-800">
-                    Precio base del salón: {fmt(precioBaseSalon)}
-                  </p>
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Precio del salón: {fmt(precioBaseSalon)}
+                    </p>
+                    <p className="text-xs text-emerald-700">
+                      {calculo.origenPrecioSalon === "calendario"
+                        ? "Del Calendario de Precios para esa fecha"
+                        : calculo.origenPrecioSalon === "tarifario"
+                          ? `Del tarifario: ${totalPersonas} invitados, ${modalidadSalon === "con_catering" ? "con catering" : "solo salón"}`
+                          : calculo.origenPrecioSalon === "tarifario_aproximado"
+                            ? "Del tarifario, con el rango más cercano"
+                            : "Precio base de respaldo del salón"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Avisos: lo que Administración tiene que mirar antes de aprobar. */}
+              {calculo.avisos.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-1">
+                  <p className="text-sm font-semibold text-amber-900">Revisar antes de enviar</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {calculo.avisos.map((aviso, i) => (
+                      <li key={i} className="text-xs text-amber-800">
+                        {aviso}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
@@ -668,6 +836,73 @@ function CotizarPageContent() {
               </div>
             ) : (
               <div className="space-y-3">
+                {/* Menús del flyer: un botón por servicio de categoría "Menú".
+                    Elegir uno premarca sus recetas en la tabla de abajo.
+                    "Personalizado" = armarlo plato por plato, sin servicio. */}
+                {serviciosMenu.length > 0 && (
+                  <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <Label className="text-sm font-medium">Menú del flyer</Label>
+                      <button
+                        type="button"
+                        onClick={marcarTodasLasRecetasDeMenus}
+                        disabled={soloLectura}
+                        className="text-xs underline text-muted-foreground hover:text-foreground disabled:opacity-50"
+                      >
+                        Seleccionar todo
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {serviciosMenu.map((m) => {
+                        const elegido = m.id in serviciosElegidos
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => elegirMenu(m.id)}
+                            disabled={soloLectura}
+                            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
+                              elegido
+                                ? "bg-orange-600 text-white border-orange-600"
+                                : "bg-white hover:bg-orange-50 border-border"
+                            }`}
+                          >
+                            {m.nombre}
+                            {m.precioVenta > 0 && (
+                              <span className="block text-xs font-normal opacity-80">
+                                {fmt(m.precioVenta)} por persona
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setServiciosElegidos((prev) =>
+                            Object.fromEntries(Object.entries(prev).filter(([id]) => !serviciosMenu.some((m) => m.id === id))),
+                          )
+                        }
+                        disabled={soloLectura}
+                        className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
+                          serviciosMenu.every((m) => !(m.id in serviciosElegidos))
+                            ? "bg-foreground text-background border-foreground"
+                            : "bg-white hover:bg-muted border-border"
+                        }`}
+                      >
+                        Personalizado
+                        <span className="block text-xs font-normal opacity-80">Plato por plato</span>
+                      </button>
+                    </div>
+                    {modalidadSalon === "con_catering" && (
+                      <p className="text-xs text-muted-foreground">
+                        Con catering y bebidas el menú ya está incluido en el precio del salón: se elige igual para
+                        que cocina sepa qué preparar, pero no suma aparte.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="w-full text-sm">
                     <thead>
@@ -730,6 +965,70 @@ function CotizarPageContent() {
             )}
           </Seccion>
 
+          {/* Barra: mismo criterio que el menú, un botón por servicio de
+              categoría "Barra". "Personalizado" deja elegir trago por trago
+              desde el evento (cocteles), que es como se hacía siempre. */}
+          <Seccion
+            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-500/10"><Wine className="h-5 w-5 text-teal-600" /></div>}
+            title="Barra del Evento"
+            subtitle={
+              serviciosBarra.find((b) => b.id in serviciosElegidos)?.nombre ?? "Sin barra elegida (personalizada)"
+            }
+            disabled={soloLectura}
+          >
+            {serviciosBarra.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No hay barras cargadas en el catálogo. Se crean en Finanzas &gt; Servicios con categoría "Barra".
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {serviciosBarra.map((b) => {
+                    const elegida = b.id in serviciosElegidos
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => elegirBarra(b.id)}
+                        disabled={soloLectura}
+                        className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
+                          elegida ? "bg-teal-600 text-white border-teal-600" : "bg-white hover:bg-teal-50 border-border"
+                        }`}
+                      >
+                        {b.nombre}
+                        {b.precioVenta > 0 && (
+                          <span className="block text-xs font-normal opacity-80">{fmt(b.precioVenta)} por persona</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setServiciosElegidos((prev) =>
+                        Object.fromEntries(Object.entries(prev).filter(([id]) => !serviciosBarra.some((b) => b.id === id))),
+                      )
+                    }
+                    disabled={soloLectura}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
+                      serviciosBarra.every((b) => !(b.id in serviciosElegidos))
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-white hover:bg-muted border-border"
+                    }`}
+                  >
+                    Personalizado
+                    <span className="block text-xs font-normal opacity-80">Trago por trago</span>
+                  </button>
+                </div>
+                {modalidadSalon === "con_catering" && (
+                  <p className="text-xs text-muted-foreground">
+                    Con catering y bebidas la barra ya está incluida en el precio del salón: no suma aparte.
+                  </p>
+                )}
+              </div>
+            )}
+          </Seccion>
+
           <Seccion
             icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
             title="Servicios del Evento"
@@ -771,7 +1070,7 @@ function CotizarPageContent() {
             )}
             {cargandoCatalogo ? (
               <p className="text-sm text-muted-foreground">Cargando...</p>
-            ) : servicios.length === 0 ? (
+            ) : serviciosAdicionales.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
                 <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">No hay servicios en el catálogo</p>
@@ -788,7 +1087,7 @@ function CotizarPageContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {servicios.map((s, idx) => {
+                    {serviciosAdicionales.map((s, idx) => {
                       const seleccionado = s.id in serviciosElegidos
                       const usaCantidad = s.unidad === "Por Hora" || s.unidad === "Por Cantidad"
                       const cantidad = usaCantidad ? Math.max(1, serviciosElegidos[s.id] || 1) : 1
@@ -875,6 +1174,31 @@ function CotizarPageContent() {
             <p className="text-xs text-muted-foreground mb-3">
               Solo marcás quién hace falta — Administración define el costo de cada uno cuando revisa la cotización.
             </p>
+            {/* Lo que pide la regla del tarifario, ya precargado. Solo aplica
+                si el evento lleva menú: sin cocina no hay personal que sugerir. */}
+            {personalSugerido.length > 0 && (
+              <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1">
+                <p className="text-sm font-semibold text-emerald-900">
+                  Precargado según el tarifario para {totalPersonas} invitados
+                </p>
+                <p className="text-xs text-emerald-800">
+                  {personalSugerido.map((p) => `${p.funcion}: ${p.necesarios}`).join(" · ")}
+                </p>
+                <p className="text-xs text-emerald-700">Podés ajustarlo a mano.</p>
+              </div>
+            )}
+            {faltanEnRoster.length > 0 && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-1">
+                <p className="text-sm font-semibold text-amber-900">Falta gente en el roster</p>
+                <ul className="list-disc list-inside">
+                  {faltanEnRoster.map((p) => (
+                    <li key={p.funcion} className="text-xs text-amber-800">
+                      {p.funcion}: hacen falta {p.necesarios} y hay {p.necesarios - p.faltan} cargados en Finanzas &gt; Personal.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {cargandoCatalogo ? (
               <p className="text-sm text-muted-foreground">Cargando...</p>
             ) : personalCatalogo.length === 0 ? (

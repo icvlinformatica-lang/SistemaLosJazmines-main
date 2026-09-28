@@ -162,23 +162,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const fechaEvento = fechaEventoOverride !== undefined ? fechaEventoOverride : c.fecha_evento || ""
 
-    // Precio de venta del evento = precio del salón SOLO del Calendario de
-    // Precios (precios_venta) para la fecha final + servicios tal como los
-    // cotizó el vendedor — mismo criterio que el planificador. NO se usa
-    // precio_venta_sugerido tal cual porque puede incluir el precio base de
-    // respaldo por salón (precios_base_salones), que es solo una referencia
-    // para que el vendedor estime, no un alquiler que se cargue al evento.
-    let precioSalonFecha = 0
-    if (c.salon && /^\d{4}-\d{2}-\d{2}$/.test(fechaEvento)) {
-      const precios = (await sql`
-        SELECT precio FROM precios_venta WHERE salon = ${c.salon} AND fecha = ${fechaEvento} LIMIT 1
-      `) as unknown as Array<{ precio: number }>
-      precioSalonFecha = precios.length ? Number(precios[0].precio) || 0 : 0
-    }
-    const ventaServicios = servicios.reduce(
-      (sum: number, s: { precioTotal?: number }) => sum + (Number(s.precioTotal) || 0),
-      0,
-    )
+    // Precio de venta del evento = EXACTAMENTE el precio que se le cotizó al
+    // cliente (precio_venta_sugerido, calculado por lib/tarifario-cotizador.ts
+    // al guardar la cotización). Ya no se recalcula acá: lo que se firmó con
+    // el cliente es lo que entra al evento, y el evento queda marcado con
+    // precio_venta_fijo para que tampoco se recalcule después al editarlo
+    // (ver app/evento/page.tsx). Si Administración quiere otro número, lo
+    // cambia a mano a propósito desde el planificador.
+    const precioVentaCotizado = Number(c.precio_venta_sugerido) || 0
 
     const eventoPayload = {
       id: eventoId,
@@ -203,7 +194,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         unidad: s.unidad,
         cantidad: s.cantidad || 1,
       })),
-      precioVenta: precioSalonFecha + ventaServicios,
+      precioVenta: precioVentaCotizado,
+      precioVentaFijo: true,
+      cotizacionId: id,
       costoServicios: Number(costosInternos.totalCostoServicios) || 0,
       personalEvento,
       contrato: { vendedor, telefono: c.cliente_telefono || undefined },

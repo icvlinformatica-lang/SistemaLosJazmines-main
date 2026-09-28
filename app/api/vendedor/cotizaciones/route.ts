@@ -2,6 +2,12 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
+import {
+  calcularCotizacion,
+  type DiaTarifario,
+  type ModalidadSalon,
+  type ServicioParaCotizar,
+} from "@/lib/tarifario-cotizador"
 
 /**
  * Alta/edición de cotizaciones (perfil Vendedor). El precio de venta
@@ -39,9 +45,19 @@ import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 interface ServicioCatalogo {
   id: string
   nombre: string
+  categoria: string
   unidad: string
   precio_venta: number
   costo_para_caja_eventos: number
+}
+
+interface FilaTarifarioDB {
+  salon: string
+  invitados_min: number
+  invitados_max: number
+  dia: DiaTarifario
+  modalidad: ModalidadSalon
+  precio: number
 }
 
 export async function POST(req: Request) {
@@ -62,6 +78,7 @@ export async function POST(req: Request) {
       recetasElegidas,
       serviciosElegidos,
       personalSeleccionado,
+      modalidadSalon,
     } = body || {}
 
     if (typeof clienteNombre !== "string" || !clienteNombre.trim()) {
@@ -70,83 +87,94 @@ export async function POST(req: Request) {
 
     const vendedor = usuarioDesdeCookie(req)
 
-    // Traer el catálogo real de servicios (tabla chica) y calcular en base a
-    // eso — el mismo criterio que usa app/evento/page.tsx: "Fijo"/"Por
-    // Persona" cobran precioVenta tal cual, "Por Hora"/"Por Cantidad" lo
-    // multiplican por la cantidad cargada (mínimo 1).
-    const catalogoServicios = (await sql`
-      SELECT id, nombre, unidad, precio_venta, costo_para_caja_eventos FROM servicios
-    `) as unknown as ServicioCatalogo[]
+    // El precio se recalcula SIEMPRE acá, con lib/tarifario-cotizador.ts —
+    // la misma función que usa el preview de /vendedor/cotizar, así el
+    // vendedor nunca ve un número distinto del que queda guardado. Nunca se
+    // confía en un precio que mande el cliente.
+    const [catalogoServicios, tarifarioDB, preciosVentaDB, preciosBaseDB] = (await Promise.all([
+      sql`SELECT id, nombre, categoria, unidad, precio_venta, costo_para_caja_eventos FROM servicios`,
+      sql`SELECT salon, invitados_min, invitados_max, dia, modalidad, precio FROM tarifario_salon`,
+      sql`SELECT salon, fecha, precio FROM precios_venta`,
+      sql`SELECT salon, precio FROM precios_base_salones`,
+    ])) as unknown as [
+      ServicioCatalogo[],
+      FilaTarifarioDB[],
+      Array<{ salon: string; fecha: string; precio: number }>,
+      Array<{ salon: string; precio: number }>,
+    ]
 
     const seleccion: Array<{ servicioId: string; cantidad: number }> = Array.isArray(serviciosElegidos)
       ? serviciosElegidos
       : []
 
-    let totalServicios = 0
-    let totalCostoServicios = 0
-    const serviciosDetalle: Array<{
-      servicioId: string
-      nombre: string
-      unidad: string
-      cantidad: number
-      precioVenta: number
-      precioTotal: number
-    }> = []
-    const costosServiciosDetalle: Array<{
-      servicioId: string
-      nombre: string
-      cantidad: number
-      costoTotal: number
-    }> = []
+    const totalInvitados =
+      (Number(invitados?.adultos) || 0) +
+      (Number(invitados?.adolescentes) || 0) +
+      (Number(invitados?.ninos) || 0) +
+      (Number(invitados?.personasDietasEspeciales) || 0)
 
-    for (const item of seleccion) {
-      const catalogo = catalogoServicios.find((s) => s.id === item.servicioId)
-      if (!catalogo) continue
-      const usaCantidad = catalogo.unidad === "Por Hora" || catalogo.unidad === "Por Cantidad"
-      const cantidad = usaCantidad ? Math.max(1, Number(item.cantidad) || 1) : 1
-      const precioVenta = Number(catalogo.precio_venta) || 0
-      const costoBase = Number(catalogo.costo_para_caja_eventos) || 0
-      const precioTotal = precioVenta * cantidad
-      const costoTotal = costoBase * cantidad
+    const modalidad: ModalidadSalon = modalidadSalon === "con_catering" ? "con_catering" : "solo_salon"
 
-      totalServicios += precioTotal
-      totalCostoServicios += costoTotal
-
-      serviciosDetalle.push({
-        servicioId: catalogo.id,
-        nombre: catalogo.nombre,
-        unidad: catalogo.unidad,
-        cantidad,
-        precioVenta,
-        precioTotal,
-      })
-      costosServiciosDetalle.push({
-        servicioId: catalogo.id,
-        nombre: catalogo.nombre,
-        cantidad,
-        costoTotal,
-      })
+    const preciosVentaMap: Record<string, Record<string, number>> = {}
+    for (const row of preciosVentaDB) {
+      preciosVentaMap[row.salon] = preciosVentaMap[row.salon] || {}
+      preciosVentaMap[row.salon][row.fecha] = Number(row.precio) || 0
     }
+    const preciosBaseMap: Record<string, number> = {}
+    for (const row of preciosBaseDB) preciosBaseMap[row.salon] = Number(row.precio) || 0
 
-    // Precio base del salón para esa fecha (tabla precios_venta); si esa
-    // fecha no tiene precio cargado, cae al precio base de respaldo por
-    // salón (precios_base_salones, configurado en Eventos > Cotizaciones)
-    // en vez de salir en $0.
-    let precioBaseSalon = 0
-    if (salon && fechaEvento) {
-      const filas = (await sql`
-        SELECT precio FROM precios_venta WHERE salon = ${salon} AND fecha = ${fechaEvento} LIMIT 1
-      `) as unknown as Array<{ precio: number }>
-      precioBaseSalon = filas.length ? Number(filas[0].precio) || 0 : 0
-    }
-    if (!precioBaseSalon && salon) {
-      const filasBase = (await sql`
-        SELECT precio FROM precios_base_salones WHERE salon = ${salon} LIMIT 1
-      `) as unknown as Array<{ precio: number }>
-      precioBaseSalon = filasBase.length ? Number(filasBase[0].precio) || 0 : 0
-    }
+    const calculo = calcularCotizacion({
+      salon: salon || "",
+      fechaEvento: fechaEvento || "",
+      modalidad,
+      totalInvitados,
+      serviciosElegidos: seleccion,
+      catalogoServicios: catalogoServicios.map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+        categoria: s.categoria,
+        unidad: s.unidad,
+        precioVenta: Number(s.precio_venta) || 0,
+      })) as ServicioParaCotizar[],
+      tarifario: tarifarioDB.map((t) => ({
+        salon: t.salon,
+        invitadosMin: Number(t.invitados_min) || 0,
+        invitadosMax: Number(t.invitados_max) || 0,
+        dia: t.dia,
+        modalidad: t.modalidad,
+        precio: Number(t.precio) || 0,
+      })),
+      preciosVenta: preciosVentaMap,
+      preciosBaseSalon: preciosBaseMap,
+    })
 
-    const precioVentaSugerido = precioBaseSalon + totalServicios
+    const serviciosDetalle = calculo.servicios.map((s) => ({
+      servicioId: s.servicioId,
+      nombre: s.nombre,
+      categoria: s.categoria,
+      unidad: s.unidad,
+      cantidad: s.cantidad,
+      precioVenta: s.precioUnitario,
+      precioTotal: s.precioTotal,
+      incluidoEnPaquete: s.incluidoEnPaquete,
+    }))
+
+    // Costo interno con la MISMA cantidad que la venta (un menú por persona
+    // cuesta por persona). Es solo informativo para Administración: el costo
+    // real del evento se sigue calculando en vivo (Caja Eventos).
+    const costosServiciosDetalle = calculo.servicios.map((s) => {
+      const cat = catalogoServicios.find((c) => c.id === s.servicioId)
+      return {
+        servicioId: s.servicioId,
+        nombre: s.nombre,
+        cantidad: s.cantidad,
+        costoTotal: (Number(cat?.costo_para_caja_eventos) || 0) * s.cantidad,
+      }
+    })
+    const totalCostoServicios = costosServiciosDetalle.reduce((sum, c) => sum + c.costoTotal, 0)
+
+    const precioBaseSalon = calculo.precioSalon
+    const precioVentaSugerido = calculo.total
 
     const invitadosJson = JSON.stringify({
       adultos: Number(invitados?.adultos) || 0,
@@ -173,6 +201,18 @@ export async function POST(req: Request) {
       personal: personalIds,
     })
 
+    // Desglose de venta: de dónde salió cada peso del precio sugerido, para
+    // que Administración lo vea tal cual al revisar la cotización.
+    const desgloseVentaJson = JSON.stringify({
+      modalidad,
+      totalInvitados,
+      precioSalon: calculo.precioSalon,
+      origenPrecioSalon: calculo.origenPrecioSalon,
+      servicios: serviciosDetalle,
+      totalServicios: calculo.totalServicios,
+      total: calculo.total,
+    })
+
     const costosInternosJson = JSON.stringify({
       precioBaseSalon,
       servicios: costosServiciosDetalle,
@@ -197,6 +237,10 @@ export async function POST(req: Request) {
           servicios_elegidos = ${serviciosElegidosJson}::jsonb,
           precio_venta_sugerido = ${precioVentaSugerido},
           costos_internos = ${costosInternosJson}::jsonb,
+          modalidad_salon = ${modalidad},
+          desglose_venta = ${desgloseVentaJson}::jsonb,
+          fuera_de_tarifario = ${calculo.fueraDeTarifario},
+          avisos = ${JSON.stringify(calculo.avisos)}::jsonb,
           updated_at = now()
         WHERE id = ${id} AND estado IN ('borrador', 'rechazada')
         RETURNING id, estado
@@ -208,23 +252,25 @@ export async function POST(req: Request) {
           { status: 409 },
         )
       }
-      return NextResponse.json({ ok: true, id: filas[0].id, estado: filas[0].estado, precioVentaSugerido })
+      return NextResponse.json({ ok: true, id: filas[0].id, estado: filas[0].estado, precioVentaSugerido, fueraDeTarifario: calculo.fueraDeTarifario, avisos: calculo.avisos })
     }
 
     const filas = (await sql`
       INSERT INTO cotizaciones (
         vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         nombre_festejados, horario, horario_fin, paquete_id,
-        invitados, servicios_elegidos, precio_venta_sugerido, costos_internos
+        invitados, servicios_elegidos, precio_venta_sugerido, costos_internos,
+        modalidad_salon, desglose_venta, fuera_de_tarifario, avisos
       ) VALUES (
         ${vendedor}, ${clienteNombre.trim()}, ${clienteTelefono || null}, ${fechaEvento || null}, ${salon || null}, ${tipoEvento || null},
         ${nombreFestejados || null}, ${horario || null}, ${horarioFin || null}, ${paqueteId || null},
-        ${invitadosJson}::jsonb, ${serviciosElegidosJson}::jsonb, ${precioVentaSugerido}, ${costosInternosJson}::jsonb
+        ${invitadosJson}::jsonb, ${serviciosElegidosJson}::jsonb, ${precioVentaSugerido}, ${costosInternosJson}::jsonb,
+        ${modalidad}, ${desgloseVentaJson}::jsonb, ${calculo.fueraDeTarifario}, ${JSON.stringify(calculo.avisos)}::jsonb
       )
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>
 
-    return NextResponse.json({ ok: true, id: filas[0].id, estado: filas[0].estado, precioVentaSugerido })
+    return NextResponse.json({ ok: true, id: filas[0].id, estado: filas[0].estado, precioVentaSugerido, fueraDeTarifario: calculo.fueraDeTarifario, avisos: calculo.avisos })
   } catch (err) {
     console.error("[API] Error en vendedor/cotizaciones:", err)
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })

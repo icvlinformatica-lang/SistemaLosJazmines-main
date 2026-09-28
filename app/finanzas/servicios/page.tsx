@@ -60,6 +60,9 @@ const CATEGORIAS: CategoriaServicio[] = [
   "Pasteleria",
   "Transporte",
   "Papeleria",
+  // Las usa el cotizador del vendedor (ver lib/tarifario-cotizador.ts).
+  "Menú",
+  "Barra",
   "Otros",
 ]
 
@@ -73,6 +76,8 @@ const CATEGORIA_COLORS: Record<CategoriaServicio, string> = {
   "Pasteleria":         "bg-rose-50 text-rose-700 border-rose-200",
   "Transporte":         "bg-cyan-50 text-cyan-700 border-cyan-200",
   "Papeleria":          "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "Menú":               "bg-orange-50 text-orange-700 border-orange-200",
+  "Barra":              "bg-teal-50 text-teal-700 border-teal-200",
   "Otros":              "bg-gray-50 text-gray-700 border-gray-200",
 }
 

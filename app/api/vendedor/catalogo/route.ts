@@ -15,6 +15,12 @@ import { sql } from "@/lib/db"
  */
 export async function GET() {
   try {
+    // Las consultas van en dos tandas y no todas juntas: el pooler de
+    // Supabase (modo transaction) toma una conexión por consulta simultánea,
+    // y esta ruta la piden varias pantallas a la vez. Con las nueve en
+    // paralelo aparecían CONNECT_TIMEOUT y "prepared statement does not
+    // exist" bajo carga. Las cuatro tablas del tarifario son chicas, así que
+    // van después, en su propia tanda.
     const [servicios, recetas, preciosVenta, preciosBase, personal] = await Promise.all([
       sql`
         SELECT id, nombre, categoria, unidad, precio_venta
@@ -35,6 +41,22 @@ export async function GET() {
         WHERE activo = true
         ORDER BY orden ASC NULLS LAST, apellido ASC
       `,
+    ])
+
+    const [tarifario, reglasPersonal, vinculosRecetas, vinculosBarra] = await Promise.all([
+      sql`
+        SELECT salon, invitados_min, invitados_max, dia, modalidad, precio
+        FROM tarifario_salon
+        ORDER BY salon ASC, modalidad ASC, dia ASC, invitados_min ASC
+      `,
+      sql`
+        SELECT funcion, cada_n_invitados, minimo, activo
+        FROM tarifario_personal_regla
+        WHERE activo = true
+        ORDER BY funcion ASC
+      `,
+      sql`SELECT servicio_id, receta_id FROM servicio_recetas`,
+      sql`SELECT servicio_id, barra_template_id FROM servicio_barra_template`,
     ])
 
     const preciosVentaMap: Record<string, Record<string, number>> = {}
@@ -70,6 +92,37 @@ export async function GET() {
         apellido: p.apellido,
         funcion: p.funcion,
       })),
+      // Grilla de precio del salón y regla de personal: lo único del
+      // cotizador que NO es un servicio (ver lib/tarifario-cotizador.ts).
+      tarifario: (tarifario as unknown as Array<Record<string, unknown>>).map((t) => ({
+        salon: t.salon,
+        invitadosMin: Number(t.invitados_min) || 0,
+        invitadosMax: Number(t.invitados_max) || 0,
+        dia: t.dia,
+        modalidad: t.modalidad,
+        precio: Number(t.precio) || 0,
+      })),
+      reglasPersonal: (reglasPersonal as unknown as Array<Record<string, unknown>>).map((r) => ({
+        funcion: r.funcion,
+        cadaNInvitados: Number(r.cada_n_invitados) || 0,
+        minimo: Number(r.minimo) || 0,
+        activo: !!r.activo,
+      })),
+      // servicioId -> recetas que premarca al elegirlo / template de barra.
+      recetasPorServicio: (vinculosRecetas as unknown as Array<Record<string, string>>).reduce(
+        (acc: Record<string, string[]>, v) => {
+          ;(acc[v.servicio_id] = acc[v.servicio_id] || []).push(v.receta_id)
+          return acc
+        },
+        {},
+      ),
+      barraTemplatePorServicio: (vinculosBarra as unknown as Array<Record<string, string>>).reduce(
+        (acc: Record<string, string>, v) => {
+          acc[v.servicio_id] = v.barra_template_id
+          return acc
+        },
+        {},
+      ),
     })
   } catch (err) {
     console.error("[API] Error en vendedor/catalogo:", err)
