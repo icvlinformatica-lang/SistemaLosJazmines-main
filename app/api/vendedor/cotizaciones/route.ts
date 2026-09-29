@@ -91,17 +91,15 @@ export async function POST(req: Request) {
     // la misma función que usa el preview de /vendedor/cotizar, así el
     // vendedor nunca ve un número distinto del que queda guardado. Nunca se
     // confía en un precio que mande el cliente.
-    const [catalogoServicios, tarifarioDB, preciosVentaDB, preciosBaseDB, incluidosDB] = (await Promise.all([
+    const [catalogoServicios, tarifarioDB, preciosVentaDB, incluidosDB] = (await Promise.all([
       sql`SELECT id, nombre, categoria, unidad, precio_venta, costo_para_caja_eventos FROM servicios`,
       sql`SELECT salon, invitados_min, invitados_max, dia, modalidad, precio FROM tarifario_salon`,
       sql`SELECT salon, fecha, precio FROM precios_venta`,
-      sql`SELECT salon, precio FROM precios_base_salones`,
       sql`SELECT servicio_id FROM salon_incluye_servicio`,
     ])) as unknown as [
       ServicioCatalogo[],
       FilaTarifarioDB[],
       Array<{ salon: string; fecha: string; precio: number }>,
-      Array<{ salon: string; precio: number }>,
       Array<{ servicio_id: string }>,
     ]
 
@@ -122,9 +120,6 @@ export async function POST(req: Request) {
       preciosVentaMap[row.salon] = preciosVentaMap[row.salon] || {}
       preciosVentaMap[row.salon][row.fecha] = Number(row.precio) || 0
     }
-    const preciosBaseMap: Record<string, number> = {}
-    for (const row of preciosBaseDB) preciosBaseMap[row.salon] = Number(row.precio) || 0
-
     const calculo = calcularCotizacion({
       salon: salon || "",
       fechaEvento: fechaEvento || "",
@@ -147,7 +142,6 @@ export async function POST(req: Request) {
         precio: Number(t.precio) || 0,
       })),
       preciosVenta: preciosVentaMap,
-      preciosBaseSalon: preciosBaseMap,
       serviciosIncluidosSalon: incluidosDB.map((r) => r.servicio_id),
     })
 

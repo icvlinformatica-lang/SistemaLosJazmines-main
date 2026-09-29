@@ -178,7 +178,6 @@ function CotizarPageContent() {
   const [servicios, setServicios] = useState<ServicioCatalogo[]>([])
   const [recetas, setRecetas] = useState<RecetaCatalogo[]>([])
   const [preciosVenta, setPreciosVenta] = useState<Record<string, Record<string, number>>>({})
-  const [preciosBaseSalon, setPreciosBaseSalon] = useState<Record<string, number>>({})
   const [personalCatalogo, setPersonalCatalogo] = useState<PersonalCatalogo[]>([])
   const [tarifario, setTarifario] = useState<FilaTarifario[]>([])
   const [reglasPersonal, setReglasPersonal] = useState<ReglaPersonal[]>([])
@@ -256,7 +255,6 @@ function CotizarPageContent() {
           setServicios(data.servicios || [])
           setRecetas(data.recetas || [])
           setPreciosVenta(data.preciosVenta || {})
-          setPreciosBaseSalon(data.preciosBaseSalon || {})
           setPersonalCatalogo(data.personal || [])
           setTarifario(data.tarifario || [])
           setReglasPersonal(data.reglasPersonal || [])
@@ -421,10 +419,9 @@ function CotizarPageContent() {
         catalogoServicios: servicios,
         tarifario,
         preciosVenta,
-        preciosBaseSalon,
         serviciosIncluidosSalon,
       }),
-    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, preciosBaseSalon, tarifario, modalidadSalon, totalPersonas, serviciosIncluidosSalon],
+    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, tarifario, modalidadSalon, totalPersonas, serviciosIncluidosSalon],
   )
   const serviciosConPrecio = calculo.servicios
   const totalServicios = calculo.totalServicios

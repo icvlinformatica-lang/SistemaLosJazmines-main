@@ -14,12 +14,13 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, Trash2, UserCheck, Users, XCircle } from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { useStore } from "@/lib/store-context"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
@@ -62,6 +63,8 @@ export default function CotizacionesPendientesPage() {
   // exacta; esto es lo que se usa cuando esa fecha no tiene precio cargado).
   const [preciosBase, setPreciosBase] = useState<Record<string, number>>({})
   const [guardandoPrecios, setGuardandoPrecios] = useState(false)
+  // Cerrado por defecto: es un editor de algo que ya no mueve precios.
+  const [precioBaseAbierto, setPrecioBaseAbierto] = useState(false)
 
   // Montos de personal por cotización: cotizacionId -> personalId -> monto.
   // El vendedor solo eligió roles (sin plata); acá se sugiere la tarifa
@@ -237,58 +240,42 @@ export default function CotizacionesPendientesPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-4">
-        <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-          <Info className="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
-          <div className="text-sm text-blue-900">
-            <p className="font-semibold">Cómo funciona esta pantalla</p>
-            <p className="text-blue-800/80 mt-0.5">
-              Acá llegan las cotizaciones que los vendedores mandaron a revisión. Abrí una para ver el detalle completo,
-              con los costos internos incluidos. <strong>Aprobar</strong> la convierte en un evento real (aparece en Eventos
-              &gt; Lista, con el vendedor que elijas para la comisión). <strong>Rechazar</strong> se la devuelve al
-              vendedor con tu comentario para que la corrija y la vuelva a mandar.
-            </p>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <p className="font-semibold text-sm">Precio base por salón</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Se usa en las cotizaciones cuando la fecha elegida todavía no tiene un precio cargado en el{" "}
-              <Link href="/admin/precios" className="underline">
-                Calendario de Precios
-              </Link>
-              .
-            </p>
-          </div>
-          <div className="p-4 grid gap-3 sm:grid-cols-2">
-            {SALONES.map((s) => (
-              <div key={s} className="flex items-center gap-2">
-                <span className="text-sm font-medium w-24 shrink-0" style={{ color: salonColor(s) }}>
-                  {salonLabel(s)}
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        {/* Dos cosas bien distintas en la misma pantalla: aprobar lo que
+            mandaron los vendedores, y configurar con qué precios cotizan.
+            Lo primero es lo que se hace todos los días, así que va primero
+            y abierto; lo segundo se toca cada tanto. */}
+        <Tabs defaultValue="aprobar" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="aprobar" className="gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              Cotizaciones a aprobar
+              {cotizaciones.length > 0 && (
+                <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
+                  {cotizaciones.length}
                 </span>
-                <Input
-                  type="number"
-                  min={0}
-                  value={preciosBase[s] || ""}
-                  onChange={(e) => setPreciosBase((prev) => ({ ...prev, [s]: Number(e.target.value) || 0 }))}
-                  placeholder="0"
-                  className="h-9"
-                />
-              </div>
-            ))}
-          </div>
-          <div className="px-4 pb-4 flex justify-end">
-            <Button size="sm" onClick={guardarPreciosBase} disabled={guardandoPrecios}>
-              <Save className="h-3.5 w-3.5 mr-1.5" />
-              {guardandoPrecios ? "Guardando..." : "Guardar precios base"}
-            </Button>
-          </div>
-        </div>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="configuracion" className="gap-2">
+              <Settings className="h-4 w-4" />
+              Configuración
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Tarifario del cotizador: grilla del salón + regla de personal. */}
-        <TarifarioEditor />
+          <TabsContent value="aprobar" className="space-y-4 mt-0">
+            <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <Info className="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
+              <div className="text-sm text-blue-900">
+                <p className="font-semibold">Cómo funciona esta pantalla</p>
+                <p className="text-blue-800/80 mt-0.5">
+                  Acá llegan las cotizaciones que los vendedores mandaron a revisión. Abrí una para ver el detalle
+                  completo, con los costos internos incluidos. <strong>Aprobar</strong> la convierte en un evento real
+                  (aparece en Eventos &gt; Lista, con el vendedor que elijas para la comisión).{" "}
+                  <strong>Rechazar</strong> se la devuelve al vendedor con tu comentario para que la corrija y la
+                  vuelva a mandar.
+                </p>
+              </div>
+            </div>
 
         {cargando ? (
           <p className="text-sm text-muted-foreground">Cargando...</p>
@@ -519,6 +506,83 @@ export default function CotizacionesPendientesPage() {
             )
           })
         )}
+          </TabsContent>
+
+          {/* forceMount + hidden: sin esto, Radix desmonta la pestaña inactiva
+              y el tarifario se recarga entero cada vez que se cambia de
+              pestaña — perdiendo, sin aviso, los precios editados y todavía
+              sin guardar. Montado siempre, el trabajo a medias sobrevive. */}
+          <TabsContent
+            value="configuracion"
+            forceMount
+            className="space-y-4 mt-0 data-[state=inactive]:hidden"
+          >
+            {/* Tarifario del cotizador: grilla del salón, regla de personal y
+                qué incluye el precio del salón. */}
+            <TarifarioEditor />
+
+            {/* Precio base por salón: quedó fuera del cálculo. Se conserva
+                plegado y marcado como no usado para no perder lo cargado, y
+                para que quede claro que ya no mueve ningún precio. */}
+            <div className="rounded-xl border border-border bg-muted/30 overflow-hidden">
+              <Collapsible open={precioBaseAbierto} onOpenChange={setPrecioBaseAbierto}>
+                <CollapsibleTrigger asChild>
+                  <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm text-muted-foreground">Precio base por salón</p>
+                        <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          No se usa
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        El precio del salón sale de la grilla del tarifario.
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${precioBaseAbierto ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="border-t border-border p-4 space-y-3">
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                      <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                      <p className="text-xs text-amber-900">
+                        <strong>No se está usando.</strong> El precio del salón sale de la grilla del tarifario. Si un
+                        salón no tiene grilla cargada, el salón se cotiza en $0 y la cotización sale marcada como fuera
+                        de tarifario — ya no se usa este número de respaldo. Se conserva por si hace falta más adelante.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 opacity-60">
+                      {SALONES.map((sal) => (
+                        <div key={sal} className="flex items-center gap-2">
+                          <span className="text-sm font-medium w-24 shrink-0" style={{ color: salonColor(sal) }}>
+                            {salonLabel(sal)}
+                          </span>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={preciosBase[sal] || ""}
+                            onChange={(e) => setPreciosBase((prev) => ({ ...prev, [sal]: Number(e.target.value) || 0 }))}
+                            placeholder="0"
+                            className="h-9"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="outline" onClick={guardarPreciosBase} disabled={guardandoPrecios}>
+                        <Save className="h-3.5 w-3.5 mr-1.5" />
+                        {guardandoPrecios ? "Guardando..." : "Guardar precios base"}
+                      </Button>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )
