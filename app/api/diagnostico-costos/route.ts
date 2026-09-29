@@ -1,7 +1,13 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
-import { detectarProblemas, agruparPorInsumo, type LineaDiagnostico, type InsumoDiagnostico } from "@/lib/diagnostico-costos"
+import {
+  detectarProblemas,
+  detectarPendientes,
+  agruparPorInsumo,
+  type LineaDiagnostico,
+  type InsumoDiagnostico,
+} from "@/lib/diagnostico-costos"
 
 /**
  * Costos mal calculados por unidades que no se pueden convertir (ver
@@ -74,6 +80,13 @@ export async function GET() {
     ]
     const porInsumo = agruparPorInsumo(problemas).sort((a, b) => b.impactoTotal - a.impactoTotal)
 
+    // Los que todavía no dan un costo mal, pero les falta el dato igual.
+    const yaSonProblema = new Set(porInsumo.map((p) => p.insumoId))
+    const pendientes = [
+      ...detectarPendientes("cocina", lineasCocina, aInsumo(insumosCocina), yaSonProblema),
+      ...detectarPendientes("barra", lineasBarra, aInsumo(insumosBarra), yaSonProblema),
+    ]
+
     return NextResponse.json({
       ok: true,
       total: porInsumo.length,
@@ -81,6 +94,8 @@ export async function GET() {
       cocina: porInsumo.filter((p) => p.sector === "cocina").length,
       barra: porInsumo.filter((p) => p.sector === "barra").length,
       insumos: porInsumo,
+      pendientes,
+      totalPendientes: pendientes.length,
     })
   } catch (err) {
     console.error("[API] Error en diagnostico-costos GET:", err)

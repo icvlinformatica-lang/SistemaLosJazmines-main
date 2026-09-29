@@ -6,6 +6,7 @@ import { useStore } from "@/lib/store-context"
 import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
+import { ContenidoPorUnidadInput } from "@/components/contenido-por-unidad-input"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
@@ -53,6 +54,10 @@ function BarraAlmacenContent() {
     precioUnitario: 0,
     categoria: "Alcoholes" as CategoriaInsumoBarra,
     proveedor: "",
+    // Cuánto trae cada botella/lata. Sin esto, un cóctel que pide cc de un
+    // insumo por unidad calcula el costo multiplicado (ver normalizeToStockUnit).
+    contenidoCantidad: 0,
+    contenidoUnidad: "CC" as "GRS" | "CC",
   })
 
   // Safety check: ensure insumosBarra is always an array
@@ -75,6 +80,8 @@ function BarraAlmacenContent() {
       precioUnitario: 0,
       categoria: "Alcoholes",
       proveedor: "",
+      contenidoCantidad: 0,
+      contenidoUnidad: "CC",
     })
     setEditingInsumo(null)
   }
@@ -105,6 +112,8 @@ function BarraAlmacenContent() {
       precioUnitario: insumo.precioUnitario,
       categoria: insumo.categoria,
       proveedor: insumo.proveedor || "",
+      contenidoCantidad: insumo.contenidoCantidad ?? 0,
+      contenidoUnidad: insumo.contenidoUnidad ?? "CC",
     })
     setEditingInsumo(insumo)
     setIsAddDialogOpen(true)
@@ -256,6 +265,33 @@ function BarraAlmacenContent() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {/* Solo para lo que se compra por unidad: una botella, una
+                        lata. Sin saber cuánto trae, un cóctel que pide cc
+                        calcula el costo multiplicado por el envase entero. */}
+                    {formData.unidad === "UN" && (
+                      <div className="grid grid-cols-4 items-start gap-4">
+                        <Label className="text-right pt-2">¿Cuánto trae cada unidad?</Label>
+                        <div className="col-span-3">
+                          <ContenidoPorUnidadInput
+                            cantidad={formData.contenidoCantidad}
+                            unidad={formData.contenidoUnidad}
+                            onChange={(v) =>
+                              setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formData.contenidoCantidad > 0 ? (
+                              <>Los cócteles que lo pidan en cc van a calcular bien el costo.</>
+                            ) : (
+                              <>
+                                <strong>Hace falta si algún cóctel lo pide en cc.</strong> Sin este dato el sistema lee
+                                &quot;60 cc&quot; como &quot;60 botellas&quot;.
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="stock" className="text-right">Stock</Label>
                       <Input

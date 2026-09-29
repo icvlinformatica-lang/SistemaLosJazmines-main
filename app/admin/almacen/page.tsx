@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 import { type Insumo, type Unidad, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
+import { ContenidoPorUnidadInput } from "@/components/contenido-por-unidad-input"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
@@ -350,29 +351,13 @@ function AlmacenContent() {
                             ¿Cuánto trae cada unidad?
                           </Label>
                           <div className="col-span-3 space-y-1.5">
-                            <div className="flex items-center gap-2">
-                              <Input
-                                id="contenido"
-                                type="number"
-                                min={0}
-                                value={formData.contenidoCantidad || ""}
-                                onChange={(e) =>
-                                  setFormData({ ...formData, contenidoCantidad: Number.parseFloat(e.target.value) || 0 })
-                                }
-                                placeholder="Ej: 200"
-                                className="flex-1"
-                              />
-                              <Select
-                                value={formData.contenidoUnidad}
-                                onValueChange={(v) => setFormData({ ...formData, contenidoUnidad: v as "GRS" | "CC" })}
-                              >
-                                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="GRS">gramos</SelectItem>
-                                  <SelectItem value="CC">cc</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
+                            <ContenidoPorUnidadInput
+                              cantidad={formData.contenidoCantidad}
+                              unidad={formData.contenidoUnidad}
+                              onChange={(v) =>
+                                setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
+                              }
+                            />
                             <p className="text-xs text-muted-foreground">
                               {formData.contenidoCantidad > 0 ? (
                                 <>

@@ -68,6 +68,36 @@ export interface ProblemaCosto {
 }
 
 /**
+ * El contenido se GUARDA en gramos o cc (es lo que espera
+ * normalizeToStockUnit), pero se ESCRIBE en litros o kilos, que es como se
+ * habla: una botella es "de 2 litros", no "de 2000 cc".
+ */
+export type UnidadEntradaContenido = "GRS" | "KG" | "CC" | "L"
+
+export function contenidoABase(
+  cantidad: number,
+  unidad: UnidadEntradaContenido,
+): { cantidad: number; unidad: "GRS" | "CC" } {
+  if (unidad === "KG") return { cantidad: cantidad * 1000, unidad: "GRS" }
+  if (unidad === "L") return { cantidad: cantidad * 1000, unidad: "CC" }
+  return { cantidad, unidad }
+}
+
+/**
+ * Para mostrar un valor guardado de la forma más corta: 2000 CC se muestra
+ * como "2 litros", que se lee y se corrige mejor que un número largo.
+ */
+export function contenidoDesdeBase(
+  cantidad: number,
+  unidad: "GRS" | "CC",
+): { cantidad: number; unidad: UnidadEntradaContenido } {
+  if (cantidad >= 1000 && cantidad % 1000 === 0) {
+    return { cantidad: cantidad / 1000, unidad: unidad === "GRS" ? "KG" : "L" }
+  }
+  return { cantidad, unidad }
+}
+
+/**
  * Lee el contenido del nombre del insumo: "GIN GORDON´S 700" → 700,
  * "COCA COLA 2L" → 2000 cc, "FERNET BRANCA 750CC" → 750 cc.
  *
@@ -208,6 +238,64 @@ export interface InsumoConProblema {
   sugerencia: ProblemaCosto["sugerencia"]
   impactoTotal: number
   urgente: boolean
+}
+
+/**
+ * Insumos por unidad SIN contenido cargado que ya se usan en alguna receta o
+ * cóctel, pero que todavía no dan un costo mal calculado (porque la receta
+ * los pide por unidad, no en gramos).
+ *
+ * No molestan hoy, pero van a romper apenas alguien escriba la receta en
+ * gramos o cc. Se listan aparte de los problemas reales, para completarlos
+ * de a poco sin mezclarlos con lo urgente.
+ *
+ * A propósito NO se listan los insumos que no usa ninguna receta: si nadie
+ * los usa, no afectan ningún costo y solo harían la lista más larga.
+ */
+export interface InsumoPendiente {
+  insumoId: string
+  insumoDescripcion: string
+  sector: Sector
+  precioUnitario: number
+  /** En cuántas recetas o cócteles aparece. */
+  usadoEn: string[]
+  sugerencia: ProblemaCosto["sugerencia"]
+}
+
+export function detectarPendientes(
+  sector: Sector,
+  lineas: LineaDiagnostico[],
+  insumos: InsumoDiagnostico[],
+  /** Los que ya salen como problema: no se repiten acá. */
+  yaSonProblema: Set<string>,
+): InsumoPendiente[] {
+  const porInsumo = new Map<string, InsumoPendiente>()
+
+  for (const linea of lineas) {
+    if (yaSonProblema.has(linea.insumoId)) continue
+    const insumo = insumos.find((i) => i.id === linea.insumoId)
+    if (!insumo) continue
+    if (insumo.unidad !== "UN") continue
+    if (insumo.contenidoCantidad && insumo.contenidoUnidad) continue
+
+    const actual = porInsumo.get(insumo.id)
+    if (actual) {
+      if (!actual.usadoEn.includes(linea.contenedorNombre)) actual.usadoEn.push(linea.contenedorNombre)
+    } else {
+      porInsumo.set(insumo.id, {
+        insumoId: insumo.id,
+        insumoDescripcion: insumo.descripcion,
+        sector,
+        precioUnitario: Number(insumo.precioUnitario) || 0,
+        usadoEn: [linea.contenedorNombre],
+        // La sugerencia se calcula contra CC, que es lo más común en lo que
+        // se compra por unidad (botellas, latas). Quien carga puede cambiarla.
+        sugerencia: sugerirContenidoDesdeNombre(insumo.descripcion, "CC"),
+      })
+    }
+  }
+
+  return [...porInsumo.values()].sort((a, b) => b.usadoEn.length - a.usadoEn.length)
 }
 
 export function agruparPorInsumo(problemas: ProblemaCosto[]): InsumoConProblema[] {

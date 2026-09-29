@@ -166,3 +166,36 @@ test("lista vacía cuando no hay nada mal", () => {
   assert.deepEqual(detectarProblemas("cocina", [], []), [])
   assert.deepEqual(agruparPorInsumo([]), [])
 })
+
+// ─── Escribir en litros y kilos ──────────────────────────────────────────
+
+const { contenidoABase, contenidoDesdeBase } = require(path.join(RAIZ, "lib/diagnostico-costos.ts"))
+
+test("se escribe en litros y se guarda en cc", () => {
+  assert.deepEqual(contenidoABase(2, "L"), { cantidad: 2000, unidad: "CC" }, "una botella de 2 litros")
+  assert.deepEqual(contenidoABase(1.5, "L"), { cantidad: 1500, unidad: "CC" })
+  assert.deepEqual(contenidoABase(0.75, "L"), { cantidad: 750, unidad: "CC" }, "750 cc escrito como 0,75 L")
+  assert.deepEqual(contenidoABase(750, "CC"), { cantidad: 750, unidad: "CC" }, "en cc no se toca")
+})
+
+test("se escribe en kilos y se guarda en gramos", () => {
+  assert.deepEqual(contenidoABase(3, "KG"), { cantidad: 3000, unidad: "GRS" }, "una bolsa de 3 kilos")
+  assert.deepEqual(contenidoABase(0.2, "KG"), { cantidad: 200, unidad: "GRS" }, "la lata de arvejas")
+  assert.deepEqual(contenidoABase(200, "GRS"), { cantidad: 200, unidad: "GRS" })
+})
+
+test("al releerlo se muestra en la unidad más corta", () => {
+  assert.deepEqual(contenidoDesdeBase(2000, "CC"), { cantidad: 2, unidad: "L" }, "2000 cc se lee '2 litros'")
+  assert.deepEqual(contenidoDesdeBase(3000, "GRS"), { cantidad: 3, unidad: "KG" })
+  assert.deepEqual(contenidoDesdeBase(750, "CC"), { cantidad: 750, unidad: "CC" }, "750 no es múltiplo de 1000")
+  assert.deepEqual(contenidoDesdeBase(200, "GRS"), { cantidad: 200, unidad: "GRS" })
+})
+
+test("escribir y releer da lo mismo", () => {
+  for (const [cant, uni] of [[2, "L"], [0.75, "L"], [3, "KG"], [0.2, "KG"], [473, "CC"], [200, "GRS"]]) {
+    const guardado = contenidoABase(cant, uni)
+    const releido = contenidoDesdeBase(guardado.cantidad, guardado.unidad)
+    const otraVez = contenidoABase(releido.cantidad, releido.unidad)
+    assert.deepEqual(otraVez, guardado, `${cant} ${uni} no sobrevivió el ida y vuelta`)
+  }
+})
