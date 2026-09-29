@@ -7,6 +7,7 @@ import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrenc
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
 import { ContenidoPorUnidadInput } from "@/components/contenido-por-unidad-input"
+import { iconoDeInsumoBarra } from "@/lib/iconos-insumos"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
@@ -207,7 +208,13 @@ function BarraAlmacenContent() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>{editingInsumo ? "Editar Insumo de Barra" : "Nuevo Insumo de Barra"}</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2.5">
+                      {(() => {
+                        const Icono = iconoDeInsumoBarra(formData.descripcion, formData.categoria)
+                        return <Icono className="h-6 w-6 shrink-0 text-muted-foreground/40" aria-hidden />
+                      })()}
+                      {editingInsumo ? "Editar Insumo de Barra" : "Nuevo Insumo de Barra"}
+                    </DialogTitle>
                     <DialogDescription>
                       {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacen de barra"}
                     </DialogDescription>
@@ -363,7 +370,17 @@ function BarraAlmacenContent() {
                   filteredInsumos.map((insumo) => (
                     <TableRow key={insumo.id} className={NUEVOS_INSUMOS.has(insumo.codigo) ? "bg-gray-100" : ""}>
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
-                      <TableCell className="font-medium">{insumo.descripcion}</TableCell>
+                      <TableCell className="font-medium">
+                        {/* Silueta de la bebida (botella, copa, lata según lo
+                            que sea). Decorativa, por eso aria-hidden. */}
+                        <span className="flex items-center gap-2">
+                          {(() => {
+                            const Icono = iconoDeInsumoBarra(insumo.descripcion, insumo.categoria)
+                            return <Icono className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+                          })()}
+                          {insumo.descripcion}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{insumo.categoria}</TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>

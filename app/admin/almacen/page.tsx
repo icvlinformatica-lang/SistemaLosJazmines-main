@@ -8,6 +8,7 @@ import { type Insumo, type Unidad, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
 import { ContenidoPorUnidadInput } from "@/components/contenido-por-unidad-input"
+import { iconoDeInsumo } from "@/lib/iconos-insumos"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
@@ -314,7 +315,13 @@ function AlmacenContent() {
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>{editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}</DialogTitle>
+                      <DialogTitle className="flex items-center gap-2.5">
+                        {(() => {
+                          const Icono = iconoDeInsumo(formData.descripcion)
+                          return <Icono className="h-6 w-6 shrink-0 text-muted-foreground/40" aria-hidden />
+                        })()}
+                        {editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}
+                      </DialogTitle>
                       <DialogDescription>
                         {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacén"}
                       </DialogDescription>
@@ -459,7 +466,18 @@ function AlmacenContent() {
                   filteredInsumos.map((insumo) => (
                     <TableRow key={insumo.id}>
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
-                      <TableCell className="font-medium">{insumo.descripcion}</TableCell>
+                      <TableCell className="font-medium">
+                        {/* Silueta del insumo: ayuda a reconocerlo de un
+                            vistazo en una lista de 182. Decorativa, por eso
+                            aria-hidden. */}
+                        <span className="flex items-center gap-2">
+                          {(() => {
+                            const Icono = iconoDeInsumo(insumo.descripcion)
+                            return <Icono className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+                          })()}
+                          {insumo.descripcion}
+                        </span>
+                      </TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
                       {stockContado.visible && (
