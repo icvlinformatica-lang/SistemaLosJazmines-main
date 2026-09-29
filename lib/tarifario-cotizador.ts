@@ -52,8 +52,6 @@ export interface EntradaCotizacion {
   tarifario: FilaTarifario[]
   /** Calendario de Precios: salon -> fecha -> precio. */
   preciosVenta: Record<string, Record<string, number>>
-  /** Precio base de respaldo por salón (precios_base_salones). */
-  preciosBaseSalon: Record<string, number>
   /**
    * Servicios que el precio del salón ya incluye (mesas y sillas, DJ,
    * decoración, suite…). Solo dejan de cobrarse si el salón se está
@@ -80,7 +78,6 @@ export type OrigenPrecioSalon =
   | "calendario"
   | "tarifario"
   | "tarifario_aproximado"
-  | "precio_base"
   | "sin_precio"
 
 export interface ResultadoCotizacion {
@@ -100,8 +97,8 @@ export const AVISO_FUERA_DE_TARIFARIO = "Fuera de tarifario — confirmar con Ad
  * ¿El salón se está vendiendo a precio de lista? Solo entonces el paquete
  * viene completo y lo que incluye no se cobra aparte.
  *
- * El precio base por salón (precios_base_salones) NO cuenta: es apenas una
- * referencia para que el vendedor estime, no una lista de precios cerrada.
+ * Sin precio de salón no hay paquete: lo que el salón "incluye" se cobra
+ * como cualquier otro adicional.
  */
 export function origenEsPrecioDeLista(origen: OrigenPrecioSalon): boolean {
   return origen === "calendario" || origen === "tarifario" || origen === "tarifario_aproximado"
@@ -175,14 +172,14 @@ export function buscarEnTarifario(
 
 /**
  * Precio del salón, en orden: Calendario de Precios (fecha exacta) →
- * grilla del tarifario → precio base por salón → $0.
+ * grilla del tarifario → $0 con aviso.
  */
 function resolverPrecioSalon(entrada: EntradaCotizacion): {
   precio: number
   origen: OrigenPrecioSalon
   avisos: string[]
 } {
-  const { salon, fechaEvento, modalidad, totalInvitados, tarifario, preciosVenta, preciosBaseSalon } = entrada
+  const { salon, fechaEvento, modalidad, totalInvitados, tarifario, preciosVenta } = entrada
   const avisos: string[] = []
   if (!salon) return { precio: 0, origen: "sin_precio", avisos: ["Elegí un salón para calcular el precio."] }
 
@@ -202,13 +199,15 @@ function resolverPrecioSalon(entrada: EntradaCotizacion): {
     return { precio: enGrilla.precio, origen: "tarifario", avisos }
   }
 
-  const base = preciosBaseSalon[salon]
-  if (typeof base === "number" && base > 0) {
-    avisos.push(`No hay grilla de tarifario para ${salon}: se usó el precio base del salón. ${AVISO_FUERA_DE_TARIFARIO}`)
-    return { precio: base, origen: "precio_base", avisos }
-  }
-
-  avisos.push(`No hay ningún precio cargado para ${salon} en esta fecha. ${AVISO_FUERA_DE_TARIFARIO}`)
+  // Sin grilla el salón vale $0 y se avisa. A propósito NO hay fallback al
+  // precio base por salón (precios_base_salones): era un número de respaldo
+  // que tapaba el problema real — que a ese salón le falta cargar la grilla —
+  // y hacía que la cotización saliera con un precio que nadie fijó. Ese
+  // editor sigue existiendo en Eventos > Cotizaciones, plegado y marcado
+  // como no usado, para no perder lo que hubiera cargado.
+  avisos.push(
+    `${salon} no tiene grilla de tarifario cargada para esta fecha: el salón se cotiza en $0. ${AVISO_FUERA_DE_TARIFARIO}`,
+  )
   return { precio: 0, origen: "sin_precio", avisos }
 }
 

@@ -73,7 +73,6 @@ const base = (over = {}) => ({
   catalogoServicios: CATALOGO,
   tarifario: TARIFARIO,
   preciosVenta: {},
-  preciosBaseSalon: {},
   ...over,
 })
 
@@ -101,11 +100,14 @@ test("el Calendario de Precios le gana a la grilla", () => {
   assert.equal(r.origenPrecioSalon, "calendario")
 })
 
-test("sin grilla ni calendario cae al precio base del salón, avisando", () => {
-  const r = calcularCotizacion(base({ salon: "Casona", preciosBaseSalon: { Casona: 2000000 } }))
-  assert.equal(r.precioSalon, 2000000)
-  assert.equal(r.origenPrecioSalon, "precio_base")
+test("sin grilla el salón vale $0: NO hay fallback al precio base", () => {
+  // precios_base_salones quedó desconectado del cálculo a propósito: era un
+  // número de respaldo que tapaba que al salón le falta cargar la grilla.
+  const r = calcularCotizacion(base({ salon: "Casona" }))
+  assert.equal(r.precioSalon, 0)
+  assert.equal(r.origenPrecioSalon, "sin_precio")
   assert.equal(r.fueraDeTarifario, true)
+  assert.ok(r.avisos.some((a) => a.includes("no tiene grilla de tarifario cargada")))
 })
 
 test("salón sin ningún precio: $0 y marcado para Administración", () => {
@@ -277,19 +279,16 @@ test("con precio del Calendario también van incluidos", () => {
 })
 
 test("sin precio de lista del salón, lo incluido se cobra como cualquier adicional", () => {
-  // Salón con precio base de respaldo (no es lista de precios cerrada)
-  const conBase = calcularCotizacion(base({
+  const sinGrilla = calcularCotizacion(base({
     salon: "Casona",
-    preciosBaseSalon: { Casona: 2000000 },
     serviciosIncluidosSalon: INCLUIDOS_SALON,
     serviciosElegidos: [{ servicioId: "mesas", cantidad: 1 }],
   }))
-  assert.equal(conBase.origenPrecioSalon, "precio_base")
-  assert.equal(conBase.servicios[0].incluidoEnPaquete, false)
-  assert.equal(conBase.servicios[0].precioTotal, 180000, "se cobra")
-  assert.equal(conBase.total, 2180000)
+  assert.equal(sinGrilla.origenPrecioSalon, "sin_precio")
+  assert.equal(sinGrilla.servicios[0].incluidoEnPaquete, false)
+  assert.equal(sinGrilla.servicios[0].precioTotal, 180000, "se cobra")
+  assert.equal(sinGrilla.total, 180000, "el salón aporta 0")
 
-  // Salón sin ningún precio cargado
   const sinPrecio = calcularCotizacion(base({
     salon: "Salon 5",
     serviciosIncluidosSalon: INCLUIDOS_SALON,
@@ -314,11 +313,10 @@ test("con catering, el menú se incluye por catering y las mesas por el salón",
   assert.equal(r.total, 8700000)
 })
 
-test("origenEsPrecioDeLista: grilla y calendario sí; precio base y sin precio no", () => {
+test("origenEsPrecioDeLista: grilla y calendario sí; sin precio no", () => {
   assert.equal(origenEsPrecioDeLista("calendario"), true)
   assert.equal(origenEsPrecioDeLista("tarifario"), true)
   assert.equal(origenEsPrecioDeLista("tarifario_aproximado"), true)
-  assert.equal(origenEsPrecioDeLista("precio_base"), false)
   assert.equal(origenEsPrecioDeLista("sin_precio"), false)
 })
 

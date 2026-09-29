@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { Bell, HelpCircle, FileBarChart, PartyPopper, HandCoins, Receipt } from "lucide-react"
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { Bell, HelpCircle, FileBarChart, PartyPopper, HandCoins, Receipt, FileText } from "lucide-react"
 import { NovedadesModal } from "@/components/novedades-modal"
 import { ResumenDiarioModal } from "@/components/resumen-diario-modal"
 import { FindeModal } from "@/components/finde-modal"
@@ -20,6 +21,34 @@ export default function HomePage() {
   const { toggleSidebar } = useUI()
   const { perfilActivo } = useProfile()
   const puedeCargarGastos = perfilActivo?.id === "administracion" || perfilActivo?.id === "cobro"
+
+  // Cotizaciones esperando aprobación. El botón aparece SOLO si hay alguna:
+  // si no hay nada que revisar, no ensucia la pantalla. Mismo endpoint que
+  // usa el puntito rojo del menú (components/sidebar.tsx).
+  const puedeAprobarCotizaciones = perfilActivo?.id === "administracion" || perfilActivo?.id === "soporte"
+  const [cotizacionesPendientes, setCotizacionesPendientes] = useState(0)
+
+  useEffect(() => {
+    if (!puedeAprobarCotizaciones) return
+    let cancelado = false
+    const traer = () => {
+      fetch("/api/administracion/cotizaciones/pendientes")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!cancelado && data?.ok) setCotizacionesPendientes(data.count || 0)
+        })
+        .catch(() => {})
+    }
+    traer()
+    // Se refresca al volver a la pestaña: si aprobaste una en otra pantalla,
+    // el botón tiene que acompañar.
+    const alVolver = () => document.visibilityState === "visible" && traer()
+    document.addEventListener("visibilitychange", alVolver)
+    return () => {
+      cancelado = true
+      document.removeEventListener("visibilitychange", alVolver)
+    }
+  }, [puedeAprobarCotizaciones])
 
   const handleBackgroundClick = () => {
     toggleSidebar()
@@ -49,6 +78,17 @@ export default function HomePage() {
 
       {/* Novedades + Resumen diario + Este finde - top right */}
       <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2">
+        {puedeAprobarCotizaciones && cotizacionesPendientes > 0 && (
+          <Link
+            href="/eventos/cotizaciones"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#c9a227] hover:bg-[#b8931f] text-[#1a1a1a] text-sm font-semibold transition-colors shadow-lg"
+          >
+            <FileText className="h-4 w-4" />
+            <span>
+              {cotizacionesPendientes} {cotizacionesPendientes === 1 ? "cotización" : "cotizaciones"} para revisar
+            </span>
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => setNovedadesOpen(true)}
