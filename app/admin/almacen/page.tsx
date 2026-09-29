@@ -63,6 +63,12 @@ function AlmacenContent() {
     stockActual: 0,
     precioUnitario: 0,
     proveedor: "",
+    // Cuánto trae cada unidad (una lata de arvejas = 200 GRS). Solo se pide
+    // cuando la unidad es "UN": sin este dato, una receta que pide gramos de
+    // un insumo por unidad calcula el costo multiplicado (ver
+    // normalizeToStockUnit en lib/store.ts).
+    contenidoCantidad: 0,
+    contenidoUnidad: "GRS" as "GRS" | "CC",
   })
 
   // Safety check: ensure insumos is always an array
@@ -96,6 +102,8 @@ function AlmacenContent() {
       stockActual: 0,
       precioUnitario: 0,
       proveedor: "",
+      contenidoCantidad: 0,
+      contenidoUnidad: "GRS",
     })
     setEditingInsumo(null)
   }
@@ -130,6 +138,8 @@ function AlmacenContent() {
       stockActual: insumo.stockActual,
       precioUnitario: insumo.precioUnitario,
       proveedor: insumo.proveedor || "",
+      contenidoCantidad: insumo.contenidoCantidad ?? 0,
+      contenidoUnidad: insumo.contenidoUnidad ?? "GRS",
     })
     setEditingInsumo(insumo)
     setIsAddDialogOpen(true)
@@ -323,6 +333,57 @@ function AlmacenContent() {
                           <SelectContent>{unidades.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
                         </Select>
                       </div>
+                      {/* Solo para insumos que se compran por unidad: una
+                          lata, una bolsa, un paquete. Sin saber cuánto trae
+                          cada uno, una receta en gramos calcula el costo
+                          multiplicado (ver normalizeToStockUnit). */}
+                      {formData.unidad === "UN" && (
+                        <div className="grid grid-cols-4 items-start gap-4">
+                          <Label htmlFor="contenido" className="text-right pt-2">
+                            ¿Cuánto trae cada unidad?
+                          </Label>
+                          <div className="col-span-3 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                id="contenido"
+                                type="number"
+                                min={0}
+                                value={formData.contenidoCantidad || ""}
+                                onChange={(e) =>
+                                  setFormData({ ...formData, contenidoCantidad: Number.parseFloat(e.target.value) || 0 })
+                                }
+                                placeholder="Ej: 200"
+                                className="flex-1"
+                              />
+                              <Select
+                                value={formData.contenidoUnidad}
+                                onValueChange={(v) => setFormData({ ...formData, contenidoUnidad: v as "GRS" | "CC" })}
+                              >
+                                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="GRS">gramos</SelectItem>
+                                  <SelectItem value="CC">cc</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {formData.contenidoCantidad > 0 ? (
+                                <>
+                                  Una unidad trae {formData.contenidoCantidad}{" "}
+                                  {formData.contenidoUnidad === "GRS" ? "gramos" : "cc"}. Las recetas que lo pidan en{" "}
+                                  {formData.contenidoUnidad === "GRS" ? "gramos" : "cc"} van a calcular bien el costo.
+                                </>
+                              ) : (
+                                <>
+                                  Opcional, pero <strong>hace falta si alguna receta lo pide en gramos o cc</strong>. Sin
+                                  este dato el sistema lee &quot;30 gramos&quot; como &quot;30 unidades&quot; y el costo
+                                  sale multiplicado.
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="stock" className="text-right">Stock</Label>
                         <Input id="stock" type="number" value={formData.stockActual} onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })} className="col-span-3" />

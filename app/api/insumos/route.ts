@@ -16,6 +16,10 @@ export async function GET() {
       stockActual: Number(item.stock_actual),
       precioUnitario: Number(item.precio_unitario),
       proveedor: item.proveedor || "",
+      // Cuánto trae cada unidad (una lata de arvejas = 200 GRS). Sin esto,
+      // una receta en gramos de un insumo por unidad no se puede convertir.
+      contenidoCantidad: item.contenido_cantidad != null ? Number(item.contenido_cantidad) : undefined,
+      contenidoUnidad: item.contenido_unidad || undefined,
     }))
 
     return NextResponse.json(insumos)
@@ -31,9 +35,17 @@ export async function POST(request: Request) {
     const body = await request.json()
     const id = generateId()
     const codigo = body.codigo || id.substring(0, 6).toUpperCase()
+    // Los dos datos del contenido van juntos o no van: media carga no sirve
+    // para convertir, y la base lo rechaza por constraint.
+    const contenidoCantidad = Number(body.contenidoCantidad) > 0 ? Number(body.contenidoCantidad) : null
+    const contenidoUnidad = contenidoCantidad && (body.contenidoUnidad === "GRS" || body.contenidoUnidad === "CC")
+      ? body.contenidoUnidad
+      : null
+    const contenidoValido = contenidoCantidad !== null && contenidoUnidad !== null
 
     const [data] = await sql`
-      INSERT INTO insumos (id, codigo, descripcion, unidad, stock_actual, precio_unitario, proveedor)
+      INSERT INTO insumos (id, codigo, descripcion, unidad, stock_actual, precio_unitario, proveedor,
+                           contenido_cantidad, contenido_unidad)
       VALUES (
         ${id},
         ${codigo},
@@ -41,7 +53,9 @@ export async function POST(request: Request) {
         ${String(body.unidad || "UN").toUpperCase().trim()},
         ${body.stockActual ?? 0},
         ${body.precioUnitario ?? 0},
-        ${body.proveedor || null}
+        ${body.proveedor || null},
+        ${contenidoValido ? contenidoCantidad : null},
+        ${contenidoValido ? contenidoUnidad : null}
       )
       RETURNING *
     `
@@ -69,6 +83,8 @@ export async function POST(request: Request) {
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
       proveedor: data.proveedor || "",
+      contenidoCantidad: data.contenido_cantidad != null ? Number(data.contenido_cantidad) : undefined,
+      contenidoUnidad: data.contenido_unidad || undefined,
     }, { status: 201 })
   } catch (err) {
     console.error("[API] Error creating insumo:", err)
