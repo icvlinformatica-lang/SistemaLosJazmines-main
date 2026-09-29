@@ -6,6 +6,9 @@ import { useStore } from "@/lib/store-context"
 import { useToast } from "@/hooks/use-toast"
 import { type Insumo, type Unidad, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
+import { CostosARevisar } from "@/components/costos-a-revisar"
+import { ContenidoPorUnidadInput } from "@/components/contenido-por-unidad-input"
+import { iconoDeInsumo } from "@/lib/iconos-insumos"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
@@ -263,6 +266,12 @@ function AlmacenContent() {
     <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight">Almacen de Insumos</h1>
+            {/* Avisa si hay insumos cuyo costo está mal calculado por
+                unidades que no se pueden convertir. Se abre solo una vez
+                por día; después queda este botón. */}
+            <div className="mt-2">
+              <CostosARevisar pantalla="almacen" />
+            </div>
         <p className="mt-1 text-base text-muted-foreground">Gestiona tu inventario de insumos, precios y stock</p>
       </div>
 
@@ -306,7 +315,13 @@ function AlmacenContent() {
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>{editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}</DialogTitle>
+                      <DialogTitle className="flex items-center gap-2.5">
+                        {(() => {
+                          const Icono = iconoDeInsumo(formData.descripcion)
+                          return <Icono className="h-6 w-6 shrink-0 text-muted-foreground/40" aria-hidden />
+                        })()}
+                        {editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}
+                      </DialogTitle>
                       <DialogDescription>
                         {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacén"}
                       </DialogDescription>
@@ -343,29 +358,13 @@ function AlmacenContent() {
                             ¿Cuánto trae cada unidad?
                           </Label>
                           <div className="col-span-3 space-y-1.5">
-                            <div className="flex items-center gap-2">
-                              <Input
-                                id="contenido"
-                                type="number"
-                                min={0}
-                                value={formData.contenidoCantidad || ""}
-                                onChange={(e) =>
-                                  setFormData({ ...formData, contenidoCantidad: Number.parseFloat(e.target.value) || 0 })
-                                }
-                                placeholder="Ej: 200"
-                                className="flex-1"
-                              />
-                              <Select
-                                value={formData.contenidoUnidad}
-                                onValueChange={(v) => setFormData({ ...formData, contenidoUnidad: v as "GRS" | "CC" })}
-                              >
-                                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="GRS">gramos</SelectItem>
-                                  <SelectItem value="CC">cc</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
+                            <ContenidoPorUnidadInput
+                              cantidad={formData.contenidoCantidad}
+                              unidad={formData.contenidoUnidad}
+                              onChange={(v) =>
+                                setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
+                              }
+                            />
                             <p className="text-xs text-muted-foreground">
                               {formData.contenidoCantidad > 0 ? (
                                 <>
@@ -467,7 +466,18 @@ function AlmacenContent() {
                   filteredInsumos.map((insumo) => (
                     <TableRow key={insumo.id}>
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
-                      <TableCell className="font-medium">{insumo.descripcion}</TableCell>
+                      <TableCell className="font-medium">
+                        {/* Silueta del insumo: ayuda a reconocerlo de un
+                            vistazo en una lista de 182. Decorativa, por eso
+                            aria-hidden. */}
+                        <span className="flex items-center gap-2">
+                          {(() => {
+                            const Icono = iconoDeInsumo(insumo.descripcion)
+                            return <Icono className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+                          })()}
+                          {insumo.descripcion}
+                        </span>
+                      </TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
                       {stockContado.visible && (

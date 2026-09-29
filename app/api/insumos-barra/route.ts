@@ -17,6 +17,8 @@ export async function GET() {
       unidad: item.unidad,
       stockActual: Number(item.stock_actual),
       precioUnitario: Number(item.precio_unitario),
+      contenidoCantidad: item.contenido_cantidad != null ? Number(item.contenido_cantidad) : undefined,
+      contenidoUnidad: item.contenido_unidad || undefined,
       proveedor: item.proveedor || "",
       categoria: item.categoria,
     }))
@@ -56,6 +58,8 @@ export async function POST(request: Request) {
       unidad: data.unidad,
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
+      contenidoCantidad: data.contenido_cantidad != null ? Number(data.contenido_cantidad) : undefined,
+      contenidoUnidad: data.contenido_unidad || undefined,
       proveedor: data.proveedor || "",
       categoria: data.categoria,
     }

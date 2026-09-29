@@ -5,6 +5,9 @@ import { useState, Suspense } from "react"
 import { useStore } from "@/lib/store-context"
 import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
+import { CostosARevisar } from "@/components/costos-a-revisar"
+import { ContenidoPorUnidadInput } from "@/components/contenido-por-unidad-input"
+import { iconoDeInsumoBarra } from "@/lib/iconos-insumos"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
@@ -52,6 +55,10 @@ function BarraAlmacenContent() {
     precioUnitario: 0,
     categoria: "Alcoholes" as CategoriaInsumoBarra,
     proveedor: "",
+    // Cuánto trae cada botella/lata. Sin esto, un cóctel que pide cc de un
+    // insumo por unidad calcula el costo multiplicado (ver normalizeToStockUnit).
+    contenidoCantidad: 0,
+    contenidoUnidad: "CC" as "GRS" | "CC",
   })
 
   // Safety check: ensure insumosBarra is always an array
@@ -74,6 +81,8 @@ function BarraAlmacenContent() {
       precioUnitario: 0,
       categoria: "Alcoholes",
       proveedor: "",
+      contenidoCantidad: 0,
+      contenidoUnidad: "CC",
     })
     setEditingInsumo(null)
   }
@@ -104,6 +113,8 @@ function BarraAlmacenContent() {
       precioUnitario: insumo.precioUnitario,
       categoria: insumo.categoria,
       proveedor: insumo.proveedor || "",
+      contenidoCantidad: insumo.contenidoCantidad ?? 0,
+      contenidoUnidad: insumo.contenidoUnidad ?? "CC",
     })
     setEditingInsumo(insumo)
     setIsAddDialogOpen(true)
@@ -133,6 +144,12 @@ function BarraAlmacenContent() {
     <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight">Almacen de Insumos de Barra</h1>
+            {/* Avisa si hay insumos cuyo costo está mal calculado por
+                unidades que no se pueden convertir. Se abre solo una vez
+                por día; después queda este botón. */}
+            <div className="mt-2">
+              <CostosARevisar pantalla="barra" />
+            </div>
         <p className="mt-1 text-base text-muted-foreground">Gestiona insumos de cocteleria y bebidas</p>
       </div>
 
@@ -191,7 +208,13 @@ function BarraAlmacenContent() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>{editingInsumo ? "Editar Insumo de Barra" : "Nuevo Insumo de Barra"}</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2.5">
+                      {(() => {
+                        const Icono = iconoDeInsumoBarra(formData.descripcion, formData.categoria)
+                        return <Icono className="h-6 w-6 shrink-0 text-muted-foreground/40" aria-hidden />
+                      })()}
+                      {editingInsumo ? "Editar Insumo de Barra" : "Nuevo Insumo de Barra"}
+                    </DialogTitle>
                     <DialogDescription>
                       {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacen de barra"}
                     </DialogDescription>
@@ -249,6 +272,33 @@ function BarraAlmacenContent() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {/* Solo para lo que se compra por unidad: una botella, una
+                        lata. Sin saber cuánto trae, un cóctel que pide cc
+                        calcula el costo multiplicado por el envase entero. */}
+                    {formData.unidad === "UN" && (
+                      <div className="grid grid-cols-4 items-start gap-4">
+                        <Label className="text-right pt-2">¿Cuánto trae cada unidad?</Label>
+                        <div className="col-span-3">
+                          <ContenidoPorUnidadInput
+                            cantidad={formData.contenidoCantidad}
+                            unidad={formData.contenidoUnidad}
+                            onChange={(v) =>
+                              setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formData.contenidoCantidad > 0 ? (
+                              <>Los cócteles que lo pidan en cc van a calcular bien el costo.</>
+                            ) : (
+                              <>
+                                <strong>Hace falta si algún cóctel lo pide en cc.</strong> Sin este dato el sistema lee
+                                &quot;60 cc&quot; como &quot;60 botellas&quot;.
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="stock" className="text-right">Stock</Label>
                       <Input
@@ -320,7 +370,17 @@ function BarraAlmacenContent() {
                   filteredInsumos.map((insumo) => (
                     <TableRow key={insumo.id} className={NUEVOS_INSUMOS.has(insumo.codigo) ? "bg-gray-100" : ""}>
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
-                      <TableCell className="font-medium">{insumo.descripcion}</TableCell>
+                      <TableCell className="font-medium">
+                        {/* Silueta de la bebida (botella, copa, lata según lo
+                            que sea). Decorativa, por eso aria-hidden. */}
+                        <span className="flex items-center gap-2">
+                          {(() => {
+                            const Icono = iconoDeInsumoBarra(insumo.descripcion, insumo.categoria)
+                            return <Icono className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+                          })()}
+                          {insumo.descripcion}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{insumo.categoria}</TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>

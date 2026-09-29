@@ -26,6 +26,8 @@ export async function GET(
       unidad: data.unidad,
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
+      contenidoCantidad: data.contenido_cantidad != null ? Number(data.contenido_cantidad) : undefined,
+      contenidoUnidad: data.contenido_unidad || undefined,
       proveedor: data.proveedor || "",
       categoria: data.categoria,
     }
@@ -46,6 +48,14 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
+    // Contenido por unidad (una botella de gin = 700 CC). Los dos datos van
+    // juntos o no van. Si no vienen en el body, no se toca lo que ya había.
+    const tocaContenido = "contenidoCantidad" in body || "contenidoUnidad" in body
+    const contCantidad = Number(body.contenidoCantidad) > 0 ? Number(body.contenidoCantidad) : null
+    const contUnidad =
+      contCantidad && (body.contenidoUnidad === "GRS" || body.contenidoUnidad === "CC") ? body.contenidoUnidad : null
+    const contOk = contCantidad !== null && contUnidad !== null
+
     const [data] = await sql`
       UPDATE insumos_barra SET
         codigo = COALESCE(${body.codigo}, codigo),
@@ -55,6 +65,8 @@ export async function PUT(
         precio_unitario = COALESCE(${body.precioUnitario}, precio_unitario),
         proveedor = COALESCE(${body.proveedor}, proveedor),
         categoria = COALESCE(${body.categoria}, categoria),
+        contenido_cantidad = ${tocaContenido ? (contOk ? contCantidad : null) : sql`contenido_cantidad`},
+        contenido_unidad   = ${tocaContenido ? (contOk ? contUnidad : null) : sql`contenido_unidad`},
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -71,6 +83,8 @@ export async function PUT(
       unidad: data.unidad,
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
+      contenidoCantidad: data.contenido_cantidad != null ? Number(data.contenido_cantidad) : undefined,
+      contenidoUnidad: data.contenido_unidad || undefined,
       proveedor: data.proveedor || "",
       categoria: data.categoria,
     }
