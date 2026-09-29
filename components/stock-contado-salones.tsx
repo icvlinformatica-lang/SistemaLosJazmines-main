@@ -139,7 +139,83 @@ export function StockContadoCelda({
   )
 }
 
-/** Nota corta que explica la columna, arriba de la tabla. */
+/**
+ * Celda de UN salón para un insumo: la cantidad contada ahí, o "—" si en ese
+ * salón nadie contó. Tocarla abre el mismo desglose de siempre (quién cargó y
+ * cuándo, en todos los salones), para no perder ese dato al partir la columna
+ * única en una por salón.
+ *
+ * "—" es "nadie contó acá", que no es lo mismo que "no hay": por eso nunca se
+ * muestra 0 en su lugar.
+ */
+export function StockSalonCelda({
+  resumen,
+  unidad,
+  salonId,
+  salones,
+}: {
+  resumen: ResumenStockInsumo | undefined
+  unidad: string
+  salonId: string
+  salones: Array<{ id: string; nombre: string }>
+}) {
+  const dato = resumen?.detalle.find((d) => d.salon === salonId)
+  if (!dato) return <span className="text-muted-foreground">—</span>
+
+  const nombreSalon = salones.find((s) => s.id === salonId)?.nombre || salonId
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="rounded px-1 text-right tabular-nums hover:bg-muted"
+          aria-label={`${nombreSalon}: ${fmtCantidad(dato.cantidad)} ${unidad}. Ver quién lo cargó y el desglose completo`}
+        >
+          <span className="font-semibold underline decoration-dotted underline-offset-4">{fmtCantidad(dato.cantidad)}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3 text-xs" align="end">
+        <p className="mb-2 font-semibold">{nombreSalon}</p>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-semibold tabular-nums">
+            {fmtCantidad(dato.cantidad)} {unidad}
+          </span>
+          <span className="text-muted-foreground">
+            {dato.por || "sin nombre"} · {fechaHoraCortaArgentina(new Date(dato.en))}
+          </span>
+        </div>
+
+        <p className="mt-3 mb-1 font-semibold">Todos los salones</p>
+        <div className="space-y-1">
+          {salones.map((s) => {
+            const d = resumen?.detalle.find((x) => x.salon === s.id)
+            return (
+              <div key={s.id} className="flex items-baseline justify-between gap-2">
+                <span className={`min-w-0 truncate ${s.id === salonId ? "font-semibold" : ""}`}>{s.nombre}</span>
+                {d ? (
+                  <span className="shrink-0 font-semibold tabular-nums">
+                    {fmtCantidad(d.cantidad)} {unidad}
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-muted-foreground">—</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-2 flex items-baseline justify-between border-t pt-2 font-semibold">
+          <span>Total (columna Stock)</span>
+          <span className="tabular-nums">
+            {fmtCantidad(resumen?.total ?? 0)} {unidad}
+          </span>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/** Nota corta que explica las columnas de salones, arriba de la tabla. */
 export function StockContadoNota({ error }: { error?: boolean }) {
   if (error) {
     return <p className="mb-3 text-xs text-muted-foreground">No se pudo cargar el conteo por salón.</p>
@@ -148,9 +224,10 @@ export function StockContadoNota({ error }: { error?: boolean }) {
     <div className="mb-3 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2.5 text-xs text-sky-900">
       <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
       <p>
-        <span className="font-semibold">Contado en salones</span> es el conteo físico que cargan los salones al terminar
-        cada evento. Es independiente de la columna Stock: son dos números distintos y no se sincronizan. Tocá un número
-        para ver el desglose.
+        La columna <span className="font-semibold">Stock</span> es la suma de lo que hay en cada salón. Se actualiza
+        sola cuando Cocina o Barra cargan su conteo desde la pantalla de Stock — no hace falta tocarla a mano. Un{" "}
+        <span className="font-semibold">—</span> quiere decir que en ese salón todavía nadie contó, que no es lo mismo
+        que no haber nada. Tocá un número para ver quién lo cargó.
       </p>
     </div>
   )

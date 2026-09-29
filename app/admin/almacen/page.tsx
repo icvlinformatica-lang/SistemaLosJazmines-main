@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StockContadoCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
 import {
   Dialog,
   DialogContent,
@@ -446,10 +446,15 @@ function AlmacenContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[80px]">Código</TableHead>
-                  <TableHead>Descripción</TableHead>
+                  <TableHead className="sticky left-0 z-20 bg-card">Descripción</TableHead>
                   <TableHead className="w-[80px]">Unidad</TableHead>
                   <TableHead className="w-[100px] text-right">Stock</TableHead>
-                  {stockContado.visible && <TableHead className="w-[170px] text-right">Contado en salones</TableHead>}
+                  {stockContado.visible &&
+                    stockContado.salones.map((s) => (
+                      <TableHead key={s.id} className="w-[76px] px-2 text-right align-bottom text-[11px] leading-tight" title={s.nombre}>
+                        {s.nombre}
+                      </TableHead>
+                    ))}
                   <TableHead className="w-[120px] text-right">Precio Unit.</TableHead>
                   <TableHead className="w-[130px]">Proveedor</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
@@ -464,9 +469,9 @@ function AlmacenContent() {
                   </TableRow>
                 ) : (
                   filteredInsumos.map((insumo) => (
-                    <TableRow key={insumo.id}>
+                    <TableRow key={insumo.id} className="bg-background">
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium sticky left-0 z-10 bg-inherit [background-color:inherit]">
                         {/* Silueta del insumo: ayuda a reconocerlo de un
                             vistazo en una lista de 182. Decorativa, por eso
                             aria-hidden. */}
@@ -480,15 +485,17 @@ function AlmacenContent() {
                       </TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
-                      {stockContado.visible && (
-                        <TableCell className="text-right">
-                          <StockContadoCelda
-                            resumen={stockContado.porInsumo.get(insumo.id)}
-                            unidad={insumo.unidad}
-                            salones={stockContado.salones}
-                          />
-                        </TableCell>
-                      )}
+                      {stockContado.visible &&
+                        stockContado.salones.map((s) => (
+                          <TableCell key={s.id} className="text-right">
+                            <StockSalonCelda
+                              resumen={stockContado.porInsumo.get(insumo.id)}
+                              unidad={insumo.unidad}
+                              salonId={s.id}
+                              salones={stockContado.salones}
+                            />
+                          </TableCell>
+                        ))}
                       <TableCell className="text-right">{formatCurrency(insumo.precioUnitario)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{insumo.proveedor || "-"}</TableCell>
                       <TableCell>

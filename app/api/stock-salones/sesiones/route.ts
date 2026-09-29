@@ -26,7 +26,15 @@ import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
  * Idempotente por sesionId: si la misma sesión llega dos veces (doble clic,
  * reintento tras un corte), la segunda no hace nada y responde ok.
  *
- * NUNCA toca insumos.stock_actual ni insumos_barra.stock_actual.
+ * ACTUALIZA insumos.stock_actual / insumos_barra.stock_actual: desde que el
+ * conteo por salón es el stock real, el total de un insumo es la SUMA de lo
+ * que hay en cada salón. Se recalcula acá, dentro de la misma transacción,
+ * solo para los insumos de esta sesión — si falla, no queda stock_salones
+ * actualizado con el total viejo.
+ *
+ * OJO: ese total alimenta dos cálculos de plata — el costo estimado de
+ * compras del evento (lib/store.ts, que va al reparto de cajas) y la
+ * valorización del patrimonio en Caja Eventos. Cargar un conteo los mueve.
  */
 
 const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -165,6 +173,27 @@ export async function POST(req: Request) {
             actualizado_por = EXCLUDED.actualizado_por,
             actualizado_en = EXCLUDED.actualizado_en
         `
+      }
+
+      // ── El total pasa a ser la suma de todos los salones ───────────────
+      // Solo los insumos de esta sesión: recalcular los 276 de una sería
+      // gratuito y lento. Se suma sobre TODOS los salones, no solo el que
+      // cargó, porque el total es la existencia completa.
+      //
+      // Un salón sin fila no aporta nada a la suma: "nadie contó acá" pesa
+      // como 0. Es correcto desde la migración inicial, que le dio a cada
+      // insumo su fila en Casona.
+      for (const it of itemsBody) {
+        const total = (await tx`
+          SELECT COALESCE(SUM(cantidad), 0) AS total FROM stock_salones
+          WHERE insumo_tipo = ${sector} AND insumo_id = ${it.insumoId}
+        `) as unknown as Array<{ total: string }>
+        const suma = Number(total[0]?.total ?? 0)
+        if (sector === "cocina") {
+          await tx`UPDATE insumos SET stock_actual = ${suma}, updated_at = NOW() WHERE id = ${it.insumoId}`
+        } else {
+          await tx`UPDATE insumos_barra SET stock_actual = ${suma}, updated_at = NOW() WHERE id = ${it.insumoId}`
+        }
       }
 
       // Un solo renglón por sesión en Configuración → Actividad. El nombre
