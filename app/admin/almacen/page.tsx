@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
 import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
+import { StockPorSalonTabla } from "@/components/stock-por-salon-tabla"
 import { useProfile } from "@/lib/profile-context"
 import {
   Dialog,
@@ -55,6 +56,10 @@ function AlmacenContent() {
   // (lib/insumos-permisos.ts, usado en app/api/insumos/**).
   const { perfilActivo } = useProfile()
   const soloStock = !puedeEditarCatalogo(perfilActivo?.id)
+  // La vista por salón vive acá adentro (antes era la pantalla suelta
+  // /admin/stock-salones). Solo la ven los perfiles que ven el conteo
+  // consolidado; para Cocina la pestaña ni aparece.
+  const [pestana, setPestana] = useState<"insumos" | "salones">("insumos")
   // Insumo pendiente de eliminar (abre el diálogo de seguridad)
   const [insumoAEliminar, setInsumoAEliminar] = useState<Insumo | null>(null)
 
@@ -284,6 +289,30 @@ function AlmacenContent() {
         <p className="mt-1 text-base text-muted-foreground">Gestiona tu inventario de insumos, precios y stock</p>
       </div>
 
+      {stockContado.visible && (
+        <div className="mb-4 inline-flex rounded-lg border p-1" role="group" aria-label="Qué mostrar">
+          {([
+            { v: "insumos", label: "Insumos" },
+            { v: "salones", label: "Stock por salón" },
+          ] as const).map((op) => (
+            <button
+              key={op.v}
+              type="button"
+              onClick={() => setPestana(op.v)}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                pestana === op.v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {op.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {stockContado.visible && pestana === "salones" ? (
+        <StockPorSalonTabla sector="cocina" insumos={insumos} />
+      ) : (
+      <>
       {/* Search and Add */}
       <Card>
         <CardHeader>
@@ -540,6 +569,8 @@ function AlmacenContent() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Diálogo de seguridad para eliminar insumos */}
       <InsumoDeleteDialog

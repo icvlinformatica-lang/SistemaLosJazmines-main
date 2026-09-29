@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
 import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
+import { StockPorSalonTabla } from "@/components/stock-por-salon-tabla"
 import { useProfile } from "@/lib/profile-context"
 import {
   Dialog,
@@ -55,6 +56,10 @@ function BarraAlmacenContent() {
   // (lib/insumos-permisos.ts, usado en app/api/insumos-barra/**).
   const { perfilActivo } = useProfile()
   const soloStock = !puedeEditarCatalogo(perfilActivo?.id)
+  // La vista por salón vive acá adentro (antes era la pantalla suelta
+  // /admin/stock-salones). Solo la ven los perfiles que ven el conteo
+  // consolidado; para Barra la pestaña ni aparece.
+  const [pestana, setPestana] = useState<"insumos" | "salones">("insumos")
 
   const [formData, setFormData] = useState({
     codigo: "",
@@ -162,6 +167,30 @@ function BarraAlmacenContent() {
         <p className="mt-1 text-base text-muted-foreground">Gestiona insumos de cocteleria y bebidas</p>
       </div>
 
+      {stockContado.visible && (
+        <div className="mb-4 inline-flex rounded-lg border p-1" role="group" aria-label="Qué mostrar">
+          {([
+            { v: "insumos", label: "Insumos" },
+            { v: "salones", label: "Stock por salón" },
+          ] as const).map((op) => (
+            <button
+              key={op.v}
+              type="button"
+              onClick={() => setPestana(op.v)}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                pestana === op.v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {op.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {stockContado.visible && pestana === "salones" ? (
+        <StockPorSalonTabla sector="barra" insumos={insumosBarra} />
+      ) : (
+      <>
       {/* Category Filter */}
       <div className="mb-4 flex flex-wrap gap-2">
         <Button
@@ -443,6 +472,8 @@ function BarraAlmacenContent() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
     </main>
   )
 }
