@@ -32,6 +32,9 @@ export interface InsumoBarra {
   stockActual: number
   precioUnitario: number
   proveedor?: string
+  /** Cuánto trae cada unidad (una botella de gin = 700 CC). Ver normalizeToStockUnit. */
+  contenidoCantidad?: number
+  contenidoUnidad?: "GRS" | "CC"
   categoria: CategoriaInsumoBarra
 }
 
@@ -2470,6 +2473,7 @@ export function calcularComprasBarras(
           insumoCoctel.cantidadPorCoctel,
           insumoCoctel.unidadCoctel,
           insumo.unidad,
+          contenidoDe(insumo),
         )
         const cantidad = normalizedQty * tragosPorCoctel
 

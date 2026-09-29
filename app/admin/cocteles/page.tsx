@@ -11,9 +11,11 @@ import {
   getCompatibleRecipeUnits,
   getDefaultRecipeUnit,
   normalizeToStockUnit,
+  contenidoDe,
   formatCurrency,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
+import { CostosARevisar } from "@/components/costos-a-revisar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -160,7 +162,7 @@ export default function CoctelesPage() {
     coctel.insumos.reduce((total, ing) => {
       const insumo = getInsumoBarraById(ing.insumoBarraId)
       if (!insumo) return total
-      const qtyEnStock = normalizeToStockUnit(ing.cantidadPorCoctel, ing.unidadCoctel, insumo.unidad)
+      const qtyEnStock = normalizeToStockUnit(ing.cantidadPorCoctel, ing.unidadCoctel, insumo.unidad, contenidoDe(insumo))
       return total + qtyEnStock * (insumo.precioUnitario || 0)
     }, 0)
 
@@ -220,6 +222,12 @@ export default function CoctelesPage() {
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Carta de Cocteles</h1>
+            {/* Avisa si hay insumos cuyo costo está mal calculado por
+                unidades que no se pueden convertir. Se abre solo una vez
+                por día; después queda este botón. */}
+            <div className="mt-2">
+              <CostosARevisar pantalla="cocteles" />
+            </div>
             <p className="mt-1 text-base text-muted-foreground">Crea y gestiona tus recetas de cocteles</p>
           </div>
           <div className="flex flex-wrap gap-2">

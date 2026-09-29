@@ -16,6 +16,7 @@ import {
   normalizeToStockUnit,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
+import { CostosARevisar } from "@/components/costos-a-revisar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -310,6 +311,12 @@ export default function RecetarioPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Laboratorio de Sabores</h1>
+            {/* Avisa si hay insumos cuyo costo está mal calculado por
+                unidades que no se pueden convertir. Se abre solo una vez
+                por día; después queda este botón. */}
+            <div className="mt-2">
+              <CostosARevisar pantalla="recetario" />
+            </div>
             <p className="mt-1 text-base text-muted-foreground">Crea y gestiona tus recetas</p>
           </div>
           <Dialog
