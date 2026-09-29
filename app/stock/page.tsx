@@ -38,7 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, CalendarDays, ChefHat, ChevronDown, Loader2, PartyPopper, Search, Wine } from "lucide-react"
+import { ArrowLeft, CalendarDays, ChefHat, ChevronDown, KeyRound, Loader2, PartyPopper, Search, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -93,6 +93,15 @@ export default function StockPorSalonPage() {
   const [plegadas, setPlegadas] = useState<Set<string>>(new Set())
   const [confirmando, setConfirmando] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  // Carga extraordinaria: la de un salón sin evento terminado pendiente.
+  // Pide PIN_STOCK_EXTRA antes de abrir la lista. El PIN queda en memoria
+  // durante la carga porque el servidor lo vuelve a pedir al guardar (la
+  // pantalla sola no habilita nada).
+  const [pidiendoPin, setPidiendoPin] = useState<SectorStock | null>(null)
+  const [pinTipeado, setPinTipeado] = useState("")
+  const [pinError, setPinError] = useState("")
+  const [verificandoPin, setVerificandoPin] = useState(false)
+  const [pinExtra, setPinExtra] = useState("")
   const inputsRef = useRef<Map<string, HTMLInputElement>>(new Map())
 
   const cargarEstados = useCallback(
@@ -185,7 +194,8 @@ export default function StockPorSalonPage() {
 
   const estadoSector = sector ? estados[sector] : undefined
 
-  const empezarCarga = (s: SectorStock) => {
+  const empezarCarga = (s: SectorStock, pin = "") => {
+    setPinExtra(pin)
     setSector(s)
     setNombre((prev) => prev || usuarioActivo())
     setSesion({ id: crypto.randomUUID(), iniciadaEn: new Date().toISOString() })
@@ -201,7 +211,48 @@ export default function StockPorSalonPage() {
   const salirDeCarga = () => {
     setValores({})
     setSesion(null)
+    setPinExtra("")
     setPaso("menu")
+  }
+
+  /**
+   * Con evento terminado pendiente se entra derecho. Sin evento, la carga es
+   * extraordinaria y hay que poner el PIN primero.
+   */
+  const pedirCarga = (s: SectorStock) => {
+    if (estados[s]?.eventoPendiente) {
+      empezarCarga(s)
+      return
+    }
+    setPinTipeado("")
+    setPinError("")
+    setPidiendoPin(s)
+  }
+
+  const confirmarPin = async () => {
+    if (!pidiendoPin || verificandoPin || !pinTipeado.trim()) return
+    setVerificandoPin(true)
+    setPinError("")
+    try {
+      const res = await fetch("/api/stock-salones/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinTipeado.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.ok) {
+        setPinError(data?.error === "PIN incorrecto" ? "El PIN no es correcto." : data?.error || "No se pudo verificar el PIN.")
+        return
+      }
+      const sectorElegido = pidiendoPin
+      setPidiendoPin(null)
+      empezarCarga(sectorElegido, pinTipeado.trim())
+      setPinTipeado("")
+    } catch {
+      setPinError("Se cortó la conexión. Volvé a intentar.")
+    } finally {
+      setVerificandoPin(false)
+    }
   }
 
   const confirmarSesion = async () => {
@@ -216,7 +267,9 @@ export default function StockPorSalonPage() {
           salon,
           sector,
           cargadoPor: nombre.trim(),
-          eventoId: estadoSector?.eventoPendiente?.id || null,
+          // El servidor decide solo si la carga es por evento o
+          // extraordinaria; el PIN solo hace falta en el segundo caso.
+          pin: pinExtra || undefined,
           iniciadaEn: sesion.iniciadaEn,
           // SOLO lo que tiene un número escrito (vacío = no contado).
           items: itemsValidos,
@@ -336,7 +389,7 @@ export default function StockPorSalonPage() {
             const Icon = SECTOR_ICON[s]
             const conAviso = !!estados[s]?.eventoPendiente
             return (
-              <button key={s} type="button" onClick={() => empezarCarga(s)} className="block text-left" disabled={cargandoEstado}>
+              <button key={s} type="button" onClick={() => pedirCarga(s)} className="block text-left" disabled={cargandoEstado}>
                 <Card className={`h-full transition-colors hover:border-foreground/40 ${conAviso ? "border-emerald-400" : ""}`}>
                   <CardContent className="flex items-center gap-3 p-4">
                     <Icon className={`h-5 w-5 ${conAviso ? "text-emerald-600" : "text-muted-foreground"}`} />
@@ -344,7 +397,16 @@ export default function StockPorSalonPage() {
                       <p className="font-semibold">
                         Carga de insumos{sectores.length > 1 ? ` · ${SECTOR_LABEL[s]}` : ""}
                       </p>
-                      <p className="text-xs text-muted-foreground">Contar lo que quedó en {salonLabel(salon)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {conAviso ? (
+                          <>Contar lo que quedó en {salonLabel(salon)}</>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <KeyRound className="h-3 w-3 shrink-0" />
+                            Sin evento pendiente: carga extraordinaria, pide PIN
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -352,6 +414,59 @@ export default function StockPorSalonPage() {
             )
           })}
         </div>
+
+        {/* Puerta de la carga extraordinaria. El PIN acá solo abre la lista:
+            el servidor lo vuelve a pedir al guardar. */}
+        <Dialog
+          open={pidiendoPin !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPidiendoPin(null)
+              setPinTipeado("")
+              setPinError("")
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-amber-600" />
+                Carga extraordinaria
+              </DialogTitle>
+              <DialogDescription>
+                {salonLabel(salon)} no tiene ningún evento terminado pendiente de carga
+                {pidiendoPin ? ` de ${SECTOR_LABEL[pidiendoPin]}` : ""}. Para contar igual hace falta el PIN.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="pin-stock">PIN de carga extraordinaria</Label>
+              <Input
+                id="pin-stock"
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                value={pinTipeado}
+                onChange={(e) => {
+                  setPinTipeado(e.target.value)
+                  setPinError("")
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmarPin()
+                }}
+                placeholder="••••"
+              />
+              {pinError && <p className="text-sm text-destructive">{pinError}</p>}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPidiendoPin(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={confirmarPin} disabled={verificandoPin || !pinTipeado.trim()}>
+                {verificandoPin ? "Verificando..." : "Empezar la carga"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }
@@ -368,7 +483,12 @@ export default function StockPorSalonPage() {
             <PartyPopper className="h-4 w-4 shrink-0 text-emerald-700" />
             Después del evento de {estadoSector.eventoPendiente.nombre}
           </p>
-        ) : null}
+        ) : (
+          <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            <KeyRound className="h-4 w-4 shrink-0 text-amber-700" />
+            Carga extraordinaria — este salón no tiene ningún evento pendiente de carga.
+          </p>
+        )}
 
         <p className="text-xs text-muted-foreground">
           Escribí cuánto quedó de cada insumo que contaste. Lo que dejes vacío no se guarda (no es cero). Si contaste y no

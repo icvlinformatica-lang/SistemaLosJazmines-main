@@ -14,6 +14,22 @@ import {
   type CalculoCompraBarra,
 } from "@/lib/store"
 
+/**
+ * Día en que se imprime, en hora argentina. Va debajo de las listas de
+ * compras: lo que falta comprar se calcula contra el stock, y el stock es la
+ * suma de los conteos que fueron cargando los salones, así que el papel tiene
+ * que decir hasta cuándo está al día. Si nadie contó desde ayer, la fecha es
+ * igual la de hoy: marca cuándo se miró, no cuándo se contó.
+ */
+function fechaDelStock(): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date())
+}
+
 export interface DocumentSections {
   listaCompras: boolean
   barraCocteles: boolean
@@ -194,6 +210,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
   // ========== LISTA DE COMPRAS COCINA ==========
   if (showListaCompras) {
     html += `<h2 style="${S.sectionTitle}">LISTA DE COMPRAS CONSOLIDADA</h2>`
+    html += `<p style="margin:-10px 0 16px;text-align:center;font-size:9pt;color:#555;">Insumos en stock hasta el ${fechaDelStock()}</p>`
     html += `<div style="${S.costBox}">`
     html += `<div><span style="font-weight:600">Costo Total Insumos:</span> <strong>${formatCurrency(costoTotalMateriaPrima)}</strong> <span style="font-size:8pt;margin-left:4px">(valor real)</span></div>`
     html += `<div><span style="font-weight:600">Precio Stock:</span> <strong>${formatCurrency(presupuestoCompra)}</strong> <span style="font-size:8pt;margin-left:4px">(lo que falta)</span></div>`
@@ -243,6 +260,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
   if (showBarraCocteles && comprasBarras.length > 0) {
     html += `<div style="margin-top:28px;">`
     html += `<h2 style="${S.sectionTitle}">LISTA DE COMPRAS - BARRA</h2>`
+    html += `<p style="margin:-10px 0 16px;text-align:center;font-size:9pt;color:#555;">Insumos en stock hasta el ${fechaDelStock()}</p>`
 
     const barrasArr = Array.isArray(evento.barras) ? evento.barras : (typeof evento.barras === "string" ? (() => { try { return JSON.parse(evento.barras) } catch { return [] } })() : [])
     if (barrasArr && barrasArr.length > 0) {

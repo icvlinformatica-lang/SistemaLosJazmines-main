@@ -1,7 +1,13 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
-import { perfilDesdeRequest, salonesConfigurados, fechaHoraCortaArgentina } from "@/lib/stock-salones-server"
+import {
+  eventoPendienteEnBase,
+  perfilDesdeRequest,
+  salonesConfigurados,
+  fechaHoraCortaArgentina,
+} from "@/lib/stock-salones-server"
+import { verifyPinStockExtra } from "@/lib/auth/server"
 import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 
 /**
@@ -12,10 +18,21 @@ import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
  *   salon: string
  *   sector: "cocina" | "barra"
  *   cargadoPor: string (nombre tipeado al iniciar, obligatorio)
- *   eventoId?: string (el evento que habilitó el aviso, si había)
+ *   pin?: string (solo para la carga extraordinaria, ver abajo)
  *   iniciadaEn?: string (ISO)
  *   items: { insumoId: string, cantidad: number }[]
  * }
+ *
+ * DOS PUERTAS para poder cargar:
+ *   1. Por evento — hay un evento terminado pendiente de carga en ese salón y
+ *      sector. Sin PIN. La sesión queda atada a ese evento (motivo 'evento').
+ *   2. Extraordinaria — no hay evento. Hace falta PIN_STOCK_EXTRA y la sesión
+ *      queda rotulada 'extraordinaria', con evento_id en null.
+ * Sin evento y sin PIN correcto: 403.
+ *
+ * Cuál de las dos es lo decide el SERVIDOR: vuelve a calcular si hay evento
+ * pendiente en vez de creerle al cliente. El eventoId que mande la pantalla
+ * se ignora — si la puerta la abre un evento, se usa ese; si no, ninguno.
  *
  * Se guarda COMPLETA o no se guarda: una sola transacción que inserta
  * stock_sesiones + todos los stock_sesion_items + upsert en stock_salones +
@@ -52,7 +69,7 @@ export async function POST(req: Request) {
     const salon = typeof body.salon === "string" ? body.salon : ""
     const sector = body.sector as SectorStock
     const cargadoPor = typeof body.cargadoPor === "string" ? body.cargadoPor.trim().slice(0, 60) : ""
-    const eventoIdBody = typeof body.eventoId === "string" && body.eventoId ? body.eventoId : null
+    const pin = typeof body.pin === "string" ? body.pin : ""
     const itemsBody: ItemBody[] = Array.isArray(body.items) ? body.items : []
 
     // ── Permisos: perfil real de la sesión ────────────────────────────────
@@ -113,13 +130,26 @@ export async function POST(req: Request) {
       )
     }
 
-    // El evento que habilitó el aviso: solo se enlaza si existe y es de ese salón.
-    let eventoId: string | null = null
-    if (eventoIdBody) {
-      const ev = (await sql`
-        SELECT id FROM eventos WHERE id = ${eventoIdBody} AND salon = ${salon} AND deleted_at IS NULL LIMIT 1
-      `) as unknown as Array<{ id: string }>
-      eventoId = ev.length ? ev[0].id : null
+    // ── La puerta: por evento, o extraordinaria con PIN ───────────────────
+    // Se recalcula acá, no se confía en lo que diga la pantalla: si el
+    // endpoint aceptara una carga extraordinaria sin PIN, el candado no
+    // existiría.
+    const pendiente = await eventoPendienteEnBase(salon, sector)
+    const motivo: "evento" | "extraordinaria" = pendiente ? "evento" : "extraordinaria"
+    const eventoId: string | null = pendiente ? pendiente.evento.id : null
+    if (!pendiente && !verifyPinStockExtra(pin)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          // El motivo se dice sin revelar si el PIN estuvo cerca: o hay
+          // evento, o hace falta el PIN.
+          error: pin
+            ? "El PIN de carga extraordinaria no es correcto."
+            : "No hay ningún evento terminado pendiente de carga en este salón. Para cargar igual hace falta el PIN de carga extraordinaria.",
+          necesitaPin: true,
+        },
+        { status: 403 },
+      )
     }
 
     const ahora = new Date()
@@ -132,7 +162,9 @@ export async function POST(req: Request) {
         : ahora
 
     const salonNombre = salones.get(salon) || salon
-    const detalle = `Actualización de insumos · ${fechaHoraCortaArgentina(ahora)} · ${cargadoPor} · ${itemsBody.length} ${
+    const encabezadoDetalle =
+      motivo === "extraordinaria" ? "Carga extraordinaria de stock" : "Actualización de insumos"
+    const detalle = `${encabezadoDetalle} · ${fechaHoraCortaArgentina(ahora)} · ${cargadoPor} · ${itemsBody.length} ${
       itemsBody.length === 1 ? "insumo actualizado" : "insumos actualizados"
     }`
 
@@ -142,8 +174,8 @@ export async function POST(req: Request) {
       // (TS2349), aunque en ejecución funciona igual que sql.
       const tx = trx as unknown as typeof sql
       const creada = (await tx`
-        INSERT INTO stock_sesiones (id, salon, sector, cargado_por, evento_id, iniciada_en, cerrada_en, cantidad_items)
-        VALUES (${sesionId}, ${salon}, ${sector}, ${cargadoPor}, ${eventoId}, ${iniciadaEn}, ${ahora}, ${itemsBody.length})
+        INSERT INTO stock_sesiones (id, salon, sector, cargado_por, evento_id, motivo, iniciada_en, cerrada_en, cantidad_items)
+        VALUES (${sesionId}, ${salon}, ${sector}, ${cargadoPor}, ${eventoId}, ${motivo}, ${iniciadaEn}, ${ahora}, ${itemsBody.length})
         ON CONFLICT (id) DO NOTHING
         RETURNING id
       `) as unknown as Array<{ id: string }>
@@ -206,7 +238,7 @@ export async function POST(req: Request) {
       return { duplicada: false }
     })
 
-    return NextResponse.json({ ok: true, sesionId, duplicada: resultado.duplicada, cantidadItems: itemsBody.length })
+    return NextResponse.json({ ok: true, sesionId, motivo, duplicada: resultado.duplicada, cantidadItems: itemsBody.length })
   } catch (err) {
     console.error("[API] Error en stock-salones/sesiones POST:", err)
     return NextResponse.json({ ok: false, error: "No se pudo guardar la carga. No se guardó nada: volvé a intentar." }, { status: 500 })

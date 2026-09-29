@@ -34,6 +34,7 @@ export function ContenidoPorUnidadInput({
   onChange,
   autoFocus,
   className,
+  disabled,
 }: {
   /** Valor guardado, en gramos o cc. 0 = sin cargar. */
   cantidad: number
@@ -41,6 +42,8 @@ export function ContenidoPorUnidadInput({
   onChange: (valor: { cantidad: number; unidad: UnidadContenido }) => void
   autoFocus?: boolean
   className?: string
+  /** Solo lectura: Cocina y Barra ven el dato pero no lo cambian. */
+  disabled?: boolean
 }) {
   // Estado propio para poder escribir "2 litros" sin que el valor guardado
   // (2000 cc) pise lo que se está tipeando.
@@ -72,6 +75,7 @@ export function ContenidoPorUnidadInput({
           step="any"
           inputMode="decimal"
           autoFocus={autoFocus}
+          disabled={disabled}
           value={texto}
           onChange={(e) => {
             setTexto(e.target.value)
@@ -82,6 +86,7 @@ export function ContenidoPorUnidadInput({
           aria-label="Cuánto trae cada unidad"
         />
         <Select
+          disabled={disabled}
           value={unidadEntrada}
           onValueChange={(v) => {
             setUnidadEntrada(v as UnidadEntrada)

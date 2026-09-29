@@ -14,6 +14,8 @@ import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
+import { useProfile } from "@/lib/profile-context"
 import {
   Dialog,
   DialogContent,
@@ -46,6 +48,13 @@ function AlmacenContent() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<Insumo | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Cocina entra acá a ajustar existencias, pero el catálogo (unidad,
+  // contenido, precio) mueve el costo de las recetas y es de Administración.
+  // Los campos se ven igual, apagados: sirve saber en qué unidad está algo.
+  // Esto es solo la pantalla; el que corta de verdad es el servidor
+  // (lib/insumos-permisos.ts, usado en app/api/insumos/**).
+  const { perfilActivo } = useProfile()
+  const soloStock = !puedeEditarCatalogo(perfilActivo?.id)
   // Insumo pendiente de eliminar (abre el diálogo de seguridad)
   const [insumoAEliminar, setInsumoAEliminar] = useState<Insumo | null>(null)
 
@@ -115,7 +124,7 @@ function AlmacenContent() {
     setIsSubmitting(true)
     try {
       if (editingInsumo) {
-        await updateInsumo(editingInsumo.id, formData)
+        await updateInsumo(editingInsumo.id, soloStock ? { stockActual: formData.stockActual } : formData)
       } else {
         await addInsumo(formData)
       }
@@ -307,12 +316,14 @@ function AlmacenContent() {
                     if (!open) resetForm()
                   }}
                 >
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Agregar
-                    </Button>
-                  </DialogTrigger>
+                  {!soloStock && (
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Agregar
+                      </Button>
+                    </DialogTrigger>
+                  )}
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2.5">
@@ -320,10 +331,14 @@ function AlmacenContent() {
                           const Icono = iconoDeInsumo(formData.descripcion)
                           return <Icono className="h-6 w-6 shrink-0 text-muted-foreground/40" aria-hidden />
                         })()}
-                        {editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}
+                        {soloStock ? "Ajustar stock" : editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}
                       </DialogTitle>
                       <DialogDescription>
-                        {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacén"}
+                        {soloStock
+                          ? "Corregí las existencias. El resto de los datos los cambia Administración."
+                          : editingInsumo
+                            ? "Modifica los datos del insumo"
+                            : "Agrega un nuevo insumo al almacén"}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -339,11 +354,11 @@ function AlmacenContent() {
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="descripcion" className="text-right">Descripción</Label>
-                        <Input id="descripcion" value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="col-span-3" placeholder="Ej: Aceite Girasol" />
+                        <Input id="descripcion" disabled={soloStock} value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="col-span-3" placeholder="Ej: Aceite Girasol" />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="unidad" className="text-right">Unidad</Label>
-                        <Select value={formData.unidad} onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}>
+                        <Select disabled={soloStock} value={formData.unidad} onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}>
                           <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
                           <SelectContent>{unidades.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
                         </Select>
@@ -359,6 +374,7 @@ function AlmacenContent() {
                           </Label>
                           <div className="col-span-3 space-y-1.5">
                             <ContenidoPorUnidadInput
+                              disabled={soloStock}
                               cantidad={formData.contenidoCantidad}
                               unidad={formData.contenidoUnidad}
                               onChange={(v) =>
@@ -389,11 +405,11 @@ function AlmacenContent() {
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="precio" className="text-right">Precio $</Label>
-                        <MoneyInput id="precio" value={formData.precioUnitario} onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })} className="col-span-3" />
+                        <MoneyInput id="precio" disabled={soloStock} value={formData.precioUnitario} onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })} className="col-span-3" />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
-                        <Input id="proveedor" value={formData.proveedor} onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })} className="col-span-3" placeholder="Ej: Distribuidora Norte" />
+                        <Input id="proveedor" disabled={soloStock} value={formData.proveedor} onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })} className="col-span-3" placeholder="Ej: Distribuidora Norte" />
                       </div>
                     </div>
                     <DialogFooter>
@@ -503,14 +519,16 @@ function AlmacenContent() {
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setInsumoAEliminar(insumo)}
-                            aria-label={`Eliminar ${insumo.descripcion}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {!soloStock && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setInsumoAEliminar(insumo)}
+                              aria-label={`Eliminar ${insumo.descripcion}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
+import { permisoInsumo, type AccionInsumo, type SectorInsumo } from "@/lib/insumos-permisos"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 
 // GET single insumo
 export async function GET(
@@ -41,6 +43,9 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
+
+    const prohibido = await negar(request, "editar", Object.keys(body ?? {}))
+    if (prohibido) return prohibido
 
     // Precio actual antes de actualizar (para el historial de evolución)
     const [previo] = await sql`SELECT precio_unitario FROM insumos WHERE id = ${id}`
@@ -122,6 +127,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const prohibido = await negar(request, "borrar")
+    if (prohibido) return prohibido
+
     await sql`DELETE FROM insumos WHERE id = ${id}`
     await logActivity("insumo", "eliminado", id)
     return NextResponse.json({ success: true })
@@ -129,4 +137,17 @@ export async function DELETE(
     console.error("[API] Error deleting insumo:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+/**
+ * Cocina y Barra entran a estas pantallas para ajustar existencias, pero el
+ * catálogo (unidad, contenido, precio) es de Administración: ver
+ * lib/insumos-permisos.ts. El perfil sale del token firmado, no de lo que
+ * diga la pantalla.
+ */
+async function negar(request: Request, accion: AccionInsumo, campos?: string[]) {
+  const perfilId = await perfilDesdeRequest(request)
+  const veredicto = permisoInsumo({ perfilId, sector: "cocina" as SectorInsumo, accion, campos })
+  if (veredicto.ok) return null
+  return NextResponse.json({ error: veredicto.error }, { status: 403 })
 }
