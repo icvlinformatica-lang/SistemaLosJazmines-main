@@ -118,6 +118,14 @@ export interface Insumo {
   stockActual: number
   precioUnitario: number
   proveedor?: string
+  /**
+   * Cuánto contiene cada unidad, para insumos que se compran por unidad
+   * (una lata de arvejas = 200 GRS). Sin esto, una receta que pide gramos
+   * de un insumo en "UN" no se puede convertir y el costo sale multiplicado
+   * — ver normalizeToStockUnit().
+   */
+  contenidoCantidad?: number
+  contenidoUnidad?: "GRS" | "CC"
 }
 
 export interface InsumoReceta {
@@ -2120,7 +2128,35 @@ export function calcularCostosOperativos(
   return total
 }
 
-export function normalizeToStockUnit(qty: number, recipeUnit: UnidadReceta | undefined, stockUnit: Unidad): number {
+/**
+ * Cuánto contiene cada unidad de un insumo que se compra por unidad: una lata
+ * de arvejas trae 200 GRS, una botella 750 CC. Se carga en Almacén, en el
+ * insumo, y solo tiene sentido cuando la unidad de stock es "UN".
+ */
+export interface ContenidoPorUnidad {
+  cantidad: number
+  unidad: "GRS" | "CC"
+}
+
+/** Contenido por unidad de un insumo, en la forma que espera normalizeToStockUnit. */
+export function contenidoDe(
+  insumo: Pick<Insumo, "contenidoCantidad" | "contenidoUnidad">,
+): ContenidoPorUnidad | null {
+  if (!insumo.contenidoCantidad || !insumo.contenidoUnidad) return null
+  return { cantidad: Number(insumo.contenidoCantidad), unidad: insumo.contenidoUnidad }
+}
+
+export function normalizeToStockUnit(
+  qty: number,
+  recipeUnit: UnidadReceta | undefined,
+  stockUnit: Unidad,
+  /**
+   * Contenido de cada unidad, si el insumo lo tiene cargado. Sin esto, un
+   * insumo por unidad usado con una receta en gramos NO se puede convertir
+   * (ver el bloque de abajo).
+   */
+  contenido?: ContenidoPorUnidad | null,
+): number {
   // If no recipe unit specified, assume same as stock
   if (!recipeUnit) return qty
 
@@ -2147,13 +2183,51 @@ export function normalizeToStockUnit(qty: number, recipeUnit: UnidadReceta | und
     return qty * 1000 // 0.5 L -> 500 CC
   }
 
+  // La receta pide peso o volumen y el insumo se compra por unidad (una lata,
+  // una bolsa). Solo se puede convertir si sabemos cuánto trae cada unidad:
+  // 30 GRS de arvejas / 200 GRS por lata = 0,15 latas.
+  //
+  // Sin ese dato NO se convierte y se devuelve la cantidad tal cual, que es
+  // lo que hacía antes. Ojo: eso significa leer "30 grs" como "30 latas" y
+  // multiplicar el costo por 200. Por eso la pantalla de Almacén pide el
+  // contenido cuando la unidad es UN, y el recetario avisa cuando falta.
+  if (normalizedStock === "UN" && contenido && contenido.cantidad > 0) {
+    const enContenido =
+      normalizedRecipe === contenido.unidad
+        ? qty
+        : normalizedRecipe === "KG" && contenido.unidad === "GRS"
+          ? qty * 1000
+          : normalizedRecipe === "L" && contenido.unidad === "CC"
+            ? qty * 1000
+            : null
+    if (enContenido !== null) return enContenido / contenido.cantidad
+  }
+
   // Incompatible units - return as-is and log warning
   console.warn(`[v0] Incompatible units: recipe=${recipeUnit}, stock=${stockUnit}`)
   return qty
 }
 
-export function getCompatibleRecipeUnits(stockUnit: Unidad): UnidadReceta[] {
+/**
+ * ¿Este insumo necesita que le carguen el contenido por unidad para que sus
+ * recetas calculen bien? True cuando se compra por unidad y no tiene el dato.
+ */
+export function insumoNecesitaContenido(insumo: Pick<Insumo, "unidad" | "contenidoCantidad">): boolean {
+  return insumo.unidad === "UN" && !insumo.contenidoCantidad
+}
+
+export function getCompatibleRecipeUnits(
+  stockUnit: Unidad,
+  /** Contenido por unidad del insumo, si lo tiene cargado. */
+  contenido?: ContenidoPorUnidad | null,
+): UnidadReceta[] {
   const normalizedStock = stockUnit === "GR" ? "GRS" : stockUnit === "LT" ? "L" : stockUnit
+
+  // Un insumo por unidad con el contenido cargado ya se puede pedir en peso o
+  // volumen: la lata de 200 GRS habilita escribir la receta en gramos.
+  if (normalizedStock === "UN" && contenido && contenido.cantidad > 0) {
+    return contenido.unidad === "GRS" ? ["UN", "GRS", "KG"] : ["UN", "CC", "L"]
+  }
 
   switch (normalizedStock) {
     case "KG":
@@ -2197,7 +2271,7 @@ export function calcularCostoReceta(receta: Receta, insumos: Insumo[]): number {
   return receta.insumos.reduce((total, ir) => {
     const insumo = insumos.find((i) => i.id === ir.insumoId)
     if (!insumo) return total
-    const normalizedQty = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad)
+    const normalizedQty = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad, contenidoDe(insumo))
     return total + (normalizedQty / factor) * insumo.precioUnitario
   }, 0)
 }
@@ -2237,7 +2311,7 @@ export function calcularComprasSegmentadas(
         const insumo = insumos.find((i) => i.id === ir.insumoId)
         if (!insumo) return
 
-        const normalizedQty = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad)
+        const normalizedQty = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad, contenidoDe(insumo))
         const cantidad = (normalizedQty / factor) * paxCount * portionMultiplier
 
         if (!comprasMap[ir.insumoId]) {

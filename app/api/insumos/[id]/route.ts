@@ -23,6 +23,8 @@ export async function GET(
       unidad: data.unidad,
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
+      contenidoCantidad: data.contenido_cantidad != null ? Number(data.contenido_cantidad) : undefined,
+      contenidoUnidad: data.contenido_unidad || undefined,
       proveedor: data.proveedor || "",
     })
   } catch (err) {
@@ -43,6 +45,15 @@ export async function PATCH(
     // Precio actual antes de actualizar (para el historial de evolución)
     const [previo] = await sql`SELECT precio_unitario FROM insumos WHERE id = ${id}`
 
+    // Contenido por unidad (una lata de arvejas = 200 GRS). Los dos datos van
+    // juntos o no van. Mandar contenidoCantidad = 0 o null a propósito lo
+    // borra: por eso se distingue "no vino en el body" de "vino vacío".
+    const tocaContenido = "contenidoCantidad" in body || "contenidoUnidad" in body
+    const contCantidad = Number(body.contenidoCantidad) > 0 ? Number(body.contenidoCantidad) : null
+    const contUnidad =
+      contCantidad && (body.contenidoUnidad === "GRS" || body.contenidoUnidad === "CC") ? body.contenidoUnidad : null
+    const contenidoFinal = contCantidad !== null && contUnidad !== null ? { cantidad: contCantidad, unidad: contUnidad } : null
+
     const [data] = await sql`
       UPDATE insumos SET
         codigo          = COALESCE(${body.codigo ?? null}, codigo),
@@ -51,6 +62,8 @@ export async function PATCH(
         stock_actual    = COALESCE(${body.stockActual ?? null}, stock_actual),
         precio_unitario = COALESCE(${body.precioUnitario ?? null}, precio_unitario),
         proveedor       = COALESCE(${body.proveedor ?? null}, proveedor),
+        contenido_cantidad = ${tocaContenido ? (contenidoFinal ? contenidoFinal.cantidad : null) : sql`contenido_cantidad`},
+        contenido_unidad   = ${tocaContenido ? (contenidoFinal ? contenidoFinal.unidad : null) : sql`contenido_unidad`},
         updated_at      = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -84,6 +97,8 @@ export async function PATCH(
       unidad: data.unidad,
       stockActual: Number(data.stock_actual),
       precioUnitario: Number(data.precio_unitario),
+      contenidoCantidad: data.contenido_cantidad != null ? Number(data.contenido_cantidad) : undefined,
+      contenidoUnidad: data.contenido_unidad || undefined,
       proveedor: data.proveedor || "",
     })
   } catch (err) {
