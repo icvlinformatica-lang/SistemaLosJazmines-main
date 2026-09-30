@@ -42,6 +42,7 @@ import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { cn } from "@/lib/utils"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
+import { iconoTipoEvento, referenciaTiposEvento } from "@/lib/icono-tipo-evento"
 
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
@@ -301,6 +302,15 @@ export default function ProduccionPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Calendario anual de los eventos con guia de produccion
           </p>
+          {/* Qué quiere decir cada símbolo del calendario. */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {referenciaTiposEvento().map((t) => (
+              <span key={t.etiqueta} className="inline-flex items-center gap-1">
+                <span aria-hidden>{t.emoji}</span>
+                {t.etiqueta}
+              </span>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
@@ -433,11 +443,25 @@ export default function ProduccionPage() {
                           )}
                           title={
                             tiene
-                              ? celda.eventos.map((e) => e.nombrePareja || e.nombre || "Sin nombre").join(", ")
+                              ? celda.eventos
+                                  .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}`)
+                                  .join(" · ")
                               : undefined
                           }
                         >
                           {celda.dia}
+                          {/* El símbolo del tipo de fiesta va en la esquina de
+                              arriba a la izquierda: el número del día tiene que
+                              seguir viéndose, y la esquina derecha ya la usa el
+                              contador de eventos. */}
+                          {tiene && (
+                            <span
+                              aria-hidden
+                              className="absolute -left-1 -top-1 text-[10px] leading-none"
+                            >
+                              {iconoTipoEvento(celda.eventos[0].tipoEvento).emoji}
+                            </span>
+                          )}
                           {celda.eventos.length > 1 && (
                             <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-orange-500 px-1 text-[8px] font-bold text-white">
                               {celda.eventos.length}
@@ -521,9 +545,10 @@ export default function ProduccionPage() {
                           <p className="font-medium text-foreground truncate max-w-[200px]">
                             {displayName}
                           </p>
-                          {evento.tipoEvento && (
-                            <p className="text-xs text-muted-foreground">{evento.tipoEvento}</p>
-                          )}
+                          <p className="text-xs text-muted-foreground">
+                            <span aria-hidden>{iconoTipoEvento(evento.tipoEvento).emoji}</span>{" "}
+                            {iconoTipoEvento(evento.tipoEvento).etiqueta}
+                          </p>
                         </div>
                       </TableCell>
                       <TableCell className="text-sm">{formatFecha(evento.fecha)}</TableCell>

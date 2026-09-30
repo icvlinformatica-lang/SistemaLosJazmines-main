@@ -5,6 +5,7 @@ import { useState, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
+import { iconoTipoEvento, referenciaTiposEvento } from "@/lib/icono-tipo-evento"
 import {
   generateId,
   formatCurrency,
@@ -204,16 +205,19 @@ function EventBadge({ evento }: { evento: EventoGuardado }) {
   const { configuracionCajas } = useStore()
   const total = evento.adultos + evento.adolescentes + evento.ninos + (evento.personasDietasEspeciales || 0)
   const tipoColor = TIPO_COLORES[evento.tipoEvento || "Otro"] || TIPO_COLORES["Otro"]
+  const tipo = iconoTipoEvento(evento.tipoEvento)
   const color = evento.salon ? salonColor(evento.salon, configuracionCajas) : undefined
 
   return (
     <div
       className={`border-l-4 rounded-sm px-1.5 py-0.5 text-xs truncate cursor-pointer transition-opacity hover:opacity-80 ${tipoColor}`}
       style={color ? { borderLeftColor: color } : undefined}
-      title={`${evento.nombre || evento.tipoEvento || "Evento"}${evento.salon ? ` - ${salonLabel(evento.salon)}` : ""} - ${total} personas`}
+      title={`${tipo.etiqueta} — ${evento.nombre || "Evento"}${evento.salon ? ` - ${salonLabel(evento.salon)}` : ""} - ${total} personas`}
     >
       <span className="font-medium truncate flex items-center gap-1">
         {evento.salon && <SalonDot salon={evento.salon} size={6} />}
+        {/* Símbolo del tipo de fiesta: se reconoce sin leer. */}
+        <span aria-hidden className="shrink-0 leading-none">{tipo.emoji}</span>
         {evento.horario && <span className="text-muted-foreground">{evento.horario} </span>}
         <span className="truncate">{evento.nombre || evento.tipoEvento || "Evento"}</span>
       </span>
@@ -1124,6 +1128,16 @@ export default function CalendarioPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-6 space-y-6">
+        {/* Qué quiere decir cada símbolo del calendario. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {referenciaTiposEvento().map((t) => (
+            <span key={t.etiqueta} className="inline-flex items-center gap-1">
+              <span aria-hidden>{t.emoji}</span>
+              {t.etiqueta}
+            </span>
+          ))}
+        </div>
+
         {/* Dashboard toggle */}
         <div className="flex justify-end">
           <Button

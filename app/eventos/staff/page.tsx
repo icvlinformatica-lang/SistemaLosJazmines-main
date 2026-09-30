@@ -15,6 +15,7 @@ import { useMemo, useState } from "react"
 import { useEventos } from "@/lib/use-eventos"
 import { useProfile } from "@/lib/profile-context"
 import { useStore } from "@/lib/store-context"
+import { iconoTipoEvento, referenciaTiposEvento } from "@/lib/icono-tipo-evento"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -167,6 +168,16 @@ export default function StaffPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Tocá un día para ver el detalle del evento y los servicios contratados.
         </p>
+        {/* Qué quiere decir cada símbolo. Sin esto, los emojis del calendario
+            hay que adivinarlos. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {referenciaTiposEvento().map((t) => (
+            <span key={t.etiqueta} className="inline-flex items-center gap-1">
+              <span aria-hidden>{t.emoji}</span>
+              {t.etiqueta}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Calendario mensual */}
@@ -228,15 +239,29 @@ export default function StaffPage() {
                       : "text-muted-foreground/50",
                     esHoy(celda.dia) && "ring-2 ring-primary",
                   )}
-                  title={tiene ? celda.eventos.map((e) => e.nombrePareja || e.nombre || "Sin nombre").join(", ") : undefined}
+                  title={
+                    tiene
+                      ? celda.eventos
+                          .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}`)
+                          .join(" · ")
+                      : undefined
+                  }
                 >
                   <span>{celda.dia}</span>
                   {tiene && (
-                    <span className="max-w-full truncate text-[10px] font-normal leading-tight">
-                      {celda.eventos.length > 1
-                        ? `${celda.eventos.length} eventos`
-                        : celda.eventos[0].nombrePareja || celda.eventos[0].nombre || "Evento"}
-                    </span>
+                    <>
+                      {/* El símbolo del tipo de fiesta: se reconoce de un
+                          vistazo sin leer. Con varios eventos en el mismo día
+                          van todos, que para eso son chiquitos. */}
+                      <span aria-hidden className="text-sm leading-none">
+                        {celda.eventos.map((e) => iconoTipoEvento(e.tipoEvento).emoji).join(" ")}
+                      </span>
+                      <span className="max-w-full truncate text-[10px] font-normal leading-tight">
+                        {celda.eventos.length > 1
+                          ? `${celda.eventos.length} eventos`
+                          : celda.eventos[0].nombrePareja || celda.eventos[0].nombre || "Evento"}
+                      </span>
+                    </>
                   )}
                 </button>
               )
@@ -260,11 +285,13 @@ export default function StaffPage() {
                   onClick={() => abrirEvento(e)}
                   className="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/50"
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{e.nombrePareja || e.nombre || "Sin nombre"}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {formatFecha(e.fecha)}
-                      {e.tipoEvento ? ` · ${e.tipoEvento}` : ""}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span aria-hidden className="text-lg leading-none">{iconoTipoEvento(e.tipoEvento).emoji}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{e.nombrePareja || e.nombre || "Sin nombre"}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {formatFecha(e.fecha)} · {iconoTipoEvento(e.tipoEvento).etiqueta}
+                      </span>
                     </span>
                   </span>
                   <Eye className="h-4 w-4 shrink-0 text-muted-foreground" />
