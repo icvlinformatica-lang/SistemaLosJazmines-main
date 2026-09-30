@@ -76,13 +76,31 @@ const calcular = (ev, hs = [registro(8, 2)], fecha = "2026-09-10") => calcularIP
 const cobrar = (ev, numero, fecha, hs = [registro(8, 2)]) => {
   const calculo = calcular(ev, hs, fecha).calculo
   ev.planDeCuotas.cuotasPagadas.push(numero)
+  // Igual que validarCobroIPC al cobrar la cuota completa: su cifra oficial
+  // queda fijada en cuotas[] y es la base del IPC de la cuota siguiente.
+  Object.assign(ev.planDeCuotas.cuotas.find(c => c.numero === numero), {
+    montoCuota: calculo.monto, montoPagadoNeto: calculo.monto, pagada: true, estado: "pagada", fechaPagoReal: fecha, calculoIPC: calculo,
+  })
   ev.pagos.push({ id: `p-${numero}`, numeroCuota: numero, monto: calculo.monto + 6000, montoCuotaNeto: calculo.monto,
     montoMora: 6000, fecha, porcentajeIPC: calculo.porcentaje, calculoIPC: calculo })
   return calculo
 }
+// Igual que "eliminar pago" en Cobrar Cuota cuando era el único pago de la
+// cuota: vuelve a pendiente y pierde fecha real, neto y cálculo IPC.
+const anular = (ev, numero) => {
+  ev.pagos = ev.pagos.filter(p => p.numeroCuota !== numero)
+  ev.planDeCuotas.cuotasPagadas = ev.planDeCuotas.cuotasPagadas.filter(n => n !== numero)
+  ev.planDeCuotas.cuotas = ev.planDeCuotas.cuotas.map(c => {
+    if (c.numero !== numero) return c
+    const { fechaPagoReal, montoPagadoNeto, calculoIPC, ...resto } = c
+    return { ...resto, pagada: false, estado: "pendiente" }
+  })
+}
 const angeles = evento()
 angeles.planDeCuotas.montoCuota = 600000
 angeles.planDeCuotas.cuotasPagadas = [1]
+// Como en la base real: la cifra oficial de la cuota 1 es lo que se cobró neto.
+angeles.planDeCuotas.cuotas[0] = { ...angeles.planDeCuotas.cuotas[0], montoCuota: 647465, pagada: true }
 angeles.pagos = [{ id: "p1", monto: 647465, fecha: "2026-08-08", notas: "Cuota 1/15", porcentajeIPC: 0, montoRecibido: 650000, vuelto: 2535 }]
 const props = { resultado: calcular(angeles, historial), montoCuota: 658472, diasAtraso: 2, recargoPorDia: 3000, recargoOmitido: false }
 const render = (overrides = {}) => renderToStaticMarkup(React.createElement(DesgloseIPCPago, { ...props, ...overrides }))
@@ -120,7 +138,7 @@ test("primera cuota ignora montos inflados de las pendientes", () => {
   assert.equal(calcular(evento()).calculo.monto, 102000)
   assert.equal(calcular(evento()).calculo.origen, "plan")
 })
-test("Ángeles usa pago neto y no cuota original ni vuelto", () => {
+test("Ángeles usa la cifra oficial de la cuota 1, no la cuota original del plan ni el vuelto", () => {
   assert.equal(props.resultado.calculo.base, 647465)
   assert.equal(props.resultado.calculo.monto, 658472)
 })
@@ -150,6 +168,8 @@ test("cambio de año y zona horaria argentina", () => {
 })
 test("mora histórica se extrae solo de nota explícita, extras no se adivinan", () => {
   const ev = evento(); ev.planDeCuotas.cuotasPagadas = [1]
+  // Dato viejo sin cifra oficial en cuotas[]: solo ahí se usa el neto del pago.
+  delete ev.planDeCuotas.cuotas[0].montoCuota
   ev.pagos = [{ id: "x", monto: 106000, fecha: "2026-08-10", notas: "Cuota 1/5 + recargo por atraso $ 6.000 (2 días x $ 3.000)" }]
   assert.equal(calcular(ev).calculo.base, 100000)
   ev.pagos[0].notas += " + extras"
@@ -182,7 +202,7 @@ test("proyección repetida es idempotente y conserva íntegros pagos y cuota pag
 })
 test("anulación elimina la fuente mensual y vuelve a calcular solo pendientes", () => {
   const ev = evento(); cobrar(ev, 1, "2026-09-01")
-  ev.pagos = []; ev.planDeCuotas.cuotasPagadas = []
+  anular(ev, 1)
   assert.equal(calcular(ev).calculo.aplicadoEsteMes, false)
   assert.equal(calcular(ev).calculo.monto, 102000)
 })
@@ -190,7 +210,7 @@ test("anular el pago origen invalida las pendientes sin alterar cobros posterior
   const ev = evento(); cobrar(ev, 1, "2026-08-01", [registro(7, 0)])
   cobrar(ev, 2, "2026-09-01")
   const posterior = structuredClone(ev.pagos[1])
-  ev.pagos = [ev.pagos[1]]; ev.planDeCuotas.cuotasPagadas = [2]
+  anular(ev, 1)
   assert.equal(calcular(ev).estado, "pendiente")
   assert.deepEqual(ev.pagos[0], posterior)
 })
@@ -226,8 +246,12 @@ test("servidor acepta cobro manual con base declarada y rechaza importes que no 
   const updates = { pagos: [...ev.pagos, pago], planDeCuotas: { ...ev.planDeCuotas, cuotasPagadas: [1, 2],
     cuotas: ev.planDeCuotas.cuotas.map(c => c.numero === 2 ? { ...c, pagada: true, montoCuota: calculo.monto, montoPagadoNeto: calculo.monto, fechaPagoReal: "2026-09-10", calculoIPC: calculo } : c) } }
   assert.equal(validarCobroIPC(ev, structuredClone(updates), [registro(8, 1.7)]), null)
-  const manipulado = structuredClone(updates); manipulado.pagos[1].montoCuotaNeto = 1; manipulado.pagos[1].monto = 3001
+  // Tocar la cifra oficial de la cuota se rechaza.
+  const manipulado = structuredClone(updates); manipulado.planDeCuotas.cuotas[1].montoCuota = 1
   assert.match(validarCobroIPC(ev, manipulado, [registro(8, 1.7)]), /cambió/)
+  // Pagar menos es un pago parcial válido, pero exige decidir qué pasa con el saldo.
+  const parcial = structuredClone(updates); parcial.pagos[1].montoCuotaNeto = 1; parcial.pagos[1].monto = 3001
+  assert.match(validarCobroIPC(ev, parcial, [registro(8, 1.7)]), /saldo/)
   const sinBase = structuredClone(updates); delete sinBase.pagos[1].calculoIPC; sinBase.planDeCuotas.cuotas[1].calculoIPC = undefined
   assert.match(validarCobroIPC(ev, sinBase, [registro(8, 1.7)]), /sin cuota identificada/)
 })
@@ -247,4 +271,16 @@ test("servidor recalcula base y rechaza montos manipulados", () => {
   assert.equal(validarCobroIPC(ev, result.planUpdate, [registro(8, 2)]), null)
   result.planUpdate.planDeCuotas.cuotas[0].montoPagadoNeto = 1
   assert.match(validarCobroIPC(ev, result.planUpdate, [registro(8, 2)]), /cambió/)
+})
+test("cobro rápido: no cierra cuotas parciales, no acepta fecha futura y no bloquea cambios sin cobro", () => {
+  const ev = evento()
+  const { planUpdate } = construirCobroCuota(ev, 1, 102000, undefined, [], undefined, [registro(8, 2)], "2026-09-01")
+  // Cuota que ya tenía un pago parcial: se completa solo desde Cobrar cuota.
+  const conParcial = structuredClone(ev); conParcial.planDeCuotas.cuotas[0].montoPagadoNeto = 50000
+  assert.match(validarCobroIPC(conParcial, structuredClone(planUpdate), [registro(8, 2)]), /pagos parciales/)
+  // Fecha real futura.
+  const futura = structuredClone(planUpdate); futura.planDeCuotas.cuotas[0].fechaPagoReal = "2999-01-01"
+  assert.match(validarCobroIPC(ev, futura, [registro(8, 2)]), /futura/)
+  // Guardar el plan sin marcar ninguna cuota nueva como pagada no se valida.
+  assert.equal(validarCobroIPC(ev, { planDeCuotas: structuredClone(ev.planDeCuotas) }, [registro(8, 2)]), null)
 })
