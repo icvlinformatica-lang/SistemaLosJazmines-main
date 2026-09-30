@@ -1,5 +1,5 @@
 import type { EventoGuardado, HistorialIPCEntry } from "./store"
-import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numeroCuotaPago, resolverCalculoCobro, type CalculoIPC, type EventoIPC } from "./ipc-cuotas"
+import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, numeroCuotaPago, numerosPagados, resolverCalculoCobro, type CalculoIPC, type EventoIPC } from "./ipc-cuotas"
 import { estadoDeCuota, saldoRestanteCuota } from "./estado-cuotas"
 
 const TOLERANCIA_CENTAVOS = 0.01
@@ -8,7 +8,7 @@ export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuarda
   if (!aplicaIPC(actual)) return null
   const siguiente = { ...actual, ...updates }
   const pagosNuevos = (updates.pagos ?? []).filter(p => !(actual.pagos ?? []).some(a => a.id === p.id))
-  if (!pagosNuevos.length) return null
+  if (!pagosNuevos.length) return validarCobroRapido(actual, siguiente, historial)
   if (pagosNuevos.length !== 1 || !aplicaIPC(siguiente)) return "Registrá un pago por operación, sin cambiar la modalidad del plan."
   if ((actual.pagos ?? []).some(p => JSON.stringify(p) !== JSON.stringify((updates.pagos ?? actual.pagos)?.find(n => n.id === p.id)))) {
     return "No se pueden modificar pagos anteriores mientras se registra un pago nuevo."
@@ -98,5 +98,42 @@ export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuarda
   pago.calculoIPC = calculo
   pago.porcentajeIPC = calculo.ipcOmitido ? 0 : calculo.porcentaje
   pago.numeroCuota = numero
+  return null
+}
+
+/**
+ * Botón rápido "marcar cobrada" de Caja Eventos (construirCobroCuota): marca
+ * una cuota como pagada SIN agregar un pago a pagos[], así que no pasa por la
+ * validación de arriba. Igual que un cobro normal, el servidor recalcula la
+ * cuota y no confía en el monto que manda el navegador. Solo vale para
+ * cuotas que nunca recibieron ningún pago (mismo límite que construirCobroCuota).
+ */
+function validarCobroRapido(actual: EventoIPC, siguiente: EventoIPC, historial: HistorialIPCEntry[]): string | null {
+  const anteriores = numerosPagados(actual)
+  const nuevas = numerosPagados(siguiente).filter(n => !anteriores.includes(n))
+  if (!nuevas.length) return null
+  if (nuevas.length !== 1 || !aplicaIPC(siguiente)) return "Registrá una cuota por operación, sin cambiar la modalidad del plan."
+  const numero = nuevas[0]
+  const cuota = siguiente.planDeCuotas?.cuotas?.find(c => c.numero === numero)
+  if (!cuota || numero < 1 || numero > actual.planDeCuotas!.numeroCuotas) return "Cuota inválida."
+  const cuotaActual = actual.planDeCuotas?.cuotas?.find(c => c.numero === numero)
+  if ((cuotaActual?.montoPagadoNeto ?? 0) > 0) {
+    return "Esta cuota tiene pagos parciales registrados: completala desde el perfil del evento (Cobrar cuota)."
+  }
+  const fecha = cuota.fechaPagoReal
+  if (!fecha || fecha > fechaNegocio()) return "Indicá la fecha real de cobro; no puede ser futura."
+  const resultado = calcularIPCPeriodo(actual, historial, fecha)
+  if (resultado.estado === "pendiente") return resultado.motivo
+  if (resultado.estado !== "listo") return "No se pudo calcular la cuota."
+  const calculo = resultado.calculo
+  if (cuota.montoCuota !== calculo.monto || cuota.montoPagadoNeto !== calculo.monto) {
+    return "La cuota cambió. Actualizá el desglose antes de confirmar el cobro."
+  }
+  // El servidor genera la auditoría; no usa la que mandó el navegador.
+  cuota.calculoIPC = calculo
+  cuota.montoPagadoNeto = calculo.monto
+  cuota.fechaPagoReal = fecha
+  cuota.pagada = true
+  cuota.estado = "pagada"
   return null
 }
