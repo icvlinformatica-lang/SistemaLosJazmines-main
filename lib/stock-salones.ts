@@ -111,6 +111,29 @@ export function eventoPendienteDeCarga(
 }
 
 /**
+ * Los próximos `cantidad` eventos de un salón que todavía NO terminaron (fin
+ * real > ahora), del más cercano al más lejano, sin borradores ni cancelados.
+ * Es lo que la pantalla de carga muestra "con candado": cada uno se va a
+ * poder cargar recién cuando termine (ver eventoPendienteDeCarga).
+ */
+export function proximosEventosDelSalon(
+  eventos: EventoParaStock[],
+  salon: string,
+  ahora: Date = new Date(),
+  cantidad = 3,
+): { evento: EventoParaStock; fin: Date }[] {
+  const proximos: { evento: EventoParaStock; fin: Date }[] = []
+  for (const ev of eventos) {
+    if (ev.salon !== salon) continue
+    if (ev.estado === "borrador" || ev.estado === "cancelado") continue
+    const fin = finRealEvento(ev.fecha, ev.horario, ev.horarioFin)
+    if (!fin || fin.getTime() <= ahora.getTime()) continue
+    proximos.push({ evento: ev, fin })
+  }
+  return proximos.sort((a, b) => a.fin.getTime() - b.fin.getTime()).slice(0, cantidad)
+}
+
+/**
  * Sectores que puede cargar cada perfil. Administración y Soporte cargan los
  * dos; Cocina solo cocina y Barra solo barra. El resto, ninguno.
  */

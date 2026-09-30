@@ -6,8 +6,10 @@
 // dos), de madrugada y desde el celular. El servidor vuelve a controlar el
 // perfil real al guardar.
 //
-// Flujo: elegir salón → menú (Calendario actual / Carga de insumos, con el
-// aviso de evento terminado) → carga. La carga muestra TODOS los insumos del
+// Flujo: elegir salón → menú ("Cargar stock disponible luego del evento X"
+// si hay uno terminado sin cargar, los próximos 3 eventos del salón con
+// candado, y el botón "!" de carga extraordinaria con PIN) → carga. Sin
+// acceso al calendario desde acá. La carga muestra TODOS los insumos del
 // sector con su casillero: se escribe el número y listo (1 paso por
 // insumo). Al confirmar se envían SOLO los que tienen un número escrito
 // (ver itemsParaEnviar en lib/stock-carga.ts): vacío = no contado, nunca 0.
@@ -16,11 +18,10 @@
 // NO toca el stock global (stock_actual) de /admin/almacen ni /admin/barra.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import { useProfile, usuarioActivo } from "@/lib/profile-context"
 import { salonLabel } from "@/lib/store"
-import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+import { proximosEventosDelSalon, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 import { insumosVisibles, itemsParaEnviar, type InsumoCarga } from "@/lib/stock-carga"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
@@ -38,7 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, CalendarDays, ChefHat, ChevronDown, KeyRound, Loader2, PartyPopper, Search, Wine } from "lucide-react"
+import { AlertCircle, ArrowLeft, ChefHat, ChevronDown, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -70,8 +71,20 @@ function fmtFechaHora(iso: string): string {
   })
 }
 
+/** "sáb 03/10 · 21:00" a partir de la fecha (YYYY-MM-DD) y el horario del evento. */
+function fmtFechaEvento(fecha: string | null, horario: string | null): string {
+  if (!fecha) return ""
+  const dia = new Date(`${fecha}T12:00:00-03:00`).toLocaleDateString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  })
+  return horario ? `${dia} · ${horario}` : dia
+}
+
 export default function StockPorSalonPage() {
-  const { state } = useStore()
+  const { state, eventos } = useStore()
   const { perfilActivo } = useProfile()
   const { toast } = useToast()
   const sectores = sectoresPermitidos(perfilActivo?.id)
@@ -216,14 +229,11 @@ export default function StockPorSalonPage() {
   }
 
   /**
-   * Con evento terminado pendiente se entra derecho. Sin evento, la carga es
-   * extraordinaria y hay que poner el PIN primero.
+   * Botón "!": carga extraordinaria (fuera de un evento terminado). Pide el
+   * PIN antes de abrir la lista; si el perfil carga los dos sectores, se
+   * elige cuál adentro del diálogo.
    */
-  const pedirCarga = (s: SectorStock) => {
-    if (estados[s]?.eventoPendiente) {
-      empezarCarga(s)
-      return
-    }
+  const pedirExtraordinaria = (s: SectorStock) => {
     setPinTipeado("")
     setPinError("")
     setPidiendoPin(s)
@@ -348,71 +358,101 @@ export default function StockPorSalonPage() {
   )
 
   // ── Paso 2: menú del salón ──────────────────────────────────────────────
+  // Una tarjeta por sector: si hay un evento terminado sin cargar, se entra
+  // derecho a contar; si no, queda deshabilitada. Debajo, los próximos 3
+  // eventos del salón con candado (se habilitan solos cuando terminan). La
+  // carga extraordinaria (con PIN) se abre desde el botón "!" de arriba.
   if (paso === "menu") {
+    const proximos = proximosEventosDelSalon(
+      eventos.map((e) => ({
+        id: e.id,
+        nombre: e.nombre || e.nombrePareja || "Evento",
+        fecha: e.fecha,
+        horario: e.horario ?? null,
+        horarioFin: e.horarioFin ?? null,
+        salon: e.salon ?? null,
+        estado: e.estado ?? null,
+      })),
+      salon,
+    )
     return (
       <div className="mx-auto max-w-2xl space-y-5 p-4 sm:p-6">
-        {encabezado}
+        <div className="flex items-start justify-between gap-3">
+          {encabezado}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-10 w-10 shrink-0 rounded-full border-amber-400 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+            aria-label="Carga extraordinaria de stock (pide PIN)"
+            title="Carga extraordinaria (pide PIN)"
+            onClick={() => pedirExtraordinaria(sectores[0])}
+            disabled={cargandoEstado}
+          >
+            <AlertCircle className="h-5 w-5" />
+          </Button>
+        </div>
 
         {cargandoEstado ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Buscando eventos terminados...
           </p>
         ) : (
-          sectores.map((s) => {
-            const pendiente = estados[s]?.eventoPendiente
-            return pendiente ? (
-              <div key={s} className="flex items-start gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3">
-                <PartyPopper className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
-                <p className="text-sm text-emerald-900">
-                  El evento de <span className="font-semibold">{pendiente.nombre}</span> ya terminó — podés cargar el
-                  stock de {SECTOR_LABEL[s]} de {salonLabel(salon)}.
-                </p>
-              </div>
-            ) : null
-          })
-        )}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Link href={`/eventos/produccion?salon=${encodeURIComponent(salon)}`} className="block">
-            <Card className="h-full transition-colors hover:border-foreground/40">
-              <CardContent className="flex items-center gap-3 p-4">
-                <CalendarDays className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="font-semibold">Calendario actual</p>
-                  <p className="text-xs text-muted-foreground">Próximos eventos de este salón</p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {sectores.map((s) => {
-            const Icon = SECTOR_ICON[s]
-            const conAviso = !!estados[s]?.eventoPendiente
-            return (
-              <button key={s} type="button" onClick={() => pedirCarga(s)} className="block text-left" disabled={cargandoEstado}>
-                <Card className={`h-full transition-colors hover:border-foreground/40 ${conAviso ? "border-emerald-400" : ""}`}>
-                  <CardContent className="flex items-center gap-3 p-4">
-                    <Icon className={`h-5 w-5 ${conAviso ? "text-emerald-600" : "text-muted-foreground"}`} />
-                    <div>
-                      <p className="font-semibold">
-                        Carga de insumos{sectores.length > 1 ? ` · ${SECTOR_LABEL[s]}` : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {conAviso ? (
-                          <>Contar lo que quedó en {salonLabel(salon)}</>
-                        ) : (
-                          <span className="inline-flex items-center gap-1">
-                            <KeyRound className="h-3 w-3 shrink-0" />
-                            Sin evento pendiente: carga extraordinaria, pide PIN
-                          </span>
-                        )}
-                      </p>
-                    </div>
+          <div className="space-y-3">
+            {sectores.map((s) => {
+              const Icon = SECTOR_ICON[s]
+              const pendiente = estados[s]?.eventoPendiente
+              const sufijo = sectores.length > 1 ? ` · ${SECTOR_LABEL[s]}` : ""
+              return pendiente ? (
+                <button key={s} type="button" onClick={() => empezarCarga(s)} className="block w-full text-left">
+                  <Card className="border-emerald-400 transition-colors hover:border-emerald-600 hover:bg-emerald-50/50">
+                    <CardContent className="flex items-center gap-3 p-4">
+                      <Icon className="h-6 w-6 shrink-0 text-emerald-600" />
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          Cargar stock disponible luego del evento {pendiente.nombre}
+                          {sufijo}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Contá lo que quedó en {salonLabel(salon)}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </button>
+              ) : (
+                <Card key={s} className="border-dashed bg-muted/30">
+                  <CardContent className="flex items-center gap-3 p-4 text-muted-foreground">
+                    <Icon className="h-6 w-6 shrink-0" />
+                    <p className="text-sm">
+                      No hay ningún evento terminado para cargar{sufijo}
+                    </p>
                   </CardContent>
                 </Card>
-              </button>
-            )
-          })}
+              )
+            })}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próximos eventos en este salón</p>
+          {proximos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay eventos próximos cargados.</p>
+          ) : (
+            proximos.map(({ evento }) => (
+              <div
+                key={evento.id}
+                className="flex items-center gap-3 rounded-lg border bg-muted/20 p-3 text-muted-foreground"
+                aria-disabled="true"
+              >
+                <Lock className="h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground/70">{evento.nombre}</p>
+                  <p className="text-xs">{fmtFechaEvento(evento.fecha, evento.horario)}</p>
+                </div>
+              </div>
+            ))
+          )}
+          {proximos.length > 0 && (
+            <p className="text-xs text-muted-foreground">Se habilitan para cargar cuando termina cada evento.</p>
+          )}
         </div>
 
         {/* Puerta de la carga extraordinaria. El PIN acá solo abre la lista:
@@ -434,10 +474,28 @@ export default function StockPorSalonPage() {
                 Carga extraordinaria
               </DialogTitle>
               <DialogDescription>
-                {salonLabel(salon)} no tiene ningún evento terminado pendiente de carga
-                {pidiendoPin ? ` de ${SECTOR_LABEL[pidiendoPin]}` : ""}. Para contar igual hace falta el PIN.
+                Contar el stock de {salonLabel(salon)} fuera de un evento terminado. Hace falta el PIN.
               </DialogDescription>
             </DialogHeader>
+            {sectores.length > 1 && (
+              <div className="flex gap-2">
+                {sectores.map((s) => {
+                  const Icon = SECTOR_ICON[s]
+                  return (
+                    <Button
+                      key={s}
+                      type="button"
+                      variant={pidiendoPin === s ? "default" : "outline"}
+                      className="flex-1 gap-2 capitalize"
+                      onClick={() => setPidiendoPin(s)}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {SECTOR_LABEL[s]}
+                    </Button>
+                  )
+                })}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="pin-stock">PIN de carga extraordinaria</Label>
               <Input
