@@ -83,6 +83,10 @@ export default function StaffPage() {
   const nombreBarra = (barraTemplateId: string, i: number) =>
     (state.barrasTemplates || []).find((b) => b.id === barraTemplateId)?.nombre ||
     (i === 0 ? "Barra del evento" : `Barra ${i + 1}`)
+  // Barra: 🍺 al lado de cada evento que tiene barra contratada (su lista
+  // `barras` no está vacía; es lo mismo que muestra el detalle).
+  const conBarra = (e: EventoGuardado) => esBarra && (e.barras || []).length > 0
+  const simbolos = (e: EventoGuardado) => iconoTipoEvento(e.tipoEvento).emoji + (conBarra(e) ? "🍺" : "")
   const nombreCoctel = (coctelId: string) =>
     (state.cocteles || []).find((c) => c.id === coctelId)?.nombre || "Cóctel que ya no está en la carta"
   // Refresca eventos cada 15s y al volver a la pestaña, para que el
@@ -210,6 +214,12 @@ export default function StaffPage() {
               {t.etiqueta}
             </span>
           ))}
+          {esBarra && (
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden>🍺</span>
+              Con barra contratada
+            </span>
+          )}
         </div>
       </div>
 
@@ -287,7 +297,7 @@ export default function StaffPage() {
                   title={
                     tiene
                       ? celda.eventos
-                          .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}`)
+                          .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}${conBarra(e) ? " (con barra)" : ""}`)
                           .join(" · ")
                       : undefined
                   }
@@ -299,7 +309,7 @@ export default function StaffPage() {
                           vistazo sin leer. Con varios eventos en el mismo día
                           van todos, que para eso son chiquitos. */}
                       <span aria-hidden className="text-sm leading-none">
-                        {celda.eventos.map((e) => iconoTipoEvento(e.tipoEvento).emoji).join(" ")}
+                        {celda.eventos.map(simbolos).join(" ")}
                       </span>
                       <span className="max-w-full truncate text-[10px] font-normal leading-tight">
                         {celda.eventos.length > 1
@@ -331,7 +341,7 @@ export default function StaffPage() {
                   className="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/50"
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <span aria-hidden className="text-lg leading-none">{iconoTipoEvento(e.tipoEvento).emoji}</span>
+                    <span aria-hidden className="text-lg leading-none">{simbolos(e)}</span>
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{e.nombrePareja || e.nombre || "Sin nombre"}</span>
                       <span className="block text-xs text-muted-foreground">
