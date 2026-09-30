@@ -1,7 +1,22 @@
 "use client"
 
 import { createClient } from "./client"
-import { fetchAllPages } from "../fetch-all-pages"
+import {
+  mapGastoArchivado,
+  leerServicios,
+  leerPersonal,
+  leerPagosPersonal,
+  leerAsignaciones,
+  leerCostosOperativos,
+  leerMovimientosCaja,
+  leerGastosArchivados,
+  leerConfiguracionCajas,
+  leerHistorialIPC,
+  leerVendedores,
+  leerPreciosVenta,
+  leerPaquetesSalones,
+  leerTemporadas,
+} from "./lecturas"
 import type { 
   Evento, 
   Servicio, 
@@ -16,42 +31,9 @@ import type {
 
 const supabase = createClient()
 
-async function fetchReportRows(table: "personal" | "costos_operativos" | "gastos_archivados" | "vendedores") {
-  return fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
-    .from(table).select("*", { count: "exact" }).order("id").range(from, to)
-    .abortSignal(AbortSignal.timeout(15000)))
-}
-
 // ============ SERVICIOS ============
 export async function fetchServicios(): Promise<Servicio[]> {
-  const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
-    .from("servicios")
-    .select("*", { count: "exact" })
-    .order("orden", { ascending: true, nullsFirst: false })
-    .order("nombre")
-    .order("id")
-    .range(from, to)
-    .abortSignal(AbortSignal.timeout(15000)))
-  
-  return (data || []).map(s => ({
-    id: s.id,
-    codigo: s.codigo || "",
-    nombre: s.nombre,
-    descripcion: s.descripcion || "",
-    categoria: s.categoria,
-    unidad: s.unidad || "Fijo",
-    activo: s.activo ?? true,
-    margenGanancia: Number(s.margen_ganancia) || 0,
-    precioVenta: Number(s.precio_venta) || 0,
-    costoParaCajaEventos: Number(s.costo_para_caja_eventos) || 0,
-    porcentajeSeña: Number(s.porcentaje_sena) || 30,
-    diasAnticipacionSeña: Number(s.dias_anticipacion_sena) || 30,
-    diasAnticipacionSaldo: Number(s.dias_anticipacion_saldo) || 7,
-    proveedor: s.proveedor || undefined,
-    notas: s.notas || undefined,
-    orden: s.orden ?? undefined,
-    createdAt: s.created_at || undefined,
-  }))
+  return leerServicios(supabase)
 }
 
 export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servicio | null> {
@@ -224,33 +206,7 @@ export async function deleteServicioDefinitivo(id: string): Promise<boolean> {
 
 // ============ PERSONAL ============
 export async function fetchPersonal(strict = false): Promise<PersonalEvento[]> {
-  const { data, error } = strict ? { data: await fetchReportRows("personal"), error: null } : await supabase
-    .from("personal")
-    .select("*")
-    .order("orden", { ascending: true, nullsFirst: false })
-    .order("apellido")
-  
-  if (error) {
-    console.error("Error fetching personal:", error)
-    return []
-  }
-  
-  return (data || []).map(p => ({
-    id: p.id,
-    nombre: p.nombre,
-    apellido: p.apellido,
-    dni: p.dni || "",
-    telefono: p.telefono || "",
-    email: p.email,
-    funcion: p.funcion,
-    servicioVinculadoId: p.servicio_vinculado_id || "",
-    tarifaBase: Number(p.tarifa_base) || 0,
-    tarifas: p.tarifas || [],
-    cuentaBancaria: p.cuenta_bancaria,
-    activo: p.activo ?? true,
-    notas: p.notas,
-    orden: p.orden ?? undefined,
-  }))
+  return leerPersonal(supabase, strict)
 }
 
 export async function upsertPersonal(persona: Partial<PersonalEvento>): Promise<PersonalEvento | null> {
@@ -466,32 +422,7 @@ export async function deleteEvento(id: string): Promise<boolean> {
 
 // ============ PAGOS PERSONAL ============
 export async function fetchPagosPersonal(): Promise<PagoPersonal[]> {
-  const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
-    .from("pagos_personal")
-    .select("*", { count: "exact" })
-    .order("fecha_evento")
-    .order("id")
-    .range(from, to)
-    .abortSignal(AbortSignal.timeout(15000)))
-  
-  return (data || []).map(p => ({
-    id: p.id,
-    personalId: p.personal_id,
-    eventoId: p.evento_id,
-    nombrePersonal: p.nombre_personal,
-    servicioNombre: p.servicio_nombre,
-    montoTotal: Number(p.monto_total) || 0,
-    montoSeña: p.monto_sena ? Number(p.monto_sena) : undefined,
-    fechaSeña: p.fecha_sena,
-    fechaEvento: p.fecha_evento,
-    fechaLimitePago: p.fecha_limite_pago,
-    estado: p.estado || "pendiente",
-    tipoPago: p.tipo_pago,
-    fechaPago: p.fecha_pago,
-    tarifaId: p.tarifa_id,
-    asignacionId: p.asignacion_id,
-    notasPago: p.notas_pago,
-  }))
+  return leerPagosPersonal(supabase)
 }
 
 export async function upsertPagoPersonal(pago: Partial<PagoPersonal>): Promise<PagoPersonal | null> {
@@ -557,23 +488,7 @@ export async function deletePagoPersonal(id: string): Promise<boolean> {
 
 // ============ ASIGNACIONES ============
 export async function fetchAsignaciones(): Promise<AsignacionPersonal[]> {
-  const { data, error } = await supabase
-    .from("asignaciones")
-    .select("*")
-  
-  if (error) {
-    console.error("Error fetching asignaciones:", error)
-    return []
-  }
-  
-  return (data || []).map(a => ({
-    id: a.id,
-    eventoId: a.evento_id,
-    servicioId: a.servicio_id,
-    servicioNombre: a.servicio_nombre,
-    rol: a.rol,
-    personalAsignadoId: a.personal_asignado_id,
-  }))
+  return leerAsignaciones(supabase)
 }
 
 export async function upsertAsignacion(asig: Partial<AsignacionPersonal>): Promise<AsignacionPersonal | null> {
@@ -619,37 +534,7 @@ export async function deleteAsignacion(id: string): Promise<boolean> {
 
 // ============ COSTOS OPERATIVOS ============
 export async function fetchCostosOperativos(strict = false): Promise<CostoOperativo[]> {
-  const { data, error } = strict ? { data: await fetchReportRows("costos_operativos"), error: null } : await supabase
-    .from("costos_operativos")
-    .select("*")
-    .order("concepto")
-  
-  if (error) {
-    console.error("Error fetching costos_operativos:", error)
-    return []
-  }
-  
-  return (data || []).map(c => ({
-    id: c.id,
-    concepto: c.concepto,
-    monto: Number(c.monto) || 0,
-    frecuencia: c.frecuencia || "mensual",
-    diaVencimiento: c.dia_vencimiento,
-    activo: c.activo ?? true,
-    categoria: c.categoria,
-    notas: c.notas,
-    salon: c.salon ?? null,
-    fechaVencimiento: c.fecha_vencimiento ?? undefined,
-    fechaGasto: c.fecha_gasto ?? undefined,
-    esVariable: c.es_variable ?? false,
-    esServicio: c.es_servicio ?? false,
-    icono: c.icono ?? undefined,
-    pagado: c.pagado ?? false,
-    distribucion: Array.isArray(c.distribucion) ? c.distribucion : undefined,
-    historialMontos: Array.isArray(c.historial_montos) ? c.historial_montos : undefined,
-    createdAt: c.created_at ?? undefined,
-    cargadoPor: c.cargado_por ?? undefined,
-  }))
+  return leerCostosOperativos(supabase, strict)
 }
 
 export async function upsertCostoOperativo(costo: Partial<CostoOperativo>): Promise<CostoOperativo | null> {
@@ -720,27 +605,7 @@ export async function deleteCostoOperativo(id: string): Promise<boolean> {
 
 // ============ MOVIMIENTOS CAJA ============
 export async function fetchMovimientosCaja(): Promise<MovimientoCaja[]> {
-  const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
-    .from("movimientos_caja")
-    .select("*", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .order("id")
-    .range(from, to)
-    .abortSignal(AbortSignal.timeout(15000)))
-  
-  return (data || []).map(m => ({
-    id: m.id,
-    salon: m.salon,
-    tipo: m.tipo,
-    monto: Number(m.monto) || 0,
-    concepto: m.concepto,
-    fecha: m.fecha,
-    eventoId: m.evento_id ?? undefined,
-    saldoResultante: m.saldo_resultante ? Number(m.saldo_resultante) : 0,
-    cajaDestino: m.caja_destino ?? undefined,
-    saldoAnterior: m.saldo_anterior ? Number(m.saldo_anterior) : undefined,
-    saldoPosterior: m.saldo_posterior ? Number(m.saldo_posterior) : undefined,
-  }))
+  return leerMovimientosCaja(supabase)
 }
 
 export async function insertMovimientosCaja(movimientos: MovimientoCaja[]): Promise<void> {
@@ -815,34 +680,8 @@ export async function deleteMovimientosByEvento(eventoId: string): Promise<boole
 }
 
 // ============ GASTOS ARCHIVADOS ============
-function mapGastoArchivado(g: Record<string, any>): GastoArchivado {
-  return {
-    id: g.id,
-    fecha: g.fecha,
-    concepto: g.concepto,
-    monto: Number(g.monto) || 0,
-    salon: g.salon ?? null,
-    origen: g.origen,
-    categoria: g.categoria ?? null,
-    frecuencia: g.frecuencia ?? null,
-    eventoId: g.evento_id ?? null,
-    eventoNombre: g.evento_nombre ?? null,
-    refId: g.ref_id ?? null,
-    cargadoPor: g.cargado_por ?? null,
-  }
-}
-
 export async function fetchGastosArchivados(strict = false): Promise<GastoArchivado[]> {
-  const { data, error } = strict ? { data: await fetchReportRows("gastos_archivados"), error: null } : await supabase
-    .from("gastos_archivados")
-    .select("*")
-    .order("fecha", { ascending: false })
-
-  if (error) {
-    console.error("Error fetching gastos_archivados:", error)
-    return []
-  }
-  return (data || []).map(mapGastoArchivado)
+  return leerGastosArchivados(supabase, strict)
 }
 
 export async function insertGastoArchivado(g: GastoArchivado): Promise<GastoArchivado | null> {
@@ -897,24 +736,7 @@ export async function deleteMovimientoCaja(id: string): Promise<boolean> {
 
 // ============ CONFIGURACION CAJAS ============
 export async function fetchConfiguracionCajas(): Promise<any> {
-  const { data, error } = await supabase
-    .from("configuracion_cajas")
-    .select("*")
-    .eq("id", "config")
-    .single()
-  
-  if (error && error.code !== "PGRST116") {
-    console.error("Error fetching configuracion_cajas:", error)
-  }
-  
-  if (!data) {
-    return { salones: {}, admin: { saldoInicial: 0 } }
-  }
-  
-  return {
-    ...data.salones,
-    admin: data.admin || { saldoInicial: 0 },
-  }
+  return leerConfiguracionCajas(supabase)
 }
 
 export async function upsertConfiguracionCajas(config: any): Promise<boolean> {
@@ -938,24 +760,7 @@ export async function upsertConfiguracionCajas(config: any): Promise<boolean> {
 
 // ============ HISTORIAL IPC ============
 export async function fetchHistorialIPC(): Promise<HistorialIPC[]> {
-  const { data, error } = await supabase
-    .from("historial_ipc")
-    .select("*")
-    .order("fecha_aplicacion", { ascending: false })
-  
-  if (error) {
-    console.error("Error fetching historial_ipc:", error)
-    return []
-  }
-  
-  return (data || []).map(h => ({
-    id: h.id,
-    mes: h.mes,
-    anio: h.anio,
-    porcentaje: Number(h.porcentaje) || 0,
-    fechaAplicacion: h.fecha_aplicacion,
-    eventosActualizados: h.eventos_actualizados || 0,
-  }))
+  return leerHistorialIPC(supabase)
 }
 
 export async function insertHistorialIPC(hist: Partial<HistorialIPC>): Promise<HistorialIPC | null> {
@@ -1007,25 +812,7 @@ export async function deleteHistorialIPC(id: string): Promise<boolean> {
 import type { Vendedor } from "@/lib/store"
 
 export async function fetchVendedores(strict = false): Promise<Vendedor[]> {
-  const { data, error } = strict ? { data: await fetchReportRows("vendedores"), error: null } : await supabase
-    .from("vendedores")
-    .select("*")
-    .order("nombre", { ascending: true })
-
-  if (error) {
-    console.error("Error fetching vendedores:", error)
-    return []
-  }
-
-  return (data || []).map((v) => ({
-    id: v.id,
-    nombre: v.nombre,
-    emoji: v.emoji || "",
-    sueldo: Number(v.sueldo) || 0,
-    comisionPct: Number(v.comision_pct) || 0,
-    sueldoFechaPago: v.sueldo_fecha_pago || undefined,
-    anotacion: v.anotacion || undefined,
-  }))
+  return leerVendedores(supabase, strict)
 }
 
 export async function upsertVendedor(vendedor: Vendedor): Promise<boolean> {
@@ -1052,16 +839,7 @@ export async function upsertVendedor(vendedor: Vendedor): Promise<boolean> {
 import type { PreciosVentaMap } from "@/lib/store"
 
 export async function fetchPreciosVenta(): Promise<PreciosVentaMap> {
-  const { data, error } = await supabase
-    .from("precios_venta")
-    .select("salon, fecha, precio")
-  if (error || !data) return {}
-  const map: PreciosVentaMap = {}
-  for (const row of data) {
-    if (!map[row.salon]) map[row.salon] = {}
-    map[row.salon][row.fecha] = Number(row.precio)
-  }
-  return map
+  return leerPreciosVenta(supabase)
 }
 
 export async function upsertPrecioVenta(
@@ -1093,12 +871,7 @@ export async function deletePrecioVenta(
 import type { PaqueteSalon, TemporadaPrecio } from "@/lib/store"
 
 export async function fetchPaquetesSalones(): Promise<PaqueteSalon[]> {
-  const { data, error } = await supabase.from("paquetes_salones").select("id, data")
-  if (error) {
-    console.error("Error fetching paquetes_salones:", error)
-    return []
-  }
-  return (data || []).map((row) => ({ ...(row.data as PaqueteSalon), id: row.id }))
+  return leerPaquetesSalones(supabase)
 }
 
 export async function upsertPaqueteSalon(paquete: PaqueteSalon): Promise<boolean> {
@@ -1126,12 +899,7 @@ export async function deletePaqueteSalon(id: string): Promise<boolean> {
 // === Temporadas de Precios (JSONB) ===
 
 export async function fetchTemporadas(): Promise<TemporadaPrecio[]> {
-  const { data, error } = await supabase.from("temporadas").select("id, data")
-  if (error) {
-    console.error("Error fetching temporadas:", error)
-    return []
-  }
-  return (data || []).map((row) => ({ ...(row.data as TemporadaPrecio), id: row.id }))
+  return leerTemporadas(supabase)
 }
 
 export async function upsertTemporada(temporada: TemporadaPrecio): Promise<boolean> {

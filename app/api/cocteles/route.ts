@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { leerCocteles } from "@/lib/lecturas-postgres"
 import { logActivity } from "@/lib/activity-logger"
 import { puedeEditarCocteles, ERROR_SIN_PERMISO_COCTELES } from "@/lib/cocteles-permisos"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
@@ -9,27 +10,8 @@ import { camposDelBody, filaACoctel, type FilaCoctel } from "@/lib/cocteles-api"
 // GET all cocteles with their insumos
 export async function GET() {
   try {
-    const coctelesData = await sql`
-      SELECT * FROM cocteles ORDER BY nombre ASC
-    `
-
-    const insumosData = await sql`
-      SELECT * FROM coctel_insumos
-    `
-
-    const cocteles = coctelesData.map((coctel) => {
-      const insumos = insumosData
-        .filter((i) => i.coctel_id === coctel.id)
-        .map((i) => ({
-          insumoBarraId: i.insumo_barra_id,
-          cantidadPorCoctel: Number(i.cantidad_por_coctel),
-          unidadCoctel: i.unidad_coctel,
-        }))
-
-      return filaACoctel(coctel as FilaCoctel, insumos)
-    })
-
-    return NextResponse.json(cocteles)
+    // Lectura compartida con la carga inicial unificada (lib/lecturas-postgres.ts).
+    return NextResponse.json(await leerCocteles())
   } catch (err) {
     console.error("[API] Error fetching cocteles:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

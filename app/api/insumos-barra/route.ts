@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { leerInsumosBarra } from "@/lib/lecturas-postgres"
 import { logActivity } from "@/lib/activity-logger"
 import { permisoInsumo, type AccionInsumo, type SectorInsumo } from "@/lib/insumos-permisos"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
@@ -8,24 +9,8 @@ import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 // GET all insumos de barra - uses descripcion column
 export async function GET() {
   try {
-    const data = await sql`
-      SELECT * FROM insumos_barra ORDER BY descripcion ASC
-    `
-
-    const insumos = data.map((item) => ({
-      id: item.id,
-      codigo: item.codigo,
-      descripcion: item.descripcion,
-      unidad: item.unidad,
-      stockActual: Number(item.stock_actual),
-      precioUnitario: Number(item.precio_unitario),
-      contenidoCantidad: item.contenido_cantidad != null ? Number(item.contenido_cantidad) : undefined,
-      contenidoUnidad: item.contenido_unidad || undefined,
-      proveedor: item.proveedor || "",
-      categoria: item.categoria,
-    }))
-
-    return NextResponse.json(insumos)
+    // Lectura compartida con la carga inicial unificada (lib/lecturas-postgres.ts).
+    return NextResponse.json(await leerInsumosBarra())
   } catch (err) {
     console.error("[API] Error fetching insumos_barra:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

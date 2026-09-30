@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { leerRecetas } from "@/lib/lecturas-postgres"
 import { logActivity } from "@/lib/activity-logger"
 import { puedeEditarRecetas, ERROR_SIN_PERMISO_RECETAS } from "@/lib/recetas-permisos"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
@@ -17,39 +18,8 @@ async function negar(request: Request) {
 
 export async function GET() {
   try {
-    const recetasData = await sql`
-      SELECT id, codigo, nombre, descripcion, imagen, categoria, factor_rendimiento
-      FROM recetas ORDER BY nombre ASC
-    `
-
-    const insumosData = await sql`
-      SELECT receta_id, insumo_id, detalle_corte, cantidad_base_por_persona, unidad_receta
-      FROM receta_insumos
-    `
-
-    const recetas = recetasData.map((receta) => {
-      const insumos = insumosData
-        .filter((i) => i.receta_id === receta.id)
-        .map((i) => ({
-          insumoId: i.insumo_id,
-          detalleCorte: i.detalle_corte || "",
-          cantidadBasePorPersona: Number(i.cantidad_base_por_persona),
-          unidadReceta: i.unidad_receta,
-        }))
-
-      return {
-        id: receta.id,
-        codigo: receta.codigo,
-        nombre: receta.nombre,
-        descripcion: receta.descripcion || "",
-        imagen: receta.imagen || "",
-        categoria: receta.categoria,
-        factorRendimiento: Number(receta.factor_rendimiento) || 1,
-        insumos,
-      }
-    })
-
-    return NextResponse.json(recetas)
+    // Lectura compartida con la carga inicial unificada (lib/lecturas-postgres.ts).
+    return NextResponse.json(await leerRecetas())
   } catch (err) {
     console.error("[API] Error fetching recetas:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

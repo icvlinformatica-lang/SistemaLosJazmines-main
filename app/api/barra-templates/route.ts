@@ -1,22 +1,13 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { leerBarraTemplates } from "@/lib/lecturas-postgres"
 
 // GET all barra templates
 export async function GET() {
   try {
-    const data = await sql`
-      SELECT * FROM barra_templates ORDER BY nombre ASC
-    `
-
-    // Transform to app format
-    const templates = data.map((template) => ({
-      id: template.id,
-      nombre: template.nombre,
-      coctelesIncluidos: template.cocteles_incluidos || [],
-    }))
-
-    return NextResponse.json(templates)
+    // Lectura compartida con la carga inicial unificada (lib/lecturas-postgres.ts).
+    return NextResponse.json(await leerBarraTemplates())
   } catch (err) {
     console.error("[API] Error fetching barra_templates:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

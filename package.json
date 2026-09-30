@@ -62,6 +62,7 @@
     "react-hook-form": "latest",
     "react-resizable-panels": "latest",
     "recharts": "latest",
+    "server-only": "^0.0.1",
     "sonner": "latest",
     "swr": "^2.4.1",
     "tailwind-merge": "^2.5.5",

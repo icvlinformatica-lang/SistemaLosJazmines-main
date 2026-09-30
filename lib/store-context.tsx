@@ -283,6 +283,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // CARGA UNIFICADA: los 19 datos crudos en un solo viaje
+      // (app/api/carga-inicial). Si falla entero (error, timeout o respuesta
+      // inválida) devuelve null y cada dato se pide por el camino de siempre.
+      const cargaUnificada = (async (): Promise<Record<string, { ok: boolean; data?: unknown }> | null> => {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 15000)
+        try {
+          const r = await fetch("/api/carga-inicial", { signal: controller.signal, cache: "no-store" })
+          if (!r.ok) {
+            console.warn(`[carga-inicial] Se usan los 19 pedidos de siempre: el servidor respondió ${r.status}.`)
+            return null
+          }
+          const j = await r.json()
+          if (!j || j.version !== 1 || !j.claves || typeof j.claves !== "object") {
+            console.warn("[carga-inicial] Se usan los 19 pedidos de siempre: respuesta inválida.")
+            return null
+          }
+          const fallidas = Object.keys(j.claves).filter((k) => !j.claves[k]?.ok)
+          if (fallidas.length > 0) {
+            console.warn(`[carga-inicial] Se vuelven a pedir por el camino de siempre: ${fallidas.join(", ")}.`)
+          }
+          return j.claves
+        } catch (error) {
+          console.warn(
+            `[carga-inicial] Se usan los 19 pedidos de siempre: ${controller.signal.aborted ? "tardó más de 15 s (timeout)" : "error de red"}.`,
+            error,
+          )
+          return null
+        } finally {
+          clearTimeout(timeout)
+        }
+      })()
+      // Dato de la carga unificada si llegó bien; si no, la llamada de siempre.
+      const desde = async <T,>(clave: string, deSiempre: () => Promise<T>): Promise<T> => {
+        const claves = await cargaUnificada
+        const r = claves?.[clave]
+        if (r && r.ok === true && "data" in r) return r.data as T
+        return deSiempre()
+      }
+
       // Load localStorage for non-DB modules only (servicios, personal, etc.)
       // Se carga primero (es síncrono) para que ambas tandas de red lo usen.
       const localState = loadState()
@@ -291,12 +331,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // ahora pero no se espera todavía: corre en paralelo con la tanda 2.
       // Antes iban en serie y la carga total sumaba ambas (~1,3s extra).
       const apiPromise = Promise.all([
-        fetchSafe("/api/insumos"),
-        fetchSafe("/api/insumos-barra"),
-        fetchSafe("/api/recetas"),
-        fetchSafe("/api/cocteles"),
-        fetchSafe("/api/barra-templates"),
-        fetchSafe("/api/eventos"),
+        desde("insumos", () => fetchSafe("/api/insumos")),
+        desde("insumosBarra", () => fetchSafe("/api/insumos-barra")),
+        desde("recetas", () => fetchSafe("/api/recetas")),
+        desde("cocteles", () => fetchSafe("/api/cocteles")),
+        desde("barraTemplates", () => fetchSafe("/api/barra-templates")),
+        desde("eventos", () => fetchSafe("/api/eventos")),
       ])
 
       // TANDA 2: Supabase (servicios, personal, pagos, costos...), en paralelo.
@@ -306,19 +346,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const db = await import("./supabase/data-service")
         // Eventos se excluyen de Supabase — usan su propia API de Postgres con soft delete / papelera
         const [serviciosResultado, personalDB, pagosResultado, costosDB, asignacionesDB, movimientosResultado, configDB, preciosDB, archivadosDB, historialIPCDB, paquetesDB, temporadasDB, vendedoresDB] = await Promise.all([
-          db.fetchServicios().catch(() => null),
-          db.fetchPersonal(),
-          db.fetchPagosPersonal().catch(() => null),
-          db.fetchCostosOperativos(),
-          db.fetchAsignaciones(),
-          db.fetchMovimientosCaja().catch(() => null),
-          db.fetchConfiguracionCajas(),
-          db.fetchPreciosVenta(),
-          db.fetchGastosArchivados(),
-          db.fetchHistorialIPC(),
-          db.fetchPaquetesSalones(),
-          db.fetchTemporadas(),
-          db.fetchVendedores(),
+          desde("servicios", () => db.fetchServicios()).catch(() => null),
+          desde("personal", () => db.fetchPersonal()),
+          desde("pagosPersonal", () => db.fetchPagosPersonal()).catch(() => null),
+          desde("costosOperativos", () => db.fetchCostosOperativos()),
+          desde("asignaciones", () => db.fetchAsignaciones()),
+          desde("movimientosCaja", () => db.fetchMovimientosCaja()).catch(() => null),
+          desde("configuracionCajas", () => db.fetchConfiguracionCajas()),
+          desde("preciosVenta", () => db.fetchPreciosVenta()),
+          desde("gastosArchivados", () => db.fetchGastosArchivados()),
+          desde("historialIPC", () => db.fetchHistorialIPC()),
+          desde("paquetesSalones", () => db.fetchPaquetesSalones()),
+          desde("temporadas", () => db.fetchTemporadas()),
+          desde("vendedores", () => db.fetchVendedores()),
         ])
 
         const serviciosDB = serviciosResultado ?? localState.servicios ?? []
