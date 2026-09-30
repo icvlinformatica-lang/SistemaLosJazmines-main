@@ -51,7 +51,13 @@ export const PERFILES: Perfil[] = [
     color: VERDE_EVENTO,
     icon: ChefHat,
     iconColor: CREMA,
-    rutas: ["/admin/almacen", "/admin/recetario", "/eventos/produccion", "/stock"],
+    // Cocina ve qué se viene (/eventos/produccion) y cuenta lo que quedó en el
+    // salón (/stock). NO entra al recetario (/admin/recetario) ni al catálogo
+    // de insumos (/admin/almacen), ni ve "costos a revisar": ahí se definen
+    // recetas, unidades y precios, que mueven el costo de los eventos, y eso
+    // es de Administración. El servidor también lo cierra
+    // (lib/recetas-permisos.ts, lib/insumos-permisos.ts, /api/diagnostico-costos).
+    rutas: ["/eventos/produccion", "/stock"],
   },
   {
     id: "barra",

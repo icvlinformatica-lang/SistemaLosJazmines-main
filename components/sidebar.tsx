@@ -93,11 +93,10 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
   }
 
   // Perfil "Cocina": accesos directos sin carpetas, visibles al instante.
+  // Sin Recetas ni Insumos: son de Administración (ver rutas en profile-context).
   if (perfilId === "cocina") {
     return [
       { href: "/", label: "Inicio", icon: Home },
-      { href: "/admin/recetario", label: "Recetas", icon: ChefHat },
-      { href: "/admin/almacen", label: "Insumos", icon: Warehouse },
       { href: "/eventos/produccion", label: "Proximos eventos", icon: Calendar },
       { href: "/stock", label: "Stock por salón", icon: ClipboardList },
     ]
@@ -132,8 +131,7 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
         // Barra (no tiene menú propio): para Barra es su acceso de carga. Se
         // oculta solo para Administración/Soporte, que ven todo en "Stock";
         // /stock sigue accesible por URL (sirve para corregir una carga).
-        // Cocina llega a la carga por acá (tiene menú propio, pero este grupo
-        // también se le arma). Administración/Soporte la ven en la pestaña de
+        // Cocina tiene menú propio con su acceso a /stock. Administración/Soporte la ven en la pestaña de
         // Insumos, así que se les oculta. Barra ya no pasa por acá: tiene menú
         // propio (más arriba).
         ...(tieneAccesoTotal ? [] : [{ href: "/stock", label: "Stock por salón", icon: ClipboardList }]),
