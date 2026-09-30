@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 import { puedeEditarCocteles, ERROR_SIN_PERMISO_COCTELES } from "@/lib/cocteles-permisos"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
+import { camposDelBody, filaACoctel, type FilaCoctel } from "@/lib/cocteles-api"
 
 // GET single coctel with insumos
 export async function GET(
@@ -31,15 +32,7 @@ export async function GET(
       unidadCoctel: i.unidad_coctel,
     }))
 
-    const coctel = {
-      id: coctelData.id,
-      nombre: coctelData.nombre,
-      categoria: coctelData.categoria,
-      instrucciones: coctelData.instrucciones || "",
-      insumos,
-    }
-
-    return NextResponse.json(coctel)
+    return NextResponse.json(filaACoctel(coctelData as FilaCoctel, insumos))
   } catch (err) {
     console.error("[API] Error fetching coctel:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -58,15 +51,17 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    // Convert undefined/null safely
-    const nombre = body.nombre != null ? body.nombre : null
-    const categoria = body.categoria != null ? body.categoria : null
-    const instrucciones = body.instrucciones != null ? body.instrucciones : null
+    // null = no vino en el body, no se toca; un texto vacío sí se guarda.
+    const c = camposDelBody(body)
 
     const [coctelData] = await sql`
       UPDATE cocteles SET
-        nombre = COALESCE(${nombre}, nombre),
-        categoria = COALESCE(${categoria}, categoria),
+        codigo = COALESCE(${c.codigo}, codigo),
+        nombre = COALESCE(${c.nombre}, nombre),
+        categoria = COALESCE(${c.categoria}, categoria),
+        descripcion = COALESCE(${c.descripcion}, descripcion),
+        imagen = COALESCE(${c.imagen}, imagen),
+        instrucciones = COALESCE(${c.instrucciones}, instrucciones),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
@@ -96,13 +91,15 @@ export async function PUT(
       }
     }
 
-    const coctel = {
-      id: coctelData.id,
-      nombre: coctelData.nombre,
-      categoria: coctelData.categoria,
-      instrucciones: coctelData.instrucciones || "",
-      insumos: insumosList || [],
-    }
+    // Si no vinieron insumos, se devuelven los que ya tenía (no una lista vacía).
+    const insumosFinales =
+      insumosList ??
+      (await sql`SELECT * FROM coctel_insumos WHERE coctel_id = ${id}`).map((i) => ({
+        insumoBarraId: i.insumo_barra_id,
+        cantidadPorCoctel: Number(i.cantidad_por_coctel),
+        unidadCoctel: i.unidad_coctel,
+      }))
+    const coctel = filaACoctel(coctelData as FilaCoctel, insumosFinales)
 
     await logActivity("coctel", "modificado", coctelData.nombre)
     return NextResponse.json(coctel)
