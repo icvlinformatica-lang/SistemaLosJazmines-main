@@ -1,10 +1,15 @@
 // Quién puede tocar qué de un insumo (tablas `insumos` y `insumos_barra`).
 //
-// Ahora que el stock real es la suma de los conteos por salón, Cocina y Barra
-// entran a /admin/almacen y /admin/barra para ver y ajustar existencias, pero
-// NO son dueños del catálogo: la unidad, el contenido por unidad y el precio
-// mueven costos de recetas, menús y barras, así que quedan para Administración
-// y Soporte.
+// Ahora que el stock real es la suma de los conteos por salón, Cocina entra a
+// /admin/almacen para ver y ajustar existencias, pero NO es dueña del
+// catálogo: la unidad, el contenido por unidad y el precio mueven costos de
+// recetas y menús, así que quedan para Administración y Soporte.
+//
+// BARRA no entra a /admin/barra: su trabajo es contar lo que quedó en el salón
+// (/stock, que escribe en stock_salones y de ahí sale el total). No tiene nada
+// que hacer en el catálogo de insumos de bebidas, así que acá tampoco pasa —
+// si alguna vez se le devuelve esa pantalla, hay que devolverle también la
+// ruta en lib/profile-context.tsx y volver a permitirla acá.
 //
 // Lógica pura, sin Request ni base, para poder probarla sola
 // (scripts/test-insumos-permisos.cjs). Las rutas la usan en
@@ -34,7 +39,6 @@ const OK: Veredicto = { ok: true }
 
 function nombrePerfil(perfilId: string | null | undefined): string {
   if (perfilId === "cocina") return "Cocina"
-  if (perfilId === "barra") return "Barra"
   return "Tu perfil"
 }
 
@@ -42,9 +46,8 @@ function nombrePerfil(perfilId: string | null | undefined): string {
  * ¿Puede este perfil hacer esta acción sobre un insumo de este sector?
  *
  * - Administración y Soporte: todo.
- * - Cocina: solo editar el stock de `insumos`. Barra: ídem sobre
- *   `insumos_barra`. Crear y borrar, nunca.
- * - El resto de los perfiles: nada. Ninguno tiene estas pantallas en su menú;
+ * - Cocina: solo editar el stock de `insumos`. Crear y borrar, nunca.
+ * - El resto, incluida Barra: nada. Ninguno tiene esta pantalla en su menú;
  *   si aparece uno pegándole al endpoint, es que algo está mal.
  *
  * `campos` son las claves del body del editar. Un campo no permitido NO se
@@ -64,13 +67,16 @@ export function permisoInsumo({
 }): Veredicto {
   if (ACCESO_TOTAL.has(perfilId ?? "")) return OK
 
-  if (perfilId !== sector) {
+  // Cocina es la única que ajusta stock por acá, y solo sobre `insumos`.
+  if (perfilId !== "cocina" || sector !== "cocina") {
     return {
       ok: false,
       error:
-        perfilId === "cocina" || perfilId === "barra"
-          ? `${nombrePerfil(perfilId)} no puede tocar los insumos de ${sector === "cocina" ? "cocina" : "barra"}.`
-          : "No tenés permiso para modificar insumos. Pedíselo a Administración.",
+        perfilId === "cocina"
+          ? "Cocina no puede tocar los insumos de barra."
+          : perfilId === "barra"
+            ? "Barra no edita el catálogo de bebidas: el stock se carga desde Stock por salón."
+            : "No tenés permiso para modificar insumos. Pedíselo a Administración.",
     }
   }
 
@@ -98,7 +104,8 @@ export function permisoInsumo({
  * ¿Este perfil puede tocar el catálogo (descripción, unidad, contenido,
  * precio, proveedor), o solo ajustar existencias? Lo usan las pantallas para
  * mostrar el formulario completo o el chico; el que manda igual es el
- * servidor (`permisoInsumo`).
+ * servidor (`permisoInsumo`). Hoy el "solo existencias" es Cocina: Barra ya no
+ * llega a esa pantalla.
  */
 export function puedeEditarCatalogo(perfilId: string | null | undefined): boolean {
   return ACCESO_TOTAL.has(perfilId ?? "")

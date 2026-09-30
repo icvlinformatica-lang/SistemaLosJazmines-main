@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
+import { puedeEditarCocteles, ERROR_SIN_PERMISO_COCTELES } from "@/lib/cocteles-permisos"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 
 // GET single coctel with insumos
 export async function GET(
@@ -50,6 +52,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const prohibido = await negar(request)
+    if (prohibido) return prohibido
+
     const { id } = await params
     const body = await request.json()
 
@@ -113,6 +118,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const prohibido = await negar(request)
+    if (prohibido) return prohibido
+
     const { id } = await params
 
     const [coctel] = await sql`SELECT nombre FROM cocteles WHERE id = ${id}`
@@ -125,4 +133,15 @@ export async function DELETE(
     console.error("[API] Error deleting coctel:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+/**
+ * La carta de cócteles la maneja Administración: la receta de un cóctel define
+ * el costo de la barra de un evento. Barra la consulta, no la cambia. El
+ * perfil sale del token firmado, no de lo que diga la pantalla.
+ */
+async function negar(request: Request) {
+  const perfilId = await perfilDesdeRequest(request)
+  if (puedeEditarCocteles(perfilId)) return null
+  return NextResponse.json({ error: ERROR_SIN_PERMISO_COCTELES }, { status: 403 })
 }

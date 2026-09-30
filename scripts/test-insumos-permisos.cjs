@@ -29,15 +29,16 @@ test('Cocina edita el stock de cocina y nada más', () => {
   assert.equal(puede({ perfilId: 'cocina', sector: 'cocina', accion: 'borrar', campos: [] }), false)
 })
 
-test('Barra edita el stock de barra y nada más', () => {
-  assert.equal(puede({ perfilId: 'barra', sector: 'barra', accion: 'editar', campos: ['stockActual'] }), true)
-  assert.equal(puede({ perfilId: 'barra', sector: 'barra', accion: 'crear', campos: [] }), false)
-  assert.equal(puede({ perfilId: 'barra', sector: 'barra', accion: 'borrar', campos: [] }), false)
+test('Barra NO entra al catálogo de bebidas: su stock se carga desde /stock', () => {
+  for (const accion of ['editar', 'crear', 'borrar']) {
+    assert.equal(puede({ perfilId: 'barra', sector: 'barra', accion, campos: ['stockActual'] }), false, accion)
+  }
+  const v = permisoInsumo({ perfilId: 'barra', sector: 'barra', accion: 'editar', campos: ['stockActual'] })
+  assert.match(v.error, /Stock por salón/)
 })
 
-test('cada uno solo sobre su tabla', () => {
+test('Cocina solo sobre su tabla', () => {
   assert.equal(puede({ perfilId: 'cocina', sector: 'barra', accion: 'editar', campos: ['stockActual'] }), false)
-  assert.equal(puede({ perfilId: 'barra', sector: 'cocina', accion: 'editar', campos: ['stockActual'] }), false)
 })
 
 test('los campos que mueven costos se rechazan, no se ignoran', () => {
@@ -49,7 +50,7 @@ test('los campos que mueven costos se rechazan, no se ignoran', () => {
 })
 
 test('los perfiles sin nada que ver con insumos no pasan', () => {
-  for (const perfilId of ['cobro', 'dj', 'fotografo', 'vestido', 'pantalla', 'coordinacion', 'vendedor', null, undefined, '']) {
+  for (const perfilId of ['cobro', 'dj', 'fotografo', 'vestido', 'pantalla', 'coordinacion', 'vendedor', 'barra', null, undefined, '']) {
     assert.equal(puede({ perfilId, sector: 'cocina', accion: 'editar', campos: ['stockActual'] }), false, String(perfilId))
   }
 })

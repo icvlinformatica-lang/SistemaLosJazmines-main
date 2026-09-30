@@ -60,7 +60,15 @@ export const PERFILES: Perfil[] = [
     color: VERDE_EVENTO,
     icon: Wine,
     iconColor: CREMA,
-    rutas: ["/admin/barra", "/admin/cocteles", "/eventos/produccion", "/stock"],
+    // Barra hace tres cosas y nada más: contar lo que quedó en el salón
+    // (/stock), consultar de qué está hecho cada cóctel (/admin/cocteles, de
+    // solo lectura y sin precios) y ver qué se viene con las barras que
+    // contrataron (/eventos/staff, el mismo calendario del staff externo).
+    // NO entra al catálogo de insumos de bebidas (/admin/barra), donde se
+    // editan unidades y precios, ni a las guías de producción
+    // (/eventos/produccion). El primero de la lista es adonde cae si entra a
+    // una ruta que no le toca.
+    rutas: ["/stock", "/admin/cocteles", "/eventos/staff"],
   },
   {
     id: "administracion",
