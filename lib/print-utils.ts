@@ -565,7 +565,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
  * Imprime el listado de recetas agrupado por categoría, mostrando
  * únicamente el nombre del plato y su categoría (mismo orden que el
  * planificador de menú). */
-const CATEGORIAS_ORDEN_RECETAS = [
+export const CATEGORIAS_ORDEN_RECETAS = [
   "Recepción",
   "Entrada",
   "Plato Principal",

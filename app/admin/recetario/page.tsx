@@ -10,6 +10,7 @@ import {
   type UnidadReceta,
   formatCurrency,
   calcularCostoReceta,
+  contenidoDe,
   generateId,
   getCompatibleRecipeUnits,
   getDefaultRecipeUnit,
@@ -20,7 +21,6 @@ import { CostosARevisar } from "@/components/costos-a-revisar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -31,11 +31,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users, Utensils, Search, LayoutGrid, List, Printer } from "lucide-react"
-import { imprimirListaRecetas } from "@/lib/print-utils"
+import { Plus, Trash2, ChefHat, X, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, Users, Utensils, Search, Printer } from "lucide-react"
+import { imprimirListaRecetas, CATEGORIAS_ORDEN_RECETAS } from "@/lib/print-utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 /* ── Capacity Carousel ─────────────────────────────────── */
@@ -163,12 +170,38 @@ function CapacityCarousel({
 
 export default function RecetarioPage() {
   const { state, addReceta, updateReceta, deleteReceta } = useStore()
-  const [selectedReceta, setSelectedReceta] = useState<Receta | null>(state.recetas[0] || null)
+  const [selectedReceta, setSelectedReceta] = useState<Receta | null>(null)
+  // Receta abierta en el Dialog de detalle. Se busca siempre en state.recetas,
+  // así el detalle refleja las ediciones y se cierra solo si se elimina.
+  const [detalleRecetaId, setDetalleRecetaId] = useState<string | null>(null)
+  const detalleReceta = state.recetas.find((r) => r.id === detalleRecetaId) ?? null
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingRecetaId, setEditingRecetaId] = useState<string | null>(null)
   const isEditMode = editingRecetaId !== null
   const [recetaSearch, setRecetaSearch] = useState("")
-  const [recetaViewMode, setRecetaViewMode] = useState<"list" | "grid">("list")
+  // null = todas las categorías
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
+  // Mismo orden que el listado impreso y el planificador; las categorías que
+  // no están en esa lista van al final.
+  const ordenCategoria = (c: string) => {
+    const i = CATEGORIAS_ORDEN_RECETAS.indexOf(c)
+    return i === -1 ? CATEGORIAS_ORDEN_RECETAS.length : i
+  }
+  const recetasBuscadas = state.recetas
+    .filter(
+      (r) =>
+        r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) ||
+        r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()),
+    )
+    // De la A a la Z, sin importar mayúsculas ni acentos.
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }))
+  const recetasFiltradas = categoriaFiltro
+    ? recetasBuscadas.filter((r) => r.categoria === categoriaFiltro)
+    : recetasBuscadas
+  // Solo las categorías que tienen al menos una receta cargada.
+  const categoriasConRecetas = Array.from(new Set(state.recetas.map((r) => r.categoria))).sort(
+    (a, b) => ordenCategoria(a) - ordenCategoria(b) || a.localeCompare(b, "es", { sensitivity: "base" }),
+  )
   const [showCapacity, setShowCapacity] = useState(false)
 
   // Calculate how many 100-person events each recipe can cover with current stock
@@ -182,7 +215,7 @@ export default function RecetarioPage() {
       const insumo = state.insumos.find((i) => i.id === ir.insumoId)
       if (!insumo || ir.cantidadBasePorPersona <= 0) continue
       hasIngredients = true
-      const normalizedQtyPerPerson = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad)
+      const normalizedQtyPerPerson = normalizeToStockUnit(ir.cantidadBasePorPersona, ir.unidadReceta, insumo.unidad, contenidoDe(insumo))
       const neededFor100 = normalizedQtyPerPerson * PAX
       if (neededFor100 <= 0) continue
       const eventsFromThisInsumo = Math.floor(insumo.stockActual / neededFor100)
@@ -307,7 +340,7 @@ export default function RecetarioPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Laboratorio de Sabores</h1>
@@ -659,244 +692,183 @@ export default function RecetarioPage() {
           </Dialog>
         </div>
 
-        {/* Capacity Dashboard Carousel */}
-        {state.recetas.length > 0 && (
-          <Collapsible open={showCapacity} onOpenChange={setShowCapacity} className="mb-6">
-            <CollapsibleTrigger asChild>
-              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
-                <Users className="h-4 w-4" />
-                <span>Capacidad por receta (100 pax)</span>
-                <ChevronDown className={cn("h-4 w-4 transition-transform", showCapacity && "rotate-180")} />
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CapacityCarousel items={recipeCapacities} />
-            </CollapsibleContent>
-          </Collapsible>
+        <Collapsible open={showCapacity} onOpenChange={setShowCapacity} className="mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+              <h2 className="text-lg font-semibold">Mis Recetas</h2>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="h-9 gap-2">
+                    <span className="text-muted-foreground">Categoría:</span>
+                    <span className="font-medium">{categoriaFiltro ?? "Todas"}</span>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 max-h-[60vh] overflow-y-auto">
+                  <DropdownMenuRadioGroup
+                    value={categoriaFiltro ?? ""}
+                    onValueChange={(v) => setCategoriaFiltro(v === "" ? null : v)}
+                  >
+                    <DropdownMenuRadioItem value="" className="justify-between">
+                      <span>Todas</span>
+                      <span className="text-xs text-muted-foreground">{recetasBuscadas.length}</span>
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuSeparator />
+                    {categoriasConRecetas.map((cat) => (
+                      <DropdownMenuRadioItem key={cat} value={cat} className="justify-between">
+                        <span>{cat}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {recetasBuscadas.filter((r) => r.categoria === cat).length}
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <span className="text-sm text-muted-foreground">
+                {recetasFiltradas.length} {recetasFiltradas.length === 1 ? "plato" : "platos"}
+              </span>
+              {/* Buscador + imprimir van juntos: si no entran, bajan los dos. */}
+              <div className="flex min-w-[200px] max-w-sm flex-1 items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar receta..."
+                    value={recetaSearch}
+                    onChange={(e) => setRecetaSearch(e.target.value)}
+                    className="pl-8 h-9 text-sm"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => imprimirListaRecetas(recetasFiltradas)}
+                  aria-label="Imprimir listado de platos por categoría"
+                  title="Imprimir listado de platos"
+                >
+                  <Printer className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            {state.recetas.length > 0 && (
+              <CollapsibleTrigger asChild>
+                <button className="flex h-9 shrink-0 items-center gap-2 self-end rounded-md border px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:self-auto">
+                  <Users className="h-4 w-4" />
+                  <span>STOCK de PLATOS</span>
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", showCapacity && "rotate-180")} />
+                </button>
+              </CollapsibleTrigger>
+            )}
+          </div>
+          <CollapsibleContent>
+            <CapacityCarousel items={recipeCapacities} />
+          </CollapsibleContent>
+        </Collapsible>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {recetasFiltradas.map((receta) => (
+            <button
+              key={receta.id}
+              type="button"
+              onClick={() => {
+                // selectedReceta es la que usan handleEditReceta y
+                // handleDeleteReceta; detalleRecetaId decide qué muestra el
+                // Dialog de detalle.
+                setSelectedReceta(receta)
+                setDetalleRecetaId(receta.id)
+              }}
+              className="overflow-hidden rounded-lg border bg-card text-left transition-all hover:shadow-md hover:border-primary/50"
+            >
+              <div className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-primary/5">
+                {receta.imagen ? (
+                  <img
+                    src={receta.imagen}
+                    alt={receta.nombre}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none"
+                      ;(e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove("hidden")
+                    }}
+                  />
+                ) : null}
+                <ChefHat className={cn("h-10 w-10 text-primary/30", receta.imagen ? "hidden" : "")} />
+              </div>
+              <div className="space-y-1 p-3">
+                <p className="truncate font-semibold leading-tight" title={receta.nombre}>
+                  {receta.nombre}
+                </p>
+                <div className="flex flex-wrap items-center gap-1">
+                  <Badge variant="outline" className="text-xs">
+                    {receta.categoria}
+                  </Badge>
+                  {(!receta.insumos || receta.insumos.length === 0) && (
+                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none border border-amber-400 bg-amber-50 text-amber-600">
+                      falta completar
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-medium text-primary">
+                  {formatCurrency(calcularCostoReceta(receta, state.insumos))}
+                  <span className="text-xs font-normal text-muted-foreground"> /pers</span>
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {recetasFiltradas.length === 0 && (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            {state.recetas.length === 0 ? "Todavía no hay recetas cargadas." : "Ninguna receta coincide con la búsqueda."}
+          </p>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
-          <Card className="flex flex-col lg:sticky lg:top-6 lg:h-[calc(100vh-200px)] min-h-[320px]">
-            <CardHeader className="pb-3 shrink-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg">Mis Recetas</CardTitle>
-                  <CardDescription>{state.recetas.filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase())).length} platos</CardDescription>
+        <Dialog
+          open={detalleReceta !== null}
+          onOpenChange={(open) => {
+            if (!open) setDetalleRecetaId(null)
+          }}
+        >
+          {detalleReceta && (
+            <DialogContent className="max-w-3xl w-11/12 max-h-[90vh] overflow-y-auto">
+              <DialogHeader className="text-left">
+                <div className="flex flex-wrap items-center gap-2 pr-6">
+                  <Badge variant="secondary">{detalleReceta.codigo}</Badge>
+                  <Badge variant="default">{detalleReceta.categoria}</Badge>
+                  {(detalleReceta.factorRendimiento || 1) > 1 && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Utensils className="h-3 w-3" />
+                      Receta para {detalleReceta.factorRendimiento} porciones
+                    </Badge>
+                  )}
                 </div>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      imprimirListaRecetas(
-                        state.recetas.filter(
-                          (r) =>
-                            r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) ||
-                            r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()),
-                        ),
-                      )
-                    }
-                    className="p-1.5 rounded-md text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
-                    aria-label="Imprimir listado de platos por categoría"
-                    title="Imprimir listado de platos"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRecetaViewMode("list")}
-                    className={cn(
-                      "p-1.5 rounded-md transition-colors",
-                      recetaViewMode === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    )}
-                    aria-label="Vista lista"
-                  >
-                    <List className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRecetaViewMode("grid")}
-                    className={cn(
-                      "p-1.5 rounded-md transition-colors",
-                      recetaViewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    )}
-                    aria-label="Vista mosaico"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="relative mt-2">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar receta..."
-                  value={recetaSearch}
-                  onChange={(e) => setRecetaSearch(e.target.value)}
-                  className="pl-8 h-8 text-sm"
+                <DialogTitle className="text-2xl">{detalleReceta.nombre}</DialogTitle>
+                <DialogDescription>{detalleReceta.descripcion}</DialogDescription>
+              </DialogHeader>
+
+              {detalleReceta.imagen && (
+                <img
+                  src={detalleReceta.imagen || "/placeholder.svg"}
+                  alt={detalleReceta.nombre}
+                  className="w-full h-64 object-cover rounded-lg border"
                 />
+              )}
+
+              <div className="rounded-xl bg-primary/5 p-4">
+                <p className="text-sm text-muted-foreground">Costo estimado por persona</p>
+                <p className="text-3xl font-bold text-primary">
+                  {formatCurrency(calcularCostoReceta(detalleReceta, state.insumos))}
+                </p>
               </div>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 min-h-0 overflow-hidden">
-              <ScrollArea className="h-full">
-                {recetaViewMode === "list" ? (
-                  <div className="space-y-1 p-3">
-                    {state.recetas
-                      .filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()))
-                      .map((receta) => (
-                        <button
-                          key={receta.id}
-                          onClick={() => setSelectedReceta(receta)}
-                          className={cn(
-                            "w-full rounded-lg p-3 text-left transition-colors",
-                            selectedReceta?.id === receta.id ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={cn(
-                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden",
-                                selectedReceta?.id === receta.id ? "bg-primary-foreground/20" : "bg-primary/10",
-                              )}
-                            >
-                              {receta.imagen ? (
-                                <img
-                                  src={receta.imagen}
-                                  alt={receta.nombre}
-                                  className="h-10 w-10 object-cover"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = "none"
-                                    ;(e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove("hidden")
-                                  }}
-                                />
-                              ) : null}
-                              <ChefHat
-                                className={cn(
-                                  "h-5 w-5",
-                                  receta.imagen ? "hidden" : "",
-                                  selectedReceta?.id === receta.id ? "text-primary-foreground" : "text-primary",
-                                )}
-                              />
-                            </div>
-                            <div className="flex-1 overflow-hidden">
-                              <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className="truncate font-medium">{receta.nombre}</p>
-                                  {(!receta.insumos || receta.insumos.length === 0) && (
-                                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none border border-amber-400 bg-amber-50 text-amber-600 shrink-0">
-                                      falta completar
-                                    </span>
-                                  )}
-                                </div>
-                                <Badge
-                                  variant={selectedReceta?.id === receta.id ? "secondary" : "outline"}
-                                  className="text-xs w-fit"
-                                >
-                                  {receta.categoria}
-                                </Badge>
-                              </div>
-                              <p
-                                className={cn(
-                                  "truncate text-sm",
-                                  selectedReceta?.id === receta.id ? "text-primary-foreground/70" : "text-muted-foreground",
-                                )}
-                              >
-                                {receta.codigo} · {receta.insumos?.length ?? 0} insumos
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-1.5 p-2">
-                    {state.recetas
-                      .filter(r => r.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) || r.categoria.toLowerCase().includes(recetaSearch.toLowerCase()))
-                      .map((receta) => (
-                        <button
-                          key={receta.id}
-                          onClick={() => setSelectedReceta(receta)}
-                          className={cn(
-                            "rounded-md overflow-hidden border text-left transition-all hover:shadow-md",
-                            selectedReceta?.id === receta.id ? "border-primary ring-2 ring-primary/30" : "border-border",
-                          )}
-                        >
-                          <div className="h-12 w-full bg-primary/5 flex items-center justify-center overflow-hidden">
-                            {receta.imagen ? (
-                              <img
-                                src={receta.imagen}
-                                alt={receta.nombre}
-                                className="h-full w-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none"
-                                  ;(e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove("hidden")
-                                }}
-                              />
-                            ) : null}
-                            <ChefHat className={cn("h-5 w-5 text-primary/30", receta.imagen ? "hidden" : "")} />
-                          </div>
-                          <div className="px-1.5 py-1">
-                            <p className="text-[10px] font-semibold truncate leading-tight">{receta.nombre}</p>
-                            <p className="text-[9px] text-muted-foreground truncate">{receta.categoria}</p>
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
 
-          {selectedReceta ? (
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary">{selectedReceta.codigo}</Badge>
-                      <Badge variant="default">{selectedReceta.categoria}</Badge>
-                      {(selectedReceta.factorRendimiento || 1) > 1 && (
-                        <Badge variant="outline" className="flex items-center gap-1">
-                          <Utensils className="h-3 w-3" />
-                          Receta para {selectedReceta.factorRendimiento} porciones
-                        </Badge>
-                      )}
-                      <CardTitle className="text-2xl">{selectedReceta.nombre}</CardTitle>
-                    </div>
-                    <CardDescription className="mt-2 max-w-xl">{selectedReceta.descripcion}</CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleEditReceta}>
-                      Editar
-                    </Button>
-                    <Button variant="destructive" onClick={handleDeleteReceta}>
-                      Eliminar
-                    </Button>
-                  </div>
-                </div>
-                {selectedReceta.imagen && (
-                  <div className="mt-4">
-                    <img
-                      src={selectedReceta.imagen || "/placeholder.svg"}
-                      alt={selectedReceta.nombre}
-                      className="w-full max-w-2xl h-64 object-cover rounded-lg border"
-                    />
-                  </div>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="mb-6 rounded-xl bg-primary/5 p-4">
-                  <p className="text-sm text-muted-foreground">Costo estimado por persona</p>
-                  <p className="text-3xl font-bold text-primary">
-                    {formatCurrency(calcularCostoReceta(selectedReceta, state.insumos))}
-                  </p>
-                </div>
-
+              <div>
                 <h3 className="mb-4 text-lg font-semibold">ADN del Plato</h3>
                 <div className="space-y-3">
-                  {selectedReceta.insumos.map((item, index) => {
+                  {detalleReceta.insumos.map((item, index) => {
                     const insumo = getInsumoById(item.insumoId)
                     if (!insumo) return null
-                    const factor = selectedReceta.factorRendimiento || 1
-                    const normalizedQty = normalizeToStockUnit(item.cantidadBasePorPersona, item.unidadReceta, insumo.unidad)
+                    const factor = detalleReceta.factorRendimiento || 1
+                    const normalizedQty = normalizeToStockUnit(item.cantidadBasePorPersona, item.unidadReceta, insumo.unidad, contenidoDe(insumo))
                     const costoPorPersona = (normalizedQty / factor) * insumo.precioUnitario
                     const displayUnit = item.unidadReceta || insumo.unidad
                     const cantPorPersona = item.cantidadBasePorPersona / factor
@@ -929,17 +901,29 @@ export default function RecetarioPage() {
                     )
                   })}
                 </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <FlaskConical className="mx-auto mb-4 h-12 w-12" />
-                <p>Selecciona una receta para ver su detalle</p>
               </div>
-            </Card>
+
+              <DialogFooter className="border-t pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Se cierra el detalle y se abre el Dialog de edición que
+                    // ya existe (mismo formulario que "Nueva Receta").
+                    setDetalleRecetaId(null)
+                    handleEditReceta()
+                  }}
+                >
+                  Editar
+                </Button>
+                {/* Si se confirma, la receta deja de existir en state.recetas y
+                    este Dialog se cierra solo (detalleReceta pasa a null). */}
+                <Button variant="destructive" onClick={handleDeleteReceta}>
+                  Eliminar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
           )}
-        </div>
+        </Dialog>
       </main>
     </div>
   )
