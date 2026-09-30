@@ -10,6 +10,10 @@
 // tragos por persona), que es lo que necesita para saber qué preparar. Es su
 // única ventana a la agenda: no entra a /eventos/produccion (guías de
 // producción, que quedó solo para cocina).
+//
+// Barra primero elige un salón (el mismo selector que Stock por salón, sin
+// "Todos") y ve solo los eventos de ese salón, pintados con su color. El resto
+// del staff sigue viendo todos los salones juntos, como siempre.
 
 import { useMemo, useState } from "react"
 import { useEventos } from "@/lib/use-eventos"
@@ -21,9 +25,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye, Wine } from "lucide-react"
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye, Wine } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { EventoGuardado } from "@/lib/store"
+import { salonColor, salonLabel, type EventoGuardado } from "@/lib/store"
+import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
+import { SalonDot } from "@/components/salon-badge"
 
 /**
  * Servicio a resaltar según el perfil activo (coincidencia por nombre del
@@ -77,6 +83,10 @@ export default function StaffPage() {
   const nombreBarra = (barraTemplateId: string, i: number) =>
     (state.barrasTemplates || []).find((b) => b.id === barraTemplateId)?.nombre ||
     (i === 0 ? "Barra del evento" : `Barra ${i + 1}`)
+  // Barra: 🍺 al lado de cada evento que tiene barra contratada (su lista
+  // `barras` no está vacía; es lo mismo que muestra el detalle).
+  const conBarra = (e: EventoGuardado) => esBarra && (e.barras || []).length > 0
+  const simbolos = (e: EventoGuardado) => iconoTipoEvento(e.tipoEvento).emoji + (conBarra(e) ? "🍺" : "")
   const nombreCoctel = (coctelId: string) =>
     (state.cocteles || []).find((c) => c.id === coctelId)?.nombre || "Cóctel que ya no está en la carta"
   // Refresca eventos cada 15s y al volver a la pestaña, para que el
@@ -89,10 +99,17 @@ export default function StaffPage() {
 
   const hoy = new Date()
   const [mesActual, setMesActual] = useState(new Date(hoy.getFullYear(), hoy.getMonth(), 1))
+  // Solo Barra: salón elegido (null = todavía no eligió, se muestra el selector).
+  const [salon, setSalon] = useState<string | null>(null)
+  const colorSalon = salon ? salonColor(salon, state.configuracionCajas) : null
 
   const eventosConFecha = useMemo(
-    () => eventos.filter((e) => !!e.fecha && e.estado !== "cancelado").sort((a, b) => a.fecha.localeCompare(b.fecha)),
-    [eventos],
+    () =>
+      eventos
+        .filter((e) => !!e.fecha && e.estado !== "cancelado")
+        .filter((e) => !esBarra || e.salon === salon)
+        .sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    [eventos, esBarra, salon],
   )
 
   const celdas = useMemo<CeldaDia[]>(() => {
@@ -158,13 +175,33 @@ export default function StaffPage() {
     )
   }
 
+  // Barra: primero elige el salón.
+  if (esBarra && !salon) {
+    return <SalonSelectorOverlay titulo="Próximos eventos" sinTodos onSelect={setSalon} />
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div>
+        {esBarra && salon ? (
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Volver a elegir salón" onClick={() => setSalon(null)}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-0">
+              <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+                <SalonDot salon={salon} size={12} />
+                {salonLabel(salon)}
+              </h1>
+              <p className="text-xs text-muted-foreground">Próximos eventos</p>
+            </div>
+          </div>
+        ) : (
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <CalendarDays className="h-6 w-6 text-primary" />
           Próximos eventos
         </h1>
+        )}
         <p className="text-sm text-muted-foreground mt-1">
           Tocá un día para ver el detalle del evento y los servicios contratados.
         </p>
@@ -177,6 +214,12 @@ export default function StaffPage() {
               {t.etiqueta}
             </span>
           ))}
+          {esBarra && (
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden>🍺</span>
+              Con barra contratada
+            </span>
+          )}
         </div>
       </div>
 
@@ -235,14 +278,26 @@ export default function StaffPage() {
                   className={cn(
                     "relative flex h-16 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-sm transition-colors",
                     tiene
-                      ? "cursor-pointer bg-primary/10 font-semibold text-primary hover:bg-primary/20"
+                      ? colorSalon
+                        ? "cursor-pointer font-semibold hover:brightness-95"
+                        : "cursor-pointer bg-primary/10 font-semibold text-primary hover:bg-primary/20"
                       : "text-muted-foreground/50",
-                    esHoy(celda.dia) && "ring-2 ring-primary",
+                    esHoy(celda.dia) && (colorSalon ? "ring-2" : "ring-2 ring-primary"),
                   )}
+                  // Barra: el color del salón elegido (mismo tono suave que
+                  // SalonBadge: fondo al 10 %, texto y anillo de hoy en el color).
+                  style={
+                    colorSalon
+                      ? {
+                          ...(tiene ? { backgroundColor: `${colorSalon}1a`, color: colorSalon } : {}),
+                          ...(esHoy(celda.dia) ? ({ "--tw-ring-color": colorSalon } as React.CSSProperties) : {}),
+                        }
+                      : undefined
+                  }
                   title={
                     tiene
                       ? celda.eventos
-                          .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}`)
+                          .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}${conBarra(e) ? " (con barra)" : ""}`)
                           .join(" · ")
                       : undefined
                   }
@@ -254,7 +309,7 @@ export default function StaffPage() {
                           vistazo sin leer. Con varios eventos en el mismo día
                           van todos, que para eso son chiquitos. */}
                       <span aria-hidden className="text-sm leading-none">
-                        {celda.eventos.map((e) => iconoTipoEvento(e.tipoEvento).emoji).join(" ")}
+                        {celda.eventos.map(simbolos).join(" ")}
                       </span>
                       <span className="max-w-full truncate text-[10px] font-normal leading-tight">
                         {celda.eventos.length > 1
@@ -286,7 +341,7 @@ export default function StaffPage() {
                   className="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/50"
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <span aria-hidden className="text-lg leading-none">{iconoTipoEvento(e.tipoEvento).emoji}</span>
+                    <span aria-hidden className="text-lg leading-none">{simbolos(e)}</span>
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{e.nombrePareja || e.nombre || "Sin nombre"}</span>
                       <span className="block text-xs text-muted-foreground">
