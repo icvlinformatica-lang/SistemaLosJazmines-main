@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 import { puedeEditarCocteles, ERROR_SIN_PERMISO_COCTELES } from "@/lib/cocteles-permisos"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
+import { camposDelBody, filaACoctel, type FilaCoctel } from "@/lib/cocteles-api"
 
 // GET all cocteles with their insumos
 export async function GET() {
@@ -25,13 +26,7 @@ export async function GET() {
           unidadCoctel: i.unidad_coctel,
         }))
 
-      return {
-        id: coctel.id,
-        nombre: coctel.nombre,
-        categoria: coctel.categoria,
-        instrucciones: coctel.instrucciones || "",
-        insumos,
-      }
+      return filaACoctel(coctel as FilaCoctel, insumos)
     })
 
     return NextResponse.json(cocteles)
@@ -49,14 +44,18 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const id = generateId()
+    const campos = camposDelBody(body)
 
     const [coctelData] = await sql`
-      INSERT INTO cocteles (id, codigo, nombre, categoria)
+      INSERT INTO cocteles (id, codigo, nombre, categoria, descripcion, imagen, instrucciones)
       VALUES (
         ${id},
-        ${"COC-" + id.slice(0, 8).toUpperCase()},
+        ${campos.codigo?.trim() || "COC-" + id.slice(0, 8).toUpperCase()},
         ${body.nombre},
-        ${body.categoria || "Con Alcohol"}
+        ${body.categoria || "Con Alcohol"},
+        ${campos.descripcion ?? ""},
+        ${campos.imagen ?? ""},
+        ${campos.instrucciones ?? ""}
       )
       RETURNING *
     `
@@ -77,13 +76,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const coctel = {
-      id: coctelData.id,
-      nombre: coctelData.nombre,
-      categoria: coctelData.categoria,
-      instrucciones: coctelData.instrucciones || "",
-      insumos: body.insumos || [],
-    }
+    const coctel = filaACoctel(coctelData as FilaCoctel, body.insumos || [])
 
     await logActivity("coctel", "creado", body.nombre, `Categoria: ${body.categoria || "Con Alcohol"}`)
     return NextResponse.json(coctel, { status: 201 })
