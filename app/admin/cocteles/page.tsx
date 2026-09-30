@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import {
   type Coctel,
@@ -21,7 +20,6 @@ import { puedeEditarCocteles, puedeVerCostosCocteles } from "@/lib/cocteles-perm
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -33,12 +31,26 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Wine, Pencil, Beer } from "lucide-react"
+import { Plus, Trash2, Wine, Pencil, Beer, ChevronDown, Search, FlaskConical } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 export default function CoctelesPage() {
   const { state, addCoctel, updateCoctel, deleteCoctel } = useStore()
-  const [selectedCoctel, setSelectedCoctel] = useState<Coctel | null>(state.cocteles[0] || null)
+  const [selectedCoctel, setSelectedCoctel] = useState<Coctel | null>(null)
+  // Cóctel abierto en el Dialog de detalle. Se busca siempre en
+  // state.cocteles, así el detalle refleja las ediciones y se cierra solo si
+  // se elimina.
+  const [detalleCoctelId, setDetalleCoctelId] = useState<string | null>(null)
+  const detalleCoctel = state.cocteles.find((c) => c.id === detalleCoctelId) ?? null
+  const [busqueda, setBusqueda] = useState("")
   // Barra entra acá solo para consultar de qué está hecho cada cóctel: ve los
   // insumos y las cantidades, no los precios ni los botones de editar. Los
   // precios de la barra los maneja Administración. Esto es la pantalla; el
@@ -69,10 +81,13 @@ export default function CoctelesPage() {
     detallePreparacion: "",
   })
 
-  const filteredCocteles = state.cocteles.filter((c) => {
-    if (filterCategoria === "all") return true
-    return (c.categoria || "Con Alcohol") === filterCategoria
-  })
+  // Buscador → de la A a la Z → filtro de categoría (mismo criterio que el recetario).
+  const coctelesBuscados = state.cocteles
+    .filter((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }))
+  const categoriaDe = (c: Coctel) => c.categoria || "Con Alcohol"
+  const filteredCocteles =
+    filterCategoria === "all" ? coctelesBuscados : coctelesBuscados.filter((c) => categoriaDe(c) === filterCategoria)
 
   const resetForm = () => {
     setFormData({
@@ -227,7 +242,7 @@ export default function CoctelesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Carta de Cocteles</h1>
@@ -506,142 +521,211 @@ export default function CoctelesPage() {
           )}
         </div>
 
-        {/* Category Filter */}
-        <div className="mb-6 flex items-center gap-2">
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            {(["all", "Con Alcohol", "Sin Alcohol"] as const).map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setFilterCategoria(cat)}
-                className={cn(
-                  "px-4 py-2 text-sm font-medium transition-colors",
-                  filterCategoria === cat
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted text-muted-foreground",
-                )}
-              >
-                {cat === "all" ? "Todos" : cat}
-              </button>
-            ))}
-          </div>
+        {/* Una línea: título, categoría, cantidad y buscador (mismo diseño que Recetas). */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-semibold">Mis Cócteles</h2>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="h-9 gap-2">
+                <span className="text-muted-foreground">Categoría:</span>
+                <span className="font-medium">{filterCategoria === "all" ? "Todos" : filterCategoria}</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuRadioGroup value={filterCategoria} onValueChange={setFilterCategoria}>
+                <DropdownMenuRadioItem value="all" className="justify-between">
+                  <span>Todos</span>
+                  <span className="text-xs text-muted-foreground">{coctelesBuscados.length}</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuSeparator />
+                {(["Con Alcohol", "Sin Alcohol"] as const).map((cat) => (
+                  <DropdownMenuRadioItem key={cat} value={cat} className="justify-between">
+                    <span>{cat}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {coctelesBuscados.filter((c) => categoriaDe(c) === cat).length}
+                    </span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <span className="text-sm text-muted-foreground">
-            {filteredCocteles.length} {filteredCocteles.length === 1 ? "coctel" : "cocteles"}
+            {filteredCocteles.length} {filteredCocteles.length === 1 ? "cóctel" : "cócteles"}
           </span>
+          <div className="relative min-w-[200px] max-w-sm flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cóctel..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="pl-8 h-9 text-sm"
+            />
+          </div>
         </div>
 
-        {/* Two column: List + Detail */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          {/* Cocktail List */}
-          <div className="md:col-span-1 space-y-2 overflow-y-auto max-h-[520px] pr-1">
-            {filteredCocteles.map((coctel) => (
-              <button
-                key={coctel.id}
-                type="button"
-                onClick={() => setSelectedCoctel(coctel)}
-                className={cn(
-                  "w-full text-left rounded-lg border p-3 transition-colors",
-                  selectedCoctel?.id === coctel.id
-                    ? "border-foreground bg-muted"
-                    : "border-border hover:bg-muted/50",
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <p className="font-medium truncate">{coctel.nombre}</p>
-                    {(coctel.categoria || "Con Alcohol") === "Sin Alcohol" && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Sin Alcohol</Badge>
-                    )}
-                  </div>
-                  {veCostos && (
-                    <span className="text-sm font-semibold text-teal-600 tabular-nums shrink-0">
-                      {formatCurrency(getCostoCoctel(coctel))}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {filteredCocteles.map((coctel) => (
+            <button
+              key={coctel.id}
+              type="button"
+              onClick={() => {
+                // selectedCoctel es el que usan handleEditCoctel y
+                // handleDeleteCoctel; detalleCoctelId decide qué muestra el
+                // Dialog de detalle.
+                setSelectedCoctel(coctel)
+                setDetalleCoctelId(coctel.id)
+              }}
+              className="overflow-hidden rounded-lg border bg-card text-left transition-all hover:shadow-md hover:border-primary/50"
+            >
+              <div className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-primary/5">
+                {coctel.imagen ? (
+                  <img
+                    src={coctel.imagen}
+                    alt={coctel.nombre}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none"
+                      ;(e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove("hidden")
+                    }}
+                  />
+                ) : null}
+                <Wine className={cn("h-10 w-10 text-primary/30", coctel.imagen ? "hidden" : "")} />
+              </div>
+              <div className="space-y-1 p-3">
+                <p className="truncate font-semibold leading-tight" title={coctel.nombre}>
+                  {coctel.nombre}
+                </p>
+                <div className="flex flex-wrap items-center gap-1">
+                  <Badge variant={categoriaDe(coctel) === "Sin Alcohol" ? "secondary" : "outline"} className="text-xs">
+                    {categoriaDe(coctel)}
+                  </Badge>
+                  {coctel.insumos.length === 0 && (
+                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none border border-amber-400 bg-amber-50 text-amber-600">
+                      falta completar
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {coctel.insumos.length} {coctel.insumos.length === 1 ? "insumo" : "insumos"}
-                  {veCostos ? " · costo por persona" : ""}
-                </p>
-              </button>
-            ))}
-            {filteredCocteles.length === 0 && (
-              <p className="text-center py-8 text-muted-foreground">No hay cocteles</p>
-            )}
-          </div>
-
-          {/* Cocktail Detail */}
-          <div className="md:col-span-2">
-            {selectedCoctel ? (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-xl flex items-center gap-2">
-                        <Wine className="h-5 w-5" />
-                        {selectedCoctel.nombre}
-                      </CardTitle>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={(selectedCoctel.categoria || "Con Alcohol") === "Sin Alcohol" ? "secondary" : "outline"}>
-                          {selectedCoctel.categoria || "Con Alcohol"}
-                        </Badge>
-                        {veCostos && (
-                          <Badge className="bg-teal-100 text-teal-700 border-teal-200 tabular-nums">
-                            {formatCurrency(getCostoCoctel(selectedCoctel))} por persona
-                          </Badge>
-                        )}
-                      </div>
-                      <CardDescription className="mt-1">{selectedCoctel.descripcion}</CardDescription>
-                    </div>
-                    {puedeEditar && (
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="bg-transparent" onClick={handleEditCoctel}>
-                          <Pencil className="h-4 w-4 mr-1" />
-                          Editar
-                        </Button>
-                        <Button variant="outline" size="sm" className="bg-transparent text-destructive" onClick={handleDeleteCoctel}>
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Eliminar
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <h4 className="font-semibold mb-3">Insumos</h4>
-                  {selectedCoctel.insumos.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic">Sin insumos cargados</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedCoctel.insumos.map((ing, idx) => {
-                        const insumo = getInsumoBarraById(ing.insumoBarraId)
-                        return (
-                          <div key={idx} className="flex items-center justify-between rounded-md border p-3">
-                            <span className="font-medium">{insumo?.descripcion || "Desconocido"}</span>
-                            <span className="font-mono text-sm">
-                              {ing.cantidadPorCoctel} {ing.unidadCoctel || insumo?.unidad}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {selectedCoctel.preparacion && (
-                    <div className="mt-4">
-                      <h4 className="font-semibold mb-2">Preparacion</h4>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{selectedCoctel.preparacion}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <Wine className="mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="text-muted-foreground">Selecciona un coctel para ver sus detalles</p>
+                {veCostos ? (
+                  <p className="text-sm font-medium text-primary">
+                    {formatCurrency(getCostoCoctel(coctel))}
+                    <span className="text-xs font-normal text-muted-foreground"> /pers</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {coctel.insumos.length} {coctel.insumos.length === 1 ? "insumo" : "insumos"}
+                  </p>
+                )}
               </div>
-            )}
-          </div>
+            </button>
+          ))}
         </div>
+
+        {filteredCocteles.length === 0 && (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            {state.cocteles.length === 0 ? "Todavía no hay cócteles cargados." : "Ningún cóctel coincide con la búsqueda."}
+          </p>
+        )}
+
+        <Dialog
+          open={detalleCoctel !== null}
+          onOpenChange={(open) => {
+            if (!open) setDetalleCoctelId(null)
+          }}
+        >
+          {detalleCoctel && (
+            <DialogContent className="max-w-3xl w-11/12 max-h-[90vh] overflow-y-auto">
+              <DialogHeader className="text-left">
+                <div className="flex flex-wrap items-center gap-2 pr-6">
+                  {detalleCoctel.codigo && <Badge variant="secondary">{detalleCoctel.codigo}</Badge>}
+                  <Badge variant="default">{categoriaDe(detalleCoctel)}</Badge>
+                </div>
+                <DialogTitle className="text-2xl">{detalleCoctel.nombre}</DialogTitle>
+                <DialogDescription>{detalleCoctel.descripcion}</DialogDescription>
+              </DialogHeader>
+
+              {detalleCoctel.imagen && (
+                <img
+                  src={detalleCoctel.imagen}
+                  alt={detalleCoctel.nombre}
+                  className="w-full h-64 object-cover rounded-lg border"
+                />
+              )}
+
+              {veCostos && (
+                <div className="rounded-xl bg-primary/5 p-4">
+                  <p className="text-sm text-muted-foreground">Costo estimado por persona</p>
+                  <p className="text-3xl font-bold text-primary">{formatCurrency(getCostoCoctel(detalleCoctel))}</p>
+                </div>
+              )}
+
+              <div>
+                <h3 className="mb-4 text-lg font-semibold">Insumos</h3>
+                {detalleCoctel.insumos.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">Sin insumos cargados</p>
+                ) : (
+                  <div className="space-y-3">
+                    {detalleCoctel.insumos.map((ing, idx) => {
+                      const insumo = getInsumoBarraById(ing.insumoBarraId)
+                      const costo = insumo
+                        ? normalizeToStockUnit(ing.cantidadPorCoctel, ing.unidadCoctel, insumo.unidad, contenidoDe(insumo)) *
+                          (insumo.precioUnitario || 0)
+                        : 0
+                      return (
+                        <div key={idx} className="flex items-center justify-between rounded-lg border p-4">
+                          <div className="flex items-center gap-4">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
+                              <FlaskConical className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{insumo?.descripcion || "Desconocido"}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {ing.cantidadPorCoctel} {ing.unidadCoctel || insumo?.unidad} por cóctel
+                              </p>
+                            </div>
+                          </div>
+                          {veCostos && insumo && (
+                            <p className="text-sm text-muted-foreground">{formatCurrency(costo)}/pers</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {detalleCoctel.preparacion && (
+                <div>
+                  <h3 className="mb-2 text-lg font-semibold">Preparación</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{detalleCoctel.preparacion}</p>
+                </div>
+              )}
+
+              {puedeEditar && (
+                <DialogFooter className="border-t pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      // Se cierra el detalle y se abre el Dialog de edición que
+                      // ya existe (mismo formulario que "Nuevo Coctel").
+                      setDetalleCoctelId(null)
+                      handleEditCoctel()
+                    }}
+                  >
+                    <Pencil className="h-4 w-4 mr-1" />
+                    Editar
+                  </Button>
+                  {/* Si se confirma, el cóctel deja de existir en state.cocteles
+                      y este Dialog se cierra solo (detalleCoctel pasa a null). */}
+                  <Button variant="destructive" onClick={handleDeleteCoctel}>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Eliminar
+                  </Button>
+                </DialogFooter>
+              )}
+            </DialogContent>
+          )}
+        </Dialog>
       </main>
     </div>
   )
