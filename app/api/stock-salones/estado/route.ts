@@ -1,14 +1,8 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
-import { perfilDesdeRequest, salonesConfigurados } from "@/lib/stock-salones-server"
-import {
-  eventoPendienteDeCarga,
-  sectoresPermitidos,
-  VENTANA_AVISO_DIAS,
-  type EventoParaStock,
-  type SectorStock,
-} from "@/lib/stock-salones"
+import { eventoPendienteEnBase, perfilDesdeRequest, salonesConfigurados } from "@/lib/stock-salones-server"
+import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 
 /**
  * GET ?salon=Casona&sector=barra
@@ -34,46 +28,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Salón inválido" }, { status: 400 })
     }
 
-    // Traer solo eventos recientes del salón: la ventana del aviso más un
-    // margen (el fin puede caer al día siguiente de la fecha).
-    const desde = new Date(Date.now() - (VENTANA_AVISO_DIAS + 2) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const eventos = (await sql`
-      SELECT id, nombre, nombre_pareja, fecha, horario, horario_fin, salon, estado
-      FROM eventos
-      WHERE deleted_at IS NULL AND salon = ${salon} AND fecha >= ${desde}
-    `) as unknown as Array<{
-      id: string
-      nombre: string
-      nombre_pareja: string | null
-      fecha: string | null
-      horario: string | null
-      horario_fin: string | null
-      salon: string | null
-      estado: string | null
-    }>
-
-    const sesiones = (await sql`
-      SELECT evento_id, salon, sector, cerrada_en
-      FROM stock_sesiones
-      WHERE salon = ${salon} AND sector = ${sector} AND cerrada_en IS NOT NULL
-        AND cerrada_en >= now() - interval '15 days'
-    `) as unknown as Array<{ evento_id: string | null; salon: string; sector: SectorStock; cerrada_en: Date }>
-
-    const eventosStock: EventoParaStock[] = eventos.map((e) => ({
-      id: e.id,
-      nombre: e.nombre_pareja || e.nombre,
-      fecha: e.fecha,
-      horario: e.horario,
-      horarioFin: e.horario_fin,
-      salon: e.salon,
-      estado: e.estado,
-    }))
-    const pendiente = eventoPendienteDeCarga(
-      eventosStock,
-      sesiones.map((s) => ({ eventoId: s.evento_id, salon: s.salon, sector: s.sector, cerradaEn: new Date(s.cerrada_en) })),
-      salon,
-      sector,
-    )
+    const pendiente = await eventoPendienteEnBase(salon, sector)
 
     const saldos = (await sql`
       SELECT insumo_id, cantidad, actualizado_por, actualizado_en

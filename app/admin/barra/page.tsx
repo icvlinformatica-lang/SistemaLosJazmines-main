@@ -12,7 +12,10 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StockContadoCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
+import { StockPorSalonTabla } from "@/components/stock-por-salon-tabla"
+import { useProfile } from "@/lib/profile-context"
 import {
   Dialog,
   DialogContent,
@@ -46,6 +49,17 @@ function BarraAlmacenContent() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<InsumoBarra | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Barra entra acá a ajustar existencias, pero el catálogo (unidad,
+  // contenido, precio) mueve el costo de los cócteles y es de Administración.
+  // Los campos se ven igual, apagados: sirve saber en qué unidad está algo.
+  // Esto es solo la pantalla; el que corta de verdad es el servidor
+  // (lib/insumos-permisos.ts, usado en app/api/insumos-barra/**).
+  const { perfilActivo } = useProfile()
+  const soloStock = !puedeEditarCatalogo(perfilActivo?.id)
+  // La vista por salón vive acá adentro (antes era la pantalla suelta
+  // /admin/stock-salones). Solo la ven los perfiles que ven el conteo
+  // consolidado; para Barra la pestaña ni aparece.
+  const [pestana, setPestana] = useState<"insumos" | "salones">("insumos")
 
   const [formData, setFormData] = useState({
     codigo: "",
@@ -91,7 +105,7 @@ function BarraAlmacenContent() {
     setIsSubmitting(true)
     try {
       if (editingInsumo) {
-        await updateInsumoBarra(editingInsumo.id, formData)
+        await updateInsumoBarra(editingInsumo.id, soloStock ? { stockActual: formData.stockActual } : formData)
       } else {
         await addInsumoBarra(formData)
       }
@@ -153,6 +167,30 @@ function BarraAlmacenContent() {
         <p className="mt-1 text-base text-muted-foreground">Gestiona insumos de cocteleria y bebidas</p>
       </div>
 
+      {stockContado.visible && (
+        <div className="mb-4 inline-flex rounded-lg border p-1" role="group" aria-label="Qué mostrar">
+          {([
+            { v: "insumos", label: "Insumos" },
+            { v: "salones", label: "Stock por salón" },
+          ] as const).map((op) => (
+            <button
+              key={op.v}
+              type="button"
+              onClick={() => setPestana(op.v)}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                pestana === op.v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {op.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {stockContado.visible && pestana === "salones" ? (
+        <StockPorSalonTabla sector="barra" insumos={insumosBarra} />
+      ) : (
+      <>
       {/* Category Filter */}
       <div className="mb-4 flex flex-wrap gap-2">
         <Button
@@ -200,12 +238,14 @@ function BarraAlmacenContent() {
                   if (!open) resetForm()
                 }}
               >
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Agregar
-                  </Button>
-                </DialogTrigger>
+                {!soloStock && (
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Agregar
+                    </Button>
+                  </DialogTrigger>
+                )}
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2.5">
@@ -213,10 +253,14 @@ function BarraAlmacenContent() {
                         const Icono = iconoDeInsumoBarra(formData.descripcion, formData.categoria)
                         return <Icono className="h-6 w-6 shrink-0 text-muted-foreground/40" aria-hidden />
                       })()}
-                      {editingInsumo ? "Editar Insumo de Barra" : "Nuevo Insumo de Barra"}
+                      {soloStock ? "Ajustar stock" : editingInsumo ? "Editar Insumo de Barra" : "Nuevo Insumo de Barra"}
                     </DialogTitle>
                     <DialogDescription>
-                      {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacen de barra"}
+                      {soloStock
+                        ? "Corregí las existencias. El resto de los datos los cambia Administración."
+                        : editingInsumo
+                          ? "Modifica los datos del insumo"
+                          : "Agrega un nuevo insumo al almacen de barra"}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
@@ -234,6 +278,7 @@ function BarraAlmacenContent() {
                       <Label htmlFor="descripcion" className="text-right">Descripcion</Label>
                       <Input
                         id="descripcion"
+                        disabled={soloStock}
                         value={formData.descripcion}
                         onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                         className="col-span-3"
@@ -243,6 +288,7 @@ function BarraAlmacenContent() {
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="categoria" className="text-right">Categoria</Label>
                       <Select
+                        disabled={soloStock}
                         value={formData.categoria}
                         onValueChange={(value) => setFormData({ ...formData, categoria: value as CategoriaInsumoBarra })}
                       >
@@ -259,6 +305,7 @@ function BarraAlmacenContent() {
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="unidad" className="text-right">Unidad</Label>
                       <Select
+                        disabled={soloStock}
                         value={formData.unidad}
                         onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}
                       >
@@ -280,6 +327,7 @@ function BarraAlmacenContent() {
                         <Label className="text-right pt-2">¿Cuánto trae cada unidad?</Label>
                         <div className="col-span-3">
                           <ContenidoPorUnidadInput
+                            disabled={soloStock}
                             cantidad={formData.contenidoCantidad}
                             unidad={formData.contenidoUnidad}
                             onChange={(v) =>
@@ -313,6 +361,7 @@ function BarraAlmacenContent() {
                       <Label htmlFor="precio" className="text-right">Precio $</Label>
                       <MoneyInput
                         id="precio"
+                        disabled={soloStock}
                         value={formData.precioUnitario}
                         onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })}
                         className="col-span-3"
@@ -322,6 +371,7 @@ function BarraAlmacenContent() {
                       <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
                       <Input
                         id="proveedor"
+                        disabled={soloStock}
                         value={formData.proveedor}
                         onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
                         className="col-span-3"
@@ -350,11 +400,16 @@ function BarraAlmacenContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[80px]">Codigo</TableHead>
-                  <TableHead>Descripcion</TableHead>
+                  <TableHead className="sticky left-0 z-20 bg-card">Descripcion</TableHead>
                   <TableHead className="w-[100px]">Categoria</TableHead>
                   <TableHead className="w-[80px]">Unidad</TableHead>
                   <TableHead className="w-[100px] text-right">Stock</TableHead>
-                  {stockContado.visible && <TableHead className="w-[170px] text-right">Contado en salones</TableHead>}
+                  {stockContado.visible &&
+                    stockContado.salones.map((s) => (
+                      <TableHead key={s.id} className="w-[76px] px-2 text-right align-bottom text-[11px] leading-tight" title={s.nombre}>
+                        {s.nombre}
+                      </TableHead>
+                    ))}
                   <TableHead className="w-[120px] text-right">Precio Unit.</TableHead>
                   <TableHead className="w-[100px]" />
                 </TableRow>
@@ -368,9 +423,9 @@ function BarraAlmacenContent() {
                   </TableRow>
                 ) : (
                   filteredInsumos.map((insumo) => (
-                    <TableRow key={insumo.id} className={NUEVOS_INSUMOS.has(insumo.codigo) ? "bg-gray-100" : ""}>
+                    <TableRow key={insumo.id} className={NUEVOS_INSUMOS.has(insumo.codigo) ? "bg-gray-100" : "bg-background"}>
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium sticky left-0 z-10 bg-inherit [background-color:inherit]">
                         {/* Silueta de la bebida (botella, copa, lata según lo
                             que sea). Decorativa, por eso aria-hidden. */}
                         <span className="flex items-center gap-2">
@@ -384,24 +439,28 @@ function BarraAlmacenContent() {
                       <TableCell className="text-sm text-muted-foreground">{insumo.categoria}</TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
-                      {stockContado.visible && (
-                        <TableCell className="text-right">
-                          <StockContadoCelda
-                            resumen={stockContado.porInsumo.get(insumo.id)}
-                            unidad={insumo.unidad}
-                            salones={stockContado.salones}
-                          />
-                        </TableCell>
-                      )}
+                      {stockContado.visible &&
+                        stockContado.salones.map((s) => (
+                          <TableCell key={s.id} className="text-right">
+                            <StockSalonCelda
+                              resumen={stockContado.porInsumo.get(insumo.id)}
+                              unidad={insumo.unidad}
+                              salonId={s.id}
+                              salones={stockContado.salones}
+                            />
+                          </TableCell>
+                        ))}
                       <TableCell className="text-right">{formatCurrency(insumo.precioUnitario)}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {!soloStock && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -413,6 +472,8 @@ function BarraAlmacenContent() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
     </main>
   )
 }

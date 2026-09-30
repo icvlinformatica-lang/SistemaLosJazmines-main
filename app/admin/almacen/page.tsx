@@ -13,7 +13,10 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StockContadoCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
+import { StockPorSalonTabla } from "@/components/stock-por-salon-tabla"
+import { useProfile } from "@/lib/profile-context"
 import {
   Dialog,
   DialogContent,
@@ -46,6 +49,17 @@ function AlmacenContent() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<Insumo | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Cocina entra acá a ajustar existencias, pero el catálogo (unidad,
+  // contenido, precio) mueve el costo de las recetas y es de Administración.
+  // Los campos se ven igual, apagados: sirve saber en qué unidad está algo.
+  // Esto es solo la pantalla; el que corta de verdad es el servidor
+  // (lib/insumos-permisos.ts, usado en app/api/insumos/**).
+  const { perfilActivo } = useProfile()
+  const soloStock = !puedeEditarCatalogo(perfilActivo?.id)
+  // La vista por salón vive acá adentro (antes era la pantalla suelta
+  // /admin/stock-salones). Solo la ven los perfiles que ven el conteo
+  // consolidado; para Cocina la pestaña ni aparece.
+  const [pestana, setPestana] = useState<"insumos" | "salones">("insumos")
   // Insumo pendiente de eliminar (abre el diálogo de seguridad)
   const [insumoAEliminar, setInsumoAEliminar] = useState<Insumo | null>(null)
 
@@ -115,7 +129,7 @@ function AlmacenContent() {
     setIsSubmitting(true)
     try {
       if (editingInsumo) {
-        await updateInsumo(editingInsumo.id, formData)
+        await updateInsumo(editingInsumo.id, soloStock ? { stockActual: formData.stockActual } : formData)
       } else {
         await addInsumo(formData)
       }
@@ -275,6 +289,30 @@ function AlmacenContent() {
         <p className="mt-1 text-base text-muted-foreground">Gestiona tu inventario de insumos, precios y stock</p>
       </div>
 
+      {stockContado.visible && (
+        <div className="mb-4 inline-flex rounded-lg border p-1" role="group" aria-label="Qué mostrar">
+          {([
+            { v: "insumos", label: "Insumos" },
+            { v: "salones", label: "Stock por salón" },
+          ] as const).map((op) => (
+            <button
+              key={op.v}
+              type="button"
+              onClick={() => setPestana(op.v)}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                pestana === op.v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {op.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {stockContado.visible && pestana === "salones" ? (
+        <StockPorSalonTabla sector="cocina" insumos={insumos} />
+      ) : (
+      <>
       {/* Search and Add */}
       <Card>
         <CardHeader>
@@ -307,12 +345,14 @@ function AlmacenContent() {
                     if (!open) resetForm()
                   }}
                 >
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Agregar
-                    </Button>
-                  </DialogTrigger>
+                  {!soloStock && (
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Agregar
+                      </Button>
+                    </DialogTrigger>
+                  )}
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2.5">
@@ -320,10 +360,14 @@ function AlmacenContent() {
                           const Icono = iconoDeInsumo(formData.descripcion)
                           return <Icono className="h-6 w-6 shrink-0 text-muted-foreground/40" aria-hidden />
                         })()}
-                        {editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}
+                        {soloStock ? "Ajustar stock" : editingInsumo ? "Editar Insumo" : "Nuevo Insumo"}
                       </DialogTitle>
                       <DialogDescription>
-                        {editingInsumo ? "Modifica los datos del insumo" : "Agrega un nuevo insumo al almacén"}
+                        {soloStock
+                          ? "Corregí las existencias. El resto de los datos los cambia Administración."
+                          : editingInsumo
+                            ? "Modifica los datos del insumo"
+                            : "Agrega un nuevo insumo al almacén"}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -339,11 +383,11 @@ function AlmacenContent() {
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="descripcion" className="text-right">Descripción</Label>
-                        <Input id="descripcion" value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="col-span-3" placeholder="Ej: Aceite Girasol" />
+                        <Input id="descripcion" disabled={soloStock} value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="col-span-3" placeholder="Ej: Aceite Girasol" />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="unidad" className="text-right">Unidad</Label>
-                        <Select value={formData.unidad} onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}>
+                        <Select disabled={soloStock} value={formData.unidad} onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}>
                           <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
                           <SelectContent>{unidades.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
                         </Select>
@@ -359,6 +403,7 @@ function AlmacenContent() {
                           </Label>
                           <div className="col-span-3 space-y-1.5">
                             <ContenidoPorUnidadInput
+                              disabled={soloStock}
                               cantidad={formData.contenidoCantidad}
                               unidad={formData.contenidoUnidad}
                               onChange={(v) =>
@@ -389,11 +434,11 @@ function AlmacenContent() {
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="precio" className="text-right">Precio $</Label>
-                        <MoneyInput id="precio" value={formData.precioUnitario} onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })} className="col-span-3" />
+                        <MoneyInput id="precio" disabled={soloStock} value={formData.precioUnitario} onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })} className="col-span-3" />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
-                        <Input id="proveedor" value={formData.proveedor} onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })} className="col-span-3" placeholder="Ej: Distribuidora Norte" />
+                        <Input id="proveedor" disabled={soloStock} value={formData.proveedor} onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })} className="col-span-3" placeholder="Ej: Distribuidora Norte" />
                       </div>
                     </div>
                     <DialogFooter>
@@ -446,10 +491,15 @@ function AlmacenContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[80px]">Código</TableHead>
-                  <TableHead>Descripción</TableHead>
+                  <TableHead className="sticky left-0 z-20 bg-card">Descripción</TableHead>
                   <TableHead className="w-[80px]">Unidad</TableHead>
                   <TableHead className="w-[100px] text-right">Stock</TableHead>
-                  {stockContado.visible && <TableHead className="w-[170px] text-right">Contado en salones</TableHead>}
+                  {stockContado.visible &&
+                    stockContado.salones.map((s) => (
+                      <TableHead key={s.id} className="w-[76px] px-2 text-right align-bottom text-[11px] leading-tight" title={s.nombre}>
+                        {s.nombre}
+                      </TableHead>
+                    ))}
                   <TableHead className="w-[120px] text-right">Precio Unit.</TableHead>
                   <TableHead className="w-[130px]">Proveedor</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
@@ -464,9 +514,9 @@ function AlmacenContent() {
                   </TableRow>
                 ) : (
                   filteredInsumos.map((insumo) => (
-                    <TableRow key={insumo.id}>
+                    <TableRow key={insumo.id} className="bg-background">
                       <TableCell className="font-mono text-sm">{insumo.codigo}</TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium sticky left-0 z-10 bg-inherit [background-color:inherit]">
                         {/* Silueta del insumo: ayuda a reconocerlo de un
                             vistazo en una lista de 182. Decorativa, por eso
                             aria-hidden. */}
@@ -480,15 +530,17 @@ function AlmacenContent() {
                       </TableCell>
                       <TableCell>{insumo.unidad}</TableCell>
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
-                      {stockContado.visible && (
-                        <TableCell className="text-right">
-                          <StockContadoCelda
-                            resumen={stockContado.porInsumo.get(insumo.id)}
-                            unidad={insumo.unidad}
-                            salones={stockContado.salones}
-                          />
-                        </TableCell>
-                      )}
+                      {stockContado.visible &&
+                        stockContado.salones.map((s) => (
+                          <TableCell key={s.id} className="text-right">
+                            <StockSalonCelda
+                              resumen={stockContado.porInsumo.get(insumo.id)}
+                              unidad={insumo.unidad}
+                              salonId={s.id}
+                              salones={stockContado.salones}
+                            />
+                          </TableCell>
+                        ))}
                       <TableCell className="text-right">{formatCurrency(insumo.precioUnitario)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{insumo.proveedor || "-"}</TableCell>
                       <TableCell>
@@ -496,14 +548,16 @@ function AlmacenContent() {
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setInsumoAEliminar(insumo)}
-                            aria-label={`Eliminar ${insumo.descripcion}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {!soloStock && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setInsumoAEliminar(insumo)}
+                              aria-label={`Eliminar ${insumo.descripcion}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -515,6 +569,8 @@ function AlmacenContent() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Diálogo de seguridad para eliminar insumos */}
       <InsumoDeleteDialog

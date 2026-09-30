@@ -3,6 +3,8 @@
 // y pueden sobreescribirse con variables de entorno (PIN_COCINA, PIN_BARRA,
 // PIN_ADMINISTRACION, PIN_SOPORTE, PIN_COBRO, PIN_DJ, PIN_FOTOGRAFO,
 // PIN_VESTIDO, PIN_PANTALLA, PIN_COORDINACION, PIN_VENDEDOR) sin tocar el código.
+// También vive acá PIN_STOCK_EXTRA, que no es de un perfil sino de una acción
+// (la carga extraordinaria de stock): ver verifyPinStockExtra.
 // Usa Web Crypto (crypto.subtle) para que funcione tanto en Node como en Edge middleware.
 
 export const SESSION_COOKIE = "lj_session"
@@ -40,17 +42,34 @@ export function getPins(): Record<string, string> {
   }
 }
 
+/** Comparación de tiempo constante, para no filtrar el PIN por lo que tarda. */
+function coincide(esperado: string, recibido: string): boolean {
+  if (!esperado || !recibido) return false
+  if (esperado.length !== recibido.length) return false
+  let diff = 0
+  for (let i = 0; i < esperado.length; i++) {
+    diff |= esperado.charCodeAt(i) ^ recibido.charCodeAt(i)
+  }
+  return diff === 0
+}
+
 export function verifyPin(perfilId: string, pin: string): boolean {
   const pins = getPins()
   const expected = pins[perfilId]
-  if (!expected || !pin) return false
-  // Comparación de longitud constante para evitar timing attacks básicos
-  if (expected.length !== pin.length) return false
-  let diff = 0
-  for (let i = 0; i < expected.length; i++) {
-    diff |= expected.charCodeAt(i) ^ pin.charCodeAt(i)
-  }
-  return diff === 0
+  if (!expected) return false
+  return coincide(expected, pin)
+}
+
+/**
+ * PIN de ACCIÓN para la carga extraordinaria de stock (la que se hace sin un
+ * evento terminado detrás). No es un perfil: no crea sesión, no cambia el
+ * perfil activo, no habilita ninguna pantalla más. Solo abre esa carga.
+ *
+ * Se cambia con la variable de entorno PIN_STOCK_EXTRA, sin redeploy, igual
+ * que los PINs de los perfiles.
+ */
+export function verifyPinStockExtra(pin: string): boolean {
+  return coincide(process.env.PIN_STOCK_EXTRA || "9999", pin)
 }
 
 // --- Firma HMAC-SHA256 con Web Crypto (Edge + Node) ---

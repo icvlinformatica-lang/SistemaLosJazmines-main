@@ -1,6 +1,8 @@
 "use client"
 
 import { useStore } from "@/lib/store-context"
+import { insumosEnSalon } from "@/lib/stock-salon-evento"
+import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
 import {
   formatCurrency,
   calcularComprasSegmentadas,
@@ -114,6 +116,7 @@ export function UnifiedDocument({ snapshot, onClose, sections }: UnifiedDocument
   const showBarraCocteles = sections?.barraCocteles ?? true
   const showGuiaProduccion = sections?.guiaProduccion ?? true
   const { state } = useStore()
+  const stockSalones = useStockPorSalon()
   
   // Use snapshot data if provided, otherwise use live state
   const isHistoryMode = !!snapshot
@@ -150,11 +153,22 @@ export function UnifiedDocument({ snapshot, onClose, sections }: UnifiedDocument
   // For history mode, use saved compras; for live mode, calculate
   const compras = isHistoryMode 
     ? (snapshot?.compras || [])
-    : calcularComprasSegmentadas(evento, state.recetas, state.insumos)
+    : calcularComprasSegmentadas(
+        evento,
+        state.recetas,
+        // Contra el stock del salón del evento, no el total de los cinco.
+        stockSalones.listo ? insumosEnSalon(state.insumos, stockSalones.cocina, evento.salon) : state.insumos,
+      )
 
   const comprasBarras: CalculoCompraBarra[] = isHistoryMode
     ? (snapshot?.comprasBarras || [])
-    : calcularComprasBarras(evento, state.cocteles, state.insumosBarra)
+    : calcularComprasBarras(
+        evento,
+        state.cocteles,
+        stockSalones.listo
+          ? insumosEnSalon(state.insumosBarra, stockSalones.barra, evento.salon)
+          : state.insumosBarra,
+      )
 
   const costoTotalMateriaPrima = compras.reduce((sum, c) => sum + (c.costoMateriaPrima || 0), 0) + comprasBarras.reduce((sum, c) => sum + (c.costoMateriaPrima || 0), 0)
   const presupuestoCompra = compras.reduce((sum, c) => sum + (c.costoEstimado || 0), 0) + comprasBarras.reduce((sum, c) => sum + (c.costoEstimado || 0), 0)

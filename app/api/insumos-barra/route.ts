@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
+import { permisoInsumo, type AccionInsumo, type SectorInsumo } from "@/lib/insumos-permisos"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 
 // GET all insumos de barra - uses descripcion column
 export async function GET() {
@@ -33,6 +35,9 @@ export async function GET() {
 // POST create new insumo barra
 export async function POST(request: Request) {
   try {
+    const prohibido = await negar(request, "crear")
+    if (prohibido) return prohibido
+
     const body = await request.json()
     const id = generateId()
 
@@ -70,4 +75,17 @@ export async function POST(request: Request) {
     console.error("[API] Error creating insumo_barra:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+/**
+ * Cocina y Barra entran a estas pantallas para ajustar existencias, pero el
+ * catálogo (unidad, contenido, precio) es de Administración: ver
+ * lib/insumos-permisos.ts. El perfil sale del token firmado, no de lo que
+ * diga la pantalla.
+ */
+async function negar(request: Request, accion: AccionInsumo, campos?: string[]) {
+  const perfilId = await perfilDesdeRequest(request)
+  const veredicto = permisoInsumo({ perfilId, sector: "barra" as SectorInsumo, accion, campos })
+  if (veredicto.ok) return null
+  return NextResponse.json({ error: veredicto.error }, { status: 403 })
 }

@@ -28,7 +28,6 @@ import {
   Bell,
   Lock,
   ClipboardList,
-  Table2,
   BarChart2,
   Archive,
   Wallet,
@@ -122,8 +121,9 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
         // oculta solo para Administración/Soporte, que ven todo en "Stock";
         // /stock sigue accesible por URL (sirve para corregir una carga).
         ...(tieneAccesoTotal ? [] : [{ href: "/stock", label: "Stock por salón", icon: ClipboardList }]),
-        // Vista consolidada (solo Administración/Soporte, ver rutas del perfil).
-        { href: "/admin/stock-salones", label: "Stock", icon: Table2 },
+        // La vista consolidada dejó de ser una entrada propia: ahora es la
+        // pestaña "Stock por salón" adentro de Insumos Cocina e Insumos
+        // Bebidas, al lado del catálogo que le corresponde.
       ],
     },
     {

@@ -23,6 +23,9 @@ import {
   type CalculoCompraSegmentado,
 } from "@/lib/store"
 import { salonLabel } from "@/lib/store"
+import { insumosEnSalon } from "@/lib/stock-salon-evento"
+import { moverStockDelEvento, itemsDesdeMapa } from "@/lib/consumo-stock-evento"
+import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
 import { SalonDot } from "@/components/salon-badge"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useEventos } from "@/lib/use-eventos"
@@ -400,6 +403,9 @@ export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { state, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual, servicios: catalogoServicios } = useStore()
+  // Lo contado en cada salón: las compras de cada evento se calculan contra
+  // el stock de SU salón, no contra el total de los cinco.
+  const stockSalones = useStockPorSalon()
   const { eventos, loading: loadingEventos, fetchEventos, actualizarEvento: actualizarEventoDB, eliminarEvento: eliminarEventoDB } = useEventos()
 
   // Wrapper para actualizar evento en DB + sync local
@@ -529,7 +535,14 @@ export default function EventosListaPage() {
         continue
       }
 
-      const compras = calcularComprasSegmentadas(evento, recetas, insumos)
+      // Cada evento contra el stock de su propio salón: consolidar dos
+      // eventos de salones distintos no puede descontar la misma mercadería
+      // dos veces, porque cada uno mira la suya.
+      const compras = calcularComprasSegmentadas(
+        evento,
+        recetas,
+        stockSalones.listo ? insumosEnSalon(insumos, stockSalones.cocina, evento.salon) : insumos,
+      )
       for (const compra of compras) {
         if (mapa[compra.insumoId]) {
           mapa[compra.insumoId].cantidadNecesaria += compra.cantidadNecesaria
@@ -685,11 +698,13 @@ export default function EventosListaPage() {
       })
     })
 
-    // Devolver el stock (sumar lo que se habia descontado)
-    Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
-      const insumo = insumos.find((i) => i.id === insumoId)
-      if (!insumo) return
-      updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
+    // Devolver el stock AL SALÓN del que había salido.
+    await moverStockDelEvento({
+      salon: evento.salon,
+      eventoId: evento.id,
+      nombreEvento: evento.nombrePareja || evento.nombre || "Evento sin nombre",
+      motivo: "devolucion",
+      items: itemsDesdeMapa(stockDelta, "cocina", 1),
     })
 
     // Volver a pendiente via API y resetear campos de stock
@@ -737,10 +752,13 @@ export default function EventosListaPage() {
           stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
         })
       })
-      Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
-        const insumo = insumos.find((i) => i.id === insumoId)
-        if (!insumo) return
-        updateInsumo(insumoId, { stockActual: (insumo.stockActual || 0) + cantidad })
+      // Al eliminar, lo que se había descontado vuelve a SU salón.
+      await moverStockDelEvento({
+        salon: evento?.salon,
+        eventoId: evento?.id,
+        nombreEvento: evento?.nombrePareja || evento?.nombre || "Evento sin nombre",
+        motivo: "devolucion",
+        items: itemsDesdeMapa(stockDelta, "cocina", 1),
       })
     }
 
@@ -830,7 +848,20 @@ export default function EventosListaPage() {
 
     // Imprimir el documento
     imprimirDocumentoEvento(
-      { evento, recetas, insumos, insumosBarra, cocteles, barrasTemplates },
+      {
+        evento,
+        recetas,
+        // El papel dice qué falta comprar PARA ESE SALÓN.
+        insumos: stockSalones.listo ? insumosEnSalon(insumos, stockSalones.cocina, evento.salon) : insumos,
+        insumosBarra: stockSalones.listo
+          ? insumosEnSalon(insumosBarra, stockSalones.barra, evento.salon)
+          : insumosBarra,
+        cocteles,
+        barrasTemplates,
+        stockOtrosSalones: stockSalones.listo
+          ? { cocina: stockSalones.cocina, barra: stockSalones.barra, salon: evento.salon || null }
+          : undefined,
+      },
       seccionesSeleccionadas
     )
 
@@ -851,25 +882,27 @@ export default function EventosListaPage() {
           stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
         })
       })
-      Object.entries(stockDelta).forEach(([insumoId, cantidad]) => {
-        const insumo = insumos.find((i) => i.id === insumoId)
-        if (!insumo) return
-        const nuevoStock = Math.max(0, (insumo.stockActual || 0) - cantidad)
-        updateInsumo(insumoId, { stockActual: nuevoStock })
-      })
-
-      // Registrar en historial de actividad
+      // Lo consumido sale del salón del evento, no del total de los cinco.
+      // El endpoint deja el total como suma de los salones y registra solo el
+      // renglón de Actividad; lo que ese salón nunca contó no se toca.
       const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
-      fetch("/api/activity-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo: "evento",
-          accion: "modificado",
-          nombre: nombreEvento,
-          detalle: `Stock descontado al imprimir documento (${Object.keys(stockDelta).length} insumos afectados)`,
-        }),
-      }).catch(() => {})
+      const movido = await moverStockDelEvento({
+        salon: evento.salon,
+        eventoId: evento.id,
+        nombreEvento,
+        motivo: "impresion",
+        items: itemsDesdeMapa(stockDelta, "cocina", -1),
+      })
+      if (!movido.ok) {
+        toast({ title: "No se descontó el stock", description: movido.error, variant: "destructive" })
+      } else if (movido.sinConteo > 0) {
+        toast({
+          title: "Stock descontado en parte",
+          description: `${movido.sinConteo} ${movido.sinConteo === 1 ? "insumo no estaba contado" : "insumos no estaban contados"} en ${salonLabel(evento.salon || "")}, así que no se les descontó nada.`,
+        })
+      }
+      // El renglón de Actividad lo escribe /api/stock-salones/consumo, con el
+      // salón y cuántos quedaron sin contar. No hace falta otro acá.
 
       // Cambiar estado a En Preparacion y marcar stock como descontado
       await updateEvento(imprimirEventoId, {
