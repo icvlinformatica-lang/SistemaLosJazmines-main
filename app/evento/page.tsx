@@ -6,6 +6,9 @@ import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
+import { insumosEnSalon } from "@/lib/stock-salon-evento"
+import { moverStockDelEvento } from "@/lib/consumo-stock-evento"
+import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
 import {
   formatCurrency,
   calcularComprasSegmentadas,
@@ -122,6 +125,9 @@ function EventoPageContent() {
   const { toast } = useToast()
   
   const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores } = useStore()
+  // Lo contado en cada salón, para calcular las compras contra el stock del
+  // salón del evento en vez del total de los cinco.
+  const stockSalones = useStockPorSalon()
   // Editar a mano el precio que quedó fijado desde una cotización. Solo
   // Administración y Soporte: es el precio que se le cotizó al cliente, no
   // algo que se cambie al pasar.
@@ -935,21 +941,34 @@ function EventoPageContent() {
 
   // BUTTON 2: Close Event (Deducts stock, saves history, resets)
   const handleCloseEvent = () => {
-    // 1. Deduct calculated amounts from Kitchen Inventory
-    compras.forEach((compra) => {
-      const insumo = state.insumos.find((i) => i.id === compra.insumoId)
-      if (insumo) {
-        const newStock = Math.max(0, insumo.stockActual - compra.cantidadNecesaria)
-        updateInsumo(insumo.id, { stockActual: newStock })
-      }
-    })
+    // Sin evento no hay nada que cerrar. La guarda faltaba: el resto de la
+    // función ya usaba `evento` sin chequear.
+    if (!evento) return
 
-    // 1b. Deduct bar stock
-    comprasBarras.forEach((compra) => {
-      const insumo = state.insumosBarra.find((i) => i.id === compra.insumoBarraId)
-      if (insumo) {
-        const newStock = Math.max(0, insumo.stockActual - compra.cantidadNecesaria)
-        updateInsumoBarra(insumo.id, { stockActual: newStock })
+    // 1. Lo consumido sale del SALÓN donde se hizo el evento, cocina y barra
+    // en una sola llamada. El total queda como suma de los salones; lo que ese
+    // salón nunca contó no se toca (ver /api/stock-salones/consumo).
+    void moverStockDelEvento({
+      salon: evento.salon,
+      eventoId: evento.id,
+      nombreEvento: evento.nombrePareja || evento.nombre || "Evento sin nombre",
+      motivo: "cierre",
+      items: [
+        ...compras.map((c) => ({ insumoId: c.insumoId, sector: "cocina" as const, delta: -c.cantidadNecesaria })),
+        ...comprasBarras.map((c) => ({
+          insumoId: c.insumoBarraId,
+          sector: "barra" as const,
+          delta: -c.cantidadNecesaria,
+        })),
+      ],
+    }).then((r) => {
+      if (!r.ok) {
+        toast({ title: "No se descontó el stock", description: r.error, variant: "destructive" })
+      } else if (r.sinConteo > 0) {
+        toast({
+          title: "Stock descontado en parte",
+          description: `${r.sinConteo} ${r.sinConteo === 1 ? "insumo no estaba contado" : "insumos no estaban contados"} en ese salón, así que no se les descontó nada.`,
+        })
       }
     })
 
@@ -1218,8 +1237,17 @@ function EventoPageContent() {
 
   const totalPersonas = evento.adultos + evento.adolescentes + evento.ninos + (evento.personasDietasEspeciales || 0)
 
-  const compras = calcularComprasSegmentadas(evento, state.recetas, state.insumos)
-  const comprasBarras = calcularComprasBarras(evento, state.cocteles, state.insumosBarra)
+  // Las compras se calculan contra el stock DEL SALÓN del evento, no contra
+  // el total de los cinco (lib/stock-salon-evento.ts). Mientras el conteo por
+  // salón no cargó, se usa el total, que es lo que había antes.
+  const insumosDelSalon = stockSalones.listo
+    ? insumosEnSalon(state.insumos, stockSalones.cocina, evento.salon)
+    : state.insumos
+  const insumosBarraDelSalon = stockSalones.listo
+    ? insumosEnSalon(state.insumosBarra, stockSalones.barra, evento.salon)
+    : state.insumosBarra
+  const compras = calcularComprasSegmentadas(evento, state.recetas, insumosDelSalon)
+  const comprasBarras = calcularComprasBarras(evento, state.cocteles, insumosBarraDelSalon)
   const costoTotalMateriaPrima = compras.reduce((sum, c) => sum + c.costoMateriaPrima, 0) + comprasBarras.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
   const presupuestoCompra = compras.reduce((sum, c) => sum + c.costoEstimado, 0) + comprasBarras.reduce((sum, c) => sum + c.costoEstimado, 0)
   const serviciosEvento = evento.servicios || []

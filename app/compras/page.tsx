@@ -4,6 +4,8 @@ import { useState } from "react"
 import { Navigation } from "@/components/navigation"
 import { useStore } from "@/lib/store-context"
 import { formatCurrency, calcularCompras } from "@/lib/store"
+import { insumosEnSalon } from "@/lib/stock-salon-evento"
+import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table"
@@ -22,6 +24,7 @@ import { cn } from "@/lib/utils"
 
 export default function ComprasPage() {
   const { state } = useStore()
+  const stockSalones = useStockPorSalon()
   const evento = state.eventoActual
   const selectedReceta = state.recetas.find((r) => r.id === evento?.recetaId)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -52,9 +55,11 @@ export default function ComprasPage() {
     )
   }
 
+  // El stock que cuenta es el del salón del evento, no el total de los cinco
+  // (lib/stock-salon-evento.ts). Mientras no cargó, el total de siempre.
   const compras = calcularCompras(
     selectedReceta,
-    state.insumos,
+    stockSalones.listo ? insumosEnSalon(state.insumos, stockSalones.cocina, evento.salon) : state.insumos,
     evento.adultos,
     evento.adolescentes,
     evento.ninos,

@@ -1,5 +1,6 @@
 "use client"
 
+import { hayEnOtrosSalones, salonSinConteos, type StockPorSalon } from "@/lib/stock-salon-evento"
 import {
   formatCurrency,
   calcularComprasSegmentadas,
@@ -40,10 +41,34 @@ export interface DocumentSections {
 export interface PrintData {
   evento: Evento
   recetas: Receta[]
+  /** Con `stockActual` YA proyectado al salón del evento (insumosEnSalon). */
   insumos: Insumo[]
   insumosBarra: InsumoBarra[]
   cocteles: Coctel[]
   barrasTemplates: BarraTemplate[]
+  /**
+   * Lo contado en los OTROS salones, para la columna "en otros salones": el
+   * que compra ve "faltan 50, pero hay 222 en Casona" y decide si lo trae en
+   * vez de comprarlo. Sin esto, el papel sale como antes.
+   */
+  stockOtrosSalones?: {
+    cocina: StockPorSalon
+    barra: StockPorSalon
+    salon: string | null
+  }
+}
+
+/** "222 Casona" o "222 Casona + 30 Quinta". Vacío si no hay en ningún lado. */
+function textoOtrosSalones(
+  stock: StockPorSalon | undefined,
+  salonEvento: string | null,
+  insumoId: string,
+  unidad: string,
+): string {
+  if (!stock) return ""
+  const { detalle } = hayEnOtrosSalones(stock, insumoId, salonEvento)
+  if (detalle.length === 0) return ""
+  return detalle.map((d) => `${smartUnitsForShopping(d.cantidad, unidad)} ${salonLabel(d.salon)}`).join(" + ")
 }
 
 function smartUnitsForShopping(amount: number, unit: string): string {
@@ -124,6 +149,15 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
   const recetasAdolescentesSeleccionadas = recetas.filter((r) => recetasAdolescentes.includes(r.id))
   const recetasNinosSeleccionadas = recetas.filter((r) => recetasNinos.includes(r.id))
   const recetasDietasEspecialesSeleccionadas = recetas.filter((r) => recetasDietasEspeciales.includes(r.id))
+
+  // Con conteo por salón, "EN STOCK" pasa a ser "lo que hay EN ESE SALÓN", y
+  // se agrega una columna con lo que hay en los otros, para poder traerlo en
+  // vez de comprarlo.
+  const salonEvento = data.stockOtrosSalones?.salon ?? null
+  const porSalon = data.stockOtrosSalones
+  const tituloStock = porSalon && salonEvento ? `EN ${salonLabel(salonEvento).toUpperCase()}` : "EN STOCK"
+  const avisoSinConteo =
+    porSalon && salonEvento && salonSinConteos(porSalon.cocina, salonEvento) && salonSinConteos(porSalon.barra, salonEvento)
 
   const compras = calcularComprasSegmentadas(evento, recetas, insumos)
   const comprasBarras: CalculoCompraBarra[] = calcularComprasBarras(evento, cocteles, insumosBarra)
@@ -210,7 +244,14 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
   // ========== LISTA DE COMPRAS COCINA ==========
   if (showListaCompras) {
     html += `<h2 style="${S.sectionTitle}">LISTA DE COMPRAS CONSOLIDADA</h2>`
-    html += `<p style="margin:-10px 0 16px;text-align:center;font-size:9pt;color:#555;">Insumos en stock hasta el ${fechaDelStock()}</p>`
+    html += `<p style="margin:-10px 0 16px;text-align:center;font-size:9pt;color:#555;">Insumos en stock hasta el ${fechaDelStock()}${
+      porSalon && salonEvento ? ` · lo que hay en ${salonLabel(salonEvento)}` : ""
+    }</p>`
+    if (avisoSinConteo) {
+      html += `<p style="margin:-8px 0 16px;padding:6px 10px;border:1px solid #000;text-align:center;font-size:9pt;font-weight:bold;">ATENCION: en ${salonLabel(
+        salonEvento!,
+      )} todavia no se cargo ningun conteo de stock, asi que esta lista pide todo de cero.</p>`
+    }
     html += `<div style="${S.costBox}">`
     html += `<div><span style="font-weight:600">Costo Total Insumos:</span> <strong>${formatCurrency(costoTotalMateriaPrima)}</strong> <span style="font-size:8pt;margin-left:4px">(valor real)</span></div>`
     html += `<div><span style="font-weight:600">Precio Stock:</span> <strong>${formatCurrency(presupuestoCompra)}</strong> <span style="font-size:8pt;margin-left:4px">(lo que falta)</span></div>`
@@ -220,8 +261,9 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     html += `<th style="${S.thBlack}text-align:left;">INSUMO</th>`
     html += `<th style="${S.thBlack}text-align:left;width:80px;">PROVEEDOR</th>`
     html += `<th style="${S.thBlack}text-align:right;width:70px;">NECESARIO</th>`
-    html += `<th style="${S.thBlack}text-align:right;width:70px;">EN STOCK</th>`
+    html += `<th style="${S.thBlack}text-align:right;width:70px;">${tituloStock}</th>`
     html += `<th style="${S.thBlack}text-align:right;width:70px;">FALTANTE</th>`
+    if (porSalon) html += `<th style="${S.thBlack}text-align:left;width:110px;">EN OTROS SALONES</th>`
     html += `<th style="${S.thBlack}text-align:right;width:80px;">COSTO TOTAL</th>`
     html += `<th style="${S.thBlack}text-align:right;width:80px;">PRECIO STOCK</th>`
     html += `</tr></thead><tbody>`
@@ -245,12 +287,16 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(item.cantidadNecesaria, d.unidad)}</td>`
       html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(d.stockActual, d.unidad)}</td>`
       html += `<td style="${td}text-align:right;font-family:monospace;font-weight:bold;">${buy ? smartUnitsForShopping(item.cantidadAComprar, d.unidad) : "-"}</td>`
+      if (porSalon) {
+        const otros = buy ? textoOtrosSalones(porSalon.cocina, salonEvento, d.id, d.unidad) : ""
+        html += `<td style="${td}font-size:8pt;">${otros || "-"}</td>`
+      }
       html += `<td style="${td}text-align:right;font-family:monospace;">${formatCurrency(item.costoMateriaPrima || 0)}</td>`
       html += `<td style="${td}text-align:right;font-family:monospace;">${buy ? formatCurrency(item.costoEstimado) : "-"}</td>`
       html += `</tr>`
     })
     html += `</tbody><tfoot><tr>`
-    html += `<td colspan="5" style="${S.tfootTd}text-align:right;">TOTALES:</td>`
+    html += `<td colspan="${porSalon ? 6 : 5}" style="${S.tfootTd}text-align:right;">TOTALES:</td>`
     html += `<td style="${S.tfootTd}text-align:right;font-size:10pt;">${formatCurrency(costoTotalMateriaPrima)}</td>`
     html += `<td style="${S.tfootTd}text-align:right;font-size:10pt;">${formatCurrency(presupuestoCompra)}</td>`
     html += `</tr></tfoot></table>`
@@ -260,7 +306,14 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
   if (showBarraCocteles && comprasBarras.length > 0) {
     html += `<div style="margin-top:28px;">`
     html += `<h2 style="${S.sectionTitle}">LISTA DE COMPRAS - BARRA</h2>`
-    html += `<p style="margin:-10px 0 16px;text-align:center;font-size:9pt;color:#555;">Insumos en stock hasta el ${fechaDelStock()}</p>`
+    html += `<p style="margin:-10px 0 16px;text-align:center;font-size:9pt;color:#555;">Insumos en stock hasta el ${fechaDelStock()}${
+      porSalon && salonEvento ? ` · lo que hay en ${salonLabel(salonEvento)}` : ""
+    }</p>`
+    if (avisoSinConteo) {
+      html += `<p style="margin:-8px 0 16px;padding:6px 10px;border:1px solid #000;text-align:center;font-size:9pt;font-weight:bold;">ATENCION: en ${salonLabel(
+        salonEvento!,
+      )} todavia no se cargo ningun conteo de stock, asi que esta lista pide todo de cero.</p>`
+    }
 
     const barrasArr = Array.isArray(evento.barras) ? evento.barras : (typeof evento.barras === "string" ? (() => { try { return JSON.parse(evento.barras) } catch { return [] } })() : [])
     if (barrasArr && barrasArr.length > 0) {
@@ -277,8 +330,9 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     html += `<th style="${S.thBlack}text-align:left;">INSUMO</th>`
     html += `<th style="${S.thBlack}text-align:left;width:80px;">PROVEEDOR</th>`
     html += `<th style="${S.thBlack}text-align:right;width:70px;">NECESARIO</th>`
-    html += `<th style="${S.thBlack}text-align:right;width:70px;">EN STOCK</th>`
+    html += `<th style="${S.thBlack}text-align:right;width:70px;">${tituloStock}</th>`
     html += `<th style="${S.thBlack}text-align:right;width:70px;">FALTANTE</th>`
+    if (porSalon) html += `<th style="${S.thBlack}text-align:left;width:110px;">EN OTROS SALONES</th>`
     html += `<th style="${S.thBlack}text-align:right;width:80px;">COSTO TOTAL</th>`
     html += `<th style="${S.thBlack}text-align:right;width:80px;">PRECIO STOCK</th>`
     html += `</tr></thead><tbody>`
@@ -300,6 +354,10 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
       html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(item.cantidadNecesaria, item.insumoBarra.unidad)}</td>`
       html += `<td style="${td}text-align:right;font-family:monospace;">${smartUnitsForShopping(item.insumoBarra.stockActual, item.insumoBarra.unidad)}</td>`
       html += `<td style="${td}text-align:right;font-family:monospace;font-weight:bold;">${buy ? smartUnitsForShopping(item.cantidadAComprar, item.insumoBarra.unidad) : "-"}</td>`
+      if (porSalon) {
+        const otros = buy ? textoOtrosSalones(porSalon.barra, salonEvento, item.insumoBarra.id, item.insumoBarra.unidad) : ""
+        html += `<td style="${td}font-size:8pt;">${otros || "-"}</td>`
+      }
       html += `<td style="${td}text-align:right;font-family:monospace;">${formatCurrency(item.costoMateriaPrima || 0)}</td>`
       html += `<td style="${td}text-align:right;font-family:monospace;">${buy ? formatCurrency(item.costoEstimado) : "-"}</td>`
       html += `</tr>`
@@ -307,7 +365,7 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
     const costoTotalBarraMP = comprasBarras.reduce((sum, c) => sum + (c.costoMateriaPrima || 0), 0)
     const costoTotalBarraDesembolso = comprasBarras.reduce((sum, c) => sum + c.costoEstimado, 0)
     html += `</tbody><tfoot><tr>`
-    html += `<td colspan="5" style="${S.tfootTd}text-align:right;">TOTALES BARRA:</td>`
+    html += `<td colspan="${porSalon ? 6 : 5}" style="${S.tfootTd}text-align:right;">TOTALES BARRA:</td>`
     html += `<td style="${S.tfootTd}text-align:right;font-size:10pt;">${formatCurrency(costoTotalBarraMP)}</td>`
     html += `<td style="${S.tfootTd}text-align:right;font-size:10pt;">${formatCurrency(costoTotalBarraDesembolso)}</td>`
     html += `</tr></tfoot></table>`
