@@ -71,6 +71,18 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
     return [{ href: "/eventos/staff", label: "Próximos eventos", icon: Calendar }]
   }
 
+  // Barra: tres accesos y nada más. Contar lo que quedó en el salón, consultar
+  // de qué está hecho cada cóctel (sin precios ni edición) y ver qué se viene
+  // con las barras contratadas. Antes usaba el menú general filtrado por
+  // rutas, que le dejaba ver el catálogo de bebidas y las guías de producción.
+  if (perfilId === "barra") {
+    return [
+      { href: "/stock", label: "Stock por salón", icon: ClipboardList },
+      { href: "/admin/cocteles", label: "Cocteles", icon: Wine },
+      { href: "/eventos/staff", label: "Próximos eventos", icon: Calendar },
+    ]
+  }
+
   // Perfil "Vendedor"
   if (perfilId === "vendedor") {
     return [
@@ -120,6 +132,10 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
         // Barra (no tiene menú propio): para Barra es su acceso de carga. Se
         // oculta solo para Administración/Soporte, que ven todo en "Stock";
         // /stock sigue accesible por URL (sirve para corregir una carga).
+        // Cocina llega a la carga por acá (tiene menú propio, pero este grupo
+        // también se le arma). Administración/Soporte la ven en la pestaña de
+        // Insumos, así que se les oculta. Barra ya no pasa por acá: tiene menú
+        // propio (más arriba).
         ...(tieneAccesoTotal ? [] : [{ href: "/stock", label: "Stock por salón", icon: ClipboardList }]),
         // La vista consolidada dejó de ser una entrada propia: ahora es la
         // pestaña "Stock por salón" adentro de Insumos Cocina e Insumos

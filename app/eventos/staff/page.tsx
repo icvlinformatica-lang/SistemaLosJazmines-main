@@ -1,21 +1,26 @@
 "use client"
 
 // Pantalla de solo lectura para staff externo (DJ, Fotógrafo, Vestido,
-// Pantalla, Coordinación): calendario de próximos eventos. Al tocar un
-// evento se abre un panel con fecha, festejados, tipo de evento, teléfono
-// de contacto y los servicios contratados, resaltando el que le
-// corresponde al perfil activo. Página aparte de /eventos/produccion,
-// que sigue siendo solo para cocina/barra.
+// Pantalla, Coordinación) y para BARRA: calendario de próximos eventos. Al
+// tocar un evento se abre un panel con fecha, festejados, tipo de evento,
+// teléfono de contacto y los servicios contratados, resaltando el que le
+// corresponde al perfil activo.
+//
+// Barra además ve las BARRAS CONTRATADAS de cada evento (qué barra y cuántos
+// tragos por persona), que es lo que necesita para saber qué preparar. Es su
+// única ventana a la agenda: no entra a /eventos/produccion (guías de
+// producción, que quedó solo para cocina).
 
 import { useMemo, useState } from "react"
 import { useEventos } from "@/lib/use-eventos"
 import { useProfile } from "@/lib/profile-context"
+import { useStore } from "@/lib/store-context"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye } from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye, Wine } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { EventoGuardado } from "@/lib/store"
 
@@ -61,6 +66,18 @@ type CeldaDia = { dia: number; eventos: EventoGuardado[] } | null
 export default function StaffPage() {
   const { eventos, loading } = useEventos()
   const { perfilActivo } = useProfile()
+  // Las barras contratadas son lo que Barra viene a mirar. El resto del staff
+  // no las necesita, así que la sección aparece solo para ese perfil.
+  const { state } = useStore()
+  const esBarra = perfilActivo?.id === "barra"
+  // Casi todas las barras se arman a mano en el evento y quedan con
+  // `barraTemplateId` vacío: el nombre de plantilla no existe. Lo que sirve
+  // para preparar es qué cócteles incluye, así que eso es lo que se muestra.
+  const nombreBarra = (barraTemplateId: string, i: number) =>
+    (state.barrasTemplates || []).find((b) => b.id === barraTemplateId)?.nombre ||
+    (i === 0 ? "Barra del evento" : `Barra ${i + 1}`)
+  const nombreCoctel = (coctelId: string) =>
+    (state.cocteles || []).find((c) => c.id === coctelId)?.nombre || "Cóctel que ya no está en la carta"
   // Refresca eventos cada 15s y al volver a la pestaña, para que el
   // calendario y los servicios reflejen cambios sin recargar a mano.
   useSyncTiempoReal()
@@ -323,6 +340,45 @@ export default function StaffPage() {
                   <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
                     <p className="mb-1 text-xs font-semibold text-sky-800">Nota</p>
                     <p className="whitespace-pre-line text-sm text-sky-900">{selectedEvento.notaStaff}</p>
+                  </div>
+                )}
+
+                {esBarra && (
+                  <div>
+                    <h4 className="mb-2 text-sm font-semibold">Barras contratadas</h4>
+                    {(selectedEvento.barras || []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Este evento no tiene barras contratadas.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {(selectedEvento.barras || []).map((b, i) => (
+                          <div key={b.id || i} className="rounded-lg border border-primary bg-primary/10 p-3">
+                            <div className="flex items-center justify-between gap-2 text-sm font-semibold text-primary">
+                              <span className="flex min-w-0 items-center gap-2">
+                                <Wine className="h-4 w-4 shrink-0" />
+                                <span className="truncate">{nombreBarra(b.barraTemplateId, i)}</span>
+                              </span>
+                              {b.tragosPorPersona > 0 && (
+                                <Badge variant="outline" className="shrink-0">
+                                  {b.tragosPorPersona} {b.tragosPorPersona === 1 ? "trago" : "tragos"} por persona
+                                </Badge>
+                              )}
+                            </div>
+                            {(b.coctelesIncluidos || []).length === 0 ? (
+                              <p className="mt-2 text-sm text-muted-foreground">Sin cócteles cargados.</p>
+                            ) : (
+                              <ul className="mt-2 space-y-1">
+                                {(b.coctelesIncluidos || []).map((coctelId, j) => (
+                                  <li key={`${coctelId}-${j}`} className="flex items-baseline gap-2 text-sm">
+                                    <span className="text-primary/60">·</span>
+                                    <span>{nombreCoctel(coctelId)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

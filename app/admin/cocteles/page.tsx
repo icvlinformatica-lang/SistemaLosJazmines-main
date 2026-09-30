@@ -16,6 +16,8 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
+import { useProfile } from "@/lib/profile-context"
+import { puedeEditarCocteles, puedeVerCostosCocteles } from "@/lib/cocteles-permisos"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -37,6 +39,13 @@ import { cn } from "@/lib/utils"
 export default function CoctelesPage() {
   const { state, addCoctel, updateCoctel, deleteCoctel } = useStore()
   const [selectedCoctel, setSelectedCoctel] = useState<Coctel | null>(state.cocteles[0] || null)
+  // Barra entra acá solo para consultar de qué está hecho cada cóctel: ve los
+  // insumos y las cantidades, no los precios ni los botones de editar. Los
+  // precios de la barra los maneja Administración. Esto es la pantalla; el
+  // servidor corta igual (lib/cocteles-permisos.ts, usado en /api/cocteles).
+  const { perfilActivo } = useProfile()
+  const puedeEditar = puedeEditarCocteles(perfilActivo?.id)
+  const veCostos = puedeVerCostosCocteles(perfilActivo?.id)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
 
@@ -225,11 +234,16 @@ export default function CoctelesPage() {
             {/* Avisa si hay insumos cuyo costo está mal calculado por
                 unidades que no se pueden convertir. Se abre solo una vez
                 por día; después queda este botón. */}
-            <div className="mt-2">
-              <CostosARevisar pantalla="cocteles" />
-            </div>
-            <p className="mt-1 text-base text-muted-foreground">Crea y gestiona tus recetas de cocteles</p>
+            {veCostos && (
+              <div className="mt-2">
+                <CostosARevisar pantalla="cocteles" />
+              </div>
+            )}
+            <p className="mt-1 text-base text-muted-foreground">
+              {puedeEditar ? "Crea y gestiona tus recetas de cocteles" : "De qué está hecho cada cóctel"}
+            </p>
           </div>
+          {puedeEditar && (
           <div className="flex flex-wrap gap-2">
             <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
               <DialogTrigger asChild>
@@ -489,6 +503,7 @@ export default function CoctelesPage() {
               </DialogContent>
             </Dialog>
           </div>
+          )}
         </div>
 
         {/* Category Filter */}
@@ -538,12 +553,15 @@ export default function CoctelesPage() {
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Sin Alcohol</Badge>
                     )}
                   </div>
-                  <span className="text-sm font-semibold text-teal-600 tabular-nums shrink-0">
-                    {formatCurrency(getCostoCoctel(coctel))}
-                  </span>
+                  {veCostos && (
+                    <span className="text-sm font-semibold text-teal-600 tabular-nums shrink-0">
+                      {formatCurrency(getCostoCoctel(coctel))}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {coctel.insumos.length} insumos · costo por persona
+                  {coctel.insumos.length} {coctel.insumos.length === 1 ? "insumo" : "insumos"}
+                  {veCostos ? " · costo por persona" : ""}
                 </p>
               </button>
             ))}
@@ -567,22 +585,26 @@ export default function CoctelesPage() {
                         <Badge variant={(selectedCoctel.categoria || "Con Alcohol") === "Sin Alcohol" ? "secondary" : "outline"}>
                           {selectedCoctel.categoria || "Con Alcohol"}
                         </Badge>
-                        <Badge className="bg-teal-100 text-teal-700 border-teal-200 tabular-nums">
-                          {formatCurrency(getCostoCoctel(selectedCoctel))} por persona
-                        </Badge>
+                        {veCostos && (
+                          <Badge className="bg-teal-100 text-teal-700 border-teal-200 tabular-nums">
+                            {formatCurrency(getCostoCoctel(selectedCoctel))} por persona
+                          </Badge>
+                        )}
                       </div>
                       <CardDescription className="mt-1">{selectedCoctel.descripcion}</CardDescription>
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="bg-transparent" onClick={handleEditCoctel}>
-                        <Pencil className="h-4 w-4 mr-1" />
-                        Editar
-                      </Button>
-                      <Button variant="outline" size="sm" className="bg-transparent text-destructive" onClick={handleDeleteCoctel}>
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Eliminar
-                      </Button>
-                    </div>
+                    {puedeEditar && (
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" className="bg-transparent" onClick={handleEditCoctel}>
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Editar
+                        </Button>
+                        <Button variant="outline" size="sm" className="bg-transparent text-destructive" onClick={handleDeleteCoctel}>
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Eliminar
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
