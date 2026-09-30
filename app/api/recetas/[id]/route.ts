@@ -2,6 +2,18 @@ export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
+import { puedeEditarRecetas, ERROR_SIN_PERMISO_RECETAS } from "@/lib/recetas-permisos"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
+
+/**
+ * El recetario lo maneja Administración: la receta define el costo de la
+ * comida de un evento. El perfil sale del token firmado, no de la pantalla.
+ */
+async function negar(request: Request) {
+  const perfilId = await perfilDesdeRequest(request)
+  if (puedeEditarRecetas(perfilId)) return null
+  return NextResponse.json({ error: ERROR_SIN_PERMISO_RECETAS }, { status: 403 })
+}
 
 // GET single receta with insumos
 export async function GET(
@@ -52,6 +64,8 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const sinPermiso = await negar(request)
+  if (sinPermiso) return sinPermiso
   try {
     const { id } = await params
     const body = await request.json()
@@ -124,6 +138,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const sinPermiso = await negar(request)
+  if (sinPermiso) return sinPermiso
   try {
     const { id } = await params
     await sql`DELETE FROM recetas WHERE id = ${id}`

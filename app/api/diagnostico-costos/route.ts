@@ -8,6 +8,8 @@ import {
   type LineaDiagnostico,
   type InsumoDiagnostico,
 } from "@/lib/diagnostico-costos"
+import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 
 /**
  * Costos mal calculados por unidades que no se pueden convertir (ver
@@ -20,9 +22,20 @@ import {
  *
  * Solo lee y escribe el contenido por unidad: no toca precios, ni recetas, ni
  * eventos. El costo de los eventos se recalcula solo, porque se calcula en vivo.
+ *
+ * Solo Administración y Soporte: el contenido por unidad es parte del catálogo
+ * de insumos (mueve costos) y ningún otro perfil tiene esas pantallas.
  */
 
-export async function GET() {
+async function negar(request: Request) {
+  const perfilId = await perfilDesdeRequest(request)
+  if (puedeEditarCatalogo(perfilId)) return null
+  return NextResponse.json({ ok: false, error: "Los costos a revisar los maneja Administración." }, { status: 403 })
+}
+
+export async function GET(request: Request) {
+  const sinPermiso = await negar(request)
+  if (sinPermiso) return sinPermiso
   try {
     // Dos tandas en vez de seis consultas en paralelo: el pooler de Supabase
     // toma una conexión por consulta simultánea (ver /api/vendedor/catalogo).
@@ -104,6 +117,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const sinPermiso = await negar(req)
+  if (sinPermiso) return sinPermiso
   try {
     const body = await req.json().catch(() => ({}))
     const insumoId = typeof body.insumoId === "string" ? body.insumoId : ""
