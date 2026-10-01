@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
 
 /**
  * Catálogo saneado para la pantalla del vendedor (/vendedor/cotizar):
@@ -61,6 +62,11 @@ export async function GET() {
       sql`SELECT personal_id, dia FROM salon_incluye_personal`,
     ])
 
+    // Tercera tanda (mismo motivo que arriba): la carta de cócteles con su
+    // precio por trago para la barra personalizada. Del costo solo se usa el
+    // resultado; el costo en sí NUNCA viaja al vendedor.
+    const preciosCocteles = await leerPreciosCocteles()
+
     const preciosVentaMap: Record<string, Record<string, number>> = {}
     for (const row of preciosVenta as unknown as Array<{ salon: string; fecha: string; precio: number }>) {
       preciosVentaMap[row.salon] = preciosVentaMap[row.salon] || {}
@@ -88,6 +94,14 @@ export async function GET() {
       })),
       preciosVenta: preciosVentaMap,
       preciosBaseSalon: preciosBaseSalonMap,
+      // Carta para la barra personalizada: nombre y PRECIO por trago (costo ×
+      // 1,5, ver lib/precio-barra.ts). Nunca el costo.
+      cocteles: preciosCocteles.map((c) => ({
+        id: c.id,
+        nombre: c.nombre,
+        categoria: c.categoria,
+        precioPorTrago: c.precioPorTrago,
+      })),
       personal: (personal as unknown as Array<Record<string, unknown>>).map((p) => ({
         id: p.id,
         nombre: p.nombre,

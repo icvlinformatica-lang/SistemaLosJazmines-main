@@ -40,6 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { costoPorTrago } from "@/lib/precio-barra"
 import { cn } from "@/lib/utils"
 
 export default function CoctelesPage() {
@@ -181,14 +182,9 @@ export default function CoctelesPage() {
     a.descripcion.localeCompare(b.descripcion, "es", { sensitivity: "base" }),
   )
 
-  // Costo del coctel por persona: suma de (cantidad convertida a unidad de stock) x precio unitario de cada insumo
-  const getCostoCoctel = (coctel: Coctel) =>
-    coctel.insumos.reduce((total, ing) => {
-      const insumo = getInsumoBarraById(ing.insumoBarraId)
-      if (!insumo) return total
-      const qtyEnStock = normalizeToStockUnit(ing.cantidadPorCoctel, ing.unidadCoctel, insumo.unidad, contenidoDe(insumo))
-      return total + qtyEnStock * (insumo.precioUnitario || 0)
-    }, 0)
+  // Costo del coctel por persona: suma de (cantidad convertida a unidad de stock) x precio unitario de cada insumo.
+  // Misma cuenta que usa el cotizador para el precio de la barra personalizada (lib/precio-barra.ts).
+  const getCostoCoctel = (coctel: Coctel) => costoPorTrago(coctel, state.insumosBarra)
 
   // --- Convertir un insumo de barra en un coctel (para que aparezca en el evento) ---
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false)

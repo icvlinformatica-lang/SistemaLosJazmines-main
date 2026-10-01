@@ -46,6 +46,8 @@ interface CotizacionPendiente {
   precioBaseSalon: number
   costosServicios: Array<{ servicioId: string; nombre: string; cantidad: number; costoTotal: number }>
   totalCostoServicios: number
+  /** Costo de los tragos de la barra personalizada (0 si no hay). */
+  costoBarraPersonalizada: number
 }
 
 const fmt = (n: number) =>
@@ -286,7 +288,8 @@ export default function CotizacionesPendientesPage() {
           </div>
         ) : (
           cotizaciones.map((c) => {
-            const ganancia = c.precioVentaSugerido - (c.precioBaseSalon + c.totalCostoServicios)
+            const costoBarra = c.costoBarraPersonalizada || 0
+            const ganancia = c.precioVentaSugerido - (c.precioBaseSalon + c.totalCostoServicios + costoBarra)
             const abierta = abiertaId === c.id
             return (
               <div
@@ -418,9 +421,15 @@ export default function CotizacionesPendientesPage() {
                             <span className="tabular-nums">{fmt(c.precioBaseSalon)}</span>
                           </div>
                         )}
+                        {costoBarra > 0 && (
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Costo de la barra personalizada (tragos)</span>
+                            <span className="tabular-nums">{fmt(costoBarra)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between text-muted-foreground">
-                          <span>Costo interno total (servicios)</span>
-                          <span className="tabular-nums text-red-600">{fmt(c.precioBaseSalon + c.totalCostoServicios)}</span>
+                          <span>Costo interno total (servicios{costoBarra > 0 ? " y barra" : ""})</span>
+                          <span className="tabular-nums text-red-600">{fmt(c.precioBaseSalon + c.totalCostoServicios + costoBarra)}</span>
                         </div>
                         <div className="flex justify-between font-semibold">
                           <span>Precio de venta</span>

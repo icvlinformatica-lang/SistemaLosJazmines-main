@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
+import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
 
 /**
  * Trae una cotización completa para reabrirla en /vendedor/cotizar?id=...
@@ -119,11 +120,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           ninos: Array.isArray(recetasElegidas.ninos) ? recetasElegidas.ninos : [],
           dietasEspeciales: Array.isArray(recetasElegidas.dietasEspeciales) ? recetasElegidas.dietasEspeciales : [],
         },
-        serviciosElegidos: servicios.map((s: { servicioId: string; cantidad: number }) => ({
-          servicioId: s.servicioId,
-          cantidad: s.cantidad || 1,
-        })),
+        // La línea "Barra personalizada" no es un servicio elegible: se
+        // reconstruye a partir de `barra` (abajo).
+        serviciosElegidos: servicios
+          .filter((s: { servicioId: string }) => s.servicioId !== ID_BARRA_PERSONALIZADA)
+          .map((s: { servicioId: string; cantidad: number }) => ({
+            servicioId: s.servicioId,
+            cantidad: s.cantidad || 1,
+          })),
         personalSeleccionado,
+        barra:
+          serviciosElegidosData.barra && ["clasica", "personalizada"].includes(serviciosElegidosData.barra.tipo)
+            ? {
+                tipo: serviciosElegidosData.barra.tipo,
+                cocteles: Array.isArray(serviciosElegidosData.barra.cocteles) ? serviciosElegidosData.barra.cocteles : [],
+              }
+            : null,
         precioVentaSugerido: Number(f.precio_venta_sugerido) || 0,
         modalidadSalon: (f as unknown as { modalidad_salon?: string }).modalidad_salon || "solo_salon",
         fueraDeTarifario: !!(f as unknown as { fuera_de_tarifario?: boolean }).fuera_de_tarifario,

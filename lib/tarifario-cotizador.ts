@@ -18,6 +18,8 @@
  * deja de recalcularse (eventos.precio_venta_fijo).
  */
 
+import { calcularBarraPersonalizada, ID_BARRA_PERSONALIZADA } from "./precio-barra"
+
 export type ModalidadSalon = "solo_salon" | "con_catering"
 export type DiaTarifario = "viernes" | "sabado"
 
@@ -58,6 +60,15 @@ export interface EntradaCotizacion {
    * vendiendo a precio de lista — ver origenEsPrecioDeLista().
    */
   serviciosIncluidosSalon?: string[]
+  /**
+   * Barra personalizada: cócteles elegidos (con su precio por trago, nunca el
+   * costo) y adultos. Suma una línea "Barra personalizada" calculada en
+   * lib/precio-barra.ts. Se cobra siempre, también con catering.
+   */
+  barraPersonalizada?: {
+    cocteles: Array<{ id: string; nombre: string; precioPorTrago: number }>
+    adultos: number
+  }
 }
 
 export interface LineaVenta {
@@ -271,6 +282,32 @@ export function calcularCotizacion(entrada: EntradaCotizacion): ResultadoCotizac
       precioTotal,
       incluidoEnPaquete,
       motivoIncluido: incluidoPorSalon ? "salon" : incluidoPorCatering ? "catering" : undefined,
+    })
+  }
+
+  // Barra personalizada: 2 tragos por adulto × precio por trago promedio de
+  // los cócteles elegidos (lib/precio-barra.ts). No es un servicio del
+  // catálogo y se cobra también con catering (decisión del negocio).
+  if (entrada.barraPersonalizada) {
+    const { cocteles, adultos } = entrada.barraPersonalizada
+    const barra = calcularBarraPersonalizada(cocteles.map((c) => c.precioPorTrago), adultos)
+    if (cocteles.length === 0) {
+      avisos.push("Barra personalizada sin cócteles elegidos: todavía no suma nada.")
+    } else if (barra.tragos === 0) {
+      avisos.push("La barra personalizada se cobra por adulto y todavía no cargaste adultos.")
+    }
+    for (const c of cocteles.filter((c) => !(c.precioPorTrago > 0))) {
+      avisos.push(`"${c.nombre}" no tiene precio por trago (le faltan insumos o precios). ${AVISO_FUERA_DE_TARIFARIO}`)
+    }
+    servicios.push({
+      servicioId: ID_BARRA_PERSONALIZADA,
+      nombre: "Barra personalizada",
+      categoria: "Barra",
+      unidad: "Por Persona",
+      cantidad: barra.tragos,
+      precioUnitario: Math.round(barra.precioPromedio),
+      precioTotal: barra.total,
+      incluidoEnPaquete: false,
     })
   }
 
