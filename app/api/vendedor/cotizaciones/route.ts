@@ -8,6 +8,8 @@ import {
   type ModalidadSalon,
   type ServicioParaCotizar,
 } from "@/lib/tarifario-cotizador"
+import { calcularBarraPersonalizada, ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
+import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
 
 /**
  * Alta/edición de cotizaciones (perfil Vendedor). El precio de venta
@@ -79,6 +81,7 @@ export async function POST(req: Request) {
       serviciosElegidos,
       personalSeleccionado,
       modalidadSalon,
+      barra,
     } = body || {}
 
     if (typeof clienteNombre !== "string" || !clienteNombre.trim()) {
@@ -120,6 +123,18 @@ export async function POST(req: Request) {
       preciosVentaMap[row.salon] = preciosVentaMap[row.salon] || {}
       preciosVentaMap[row.salon][row.fecha] = Number(row.precio) || 0
     }
+
+    // Barra: "clasica" es el servicio BARRA CLÁSICA (ya viene en la selección
+    // de servicios); "personalizada" son cócteles elegidos, con precio que se
+    // recalcula acá con la carta real (lib/precio-barra.ts). Solo se aceptan
+    // cócteles que existen en la carta.
+    const tipoBarra: "clasica" | "personalizada" | null =
+      barra?.tipo === "clasica" || barra?.tipo === "personalizada" ? barra.tipo : null
+    const pedidos: string[] = Array.isArray(barra?.cocteles) ? barra.cocteles.filter((x: unknown) => typeof x === "string") : []
+    const cartaBarra = tipoBarra === "personalizada" ? await leerPreciosCocteles() : []
+    const coctelesBarra = cartaBarra.filter((c) => pedidos.includes(c.id))
+    const adultos = Number(invitados?.adultos) || 0
+
     const calculo = calcularCotizacion({
       salon: salon || "",
       fechaEvento: fechaEvento || "",
@@ -143,6 +158,10 @@ export async function POST(req: Request) {
       })),
       preciosVenta: preciosVentaMap,
       serviciosIncluidosSalon: incluidosDB.map((r) => r.servicio_id),
+      barraPersonalizada:
+        tipoBarra === "personalizada"
+          ? { cocteles: coctelesBarra.map((c) => ({ id: c.id, nombre: c.nombre, precioPorTrago: c.precioPorTrago })), adultos }
+          : undefined,
     })
 
     const serviciosDetalle = calculo.servicios.map((s) => ({
@@ -160,16 +179,29 @@ export async function POST(req: Request) {
     // Costo interno con la MISMA cantidad que la venta (un menú por persona
     // cuesta por persona). Es solo informativo para Administración: el costo
     // real del evento se sigue calculando en vivo (Caja Eventos).
-    const costosServiciosDetalle = calculo.servicios.map((s) => {
-      const cat = catalogoServicios.find((c) => c.id === s.servicioId)
-      return {
-        servicioId: s.servicioId,
-        nombre: s.nombre,
-        cantidad: s.cantidad,
-        costoTotal: (Number(cat?.costo_para_caja_eventos) || 0) * s.cantidad,
-      }
-    })
+    // La barra personalizada no es un servicio del catálogo: su costo va
+    // aparte (costoBarraPersonalizada), porque totalCostoServicios se copia al
+    // evento al aprobar y ahí el costo de la barra ya sale de sus cócteles.
+    const costosServiciosDetalle = calculo.servicios
+      .filter((s) => s.servicioId !== ID_BARRA_PERSONALIZADA)
+      .map((s) => {
+        const cat = catalogoServicios.find((c) => c.id === s.servicioId)
+        return {
+          servicioId: s.servicioId,
+          nombre: s.nombre,
+          cantidad: s.cantidad,
+          costoTotal: (Number(cat?.costo_para_caja_eventos) || 0) * s.cantidad,
+        }
+      })
     const totalCostoServicios = costosServiciosDetalle.reduce((sum, c) => sum + c.costoTotal, 0)
+    // Costo interno de la barra personalizada con la MISMA cantidad de tragos
+    // que el precio (informativo, para la ganancia estimada de la bandeja).
+    const costoBarraPersonalizada =
+      tipoBarra === "personalizada" && coctelesBarra.length > 0
+        ? Math.round(
+            calcularBarraPersonalizada(coctelesBarra.map((c) => c.costoPorTrago), adultos).total,
+          )
+        : 0
 
     const precioBaseSalon = calculo.precioSalon
     const precioVentaSugerido = calculo.total
@@ -197,6 +229,9 @@ export async function POST(req: Request) {
       },
       servicios: serviciosDetalle,
       personal: personalIds,
+      // Qué barra eligió y, si es personalizada, qué cócteles (al aprobar se
+      // cargan como la barra del evento).
+      barra: tipoBarra ? { tipo: tipoBarra, cocteles: coctelesBarra.map((c) => c.id) } : null,
     })
 
     // Desglose de venta: de dónde salió cada peso del precio sugerido, para
@@ -215,6 +250,7 @@ export async function POST(req: Request) {
       precioBaseSalon,
       servicios: costosServiciosDetalle,
       totalCostoServicios,
+      costoBarraPersonalizada,
       // Nota: no incluye costo de insumos/recetas (comida) — esta etapa
       // solo calcula el costo interno de los servicios contratados.
     })

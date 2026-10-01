@@ -90,6 +90,9 @@ export async function GET() {
         precioBaseSalon: Number(costosInternos.precioBaseSalon) || 0,
         costosServicios: Array.isArray(costosInternos.servicios) ? costosInternos.servicios : [],
         totalCostoServicios: Number(costosInternos.totalCostoServicios) || 0,
+        // Costo de la barra personalizada (mismos tragos que su precio). 0 en
+        // cotizaciones sin barra personalizada o anteriores a esto.
+        costoBarraPersonalizada: Number(costosInternos.costoBarraPersonalizada) || 0,
         estado: f.estado,
         createdAt: f.created_at,
         updatedAt: f.updated_at,

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { ID_BARRA_PERSONALIZADA, TRAGOS_POR_ADULTO } from "@/lib/precio-barra"
 
 /**
  * "Aprobar" (Etapa 5): crea el evento real a partir de la cotización.
@@ -127,8 +128,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const invitados = parseJson(c.invitados) || {}
     const serviciosElegidos = parseJson(c.servicios_elegidos) || {}
     const recetas = serviciosElegidos.recetas || {}
-    const servicios = Array.isArray(serviciosElegidos.servicios) ? serviciosElegidos.servicios : []
+    // La línea "Barra personalizada" no es un servicio del catálogo: no se
+    // copia a evento.servicios; sus cócteles pasan a evento.barras (abajo).
+    const servicios = (Array.isArray(serviciosElegidos.servicios) ? serviciosElegidos.servicios : []).filter(
+      (s: { servicioId?: string }) => s.servicioId !== ID_BARRA_PERSONALIZADA,
+    )
     const costosInternos = parseJson(c.costos_internos) || {}
+    // Barra personalizada: el evento nace con esos cócteles cargados, así el
+    // costo, la lista de compras, Caja Eventos y la 🍺 de Barra funcionan como
+    // en cualquier evento. La clásica queda como servicio BARRA CLÁSICA y sin
+    // cócteles: Administración los agrega después en el planificador.
+    // Cotizaciones viejas (sin `barra`) se aprueban igual que antes.
+    const coctelesBarra: string[] =
+      serviciosElegidos.barra?.tipo === "personalizada" && Array.isArray(serviciosElegidos.barra.cocteles)
+        ? serviciosElegidos.barra.cocteles.filter((x: unknown) => typeof x === "string")
+        : []
+    const barrasEvento = coctelesBarra.length
+      ? [{ id: crypto.randomUUID(), barraTemplateId: "", coctelesIncluidos: coctelesBarra, tragosPorPersona: TRAGOS_POR_ADULTO }]
+      : []
 
     // El vendedor solo eligió ROLES (sin montos, ver /api/vendedor/catalogo).
     // Acá Administración ya definió el monto de cada uno en el body — se
@@ -194,6 +211,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         unidad: s.unidad,
         cantidad: s.cantidad || 1,
       })),
+      barras: barrasEvento,
       precioVenta: precioVentaCotizado,
       precioVentaFijo: true,
       cotizacionId: id,

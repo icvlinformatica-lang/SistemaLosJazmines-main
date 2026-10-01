@@ -55,6 +55,7 @@ import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
+import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
 import {
   calcularCotizacion,
   calcularPersonalSugerido,
@@ -91,6 +92,18 @@ interface RecetaCatalogo {
   nombre: string
   categoria: string
 }
+
+/** Cóctel de la carta para la barra personalizada: solo precio, nunca costo. */
+interface CoctelCatalogo {
+  id: string
+  nombre: string
+  categoria: string
+  precioPorTrago: number
+}
+
+/** "BARRA CLÁSICA" con o sin tilde, en cualquier mayúscula. */
+const esBarraClasica = (nombre: string) =>
+  nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase().startsWith("BARRA CLASICA")
 
 interface PaqueteVendedor {
   id: string
@@ -224,6 +237,11 @@ function CotizarPageContent() {
 
   // Servicios elegidos: servicioId -> cantidad (solo importa para "Por Hora"/"Por Cantidad")
   const [serviciosElegidos, setServiciosElegidos] = useState<Record<string, number>>({})
+  // Barra personalizada: cócteles elegidos de la carta. La clásica es el
+  // servicio BARRA CLÁSICA dentro de serviciosElegidos.
+  const [coctelesCarta, setCoctelesCarta] = useState<CoctelCatalogo[]>([])
+  const [barraPersonalizada, setBarraPersonalizada] = useState(false)
+  const [coctelesBarra, setCoctelesBarra] = useState<string[]>([])
 
   // Personal solicitado: solo IDs del roster, nunca un monto (eso lo define
   // Administración al aprobar la cotización).
@@ -261,6 +279,7 @@ function CotizarPageContent() {
           setRecetasPorServicio(data.recetasPorServicio || {})
           setServiciosIncluidosSalon(data.serviciosIncluidosSalon || [])
           setPersonalIncluidoSalon(data.personalIncluidoSalon || [])
+          setCoctelesCarta(data.cocteles || [])
         }
       })
       .catch(() => {})
@@ -298,6 +317,8 @@ function CotizarPageContent() {
         setRecetasElegidas(c.recetasElegidas)
         setServiciosElegidos(Object.fromEntries(c.serviciosElegidos.map((s: { servicioId: string; cantidad: number }) => [s.servicioId, s.cantidad])))
         setPersonalSeleccionado(Array.isArray(c.personalSeleccionado) ? c.personalSeleccionado : [])
+        setBarraPersonalizada(c.barra?.tipo === "personalizada")
+        setCoctelesBarra(c.barra?.tipo === "personalizada" && Array.isArray(c.barra.cocteles) ? c.barra.cocteles : [])
         setModalidadSalon(c.modalidadSalon === "con_catering" ? "con_catering" : "solo_salon")
         setEstadoCotizacion(c.estado)
         setComentarioAdmin(c.comentarioAdmin)
@@ -364,15 +385,34 @@ function CotizarPageContent() {
     }
   }
 
-  const elegirBarra = (servicioId: string) => {
+  /**
+   * Barra: dos opciones y nada más (decisión del negocio).
+   *  - Clásica: el servicio BARRA CLÁSICA. Los tragos los carga
+   *    Administración después, en el planificador del evento.
+   *  - Personalizada: el vendedor elige cócteles de la carta y se cobra
+   *    2 tragos por adulto × precio por trago promedio (lib/precio-barra.ts).
+   * Elegir una saca la otra (y cualquier otro servicio de barra que hubiera
+   * quedado de antes). Tocar la elegida la desmarca.
+   */
+  const quitarServiciosDeBarra = (prev: Record<string, number>) =>
+    Object.fromEntries(Object.entries(prev).filter(([id]) => !serviciosBarra.some((b) => b.id === id)))
+
+  const elegirBarraClasica = () => {
+    if (soloLectura || !servicioBarraClasica) return
+    const yaEsta = servicioBarraClasica.id in serviciosElegidos
+    setBarraPersonalizada(false)
+    setServiciosElegidos((prev) => (yaEsta ? quitarServiciosDeBarra(prev) : { ...quitarServiciosDeBarra(prev), [servicioBarraClasica.id]: 1 }))
+  }
+
+  const elegirBarraPersonalizada = () => {
     if (soloLectura) return
-    const yaEsta = servicioId in serviciosElegidos
-    setServiciosElegidos((prev) => {
-      const sinBarras = Object.fromEntries(
-        Object.entries(prev).filter(([id]) => !serviciosBarra.some((b) => b.id === id)),
-      )
-      return yaEsta ? sinBarras : { ...sinBarras, [servicioId]: 1 }
-    })
+    setServiciosElegidos((prev) => quitarServiciosDeBarra(prev))
+    setBarraPersonalizada((v) => !v)
+  }
+
+  const toggleCoctelBarra = (coctelId: string) => {
+    if (soloLectura) return
+    setCoctelesBarra((prev) => (prev.includes(coctelId) ? prev.filter((id) => id !== coctelId) : [...prev, coctelId]))
   }
 
   /** "Seleccionar todo" de la sección Menú: marca todas las recetas de todos los menús. */
@@ -420,8 +460,16 @@ function CotizarPageContent() {
         tarifario,
         preciosVenta,
         serviciosIncluidosSalon,
+        barraPersonalizada: barraPersonalizada
+          ? {
+              cocteles: coctelesCarta
+                .filter((c) => coctelesBarra.includes(c.id))
+                .map((c) => ({ id: c.id, nombre: c.nombre, precioPorTrago: c.precioPorTrago })),
+              adultos: invitados.adultos,
+            }
+          : undefined,
       }),
-    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, tarifario, modalidadSalon, totalPersonas, serviciosIncluidosSalon],
+    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, tarifario, modalidadSalon, totalPersonas, serviciosIncluidosSalon, barraPersonalizada, coctelesCarta, coctelesBarra, invitados.adultos],
   )
   const serviciosConPrecio = calculo.servicios
   const totalServicios = calculo.totalServicios
@@ -436,6 +484,10 @@ function CotizarPageContent() {
   )
   const serviciosMenu = useMemo(() => serviciosDisponibles.filter((s) => s.categoria === "Menú"), [serviciosDisponibles])
   const serviciosBarra = useMemo(() => serviciosDisponibles.filter((s) => s.categoria === "Barra"), [serviciosDisponibles])
+  // De las barras del catálogo, el cotizador solo ofrece la clásica (las demás
+  // siguen en el catálogo, pero no se cotizan).
+  const servicioBarraClasica = useMemo(() => serviciosBarra.find((s) => esBarraClasica(s.nombre)), [serviciosBarra])
+  const lineaBarraPersonalizada = calculo.servicios.find((l) => l.servicioId === ID_BARRA_PERSONALIZADA)
   // "Adicionales" = todo lo que no es menú ni barra (esos tienen su propia sección).
   const serviciosAdicionales = useMemo(
     () => serviciosDisponibles.filter((s) => s.categoria !== "Menú" && s.categoria !== "Barra"),
@@ -548,6 +600,12 @@ function CotizarPageContent() {
           serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
           personalSeleccionado,
           modalidadSalon,
+          // El servidor recalcula el precio de la barra con la carta real.
+          barra: barraPersonalizada
+            ? { tipo: "personalizada", cocteles: coctelesBarra }
+            : servicioBarraClasica && servicioBarraClasica.id in serviciosElegidos
+              ? { tipo: "clasica", cocteles: [] }
+              : null,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -1024,68 +1082,101 @@ function CotizarPageContent() {
             )}
           </Seccion>
 
-          {/* Barra: mismo criterio que el menú, un botón por servicio de
-              categoría "Barra". "Personalizado" deja elegir trago por trago
-              desde el evento (cocteles), que es como se hacía siempre. */}
+          {/* Barra: solo dos opciones. Clásica = servicio BARRA CLÁSICA (los
+              tragos los carga Administración en el evento). Personalizada =
+              cócteles de la carta, 2 tragos por adulto × precio por trago
+              promedio (lib/precio-barra.ts). */}
           <Seccion
             icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-500/10"><Wine className="h-5 w-5 text-teal-600" /></div>}
             title="Barra del Evento"
             subtitle={
-              serviciosBarra.find((b) => b.id in serviciosElegidos)?.nombre ?? "Sin barra elegida (personalizada)"
+              barraPersonalizada
+                ? `Barra personalizada · ${coctelesBarra.length} cóctel${coctelesBarra.length !== 1 ? "es" : ""}`
+                : servicioBarraClasica && servicioBarraClasica.id in serviciosElegidos
+                  ? servicioBarraClasica.nombre
+                  : "Sin barra elegida"
             }
             disabled={soloLectura}
           >
-            {serviciosBarra.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No hay barras cargadas en el catálogo. Se crean en Finanzas &gt; Servicios con categoría "Barra".
-              </p>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  {serviciosBarra.map((b) => {
-                    const elegida = b.id in serviciosElegidos
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => elegirBarra(b.id)}
-                        disabled={soloLectura}
-                        className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                          elegida ? "bg-teal-600 text-white border-teal-600" : "bg-white hover:bg-teal-50 border-border"
-                        }`}
-                      >
-                        {b.nombre}
-                        {b.precioVenta > 0 && (
-                          <span className="block text-xs font-normal opacity-80">{fmt(b.precioVenta)} por persona</span>
-                        )}
-                      </button>
-                    )
-                  })}
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {servicioBarraClasica && (
                   <button
                     type="button"
-                    onClick={() =>
-                      setServiciosElegidos((prev) =>
-                        Object.fromEntries(Object.entries(prev).filter(([id]) => !serviciosBarra.some((b) => b.id === id))),
-                      )
-                    }
+                    onClick={elegirBarraClasica}
                     disabled={soloLectura}
                     className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                      serviciosBarra.every((b) => !(b.id in serviciosElegidos))
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-white hover:bg-muted border-border"
+                      servicioBarraClasica.id in serviciosElegidos ? "bg-teal-600 text-white border-teal-600" : "bg-white hover:bg-teal-50 border-border"
                     }`}
                   >
-                    Personalizado
-                    <span className="block text-xs font-normal opacity-80">Trago por trago</span>
+                    Barra clásica
+                    <span className="block text-xs font-normal opacity-80">Los tragos se cargan en el evento</span>
                   </button>
-                </div>
-                {modalidadSalon === "con_catering" && (
-                  <p className="text-xs text-muted-foreground">
-                    Con catering y bebidas la barra ya está incluida en el precio del salón: no suma aparte.
-                  </p>
                 )}
+                <button
+                  type="button"
+                  onClick={elegirBarraPersonalizada}
+                  disabled={soloLectura}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
+                    barraPersonalizada ? "bg-teal-600 text-white border-teal-600" : "bg-white hover:bg-teal-50 border-border"
+                  }`}
+                >
+                  Barra personalizada
+                  <span className="block text-xs font-normal opacity-80">Elegís los tragos</span>
+                </button>
               </div>
-            )}
+
+              {barraPersonalizada && (
+                <div className="space-y-3 rounded-lg border border-teal-200 bg-teal-50/40 p-3">
+                  {coctelesCarta.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay cócteles en la carta.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                      {coctelesCarta.map((c) => {
+                        const elegido = coctelesBarra.includes(c.id)
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => toggleCoctelBarra(c.id)}
+                            disabled={soloLectura}
+                            className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
+                              elegido ? "border-teal-600 bg-teal-600 text-white" : "border-border bg-white hover:bg-teal-50"
+                            }`}
+                          >
+                            <span className="min-w-0 truncate font-medium">{c.nombre}</span>
+                            <span className={`shrink-0 text-xs tabular-nums ${elegido ? "text-white/90" : "text-muted-foreground"}`}>
+                              {c.precioPorTrago > 0 ? `${fmt(c.precioPorTrago)} c/u` : "sin precio"}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <p className="text-sm text-teal-900">
+                    {lineaBarraPersonalizada && lineaBarraPersonalizada.precioTotal > 0 ? (
+                      <>
+                        {lineaBarraPersonalizada.cantidad} tragos (2 por adulto) × {fmt(lineaBarraPersonalizada.precioUnitario)} promedio ={" "}
+                        <span className="font-bold tabular-nums">{fmt(lineaBarraPersonalizada.precioTotal)}</span>
+                      </>
+                    ) : coctelesBarra.length === 0 ? (
+                      "Elegí los tragos que va a tener la barra."
+                    ) : (
+                      "Cargá los adultos para calcular el precio de la barra."
+                    )}
+                  </p>
+                  {modalidadSalon === "con_catering" && (
+                    <p className="text-xs text-muted-foreground">La barra personalizada se cobra aparte también con catering y bebidas.</p>
+                  )}
+                </div>
+              )}
+
+              {!barraPersonalizada && servicioBarraClasica && servicioBarraClasica.id in serviciosElegidos && modalidadSalon === "con_catering" && (
+                <p className="text-xs text-muted-foreground">
+                  Con catering y bebidas la barra ya está incluida en el precio del salón: no suma aparte.
+                </p>
+              )}
+            </div>
           </Seccion>
 
           <Seccion
