@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect, Suspense } from "react"
+import { useState, useMemo, useRef, useEffect, Suspense, Fragment } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -83,6 +83,19 @@ const MESES_RECIBO = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
+
+// "2026-10-10" → "10/10/2026". Se arma a mano: new Date("2026-10-10") lo toma
+// como medianoche UTC y en Argentina se mostraba un día antes (9/10).
+function fechaCorta(fechaISO: string): string {
+  const [anio, mes, dia] = fechaISO.split("-").map(Number)
+  return `${dia}/${mes}/${anio}`
+}
+
+// "2026-10-10" → "Octubre 2026" (separador de mes en Cuotas por cobrar)
+function etiquetaMes(fechaISO: string): string {
+  const [anio, mes] = fechaISO.split("-").map(Number)
+  return `${MESES_RECIBO[mes - 1]} ${anio}`
+}
 
 // Registra un movimiento de dinero en el historial de actividad (Configuración > Actividad).
 // Todo manejo de dinero (registrar/eliminar pagos) debe dejar rastro.
@@ -1157,8 +1170,10 @@ function PagosPageContent() {
     ? selectedEvento.adultos + selectedEvento.adolescentes + selectedEvento.ninos + (selectedEvento.personasDietasEspeciales || 0)
     : 0
 
-  // Cuotas del mes actual - recordatorios
-  const cuotasDelMes = useMemo(() => {
+  // Cuotas por cobrar: todas las que siguen sin pagar, desde la más atrasada
+  // hasta las del mes actual, ordenadas por fecha de vencimiento (las de
+  // meses anteriores se marcan como atrasadas).
+  const cuotasPorCobrar = useMemo(() => {
     const resultado: Array<{
       evento: EventoGuardado
       numeroCuota: number
@@ -1166,6 +1181,7 @@ function PagosPageContent() {
       monto: number
       pagada: boolean
       rangoRecordatorio: boolean
+      atrasada: boolean
     }> = []
 
     const eventosCuotas = eventos.filter(e =>
@@ -1187,13 +1203,16 @@ function PagosPageContent() {
         const mesActual = hoy.getMonth() + 1
         const añoActual = hoy.getFullYear()
 
-        // Si la cuota vence este mes y todavía no fue pagada.
-        // Las pagadas desaparecen del recordatorio.
-        if (año === añoActual && mes === mesActual && !cuota.pagada) {
+        // Si la cuota vence este mes o antes y todavía no fue pagada.
+        // Las pagadas desaparecen de la lista.
+        const esMesActual = año === añoActual && mes === mesActual
+        const esAnterior = año < añoActual || (año === añoActual && mes < mesActual)
+        if ((esMesActual || esAnterior) && !cuota.pagada) {
           resultado.push({
             evento,
             ...cuota,
-            rangoRecordatorio: dia >= 1 && dia <= 10,
+            rangoRecordatorio: esMesActual && dia >= 1 && dia <= 10,
+            atrasada: esAnterior,
           })
         }
       })
@@ -1354,21 +1373,21 @@ function PagosPageContent() {
         )}
 
         {/* RECORDATORIOS DE CUOTAS DEL MES - only when no event selected */}
-        {!selectedEvento && cuotasDelMes.length > 0 && (
+        {!selectedEvento && cuotasPorCobrar.length > 0 && (
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CalendarIcon className="h-5 w-5 text-amber-600" />
-                Cuotas del Mes - Recordatorios
+                Cuotas por cobrar
               </CardTitle>
               <CardDescription>
-                Cuotas programadas para {new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}
+                De la más atrasada a las de {new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}, ordenadas por mes
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col lg:flex-row gap-2">
                 {SALONES.map((salonId) => {
-                  const cuotasSalon = cuotasDelMes.filter((item) => item.evento.salon === salonId)
+                  const cuotasSalon = cuotasPorCobrar.filter((item) => item.evento.salon === salonId)
                   const plegado = salonesPlegados.includes(salonId)
                   const cn = (...classes: (string | boolean | undefined | null)[]) =>
                     classes.filter(Boolean).join(" ")
@@ -1420,14 +1439,25 @@ function PagosPageContent() {
                         </span>
                       </div>
                       {cuotasSalon.length === 0 ? (
-                        <p className="px-1 py-3 text-center text-xs text-muted-foreground">Sin cuotas este mes</p>
+                        <p className="px-1 py-3 text-center text-xs text-muted-foreground">Sin cuotas por cobrar</p>
                       ) : (
-                        cuotasSalon.map((item) => (
+                        cuotasSalon.map((item, idx) => (
+                          <Fragment key={`${item.evento.id}-${item.numeroCuota}`}>
+                          {/* Separador de mes: aparece cuando cambia el mes respecto de la cuota anterior */}
+                          {(idx === 0 || cuotasSalon[idx - 1].fechaVencimiento.slice(0, 7) !== item.fechaVencimiento.slice(0, 7)) && (
+                            <div className={cn(
+                              "px-1 pt-1 text-[11px] font-semibold uppercase tracking-wide",
+                              item.atrasada ? "text-red-600" : "text-muted-foreground",
+                            )}>
+                              {etiquetaMes(item.fechaVencimiento)}
+                            </div>
+                          )}
                           <div
-                            key={`${item.evento.id}-${item.numeroCuota}`}
                             className={cn(
                               "flex flex-col gap-1.5 rounded-lg border p-2",
-                              item.rangoRecordatorio ? "bg-amber-50 border-amber-300 shadow-sm" : "bg-background",
+                              item.atrasada
+                                ? "bg-red-50 border-red-200"
+                                : item.rangoRecordatorio ? "bg-amber-50 border-amber-300 shadow-sm" : "bg-background",
                             )}
                           >
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -1437,6 +1467,14 @@ function PagosPageContent() {
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                                 Cuota {item.numeroCuota}/{item.evento.planDeCuotas!.numeroCuotas}
                               </Badge>
+                              {item.atrasada && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-red-700 border-red-500 text-[10px] px-1.5 py-0"
+                                >
+                                  Atrasada
+                                </Badge>
+                              )}
                               {item.rangoRecordatorio && (
                                 <Badge
                                   variant="outline"
@@ -1449,7 +1487,7 @@ function PagosPageContent() {
                             <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <CalendarIcon className="h-3 w-3" />
-                                Vence: {new Date(item.fechaVencimiento).toLocaleDateString("es-AR")}
+                                Vence: {fechaCorta(item.fechaVencimiento)}
                               </span>
                               {item.evento.contrato?.telefono && (
                                 <span className="flex items-center gap-1">
@@ -1475,34 +1513,40 @@ function PagosPageContent() {
                               </Button>
                             </div>
                           </div>
+                          </Fragment>
                         ))
                       )}
                     </div>
                   )
                 })}
               </div>
-              {cuotasDelMes.some((item) => !item.evento.salon) && (
+              {cuotasPorCobrar.some((item) => !item.evento.salon) && (
                 <div className="mt-3 rounded-lg border bg-muted/30 p-2">
                   <div className="flex items-center justify-between border-b pb-2 px-1 mb-2">
                     <span className="text-sm font-semibold">Sin salón asignado</span>
                     <Badge variant="secondary" className="text-xs">
-                      {cuotasDelMes.filter((item) => !item.evento.salon).length}
+                      {cuotasPorCobrar.filter((item) => !item.evento.salon).length}
                     </Badge>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
-                    {cuotasDelMes
+                    {cuotasPorCobrar
                       .filter((item) => !item.evento.salon)
                       .map((item) => (
                         <div
                           key={`${item.evento.id}-${item.numeroCuota}`}
-                          className="flex flex-col gap-1.5 rounded-lg border bg-background p-2"
+                          className={`flex flex-col gap-1.5 rounded-lg border p-2 ${item.atrasada ? "bg-red-50 border-red-200" : "bg-background"}`}
                         >
-                          <span className="text-sm font-semibold leading-tight">
+                          <span className="flex flex-wrap items-center gap-1.5 text-sm font-semibold leading-tight">
                             {item.evento.nombrePareja || item.evento.nombre}
+                            {item.atrasada && (
+                              <Badge variant="outline" className="text-red-700 border-red-500 text-[10px] px-1.5 py-0">
+                                Atrasada
+                              </Badge>
+                            )}
                           </span>
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <CalendarIcon className="h-3 w-3" />
-                            Vence: {new Date(item.fechaVencimiento).toLocaleDateString("es-AR")}
+                            Vence: {fechaCorta(item.fechaVencimiento)}
                           </span>
                           <div className="flex items-center justify-between gap-2">
                             <div className="font-mono text-sm font-bold">{formatCurrency(item.monto)}</div>
