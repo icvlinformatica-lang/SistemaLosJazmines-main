@@ -54,7 +54,7 @@ export async function fetchServicios(): Promise<Servicio[]> {
   }))
 }
 
-export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servicio | null> {
+export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servicio> {
   const record = {
     id: servicio.id,
     codigo: servicio.codigo || null,
@@ -81,12 +81,17 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
     .select()
     .single()
 
+  // Se LANZA el error (antes se devolvía null): quien llama tiene que
+  // enterarse para avisar con un toast y deshacer el cambio en pantalla. Con
+  // el null el catch de updateServicio nunca corría y la edición quedaba
+  // como "guardada" en pantalla sin haber llegado a la base.
   if (error) {
     console.error("Error upserting servicio:", error)
-    return null
+    throw new Error(error.message || "No se pudo guardar el servicio")
   }
+  if (!data) throw new Error("La base no confirmó el guardado del servicio")
 
-  return data ? {
+  return {
     id: data.id,
     codigo: data.codigo || "",
     nombre: data.nombre,
@@ -103,7 +108,7 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
     proveedor: data.proveedor || undefined,
     notas: data.notas || undefined,
     orden: data.orden ?? undefined,
-  } : null
+  }
 }
 
 export async function deleteServicio(id: string): Promise<boolean> {

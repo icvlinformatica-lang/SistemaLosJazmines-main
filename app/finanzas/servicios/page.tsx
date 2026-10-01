@@ -16,6 +16,8 @@ import {
   DollarSign,
   ShoppingBag,
   Minus,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react"
 import {
   Dialog,
@@ -340,8 +342,19 @@ const SeparadorDialog = memo(function SeparadorDialog({
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function FinanzasServiciosPage() {
-  const { servicios, addServicio, updateServicio, deleteServicio, setServicios, eventos } = useStore()
+  const { servicios, addServicio, updateServicio, deleteServicio, setServicios, eventos, serviciosSincronizados, recargarServicios } = useStore()
   const { toast } = useToast()
+
+  // ── Reintentar traer los servicios de la base (ver aviso arriba de la tabla)
+  const [reintentando, setReintentando] = useState(false)
+  const handleReintentar = async () => {
+    setReintentando(true)
+    const ok = await recargarServicios()
+    setReintentando(false)
+    toast(ok
+      ? { title: "Servicios actualizados", description: "La lista ya coincide con la base. Podés editar." }
+      : { title: "Sigue sin conexión con la base", description: "Probá de nuevo en unos segundos.", variant: "destructive" })
+  }
 
   const [busqueda, setBusqueda] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaServicio | "todas">("todas")
@@ -378,6 +391,11 @@ export default function FinanzasServiciosPage() {
 
   // ── Mover fila arriba/abajo (persiste el orden en la base) ────────────────
   const moverServicio = async (id: string, dir: -1 | 1) => {
+    // Guarda servicios completos: sin la lista real de la base no se toca nada.
+    if (!serviciosSincronizados) {
+      toast({ title: "No se puede mover todavía", description: "La lista de servicios no se pudo traer de la base. Tocá \"Reintentar\".", variant: "destructive" })
+      return
+    }
     const idx = serviciosFiltrados.findIndex((s) => s.id === id)
     const vecino = serviciosFiltrados[idx + dir]
     if (idx === -1 || !vecino) return
@@ -572,6 +590,21 @@ export default function FinanzasServiciosPage() {
           {serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""}
         </span>
       </div>
+
+      {/* Aviso: la lista no vino de la base (falló la carga al abrir el sistema) */}
+      {!serviciosSincronizados && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-red-800 shrink-0">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <p className="text-sm flex-1">
+            <strong>No se pudo traer la lista de servicios de la base.</strong> La tabla puede estar
+            vacía o incompleta y no coincidir con los contratos. No se puede editar hasta reintentar.
+          </p>
+          <Button size="sm" variant="outline" onClick={handleReintentar} disabled={reintentando} className="border-red-300 bg-white">
+            <RefreshCw className={cn("h-4 w-4", reintentando && "animate-spin")} />
+            Reintentar
+          </Button>
+        </div>
+      )}
 
       {/* Tabla estilo spreadsheet */}
       <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-card shadow-sm">

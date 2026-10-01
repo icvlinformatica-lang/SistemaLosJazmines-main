@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
 import { fechaNegocio, proyectarIPC } from "./ipc-cuotas"
 import { StoreSyncGuard, mergeRemoteStore, type RemoteStoreData } from "./store-sync"
 import {
@@ -114,6 +114,13 @@ interface StoreContextType {
   updateServicio: (id: string, updates: Partial<Servicio>) => void
   deleteServicio: (id: string) => void
   setServicios: (servicios: Servicio[]) => void
+  /** false = la lista de servicios NO vino de la base (falló la carga al abrir
+   *  el sistema; la tabla queda vacía o con lo que hubiera en el navegador).
+   *  Mientras sea false no se permite editar servicios, para no guardar sobre
+   *  una lista que no es la real. */
+  serviciosSincronizados: boolean
+  /** Vuelve a pedir los servicios a la base. Devuelve true si lo logró. */
+  recargarServicios: () => Promise<boolean>
   // Costos Operativos
   addCostoOperativo: (costo: Omit<CostoOperativo, "id">) => void
   updateCostoOperativo: (id: string, updates: Partial<CostoOperativo>) => void
@@ -236,6 +243,18 @@ function aplicarSoloLectura<T extends Record<string, any>>(
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState())
   const syncGuard = useRef(new StoreSyncGuard()).current
+  // Lista de servicios más nueva, para que updateServicio arme el registro a
+  // guardar sin depender de cuándo React ejecuta el setState. Se sincroniza
+  // con cada cambio confirmado del estado y updateServicio la adelanta apenas
+  // se edita.
+  const serviciosRef = useRef<Servicio[]>(state.servicios || [])
+  useLayoutEffect(() => {
+    serviciosRef.current = state.servicios || []
+  }, [state.servicios])
+  // Último guardado pendiente de cada servicio (fila por id), ver updateServicio.
+  const guardadosServicio = useRef(new Map<string, Promise<void>>())
+  // ¿La lista de servicios vino de la base? (ver serviciosSincronizados)
+  const [serviciosSincronizados, setServiciosSincronizados] = useState(false)
   const { soloLectura } = useClock()
   const applyRemoteState = useCallback((baseline: AppState, updates: RemoteStoreData, revision: number) => {
     if (soloLectura) return
@@ -322,6 +341,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ])
 
         const serviciosDB = serviciosResultado ?? localState.servicios ?? []
+        setServiciosSincronizados(serviciosResultado !== null)
         const pagosDB = pagosResultado ?? localState.pagosPersonal ?? []
         const movimientosDB = movimientosResultado ?? localState.movimientosCaja ?? []
         if (serviciosResultado === null || pagosResultado === null || movimientosResultado === null) {
@@ -383,7 +403,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         let serviciosMigrados = serviciosDB
         const serviciosLocales = (localState.servicios || []).filter((s) => s && s.id)
         if (serviciosResultado !== null && serviciosDB.length === 0 && serviciosLocales.length > 0) {
-          await Promise.all(serviciosLocales.map((s) => db.upsertServicio(s)))
+          // upsertServicio ahora lanza si falla; en esta migración one-time se
+          // mantiene el comportamiento de antes (seguir con la carga igual).
+          await Promise.all(serviciosLocales.map((s) => db.upsertServicio(s).catch(() => null)))
           serviciosMigrados = serviciosLocales
         }
         let personalMigrado = personalDB
@@ -883,24 +905,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const updateServicio = async (id: string, updates: Partial<Servicio>) => {
-    // Capturar el servicio YA MERGEADO dentro del setState para no usar estado
-    // viejo del closure: si el usuario hace dos ediciones seguidas (ej. costo y
-    // después % de seña), la segunda persistía sobre una base desactualizada y
-    // pisaba la primera en Supabase (el precio "volvía" al valor anterior).
-    let merged: Servicio | undefined
-    let anterior: Servicio | undefined
-    setState((prev) => {
-      const servicios = (prev.servicios || []).map((s) => {
-        if (s.id !== id) return s
-        anterior = s
-        merged = { ...s, ...updates }
-        return merged
-      })
-      return { ...prev, servicios }
-    })
+    // El registro a guardar se arma desde serviciosRef (la lista más nueva,
+    // incluidas ediciones que React todavía no dibujó), NO desde el estado
+    // del closure ni desde adentro del setState. Antes se capturaba adentro
+    // del updater de setState, pero React no siempre lo ejecuta en el
+    // momento: si lo dejaba para el próximo render, `merged` quedaba
+    // undefined, el guardado se salteaba sin ningún aviso y la pantalla
+    // mostraba el valor nuevo como si se hubiera guardado.
+    // Si la lista no vino de la base, no se edita: se guarda el registro
+    // completo y tiene que salir de la lista real. Se habilita con
+    // "Reintentar" (recargarServicios) o recargando la página.
+    if (!serviciosSincronizados) {
+      toast({ title: "No se puede editar todavía", description: "La lista de servicios no se pudo traer de la base. Tocá \"Reintentar\" arriba de la tabla.", variant: "destructive" })
+      return
+    }
+    const anterior = serviciosRef.current.find((s) => s.id === id)
+    if (!anterior) return
+    const merged: Servicio = { ...anterior, ...updates }
+    serviciosRef.current = serviciosRef.current.map((s) => (s.id === id ? merged : s))
+    setState((prev) => ({
+      ...prev,
+      servicios: (prev.servicios || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
+    }))
     // Registrar en Configuración → Actividad los cambios de precio/costo.
     // Fire-and-forget: no bloquea la edición si falla.
-    if (anterior && merged) {
+    {
       const fmt = (n: number) => `$ ${Math.round(n).toLocaleString("es-AR")}`
       const cambios: string[] = []
       if (updates.precioVenta !== undefined && anterior.precioVenta !== merged.precioVenta) {
@@ -925,16 +954,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }).catch(() => {})
       }
     }
-    // Sync to Supabase con el registro completo ya actualizado
-    try {
-      if (merged) {
+    // Guardar en Supabase. Los guardados de un mismo servicio van en fila (uno
+    // detrás del otro): si dos ediciones seguidas viajaran en paralelo, la más
+    // vieja podría llegar última y pisar a la más nueva. Cada uno manda la
+    // versión MÁS NUEVA del servicio al momento de salir, y si falla, el
+    // valor se deshace ANTES de que salga el siguiente de la fila (así el
+    // siguiente no vuelve a mandar el valor que no se pudo guardar).
+    const previo = guardadosServicio.current.get(id) ?? Promise.resolve()
+    const tarea = previo.then(async () => {
+      const actual = serviciosRef.current.find((s) => s.id === id)
+      if (!actual) return // se borró mientras esperaba: no resucitarlo
+      try {
         const { upsertServicio } = await import("./supabase/data-service")
-        await upsertServicio(merged)
+        await upsertServicio(actual)
+      } catch (error) {
+        console.error("[v0] Error syncing servicio update to Supabase:", error)
+        // Deshacer en pantalla: cada campo editado vuelve a su valor anterior,
+        // salvo que mientras tanto se lo haya vuelto a editar (ese cambio más
+        // nuevo tiene su propio guardado y su propio aviso si falla).
+        const revertir = (s: Servicio): Servicio => {
+          const r = { ...s } as Record<string, unknown>
+          for (const key of Object.keys(updates) as (keyof Servicio)[]) {
+            if (s[key] === merged[key]) r[key] = anterior[key]
+          }
+          return r as unknown as Servicio
+        }
+        serviciosRef.current = serviciosRef.current.map((s) => (s.id === id ? revertir(s) : s))
+        setState((prev) => ({
+          ...prev,
+          servicios: (prev.servicios || []).map((s) => (s.id === id ? revertir(s) : s)),
+        }))
+        toast({ title: "Error al guardar", description: "El cambio NO se guardó y se volvió al valor anterior. Revisá tu conexión e intentá de nuevo.", variant: "destructive" })
       }
-    } catch (error) {
-      console.error("[v0] Error syncing servicio update to Supabase:", error)
-      toast({ title: "Error al guardar", description: "Revisá tu conexión a internet. Reintentamos varias veces y el cambio no se guardó; volvé a intentarlo.", variant: "destructive" })
-    }
+    })
+    guardadosServicio.current.set(id, tarea)
+    await tarea
+    if (guardadosServicio.current.get(id) === tarea) guardadosServicio.current.delete(id)
   }
 
   const deleteServicio = async (id: string) => {
@@ -998,6 +1053,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setServicios = (servicios: Servicio[]) => {
     setState((prev) => ({ ...prev, servicios }))
+  }
+
+  const recargarServicios = async () => {
+    try {
+      const { fetchServicios } = await import("./supabase/data-service")
+      const servicios = await fetchServicios()
+      serviciosRef.current = servicios
+      setState((prev) => ({ ...prev, servicios }))
+      setServiciosSincronizados(true)
+      return true
+    } catch (error) {
+      console.error("[v0] Error recargando servicios:", error)
+      return false
+    }
   }
 
   // === Costos Operativos - Synced with Supabase ===
@@ -1759,6 +1828,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateServicio: (...args) => syncGuard.run(() => updateServicio(...args)),
         deleteServicio: (...args) => syncGuard.run(() => deleteServicio(...args)),
         setServicios,
+        serviciosSincronizados,
+        recargarServicios,
         addCostoOperativo: (...args) => syncGuard.run(() => addCostoOperativo(...args)),
         updateCostoOperativo: (...args) => syncGuard.run(() => updateCostoOperativo(...args)),
         deleteCostoOperativo: (...args) => syncGuard.run(() => deleteCostoOperativo(...args)),
