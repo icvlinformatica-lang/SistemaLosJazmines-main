@@ -91,6 +91,16 @@ function fechaCorta(fechaISO: string): string {
   return `${dia}/${mes}/${anio}`
 }
 
+// Días de atraso entre el vencimiento y la fecha de cobro ("YYYY-MM-DD"), 0
+// si se cobró antes o si alguna fecha es inválida. Se cuenta en UTC para que
+// un cambio de horario no corra un día.
+function diasEntreFechas(vencimiento: string, fecha: string): number {
+  const v = Date.parse(vencimiento + "T00:00:00Z")
+  const f = Date.parse(fecha + "T00:00:00Z")
+  if (!Number.isFinite(v) || !Number.isFinite(f)) return 0
+  return Math.max(0, Math.floor((f - v) / 86400000))
+}
+
 // "2026-10-10" → "Octubre 2026" (separador de mes en Cuotas por cobrar)
 function etiquetaMes(fechaISO: string): string {
   const [anio, mes] = fechaISO.split("-").map(Number)
@@ -512,9 +522,17 @@ function PagosPageContent() {
   const numeroPagoRef = useRef<number | null>(null)
   const [moraPago, setMoraPago] = useState(0)
   const [montoCuotaBase, setMontoCuotaBase] = useState(0) // Original cuota amount before IPC
-  // Días de atraso de la próxima cuota al momento de abrir el formulario (fijo:
-  // no depende de la fecha de cobro elegida, solo del vencimiento vs. hoy).
+  // Días de atraso de la próxima cuota. Fuera del modo histórico es fijo (del
+  // vencimiento a hoy, al abrir el formulario); en modo histórico se recalcula
+  // del vencimiento a la fecha de cobro elegida.
   const [diasAtrasoPago, setDiasAtrasoPago] = useState(0)
+  // Vencimiento ("YYYY-MM-DD") de la cuota que se está cobrando (para contar
+  // los días de atraso hasta la fecha elegida en modo histórico).
+  const [vencimientoCobro, setVencimientoCobro] = useState<string | null>(null)
+  // Solo modo histórico: motivo por el que la cuota no se puede calcular con
+  // la fecha elegida (ej. IPC de ese mes sin cargar). Se muestra dentro del
+  // formulario y bloquea confirmar.
+  const [errorCalculoCobro, setErrorCalculoCobro] = useState<string | null>(null)
   // Permite quitar con un click el recargo por días de atraso del próximo pago
   const [recargoAtrasoOmitido, setRecargoAtrasoOmitido] = useState(false)
   // Tildes del próximo cobro: aplicar el IPC del mes y, si el automático quedó
@@ -714,7 +732,7 @@ function PagosPageContent() {
         cuotaDestino, calendarioCuotas, calculoCobro: null,
         cuotaNeta: cuotaDestino.saldoRestante, recargoAtraso: 0,
         totalSimulado: cuotaDestino.saldoRestante, esPagoUnico: false, diasAtraso: 0,
-        esParcial: true,
+        esParcial: true, errorCalculo: null,
       }
     }
 
@@ -735,8 +753,15 @@ function PagosPageContent() {
     const cuotaNeta = calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : cuotaDestino.monto
     const totalSimulado = cuotaNeta + recargoAtraso
     const puedeCobrar = !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
-    if (!puedeCobrar) return null
-    return { cuotaDestino, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso, esParcial: false }
+    if (!puedeCobrar) {
+      // En modo histórico el cálculo con la fecha de HOY no importa: la cuota
+      // se calcula con la fecha real que se elige en el formulario. Se abre
+      // igual, con el motivo a la vista, para poder elegir esa fecha.
+      if (!modoHistorico) return null
+      const errorCalculo = "error" in resuelto ? resuelto.error : "No se pudo calcular la cuota con esta fecha."
+      return { cuotaDestino, calendarioCuotas, calculoCobro: null, cuotaNeta: 0, recargoAtraso, totalSimulado: recargoAtraso, esPagoUnico, diasAtraso, esParcial: false, errorCalculo }
+    }
+    return { cuotaDestino, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso, esParcial: false, errorCalculo: null }
   }
 
   // Prepara y abre el formulario de cobro para un destino puntual (por
@@ -751,7 +776,7 @@ function PagosPageContent() {
     // la base corregida a mano en una cuota anterior no se le pegue a esta.
     const datos = construirProximoCobro(evento, destino, null)
     if (!datos) return false
-    const { cuotaDestino, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso, esParcial } = datos
+    const { cuotaDestino, calendarioCuotas, calculoCobro, cuotaNeta, recargoAtraso, totalSimulado, esPagoUnico, diasAtraso, esParcial, errorCalculo } = datos
     const ipcAcumulado = calculoCobro && !calculoCobro.ipcOmitido ? calculoCobro.porcentaje : 0
     numeroPagoRef.current = cuotaDestino.numeroCuota
     setDestinoCobro(cuotaDestino.numeroCuota)
@@ -763,6 +788,8 @@ function PagosPageContent() {
     setMoraPago(recargoAtraso)
     setMontoCuotaBase(cuotaNeta)
     setDiasAtrasoPago(diasAtraso)
+    setVencimientoCobro(cuotaDestino.fechaVencimiento)
+    setErrorCalculoCobro(errorCalculo)
     setBaseManualCobro(null)
     setMesEsperadoPago(esParcial ? null : cuotaDestino.fechaVencimiento.slice(0, 7))
     setConfirmoSaltoMes(false)
@@ -810,7 +837,14 @@ function PagosPageContent() {
     const calculo = "calculo" in resuelto ? resuelto.calculo : null
     const error = "error" in resuelto ? resuelto.error : null
     const cuotaNeta = calculo ? calculo.monto : ajusta ? 0 : montoCuotaBase
-    const nuevaMora = recargoOmitidoNuevo ? 0 : diasAtrasoPago * RECARGO_POR_DIA_ATRASO
+    // Modo histórico: los días de atraso van del vencimiento a la fecha
+    // elegida (no a hoy). Fuera de ese modo quedan fijos como antes.
+    const diasAtraso = modoHistorico && vencimientoCobro ? diasEntreFechas(vencimientoCobro, fecha) : diasAtrasoPago
+    const nuevaMora = recargoOmitidoNuevo ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
+    if (modoHistorico) {
+      setDiasAtrasoPago(diasAtraso)
+      setErrorCalculoCobro(error)
+    }
     if (cambios.fecha !== undefined) setConfirmoSaltoMes(false)
     setAplicarIPCCobro(aplicarIPCNuevo)
     setRecargoAtrasoOmitido(recargoOmitidoNuevo)
@@ -824,7 +858,8 @@ function PagosPageContent() {
       monto: cuotaNeta + nuevaMora,
       porcentajeIPC: calculo && !calculo.ipcOmitido ? calculo.porcentaje : 0,
     }))
-    if (error) toast({ title: "IPC pendiente", description: error, variant: "destructive" })
+    // En modo histórico el motivo se muestra fijo dentro del formulario.
+    if (error && !modoHistorico) toast({ title: "IPC pendiente", description: error, variant: "destructive" })
   }
 
   // Sub-formulario para decidir qué pasa con el resto cuando el monto a
@@ -1988,10 +2023,17 @@ function PagosPageContent() {
                             <p className="text-sm text-muted-foreground line-through">{formatCurrency(montoCuotaOriginal)}</p>
                           )}
                           <p className="text-2xl font-bold text-primary">{puedeCobrar ? formatCurrency(totalSimulado) : "A definir"}</p>
+                          {!puedeCobrar && modoHistorico && (
+                            <p className="text-[11px] text-muted-foreground leading-tight max-w-[180px] ml-auto">
+                              Se calcula con la fecha de cobro que elijas en el formulario.
+                            </p>
+                          )}
                           <Button
                             size="sm"
                             className="mt-2"
-                            disabled={!puedeCobrar}
+                            // En modo histórico se abre igual: el cálculo con la
+                            // fecha de hoy no cuenta, se hace con la fecha elegida.
+                            disabled={!puedeCobrar && !modoHistorico}
                             onClick={() => abrirCobroPara(freshEvento, proximaCuota.numeroCuota)}
                           >
                             <Plus className="h-4 w-4 mr-1" /> {esParcialDestino ? "Cobrar saldo" : esPagoUnico ? "Registrar pago" : "Registrar este pago"}
@@ -2412,6 +2454,12 @@ function PagosPageContent() {
                   <p className="text-[11px] text-muted-foreground leading-tight">
                     El ingreso se registra en las cajas con esta fecha. Para cuotas atrasadas, elegí el mes real en que se cobró.
                   </p>
+                  {/* Modo histórico: por qué no se puede calcular con esta fecha */}
+                  {modoHistorico && errorCalculoCobro && (
+                    <p role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-800 leading-relaxed">
+                      No se puede cobrar con esta fecha: {errorCalculoCobro}
+                    </p>
+                  )}
                 </div>
 
                 {/* Total sugerido (cuota + mora) */}
@@ -2679,6 +2727,7 @@ function PagosPageContent() {
                 disabled={
                   pasoPago === 1
                     ? pagoForm.monto <= moraPago || (saltaOrden && !confirmoSaltoMes) ||
+                      (modoHistorico && errorCalculoCobro != null) ||
                       (pagoForm.monto < totalSugeridoCobro - 0.01 && (saldoDecisionCobro == null || recargoSaldoCobro == null))
                     : !pagoForm.pagadoPor.trim() || !pagoForm.recibidoPor.trim()
                 }
@@ -2686,7 +2735,7 @@ function PagosPageContent() {
                 Siguiente
               </Button>
             ) : (
-              <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto <= moraPago || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim()}>
+              <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto <= moraPago || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim() || (modoHistorico && errorCalculoCobro != null)}>
                 Registrar {formatCurrency(pagoForm.monto)}
               </Button>
             )}
