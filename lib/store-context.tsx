@@ -114,6 +114,13 @@ interface StoreContextType {
   updateServicio: (id: string, updates: Partial<Servicio>) => void
   deleteServicio: (id: string) => void
   setServicios: (servicios: Servicio[]) => void
+  /** false = la lista de servicios NO vino de la base (falló la carga al abrir
+   *  el sistema; la tabla queda vacía o con lo que hubiera en el navegador).
+   *  Mientras sea false no se permite editar servicios, para no guardar sobre
+   *  una lista que no es la real. */
+  serviciosSincronizados: boolean
+  /** Vuelve a pedir los servicios a la base. Devuelve true si lo logró. */
+  recargarServicios: () => Promise<boolean>
   // Costos Operativos
   addCostoOperativo: (costo: Omit<CostoOperativo, "id">) => void
   updateCostoOperativo: (id: string, updates: Partial<CostoOperativo>) => void
@@ -246,6 +253,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state.servicios])
   // Último guardado pendiente de cada servicio (fila por id), ver updateServicio.
   const guardadosServicio = useRef(new Map<string, Promise<void>>())
+  // ¿La lista de servicios vino de la base? (ver serviciosSincronizados)
+  const [serviciosSincronizados, setServiciosSincronizados] = useState(false)
   const { soloLectura } = useClock()
   const applyRemoteState = useCallback((baseline: AppState, updates: RemoteStoreData, revision: number) => {
     if (soloLectura) return
@@ -332,6 +341,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ])
 
         const serviciosDB = serviciosResultado ?? localState.servicios ?? []
+        setServiciosSincronizados(serviciosResultado !== null)
         const pagosDB = pagosResultado ?? localState.pagosPersonal ?? []
         const movimientosDB = movimientosResultado ?? localState.movimientosCaja ?? []
         if (serviciosResultado === null || pagosResultado === null || movimientosResultado === null) {
@@ -902,6 +912,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // momento: si lo dejaba para el próximo render, `merged` quedaba
     // undefined, el guardado se salteaba sin ningún aviso y la pantalla
     // mostraba el valor nuevo como si se hubiera guardado.
+    // Si la lista no vino de la base, no se edita: se guarda el registro
+    // completo y tiene que salir de la lista real. Se habilita con
+    // "Reintentar" (recargarServicios) o recargando la página.
+    if (!serviciosSincronizados) {
+      toast({ title: "No se puede editar todavía", description: "La lista de servicios no se pudo traer de la base. Tocá \"Reintentar\" arriba de la tabla.", variant: "destructive" })
+      return
+    }
     const anterior = serviciosRef.current.find((s) => s.id === id)
     if (!anterior) return
     const merged: Servicio = { ...anterior, ...updates }
@@ -1036,6 +1053,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setServicios = (servicios: Servicio[]) => {
     setState((prev) => ({ ...prev, servicios }))
+  }
+
+  const recargarServicios = async () => {
+    try {
+      const { fetchServicios } = await import("./supabase/data-service")
+      const servicios = await fetchServicios()
+      serviciosRef.current = servicios
+      setState((prev) => ({ ...prev, servicios }))
+      setServiciosSincronizados(true)
+      return true
+    } catch (error) {
+      console.error("[v0] Error recargando servicios:", error)
+      return false
+    }
   }
 
   // === Costos Operativos - Synced with Supabase ===
@@ -1797,6 +1828,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateServicio: (...args) => syncGuard.run(() => updateServicio(...args)),
         deleteServicio: (...args) => syncGuard.run(() => deleteServicio(...args)),
         setServicios,
+        serviciosSincronizados,
+        recargarServicios,
         addCostoOperativo: (...args) => syncGuard.run(() => addCostoOperativo(...args)),
         updateCostoOperativo: (...args) => syncGuard.run(() => updateCostoOperativo(...args)),
         deleteCostoOperativo: (...args) => syncGuard.run(() => deleteCostoOperativo(...args)),
