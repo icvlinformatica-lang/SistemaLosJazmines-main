@@ -114,6 +114,10 @@ function margenColor(margen: number): string {
   return "text-red-500"
 }
 
+// Línea de ayuda del switch "Se paga como sueldo"
+const AYUDA_SUELDO =
+  "En Caja Eventos aparece en Sueldos, como un pago único el día del evento, en vez de seña y saldo."
+
 // ─── Celda editable inline ────────────────────────────────────────────────────
 
 interface EditableCellProps {
@@ -637,6 +641,12 @@ export default function FinanzasServiciosPage() {
               <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
               <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[110px]">Creado</th>
               <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[70px]">Activo</th>
+              <th
+                className="px-2 py-1.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wide leading-tight w-[96px]"
+                title={AYUDA_SUELDO}
+              >
+                Se paga como sueldo
+              </th>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -644,7 +654,7 @@ export default function FinanzasServiciosPage() {
           <tbody>
             {serviciosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={12} className="text-center py-16 text-muted-foreground">
+                <td colSpan={13} className="text-center py-16 text-muted-foreground">
                   {busqueda || categoriaFiltro !== "todas"
                     ? "No se encontraron servicios con esos filtros."
                     : "No hay servicios. Hacé clic en \"Agregar servicio\" para empezar."}
@@ -683,7 +693,7 @@ export default function FinanzasServiciosPage() {
                         </div>
                       </div>
                     </td>
-                    <td colSpan={10} className="px-3 py-1.5">
+                    <td colSpan={11} className="px-3 py-1.5">
                       <span className="text-white font-bold text-[15px] uppercase tracking-widest">{s.nombre}</span>
                     </td>
                     <td className="px-2 py-[3px]">
@@ -883,6 +893,16 @@ export default function FinanzasServiciosPage() {
                     />
                   </td>
 
+                  {/* Se paga como sueldo (pago único el día del evento, ver lib/servicio-sueldo.ts) */}
+                  <td className="px-2 py-[3px] text-center">
+                    <Switch
+                      checked={s.sePagaComoSueldo === true}
+                      onCheckedChange={(checked) => update(s.id, { sePagaComoSueldo: checked })}
+                      title={AYUDA_SUELDO}
+                      aria-label={`${s.sePagaComoSueldo ? "Dejar de pagar" : "Pagar"} ${s.nombre} como sueldo`}
+                    />
+                  </td>
+
                   {/* Eliminar */}
                   <td className="px-2 py-[3px]">
                     <button
@@ -939,6 +959,9 @@ export default function FinanzasServiciosPage() {
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-sm bg-rose-100 border border-rose-300" />
           Costo Caja Eventos = egreso que impacta en Caja Eventos al registrar el servicio
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="font-semibold text-foreground/80">Se paga como sueldo:</span> {AYUDA_SUELDO}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="font-semibold text-emerald-600">Verde</span> ≥ 30% &nbsp;

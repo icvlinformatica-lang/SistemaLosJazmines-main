@@ -13,7 +13,7 @@ import type { EgresoPendienteServicio } from "@/lib/hooks/use-caja-eventos"
 export interface FiltroEgresos {
   salon: string // "todos" o id del salón
   tipo: string // "todos" | "seña" | "saldo" | "menu" | "barra" | "sueldo" | "servicios"
-  sub: string | null // tipo de servicio (seña/saldo/servicios) o nombre de evento (sueldo)
+  sub: string | null // tipo de servicio (seña/saldo/servicios) o persona (sueldo)
   q: string // texto de búsqueda
   qAbierta: boolean // si el input de búsqueda está desplegado
 }
@@ -32,6 +32,10 @@ const norm = (s: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
 
+/** A quién se le paga un sueldo: el personal (sin la función) o el servicio
+ *  que se paga como sueldo. Fallback al nombre completo por las dudas. */
+const personaDe = (e: EgresoPendienteServicio) => e.persona || e.servicioNombre
+
 const coincideTipo = (e: EgresoPendienteServicio, tipo: string) => {
   if (tipo === "todos") return true
   if (tipo === "servicios") return e.tipo === "seña" || e.tipo === "saldo"
@@ -45,7 +49,7 @@ export function filtrarEgresos(egresos: EgresoPendienteServicio[], f: FiltroEgre
     if (!coincideTipo(e, f.tipo)) return false
     if (f.sub) {
       if (f.tipo === "sueldo") {
-        if (e.eventoNombre !== f.sub) return false
+        if (personaDe(e) !== f.sub) return false
       } else if (e.servicioNombre !== f.sub) {
         return false
       }
@@ -120,7 +124,8 @@ export function BarraFiltrosEgresos({
 
   // Sub-opciones según el tipo activo: para "Servicios" es el catálogo
   // completo (todo lo que ofrecemos, tenga o no pagos pendientes ahora);
-  // para "Sueldos" son los eventos con pagos de personal pendientes.
+  // para "Sueldos" son las personas (y servicios pagados como sueldo) con
+  // pagos pendientes, de todos los eventos.
   const subOpciones = useMemo(() => {
     if (filtro.tipo === "servicios") {
       const enTipo = base.filter((e) => coincideTipo(e, "servicios"))
@@ -136,9 +141,10 @@ export function BarraFiltrosEgresos({
     const enTipo = base.filter((e) => coincideTipo(e, filtro.tipo))
     const c = new Map<string, number>()
     for (const e of enTipo) {
-      if (e.eventoNombre) c.set(e.eventoNombre, (c.get(e.eventoNombre) || 0) + 1)
+      const persona = personaDe(e)
+      if (persona) c.set(persona, (c.get(persona) || 0) + 1)
     }
-    return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"))
   }, [base, filtro.tipo, catalogoServicios])
 
   const setTipo = (tipo: string) => onChange({ ...filtro, tipo, sub: null })
@@ -226,7 +232,7 @@ export function BarraFiltrosEgresos({
       {subOpciones.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pl-1 border-l-2 border-border ml-1">
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pl-1.5">
-            {filtro.tipo === "sueldo" ? "Evento:" : "Servicio:"}
+            {filtro.tipo === "sueldo" ? "Persona:" : "Servicio:"}
           </span>
           <button
             type="button"

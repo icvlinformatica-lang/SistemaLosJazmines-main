@@ -50,6 +50,7 @@ export async function fetchServicios(): Promise<Servicio[]> {
     proveedor: s.proveedor || undefined,
     notas: s.notas || undefined,
     orden: s.orden ?? undefined,
+    sePagaComoSueldo: s.se_paga_como_sueldo === true,
     createdAt: s.created_at || undefined,
   }))
 }
@@ -72,6 +73,7 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
     proveedor: servicio.proveedor || null,
     notas: servicio.notas || null,
     orden: servicio.orden ?? null,
+    se_paga_como_sueldo: servicio.sePagaComoSueldo === true,
     updated_at: new Date().toISOString(),
   }
 
@@ -108,6 +110,7 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
     proveedor: data.proveedor || undefined,
     notas: data.notas || undefined,
     orden: data.orden ?? undefined,
+    sePagaComoSueldo: data.se_paga_como_sueldo === true,
   }
 }
 
@@ -161,6 +164,7 @@ function mapServicioRow(s: any): Servicio {
     proveedor: s.proveedor || undefined,
     notas: s.notas || undefined,
     orden: s.orden ?? undefined,
+    sePagaComoSueldo: s.se_paga_como_sueldo === true,
     createdAt: s.created_at || undefined,
   }
 }
