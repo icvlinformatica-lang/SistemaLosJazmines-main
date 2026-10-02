@@ -151,6 +151,26 @@ export function PlanillaCuotas({
     return mesesEntre(min, max)
   }, [visibles, mesActual])
 
+  // Por mes: cuántas cuotas siguen sin cobrar (pendientes o parciales) y cuánto
+  // falta cobrar de ellas (saldoRestante, lo mismo que muestra Cobrar cuota).
+  // Sale de TODOS los eventos de la planilla, aunque el salón esté plegado; se
+  // actualiza solo a medida que se registran pagos.
+  const porCobrarPorMes = useMemo(() => {
+    const m = new Map<string, { cantidad: number; monto: number }>()
+    for (const f of filas) {
+      for (const [mes, cuotas] of f.cuotasPorMes) {
+        for (const c of cuotas) {
+          if (c.estado === "pagada") continue
+          const v = m.get(mes) ?? { cantidad: 0, monto: 0 }
+          v.cantidad += 1
+          v.monto += c.saldoRestante
+          m.set(mes, v)
+        }
+      }
+    }
+    return m
+  }, [filas])
+
   // Al entrar (y al cambiar el filtro), el mes actual queda a la vista.
   const scrollRef = useRef<HTMLDivElement>(null)
   const mesActualRef = useRef<HTMLTableCellElement>(null)
@@ -196,11 +216,29 @@ export function PlanillaCuotas({
         ) : (
           <div ref={scrollRef} className="max-h-[70vh] overflow-auto border-y sm:rounded-md sm:border">
             <table className="w-max border-separate border-spacing-0 text-xs">
-              <thead>
+              {/* Encabezado fijo arriba: cuotas por cobrar de cada mes + los meses */}
+              <thead className="sticky top-0 z-30">
+                <tr>
+                  <th className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r bg-background px-2 py-1.5 text-left text-[11px] font-semibold sm:w-[200px] sm:min-w-[200px]">
+                    Cuotas por cobrar
+                  </th>
+                  {meses.map((mes) => {
+                    const cantidad = porCobrarPorMes.get(mes)?.cantidad ?? 0
+                    return (
+                      <th
+                        key={mes}
+                        title={`${cantidad} ${cantidad === 1 ? "cuota" : "cuotas"} por cobrar en ${etiquetaMes(mes)}`}
+                        className={`border-b px-1 py-1.5 text-center text-sm font-bold ${mes === mesActual ? "bg-amber-100" : "bg-background"}`}
+                      >
+                        {cantidad > 0 ? <span className="text-emerald-600">{cantidad}</span> : <span className="font-normal text-muted-foreground/50">—</span>}
+                      </th>
+                    )
+                  })}
+                </tr>
                 <tr>
                   <th
                     data-columna-fija
-                    className="sticky left-0 top-0 z-30 w-[132px] min-w-[132px] border-b border-r bg-background px-2 py-2 text-left font-semibold sm:w-[200px] sm:min-w-[200px]"
+                    className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r bg-background px-2 py-2 text-left font-semibold sm:w-[200px] sm:min-w-[200px]"
                   >
                     Evento
                   </th>
@@ -210,7 +248,7 @@ export function PlanillaCuotas({
                       <th
                         key={mes}
                         ref={esActual ? mesActualRef : undefined}
-                        className={`sticky top-0 z-20 min-w-[76px] border-b px-1 py-2 text-center font-semibold capitalize ${
+                        className={`min-w-[76px] border-b px-1 py-2 text-center font-semibold capitalize ${
                           esActual ? "bg-amber-100 text-amber-900" : "bg-background text-muted-foreground"
                         }`}
                       >
@@ -235,6 +273,27 @@ export function PlanillaCuotas({
                   />
                 ))}
               </tbody>
+              {/* Pie fijo abajo: monto total que falta cobrar de las cuotas de cada mes */}
+              <tfoot className="sticky bottom-0 z-30">
+                <tr>
+                  <td className="sticky left-0 z-10 border-r border-t-2 bg-muted px-2 py-2 text-left text-[11px] font-semibold">
+                    Total por cobrar
+                  </td>
+                  {meses.map((mes) => {
+                    const monto = porCobrarPorMes.get(mes)?.monto ?? 0
+                    return (
+                      <td
+                        key={mes}
+                        className={`whitespace-nowrap border-t-2 px-1.5 py-2 text-center text-[11px] font-semibold tabular-nums ${
+                          mes === mesActual ? "bg-amber-100 text-amber-900" : "bg-muted"
+                        }`}
+                      >
+                        {monto > 0 ? formatCurrency(monto) : <span className="font-normal text-muted-foreground/50">—</span>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
