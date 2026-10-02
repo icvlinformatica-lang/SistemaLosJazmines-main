@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect, useRef } from "react"
+import { Fragment, useMemo, useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +57,7 @@ import { SalonDot } from "@/components/salon-badge"
 import { SaldoHerramientasEventos } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
+import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo } from "@/lib/servicio-sueldo"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
   EgresoPendienteServicio,
@@ -729,6 +730,13 @@ useStore()
         updateEvento(evento.id, { fechaPagoMenu: nuevaFechaVenc })
       } else if (eg.id.endsWith("-barra")) {
         updateEvento(evento.id, { fechaPagoBarra: nuevaFechaVenc })
+      } else if (eg.id.includes("-srvsueldo-") && eg.servicioId) {
+        // Servicio que se paga como sueldo: su vencimiento propio (no toca el
+        // de seña/saldo, por si después se apaga la marca en el catálogo).
+        const servicios = (evento.servicios || []).map((s) =>
+          s.servicioId === eg.servicioId ? { ...s, fechaSueldoManual: nuevaFechaVenc } : s,
+        )
+        updateEvento(evento.id, { servicios })
       } else if (eg.id.includes("-compromiso-") && eg.servicioId) {
         updatePagoPersonal(eg.servicioId, { fechaLimitePago: nuevaFechaVenc })
       } else if (eg.id.includes("-sueldo-") && eg.servicioId) {
@@ -1012,7 +1020,15 @@ useStore()
     } else if (egreso.tipo === "barra") {
       guardarEstado = () => updateEvento(egreso.eventoId, { barraPagada: true })
     } else if (egreso.tipo === "sueldo") {
-      if (egreso.id.includes("-compromiso-")) {
+      if (egreso.id.includes("-srvsueldo-")) {
+        // Servicio que se paga como sueldo: el estado queda en el propio
+        // servicio del evento (como un saldo pagado), con el monto pagado como
+        // histórico. No toca personalEvento ni pagosPersonal.
+        const nuevosServicios = (evento.servicios ?? []).map((srv) =>
+          srv.servicioId === egreso.servicioId ? pagarServicioComoSueldo(srv, egreso.monto, fechaPago) : srv,
+        )
+        guardarEstado = () => updateEvento(egreso.eventoId, { servicios: nuevosServicios })
+      } else if (egreso.id.includes("-compromiso-")) {
         // Compromiso asignado manualmente desde Finanzas → Personal
         guardarEstado = () => updatePagoPersonal(egreso.servicioId!, {
           estado: "pagado",
@@ -1135,8 +1151,17 @@ useStore()
               pp.estado === "pagado" &&
               `${pp.nombrePersonal} (${pp.servicioNombre})` === pago.servicioNombre
           )
+          // ...o un servicio que se pagó como sueldo (lib/servicio-sueldo.ts)
+          const servicioSueldo = (evento.servicios ?? []).find(
+            (srv) => srv.pagoSueldo && srv.nombre === pago.servicioNombre,
+          )
           if (compromisoPagado) {
             updatePagoPersonal(compromisoPagado.id, { estado: "pendiente", fechaPago: undefined })
+          } else if (servicioSueldo) {
+            const nuevosServicios = (evento.servicios ?? []).map((srv) =>
+              srv === servicioSueldo ? revertirServicioPagadoComoSueldo(srv) : srv,
+            )
+            updateEvento(pago.eventoId, { servicios: nuevosServicios })
           } else {
             const nuevoPersonal = (evento.personalEvento ?? []).map((pe) =>
               `${pe.nombre} (${pe.funcion})` === pago.servicioNombre ? { ...pe, pagado: false } : pe
@@ -1320,6 +1345,25 @@ useStore()
       return { salon: s, items, total: items.reduce((sum, e) => sum + e.monto, 0) }
     })
   }, [egresosProximosFiltrados, ordenSalones])
+
+  // Con el filtro "Sueldos" activo, la lista se ordena por persona (A→Z) y,
+  // dentro de cada persona, por fecha, con el total de cada una.
+  const gruposSueldoPorPersona = useMemo(() => {
+    if (filtroPagar.tipo !== "sueldo") return null
+    const map = new Map<string, EgresoPendienteServicio[]>()
+    for (const eg of egresosProximosFiltrados) {
+      const persona = eg.persona || eg.servicioNombre
+      if (!map.has(persona)) map.set(persona, [])
+      map.get(persona)!.push(eg)
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], "es"))
+      .map(([persona, items]) => ({
+        persona,
+        items: [...items].sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento)),
+        total: items.reduce((sum, e) => sum + e.monto, 0),
+      }))
+  }, [egresosProximosFiltrados, filtroPagar.tipo])
 
   // Filas de las tablas (compartidas entre la vista plana y las carpetas)
   const renderFilasCobrar = (items: IngresoPendiente[]) =>
@@ -2143,6 +2187,39 @@ useStore()
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos pendientes que coincidan con el filtro.
                 </p>
+              ) : gruposSueldoPorPersona ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-6 w-[180px]">Tipo de servicio</TableHead>
+                      <TableHead className="whitespace-nowrap">Fecha de carga</TableHead>
+                      <TableHead className="whitespace-nowrap">Fecha del evento</TableHead>
+                      <TableHead>Nombre del evento</TableHead>
+                      <TableHead>Tipo de evento</TableHead>
+                      <TableHead className="text-right">Seña</TableHead>
+                      <TableHead className="text-right">Saldo restante</TableHead>
+                      <TableHead className="w-10 pr-4"><span className="sr-only">Opciones</span></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {gruposSueldoPorPersona.map((g) => (
+                      <Fragment key={g.persona}>
+                        <TableRow className="bg-emerald-50/70 hover:bg-emerald-50/70">
+                          <TableCell colSpan={6} className="pl-6 py-2">
+                            <span className="text-sm font-semibold text-emerald-900">{g.persona}</span>
+                            <span className="ml-2 text-xs text-emerald-800/70">
+                              {g.items.length} {g.items.length === 1 ? "pago" : "pagos"}
+                            </span>
+                          </TableCell>
+                          <TableCell colSpan={2} className="py-2 pr-4 text-right text-sm font-bold text-red-600">
+                            −{formatCurrency(g.total)}
+                          </TableCell>
+                        </TableRow>
+                        {renderFilasPagar(g.items)}
+                      </Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
               ) : salonFiltro === "todos" ? (
                 <div>
                   {gruposPagar.map((g) => {
@@ -2246,7 +2323,7 @@ useStore()
                   </TableBody>
                 </Table>
               )}
-              {salonFiltro !== "todos" && totalFilasPagarCombinado > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && !gruposSueldoPorPersona && totalFilasPagarCombinado > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
                   {filasPagar < totalFilasPagarCombinado ? (
                     <Button

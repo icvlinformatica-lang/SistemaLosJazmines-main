@@ -359,6 +359,11 @@ export interface Servicio {
   orden?: number
   /** Fecha de creación del servicio (ISO, viene de created_at en la base). */
   createdAt?: string
+  /**
+   * Se le paga a una persona como sueldo (pago único el día del evento) en vez
+   * de a un proveedor con seña y saldo. Ver lib/servicio-sueldo.ts.
+   */
+  sePagaComoSueldo?: boolean
 }
 
 export interface ServicioEvento {
@@ -384,6 +389,25 @@ export interface ServicioEvento {
    */
   fechaSeñaManual?: string
   fechaSaldoManual?: string
+  /**
+   * Solo servicios que se pagan como sueldo (ver lib/servicio-sueldo.ts):
+   * vencimiento editado a mano en Caja Eventos (si no, el día del evento).
+   */
+  fechaSueldoManual?: string
+  /**
+   * Presente si el servicio se pagó como sueldo desde Caja Eventos: monto
+   * realmente pagado (histórico) y el estado previo, para poder revertirlo
+   * dejándolo exactamente como estaba.
+   */
+  pagoSueldo?: {
+    monto: number
+    fecha: string // YYYY-MM-DD
+    estadoPagoPrevio?: "sin_seña" | "señado" | "saldo_pendiente" | "pagado_total"
+    montoSeñaPrevio?: number
+    saldoPendientePrevio?: number
+    pagadoPrevio?: boolean
+    fechaPagoSaldoPrevio?: string
+  }
 }
 
 // --- Costos Operativos ---
@@ -2563,7 +2587,9 @@ export function congelarCostosEvento(
     return {
       servicioId: srv.servicioId,
       montoSeña,
-      saldo: saldoPagado ? montoSaldoPagado(srv.nombre) : saldoPendiente,
+      // Pagado como sueldo (lib/servicio-sueldo.ts): el monto pagado queda en el
+      // propio servicio; no hay un movimiento "Pago saldo" que buscar.
+      saldo: srv.pagoSueldo ? srv.pagoSueldo.monto : saldoPagado ? montoSaldoPagado(srv.nombre) : saldoPendiente,
     }
   })
   const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)

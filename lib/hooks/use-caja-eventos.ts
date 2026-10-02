@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { calcularComprasBarras, calcularComprasSegmentadas, calcularMontoPersonalDelEvento, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
 import { calcularProporcionCajaEventos } from "../cobrar-cuota"
 import { estadoDeCuota, saldoRestanteCuota } from "../estado-cuotas"
+import { montoSueldoServicio, sePagaComoSueldo } from "../servicio-sueldo"
 
 // ============================================================
 // Tipos de salida
@@ -53,6 +54,9 @@ export interface EgresoPendienteServicio {
   servicioNombre: string
   servicioId?: string // presente para egresos de servicios (no menú/barra); para sueldos es el id de la entrada de personal
   tipo: "seña" | "saldo" | "menu" | "barra" | "sueldo"
+  /** Solo sueldos: a quién se le paga (nombre del personal, sin la función, o el
+   *  servicio que se paga como sueldo). Agrupa el filtro "Sueldos" por persona. */
+  persona?: string
   monto: number
   fechaVencimiento: string // YYYY-MM-DD
   diasRestantes: number
@@ -355,6 +359,7 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
           salon: evento.salon || "",
           servicioNombre: `${pp.nombrePersonal} (${pp.servicioNombre})`,
           servicioId: pp.id,
+          persona: pp.nombrePersonal,
           tipo: "sueldo",
           monto: montoPendiente,
           fechaVencimiento: fechaVenc,
@@ -390,6 +395,7 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
           salon: evento.salon || "",
           servicioNombre: `${pe.nombre} (${pe.funcion})`,
             servicioId: pe.id,
+            persona: pe.nombre,
             tipo: "sueldo",
             monto: montoSueldoLive,
             fechaVencimiento: fechaVencSueldo,
@@ -401,6 +407,37 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
 
       for (const srv of serviciosEvento) {
         const estadoPago = srv.estadoPago ?? "sin_seña"
+
+        // --- Servicio que se paga como SUELDO (Finanzas → Servicios) ---
+        // En vez de seña y saldo, un único pago a la persona el día del evento
+        // (o en la fecha editada a mano), por el mismo monto en vivo que hoy
+        // sumarían seña + saldo. Ver lib/servicio-sueldo.ts.
+        if (sePagaComoSueldo(srv, state.servicios || [])) {
+          if (!incluirPagados && srv.pagoSueldo) continue
+          const montoSueldo = montoSueldoServicio(srv, state)
+          const fechaSueldo = srv.fechaSueldoManual || evento.fecha
+          if (montoSueldo > 0 && fechaSueldo) {
+            const fechaSueldoDate = parseLocalDate(fechaSueldo)
+            egresosPendientes.push({
+              id: `${evento.id}-srvsueldo-${srv.servicioId}`,
+              eventoId: evento.id,
+              eventoNombre,
+              eventoFecha: evento.fecha || undefined,
+              eventoFechaCarga: evento.createdAt || undefined,
+              eventoTipo: evento.tipoEvento || undefined,
+              salon: evento.salon || "",
+              servicioNombre: srv.nombre,
+              servicioId: srv.servicioId,
+              persona: srv.nombre,
+              tipo: "sueldo",
+              monto: montoSueldo,
+              fechaVencimiento: fechaSueldo,
+              diasRestantes: Math.ceil((fechaSueldoDate.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
+              estadoPago: srv.pagoSueldo ? "pagado_total" : estadoPago,
+            })
+          }
+          continue
+        }
 
         // Vencimientos EN VIVO según la fecha ACTUAL del evento:
         // si se reprograma el evento, la seña y el saldo se corren solos

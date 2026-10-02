@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { useStore } from "@/lib/store-context"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
+import { montoSueldoServicio, sePagaComoSueldo, señaPagadaPorSeparado } from "@/lib/servicio-sueldo"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
 import {
@@ -257,11 +258,26 @@ function CostosEventoContent() {
     // Si el evento está archivado, usar los montos congelados al archivar.
     const frozen = congelado?.serviciosCalc?.find((f) => f.servicioId === srv.servicioId)
 
+    // Servicio que se paga como sueldo (lib/servicio-sueldo.ts): un único pago
+    // desde Caja Eventos → Sueldos, por el mismo monto que muestra la caja. Si
+    // la seña ya se había pagado por el camino viejo, se sigue mostrando.
+    if (!frozen && sePagaComoSueldo(srv, state.servicios ?? [])) {
+      const señaViejaPagada = señaPagadaPorSeparado(srv)
+      return {
+        srv,
+        senaPagada: señaViejaPagada,
+        saldoPagado: !!srv.pagoSueldo,
+        montoSeña: señaViejaPagada ? montoSeñaCalc : 0,
+        saldo: montoSueldoServicio(srv, { servicios: state.servicios ?? [] }),
+        comoSueldo: true,
+      }
+    }
+
     // Preservar lo ya pagado; recalcular en vivo lo pendiente.
     const montoSeña = frozen ? frozen.montoSeña : montoSeñaCalc
     const saldo = frozen ? frozen.saldo : saldoPagado ? montoSaldoPagado(srv.nombre) : saldoCalc
 
-    return { srv, senaPagada, saldoPagado, montoSeña, saldo }
+    return { srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo: false }
   })
 
   const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)
@@ -730,7 +746,7 @@ function CostosEventoContent() {
           {servicios.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin servicios contratados.</p>
           ) : (
-            serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo }) => {
+            serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo }) => {
               return (
                 <div key={srv.servicioId} className="rounded-lg border border-border p-3">
                   <p className="mb-2 text-sm font-semibold">{srv.nombre}</p>
@@ -741,7 +757,7 @@ function CostosEventoContent() {
                           <Checkbox
                             checked={senaPagada}
                             onCheckedChange={(v) => toggleSena(srv.servicioId, v === true)}
-                            disabled={saldoPagado}
+                            disabled={saldoPagado || comoSueldo}
                             aria-label={`Marcar seña de ${srv.nombre} como pagada`}
                           />
                           <span className="shrink-0">Seña</span>
@@ -763,14 +779,24 @@ function CostosEventoContent() {
                         <Checkbox
                           checked={saldoPagado}
                           onCheckedChange={(v) => toggleSaldo(srv.servicioId, v === true)}
-                          aria-label={`Marcar saldo de ${srv.nombre} como pagado`}
+                          // Como sueldo se paga solo desde Caja Eventos → Sueldos
+                          // (un único pago), para no pagarlo por dos caminos.
+                          disabled={comoSueldo}
+                          aria-label={`Marcar ${comoSueldo ? "sueldo" : "saldo"} de ${srv.nombre} como pagado`}
                         />
-                        <span className="shrink-0">Saldo</span>
-                        {srv.fechaLimitePago && !saldoPagado && (
-                          <span className="truncate text-xs text-muted-foreground">
-                            vence {formatFecha(srv.fechaLimitePago)}
-                          </span>
-                        )}
+                        <span className="shrink-0">{comoSueldo ? "Sueldo" : "Saldo"}</span>
+                        {comoSueldo
+                          ? !saldoPagado && (
+                              <span className="truncate text-xs text-muted-foreground">
+                                se paga en Caja Eventos → Sueldos
+                                {(srv.fechaSueldoManual || evento.fecha) && ` · vence ${formatFecha(srv.fechaSueldoManual || evento.fecha)}`}
+                              </span>
+                            )
+                          : srv.fechaLimitePago && !saldoPagado && (
+                              <span className="truncate text-xs text-muted-foreground">
+                                vence {formatFecha(srv.fechaLimitePago)}
+                              </span>
+                            )}
                       </span>
                       <span
                         className={`shrink-0 font-medium ${saldoPagado ? "text-emerald-700" : "text-red-600"}`}
@@ -800,7 +826,7 @@ function CostosEventoContent() {
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3">
-                  {serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo }) => (
+                  {serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo }) => (
                     <div key={srv.servicioId} className="rounded-lg border border-border p-3">
                       <p className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold">
                         <span className="min-w-0 truncate">{srv.nombre}</span>
@@ -816,7 +842,7 @@ function CostosEventoContent() {
                           </div>
                         )}
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-muted-foreground">Saldo</span>
+                          <span className="text-muted-foreground">{comoSueldo ? "Sueldo" : "Saldo"}</span>
                           <span className={saldoPagado ? "font-medium text-emerald-700" : "font-medium text-red-600"}>
                             {formatCurrency(saldo)} {saldoPagado ? "(pagado)" : "(pendiente)"}
                           </span>
