@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect, Suspense, Fragment } from "react"
+import { useState, useMemo, useRef, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -23,7 +23,7 @@ import { estadoDeCuota, saldoRestanteCuota } from "@/lib/estado-cuotas"
 import { ContratoPanel } from "@/components/contrato-panel"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
 import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
-import { SalonDot } from "@/components/salon-badge"
+import { PlanillaCuotas } from "@/components/planilla-cuotas"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
@@ -65,11 +65,8 @@ import {
   Building2,
   Clock,
   FileText,
-  Phone,
   TrendingUp,
   X,
-  Eye,
-  EyeOff,
 } from "lucide-react"
 
 const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -84,13 +81,6 @@ const MESES_RECIBO = [
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
 
-// "2026-10-10" → "10/10/2026". Se arma a mano: new Date("2026-10-10") lo toma
-// como medianoche UTC y en Argentina se mostraba un día antes (9/10).
-function fechaCorta(fechaISO: string): string {
-  const [anio, mes, dia] = fechaISO.split("-").map(Number)
-  return `${dia}/${mes}/${anio}`
-}
-
 // Días de atraso entre el vencimiento y la fecha de cobro ("YYYY-MM-DD"), 0
 // si se cobró antes o si alguna fecha es inválida. Se cuenta en UTC para que
 // un cambio de horario no corra un día.
@@ -99,12 +89,6 @@ function diasEntreFechas(vencimiento: string, fecha: string): number {
   const f = Date.parse(fecha + "T00:00:00Z")
   if (!Number.isFinite(v) || !Number.isFinite(f)) return 0
   return Math.max(0, Math.floor((f - v) / 86400000))
-}
-
-// "2026-10-10" → "Octubre 2026" (separador de mes en Cuotas por cobrar)
-function etiquetaMes(fechaISO: string): string {
-  const [anio, mes] = fechaISO.split("-").map(Number)
-  return `${MESES_RECIBO[mes - 1]} ${anio}`
 }
 
 // "IPC provisorio: último publicado (1,7%, septiembre 2026)" cuando el cálculo
@@ -478,10 +462,6 @@ function PagosPageContent() {
   }, [])
 
   const [showContractPreview, setShowContractPreview] = useState(false)
-  // Salones plegados en la tarjeta de cuotas del mes (tiras angostas)
-  const [salonesPlegados, setSalonesPlegados] = useState<string[]>([])
-  const toggleSalonPlegado = (salonId: string) =>
-    setSalonesPlegados((prev) => (prev.includes(salonId) ? prev.filter((s) => s !== salonId) : [...prev, salonId]))
   const [showContratoPanel, setShowContratoPanel] = useState(false)
 
   // Protección con PIN de administración para editar el contrato.
@@ -726,6 +706,24 @@ function PagosPageContent() {
     cargarPlanDesdeEvento(ev)
   }
 
+  // Planilla de cuotas: tocar una cuota pendiente o parcial abre el perfil del
+  // evento y el cobro de ESA cuota, igual que "Registrar este pago". Las
+  // cuotas se cobran en orden: si se toca una que todavía no corresponde
+  // (ej. la 5 con la 3 sin cobrar), queda abierto el perfil y se avisa.
+  const handleCobrarDesdePlanilla = (evento: EventoGuardado, numeroCuota: number) => {
+    handleSelectEvento(evento)
+    const opciones = opcionesCobro(evento)
+    if (!opciones.some((c) => c.numeroCuota === numeroCuota)) {
+      const corriente = opciones.find((c) => c.estado === "pendiente")
+      toast({
+        title: "Las cuotas se cobran en orden",
+        description: corriente ? `Primero hay que cobrar la cuota ${corriente.numeroCuota}.` : "Esa cuota no se puede cobrar todavía.",
+      })
+      return
+    }
+    abrirCobroPara(evento, numeroCuota)
+  }
+
   // Cuotas disponibles como destino de un cobro: la "corriente" (la más
   // chica que nunca recibió ningún pago) y, aparte, cualquier cuota que ya
   // quedó "parcial" (sea que se decidió acumular o dejar aparte) — esas
@@ -822,7 +820,7 @@ function PagosPageContent() {
       monto: totalSimulado,
       fecha: fechaNegocio(),
       pagadoPor: "",
-      dni: selectedEvento?.dniNovio1 || "",
+      dni: evento.dniNovio1 || "",
       porcentajeIPC: ipcAcumulado,
       notas:
         recargoAtraso > 0
@@ -1239,59 +1237,6 @@ function PagosPageContent() {
     ? selectedEvento.adultos + selectedEvento.adolescentes + selectedEvento.ninos + (selectedEvento.personasDietasEspeciales || 0)
     : 0
 
-  // Cuotas por cobrar: todas las que siguen sin pagar, desde la más atrasada
-  // hasta las del mes actual, ordenadas por fecha de vencimiento (las de
-  // meses anteriores se marcan como atrasadas).
-  const cuotasPorCobrar = useMemo(() => {
-    const resultado: Array<{
-      evento: EventoGuardado
-      numeroCuota: number
-      fechaVencimiento: string
-      monto: number
-      pagada: boolean
-      rangoRecordatorio: boolean
-      atrasada: boolean
-    }> = []
-
-    const eventosCuotas = eventos.filter(e =>
-      e.planDeCuotas &&
-      e.planDeCuotas.numeroCuotas > 0 &&
-      e.planDeCuotas.fechaInicioPlan &&
-      e.estado !== "cancelado" &&
-      e.estado !== "completado"
-    )
-
-    eventosCuotas.forEach(evento => {
-      const cuotas = generarCalendarioCuotas(evento)
-
-      cuotas.forEach(cuota => {
-        if (!cuota.fechaVencimiento) return
-        const [año, mes, dia] = cuota.fechaVencimiento.split("-").map(Number)
-        if (!año || !mes || !dia) return
-        const hoy = new Date()
-        const mesActual = hoy.getMonth() + 1
-        const añoActual = hoy.getFullYear()
-
-        // Si la cuota vence este mes o antes y todavía no fue pagada.
-        // Las pagadas desaparecen de la lista.
-        const esMesActual = año === añoActual && mes === mesActual
-        const esAnterior = año < añoActual || (año === añoActual && mes < mesActual)
-        if ((esMesActual || esAnterior) && !cuota.pagada) {
-          resultado.push({
-            evento,
-            ...cuota,
-            rangoRecordatorio: esMesActual && dia >= 1 && dia <= 10,
-            atrasada: esAnterior,
-          })
-        }
-      })
-    })
-
-    return resultado.sort((a, b) =>
-      a.fechaVencimiento.localeCompare(b.fechaVencimiento)
-    )
-  }, [eventos])
-
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background px-6 py-4">
@@ -1441,200 +1386,9 @@ function PagosPageContent() {
           </Card>
         )}
 
-        {/* RECORDATORIOS DE CUOTAS DEL MES - only when no event selected */}
-        {!selectedEvento && cuotasPorCobrar.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarIcon className="h-5 w-5 text-amber-600" />
-                Cuotas por cobrar
-              </CardTitle>
-              <CardDescription>
-                De la más atrasada a las de {new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}, ordenadas por mes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col lg:flex-row gap-2">
-                {SALONES.map((salonId) => {
-                  const cuotasSalon = cuotasPorCobrar.filter((item) => item.evento.salon === salonId)
-                  const plegado = salonesPlegados.includes(salonId)
-                  const cn = (...classes: (string | boolean | undefined | null)[]) =>
-                    classes.filter(Boolean).join(" ")
-
-                  if (plegado) {
-                    return (
-                      <button
-                        key={salonId}
-                        type="button"
-                        onClick={() => toggleSalonPlegado(salonId)}
-                        className="flex lg:flex-col items-center justify-between lg:justify-start gap-2 rounded-lg border bg-muted/50 px-3 py-2 lg:px-1.5 lg:py-3 lg:w-9 shrink-0 transition-colors hover:bg-muted"
-                        aria-label={`Mostrar columna ${salonLabel(salonId)}`}
-                        title={`Mostrar ${salonLabel(salonId)}`}
-                      >
-                        <EyeOff className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
-                        <span className="flex lg:flex-col items-center gap-2 lg:gap-1.5 min-w-0">
-                          <SalonDot salon={salonId} size={8} />
-                          <span className="text-xs font-semibold text-muted-foreground lg:[writing-mode:vertical-rl] whitespace-nowrap">
-                            {salonLabel(salonId)}
-                          </span>
-                        </span>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
-                          {cuotasSalon.length}
-                        </Badge>
-                      </button>
-                    )
-                  }
-
-                  return (
-                    <div key={salonId} className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-2 flex-1 min-w-0">
-                      <div className="flex items-center justify-between border-b pb-2 px-1 gap-1">
-                        <span className="flex items-center gap-2 text-sm font-semibold min-w-0">
-                          <SalonDot salon={salonId} size={8} />
-                          <span className="truncate">{salonLabel(salonId)}</span>
-                        </span>
-                        <span className="flex items-center gap-1 shrink-0">
-                          <Badge variant="secondary" className="text-xs">
-                            {cuotasSalon.length}
-                          </Badge>
-                          <button
-                            type="button"
-                            onClick={() => toggleSalonPlegado(salonId)}
-                            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                            aria-label={`Plegar columna ${salonLabel(salonId)}`}
-                            title={`Plegar ${salonLabel(salonId)}`}
-                          >
-                            <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-                          </button>
-                        </span>
-                      </div>
-                      {cuotasSalon.length === 0 ? (
-                        <p className="px-1 py-3 text-center text-xs text-muted-foreground">Sin cuotas por cobrar</p>
-                      ) : (
-                        cuotasSalon.map((item, idx) => (
-                          <Fragment key={`${item.evento.id}-${item.numeroCuota}`}>
-                          {/* Separador de mes: aparece cuando cambia el mes respecto de la cuota anterior */}
-                          {(idx === 0 || cuotasSalon[idx - 1].fechaVencimiento.slice(0, 7) !== item.fechaVencimiento.slice(0, 7)) && (
-                            <div className={cn(
-                              "px-1 pt-1 text-[11px] font-semibold uppercase tracking-wide",
-                              item.atrasada ? "text-red-600" : "text-muted-foreground",
-                            )}>
-                              {etiquetaMes(item.fechaVencimiento)}
-                            </div>
-                          )}
-                          <div
-                            className={cn(
-                              "flex flex-col gap-1.5 rounded-lg border p-2",
-                              item.atrasada
-                                ? "bg-red-50 border-red-200"
-                                : item.rangoRecordatorio ? "bg-amber-50 border-amber-300 shadow-sm" : "bg-background",
-                            )}
-                          >
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-sm font-semibold leading-tight">
-                                {item.evento.nombrePareja || item.evento.nombre}
-                              </span>
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                Cuota {item.numeroCuota}/{item.evento.planDeCuotas!.numeroCuotas}
-                              </Badge>
-                              {item.atrasada && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-red-700 border-red-500 text-[10px] px-1.5 py-0"
-                                >
-                                  Atrasada
-                                </Badge>
-                              )}
-                              {item.rangoRecordatorio && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-amber-700 border-amber-600 text-[10px] px-1.5 py-0"
-                                >
-                                  {"Vence pronto"}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <CalendarIcon className="h-3 w-3" />
-                                Vence: {fechaCorta(item.fechaVencimiento)}
-                              </span>
-                              {item.evento.contrato?.telefono && (
-                                <span className="flex items-center gap-1">
-                                  <Phone className="h-3 w-3" />
-                                  {item.evento.contrato.telefono}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap items-center justify-between gap-1.5">
-                              <div>
-                                <div className="font-mono text-sm font-bold">{formatCurrency(item.monto)}</div>
-                                <div className="text-[10px] text-muted-foreground">
-                                  {item.evento.tipoEvento || "Evento"}
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs bg-transparent shrink-0"
-                                onClick={() => handleSelectEvento(item.evento)}
-                              >
-                                Ir al evento
-                              </Button>
-                            </div>
-                          </div>
-                          </Fragment>
-                        ))
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-              {cuotasPorCobrar.some((item) => !item.evento.salon) && (
-                <div className="mt-3 rounded-lg border bg-muted/30 p-2">
-                  <div className="flex items-center justify-between border-b pb-2 px-1 mb-2">
-                    <span className="text-sm font-semibold">Sin salón asignado</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {cuotasPorCobrar.filter((item) => !item.evento.salon).length}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
-                    {cuotasPorCobrar
-                      .filter((item) => !item.evento.salon)
-                      .map((item) => (
-                        <div
-                          key={`${item.evento.id}-${item.numeroCuota}`}
-                          className={`flex flex-col gap-1.5 rounded-lg border p-2 ${item.atrasada ? "bg-red-50 border-red-200" : "bg-background"}`}
-                        >
-                          <span className="flex flex-wrap items-center gap-1.5 text-sm font-semibold leading-tight">
-                            {item.evento.nombrePareja || item.evento.nombre}
-                            {item.atrasada && (
-                              <Badge variant="outline" className="text-red-700 border-red-500 text-[10px] px-1.5 py-0">
-                                Atrasada
-                              </Badge>
-                            )}
-                          </span>
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <CalendarIcon className="h-3 w-3" />
-                            Vence: {fechaCorta(item.fechaVencimiento)}
-                          </span>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="font-mono text-sm font-bold">{formatCurrency(item.monto)}</div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-xs bg-transparent"
-                              onClick={() => handleSelectEvento(item.evento)}
-                            >
-                              Ir al evento
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Planilla de cuotas (eventos × meses) - only when no event selected */}
+        {!selectedEvento && (
+          <PlanillaCuotas eventos={eventos} hoy={fechaNegocio()} onCobrarCuota={handleCobrarDesdePlanilla} />
         )}
 
         {/* Selected Event Detail */}
