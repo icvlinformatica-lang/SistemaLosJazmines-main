@@ -897,6 +897,20 @@ useStore()
       return
     }
     if (!planUpdate || !await guardarOperacion(() => updateEvento(ing.eventoId, planUpdate, movimientos))) return
+    // Cobro hecho con IPC provisorio (último publicado): queda registrado.
+    const calculoCobrado = planUpdate.planDeCuotas.cuotas?.find((c) => c.numero === ing.numeroCuota)?.calculoIPC
+    if (calculoCobrado?.ipcProvisorio && !calculoCobrado.ipcOmitido) {
+      fetch("/api/activity-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "ipc",
+          accion: "cobro_provisorio",
+          nombre: `Cuota ${ing.numeroCuota} - ${ing.eventoNombre}`,
+          detalle: `Marcada como cobrada desde Caja Eventos con IPC provisorio: último publicado (${calculoCobrado.porcentaje}%, ${calculoCobrado.periodoIndice}) | Período del cobro: ${calculoCobrado.periodo}`,
+        }),
+      }).catch(() => {})
+    }
     toast({
       title: "Cuota marcada como cobrada",
       description: `Cuota ${ing.numeroCuota}/${ing.totalCuotas} · ${ing.eventoNombre}`,

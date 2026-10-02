@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -182,7 +183,9 @@ interface StoreContextType {
   // IPC
   historialIPC: HistorialIPCEntry[]
   ultimoMesIPC: { mes: number; anio: number } | null
-  aplicarIPC: (porcentaje: number, mes: number, anio: number) => number
+  aplicarIPC: (porcentaje: number, mes: number, anio: number, opciones?: { provisorio?: boolean; nota?: string }) => number
+  /** Reemplaza un IPC cargado como provisorio por el oficial (mismo mes). */
+  aplicarIPCOficial: (entry: HistorialIPCEntry, porcentaje: number) => void
   eliminarIPC: (entry: HistorialIPCEntry) => number
   abrirDialogIPC: () => void
 }
@@ -273,6 +276,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false)
   const [showIPCDialog, setShowIPCDialog] = useState(false)
   const [porcentajeIPC, setPorcentajeIPC] = useState("")
+  // Carga a mano de un IPC provisorio (no es todavía el oficial del INDEC)
+  const [ipcEsProvisorio, setIpcEsProvisorio] = useState(false)
+  const [notaIPC, setNotaIPC] = useState("")
   const [mesIPC, setMesIPC] = useState<number>(new Date().getMonth())
   const [anioIPC, setAnioIPC] = useState<number>(new Date().getFullYear())
   const { toast } = useToast()
@@ -1639,7 +1645,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * El mes/año lo elige el usuario (puede cargar meses pasados); la fecha real
    * de carga (fechaAplicacion) es solo informativa y no afecta el orden.
    */
-  const aplicarIPC = (porcentaje: number, mes: number, anio: number): number => {
+  const aplicarIPC = (porcentaje: number, mes: number, anio: number, opciones?: { provisorio?: boolean; nota?: string }): number => {
     if (!Number.isFinite(porcentaje) || porcentaje <= -100 || !Number.isInteger(mes) || mes < 0 || mes > 11 || !Number.isInteger(anio)) {
       toast({ title: "IPC inválido", description: "Revisá el período y el porcentaje.", variant: "destructive" })
       return 0
@@ -1667,6 +1673,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       porcentaje,
       fechaAplicacion: new Date().toISOString(),
       eventosActualizados: eventosConIPC,
+      ...(opciones?.provisorio ? { provisorio: true } : {}),
+      ...(opciones?.nota?.trim() ? { nota: opciones.nota.trim() } : {}),
     }
 
     // Optimistic local update
@@ -1682,7 +1690,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Persistir la entrada del historial IPC en Supabase (fuente de verdad compartida)
       try {
         const db = await import("./supabase/data-service")
-        await db.insertHistorialIPC(nuevaEntrada)
+        // insertHistorialIPC devuelve null (no lanza) si la base rechaza el
+        // alta: sin este chequeo se mostraba "IPC aplicado" sin haberse guardado.
+        const guardado = await db.insertHistorialIPC(nuevaEntrada)
+        if (!guardado) throw new Error("La base no confirmó el alta del IPC")
       } catch (err) {
         console.error("[v0] Error persistiendo historial IPC en Supabase:", err)
         setState(prev => ({ ...prev, historialIPC: (prev.historialIPC || []).filter(h => h.id !== nuevaEntrada.id), ultimoMesIPC: state.ultimoMesIPC }))
@@ -1690,8 +1701,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return
       }
 
+      if (nuevaEntrada.provisorio) {
+        registrarActividadIPC("provisorio_cargado", `IPC ${MESES_IPC[mes]} ${anio}`,
+          `IPC provisorio cargado a mano: ${porcentaje}%${nuevaEntrada.nota ? ` | Nota: ${nuevaEntrada.nota}` : ""}`)
+      }
+
       toast({
-        title: "IPC aplicado",
+        title: nuevaEntrada.provisorio ? "IPC provisorio aplicado" : "IPC aplicado",
         description: eventosConIPC > 0
           ? `Se ajustaron las cuotas restantes de ${eventosConIPC} evento(s).`
           : "No había eventos con cuotas pendientes para ajustar, pero el IPC quedó registrado.",
@@ -1701,12 +1717,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return eventosConIPC
   }
 
+  // Registro en Configuración → Actividad de lo que pasa con el IPC provisorio.
+  // Fire-and-forget: no bloquea la operación si falla.
+  const registrarActividadIPC = (accion: string, nombre: string, detalle: string) => {
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "ipc", accion, nombre, detalle }),
+    }).catch(() => {})
+  }
+
+  /**
+   * Reemplaza un IPC cargado como provisorio por el oficial del INDEC: misma
+   * fila del historial (mismo mes), nuevo porcentaje, provisorio = false.
+   * Las cuotas YA cobradas con el provisorio no cambian (su cifra quedó fijada
+   * al cobrarlas); las pendientes se proyectan con el oficial.
+   */
+  const aplicarIPCOficial = (entry: HistorialIPCEntry, porcentaje: number) => {
+    if (!entry.id || !entry.provisorio) return
+    if (!Number.isFinite(porcentaje) || porcentaje <= -100) {
+      toast({ title: "IPC inválido", description: "Revisá el porcentaje.", variant: "destructive" })
+      return
+    }
+    const nota = `Reemplazó al provisorio de ${entry.porcentaje}%${entry.nota ? ` (${entry.nota})` : ""}`
+    const actualizado: HistorialIPCEntry = { ...entry, porcentaje, provisorio: false, nota, fechaAplicacion: new Date().toISOString() }
+    setState((prev) => ({
+      ...prev,
+      historialIPC: (prev.historialIPC || []).map((h) => (h.id === entry.id ? actualizado : h)),
+    }))
+    void syncGuard.run(async () => {
+      try {
+        const db = await import("./supabase/data-service")
+        await db.reemplazarHistorialIPCPorOficial(entry.id!, porcentaje, nota)
+      } catch (err) {
+        console.error("[v0] Error reemplazando IPC provisorio:", err)
+        setState((prev) => ({
+          ...prev,
+          historialIPC: (prev.historialIPC || []).map((h) => (h.id === entry.id ? entry : h)),
+        }))
+        toast({ title: "No se pudo reemplazar el IPC", description: "Se mantiene el provisorio. Revisá tu conexión e intentá de nuevo.", variant: "destructive" })
+        return
+      }
+      registrarActividadIPC("reemplazado_por_oficial", `IPC ${MESES_IPC[entry.mes]} ${entry.anio}`,
+        `Provisorio ${entry.porcentaje}% → oficial ${porcentaje}%`)
+      toast({ title: "IPC oficial cargado", description: `${MESES_IPC[entry.mes]} ${entry.anio}: ${porcentaje}%. Las cuotas ya cobradas no cambian.` })
+    })
+  }
+
   const abrirDialogIPC = () => {
     const hoy = new Date()
     const proximo = calcularProximoMesIPC(state.historialIPC || [], hoy.getMonth(), hoy.getFullYear())
     setMesIPC(proximo.mes)
     setAnioIPC(proximo.anio)
     setPorcentajeIPC("")
+    setIpcEsProvisorio(false)
+    setNotaIPC("")
     setShowIPCDialog(true)
   }
 
@@ -1764,9 +1829,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const yaExiste = (state.historialIPC || []).some((h) => h.mes === mesIPC && h.anio === anioIPC)
     if (yaExiste) return
 
-    aplicarIPC(porcentaje, mesIPC, anioIPC)
+    aplicarIPC(porcentaje, mesIPC, anioIPC, { provisorio: ipcEsProvisorio, nota: notaIPC })
     setShowIPCDialog(false)
     setPorcentajeIPC("")
+    setIpcEsProvisorio(false)
+    setNotaIPC("")
   }
 
   const [fechaIPC, setFechaIPC] = useState(() => fechaNegocio())
@@ -1883,6 +1950,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         historialIPC: state.historialIPC || [],
         ultimoMesIPC: state.ultimoMesIPC || null,
       aplicarIPC,
+      aplicarIPCOficial,
       eliminarIPC,
       abrirDialogIPC,
       }
@@ -1981,6 +2049,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     <p className="text-xs text-muted-foreground">
                       Ingresa el porcentaje como numero decimal (ej: 3.2 para 3,2%)
                     </p>
+                  </div>
+
+                  {/* IPC provisorio: todavía no es el oficial del INDEC */}
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <label className="flex cursor-pointer items-start gap-2 text-sm">
+                      <Checkbox
+                        checked={ipcEsProvisorio}
+                        onCheckedChange={(v) => setIpcEsProvisorio(v === true)}
+                        className="mt-0.5"
+                        aria-label="Marcar este IPC como provisorio"
+                      />
+                      <span>
+                        <span className="font-medium">Es provisorio</span>
+                        <span className="block text-xs text-muted-foreground">
+                          Todavía no es el oficial del INDEC. Queda marcado y después se reemplaza por el oficial desde Finanzas → IPC.
+                        </span>
+                      </span>
+                    </label>
+                    {ipcEsProvisorio && (
+                      <Input
+                        value={notaIPC}
+                        onChange={(e) => setNotaIPC(e.target.value)}
+                        placeholder="Nota (opcional): de dónde sale este número"
+                        aria-label="Nota del IPC provisorio"
+                      />
+                    )}
                   </div>
                 </div>
                 <DialogFooter className="flex-col gap-2 sm:flex-row">

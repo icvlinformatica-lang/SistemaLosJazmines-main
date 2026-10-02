@@ -301,8 +301,8 @@ export async function buildVienenAPagar(referencia: string): Promise<VienenAPaga
   const finSemana = toYmd(domingo)
   const hoy = referencia
 
-  const ipcRows = await sql`SELECT mes, anio, porcentaje FROM historial_ipc`
-  const historialIPC: HistorialIPCEntry[] = ipcRows.map(h => ({ mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0 }))
+  const ipcRows = await sql`SELECT mes, anio, porcentaje, coalesce((to_jsonb(historial_ipc) ->> 'provisorio') = 'true', false) AS provisorio FROM historial_ipc`
+  const historialIPC: HistorialIPCEntry[] = ipcRows.map(h => ({ mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0, provisorio: h.provisorio === true }))
   const vienenAPagar: VieneAPagar[] = []
   for (const ev of evRows) {
     // Solo eventos activos (no archivados ni cancelados)

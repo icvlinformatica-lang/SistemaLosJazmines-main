@@ -3,6 +3,16 @@
 import { useState } from "react"
 import { useStore } from "@/lib/store-context"
 import { eventoAjustaPorIPC, type HistorialIPCEntry } from "@/lib/store"
+import { fechaNegocio, indiceParaPeriodo } from "@/lib/ipc-cuotas"
+import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,9 +43,19 @@ const MESES = [
 ]
 
 export default function FinanzasIPCPage() {
-  const { eventos, historialIPC, ultimoMesIPC, abrirDialogIPC, eliminarIPC } = useStore()
+  const { eventos, historialIPC, ultimoMesIPC, abrirDialogIPC, eliminarIPC, aplicarIPCOficial } = useStore()
 
   const [entryAEliminar, setEntryAEliminar] = useState<HistorialIPCEntry | null>(null)
+  // "Reemplazar por el oficial": IPC provisorio elegido y porcentaje oficial tipeado
+  const [entryAReemplazar, setEntryAReemplazar] = useState<HistorialIPCEntry | null>(null)
+  const [porcentajeOficial, setPorcentajeOficial] = useState("")
+  const porcentajeOficialNum = parseFloat(porcentajeOficial.replace(",", "."))
+
+  // Mes actual sin IPC cargado: se cobra con el último publicado (provisorio).
+  const periodoActual = fechaNegocio().slice(0, 7)
+  const indiceActual = indiceParaPeriodo(historialIPC || [], periodoActual)
+  const cobrandoConUltimoPublicado = !!indiceActual && indiceActual.periodoIndice !== periodoActual
+  const nombreMes = (periodo: string) => MESES[Number(periodo.slice(5, 7)) - 1]
 
   const hoy = new Date()
 
@@ -91,6 +111,22 @@ export default function FinanzasIPCPage() {
           Cargar IPC de un mes
         </Button>
       </div>
+
+      {/* Mes actual sin IPC oficial: se cobra con el último publicado */}
+      {cobrandoConUltimoPublicado && indiceActual && (
+        <Card className="border-yellow-300 bg-yellow-50">
+          <CardContent className="flex items-center gap-3 py-4">
+            <AlertTriangle className="h-6 w-6 text-yellow-600 shrink-0" />
+            <p className="flex-1 text-sm text-yellow-900">
+              <span className="font-semibold">
+                {nombreMes(periodoActual)} {periodoActual.slice(0, 4)} sin IPC oficial:
+              </span>{" "}
+              se está cobrando con el último publicado ({nombreMes(indiceActual.periodoIndice).toLowerCase()},{" "}
+              {indiceActual.porcentaje.toLocaleString("es-AR")}%). Cargá el oficial cuando lo publique el INDEC.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Próximo mes a cargar (secuencial) */}
       {hayPendientes ? (
@@ -208,7 +244,14 @@ export default function FinanzasIPCPage() {
                   {[...historialIPC].reverse().map((entry, idx) => (
                     <TableRow key={entry.id ?? idx}>
                       <TableCell className="font-medium">
-                        {MESES[entry.mes]} {entry.anio}
+                        <span className="flex flex-wrap items-center gap-2">
+                          {MESES[entry.mes]} {entry.anio}
+                          {entry.provisorio && (
+                            <Badge variant="outline" className="border-yellow-400 bg-yellow-50 text-yellow-800" title={entry.nota}>
+                              Provisorio
+                            </Badge>
+                          )}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         <Badge variant="secondary" className="font-mono">
@@ -224,6 +267,19 @@ export default function FinanzasIPCPage() {
                         })}
                       </TableCell>
                       <TableCell className="text-right">
+                        {entry.provisorio && entry.id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mr-2 border-yellow-400 text-yellow-800 hover:bg-yellow-50"
+                            onClick={() => {
+                              setEntryAReemplazar(entry)
+                              setPorcentajeOficial("")
+                            }}
+                          >
+                            Reemplazar por el oficial
+                          </Button>
+                        )}
                         {idx === 0 ? (
                           <Button
                             variant="ghost"
@@ -234,9 +290,9 @@ export default function FinanzasIPCPage() {
                             <Undo2 className="h-4 w-4" />
                             Deshacer
                           </Button>
-                        ) : (
+                        ) : !entry.provisorio ? (
                           <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -246,6 +302,48 @@ export default function FinanzasIPCPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={entryAReemplazar != null} onOpenChange={(open) => !open && setEntryAReemplazar(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reemplazar por el IPC oficial</DialogTitle>
+            <DialogDescription>
+              {entryAReemplazar && (
+                <>
+                  {MESES[entryAReemplazar.mes]} {entryAReemplazar.anio} está cargado como provisorio (
+                  {entryAReemplazar.porcentaje.toLocaleString("es-AR")}%). Las cuotas ya cobradas con ese número no
+                  cambian; las pendientes pasan a calcularse con el oficial.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 py-2">
+            <Input
+              type="text"
+              inputMode="decimal"
+              placeholder="IPC oficial, ej: 2.1"
+              value={porcentajeOficial}
+              onChange={(e) => setPorcentajeOficial(e.target.value)}
+              aria-label="Porcentaje del IPC oficial"
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEntryAReemplazar(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!Number.isFinite(porcentajeOficialNum) || porcentajeOficialNum <= -100}
+              onClick={() => {
+                if (entryAReemplazar) aplicarIPCOficial(entryAReemplazar, porcentajeOficialNum)
+                setEntryAReemplazar(null)
+              }}
+            >
+              Cargar oficial
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={entryAEliminar != null} onOpenChange={(open) => !open && setEntryAEliminar(null)}>
         <AlertDialogContent>

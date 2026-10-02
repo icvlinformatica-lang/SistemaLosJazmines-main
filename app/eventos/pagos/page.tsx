@@ -107,6 +107,17 @@ function etiquetaMes(fechaISO: string): string {
   return `${MESES_RECIBO[mes - 1]} ${anio}`
 }
 
+// "IPC provisorio: último publicado (1,7%, septiembre 2026)" cuando el cálculo
+// usó el último IPC publicado porque el mes del cobro no tenía el oficial
+// (lib/ipc-cuotas.ts → indiceParaPeriodo). null si el IPC es el oficial.
+function etiquetaIPCProvisorio(
+  x: { ipcProvisorio?: boolean; periodoIndice?: string; porcentaje: number | null } | null | undefined,
+): string | null {
+  if (!x?.ipcProvisorio || !x.periodoIndice || x.porcentaje == null) return null
+  const [anio, mes] = x.periodoIndice.split("-").map(Number)
+  return `IPC provisorio: último publicado (${x.porcentaje.toLocaleString("es-AR")}%, ${MESES_RECIBO[mes - 1].toLowerCase()} ${anio})`
+}
+
 // Registra un movimiento de dinero en el historial de actividad (Configuración > Actividad).
 // Todo manejo de dinero (registrar/eliminar pagos) debe dejar rastro.
 function logMoneyActivity(accion: "creado" | "eliminado", nombre: string, detalle: string) {
@@ -153,6 +164,9 @@ function PaymentReceipt({
     return ref ? `${MESES_RECIBO[ref.mes]} ${ref.anio}` : ""
   })()
 
+  // Cobrado con IPC provisorio (último publicado): se aclara en el comprobante.
+  const etiquetaProvisorioPago = pago.calculoIPC && !pago.calculoIPC.ipcOmitido ? etiquetaIPCProvisorio(pago.calculoIPC) : null
+
   // Valores por defecto del recibo, autocompletados desde el evento y el pago.
   const buildDefaults = () => ({
     nombreApellido: pago.pagadoPor || evento.nombrePareja || evento.nombre || "",
@@ -162,7 +176,13 @@ function PaymentReceipt({
     valor: formatCurrency(pago.monto),
     sumaPesos: `${numeroALetras(Math.round(pago.monto))} (${formatCurrency(pago.monto)})`,
     espacio: "CENTENERA 1789, DEL VISO",
-    concepto: `Cuota ${cuotaActual}${totalCuotas > 0 ? ` de ${totalCuotas}` : ""}${esPagoParcial ? " (pago parcial)" : ""}${pago.porcentajeIPC > 0 ? ` - incluye IPC ${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}` : ""}`,
+    concepto: `Cuota ${cuotaActual}${totalCuotas > 0 ? ` de ${totalCuotas}` : ""}${esPagoParcial ? " (pago parcial)" : ""}${
+      pago.porcentajeIPC > 0
+        ? etiquetaProvisorioPago
+          ? ` - incluye ${etiquetaProvisorioPago}`
+          : ` - incluye IPC ${pago.porcentajeIPC}%${ipcMesLabel ? ` (${ipcMesLabel})` : ""}`
+        : ""
+    }`,
   })
 
   const [editOpen, setEditOpen] = useState(false)
@@ -1020,6 +1040,20 @@ function PagosPageContent() {
       `${etiquetaLog} - ${nombreEventoLog}`,
       `Pago registrado por ${formatCurrency(pagoForm.monto)}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""} | Recibido por: ${pagoForm.recibidoPor.trim()}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
     )
+    // Cobro hecho con IPC provisorio (último publicado): queda registrado aparte.
+    const avisoProvisorioCobro = calculoCobro && !calculoCobro.ipcOmitido ? etiquetaIPCProvisorio(calculoCobro) : null
+    if (avisoProvisorioCobro) {
+      fetch("/api/activity-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "ipc",
+          accion: "cobro_provisorio",
+          nombre: `${etiquetaLog} - ${nombreEventoLog}`,
+          detalle: `Cobrado el ${pagoForm.fecha} por ${formatCurrency(pagoForm.monto)} con ${avisoProvisorioCobro} | Período del cobro: ${calculoCobro!.periodo}`,
+        }),
+      }).catch(() => {})
+    }
 
     // En modo histórico, en vez de cerrar, se reabre directo con la cuota
     // siguiente para encadenar la carga de meses atrasados sin recuotearse.
@@ -1926,6 +1960,7 @@ function PagosPageContent() {
                 const esManual = !esParcialDestino && resultadoIPC.estado === "pendiente"
                 const baseMostrada = baseManualCobro ?? sugerencia?.base ?? 0
                 const porcentajeMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : sugerencia?.porcentaje ?? null
+                const avisoProvisorio = etiquetaIPCProvisorio(resultadoIPC.estado === "listo" ? resultadoIPC.calculo : sugerencia)
                 const cuotaNeta = esParcialDestino ? proximaCuota.saldoRestante : calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
                 const totalSimulado = cuotaNeta + recargoAtraso
                 const puedeCobrar = esParcialDestino || !ajustaPorIPC || (calculoCobro != null && cuotaNeta > 0)
@@ -1987,6 +2022,11 @@ function PagosPageContent() {
                               <Badge variant="secondary" className="gap-1 text-emerald-700">
                                 <TrendingUp className="h-3.5 w-3.5" />
                                 Ajustada por IPC
+                              </Badge>
+                            )}
+                            {avisoProvisorio && aplicarIPCCobro && (
+                              <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 whitespace-normal text-left">
+                                {avisoProvisorio}
                               </Badge>
                             )}
                             {diasAtraso > 0 && !recargoAtrasoOmitido && (
@@ -2089,6 +2129,7 @@ function PagosPageContent() {
                                       {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
                                       {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
                                     </span>
+                                    {avisoProvisorio && <span className="text-[11px] leading-tight text-amber-700">{avisoProvisorio}</span>}
                                     <span className="font-mono font-semibold">
                                       {porcentajeMes != null && baseMostrada > 0
                                         ? formatCurrency(Math.round(baseMostrada * (1 + porcentajeMes / 100)))
@@ -2383,6 +2424,7 @@ function PagosPageContent() {
               const sugerencia = selectedEvento && resultadoIPC.estado === "pendiente" ? sugerirBaseManual(selectedEvento, historialIPC, pagoForm.fecha) : null
               const baseActual = baseManualCobro ?? sugerencia?.base ?? (resultadoIPC.estado === "listo" ? resultadoIPC.calculo.base : montoCuotaBase)
               const porcentajeMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : sugerencia?.porcentaje ?? null
+              const avisoProvisorio = etiquetaIPCProvisorio(resultadoIPC.estado === "listo" ? resultadoIPC.calculo : sugerencia)
               const montoConIPC = porcentajeMes != null && baseActual > 0 ? Math.round(baseActual * (1 + porcentajeMes / 100)) : null
 
               // Saldo de una cuota que ya tiene su cifra oficial fijada por un
@@ -2468,6 +2510,10 @@ function PagosPageContent() {
                     <span className="font-semibold">Total sugerido</span>
                     <span className="font-mono font-bold text-sm text-primary">{formatCurrency(totalSugeridoCobro)}</span>
                   </div>
+                  {/* En modo histórico no está el check "Aplicar IPC del mes" (que ya lo muestra) */}
+                  {modoHistorico && aplicarIPCCobro && avisoProvisorio && (
+                    <p className="mt-1 text-[11px] leading-tight text-amber-700">{avisoProvisorio}</p>
+                  )}
                 </div>
 
                 {ajustaPorIPC ? (
@@ -2533,10 +2579,13 @@ function PagosPageContent() {
                           aria-label="Aplicar el IPC del mes"
                         />
                         <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-                          <span className="truncate">
-                            Aplicar IPC del mes
-                            {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
-                            {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                          <span className="min-w-0">
+                            <span className="block truncate">
+                              Aplicar IPC del mes
+                              {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                              {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
+                            </span>
+                            {avisoProvisorio && <span className="block text-[11px] leading-tight text-amber-700">{avisoProvisorio}</span>}
                           </span>
                           <span className="shrink-0 font-mono font-semibold">
                             {montoConIPC != null ? formatCurrency(montoConIPC) : "—"}

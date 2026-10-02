@@ -14,6 +14,14 @@ export interface CalculoIPC {
   aplicadoEsteMes: boolean
   /** true cuando quien cobra destildó el IPC: la cuota queda igual a la base. */
   ipcOmitido?: boolean
+  /**
+   * true cuando el mes del cobro no tenía IPC oficial cargado y se usó el
+   * último publicado antes de ese mes ("se aplica el último IPC publicado al
+   * día del cobro"), o cuando el IPC del mes se cargó a mano como provisorio.
+   */
+  ipcProvisorio?: boolean
+  /** "YYYY-MM" del índice realmente usado (solo con ipcProvisorio). */
+  periodoIndice?: string
 }
 export interface OpcionesCobro {
   aplicarIPC: boolean
@@ -25,6 +33,17 @@ export interface SugerenciaManual {
   origen: "pago" | "plan"
   porcentaje: number | null
   periodo: string
+  /** Presente cuando el porcentaje es provisorio (ver indiceParaPeriodo). */
+  ipcProvisorio?: boolean
+  periodoIndice?: string
+}
+
+/** Índice IPC que corresponde a un período de cobro. */
+export interface IndiceIPC {
+  porcentaje: number
+  /** "YYYY-MM" del índice usado. */
+  periodoIndice: string
+  provisorio: boolean
 }
 export type ResultadoIPC =
   | { estado: "no_aplica" }
@@ -87,11 +106,11 @@ export function calcularIPCPeriodo(
   const dia = fechaValida(fecha)
   if (!dia) return pendiente("Fecha de cobro inválida.")
   const periodo = dia.slice(0, 7)
-  const [anio, mes] = periodo.split("-").map(Number)
-  const indices = historial.filter(h => h.anio === anio && h.mes === mes - 1)
-  if (indices.length !== 1) return pendiente(`IPC de ${periodo} pendiente de definición o duplicado. Cargá un único índice antes de cobrar.`)
-  const porcentaje = indices[0].porcentaje
+  const indice = indiceParaPeriodo(historial, periodo)
+  if (!indice) return pendiente(`IPC de ${periodo} pendiente de definición o duplicado. Cargá un único índice antes de cobrar.`)
+  const porcentaje = indice.porcentaje
   if (!Number.isFinite(porcentaje) || porcentaje <= -100) return pendiente("El porcentaje IPC no es válido.")
+  const marcaIndice = marcaProvisorio(indice)
   const plan = evento.planDeCuotas!
   const pagos = evento.pagos ?? []
   if (pagos.some(p => !numeroCuotaPago(p) && !/^(seña|sena|extra|pago único)/i.test(p.notas ?? ""))) {
@@ -136,7 +155,9 @@ export function calcularIPCPeriodo(
       return pendiente("La base mensual depende de un pago anulado. Revisá la base antes de cobrar otra cuota.")
     }
     if (!Number.isFinite(foto.base) || foto.base <= 0) return pendiente("La base mensual guardada no es válida.")
-    return { estado: "listo", calculo: { ...foto, porcentaje, monto: Math.round(foto.base * (1 + porcentaje / 100)), aplicadoEsteMes: true } }
+    // La marca de provisorio es la del índice de HOY, no la que tenía la foto.
+    const { ipcProvisorio: _p, periodoIndice: _i, ...fotoSinMarca } = foto
+    return { estado: "listo", calculo: { ...fotoSinMarca, porcentaje, monto: Math.round(foto.base * (1 + porcentaje / 100)), aplicadoEsteMes: true, ...marcaIndice } }
   }
   const ultima = acreditados.at(-1)
   const base = ultima?.neto ?? plan.montoCuota
@@ -145,13 +166,48 @@ export function calcularIPCPeriodo(
     version: "ultima-cuota-v1", periodo, base, origen: ultima ? "pago" : "plan",
     cuotaOrigen: ultima?.numero, porcentaje,
     monto: Math.round(base * (1 + porcentaje / 100)), aplicadoEsteMes: false,
+    ...marcaIndice,
   } }
 }
 
-function indiceDelPeriodo(historial: HistorialIPCEntry[], periodo: string): number | null {
+const ordenMes = (anio: number, mes0: number) => anio * 12 + mes0
+
+/**
+ * Índice IPC que se aplica a un cobro del período "YYYY-MM".
+ * Criterio del negocio: "se aplica el último IPC publicado al día del cobro".
+ * - Si el mes tiene UN índice cargado, se usa ese (provisorio solo si se cargó
+ *   a mano marcado como provisorio).
+ * - Si el mes NO tiene índice, se usa el más reciente de un mes ANTERIOR
+ *   (nunca uno posterior), marcado como provisorio.
+ * - null (queda pendiente, como siempre) si el mes tiene índices duplicados,
+ *   si no hay ninguno anterior, o si el último anterior está duplicado.
+ */
+export function indiceParaPeriodo(historial: HistorialIPCEntry[], periodo: string): IndiceIPC | null {
   const [anio, mes] = periodo.split("-").map(Number)
-  const indices = historial.filter(h => h.anio === anio && h.mes === mes - 1)
-  return indices.length === 1 && Number.isFinite(indices[0].porcentaje) && indices[0].porcentaje > -100 ? indices[0].porcentaje : null
+  if (!Number.isInteger(anio) || !Number.isInteger(mes)) return null
+  const objetivo = ordenMes(anio, mes - 1)
+  const delMes = historial.filter(h => ordenMes(h.anio, h.mes) === objetivo)
+  if (delMes.length > 1) return null
+  if (delMes.length === 1) {
+    return { porcentaje: delMes[0].porcentaje, periodoIndice: periodo, provisorio: delMes[0].provisorio === true }
+  }
+  const anteriores = historial.filter(h => ordenMes(h.anio, h.mes) < objetivo)
+  if (!anteriores.length) return null
+  const ultimoOrden = Math.max(...anteriores.map(h => ordenMes(h.anio, h.mes)))
+  const ultimos = anteriores.filter(h => ordenMes(h.anio, h.mes) === ultimoOrden)
+  if (ultimos.length !== 1) return null
+  const h = ultimos[0]
+  return { porcentaje: h.porcentaje, periodoIndice: `${h.anio}-${String(h.mes + 1).padStart(2, "0")}`, provisorio: true }
+}
+
+/** Campos de la foto calculoIPC que marcan un índice provisorio (vacío si es oficial). */
+function marcaProvisorio(indice: Pick<IndiceIPC, "provisorio" | "periodoIndice"> | null | undefined): Pick<CalculoIPC, "ipcProvisorio" | "periodoIndice"> {
+  return indice?.provisorio ? { ipcProvisorio: true, periodoIndice: indice.periodoIndice } : {}
+}
+
+function indiceDelPeriodo(historial: HistorialIPCEntry[], periodo: string): IndiceIPC | null {
+  const indice = indiceParaPeriodo(historial, periodo)
+  return indice && Number.isFinite(indice.porcentaje) && indice.porcentaje > -100 ? indice : null
 }
 
 /**
@@ -171,7 +227,8 @@ export function sugerirBaseManual(evento: EventoIPC, historial: HistorialIPCEntr
   const ultimo = pagos.at(-1)
   const base = ultimo?.neto ?? plan.montoCuota
   if (!Number.isFinite(base) || base <= 0) return null
-  return { base, origen: ultimo ? "pago" : "plan", porcentaje: indiceDelPeriodo(historial, periodo), periodo }
+  const indice = indiceDelPeriodo(historial, periodo)
+  return { base, origen: ultimo ? "pago" : "plan", porcentaje: indice?.porcentaje ?? null, periodo, ...marcaProvisorio(indice) }
 }
 
 /**
@@ -197,6 +254,7 @@ export function resolverCalculoCobro(
         version: "ultima-cuota-v1", periodo: calculo.periodo, base, origen: "manual", porcentaje: calculo.porcentaje,
         monto: opciones.aplicarIPC ? Math.round(base * (1 + calculo.porcentaje / 100)) : base,
         aplicadoEsteMes: false, ipcOmitido: !opciones.aplicarIPC,
+        ...marcaProvisorio(calculo.ipcProvisorio ? { provisorio: true, periodoIndice: calculo.periodoIndice! } : null),
       } }
     }
     return { calculo: opciones.aplicarIPC ? calculo : { ...calculo, monto: calculo.base, ipcOmitido: true } }
@@ -212,6 +270,7 @@ export function resolverCalculoCobro(
     version: "ultima-cuota-v1", periodo: sugerencia.periodo, base: base!, origen: "manual", porcentaje,
     monto: opciones.aplicarIPC ? Math.round(base! * (1 + porcentaje / 100)) : base!,
     aplicadoEsteMes: false, ipcOmitido: !opciones.aplicarIPC,
+    ...marcaProvisorio(sugerencia.ipcProvisorio && sugerencia.porcentaje !== null ? { provisorio: true, periodoIndice: sugerencia.periodoIndice! } : null),
   } }
 }
 
