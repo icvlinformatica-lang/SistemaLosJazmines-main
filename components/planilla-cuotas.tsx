@@ -152,41 +152,48 @@ export function PlanillaCuotas({
   }, [visibles, mesActual])
 
   // Por mes: cuántas cuotas siguen sin cobrar (pendientes o parciales) y cuánto
-  // falta cobrar de ellas (saldoRestante, lo mismo que muestra Cobrar cuota).
-  // Sale de TODOS los eventos de la planilla, aunque el salón esté plegado; se
-  // actualiza solo a medida que se registran pagos.
-  const porCobrarPorMes = useMemo(() => {
-    const m = new Map<string, { cantidad: number; monto: number }>()
-    // Lo mismo, separado por salón (para las filas de abajo)
-    const porSalon = new Map<string, Map<string, number>>()
+  // falta cobrar de ellas (saldoRestante, lo mismo que muestra Cobrar cuota),
+  // en total y por salón. Sale de TODOS los eventos de la planilla, aunque el
+  // salón esté plegado; se actualiza solo a medida que se registran pagos.
+  const porCobrar = useMemo(() => {
+    type Acum = { cantidad: number; monto: number }
+    const total = new Map<string, Acum>()
+    const porSalon = new Map<string, Map<string, Acum>>()
+    const sumar = (m: Map<string, Acum>, mes: string, monto: number) => {
+      const v = m.get(mes) ?? { cantidad: 0, monto: 0 }
+      v.cantidad += 1
+      v.monto += monto
+      m.set(mes, v)
+    }
     for (const f of filas) {
       const salon = f.evento.salon || SIN_SALON
       for (const [mes, cuotas] of f.cuotasPorMes) {
         for (const c of cuotas) {
           if (c.estado === "pagada") continue
-          const v = m.get(mes) ?? { cantidad: 0, monto: 0 }
-          v.cantidad += 1
-          v.monto += c.saldoRestante
-          m.set(mes, v)
-          const delSalon = porSalon.get(salon) ?? new Map<string, number>()
-          delSalon.set(mes, (delSalon.get(mes) ?? 0) + c.saldoRestante)
-          porSalon.set(salon, delSalon)
+          sumar(total, mes, c.saldoRestante)
+          if (!porSalon.has(salon)) porSalon.set(salon, new Map())
+          sumar(porSalon.get(salon)!, mes, c.saldoRestante)
         }
       }
     }
-    return { m, porSalon }
+    return { total, porSalon }
   }, [filas])
 
-  // Filas de abajo: SIEMPRE los 5 salones (aunque no deban nada), y "Sin
-  // salón" u otros salones solo si tienen algo por cobrar.
-  const salonesPie = useMemo(
+  // Filas por salón de las dos carpetas: SIEMPRE los 5 salones (aunque no
+  // deban nada), y "Sin salón" u otros salones solo si tienen algo por cobrar.
+  const salonesResumen = useMemo(
     () => [
       ...SALONES,
-      ...[...porCobrarPorMes.porSalon.keys()].filter((s) => s !== SIN_SALON && !(SALONES as readonly string[]).includes(s)),
-      ...(porCobrarPorMes.porSalon.has(SIN_SALON) ? [SIN_SALON] : []),
+      ...[...porCobrar.porSalon.keys()].filter((s) => s !== SIN_SALON && !(SALONES as readonly string[]).includes(s)),
+      ...(porCobrar.porSalon.has(SIN_SALON) ? [SIN_SALON] : []),
     ],
-    [porCobrarPorMes],
+    [porCobrar],
   )
+
+  // Carpetas "Cuotas por cobrar" (arriba) y "Total monto x salón" (abajo):
+  // arrancan cerradas, mostrando solo el total de cada mes.
+  const [cantidadAbierta, setCantidadAbierta] = useState(false)
+  const [montoAbierto, setMontoAbierto] = useState(false)
 
   // Al entrar (y al cambiar el filtro), el mes actual queda a la vista.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -235,23 +242,36 @@ export function PlanillaCuotas({
             <table className="w-max border-separate border-spacing-0 text-xs">
               {/* Encabezado fijo arriba: cuotas por cobrar de cada mes + los meses */}
               <thead className="sticky top-0 z-30">
+                {/* Carpeta "Cuotas por cobrar": total por mes; abierta, una fila por salón */}
                 <tr>
-                  <th className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r bg-background px-2 py-1.5 text-left text-[11px] font-semibold sm:w-[200px] sm:min-w-[200px]">
-                    Cuotas por cobrar
+                  <th className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r bg-background p-0 text-left text-[11px] font-semibold sm:w-[200px] sm:min-w-[200px]">
+                    <BotonCarpeta abierta={cantidadAbierta} onClick={() => setCantidadAbierta((v) => !v)}>
+                      Cuotas por cobrar
+                    </BotonCarpeta>
                   </th>
-                  {meses.map((mes) => {
-                    const cantidad = porCobrarPorMes.m.get(mes)?.cantidad ?? 0
-                    return (
-                      <th
-                        key={mes}
-                        title={`${cantidad} ${cantidad === 1 ? "cuota" : "cuotas"} por cobrar en ${etiquetaMes(mes)}`}
-                        className={`border-b px-1 py-1.5 text-center text-sm font-bold ${mes === mesActual ? "bg-amber-100" : "bg-background"}`}
-                      >
-                        {cantidad > 0 ? <span className="text-emerald-600">{cantidad}</span> : <span className="font-normal text-muted-foreground/50">—</span>}
-                      </th>
-                    )
-                  })}
+                  {meses.map((mes) => (
+                    <th
+                      key={mes}
+                      title={`Cuotas por cobrar en ${etiquetaMes(mes)}`}
+                      className={`border-b px-1 py-1.5 text-center text-sm font-bold ${mes === mesActual ? "bg-amber-100" : "bg-background"}`}
+                    >
+                      <Cantidad n={porCobrar.total.get(mes)?.cantidad ?? 0} />
+                    </th>
+                  ))}
                 </tr>
+                {cantidadAbierta &&
+                  salonesResumen.map((salon) => (
+                    <tr key={salon}>
+                      <th className="sticky left-0 z-10 border-b border-r bg-background px-2 py-1 pl-6 text-left text-[11px] font-medium">
+                        <NombreSalon salon={salon} />
+                      </th>
+                      {meses.map((mes) => (
+                        <th key={mes} className={`border-b px-1 py-1 text-center text-xs font-semibold ${mes === mesActual ? "bg-amber-100" : "bg-background"}`}>
+                          <Cantidad n={porCobrar.porSalon.get(salon)?.get(mes)?.cantidad ?? 0} />
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
                 <tr>
                   <th
                     data-columna-fija
@@ -290,33 +310,43 @@ export function PlanillaCuotas({
                   />
                 ))}
               </tbody>
-              {/* Pie fijo abajo: por salón, lo que falta cobrar de las cuotas de cada mes */}
+              {/* Pie fijo abajo: carpeta "Total monto x salón" (total por mes; abierta, una fila por salón) */}
               <tfoot className="sticky bottom-0 z-30">
-                {salonesPie.map((salon, idx) => (
-                  <tr key={salon}>
+                <tr>
+                  <td className="sticky left-0 z-10 border-r border-t-2 bg-muted p-0 text-left text-[11px] font-semibold">
+                    <BotonCarpeta abierta={montoAbierto} onClick={() => setMontoAbierto((v) => !v)}>
+                      Total monto x salón
+                    </BotonCarpeta>
+                  </td>
+                  {meses.map((mes) => (
                     <td
-                      className={`sticky left-0 z-10 border-r bg-muted px-2 py-1.5 text-left text-[11px] font-semibold ${idx === 0 ? "border-t-2" : "border-t"}`}
+                      key={mes}
+                      className={`whitespace-nowrap border-t-2 px-1.5 py-1.5 text-center text-[11px] font-bold tabular-nums ${
+                        mes === mesActual ? "bg-amber-100 text-amber-900" : "bg-muted"
+                      }`}
                     >
-                      <span className="flex items-center gap-1.5">
-                        {salon !== SIN_SALON && <SalonDot salon={salon} size={8} />}
-                        <span className="truncate">{salon === SIN_SALON ? "Sin salón" : salonLabel(salon)}</span>
-                      </span>
+                      <Monto valor={porCobrar.total.get(mes)?.monto ?? 0} />
                     </td>
-                    {meses.map((mes) => {
-                      const monto = porCobrarPorMes.porSalon.get(salon)?.get(mes) ?? 0
-                      return (
+                  ))}
+                </tr>
+                {montoAbierto &&
+                  salonesResumen.map((salon) => (
+                    <tr key={salon}>
+                      <td className="sticky left-0 z-10 border-r border-t bg-muted px-2 py-1.5 pl-6 text-left text-[11px] font-medium">
+                        <NombreSalon salon={salon} />
+                      </td>
+                      {meses.map((mes) => (
                         <td
                           key={mes}
-                          className={`whitespace-nowrap px-1.5 py-1.5 text-center text-[11px] font-semibold tabular-nums ${idx === 0 ? "border-t-2" : "border-t"} ${
+                          className={`whitespace-nowrap border-t px-1.5 py-1.5 text-center text-[11px] font-semibold tabular-nums ${
                             mes === mesActual ? "bg-amber-100 text-amber-900" : "bg-muted"
                           }`}
                         >
-                          {monto > 0 ? formatCurrency(monto) : <span className="font-normal text-muted-foreground/50">—</span>}
+                          <Monto valor={porCobrar.porSalon.get(salon)?.get(mes)?.monto ?? 0} />
                         </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                      ))}
+                    </tr>
+                  ))}
               </tfoot>
             </table>
           </div>
@@ -324,6 +354,40 @@ export function PlanillaCuotas({
       </CardContent>
     </Card>
   )
+}
+
+/** Botón de carpeta (flecha + título) para las filas de resumen. */
+function BotonCarpeta({ abierta, onClick, children }: { abierta: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={abierta}
+      className="flex min-h-0 w-full items-center gap-1.5 px-2 py-1.5 text-left hover:bg-muted-foreground/10"
+      title={abierta ? "Cerrar" : "Ver por salón"}
+    >
+      {abierta ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+      <span className="truncate">{children}</span>
+    </button>
+  )
+}
+
+function NombreSalon({ salon }: { salon: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {salon !== SIN_SALON && <SalonDot salon={salon} size={8} />}
+      <span className="truncate">{salon === SIN_SALON ? "Sin salón" : salonLabel(salon)}</span>
+    </span>
+  )
+}
+
+/** Cantidad de cuotas por cobrar, en verde ("—" si no hay). */
+function Cantidad({ n }: { n: number }) {
+  return n > 0 ? <span className="text-emerald-600">{n}</span> : <span className="font-normal text-muted-foreground/50">—</span>
+}
+
+function Monto({ valor }: { valor: number }) {
+  return valor > 0 ? <>{formatCurrency(valor)}</> : <span className="font-normal text-muted-foreground/50">—</span>
 }
 
 function GrupoSalon({
