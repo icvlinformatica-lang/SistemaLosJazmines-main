@@ -8,7 +8,7 @@
 // que abre el cobro como siempre.
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { CalendarDays } from "lucide-react"
+import { CalendarDays, ChevronDown, ChevronRight } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { SalonDot } from "@/components/salon-badge"
@@ -18,7 +18,13 @@ import { formatCurrency } from "@/lib/utils-financieros"
 type CuotaCalendario = ReturnType<typeof generarCalendarioCuotas>[number]
 
 const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+const MESES_LARGOS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 const SIN_SALON = "__sin_salon__"
+// Subgrupos por fecha del evento dentro de cada salón
+const YA_REALIZADOS = "__ya_realizados__"
+const SIN_FECHA = "__sin_fecha__"
+// Salones plegados: preferencia de cada navegador (no es un dato del negocio)
+const CLAVE_PLEGADOS = "planillaCuotas.salonesPlegados"
 
 /** "2026-10" → "oct 26" */
 function etiquetaMes(mes: string): string {
@@ -74,16 +80,34 @@ interface FilaEvento {
 
 export function PlanillaCuotas({
   eventos,
-  mesActual,
+  hoy,
   onCobrarCuota,
 }: {
   eventos: EventoGuardado[]
-  /** "YYYY-MM" del día de hoy (fecha del sistema). */
-  mesActual: string
+  /** "YYYY-MM-DD" de hoy (fecha del sistema). */
+  hoy: string
   /** Se tocó una cuota pendiente o parcial: la página abre su cobro. */
   onCobrarCuota: (evento: EventoGuardado, numeroCuota: number) => void
 }) {
+  const mesActual = hoy.slice(0, 7)
   const [ocultarPagados, setOcultarPagados] = useState(true)
+
+  // Salones plegados (se recuerdan en este navegador)
+  const [plegados, setPlegados] = useState<string[]>([])
+  useEffect(() => {
+    try {
+      const guardado = JSON.parse(localStorage.getItem(CLAVE_PLEGADOS) || "[]")
+      if (Array.isArray(guardado)) setPlegados(guardado.filter((x) => typeof x === "string"))
+    } catch {}
+  }, [])
+  const togglePlegado = (salon: string) =>
+    setPlegados((prev) => {
+      const nuevo = prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon]
+      try {
+        localStorage.setItem(CLAVE_PLEGADOS, JSON.stringify(nuevo))
+      } catch {}
+      return nuevo
+    })
 
   // Una fila por evento con plan de cuotas (mismo universo que la tarjeta
   // anterior: sin cancelados ni archivados).
@@ -213,7 +237,16 @@ export function PlanillaCuotas({
               </thead>
               <tbody>
                 {grupos.map((g) => (
-                  <GrupoSalon key={g.salon} salon={g.salon} filas={g.filas} meses={meses} mesActual={mesActual} onCobrarCuota={onCobrarCuota} />
+                  <GrupoSalon
+                    key={g.salon}
+                    salon={g.salon}
+                    filas={g.filas}
+                    meses={meses}
+                    hoy={hoy}
+                    plegado={plegados.includes(g.salon)}
+                    onTogglePlegado={() => togglePlegado(g.salon)}
+                    onCobrarCuota={onCobrarCuota}
+                  />
                 ))}
               </tbody>
             </table>
@@ -228,10 +261,93 @@ function GrupoSalon({
   salon,
   filas,
   meses,
-  mesActual,
+  hoy,
+  plegado,
+  onTogglePlegado,
   onCobrarCuota,
 }: {
   salon: string
+  filas: FilaEvento[]
+  meses: string[]
+  hoy: string
+  plegado: boolean
+  onTogglePlegado: () => void
+  onCobrarCuota: (evento: EventoGuardado, numeroCuota: number) => void
+}) {
+  const mesActual = hoy.slice(0, 7)
+  // Cuotas sin cobrar que ya vencieron o vencen este mes (rojas o parciales):
+  // se muestran en el título para que no se pierdan con el salón plegado.
+  const urgentes = filas.reduce(
+    (n, f) => n + [...f.cuotasPorMes.values()].flat().filter((c) => tonoDe(c, mesActual) === "atrasada" || c.estado === "parcial").length,
+    0,
+  )
+
+  // Subgrupos por fecha del evento, del más próximo al más lejano: primero los
+  // que ya se hicieron y todavía deben cuotas, después mes a mes.
+  const subgrupos = useMemo(() => {
+    const porClave = new Map<string, FilaEvento[]>()
+    for (const f of filas) {
+      const fecha = f.evento.fecha || ""
+      const clave = !/^\d{4}-\d{2}/.test(fecha) ? SIN_FECHA : fecha < hoy ? YA_REALIZADOS : fecha.slice(0, 7)
+      porClave.set(clave, [...(porClave.get(clave) ?? []), f])
+    }
+    const claves = [...porClave.keys()].sort((a, b) => {
+      const peso = (k: string) => (k === YA_REALIZADOS ? 0 : k === SIN_FECHA ? 2 : 1)
+      return peso(a) - peso(b) || a.localeCompare(b)
+    })
+    return claves.map((clave) => ({
+      clave,
+      titulo:
+        clave === YA_REALIZADOS
+          ? "Ya realizados"
+          : clave === SIN_FECHA
+            ? "Sin fecha"
+            : `${MESES_LARGOS[Number(clave.slice(5, 7)) - 1]} ${clave.slice(0, 4)}`,
+      filas: porClave.get(clave)!,
+    }))
+  }, [filas, hoy])
+
+  return (
+    <>
+      {/* Fila de título del salón (plegable): el nombre queda fijo a la izquierda */}
+      <tr>
+        <td className="sticky left-0 z-10 border-b border-r bg-muted p-0 font-semibold">
+          <button
+            type="button"
+            onClick={onTogglePlegado}
+            aria-expanded={!plegado}
+            className="flex min-h-0 w-full items-center gap-1.5 px-2 py-1.5 text-left hover:bg-muted-foreground/10"
+            title={plegado ? "Desplegar salón" : "Plegar salón"}
+          >
+            {plegado ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
+            {salon !== SIN_SALON && <SalonDot salon={salon} size={8} />}
+            <span className="truncate">{salon === SIN_SALON ? "Sin salón" : salonLabel(salon)}</span>
+            <span className="text-[10px] font-normal text-muted-foreground">{filas.length}</span>
+            {plegado && urgentes > 0 && (
+              <span className="ml-auto shrink-0 rounded bg-red-100 px-1 text-[10px] font-semibold text-red-800" title="Cuotas sin cobrar vencidas o del mes">
+                {urgentes}
+              </span>
+            )}
+          </button>
+        </td>
+        <td colSpan={meses.length} className="border-b bg-muted" />
+      </tr>
+      {!plegado &&
+        subgrupos.map((sg) => (
+          <SubgrupoFecha key={sg.clave} titulo={sg.titulo} filas={sg.filas} meses={meses} mesActual={mesActual} onCobrarCuota={onCobrarCuota} />
+        ))}
+    </>
+  )
+}
+
+function SubgrupoFecha({
+  titulo,
+  filas,
+  meses,
+  mesActual,
+  onCobrarCuota,
+}: {
+  titulo: string
   filas: FilaEvento[]
   meses: string[]
   mesActual: string
@@ -239,16 +355,12 @@ function GrupoSalon({
 }) {
   return (
     <>
-      {/* Fila de título del salón: el nombre queda fijo a la izquierda */}
+      {/* Subtítulo: mes del evento */}
       <tr>
-        <td className="sticky left-0 z-10 border-b border-r bg-muted px-2 py-1.5 font-semibold">
-          <span className="flex items-center gap-1.5">
-            {salon !== SIN_SALON && <SalonDot salon={salon} size={8} />}
-            <span className="truncate">{salon === SIN_SALON ? "Sin salón" : salonLabel(salon)}</span>
-            <span className="text-[10px] font-normal text-muted-foreground">{filas.length}</span>
-          </span>
+        <td className="sticky left-0 z-10 border-b border-r bg-background px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {titulo} <span className="font-normal">· {filas.length}</span>
         </td>
-        <td colSpan={meses.length} className="border-b bg-muted" />
+        <td colSpan={meses.length} className="border-b bg-background" />
       </tr>
       {filas.map((f) => (
         <tr key={f.evento.id} className="group">

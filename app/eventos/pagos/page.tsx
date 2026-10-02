@@ -1388,7 +1388,7 @@ function PagosPageContent() {
 
         {/* Planilla de cuotas (eventos × meses) - only when no event selected */}
         {!selectedEvento && (
-          <PlanillaCuotas eventos={eventos} mesActual={fechaNegocio().slice(0, 7)} onCobrarCuota={handleCobrarDesdePlanilla} />
+          <PlanillaCuotas eventos={eventos} hoy={fechaNegocio()} onCobrarCuota={handleCobrarDesdePlanilla} />
         )}
 
         {/* Selected Event Detail */}
