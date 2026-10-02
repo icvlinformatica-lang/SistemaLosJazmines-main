@@ -17,14 +17,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { useStore } from "@/lib/store-context"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
-import { montoSueldoServicio, sePagaComoSueldo, señaPagadaPorSeparado } from "@/lib/servicio-sueldo"
+import { calcularCostoEventoCajaEventos, congeladoValido } from "@/lib/costo-evento"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
 import {
   generateId,
   generarCalendarioCuotas,
-  calcularComprasSegmentadas,
-  calcularComprasBarras,
   calcularCostoReceta,
   calcularMontoPersonalDelEvento,
   calcularSeñaSaldoServicio,
@@ -94,17 +92,9 @@ function CostosEventoContent() {
   // archivarlo; nada se recalcula en vivo. Al sacarlo del archivo, la foto se
   // descarta (en updateEvento del store) y todo vuelve a calcularse en vivo.
   const esArchivado = evento?.estado === "completado"
-  const congeladoRaw = esArchivado ? evento?.costosCalculados?.archivoCongelado : undefined
   // Una foto sin ningún dato se considera inválida (pudo generarse antes de
   // que cargaran los catálogos) y se ignora para no mostrar todo en cero.
-  const congelado =
-    congeladoRaw &&
-    ((congeladoRaw.comprasCocina?.length ?? 0) > 0 ||
-      (congeladoRaw.comprasBarra?.length ?? 0) > 0 ||
-      (congeladoRaw.personal?.length ?? 0) > 0 ||
-      (congeladoRaw.serviciosCalc?.length ?? 0) > 0)
-      ? congeladoRaw
-      : undefined
+  const congelado = evento ? congeladoValido(evento) : undefined
 
   // Los catálogos deben estar cargados antes de congelar nada; si no, la foto
   // saldría vacía.
@@ -131,16 +121,12 @@ function CostosEventoContent() {
   }, [evento?.id, esArchivado, !congelado, catalogosCargados])
 
   // --- Costos calculados en vivo (o congelados si está archivado) ---
-  const comprasCocinaLive = useMemo(
-    () => (evento ? calcularComprasSegmentadas(evento, state.recetas || [], state.insumos || []) : []),
-    [evento, state.recetas, state.insumos],
+  // Mismo cálculo que el panel "Gastos del mes por evento" de Caja Eventos
+  // (lib/costo-evento.ts): el costo del evento para Caja Eventos.
+  const costos = useMemo(
+    () => (evento ? calcularCostoEventoCajaEventos(evento, state) : null),
+    [evento, state],
   )
-  const comprasBarraLive = useMemo(
-    () => (evento ? calcularComprasBarras(evento, state.cocteles || [], state.insumosBarra || []) : []),
-    [evento, state.cocteles, state.insumosBarra],
-  )
-  const comprasCocina = congelado?.comprasCocina ?? comprasCocinaLive
-  const comprasBarra = congelado?.comprasBarra ?? comprasBarraLive
   const cuotas = useMemo(() => (evento ? generarCalendarioCuotas(evento) : []), [evento])
 
   if (!evento) {
@@ -157,17 +143,26 @@ function CostosEventoContent() {
   }
 
   const nombreEvento = evento.nombre || evento.nombrePareja || "Evento sin nombre"
-  const costoCocina = comprasCocina.reduce((s, c) => s + c.costoMateriaPrima, 0)
-  const costoBarra = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
   const servicios = evento.servicios || []
-  // Sueldos EN VIVO desde el roster (Finanzas → Personal): siguen la tarifa
-  // vigente salvo que estén pagados o con monto personalizado por evento.
-  // Si el evento está archivado, se usan los sueldos congelados al archivar.
-  const personal =
-    congelado?.personal ??
-    (evento.personalEvento || [])
-      .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, state.personal) }))
-      .filter((pe) => (pe.monto || 0) > 0)
+  // Todo el costo sale de lib/costo-evento.ts (ver ahí el criterio: servicios
+  // en vivo con lo pagado a su monto real, personal en vivo, congelado si está
+  // archivado).
+  const {
+    comprasCocina,
+    comprasBarra,
+    costoCocina,
+    costoBarra,
+    personal,
+    serviciosCalc,
+    totalServicios,
+    pagadoServicios,
+    totalPersonal,
+    pagadoPersonal,
+    pagadoCocina,
+    pagadoBarra,
+    costoTotalEvento,
+    totalCubierto,
+  } = costos!
 
   // --- Menú completo elegido por la familia (recetas por segmento, en vivo) ---
   // Cada plato lleva su costo de materia prima para el segmento completo:
@@ -226,72 +221,6 @@ function CostosEventoContent() {
   const progresoCuotas = montoTotalCuotas > 0 ? Math.round((montoCobrado / montoTotalCuotas) * 100) : 0
 
   // --- Totales por tarjeta para el gráfico circular ---
-  // Monto de saldo pagado se recupera del movimiento registrado en Caja Eventos
-  const montoSaldoPagado = (nombreServicio: string): number => {
-    const mov = [...(state.movimientosCaja ?? [])]
-      .reverse()
-      .find(
-        (m) =>
-          m.tipo === "egreso" &&
-          m.cajaDestino === "caja_eventos" &&
-          m.eventoId === evento.id &&
-          m.concepto === `Pago saldo ${nombreServicio} - ${evento.nombre || evento.nombrePareja || "Evento sin nombre"}`,
-      )
-    return mov?.monto || 0
-  }
-  // Cada servicio contratado recalcula su seña y saldo EN VIVO a partir del
-  // catálogo global (state.servicios): si en Producción → Servicios se edita el
-  // costo o el % de seña, el costo del servicio acá se actualiza al instante.
-  // Las porciones YA PAGADAS conservan el monto real que movió la caja (histórico);
-  // solo las porciones pendientes reflejan el precio vigente. Si el servicio fue
-  // eliminado del catálogo, se usa el valor guardado en el contrato como respaldo.
-  const serviciosCalc = servicios.map((srv) => {
-    const senaPagada =
-      srv.estadoPago === "señado" || srv.estadoPago === "saldo_pendiente" || srv.estadoPago === "pagado_total"
-    const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
-
-    // Cálculo centralizado en vivo (mismo criterio que Caja Eventos, Cashflow y Balance).
-    const { montoSeña: montoSeñaCalc, saldoPendiente: saldoCalc } = calcularSeñaSaldoServicio(srv, {
-      servicios: state.servicios ?? [],
-    })
-
-    // Si el evento está archivado, usar los montos congelados al archivar.
-    const frozen = congelado?.serviciosCalc?.find((f) => f.servicioId === srv.servicioId)
-
-    // Servicio que se paga como sueldo (lib/servicio-sueldo.ts): un único pago
-    // desde Caja Eventos → Sueldos, por el mismo monto que muestra la caja. Si
-    // la seña ya se había pagado por el camino viejo, se sigue mostrando.
-    if (!frozen && sePagaComoSueldo(srv, state.servicios ?? [])) {
-      const señaViejaPagada = señaPagadaPorSeparado(srv)
-      return {
-        srv,
-        senaPagada: señaViejaPagada,
-        saldoPagado: !!srv.pagoSueldo,
-        montoSeña: señaViejaPagada ? montoSeñaCalc : 0,
-        saldo: montoSueldoServicio(srv, { servicios: state.servicios ?? [] }),
-        comoSueldo: true,
-      }
-    }
-
-    // Preservar lo ya pagado; recalcular en vivo lo pendiente.
-    const montoSeña = frozen ? frozen.montoSeña : montoSeñaCalc
-    const saldo = frozen ? frozen.saldo : saldoPagado ? montoSaldoPagado(srv.nombre) : saldoCalc
-
-    return { srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo: false }
-  })
-
-  const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)
-  const pagadoServicios = serviciosCalc.reduce(
-    (s, c) => s + (c.senaPagada ? c.montoSeña : 0) + (c.saldoPagado ? c.saldo : 0),
-    0,
-  )
-  const totalPersonal = personal.reduce((s, pe) => s + (pe.monto || 0), 0)
-  const pagadoPersonal = personal.filter((pe) => pe.pagado).reduce((s, pe) => s + (pe.monto || 0), 0)
-  const pagadoCocina = evento.cocinaPagada ? costoCocina : 0
-  const pagadoBarra = evento.barraPagada ? costoBarra : 0
-
-  const costoTotalEvento = costoCocina + costoBarra + totalServicios + totalPersonal
-  const totalCubierto = pagadoCocina + pagadoBarra + pagadoServicios + pagadoPersonal
   const porcentajeCubierto = costoTotalEvento > 0 ? Math.round((totalCubierto / costoTotalEvento) * 100) : 0
 
   // Precio de venta del evento (monto total del plan de pago) y proporción
