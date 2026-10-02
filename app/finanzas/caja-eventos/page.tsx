@@ -45,7 +45,8 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { calcularCostoInsumosEvento, calcularSeñaSaldoServicio, generateId, SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import { calcularCostoEventoCajaEventos } from "@/lib/costo-evento"
+import { generateId, SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import {
   BarraFiltrosEgresos,
   FILTRO_EGRESOS_INICIAL,
@@ -1240,9 +1241,11 @@ useStore()
   const cambiarMes = (delta: number) =>
     setMesCalendario((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
 
-  // Eventos del mes visible en el calendario, con su costo total (insumos
-  // recalculados a precios de hoy + servicios + operativo). Alimenta el panel
-  // lateral "Gastos del mes" pegado al calendario.
+  // Eventos del mes visible en el calendario, con su costo para Caja Eventos:
+  // EXACTAMENTE el "Costo total del evento" de /eventos/costos (cocina + barra
+  // + servicios + personal, lib/costo-evento.ts). El costo operativo (gastos
+  // fijos) es de Caja Jazmines y no va acá. Alimenta el panel lateral
+  // "Gastos del mes por evento" pegado al calendario.
   const eventosDelMes = useMemo(() => {
     const monthKey = `${mesCalendario.getFullYear()}-${String(mesCalendario.getMonth() + 1).padStart(2, "0")}`
     const eventos = (state.eventos ?? []).filter(
@@ -1252,31 +1255,24 @@ useStore()
         (salonFiltro === "todos" || ev.salon === salonFiltro),
     )
     const lista = eventos
-      .map((ev) => {
-        const costoInsumos = calcularCostoInsumosEvento(
-          ev,
-          state.recetas ?? [],
+      .map((ev) => ({
+        id: ev.id,
+        nombre: ev.nombrePareja || ev.nombre || "Sin nombre",
+        fecha: ev.fecha,
+        salon: ev.salon,
+        costoTotal: calcularCostoEventoCajaEventos(ev, {
+          recetas: state.recetas ?? [],
           insumos,
-          state.cocteles ?? [],
+          cocteles: state.cocteles ?? [],
           insumosBarra,
-        )
-        // Costo de servicios EN VIVO desde el catálogo (Finanzas → Servicios):
-        // si cambia un precio, los gastos del evento se actualizan solos.
-        const costoServiciosLive = (ev.servicios ?? []).reduce(
-          (s, srv) => s + calcularSeñaSaldoServicio(srv, state).costoTotal,
-          0,
-        )
-        return {
-          id: ev.id,
-          nombre: ev.nombrePareja || ev.nombre || "Sin nombre",
-          fecha: ev.fecha,
-          salon: ev.salon,
-          costoTotal: costoInsumos + costoServiciosLive + (ev.costoOperativo ?? 0),
-        }
-      })
+          servicios: state.servicios ?? [],
+          personal: state.personal ?? [],
+          movimientosCaja: state.movimientosCaja ?? [],
+        }).costoTotalEvento,
+      }))
       .sort((a, b) => a.fecha.localeCompare(b.fecha))
     return { lista, total: lista.reduce((s, e) => s + e.costoTotal, 0) }
-  }, [mesCalendario, state.eventos, state.recetas, state.cocteles, state.servicios, insumos, insumosBarra, salonFiltro])
+  }, [mesCalendario, state.eventos, state.recetas, state.cocteles, state.servicios, state.personal, state.movimientosCaja, insumos, insumosBarra, salonFiltro])
 
   // Movimientos del día seleccionado en el calendario
   const detalleDia = useMemo(() => {
