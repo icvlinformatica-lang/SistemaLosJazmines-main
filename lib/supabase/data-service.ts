@@ -964,6 +964,8 @@ export async function fetchHistorialIPC(): Promise<HistorialIPC[]> {
     porcentaje: Number(h.porcentaje) || 0,
     fechaAplicacion: h.fecha_aplicacion,
     eventosActualizados: h.eventos_actualizados || 0,
+    provisorio: h.provisorio === true,
+    nota: h.nota || undefined,
   }))
 }
 
@@ -975,6 +977,10 @@ export async function insertHistorialIPC(hist: Partial<HistorialIPC>): Promise<H
     porcentaje: hist.porcentaje,
     fecha_aplicacion: hist.fechaAplicacion || new Date().toISOString(),
     eventos_actualizados: hist.eventosActualizados || 0,
+    // Solo se mandan si se usan: así cargar un IPC oficial sigue andando
+    // aunque la migración de estas columnas (scripts/013) no esté aplicada.
+    ...(hist.provisorio ? { provisorio: true } : {}),
+    ...(hist.nota ? { nota: hist.nota } : {}),
   }
   
   const { data, error } = await supabase
@@ -995,7 +1001,23 @@ export async function insertHistorialIPC(hist: Partial<HistorialIPC>): Promise<H
     porcentaje: Number(data.porcentaje) || 0,
     fechaAplicacion: data.fecha_aplicacion,
     eventosActualizados: data.eventos_actualizados || 0,
+    provisorio: data.provisorio === true,
+    nota: data.nota || undefined,
   } : null
+}
+
+/**
+ * Reemplaza un IPC provisorio por el oficial: misma fila (mismo mes), nuevo
+ * porcentaje, provisorio = false. Lanza si la base no confirma el cambio.
+ */
+export async function reemplazarHistorialIPCPorOficial(id: string, porcentaje: number, nota: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("historial_ipc")
+    .update({ porcentaje, provisorio: false, nota, fecha_aplicacion: new Date().toISOString() })
+    .eq("id", id)
+    .select("id")
+  if (error) throw new Error(error.message || "No se pudo reemplazar el IPC")
+  if (!data || data.length !== 1) throw new Error("La base no confirmó el reemplazo del IPC")
 }
 
 export async function deleteHistorialIPC(id: string): Promise<boolean> {

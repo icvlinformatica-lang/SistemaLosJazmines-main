@@ -155,9 +155,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (!mismoJSON(updates._planEsperado, actual.planDeCuotas) || !mismoJSON(updates._pagosEsperados, actual.pagos)) {
         return NextResponse.json({ error: "El evento cambió en otra sesión. Actualizá la página antes de guardar." }, { status: 409 })
       }
-      const historial = await db`SELECT mes, anio, porcentaje FROM historial_ipc FOR SHARE`
+      // "provisorio" se lee vía to_jsonb para no depender de que la columna
+      // exista (scripts/013): sin ella vale false y el índice cuenta como oficial.
+      const historial = await db`SELECT mes, anio, porcentaje, coalesce((to_jsonb(historial_ipc) ->> 'provisorio') = 'true', false) AS provisorio FROM historial_ipc FOR SHARE`
       const errorIPC = validarCobroIPC(actual, updates, historial.map(h => ({
         mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0,
+        provisorio: h.provisorio === true,
       })))
       if (errorIPC) return NextResponse.json({ error: errorIPC }, { status: 409 })
       if (updates.planDeCuotas) {

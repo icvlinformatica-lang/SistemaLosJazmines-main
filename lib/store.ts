@@ -1134,6 +1134,10 @@ export interface HistorialIPCEntry {
   porcentaje: number
   fechaAplicacion: string // ISO string
   eventosActualizados: number
+  /** Cargado a mano como provisorio (todavía no es el oficial del INDEC). */
+  provisorio?: boolean
+  /** Nota libre (ej. de dónde salió el provisorio o cuándo se reemplazó). */
+  nota?: string
 }
 
 /**
