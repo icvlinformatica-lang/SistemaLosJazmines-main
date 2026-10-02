@@ -23,8 +23,6 @@ const SIN_SALON = "__sin_salon__"
 // Subgrupos por fecha del evento dentro de cada salón
 const YA_REALIZADOS = "__ya_realizados__"
 const SIN_FECHA = "__sin_fecha__"
-// Salones plegados: preferencia de cada navegador (no es un dato del negocio)
-const CLAVE_PLEGADOS = "planillaCuotas.salonesPlegados"
 
 /** "2026-10" → "oct 26" */
 function etiquetaMes(mes: string): string {
@@ -92,22 +90,10 @@ export function PlanillaCuotas({
   const mesActual = hoy.slice(0, 7)
   const [ocultarPagados, setOcultarPagados] = useState(true)
 
-  // Salones plegados (se recuerdan en este navegador)
-  const [plegados, setPlegados] = useState<string[]>([])
-  useEffect(() => {
-    try {
-      const guardado = JSON.parse(localStorage.getItem(CLAVE_PLEGADOS) || "[]")
-      if (Array.isArray(guardado)) setPlegados(guardado.filter((x) => typeof x === "string"))
-    } catch {}
-  }, [])
+  // Salones desplegados: al entrar, todos arrancan plegados.
+  const [abiertos, setAbiertos] = useState<string[]>([])
   const togglePlegado = (salon: string) =>
-    setPlegados((prev) => {
-      const nuevo = prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon]
-      try {
-        localStorage.setItem(CLAVE_PLEGADOS, JSON.stringify(nuevo))
-      } catch {}
-      return nuevo
-    })
+    setAbiertos((prev) => (prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon]))
 
   // Una fila por evento con plan de cuotas (mismo universo que la tarjeta
   // anterior: sin cancelados ni archivados).
@@ -243,7 +229,7 @@ export function PlanillaCuotas({
                     filas={g.filas}
                     meses={meses}
                     hoy={hoy}
-                    plegado={plegados.includes(g.salon)}
+                    plegado={!abiertos.includes(g.salon)}
                     onTogglePlegado={() => togglePlegado(g.salon)}
                     onCobrarCuota={onCobrarCuota}
                   />
