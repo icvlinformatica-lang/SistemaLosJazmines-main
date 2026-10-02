@@ -157,7 +157,10 @@ export function PlanillaCuotas({
   // actualiza solo a medida que se registran pagos.
   const porCobrarPorMes = useMemo(() => {
     const m = new Map<string, { cantidad: number; monto: number }>()
+    // Lo mismo, separado por salón (para las filas de abajo)
+    const porSalon = new Map<string, Map<string, number>>()
     for (const f of filas) {
+      const salon = f.evento.salon || SIN_SALON
       for (const [mes, cuotas] of f.cuotasPorMes) {
         for (const c of cuotas) {
           if (c.estado === "pagada") continue
@@ -165,11 +168,25 @@ export function PlanillaCuotas({
           v.cantidad += 1
           v.monto += c.saldoRestante
           m.set(mes, v)
+          const delSalon = porSalon.get(salon) ?? new Map<string, number>()
+          delSalon.set(mes, (delSalon.get(mes) ?? 0) + c.saldoRestante)
+          porSalon.set(salon, delSalon)
         }
       }
     }
-    return m
+    return { m, porSalon }
   }, [filas])
+
+  // Filas de abajo: SIEMPRE los 5 salones (aunque no deban nada), y "Sin
+  // salón" u otros salones solo si tienen algo por cobrar.
+  const salonesPie = useMemo(
+    () => [
+      ...SALONES,
+      ...[...porCobrarPorMes.porSalon.keys()].filter((s) => s !== SIN_SALON && !(SALONES as readonly string[]).includes(s)),
+      ...(porCobrarPorMes.porSalon.has(SIN_SALON) ? [SIN_SALON] : []),
+    ],
+    [porCobrarPorMes],
+  )
 
   // Al entrar (y al cambiar el filtro), el mes actual queda a la vista.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -223,7 +240,7 @@ export function PlanillaCuotas({
                     Cuotas por cobrar
                   </th>
                   {meses.map((mes) => {
-                    const cantidad = porCobrarPorMes.get(mes)?.cantidad ?? 0
+                    const cantidad = porCobrarPorMes.m.get(mes)?.cantidad ?? 0
                     return (
                       <th
                         key={mes}
@@ -273,26 +290,33 @@ export function PlanillaCuotas({
                   />
                 ))}
               </tbody>
-              {/* Pie fijo abajo: monto total que falta cobrar de las cuotas de cada mes */}
+              {/* Pie fijo abajo: por salón, lo que falta cobrar de las cuotas de cada mes */}
               <tfoot className="sticky bottom-0 z-30">
-                <tr>
-                  <td className="sticky left-0 z-10 border-r border-t-2 bg-muted px-2 py-2 text-left text-[11px] font-semibold">
-                    Total por cobrar
-                  </td>
-                  {meses.map((mes) => {
-                    const monto = porCobrarPorMes.get(mes)?.monto ?? 0
-                    return (
-                      <td
-                        key={mes}
-                        className={`whitespace-nowrap border-t-2 px-1.5 py-2 text-center text-[11px] font-semibold tabular-nums ${
-                          mes === mesActual ? "bg-amber-100 text-amber-900" : "bg-muted"
-                        }`}
-                      >
-                        {monto > 0 ? formatCurrency(monto) : <span className="font-normal text-muted-foreground/50">—</span>}
-                      </td>
-                    )
-                  })}
-                </tr>
+                {salonesPie.map((salon, idx) => (
+                  <tr key={salon}>
+                    <td
+                      className={`sticky left-0 z-10 border-r bg-muted px-2 py-1.5 text-left text-[11px] font-semibold ${idx === 0 ? "border-t-2" : "border-t"}`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {salon !== SIN_SALON && <SalonDot salon={salon} size={8} />}
+                        <span className="truncate">{salon === SIN_SALON ? "Sin salón" : salonLabel(salon)}</span>
+                      </span>
+                    </td>
+                    {meses.map((mes) => {
+                      const monto = porCobrarPorMes.porSalon.get(salon)?.get(mes) ?? 0
+                      return (
+                        <td
+                          key={mes}
+                          className={`whitespace-nowrap px-1.5 py-1.5 text-center text-[11px] font-semibold tabular-nums ${idx === 0 ? "border-t-2" : "border-t"} ${
+                            mes === mesActual ? "bg-amber-100 text-amber-900" : "bg-muted"
+                          }`}
+                        >
+                          {monto > 0 ? formatCurrency(monto) : <span className="font-normal text-muted-foreground/50">—</span>}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
               </tfoot>
             </table>
           </div>
