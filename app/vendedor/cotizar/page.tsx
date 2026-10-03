@@ -390,9 +390,12 @@ function CotizarPageContent() {
 
   const total = calculo?.total ?? 0
   const comensales = adultos + ninos
+  // Arriba los que se pueden contratar (por categoría); abajo, aparte, los
+  // incluidos en el salón (tildados y sin sumar).
+  const incluidosDelSalon = serviciosDelSalon.filter((s) => s.incluido)
   const porCategoria = (() => {
     const grupos = new Map<string, typeof serviciosDelSalon>()
-    for (const s of serviciosDelSalon) grupos.set(s.info.categoria, [...(grupos.get(s.info.categoria) ?? []), s])
+    for (const s of serviciosDelSalon.filter((x) => !x.incluido)) grupos.set(s.info.categoria, [...(grupos.get(s.info.categoria) ?? []), s])
     return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"))
   })()
 
@@ -572,27 +575,22 @@ function CotizarPageContent() {
                 titulo="Servicios"
                 resumen={`${Object.keys(servicios).length} adicionales`}
               >
-                {porCategoria.length === 0 && <p className="text-sm text-muted-foreground">No hay servicios para este salón.</p>}
+                {porCategoria.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No hay servicios para contratar en este salón.</p>
+                )}
                 {porCategoria.map(([categoria, lista]) => (
                   <div key={categoria} className="space-y-1.5">
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{categoria}</p>
                     <div className="flex flex-wrap gap-2">
                       {lista.map((s) => {
-                        const elegido = s.incluido || s.servicioId in servicios
-                        const conCantidad = UNIDADES_CON_CANTIDAD.includes(s.info.unidad) && !s.incluido
+                        const elegido = s.servicioId in servicios
+                        const conCantidad = UNIDADES_CON_CANTIDAD.includes(s.info.unidad)
                         return (
                           <div key={s.servicioId} className="flex items-center gap-1">
-                            <Chip
-                              activo={elegido}
-                              deshabilitado={s.incluido}
-                              onClick={s.incluido ? undefined : () => alternarServicio(s.servicioId)}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                {s.incluido && <Check className="h-3.5 w-3.5" />}
-                                <span className="font-medium">{s.info.nombre}</span>
-                              </span>
+                            <Chip activo={elegido} onClick={() => alternarServicio(s.servicioId)}>
+                              <span className="block font-medium">{s.info.nombre}</span>
                               <span className="block text-xs opacity-80 tabular-nums">
-                                {s.incluido ? "Incluido en el salón" : `${fmt(s.precio)}${conCantidad ? ` ${s.info.unidad.toLowerCase()}` : ""}`}
+                                {`${fmt(s.precio)}${conCantidad ? ` ${s.info.unidad.toLowerCase()}` : ""}`}
                               </span>
                             </Chip>
                             {conCantidad && s.servicioId in servicios && (
@@ -622,6 +620,23 @@ function CotizarPageContent() {
                     </div>
                   </div>
                 ))}
+                {incluidosDelSalon.length > 0 && (
+                  <div className="space-y-1.5 border-t border-border pt-3">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Incluidos en el salón</p>
+                    <p className="text-xs text-muted-foreground">Vienen con el salón: no se cobran aparte.</p>
+                    <div className="flex flex-wrap gap-2">
+                      {incluidosDelSalon.map((s) => (
+                        <Chip key={s.servicioId} activo deshabilitado>
+                          <span className="flex items-center gap-1.5">
+                            <Check className="h-3.5 w-3.5" />
+                            <span className="font-medium">{s.info.nombre}</span>
+                          </span>
+                          <span className="block text-xs opacity-80">Incluido · no suma</span>
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Tarjeta>
             </>
           )}
