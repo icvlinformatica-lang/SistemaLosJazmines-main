@@ -9,11 +9,12 @@ import { useMemo, useRef, useEffect } from "react"
 import { Search, X, ChevronDown } from "lucide-react"
 import { salonLabel } from "@/lib/store"
 import type { EgresoPendienteServicio } from "@/lib/hooks/use-caja-eventos"
+import { etiquetaGrupo, grupoServicio } from "@/lib/grupo-servicio"
 
 export interface FiltroEgresos {
   salon: string // "todos" o id del salón
   tipo: string // "todos" | "seña" | "saldo" | "menu" | "barra" | "sueldo" | "servicios"
-  sub: string | null // tipo de servicio (seña/saldo/servicios) o persona (sueldo)
+  sub: string | null // grupo de servicio (grupoServicio, ej. "VESTIDO") o persona (sueldo)
   q: string // texto de búsqueda
   qAbierta: boolean // si el input de búsqueda está desplegado
 }
@@ -50,7 +51,7 @@ export function filtrarEgresos(egresos: EgresoPendienteServicio[], f: FiltroEgre
     if (f.sub) {
       if (f.tipo === "sueldo") {
         if (personaDe(e) !== f.sub) return false
-      } else if (e.servicioNombre !== f.sub) {
+      } else if (grupoServicio(e.servicioNombre) !== f.sub) {
         return false
       }
     }
@@ -91,9 +92,9 @@ export function BarraFiltrosEgresos({
   egresos: EgresoPendienteServicio[]
   filtro: FiltroEgresos
   onChange: (f: FiltroEgresos) => void
-  /** Nombres de todos los servicios activos del catálogo (Finanzas → Servicios),
-   * para que el sub-filtro de "Servicios" muestre todo lo que ofrecemos, no
-   * solo los que tienen un pago pendiente en este momento. */
+  /** Nombres de todos los servicios activos del catálogo (Finanzas → Servicios).
+   * Solo aportan variantes de nombre para la etiqueta del grupo: el sub-filtro
+   * muestra únicamente los servicios con algún pago en la lista. */
   catalogoServicios?: string[]
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -122,20 +123,35 @@ export function BarraFiltrosEgresos({
     return c
   }, [base])
 
-  // Sub-opciones según el tipo activo: para "Servicios" es el catálogo
-  // completo (todo lo que ofrecemos, tenga o no pagos pendientes ahora);
+  // Sub-opciones según el tipo activo: para "Servicios" son los servicios
+  // con algún pago en la lista (los que no tienen ninguno no aparecen),
+  // agrupados: "VESTIDO 2027", "vestido 2025" y "VESTIDO" son una sola
+  // pastilla "VESTIDO" (lib/grupo-servicio.ts);
   // para "Sueldos" son las personas (y servicios pagados como sueldo) con
   // pagos pendientes, de todos los eventos.
   const subOpciones = useMemo(() => {
     if (filtro.tipo === "servicios") {
       const enTipo = base.filter((e) => coincideTipo(e, "servicios"))
       const c = new Map<string, number>()
-      for (const e of enTipo) {
-        if (e.servicioNombre) c.set(e.servicioNombre, (c.get(e.servicioNombre) || 0) + 1)
+      const nombresPorGrupo = new Map<string, string[]>()
+      const sumarNombre = (nombre: string) => {
+        if (!nombre) return
+        const g = grupoServicio(nombre)
+        nombresPorGrupo.set(g, [...(nombresPorGrupo.get(g) ?? []), nombre])
       }
-      const nombres = new Set(catalogoServicios)
-      for (const nombre of c.keys()) nombres.add(nombre)
-      return [...nombres].sort((a, b) => a.localeCompare(b)).map((nombre) => [nombre, c.get(nombre) || 0] as [string, number])
+      for (const nombre of catalogoServicios) sumarNombre(nombre)
+      for (const e of enTipo) {
+        if (!e.servicioNombre) continue
+        sumarNombre(e.servicioNombre)
+        const g = grupoServicio(e.servicioNombre)
+        c.set(g, (c.get(g) || 0) + 1)
+      }
+      // Solo los servicios que tienen algún pago en la lista (o el que está
+      // elegido, para poder destildarlo si un filtro lo dejó en 0).
+      return [...nombresPorGrupo.entries()]
+        .filter(([g]) => (c.get(g) || 0) > 0 || g === filtro.sub)
+        .map(([g, nombres]) => [g, c.get(g) || 0, etiquetaGrupo(g, nombres)] as [string, number, string])
+        .sort((a, b) => a[2].localeCompare(b[2], "es"))
     }
     if (filtro.tipo !== "sueldo") return []
     const enTipo = base.filter((e) => coincideTipo(e, filtro.tipo))
@@ -144,8 +160,10 @@ export function BarraFiltrosEgresos({
       const persona = personaDe(e)
       if (persona) c.set(persona, (c.get(persona) || 0) + 1)
     }
-    return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"))
-  }, [base, filtro.tipo, catalogoServicios])
+    return [...c.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], "es"))
+      .map(([persona, cant]) => [persona, cant, persona] as [string, number, string])
+  }, [base, filtro.tipo, filtro.sub, catalogoServicios])
 
   const setTipo = (tipo: string) => onChange({ ...filtro, tipo, sub: null })
 
@@ -245,7 +263,7 @@ export function BarraFiltrosEgresos({
           >
             Todos
           </button>
-          {subOpciones.map(([nombre, cant]) => (
+          {subOpciones.map(([nombre, cant, etiqueta]) => (
             <button
               key={nombre}
               type="button"
@@ -256,7 +274,7 @@ export function BarraFiltrosEgresos({
                   : (SUB_ESTILOS[filtro.tipo]?.inactivo ?? "bg-card text-muted-foreground border-border hover:bg-muted")
               }`}
             >
-              {nombre}
+              {etiqueta}
               <span className={`text-[9px] font-bold ${filtro.sub === nombre ? "opacity-80" : "opacity-50"}`}>{cant}</span>
             </button>
           ))}
