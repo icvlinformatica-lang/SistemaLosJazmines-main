@@ -21,7 +21,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { precioConGanancia, precioBarraSalon } from "@/lib/cotizador-salon"
+import { CATEGORIAS_FUERA_DE_SERVICIOS, precioConGanancia, precioBarraSalon } from "@/lib/cotizador-salon"
 import { EditorBarra, type BarraParaEditar, type CoctelConCosto } from "@/components/editor-barra"
 import { AvisoSinCosto, InputGanancia, fmt } from "@/components/config-bloque"
 
@@ -326,50 +326,93 @@ export function BloqueServiciosContenido({
     onEstado(nuevo.oculto || nuevo.incluido ? [...resto, nuevo] : resto)
   }
 
+  // Al marcar un servicio como incluido también queda visible: un incluido
+  // oculto no se vería ni tildado en el cotizador del vendedor.
+  const marcarIncluido = (id: string, incluido: boolean) => cambiar(id, incluido ? { incluido: true, oculto: false } : { incluido: false })
+
+  // Menú y barra se configuran desde Recetas y Cócteles: nunca como servicio.
+  const lista = servicios.filter((sv) => !CATEGORIAS_FUERA_DE_SERVICIOS.includes(sv.categoria))
+  const contratables = lista.filter((sv) => !de(sv.id).incluido)
+  const incluidos = lista.filter((sv) => de(sv.id).incluido)
+
+  const switchIncluido = (sv: ServicioConCosto, incluido: boolean) => (
+    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Switch
+        checked={incluido}
+        onCheckedChange={(v) => marcarIncluido(sv.id, v)}
+        aria-label={`${sv.nombre}: incluido en el salón`}
+      />
+      Incluido en el salón
+    </label>
+  )
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <InputGanancia etiqueta="Ganancia de servicios" valor={ganancia} onChange={onGanancia} />
       <p className="text-xs text-muted-foreground">
         Costo = el "costo para Caja Eventos" de cada servicio (se edita en Finanzas &gt; Servicios). Una sola ganancia
-        para todos los servicios del salón. "Incluido en el salón": viene con el salón y no se cobra aparte.
+        para todos los servicios del salón. El switch "Incluido en el salón" pasa el servicio de una lista a la otra.
       </p>
-      <ul className="divide-y divide-border rounded-lg border border-border">
-        {servicios.map((sv) => {
-          const e = de(sv.id)
-          return (
-            <li key={sv.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2">
-              <span className="min-w-0 flex-1 text-sm">
-                {sv.nombre}
-                <span className="text-xs text-muted-foreground"> · {sv.categoria}</span>
-                <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
-                  <span>
-                    costo {fmt(sv.costo)} →{" "}
-                    <span className="font-semibold text-foreground">precio {fmt(precioConGanancia(sv.costo, ganancia))}</span>
-                    {sv.unidad && sv.unidad !== "Fijo" ? ` (${sv.unidad.toLowerCase()})` : ""}
+
+      <div className="space-y-1.5">
+        <p className="text-sm font-semibold">Servicios que se pueden contratar</p>
+        {contratables.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Todos los servicios vienen incluidos en este salón.</p>
+        ) : (
+          <ul className="divide-y divide-border rounded-lg border border-border">
+            {contratables.map((sv) => {
+              const e = de(sv.id)
+              return (
+                <li key={sv.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2">
+                  <span className="min-w-0 flex-1 text-sm">
+                    {sv.nombre}
+                    <span className="text-xs text-muted-foreground"> · {sv.categoria}</span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
+                      <span>
+                        costo {fmt(sv.costo)} →{" "}
+                        <span className="font-semibold text-foreground">precio {fmt(precioConGanancia(sv.costo, ganancia))}</span>
+                        {sv.unidad && sv.unidad !== "Fijo" ? ` (${sv.unidad.toLowerCase()})` : ""}
+                      </span>
+                      {sv.costo <= 0 && !e.oculto && <AvisoSinCosto />}
+                    </span>
                   </span>
-                  {sv.costo <= 0 && !e.oculto && <AvisoSinCosto />}
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Switch
+                      checked={!e.oculto}
+                      onCheckedChange={(v) => cambiar(sv.id, { oculto: !v })}
+                      aria-label={`${sv.nombre}: aparece en el cotizador`}
+                    />
+                    Aparece en el cotizador
+                  </label>
+                  {switchIncluido(sv, false)}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-sm font-semibold">Incluidos en el salón por defecto</p>
+        <p className="text-xs text-muted-foreground">
+          Vienen con el salón: el vendedor los ve tildados y no se cobran aparte.
+        </p>
+        {incluidos.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Este salón no tiene servicios incluidos.</p>
+        ) : (
+          <ul className="divide-y divide-border rounded-lg border border-border bg-muted/30">
+            {incluidos.map((sv) => (
+              <li key={sv.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2">
+                <span className="min-w-0 flex-1 text-sm">
+                  {sv.nombre}
+                  <span className="text-xs text-muted-foreground"> · {sv.categoria}</span>
                 </span>
-              </span>
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Switch
-                  checked={!e.oculto}
-                  onCheckedChange={(v) => cambiar(sv.id, { oculto: !v })}
-                  aria-label={`${sv.nombre}: aparece en el cotizador`}
-                />
-                Aparece en el cotizador
-              </label>
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Switch
-                  checked={e.incluido}
-                  onCheckedChange={(v) => cambiar(sv.id, { incluido: v })}
-                  aria-label={`${sv.nombre}: incluido en el salón`}
-                />
-                Incluido en el salón
-              </label>
-            </li>
-          )
-        })}
-      </ul>
+                {switchIncluido(sv, true)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }

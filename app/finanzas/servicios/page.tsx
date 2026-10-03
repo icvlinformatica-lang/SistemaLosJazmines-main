@@ -62,9 +62,10 @@ const CATEGORIAS: CategoriaServicio[] = [
   "Pasteleria",
   "Transporte",
   "Papeleria",
-  // Las usa el cotizador del vendedor (ver lib/tarifario-cotizador.ts).
-  "Menú",
-  "Barra",
+  // "Menú" y "Barra" ya no se eligen: el menú y la barra se configuran desde
+  // Recetas y Cócteles (cotizador por salón). Siguen en el tipo
+  // CategoriaServicio y en los colores por si algún dato viejo las trae
+  // (scripts/017 borró los 7 servicios que las usaban).
   "Otros",
 ]
 
