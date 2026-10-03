@@ -15,6 +15,10 @@ export function getDb(): ReturnType<typeof postgres> {
       max: 10,
       idle_timeout: 20,
       connect_timeout: 10,
+      // POSTGRES_URL apunta al pooler de Supabase en modo transacción (puerto
+      // 6543), que no soporta prepared statements: con prepare activado,
+      // consultas al azar fallan con "prepared statement ... does not exist".
+      prepare: false,
     })
   }
   return _client
