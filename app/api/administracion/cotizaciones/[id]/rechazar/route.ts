@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 /**
  * "Rechazar / pedir ajuste" (Etapa 5): pasa la cotización a "rechazada" con
@@ -9,6 +10,8 @@ import { sql } from "@/lib/db"
  * El vendedor la ve y la puede corregir/reenviar desde /vendedor/paquetes.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const body = await req.json().catch(() => ({}))

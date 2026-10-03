@@ -4,7 +4,7 @@ import { sql } from "@/lib/db"
 import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
 import { leerBarrasArmadas, leerCostosPlatos } from "@/lib/cotizador-config-servidor"
 import { leerConfigTodosLosSalones, leerPersonalConTarifa, leerServiciosConCosto } from "@/lib/cotizador-salon-servidor"
-import { precioBarraSalon, precioConGanancia, tarifaDeRegla } from "@/lib/cotizador-salon"
+import { CATEGORIAS_FUERA_DE_SERVICIOS, precioBarraSalon, precioConGanancia, tarifaDeRegla } from "@/lib/cotizador-salon"
 
 /**
  * Catálogo saneado para la pantalla del vendedor (/vendedor/cotizar):
@@ -157,7 +157,7 @@ export async function GET() {
         {},
       ),
       // Cotizador por salón (Cotizaciones > Configuración): solo PRECIOS, nunca
-      // costos ni ganancias. Todavía no lo usa ninguna pantalla (Paso 2).
+      // costos ni ganancias. Lo usa /vendedor/cotizar (Paso 2).
       cotizadorPorSalon,
     })
   } catch (err) {
@@ -198,8 +198,11 @@ async function armarCotizadorPorSalon(preciosCocteles: Array<{ id: string; costo
           tragosPorAdulto: precio.tragosPorAdulto,
         }
       }),
+    // Sin los de categoría Menú/Barra: la comida y la bebida salen de los
+    // rubros Cocina y Barra (no se cobran dos veces).
     servicios: servicios
       .filter((sv) => !cfg.servicios.find((e) => e.servicioId === sv.id)?.oculto)
+      .filter((sv) => !CATEGORIAS_FUERA_DE_SERVICIOS.includes(sv.categoria))
       .map((sv) => ({
         servicioId: sv.id,
         precio: precioConGanancia(sv.costo, cfg.gananciaServicios),

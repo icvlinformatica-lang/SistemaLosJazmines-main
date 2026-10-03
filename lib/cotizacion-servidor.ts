@@ -1,0 +1,158 @@
+// Cotización del vendedor calculada en el SERVIDOR (Paso 2 del cotizador por
+// salón). Solo servidor.
+//
+// Lee SOLO la configuración del salón (cotizador_salon, _receta, _barra,
+// _servicio y cotizador_personal_regla, vía lib/cotizador-salon-servidor.ts)
+// más los costos reales (recetas, cócteles, servicios, personal), arma los
+// valores por unidad con costo Y precio, y hace la cuenta con
+// armarCotizacion (lib/cotizador-salon.ts) — la misma función que usa la
+// pantalla del vendedor. Nunca se confía en un precio que mande el navegador.
+//
+// Lo que el vendedor no puede elegir en ese salón (plato o barra no visible,
+// servicio oculto, de otro año o de categoría Menú/Barra) se RECHAZA con un
+// mensaje, no se ignora en silencio.
+import { leerBarrasArmadas, leerCostosPlatos } from "@/lib/cotizador-config-servidor"
+import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
+import { leerConfigSalon, leerPersonalConTarifa, leerServiciosConCosto, type ConfigSalon } from "@/lib/cotizador-salon-servidor"
+import {
+  CATEGORIAS_FUERA_DE_SERVICIOS,
+  armarCotizacion,
+  esSalonCotizador,
+  precioBarraSalon,
+  precioConGanancia,
+  tarifaDeRegla,
+  type ResultadoCotizacionSalon,
+} from "@/lib/cotizador-salon"
+import { servicioCorrespondeAlAnio } from "@/lib/tarifario-cotizador"
+
+export interface PedidoCotizacion {
+  salon: string
+  fechaEvento: string
+  adultos: number
+  ninos: number
+  recetas: string[]
+  barraId: string | null
+  servicios: Array<{ servicioId: string; cantidad: number }>
+}
+
+export interface CotizacionCalculada {
+  config: ConfigSalon
+  resultado: ResultadoCotizacionSalon
+  recetas: Array<{ id: string; nombre: string; costoPorcion: number; precioPorcion: number }>
+  barra: { id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number } | null
+  /** Servicios con nombre/unidad/categoría (para guardar y para el evento). */
+  servicios: Array<{ servicioId: string; nombre: string; categoria: string; unidad: string; cantidad: number; incluido: boolean }>
+  /** Reglas de personal que se usaron, con su tarifa (para el evento al aprobar). */
+  personal: Array<{ funcion: string; cantidad: number; tarifa: number; origenTarifa: string; ganancia: number }>
+}
+
+const entero = (n: unknown) => Math.max(0, Math.floor(Number(n) || 0))
+
+/** Calcula una cotización. Devuelve un string con el error si el pedido no es válido. */
+export async function cotizarEnServidor(p: PedidoCotizacion): Promise<CotizacionCalculada | string> {
+  if (!esSalonCotizador(p.salon)) return "Elegí un salón."
+  const adultos = entero(p.adultos)
+  const ninos = entero(p.ninos)
+  if (adultos + ninos <= 0) return "Cargá la cantidad de invitados."
+
+  // En tandas chicas por el pooler de Supabase (ver /api/vendedor/catalogo).
+  const config = await leerConfigSalon(p.salon)
+  const [platos, cocteles] = await Promise.all([leerCostosPlatos(), leerPreciosCocteles()])
+  const [barras, serviciosCat, roster] = await Promise.all([leerBarrasArmadas(), leerServiciosConCosto(), leerPersonalConTarifa()])
+
+  // ── Recetas: solo las visibles del salón ──
+  const recetasPedidas = [...new Set((p.recetas || []).filter((x) => typeof x === "string"))]
+  const recetas: CotizacionCalculada["recetas"] = []
+  for (const id of recetasPedidas) {
+    const plato = platos.find((x) => x.id === id)
+    if (!plato || !config.recetas.includes(id)) return `"${plato?.nombre ?? id}" no está en el menú de este salón.`
+    recetas.push({
+      id,
+      nombre: plato.nombre,
+      costoPorcion: plato.costoPorPorcion,
+      precioPorcion: precioConGanancia(plato.costoPorPorcion, config.gananciaCocina),
+    })
+  }
+
+  // ── Barra: una o ninguna, solo las visibles del salón ──
+  let barra: CotizacionCalculada["barra"] = null
+  if (p.barraId) {
+    const b = barras.find((x) => x.id === p.barraId)
+    if (!b || !config.barras.includes(b.id)) return "Esa barra no está disponible en este salón."
+    const costos = Object.fromEntries(cocteles.map((c) => [c.id, c.costoPorTrago]))
+    barra = {
+      id: b.id,
+      nombre: b.nombre,
+      // Los cócteles que ya no existen en la carta no se cobran ni pasan al evento.
+      cocteles: b.coctelesIncluidos.filter((id) => id in costos),
+      costoPorAdulto: precioBarraSalon(b.coctelesIncluidos, costos, 0).precioPorAdulto,
+      precioPorAdulto: precioBarraSalon(b.coctelesIncluidos, costos, config.gananciaBarra).precioPorAdulto,
+    }
+  }
+
+  // ── Servicios: los elegidos + TODOS los incluidos del salón ──
+  const ocultos = new Set(config.servicios.filter((s) => s.oculto).map((s) => s.servicioId))
+  const incluidos = new Set(config.servicios.filter((s) => s.incluido).map((s) => s.servicioId))
+  const disponible = (sv: (typeof serviciosCat)[number]) =>
+    !ocultos.has(sv.id) &&
+    !CATEGORIAS_FUERA_DE_SERVICIOS.includes(sv.categoria) &&
+    servicioCorrespondeAlAnio(sv.nombre, p.fechaEvento || "")
+  const pedidos = new Map<string, number>()
+  for (const s of p.servicios || []) {
+    if (s && typeof s.servicioId === "string") pedidos.set(s.servicioId, Number(s.cantidad) || 1)
+  }
+  for (const id of pedidos.keys()) {
+    const sv = serviciosCat.find((x) => x.id === id)
+    if (!sv || !disponible(sv)) return `"${sv?.nombre ?? id}" no se puede cotizar en este salón o para esa fecha.`
+  }
+  const serviciosElegidos = serviciosCat.filter((sv) => disponible(sv) && (pedidos.has(sv.id) || incluidos.has(sv.id)))
+
+  // ── Personal: reglas del salón con su tarifa ──
+  const reglas = config.reglasPersonal.map((r) => {
+    const tarifa = tarifaDeRegla(r, roster)
+    return { regla: r, tarifa, precio: precioConGanancia(tarifa.tarifa, r.ganancia) }
+  })
+
+  const resultado = armarCotizacion({
+    adultos,
+    ninos,
+    capacidadMaxima: config.capacidadMaxima,
+    salon: { costo: config.costoSalon, precio: precioConGanancia(config.costoSalon, config.gananciaSalon) },
+    recetas: recetas.map((r) => ({ id: r.id, nombre: r.nombre, costo: r.costoPorcion, precio: r.precioPorcion })),
+    barra: barra
+      ? { id: barra.id, nombre: barra.nombre, tragosPorAdulto: barra.cocteles.length, costo: barra.costoPorAdulto, precio: barra.precioPorAdulto }
+      : null,
+    servicios: serviciosElegidos.map((sv) => ({
+      servicioId: sv.id,
+      nombre: sv.nombre,
+      unidad: sv.unidad,
+      cantidad: pedidos.get(sv.id) ?? 1,
+      incluido: incluidos.has(sv.id),
+      costo: sv.costo,
+      precio: precioConGanancia(sv.costo, config.gananciaServicios),
+    })),
+    personal: reglas.map(({ regla, tarifa, precio }) => ({
+      funcion: regla.funcion,
+      cadaNInvitados: regla.cadaNInvitados,
+      minimo: regla.minimo,
+      aplica: regla.aplica,
+      costo: tarifa.tarifa,
+      precio,
+    })),
+  })
+
+  return {
+    config,
+    resultado,
+    recetas,
+    barra,
+    servicios: resultado.servicios.map((l) => {
+      const sv = serviciosElegidos.find((x) => x.id === l.servicioId)!
+      return { servicioId: l.servicioId, nombre: l.nombre, categoria: sv.categoria, unidad: l.unidad, cantidad: l.cantidad, incluido: l.incluido }
+    }),
+    personal: resultado.personal.map((l) => {
+      const r = reglas.find((x) => x.regla.funcion === l.funcion)!
+      return { funcion: l.funcion, cantidad: l.cantidad, tarifa: r.tarifa.tarifa, origenTarifa: r.tarifa.origen, ganancia: r.regla.ganancia }
+    }),
+  }
+}

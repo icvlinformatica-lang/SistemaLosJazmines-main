@@ -1,661 +1,384 @@
 "use client"
 
-// Pantalla de cotización para el perfil Vendedor (Etapa 3). Arma una fila en
-// la tabla "cotizaciones", siempre en estado "borrador" — NUNCA en "eventos".
-// El precio final se calcula siempre del lado del servidor
-// (/api/vendedor/cotizaciones) a partir del catálogo real de servicios —
-// acá solo se muestra un preview con la misma fórmula, nunca el desglose de
-// costos internos (eso vive en costos_internos, que este endpoint ni
-// siquiera devuelve).
+// Cotizador del VENDEDOR — modelo costo + ganancia por salón (Paso 2).
 //
-// Acá NUNCA se manda a revisión: "Generar cotización" guarda todo y lleva a
-// /vendedor/paquetes ("Mis cotizaciones generadas"), donde un botón aparte
-// en la tarjeta dispara el envío a revisión de Administración.
+// Pantalla rápida pensada para celular, en tarjetas: Cliente, Salón,
+// Comensales, Menú, Barra y Servicios. Abajo, fijo: el precio total (tocándolo
+// se ve el desglose por rubro, SOLO precios) y los botones "Guardar borrador"
+// y "Enviar a Administración".
 //
-// "Generar paquete" (botón dorado) es una acción aparte: toma el salón y los
-// servicios ya elegidos acá y los guarda como plantilla reutilizable en
-// "paquetes_salones" (vía /api/vendedor/paquetes) — nunca toca ni guarda la
-// cotización en curso. Reemplaza al viejo formulario de creación en
-// /vendedor/paquetes (Etapa 4), que solo dejaba marcar servicios sin
-// cantidad ("Por Hora"/"Por Cantidad" siempre en 1).
+// El precio en vivo sale de armarCotizacion (lib/cotizador-salon.ts) con los
+// PRECIOS por unidad del catálogo (/api/vendedor/catalogo, bloque
+// cotizadorPorSalon) — la misma función que usa el servidor, que recalcula
+// siempre al guardar con los costos reales (/api/vendedor/cotizaciones). El
+// vendedor nunca recibe costos, ganancias ni márgenes.
 //
-// Mismo lenguaje visual que app/evento/page.tsx (Planificador de Evento):
-// secciones colapsables con ícono + título + subtítulo, botones de salón
-// coloreados, caja de "Comensales" y tabla de servicios — sin tocar ese
-// archivo, solo replicando su estilo acá.
+// Fuera de esta pantalla (los carga Administración después): teléfono,
+// festejados, horarios, dietas, plato por plato, trago por trago y datos del
+// contrato. Adolescentes y dietas especiales quedan en 0.
+//
+// ?id=... reabre un borrador o una cotización rechazada para corregirla.
 
-import { Fragment, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
+  AlertTriangle,
   ArrowLeft,
-  Baby,
-  Briefcase,
-  Building2,
-  Calendar as CalendarIcon,
-  CheckCircle,
-  Clock,
-  FileText,
-  Heart,
-  Package,
+  Check,
+  ChefHat,
+  ChevronDown,
+  ChevronUp,
+  Home,
+  Minus,
+  PackageCheck,
+  Plus,
+  Send,
   User,
-  UserCheck,
   Users,
-  UtensilsCrossed,
   Wine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
-import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
-import {
-  calcularCotizacion,
-  calcularPersonalSugerido,
-  servicioCorrespondeAlAnio,
-  personalIncluidoDelSalon,
-  ajustarPersonalDelSalonPorDia,
-  diaTarifario,
-  type DiaTarifario,
-  type FilaTarifario,
-  type ModalidadSalon,
-  type ReglaPersonal,
-} from "@/lib/tarifario-cotizador"
+import { servicioCorrespondeAlAnio } from "@/lib/tarifario-cotizador"
+import { UNIDADES_CON_CANTIDAD, armarCotizacion, type AplicaRegla } from "@/lib/cotizador-salon"
 
 const TIPOS_EVENTO = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
+const ATAJOS_ADULTOS = [50, 60, 70, 80, 90, 100]
 
-type Segmento = "adultos" | "adolescentes" | "ninos" | "dietasEspeciales"
-const SEGMENTOS: { key: Segmento; label: string }[] = [
-  { key: "adultos", label: "Adultos" },
-  { key: "adolescentes", label: "Adolesc." },
-  { key: "ninos", label: "Niños" },
-  { key: "dietasEspeciales", label: "Dietas" },
-]
+const fmt = (n: number) =>
+  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
 interface ServicioCatalogo {
   id: string
   nombre: string
   categoria: string
-  unidad: "Fijo" | "Por Persona" | "Por Hora" | "Por Cantidad"
-  precioVenta: number
+  unidad: string
 }
 
-interface RecetaCatalogo {
-  id: string
-  nombre: string
-  categoria: string
-}
-
-/** Cóctel de la carta para la barra personalizada: solo precio, nunca costo. */
-interface CoctelCatalogo {
-  id: string
-  nombre: string
-  categoria: string
-  precioPorTrago: number
-}
-
-/** "BARRA CLÁSICA" con o sin tilde, en cualquier mayúscula. */
-const esBarraClasica = (nombre: string) =>
-  nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase().startsWith("BARRA CLASICA")
-
-interface PaqueteVendedor {
-  id: string
+/** Lo que el catálogo trae de cada salón: SOLO precios. */
+interface SalonCotizable {
   salon: string
-  nombre: string
-  precioVenta: number
-  servicios: Array<{ servicioId: string; nombre: string; cantidad: number; precioVenta: number }>
+  capacidadMaxima: number | null
+  precioSalon: number
+  menu: Array<{ recetaId: string; nombre: string; precioPorPorcion: number }>
+  barras: Array<{ id: string; nombre: string; coctelesIncluidos: string[]; precioPorAdulto: number; tragosPorAdulto: number }>
+  servicios: Array<{ servicioId: string; precio: number; incluido: boolean }>
+  personal: Array<{ funcion: string; cadaNInvitados: number; minimo: number; aplica: AplicaRegla; precioPorPersona: number }>
 }
 
-interface PersonalCatalogo {
-  id: string
-  nombre: string
-  apellido: string
-  funcion: string
-}
-
-const fmt = (n: number) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
-
-function agruparPorCategoria<T extends { categoria: string }>(items: T[]): Array<{ categoria: string; items: T[] }> {
-  const grupos = new Map<string, T[]>()
-  for (const item of items) {
-    if (!grupos.has(item.categoria)) grupos.set(item.categoria, [])
-    grupos.get(item.categoria)!.push(item)
-  }
-  return Array.from(grupos.entries()).map(([categoria, items]) => ({ categoria, items }))
-}
-
-// Misma cascara que SectionCard en app/evento/page.tsx: icono + titulo +
-// subtitulo colapsables. "disabled" deshabilita los controles de ADENTRO
-// (fieldset) pero nunca el botón de abrir/cerrar la sección — si no, en
-// modo solo lectura (una cotización ya enviada) no se podría ni mirar.
-function Seccion({
-  icon,
-  title,
-  subtitle,
+function Tarjeta({
+  icono,
+  titulo,
+  resumen,
   children,
-  defaultOpen = false,
-  disabled = false,
 }: {
-  icon: ReactNode
-  title: string
-  subtitle?: string
-  children: ReactNode
-  defaultOpen?: boolean
-  disabled?: boolean
+  icono: React.ReactNode
+  titulo: string
+  resumen?: string
+  children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="rounded-xl border border-border bg-card overflow-hidden transition-shadow hover:shadow-md">
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none"
-          >
-            <div className="shrink-0">{icon}</div>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-semibold text-card-foreground truncate">{title}</h2>
-              {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
-            </div>
-            <ChevronDown
-              className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-            />
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="border-t border-border px-5 py-5 overflow-hidden">
-            <fieldset disabled={disabled} className="contents">{children}</fieldset>
-          </div>
-        </CollapsibleContent>
+    <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2d5a3d]/10 text-[#2d5a3d]">{icono}</span>
+        <h2 className="flex-1 text-base font-semibold">{titulo}</h2>
+        {resumen && <span className="text-xs text-muted-foreground">{resumen}</span>}
       </div>
-    </Collapsible>
+      {children}
+    </section>
+  )
+}
+
+function Contador({
+  etiqueta,
+  valor,
+  onChange,
+  deshabilitado,
+}: {
+  etiqueta: string
+  valor: number
+  onChange: (n: number) => void
+  deshabilitado?: boolean
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
+      <span className="text-sm font-medium">{etiqueta}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={deshabilitado || valor <= 0}
+          onClick={() => onChange(Math.max(0, valor - 1))}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border hover:bg-muted disabled:opacity-40"
+          aria-label={`Menos ${etiqueta.toLowerCase()}`}
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          disabled={deshabilitado}
+          aria-label={etiqueta}
+          value={valor}
+          onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+          className="h-10 w-16 rounded-lg border border-input bg-background text-center text-base font-semibold tabular-nums"
+        />
+        <button
+          type="button"
+          disabled={deshabilitado}
+          onClick={() => onChange(valor + 1)}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border hover:bg-muted disabled:opacity-40"
+          aria-label={`Más ${etiqueta.toLowerCase()}`}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function Chip({
+  activo,
+  onClick,
+  children,
+  deshabilitado,
+}: {
+  activo: boolean
+  onClick?: () => void
+  children: React.ReactNode
+  deshabilitado?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={activo}
+      disabled={deshabilitado}
+      onClick={onClick}
+      className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default ${
+        activo ? "border-[#2d5a3d] bg-[#2d5a3d] text-white" : "border-border bg-white hover:bg-muted"
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 
 function CotizarPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const cotizacionIdParam = searchParams.get("id")
-  const paqueteIdParam = searchParams.get("paqueteId")
   const { toast } = useToast()
+  const idParam = searchParams.get("id")
 
-  const [cargandoCatalogo, setCargandoCatalogo] = useState(true)
-  const [servicios, setServicios] = useState<ServicioCatalogo[]>([])
-  const [recetas, setRecetas] = useState<RecetaCatalogo[]>([])
-  const [preciosVenta, setPreciosVenta] = useState<Record<string, Record<string, number>>>({})
-  const [personalCatalogo, setPersonalCatalogo] = useState<PersonalCatalogo[]>([])
-  const [tarifario, setTarifario] = useState<FilaTarifario[]>([])
-  const [reglasPersonal, setReglasPersonal] = useState<ReglaPersonal[]>([])
-  const [recetasPorServicio, setRecetasPorServicio] = useState<Record<string, string[]>>({})
-  // Lo que el precio del salón ya incluye (mesas, DJ, decoración, suite) y
-  // la gente que viene con él según el día (portero, limpieza, coordinación).
-  const [serviciosIncluidosSalon, setServiciosIncluidosSalon] = useState<string[]>([])
-  const [personalIncluidoSalon, setPersonalIncluidoSalon] = useState<Array<{ personalId: string; dia: DiaTarifario }>>([])
-  const [paquetes, setPaquetes] = useState<PaqueteVendedor[]>([])
-  const [paqueteAplicadoId, setPaqueteAplicadoId] = useState<string | null>(null)
-  const [paqueteUrlAplicado, setPaqueteUrlAplicado] = useState(false)
+  const [catalogo, setCatalogo] = useState<{ servicios: ServicioCatalogo[]; salones: SalonCotizable[] } | null>(null)
+  const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null)
 
-  // Cliente
-  const [clienteNombre, setClienteNombre] = useState("")
-  const [clienteTelefono, setClienteTelefono] = useState("")
-
-  // Evento — mismos campos que "Detalles del Evento" en app/evento/page.tsx.
-  // Acá van sin obligar a completarlos (a diferencia del planificador real):
-  // cuando Administración apruebe la cotización (Etapa 5) y la convierta en
-  // evento real, ahí sí va a pedir los que falten antes de crear el evento.
-  const [fechaEvento, setFechaEvento] = useState("")
-  const [horario, setHorario] = useState("")
-  const [horarioFin, setHorarioFin] = useState("")
-  const [salon, setSalon] = useState<string>("")
-  const [tipoEvento, setTipoEvento] = useState<string>("")
-  const [nombreFestejados, setNombreFestejados] = useState("")
-
-  // Modalidad del salón: cambia el precio de la grilla y hace que menú y
-  // barra queden incluidos (se siguen eligiendo para cocina, pero no suman).
-  const [modalidadSalon, setModalidadSalon] = useState<ModalidadSalon>("solo_salon")
-
-  // Invitados
-  const [invitados, setInvitados] = useState({ adultos: 0, adolescentes: 0, ninos: 0, personasDietasEspeciales: 0 })
-  const totalPersonas = invitados.adultos + invitados.adolescentes + invitados.ninos + invitados.personasDietasEspeciales
-
-  // Menú por segmento: recetaId[] por segmento
-  const [recetasElegidas, setRecetasElegidas] = useState<Record<Segmento, string[]>>({
-    adultos: [],
-    adolescentes: [],
-    ninos: [],
-    dietasEspeciales: [],
-  })
-  const totalPlatos = SEGMENTOS.reduce((sum, s) => sum + recetasElegidas[s.key].length, 0)
-
-  // Servicios elegidos: servicioId -> cantidad (solo importa para "Por Hora"/"Por Cantidad")
-  const [serviciosElegidos, setServiciosElegidos] = useState<Record<string, number>>({})
-  // Barra personalizada: cócteles elegidos de la carta. La clásica es el
-  // servicio BARRA CLÁSICA dentro de serviciosElegidos.
-  const [coctelesCarta, setCoctelesCarta] = useState<CoctelCatalogo[]>([])
-  const [barraPersonalizada, setBarraPersonalizada] = useState(false)
-  const [coctelesBarra, setCoctelesBarra] = useState<string[]>([])
-
-  // Personal solicitado: solo IDs del roster, nunca un monto (eso lo define
-  // Administración al aprobar la cotización).
-  const [personalSeleccionado, setPersonalSeleccionado] = useState<string[]>([])
-
-  const [cotizacionId, setCotizacionId] = useState<string | null>(null)
-  const [guardando, setGuardando] = useState(false)
-  const [generando, setGenerando] = useState(false)
-
-  // "Generar paquete" (botón dorado): guarda salón + servicios de acá como
-  // plantilla reutilizable, sin tocar la cotización en curso.
-  const [dialogoPaqueteAbierto, setDialogoPaqueteAbierto] = useState(false)
-  const [nombrePaquete, setNombrePaquete] = useState("")
-  const [generandoPaquete, setGenerandoPaquete] = useState(false)
-
-  // Al reabrir una cotización guardada (?id=...): "borrador"/"rechazada" se
-  // pueden seguir editando, cualquier otro estado queda de solo lectura
-  // (ya está en revisión o ya fue procesada por Administración).
-  const [cargandoCotizacion, setCargandoCotizacion] = useState(!!cotizacionIdParam)
-  const [estadoCotizacion, setEstadoCotizacion] = useState<EstadoCotizacion>("borrador")
+  const [cotizacionId, setCotizacionId] = useState<string | null>(idParam)
+  const [estado, setEstado] = useState<EstadoCotizacion>("borrador")
   const [comentarioAdmin, setComentarioAdmin] = useState<string | null>(null)
-  const soloLectura = !["borrador", "rechazada"].includes(estadoCotizacion)
+  const [cargandoCotizacion, setCargandoCotizacion] = useState(!!idParam)
 
-  useEffect(() => {
-    fetch("/api/vendedor/catalogo")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.ok) {
-          setServicios(data.servicios || [])
-          setRecetas(data.recetas || [])
-          setPreciosVenta(data.preciosVenta || {})
-          setPersonalCatalogo(data.personal || [])
-          setTarifario(data.tarifario || [])
-          setReglasPersonal(data.reglasPersonal || [])
-          setRecetasPorServicio(data.recetasPorServicio || {})
-          setServiciosIncluidosSalon(data.serviciosIncluidosSalon || [])
-          setPersonalIncluidoSalon(data.personalIncluidoSalon || [])
-          setCoctelesCarta(data.cocteles || [])
-        }
-      })
-      .catch(() => {})
-      .finally(() => setCargandoCatalogo(false))
+  const [clienteNombre, setClienteNombre] = useState("")
+  const [clienteDni, setClienteDni] = useState("")
+  const [tipoEvento, setTipoEvento] = useState("")
+  const [fecha, setFecha] = useState("")
+  const [salon, setSalon] = useState("")
+  const [adultos, setAdultos] = useState(0)
+  const [ninos, setNinos] = useState(0)
+  const [recetas, setRecetas] = useState<string[]>([])
+  const [barraId, setBarraId] = useState<string | null>(null)
+  /** servicioId → cantidad. Solo los ADICIONALES elegidos (los incluidos van solos). */
+  const [servicios, setServicios] = useState<Record<string, number>>({})
 
-    fetch("/api/vendedor/paquetes")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.ok) setPaquetes(data.paquetes || [])
-      })
-      .catch(() => {})
+  const [desgloseAbierto, setDesgloseAbierto] = useState(false)
+  const [guardando, setGuardando] = useState<"guardar" | "enviar" | null>(null)
+
+  const soloLectura = !!cotizacionId && !["borrador", "rechazada"].includes(estado)
+
+  // ── Catálogo (solo precios) ──
+  const cargarCatalogo = useCallback(async () => {
+    setErrorCatalogo(null)
+    try {
+      const res = await fetch("/api/vendedor/catalogo")
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) throw new Error()
+      if (!Array.isArray(data.cotizadorPorSalon)) {
+        setErrorCatalogo("Todavía no está cargada la configuración de los salones.")
+        return
+      }
+      setCatalogo({ servicios: data.servicios ?? [], salones: data.cotizadorPorSalon })
+    } catch {
+      setErrorCatalogo("No se pudo cargar el catálogo.")
+    }
   }, [])
-
   useEffect(() => {
-    if (!cotizacionIdParam) return
-    fetch(`/api/vendedor/cotizaciones/${cotizacionIdParam}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!data?.ok) {
-          toast({ title: "No se pudo abrir la cotización", variant: "destructive" })
+    cargarCatalogo()
+  }, [cargarCatalogo])
+
+  // ── Reabrir una cotización (?id=) ──
+  useEffect(() => {
+    if (!idParam) return
+    let cancelado = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/vendedor/cotizaciones/${idParam}`)
+        const data = await res.json().catch(() => null)
+        if (cancelado) return
+        if (!res.ok || !data?.ok) {
+          toast({ title: data?.error || "No se pudo abrir la cotización", variant: "destructive" })
           return
         }
         const c = data.cotizacion
-        setCotizacionId(c.id)
+        setEstado(c.estado)
+        setComentarioAdmin(c.comentarioAdmin || null)
         setClienteNombre(c.clienteNombre || "")
-        setClienteTelefono(c.clienteTelefono || "")
-        setFechaEvento(c.fechaEvento || "")
-        setHorario(c.horario || "")
-        setHorarioFin(c.horarioFin || "")
-        setSalon(c.salon || "")
+        setClienteDni(c.clienteDni || "")
         setTipoEvento(c.tipoEvento || "")
-        setNombreFestejados(c.nombreFestejados || "")
-        setPaqueteAplicadoId(c.paqueteId || null)
-        setInvitados(c.invitados)
-        setRecetasElegidas(c.recetasElegidas)
-        setServiciosElegidos(Object.fromEntries(c.serviciosElegidos.map((s: { servicioId: string; cantidad: number }) => [s.servicioId, s.cantidad])))
-        setPersonalSeleccionado(Array.isArray(c.personalSeleccionado) ? c.personalSeleccionado : [])
-        setBarraPersonalizada(c.barra?.tipo === "personalizada")
-        setCoctelesBarra(c.barra?.tipo === "personalizada" && Array.isArray(c.barra.cocteles) ? c.barra.cocteles : [])
-        setModalidadSalon(c.modalidadSalon === "con_catering" ? "con_catering" : "solo_salon")
-        setEstadoCotizacion(c.estado)
-        setComentarioAdmin(c.comentarioAdmin)
-      })
-      .catch(() => {
-        toast({ title: "Error de conexión al abrir la cotización", variant: "destructive" })
-      })
-      .finally(() => setCargandoCotizacion(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cotizacionIdParam])
-
-  const aplicarPaquete = (paquete: PaqueteVendedor) => {
-    if (soloLectura) return
-    setSalon(paquete.salon)
-    setServiciosElegidos(Object.fromEntries(paquete.servicios.map((s) => [s.servicioId, s.cantidad])))
-    setPaqueteAplicadoId(paquete.id)
-    toast({ title: `Paquete "${paquete.nombre}" aplicado`, description: "Podés seguir ajustando los servicios." })
-  }
-
-  // Venís del botón "Usar en el cotizador" en /vendedor/paquetes (?paqueteId=...):
-  // precarga el paquete en una cotización NUEVA, una sola vez. Nunca pisa una
-  // cotización ya guardada (?id=...) que se esté reabriendo.
-  useEffect(() => {
-    if (paqueteUrlAplicado || cotizacionIdParam || !paqueteIdParam || paquetes.length === 0) return
-    const p = paquetes.find((x) => x.id === paqueteIdParam)
-    if (p) aplicarPaquete(p)
-    setPaqueteUrlAplicado(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paquetes, paqueteIdParam, cotizacionIdParam, paqueteUrlAplicado])
-
-  const toggleReceta = (segmento: Segmento, recetaId: string) => {
-    if (soloLectura) return
-    setRecetasElegidas((prev) => {
-      const actual = prev[segmento]
-      const yaEsta = actual.includes(recetaId)
-      return { ...prev, [segmento]: yaEsta ? actual.filter((id) => id !== recetaId) : [...actual, recetaId] }
-    })
-  }
-
-  /**
-   * Elegir un menú del flyer: agrega el servicio y premarca sus recetas (las
-   * que Administración vinculó en el tarifario) para adultos. El vendedor
-   * después puede tocar la tabla plato por plato como siempre.
-   * "Personalizado" es no elegir ninguno: se arma a mano desde la tabla.
-   */
-  const elegirMenu = (servicioId: string) => {
-    if (soloLectura) return
-    const yaEsta = servicioId in serviciosElegidos
-    setServiciosElegidos((prev) => {
-      // Un solo menú por evento: al elegir otro, se reemplaza.
-      const sinMenus = Object.fromEntries(
-        Object.entries(prev).filter(([id]) => !serviciosMenu.some((m) => m.id === id)),
-      )
-      return yaEsta ? sinMenus : { ...sinMenus, [servicioId]: 1 }
-    })
-    if (!yaEsta) {
-      const recetasDelMenu = recetasPorServicio[servicioId] || []
-      if (recetasDelMenu.length) {
-        setRecetasElegidas((prev) => ({
-          ...prev,
-          adultos: [...new Set([...prev.adultos, ...recetasDelMenu])],
-        }))
+        setFecha(c.fechaEvento || "")
+        setSalon(c.salon || "")
+        // Las cotizaciones viejas podían tener adolescentes y dietas: cuentan como adultos.
+        setAdultos((c.invitados?.adultos || 0) + (c.invitados?.adolescentes || 0) + (c.invitados?.personasDietasEspeciales || 0))
+        setNinos(c.invitados?.ninos || 0)
+        setRecetas(Array.isArray(c.recetasElegidas?.adultos) ? c.recetasElegidas.adultos : [])
+        setBarraId(c.barraId || null)
+        const sel: Record<string, number> = {}
+        for (const s of c.serviciosElegidos || []) sel[s.servicioId] = s.cantidad || 1
+        setServicios(sel)
+        if (c.version !== 2 && c.barra) {
+          toast({ title: "La barra de esta cotización era del cotizador anterior", description: "Elegí una barra del salón." })
+        }
+      } finally {
+        if (!cancelado) setCargandoCotizacion(false)
       }
+    })()
+    return () => {
+      cancelado = true
     }
-  }
+  }, [idParam, toast])
 
-  /**
-   * Barra: dos opciones y nada más (decisión del negocio).
-   *  - Clásica: el servicio BARRA CLÁSICA. Los tragos los carga
-   *    Administración después, en el planificador del evento.
-   *  - Personalizada: el vendedor elige cócteles de la carta y se cobra
-   *    2 tragos por adulto × precio por trago promedio (lib/precio-barra.ts).
-   * Elegir una saca la otra (y cualquier otro servicio de barra que hubiera
-   * quedado de antes). Tocar la elegida la desmarca.
-   */
-  const quitarServiciosDeBarra = (prev: Record<string, number>) =>
-    Object.fromEntries(Object.entries(prev).filter(([id]) => !serviciosBarra.some((b) => b.id === id)))
+  const config = useMemo(() => catalogo?.salones.find((s) => s.salon === salon) ?? null, [catalogo, salon])
+  const nombreServicio = useCallback(
+    (id: string) => catalogo?.servicios.find((s) => s.id === id),
+    [catalogo],
+  )
 
-  const elegirBarraClasica = () => {
-    if (soloLectura || !servicioBarraClasica) return
-    const yaEsta = servicioBarraClasica.id in serviciosElegidos
-    setBarraPersonalizada(false)
-    setServiciosElegidos((prev) => (yaEsta ? quitarServiciosDeBarra(prev) : { ...quitarServiciosDeBarra(prev), [servicioBarraClasica.id]: 1 }))
-  }
+  /** Servicios de este salón que se pueden ofrecer para la fecha elegida. */
+  const serviciosDelSalon = useMemo(() => {
+    if (!config || !catalogo) return []
+    return config.servicios
+      .map((s) => ({ ...s, info: nombreServicio(s.servicioId) }))
+      .filter((s): s is typeof s & { info: ServicioCatalogo } => !!s.info)
+      .filter((s) => servicioCorrespondeAlAnio(s.info.nombre, fecha))
+  }, [config, catalogo, nombreServicio, fecha])
 
-  const elegirBarraPersonalizada = () => {
-    if (soloLectura) return
-    setServiciosElegidos((prev) => quitarServiciosDeBarra(prev))
-    setBarraPersonalizada((v) => !v)
-  }
-
-  const toggleCoctelBarra = (coctelId: string) => {
-    if (soloLectura) return
-    setCoctelesBarra((prev) => (prev.includes(coctelId) ? prev.filter((id) => id !== coctelId) : [...prev, coctelId]))
-  }
-
-  /** "Seleccionar todo" de la sección Menú: marca todas las recetas de todos los menús. */
-  const marcarTodasLasRecetasDeMenus = () => {
-    if (soloLectura) return
-    const todas = serviciosMenu.flatMap((m) => recetasPorServicio[m.id] || [])
-    if (!todas.length) return
-    setRecetasElegidas((prev) => ({ ...prev, adultos: [...new Set([...prev.adultos, ...todas])] }))
-  }
-
-  const toggleServicio = (servicioId: string) => {
-    if (soloLectura) return
-    setServiciosElegidos((prev) => {
-      if (servicioId in prev) {
-        const { [servicioId]: _quitado, ...resto } = prev
-        return resto
+  // Al cambiar de salón (o de fecha) se descarta lo que ya no está disponible.
+  useEffect(() => {
+    if (!config || cargandoCotizacion) return
+    setRecetas((prev) => prev.filter((id) => config.menu.some((m) => m.recetaId === id)))
+    setBarraId((prev) => (prev && config.barras.some((b) => b.id === prev) ? prev : null))
+    setServicios((prev) => {
+      const sig: Record<string, number> = {}
+      for (const [id, cant] of Object.entries(prev)) {
+        const s = serviciosDelSalon.find((x) => x.servicioId === id)
+        if (s && !s.incluido) sig[id] = cant
       }
-      return { ...prev, [servicioId]: 1 }
+      return sig
     })
-  }
+  }, [config, serviciosDelSalon, cargandoCotizacion])
 
-  const cambiarCantidadServicio = (servicioId: string, cantidad: number) => {
-    if (soloLectura) return
-    setServiciosElegidos((prev) => ({ ...prev, [servicioId]: Math.max(1, cantidad || 1) }))
-  }
-
-  const togglePersonal = (personalId: string) => {
-    if (soloLectura) return
-    setPersonalSeleccionado((prev) => (prev.includes(personalId) ? prev.filter((id) => id !== personalId) : [...prev, personalId]))
-  }
-
-  // Preview de precio: EXACTAMENTE la misma función que usa el servidor al
-  // guardar (lib/tarifario-cotizador.ts), así el número que ve el vendedor es
-  // el que queda en la cotización. Se recalcula solo con cada cambio de menú,
-  // barra, modalidad, invitados, fecha o salón.
-  const calculo = useMemo(
-    () =>
-      calcularCotizacion({
-        salon,
-        fechaEvento,
-        modalidad: modalidadSalon,
-        totalInvitados: totalPersonas,
-        serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
-        catalogoServicios: servicios,
-        tarifario,
-        preciosVenta,
-        serviciosIncluidosSalon,
-        barraPersonalizada: barraPersonalizada
-          ? {
-              cocteles: coctelesCarta
-                .filter((c) => coctelesBarra.includes(c.id))
-                .map((c) => ({ id: c.id, nombre: c.nombre, precioPorTrago: c.precioPorTrago })),
-              adultos: invitados.adultos,
-            }
-          : undefined,
-      }),
-    [servicios, serviciosElegidos, salon, fechaEvento, preciosVenta, tarifario, modalidadSalon, totalPersonas, serviciosIncluidosSalon, barraPersonalizada, coctelesCarta, coctelesBarra, invitados.adultos],
-  )
-  const serviciosConPrecio = calculo.servicios
-  const totalServicios = calculo.totalServicios
-  const precioBaseSalon = calculo.precioSalon
-  const precioVentaSugerido = calculo.total
-
-  // Servicios que se ofrecen para la fecha elegida: los que llevan un año en
-  // el nombre (VESTIDO 2027) solo aparecen si es el año del evento.
-  const serviciosDisponibles = useMemo(
-    () => servicios.filter((s) => servicioCorrespondeAlAnio(s.nombre, fechaEvento)),
-    [servicios, fechaEvento],
-  )
-  const serviciosMenu = useMemo(() => serviciosDisponibles.filter((s) => s.categoria === "Menú"), [serviciosDisponibles])
-  const serviciosBarra = useMemo(() => serviciosDisponibles.filter((s) => s.categoria === "Barra"), [serviciosDisponibles])
-  // De las barras del catálogo, el cotizador solo ofrece la clásica (las demás
-  // siguen en el catálogo, pero no se cotizan).
-  const servicioBarraClasica = useMemo(() => serviciosBarra.find((s) => esBarraClasica(s.nombre)), [serviciosBarra])
-  const lineaBarraPersonalizada = calculo.servicios.find((l) => l.servicioId === ID_BARRA_PERSONALIZADA)
-  // "Adicionales" = todo lo que no es menú ni barra (esos tienen su propia sección).
-  const serviciosAdicionales = useMemo(
-    () => serviciosDisponibles.filter((s) => s.categoria !== "Menú" && s.categoria !== "Barra"),
-    [serviciosDisponibles],
-  )
-  const hayMenuElegido = useMemo(
-    () => serviciosMenu.some((s) => s.id in serviciosElegidos) || totalPlatos > 0,
-    [serviciosMenu, serviciosElegidos, totalPlatos],
-  )
-
-  // ── Lo que viene con el salón ──────────────────────────────────────────
-  // Al elegir salón se tildan solos los servicios que el precio ya incluye
-  // (mesas, DJ, decoración, suite) y la gente de ese día. El vendedor los
-  // puede destildar: por eso se agregan una sola vez por combinación de
-  // salón+día, y no se vuelven a imponer en cada render.
-  const personalDelDia = useMemo(
-    () => personalIncluidoDelSalon(personalIncluidoSalon, fechaEvento),
-    [personalIncluidoSalon, fechaEvento],
-  )
-  const diaDelEvento = useMemo(() => diaTarifario(fechaEvento), [fechaEvento])
-  const ultimaPrecargaSalon = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (soloLectura || !salon) return
-    const clave = `${salon}|${diaDelEvento}`
-    if (ultimaPrecargaSalon.current === clave) return
-    ultimaPrecargaSalon.current = clave
-
-    if (serviciosIncluidosSalon.length) {
-      setServiciosElegidos((prev) => {
-        const faltantes = serviciosIncluidosSalon.filter((id) => !(id in prev))
-        if (!faltantes.length) return prev
-        return { ...prev, ...Object.fromEntries(faltantes.map((id) => [id, 1])) }
-      })
-    }
-    // Cambiar de día cambia el juego de personal: entra el del día nuevo y
-    // sale el del otro día. La regla vive en ajustarPersonalDelSalonPorDia
-    // (lib/tarifario-cotizador.ts) justamente para poder probarla.
-    setPersonalSeleccionado((prev) => {
-      const ajustada = ajustarPersonalDelSalonPorDia(prev, personalIncluidoSalon, fechaEvento)
-      const igual = ajustada.length === prev.length && ajustada.every((id) => prev.includes(id))
-      return igual ? prev : ajustada
+  // ── Precio en vivo: la MISMA cuenta que el servidor, solo con precios ──
+  const calculo = useMemo(() => {
+    if (!config) return null
+    return armarCotizacion({
+      adultos,
+      ninos,
+      capacidadMaxima: config.capacidadMaxima,
+      salon: { precio: config.precioSalon },
+      recetas: config.menu
+        .filter((m) => recetas.includes(m.recetaId))
+        .map((m) => ({ id: m.recetaId, nombre: m.nombre, precio: m.precioPorPorcion })),
+      barra: (() => {
+        const b = config.barras.find((x) => x.id === barraId)
+        return b ? { id: b.id, nombre: b.nombre, tragosPorAdulto: b.tragosPorAdulto, precio: b.precioPorAdulto } : null
+      })(),
+      servicios: serviciosDelSalon
+        .filter((s) => s.incluido || s.servicioId in servicios)
+        .map((s) => ({
+          servicioId: s.servicioId,
+          nombre: s.info.nombre,
+          unidad: s.info.unidad,
+          cantidad: servicios[s.servicioId] ?? 1,
+          incluido: s.incluido,
+          precio: s.precio,
+        })),
+      personal: config.personal.map((p) => ({ ...p, precio: p.precioPorPersona })),
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [salon, diaDelEvento, fechaEvento, serviciosIncluidosSalon, personalIncluidoSalon, soloLectura])
+  }, [config, adultos, ninos, recetas, barraId, servicios, serviciosDelSalon])
 
-  // Doble conteo: "PERSONAL DE SALON PARA 100" ya trae portero, maestranza y
-  // demás, así que sumarlo encima del personal incluido cobra dos veces lo
-  // mismo. No se bloquea (puede ser a propósito), pero se avisa.
-  const avisoDobleConteoPersonal = useMemo(() => {
-    const bulto = personalCatalogo.find((p) => p.funcion === "PERSONAL DE SALON PARA 100")
-    if (!bulto || !personalSeleccionado.includes(bulto.id)) return null
-    const incluidosTildados = personalDelDia.filter((id) => personalSeleccionado.includes(id))
-    if (!incluidosTildados.length) return null
-    const nombres = incluidosTildados
-      .map((id) => personalCatalogo.find((p) => p.id === id))
-      .filter(Boolean)
-      .map((p) => `${p!.nombre} ${p!.apellido}`.trim())
-    return `"PERSONAL DE SALON PARA 100" ya incluye portero y maestranza, y además están tildados: ${nombres.join(", ")}. Revisá que no se esté contando dos veces.`
-  }, [personalCatalogo, personalSeleccionado, personalDelDia])
+  const faltan: string[] = []
+  if (!clienteNombre.trim()) faltan.push("el nombre del cliente")
+  if (!salon) faltan.push("el salón")
+  if (adultos + ninos <= 0) faltan.push("los invitados")
+  const puedeGuardar = faltan.length === 0 && !soloLectura && !!config
+  const puedeEnviar = puedeGuardar && !calculo?.superaCapacidad
 
-  // Personal sugerido por la regla del tarifario (solo si hay menú).
-  const personalSugerido = useMemo(
-    () => (hayMenuElegido ? calcularPersonalSugerido(reglasPersonal, totalPersonas, personalCatalogo) : []),
-    [hayMenuElegido, reglasPersonal, totalPersonas, personalCatalogo],
-  )
-  const faltanEnRoster = personalSugerido.filter((p) => p.faltan > 0)
-
-  // Precargar el personal que pide la regla, sin pisar lo que el vendedor ya
-  // tocó a mano: solo agrega los que faltan.
-  useEffect(() => {
-    if (soloLectura || personalSugerido.length === 0) return
-    const sugeridos = personalSugerido.flatMap((p) => p.personalIds)
-    setPersonalSeleccionado((prev) => {
-      const faltantes = sugeridos.filter((id) => !prev.includes(id))
-      return faltantes.length ? [...prev, ...faltantes] : prev
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personalSugerido, soloLectura])
-
-  const puedeGuardar = clienteNombre.trim().length > 0 && !soloLectura
-  const puedeGenerarPaquete = !soloLectura && !!salon && Object.keys(serviciosElegidos).length > 0
-
-  // Guarda siempre en estado "borrador" (mandar a revisión es una acción
-  // aparte, disponible desde la tarjeta en /vendedor/paquetes). "Generar
-  // cotización" hace este mismo guardado y además te lleva a verla ahí.
-  const guardar = async (destino: "quedarse" | "paquetes") => {
-    if (!clienteNombre.trim()) {
-      toast({ title: "Falta el nombre del cliente", variant: "destructive" })
-      return
-    }
-    destino === "paquetes" ? setGenerando(true) : setGuardando(true)
+  const guardar = async (accion: "guardar" | "enviar") => {
+    if (accion === "enviar" ? !puedeEnviar : !puedeGuardar) return
+    setGuardando(accion)
     try {
       const res = await fetch("/api/vendedor/cotizaciones", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: cotizacionId,
-          clienteNombre,
-          clienteTelefono,
-          fechaEvento,
-          horario,
-          horarioFin,
-          salon,
-          paqueteId: paqueteAplicadoId,
+          id: cotizacionId || undefined,
+          accion,
+          clienteNombre: clienteNombre.trim(),
+          clienteDni: clienteDni.trim(),
           tipoEvento,
-          nombreFestejados,
-          invitados,
-          recetasElegidas,
-          serviciosElegidos: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
-          personalSeleccionado,
-          modalidadSalon,
-          // El servidor recalcula el precio de la barra con la carta real.
-          barra: barraPersonalizada
-            ? { tipo: "personalizada", cocteles: coctelesBarra }
-            : servicioBarraClasica && servicioBarraClasica.id in serviciosElegidos
-              ? { tipo: "clasica", cocteles: [] }
-              : null,
+          fechaEvento: fecha,
+          salon,
+          adultos,
+          ninos,
+          recetas,
+          barraId,
+          servicios: Object.entries(servicios).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
         }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.ok) {
-        toast({ title: data.error || "No se pudo guardar", variant: "destructive" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        toast({ title: data?.error || "No se pudo guardar", variant: "destructive" })
+        return
+      }
+      if (accion === "enviar") {
+        toast({ title: "Enviada a Administración", description: `${clienteNombre.trim()} · ${fmt(data.total)}` })
+        router.push("/vendedor/paquetes")
         return
       }
       setCotizacionId(data.id)
-      if (destino === "paquetes") {
-        router.push("/vendedor/paquetes")
-      } else {
-        toast({ title: "Borrador guardado" })
-      }
+      setEstado(data.estado)
+      if (!idParam) router.replace(`/vendedor/cotizar?id=${data.id}`)
+      toast({ title: "Borrador guardado", description: fmt(data.total) })
     } catch {
       toast({ title: "Error de conexión", variant: "destructive" })
     } finally {
-      setGuardando(false)
-      setGenerando(false)
+      setGuardando(null)
     }
   }
 
-  // Genera un paquete reutilizable a partir del salón y los servicios ya
-  // elegidos acá — no toca ni guarda la cotización del cliente en curso.
-  const generarPaquete = async () => {
-    if (!nombrePaquete.trim() || !puedeGenerarPaquete) return
-    setGenerandoPaquete(true)
-    try {
-      const res = await fetch("/api/vendedor/paquetes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre: nombrePaquete.trim(),
-          salon,
-          servicios: Object.entries(serviciosElegidos).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.ok) {
-        toast({ title: data.error || "No se pudo generar el paquete", variant: "destructive" })
-        return
+  const alternarReceta = (id: string) =>
+    setRecetas((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const alternarServicio = (id: string) =>
+    setServicios((prev) => {
+      if (id in prev) {
+        const { [id]: _fuera, ...resto } = prev
+        return resto
       }
-      toast({ title: `Paquete "${nombrePaquete.trim()}" generado` })
-      setDialogoPaqueteAbierto(false)
-      setNombrePaquete("")
-    } catch {
-      toast({ title: "Error de conexión", variant: "destructive" })
-    } finally {
-      setGenerandoPaquete(false)
-    }
-  }
+      return { ...prev, [id]: 1 }
+    })
 
   if (cargandoCotizacion) {
     return (
@@ -665,11 +388,19 @@ function CotizarPageContent() {
     )
   }
 
+  const total = calculo?.total ?? 0
+  const comensales = adultos + ninos
+  const porCategoria = (() => {
+    const grupos = new Map<string, typeof serviciosDelSalon>()
+    for (const s of serviciosDelSalon) grupos.set(s.info.categoria, [...(grupos.get(s.info.categoria) ?? []), s])
+    return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"))
+  })()
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
-        <div className="mx-auto max-w-4xl flex items-center gap-3">
-          <Link href="/vendedor/paquetes" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+        <div className="mx-auto max-w-2xl flex items-center gap-3">
+          <Link href="/vendedor/paquetes" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" aria-label="Volver">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="flex-1 min-w-0">
@@ -677,829 +408,297 @@ function CotizarPageContent() {
             {clienteNombre && <p className="text-sm text-muted-foreground truncate">{clienteNombre}</p>}
           </div>
           {cotizacionId && (
-            <Badge variant="outline" className={`text-xs shrink-0 ${ESTADO_COTIZACION_CLASE[estadoCotizacion]}`}>
-              {ESTADO_COTIZACION_LABEL[estadoCotizacion]}
+            <Badge variant="outline" className={`text-xs shrink-0 ${ESTADO_COTIZACION_CLASE[estado]}`}>
+              {ESTADO_COTIZACION_LABEL[estado]}
             </Badge>
           )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-2xl space-y-4 px-4 pt-4 pb-6 sm:px-6">
         {soloLectura && (
-          <div className="mb-4 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-            Esta cotización ya no se puede editar desde acá — {ESTADO_COTIZACION_LABEL[estadoCotizacion].toLowerCase()}.
+          <div className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            Esta cotización ya no se puede editar desde acá — {ESTADO_COTIZACION_LABEL[estado].toLowerCase()}.
           </div>
         )}
         {comentarioAdmin && (
-          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <p className="font-semibold">Administración pidió un ajuste:</p>
             <p>{comentarioAdmin}</p>
           </div>
         )}
-        <div className="space-y-4 mb-8">
-          <Seccion
-            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10"><User className="h-5 w-5 text-blue-700" /></div>}
-            title="Cliente"
-            subtitle={clienteTelefono ? `${clienteNombre || "Sin nombre"} · ${clienteTelefono}` : clienteNombre || "Datos de contacto"}
-            disabled={soloLectura}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="clienteNombre" className="text-sm font-medium">Nombre *</Label>
-                <Input
-                  id="clienteNombre"
-                  value={clienteNombre}
-                  onChange={(e) => setClienteNombre(e.target.value)}
-                  placeholder="Nombre y apellido"
-                  className="h-11 text-base"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="clienteTelefono" className="text-sm font-medium">Teléfono</Label>
-                <Input
-                  id="clienteTelefono"
-                  value={clienteTelefono}
-                  onChange={(e) => setClienteTelefono(e.target.value)}
-                  placeholder="Opcional"
-                  className="h-11 text-base"
-                />
-              </div>
-            </div>
-          </Seccion>
-
-          <Seccion
-            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600/10"><CalendarIcon className="h-5 w-5 text-emerald-700" /></div>}
-            title="Detalles del Evento"
-            subtitle={tipoEvento ? `${tipoEvento}${nombreFestejados ? ` - ${nombreFestejados}` : ""}` : "Configurá la fecha, salón y comensales"}
-            disabled={soloLectura}
-          >
-            <div className="space-y-5">
-              {/* Fila 1: Tipo de Evento + Nombre de los Festejados */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Tipo de Evento</Label>
-                  <Select value={tipoEvento} onValueChange={setTipoEvento}>
-                    <SelectTrigger className="h-11 text-base">
-                      <SelectValue placeholder="Seleccionar tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIPOS_EVENTO.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {t}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="nombreFestejados" className="text-sm font-medium">Nombre de los Festejados</Label>
-                  <Input
-                    id="nombreFestejados"
-                    placeholder="Ej: Juan y María"
-                    value={nombreFestejados}
-                    onChange={(e) => setNombreFestejados(e.target.value)}
-                      className="h-11 text-base"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-
-              {/* Fila 2: Fecha + Hora inicio + Hora fin */}
-              <div className="grid gap-4 grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="fechaEvento" className="flex items-center gap-1.5 text-sm font-medium">
-                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                    Fecha
-                  </Label>
-                  <Input
-                    id="fechaEvento"
-                    type="date"
-                    value={fechaEvento}
-                    onChange={(e) => setFechaEvento(e.target.value)}
-                      className="h-11 text-base"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="horario" className="flex items-center gap-1.5 text-sm font-medium">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    Hora inicio
-                  </Label>
-                  <Input
-                    id="horario"
-                    type="time"
-                    value={horario}
-                    onChange={(e) => setHorario(e.target.value)}
-                      className="h-11 text-base"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="horarioFin" className="flex items-center gap-1.5 text-sm font-medium">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    Hora fin
-                  </Label>
-                  <Input
-                    id="horarioFin"
-                    type="time"
-                    value={horarioFin}
-                    onChange={(e) => setHorarioFin(e.target.value)}
-                      className="h-11 text-base"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-sm font-medium">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                  Salón
-                </Label>
-                <div className="flex gap-2">
-                  {SALONES.map((s) => {
-                    const active = salon === s
-                    const color = salonColor(s)
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                              onClick={() => setSalon(s)}
-                        className="flex-1 rounded-lg border px-2 py-2.5 text-xs sm:text-sm font-medium transition-colors disabled:opacity-60"
-                        style={{
-                          borderColor: color,
-                          backgroundColor: active ? color : `color-mix(in srgb, ${color} 8%, white)`,
-                          color: active ? "white" : color,
-                        }}
-                      >
-                        {salonLabel(s)}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Modalidad: cambia la grilla de precio del salón. Con catering,
-                  el menú y la barra quedan incluidos y no suman aparte. */}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-sm font-medium">
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                  Modalidad
-                </Label>
-                <div className="flex gap-2">
-                  {([
-                    ["solo_salon", "Solo salón"],
-                    ["con_catering", "Salón con catering y bebidas"],
-                  ] as Array<[ModalidadSalon, string]>).map(([valor, label]) => (
-                    <button
-                      key={valor}
-                      type="button"
-                      onClick={() => setModalidadSalon(valor)}
-                      className={`flex-1 rounded-lg border px-2 py-2.5 text-xs sm:text-sm font-medium transition-colors disabled:opacity-60 ${
-                        modalidadSalon === valor
-                          ? "bg-[#2d5a3d] text-white border-[#2d5a3d]"
-                          : "bg-white hover:bg-muted border-border"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {modalidadSalon === "con_catering" && (
-                  <p className="text-xs text-muted-foreground">
-                    Incluye menú y barra. No incluye mesa dulce.
-                  </p>
-                )}
-              </div>
-
-              {precioBaseSalon > 0 && (
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
-                  <UserCheck className="h-5 w-5 text-emerald-600 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-emerald-800">
-                      Precio del salón: {fmt(precioBaseSalon)}
-                    </p>
-                    <p className="text-xs text-emerald-700">
-                      {calculo.origenPrecioSalon === "calendario"
-                        ? "Del Calendario de Precios para esa fecha"
-                        : calculo.origenPrecioSalon === "tarifario"
-                          ? `Del tarifario: ${totalPersonas} invitados, ${modalidadSalon === "con_catering" ? "con catering" : "solo salón"}`
-                          : calculo.origenPrecioSalon === "tarifario_aproximado"
-                            ? "Del tarifario, con el rango más cercano"
-                            : "Precio base de respaldo del salón"}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Avisos: lo que Administración tiene que mirar antes de aprobar. */}
-              {calculo.avisos.length > 0 && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-1">
-                  <p className="text-sm font-semibold text-amber-900">Revisar antes de enviar</p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    {calculo.avisos.map((aviso, i) => (
-                      <li key={i} className="text-xs text-amber-800">
-                        {aviso}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="space-y-3 rounded-lg border border-emerald-100 bg-white/70 p-4">
-                <h4 className="font-semibold text-base text-foreground">Comensales</h4>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  {(
-                    [
-                      { key: "adultos", label: "Adultos", icon: Users },
-                      { key: "adolescentes", label: "Adolescentes", icon: UserCheck },
-                      { key: "ninos", label: "Niños", icon: Baby },
-                      { key: "personasDietasEspeciales", label: "Dietas Esp.", icon: Heart },
-                    ] as const
-                  ).map(({ key, label, icon: Icon }) => (
-                    <div key={key} className="space-y-1.5">
-                      <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        <Icon className="h-3.5 w-3.5" />
-                        {label}
-                      </Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={invitados[key]}
-                        onChange={(e) => setInvitados((prev) => ({ ...prev, [key]: Math.max(0, Number(e.target.value) || 0) }))}
-                              className="h-11 text-center text-lg font-semibold"
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-lg bg-secondary p-3 mt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-base">Total personas:</span>
-                    <span className="text-2xl font-bold">{totalPersonas}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Seccion>
-
-          <Seccion
-            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10"><UtensilsCrossed className="h-5 w-5 text-orange-600" /></div>}
-            title="Menú del Evento"
-            subtitle={`${totalPlatos} plato${totalPlatos !== 1 ? "s" : ""} seleccionado${totalPlatos !== 1 ? "s" : ""}`}
-            disabled={soloLectura}
-          >
-            {cargandoCatalogo ? (
-              <p className="text-sm text-muted-foreground">Cargando...</p>
-            ) : recetas.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
-                <UtensilsCrossed className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No hay recetas en el catálogo</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {/* Menús del flyer: un botón por servicio de categoría "Menú".
-                    Elegir uno premarca sus recetas en la tabla de abajo.
-                    "Personalizado" = armarlo plato por plato, sin servicio. */}
-                {serviciosMenu.length > 0 && (
-                  <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <Label className="text-sm font-medium">Menú del flyer</Label>
-                      <button
-                        type="button"
-                        onClick={marcarTodasLasRecetasDeMenus}
-                        disabled={soloLectura}
-                        className="text-xs underline text-muted-foreground hover:text-foreground disabled:opacity-50"
-                      >
-                        Seleccionar todo
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {serviciosMenu.map((m) => {
-                        const elegido = m.id in serviciosElegidos
-                        return (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => elegirMenu(m.id)}
-                            disabled={soloLectura}
-                            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                              elegido
-                                ? "bg-orange-600 text-white border-orange-600"
-                                : "bg-white hover:bg-orange-50 border-border"
-                            }`}
-                          >
-                            {m.nombre}
-                            {m.precioVenta > 0 && (
-                              <span className="block text-xs font-normal opacity-80">
-                                {fmt(m.precioVenta)} por persona
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setServiciosElegidos((prev) =>
-                            Object.fromEntries(Object.entries(prev).filter(([id]) => !serviciosMenu.some((m) => m.id === id))),
-                          )
-                        }
-                        disabled={soloLectura}
-                        className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                          serviciosMenu.every((m) => !(m.id in serviciosElegidos))
-                            ? "bg-foreground text-background border-foreground"
-                            : "bg-white hover:bg-muted border-border"
-                        }`}
-                      >
-                        Personalizado
-                        <span className="block text-xs font-normal opacity-80">Plato por plato</span>
-                      </button>
-                    </div>
-                    {modalidadSalon === "con_catering" && (
-                      <p className="text-xs text-muted-foreground">
-                        Con catering y bebidas el menú ya está incluido en el precio del salón: se elige igual para
-                        que cocina sepa qué preparar, pero no suma aparte.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/40">
-                        <th className="py-2.5 px-3 text-left font-medium text-muted-foreground">Plato</th>
-                        {SEGMENTOS.map((s) => (
-                          <th key={s.key} className="py-2.5 px-2 text-center font-medium text-muted-foreground">
-                            {s.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {agruparPorCategoria(recetas).map((grupo) => (
-                        <Fragment key={grupo.categoria}>
-                          <tr>
-                            <td colSpan={SEGMENTOS.length + 1} className="py-2 px-3 text-xs font-bold uppercase tracking-wider text-white" style={{ backgroundColor: "#2d5a3d" }}>
-                              {grupo.categoria}
-                            </td>
-                          </tr>
-                          {grupo.items.map((receta, idx) => (
-                            <tr key={receta.id} className={`border-b border-border/50 ${idx % 2 === 0 ? "" : "bg-muted/10"}`}>
-                              <td className="py-2 px-3 font-medium">{receta.nombre}</td>
-                              {SEGMENTOS.map((s) => {
-                                const selected = recetasElegidas[s.key].includes(receta.id)
-                                return (
-                                  <td key={s.key} className="py-1.5 px-2 text-center">
-                                    <button
-                                      type="button"
-                                                          onClick={() => toggleReceta(s.key, receta.id)}
-                                      className={`w-8 h-8 mx-auto flex items-center justify-center rounded border transition-colors disabled:opacity-50 ${
-                                        selected
-                                          ? "bg-emerald-600 border-emerald-600"
-                                          : "border-dashed border-border hover:border-[#2d5a3d] hover:bg-emerald-50"
-                                      }`}
-                                      aria-label={`${receta.nombre} para ${s.label}`}
-                                    >
-                                      {selected && <CheckCircle className="h-4 w-4 text-white" strokeWidth={3} />}
-                                    </button>
-                                  </td>
-                                )
-                              })}
-                            </tr>
-                          ))}
-                        </Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-4 py-2.5 text-sm">
-                  <span className="text-muted-foreground">
-                    Total: <strong>{invitados.adultos}</strong> adultos · <strong>{invitados.adolescentes}</strong> adolesc. ·{" "}
-                    <strong>{invitados.ninos}</strong> niños · <strong>{invitados.personasDietasEspeciales}</strong> especiales
-                  </span>
-                  <span className="font-medium text-foreground">
-                    {totalPlatos} plato{totalPlatos !== 1 ? "s" : ""} seleccionado{totalPlatos !== 1 ? "s" : ""}
-                  </span>
-                </div>
-              </div>
-            )}
-          </Seccion>
-
-          {/* Barra: solo dos opciones. Clásica = servicio BARRA CLÁSICA (los
-              tragos los carga Administración en el evento). Personalizada =
-              cócteles de la carta, 2 tragos por adulto × precio por trago
-              promedio (lib/precio-barra.ts). */}
-          <Seccion
-            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-500/10"><Wine className="h-5 w-5 text-teal-600" /></div>}
-            title="Barra del Evento"
-            subtitle={
-              barraPersonalizada
-                ? `Barra personalizada · ${coctelesBarra.length} cóctel${coctelesBarra.length !== 1 ? "es" : ""}`
-                : servicioBarraClasica && servicioBarraClasica.id in serviciosElegidos
-                  ? servicioBarraClasica.nombre
-                  : "Sin barra elegida"
-            }
-            disabled={soloLectura}
-          >
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                {servicioBarraClasica && (
-                  <button
-                    type="button"
-                    onClick={elegirBarraClasica}
-                    disabled={soloLectura}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                      servicioBarraClasica.id in serviciosElegidos ? "bg-teal-600 text-white border-teal-600" : "bg-white hover:bg-teal-50 border-border"
-                    }`}
-                  >
-                    Barra clásica
-                    <span className="block text-xs font-normal opacity-80">Los tragos se cargan en el evento</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={elegirBarraPersonalizada}
-                  disabled={soloLectura}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                    barraPersonalizada ? "bg-teal-600 text-white border-teal-600" : "bg-white hover:bg-teal-50 border-border"
-                  }`}
-                >
-                  Barra personalizada
-                  <span className="block text-xs font-normal opacity-80">Elegís los tragos</span>
-                </button>
-              </div>
-
-              {barraPersonalizada && (
-                <div className="space-y-3 rounded-lg border border-teal-200 bg-teal-50/40 p-3">
-                  {coctelesCarta.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No hay cócteles en la carta.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                      {coctelesCarta.map((c) => {
-                        const elegido = coctelesBarra.includes(c.id)
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => toggleCoctelBarra(c.id)}
-                            disabled={soloLectura}
-                            className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
-                              elegido ? "border-teal-600 bg-teal-600 text-white" : "border-border bg-white hover:bg-teal-50"
-                            }`}
-                          >
-                            <span className="min-w-0 truncate font-medium">{c.nombre}</span>
-                            <span className={`shrink-0 text-xs tabular-nums ${elegido ? "text-white/90" : "text-muted-foreground"}`}>
-                              {c.precioPorTrago > 0 ? `${fmt(c.precioPorTrago)} c/u` : "sin precio"}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  <p className="text-sm text-teal-900">
-                    {lineaBarraPersonalizada && lineaBarraPersonalizada.precioTotal > 0 ? (
-                      <>
-                        {lineaBarraPersonalizada.cantidad} tragos (2 por adulto) × {fmt(lineaBarraPersonalizada.precioUnitario)} promedio ={" "}
-                        <span className="font-bold tabular-nums">{fmt(lineaBarraPersonalizada.precioTotal)}</span>
-                      </>
-                    ) : coctelesBarra.length === 0 ? (
-                      "Elegí los tragos que va a tener la barra."
-                    ) : (
-                      "Cargá los adultos para calcular el precio de la barra."
-                    )}
-                  </p>
-                  {modalidadSalon === "con_catering" && (
-                    <p className="text-xs text-muted-foreground">La barra personalizada se cobra aparte también con catering y bebidas.</p>
-                  )}
-                </div>
-              )}
-
-              {!barraPersonalizada && servicioBarraClasica && servicioBarraClasica.id in serviciosElegidos && modalidadSalon === "con_catering" && (
-                <p className="text-xs text-muted-foreground">
-                  Con catering y bebidas la barra ya está incluida en el precio del salón: no suma aparte.
-                </p>
-              )}
-            </div>
-          </Seccion>
-
-          <Seccion
-            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><Briefcase className="h-5 w-5 text-emerald-600" /></div>}
-            title="Servicios del Evento"
-            subtitle={
-              Object.keys(serviciosElegidos).length > 0
-                ? `${Object.keys(serviciosElegidos).length} servicio${Object.keys(serviciosElegidos).length > 1 ? "s" : ""} agregado${Object.keys(serviciosElegidos).length > 1 ? "s" : ""}`
-                : "Agregá servicios al evento"
-            }
-            disabled={soloLectura}
-          >
-            {paquetes.length > 0 && (
-              <div className="mb-4 space-y-2">
-                <Label className="flex items-center gap-1.5 text-sm font-medium">
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                  Partir de un paquete guardado
-                </Label>
-                <Select
-                  value={paqueteAplicadoId || ""}
-                  onValueChange={(id) => {
-                    const p = paquetes.find((x) => x.id === id)
-                    if (p) aplicarPaquete(p)
-                  }}
-                >
-                  <SelectTrigger className="h-11 text-base">
-                    <SelectValue placeholder="Elegir paquete (opcional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paquetes.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nombre} — {salonLabel(p.salon)} ({fmt(p.precioVenta)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Reemplaza el salón y los servicios elegidos por los del paquete — después podés seguir ajustando.
-                </p>
-              </div>
-            )}
-            {cargandoCatalogo ? (
-              <p className="text-sm text-muted-foreground">Cargando...</p>
-            ) : serviciosAdicionales.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
-                <Briefcase className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No hay servicios en el catálogo</p>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted/70 border-b border-border">
-                      <th className="w-10 px-3 py-2" />
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Servicio</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Categoría</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700 uppercase tracking-wide">Precio</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {serviciosAdicionales.map((s, idx) => {
-                      const seleccionado = s.id in serviciosElegidos
-                      const usaCantidad = s.unidad === "Por Hora" || s.unidad === "Por Cantidad"
-                      const cantidad = usaCantidad ? Math.max(1, serviciosElegidos[s.id] || 1) : 1
-                      // Si el salón se vende a precio de lista, lo que ya trae
-                      // no se cobra aparte (lo decide lib/tarifario-cotizador.ts,
-                      // acá solo se refleja lo que esa función resolvió).
-                      const lineaCalculada = serviciosConPrecio.find((l) => l.servicioId === s.id)
-                      const vieneConElSalon = lineaCalculada?.motivoIncluido === "salon"
-                      const precioTotal = seleccionado
-                        ? lineaCalculada?.precioTotal ?? 0
-                        : usaCantidad
-                          ? s.precioVenta * cantidad
-                          : s.precioVenta
-                      return (
-                        <tr
-                          key={s.id}
-                          onClick={() => toggleServicio(s.id)}
-                          className={`border-b border-border/50 cursor-pointer transition-colors select-none ${
-                            seleccionado ? "bg-emerald-50/70 hover:bg-emerald-50" : idx % 2 === 0 ? "hover:bg-muted/40" : "bg-muted/10 hover:bg-muted/40"
-                          } ${soloLectura ? "cursor-default pointer-events-none opacity-70" : ""}`}
-                        >
-                          <td className="w-10 px-3 py-2.5">
-                            <div
-                              className={`w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors ${
-                                seleccionado ? "bg-emerald-600 border-emerald-600" : "border-muted-foreground/30 bg-background"
-                              }`}
-                            >
-                              {seleccionado && <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className={`font-medium ${seleccionado ? "text-emerald-900" : ""}`}>{s.nombre}</span>
-                            {vieneConElSalon && (
-                              <Badge className="ml-2 bg-sky-100 text-sky-800 border-sky-200 text-[11px] font-medium hover:bg-sky-100">
-                                Incluido en el salón
-                              </Badge>
-                            )}
-                            {usaCantidad && seleccionado && (
-                              <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                                <label className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {s.unidad === "Por Hora" ? "Horas:" : "Cantidad:"}
-                                </label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={cantidad}
-                                                  onChange={(e) => cambiarCantidadServicio(s.id, Number(e.target.value))}
-                                  className="w-16 h-6 px-1.5 text-xs rounded border border-emerald-300 bg-white text-emerald-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 tabular-nums"
-                                />
-                                {s.unidad === "Por Hora" && <span className="text-xs text-muted-foreground">h</span>}
-                              </div>
-                            )}
-                            {usaCantidad && !seleccionado && (
-                              <p className="text-[11px] text-muted-foreground/70 mt-0.5">{s.unidad === "Por Hora" ? "Por hora" : "Por cantidad"}</p>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5 hidden sm:table-cell">
-                            <Badge variant="outline" className="text-[11px]">{s.categoria}</Badge>
-                          </td>
-                          <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${vieneConElSalon ? "text-sky-700" : "text-emerald-700"}`}>
-                            {vieneConElSalon ? "Incluido" : fmt(precioTotal)}
-                            {usaCantidad && seleccionado && cantidad > 1 && (
-                              <span className="block text-[11px] font-normal text-muted-foreground">
-                                {fmt(s.precioVenta)}
-                                {s.unidad === "Por Hora" ? "/h" : "/u"} × {cantidad}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                  {serviciosConPrecio.length > 0 && (
-                    <tfoot>
-                      <tr className="bg-muted/60 border-t-2 border-border">
-                        <td colSpan={3} className="px-3 py-2 text-xs font-semibold text-muted-foreground">
-                          {serviciosConPrecio.length} servicio{serviciosConPrecio.length !== 1 ? "s" : ""} seleccionado{serviciosConPrecio.length !== 1 ? "s" : ""}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-xs font-bold text-emerald-700">{fmt(totalServicios)}</td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            )}
-          </Seccion>
-
-          <Seccion
-            icon={<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10"><UserCheck className="h-5 w-5 text-indigo-600" /></div>}
-            title="Personal del Evento"
-            subtitle={
-              personalSeleccionado.length > 0
-                ? `${personalSeleccionado.length} persona${personalSeleccionado.length > 1 ? "s" : ""} solicitada${personalSeleccionado.length > 1 ? "s" : ""}`
-                : "Marcá quién hace falta para este evento"
-            }
-            disabled={soloLectura}
-          >
-            <p className="text-xs text-muted-foreground mb-3">
-              Solo marcás quién hace falta — Administración define el costo de cada uno cuando revisa la cotización.
-            </p>
-            {/* Lo que pide la regla del tarifario, ya precargado. Solo aplica
-                si el evento lleva menú: sin cocina no hay personal que sugerir. */}
-            {personalSugerido.length > 0 && (
-              <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1">
-                <p className="text-sm font-semibold text-emerald-900">
-                  Precargado según el tarifario para {totalPersonas} invitados
-                </p>
-                <p className="text-xs text-emerald-800">
-                  {personalSugerido.map((p) => `${p.funcion}: ${p.necesarios}`).join(" · ")}
-                </p>
-                <p className="text-xs text-emerald-700">Podés ajustarlo a mano.</p>
-              </div>
-            )}
-            {avisoDobleConteoPersonal && (
-              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-                <p className="text-sm font-semibold text-amber-900">Puede estar contado dos veces</p>
-                <p className="text-xs text-amber-800 mt-0.5">{avisoDobleConteoPersonal}</p>
-              </div>
-            )}
-            {personalDelDia.length > 0 && (
-              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
-                <p className="text-sm font-semibold text-sky-900">
-                  Incluido en el salón ({diaDelEvento === "sabado" ? "sábado" : "viernes"})
-                </p>
-                <p className="text-xs text-sky-800 mt-0.5">
-                  {personalDelDia
-                    .map((id) => personalCatalogo.find((p) => p.id === id))
-                    .filter(Boolean)
-                    .map((p) => `${p!.nombre} ${p!.apellido}`.trim())
-                    .join(" · ")}
-                </p>
-                <p className="text-xs text-sky-700 mt-0.5">
-                  Ya está tildado y no suma al precio. Si cambiás la fecha se ajusta solo. Lo podés destildar.
-                </p>
-              </div>
-            )}
-            {faltanEnRoster.length > 0 && (
-              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-1">
-                <p className="text-sm font-semibold text-amber-900">Falta gente en el roster</p>
-                <ul className="list-disc list-inside">
-                  {faltanEnRoster.map((p) => (
-                    <li key={p.funcion} className="text-xs text-amber-800">
-                      {p.funcion}: hacen falta {p.necesarios} y hay {p.necesarios - p.faltan} cargados en Finanzas &gt; Personal.
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {cargandoCatalogo ? (
-              <p className="text-sm text-muted-foreground">Cargando...</p>
-            ) : personalCatalogo.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed rounded-lg">
-                <UserCheck className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No hay personal cargado en el sistema</p>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-border overflow-hidden">
-                {personalCatalogo.map((p, idx) => {
-                  const seleccionado = personalSeleccionado.includes(p.id)
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => togglePersonal(p.id)}
-                      disabled={soloLectura}
-                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm border-b border-border/50 last:border-b-0 transition-colors disabled:cursor-default disabled:opacity-70 ${
-                        seleccionado ? "bg-indigo-50/70 hover:bg-indigo-50" : idx % 2 === 0 ? "hover:bg-muted/40" : "bg-muted/10 hover:bg-muted/40"
-                      }`}
-                    >
-                      <div
-                        className={`w-[18px] h-[18px] shrink-0 rounded border-2 flex items-center justify-center ${
-                          seleccionado ? "bg-indigo-600 border-indigo-600" : "border-muted-foreground/30 bg-background"
-                        }`}
-                      >
-                        {seleccionado && <CheckCircle className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                      </div>
-                      <span className={`flex-1 min-w-0 truncate font-medium ${seleccionado ? "text-indigo-900" : ""}`}>
-                        {p.nombre} {p.apellido}
-                      </span>
-                      <Badge variant="outline" className="text-[11px] shrink-0">{p.funcion}</Badge>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </Seccion>
-        </div>
-
-        <div className="rounded-xl border-2 border-[#c9a227] bg-amber-50/40 overflow-hidden shadow-sm mb-6">
-          <div className="px-5 py-4">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-base font-semibold text-[#7a5c0e]">Precio de venta sugerido</span>
-              <span className="text-2xl font-bold text-[#1a3a2a]">{fmt(precioVentaSugerido)}</span>
-            </div>
-          </div>
-        </div>
-
-        {!soloLectura && (
-          <div className="space-y-4 pb-8">
-            <Button
-              onClick={() => guardar("paquetes")}
-              className="w-full h-16 text-lg bg-primary hover:bg-primary/90"
-              disabled={!puedeGuardar || guardando || generando}
-            >
-              <FileText className="h-6 w-6 mr-2" />
-              {generando ? "Generando..." : "Generar cotización"}
+        {errorCatalogo && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 space-y-2">
+            <p>{errorCatalogo}</p>
+            <Button size="sm" variant="outline" onClick={cargarCatalogo}>
+              Reintentar
             </Button>
-            <Button
-              onClick={() => setDialogoPaqueteAbierto(true)}
-              className="w-full h-16 text-lg text-white"
-              style={{ backgroundColor: "#c9a227" }}
-              disabled={!puedeGenerarPaquete}
-            >
-              <Package className="h-6 w-6 mr-2" />
-              Generar paquete
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full h-12"
-              disabled={!puedeGuardar || guardando || generando}
-              onClick={() => guardar("quedarse")}
-            >
-              {guardando ? "Guardando..." : "Guardar borrador"}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              "Generar cotización" guarda todo y te lleva a verla en Paquetes — desde ahí la mandás a revisión.
-              "Generar paquete" toma el salón y los servicios de acá y los guarda como plantilla reutilizable, sin
-              tocar los datos del cliente.
-            </p>
           </div>
         )}
+
+        <fieldset disabled={soloLectura} className="space-y-4">
+          {/* 1. Cliente */}
+          <Tarjeta icono={<User className="h-4 w-4" />} titulo="Cliente">
+            <Input
+              value={clienteNombre}
+              onChange={(e) => setClienteNombre(e.target.value)}
+              placeholder="Nombre del cliente *"
+              aria-label="Nombre del cliente"
+              autoComplete="off"
+              className="h-11 text-base"
+            />
+            <div className="flex flex-wrap gap-2">
+              {TIPOS_EVENTO.map((t) => (
+                <Chip key={t} activo={tipoEvento === t} onClick={() => setTipoEvento(tipoEvento === t ? "" : t)}>
+                  {t}
+                </Chip>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                value={clienteDni}
+                onChange={(e) => setClienteDni(e.target.value.replace(/[^\d.]/g, ""))}
+                placeholder="DNI"
+                aria-label="DNI del cliente"
+                inputMode="numeric"
+                autoComplete="off"
+                className="h-11 text-base"
+              />
+              <Input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                aria-label="Fecha del evento"
+                className="h-11 text-base"
+              />
+            </div>
+          </Tarjeta>
+
+          {/* 2. Salón */}
+          <Tarjeta icono={<Home className="h-4 w-4" />} titulo="Salón" resumen={salon ? salonLabel(salon) : "Elegí uno"}>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {SALONES.map((s) => {
+                const activo = s === salon
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    aria-pressed={activo}
+                    onClick={() => setSalon(s)}
+                    className={`rounded-xl border-2 px-3 py-4 text-left text-sm font-semibold transition-colors ${
+                      activo ? "text-white shadow-sm" : "bg-white hover:bg-muted"
+                    }`}
+                    style={
+                      activo
+                        ? { backgroundColor: salonColor(s), borderColor: salonColor(s) }
+                        : { color: salonColor(s), borderColor: "var(--border, #e5e5e5)" }
+                    }
+                  >
+                    {salonLabel(s)}
+                  </button>
+                )
+              })}
+            </div>
+            {config?.capacidadMaxima ? (
+              <p className="text-xs text-muted-foreground">Capacidad: hasta {config.capacidadMaxima} invitados.</p>
+            ) : null}
+          </Tarjeta>
+
+          {/* 3. Comensales */}
+          <Tarjeta icono={<Users className="h-4 w-4" />} titulo="Comensales">
+            <div className="flex items-baseline justify-center gap-2 py-1">
+              <span className="text-4xl font-bold tabular-nums">{comensales}</span>
+              <span className="text-sm text-muted-foreground">invitados</span>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {ATAJOS_ADULTOS.map((n) => (
+                <Chip key={n} activo={adultos === n} onClick={() => setAdultos(n)}>
+                  {n}
+                </Chip>
+              ))}
+            </div>
+            <Contador etiqueta="Adultos" valor={adultos} onChange={setAdultos} />
+            <Contador etiqueta="Niños" valor={ninos} onChange={setNinos} />
+          </Tarjeta>
+
+          {!salon ? (
+            <p className="px-1 text-sm text-muted-foreground">Elegí el salón para ver el menú, las barras y los servicios.</p>
+          ) : !config ? null : (
+            <>
+              {/* 4. Menú */}
+              <Tarjeta
+                icono={<ChefHat className="h-4 w-4" />}
+                titulo="Menú"
+                resumen={recetas.length ? `${recetas.length} ${recetas.length === 1 ? "plato" : "platos"}` : "Sin menú"}
+              >
+                {config.menu.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Este salón no tiene platos para cotizar.</p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {config.menu.map((m) => (
+                      <Chip key={m.recetaId} activo={recetas.includes(m.recetaId)} onClick={() => alternarReceta(m.recetaId)}>
+                        <span className="block font-medium">{m.nombre}</span>
+                        <span className="block text-xs opacity-80 tabular-nums">{fmt(m.precioPorPorcion)} por persona</span>
+                      </Chip>
+                    ))}
+                  </div>
+                )}
+                {recetas.length > 1 && (
+                  <p className="text-xs text-muted-foreground">Con varios platos se cobra el promedio por persona.</p>
+                )}
+              </Tarjeta>
+
+              {/* 5. Barra */}
+              <Tarjeta icono={<Wine className="h-4 w-4" />} titulo="Barra" resumen={barraId ? "1 barra" : "Sin barra"}>
+                {config.barras.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Este salón no tiene barras para cotizar.</p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {config.barras.map((b) => (
+                      <Chip key={b.id} activo={barraId === b.id} onClick={() => setBarraId(barraId === b.id ? null : b.id)}>
+                        <span className="block font-medium">{b.nombre}</span>
+                        <span className="block text-xs opacity-80 tabular-nums">
+                          {fmt(b.precioPorAdulto)} por adulto · {b.tragosPorAdulto} {b.tragosPorAdulto === 1 ? "trago" : "tragos"}
+                        </span>
+                      </Chip>
+                    ))}
+                  </div>
+                )}
+              </Tarjeta>
+
+              {/* 6. Servicios */}
+              <Tarjeta
+                icono={<PackageCheck className="h-4 w-4" />}
+                titulo="Servicios"
+                resumen={`${Object.keys(servicios).length} adicionales`}
+              >
+                {porCategoria.length === 0 && <p className="text-sm text-muted-foreground">No hay servicios para este salón.</p>}
+                {porCategoria.map(([categoria, lista]) => (
+                  <div key={categoria} className="space-y-1.5">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{categoria}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {lista.map((s) => {
+                        const elegido = s.incluido || s.servicioId in servicios
+                        const conCantidad = UNIDADES_CON_CANTIDAD.includes(s.info.unidad) && !s.incluido
+                        return (
+                          <div key={s.servicioId} className="flex items-center gap-1">
+                            <Chip
+                              activo={elegido}
+                              deshabilitado={s.incluido}
+                              onClick={s.incluido ? undefined : () => alternarServicio(s.servicioId)}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                {s.incluido && <Check className="h-3.5 w-3.5" />}
+                                <span className="font-medium">{s.info.nombre}</span>
+                              </span>
+                              <span className="block text-xs opacity-80 tabular-nums">
+                                {s.incluido ? "Incluido en el salón" : `${fmt(s.precio)}${conCantidad ? ` ${s.info.unidad.toLowerCase()}` : ""}`}
+                              </span>
+                            </Chip>
+                            {conCantidad && s.servicioId in servicios && (
+                              <span className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setServicios((p) => ({ ...p, [s.servicioId]: Math.max(1, (p[s.servicioId] ?? 1) - 1) }))}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-border"
+                                  aria-label={`Menos ${s.info.nombre}`}
+                                >
+                                  <Minus className="h-3.5 w-3.5" />
+                                </button>
+                                <span className="w-6 text-center text-sm font-semibold tabular-nums">{servicios[s.servicioId]}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setServicios((p) => ({ ...p, [s.servicioId]: (p[s.servicioId] ?? 1) + 1 }))}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-border"
+                                  aria-label={`Más ${s.info.nombre}`}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </Tarjeta>
+            </>
+          )}
+        </fieldset>
       </main>
 
-      <Dialog open={dialogoPaqueteAbierto} onOpenChange={(open) => { setDialogoPaqueteAbierto(open); if (!open) setNombrePaquete("") }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Generar paquete reutilizable</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="nombrePaquete">Nombre del paquete</Label>
-            <Input
-              id="nombrePaquete"
-              value={nombrePaquete}
-              onChange={(e) => setNombrePaquete(e.target.value)}
-              placeholder="Ej: Paquete Casamiento Clásico"
-              autoFocus
-            />
-            <p className="text-xs text-muted-foreground">
-              Se guarda con el salón ({salon ? salonLabel(salon) : "sin elegir"}) y los {Object.keys(serviciosElegidos).length}{" "}
-              servicio{Object.keys(serviciosElegidos).length !== 1 ? "s" : ""} de esta cotización.
-            </p>
+      {/* Barra de abajo: total + acciones, respetando la zona segura del celular.
+          "sticky" y no "fixed": queda pegada abajo de la pantalla pero dentro
+          de la columna de contenido, así en escritorio no tapa el menú
+          lateral y nunca queda encima de la última tarjeta. */}
+      <div className="sticky bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+        <div className="mx-auto max-w-2xl space-y-2 px-4 py-3 sm:px-6">
+          {calculo && calculo.avisos.length > 0 && (
+            <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto no-scrollbar">
+              {calculo.avisos.map((a) => (
+                <span
+                  key={a.codigo}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                    a.nivel === "rojo" ? "border-red-300 bg-red-50 text-red-700" : "border-amber-300 bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  {a.textoVendedor}
+                </span>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setDesgloseAbierto((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 text-left"
+            aria-expanded={desgloseAbierto}
+          >
+            <span className="text-sm text-muted-foreground">Precio total</span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-2xl font-bold tabular-nums">{fmt(total)}</span>
+              {desgloseAbierto ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+            </span>
+          </button>
+          {desgloseAbierto && calculo && (
+            <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+              {calculo.rubros.map((r) => (
+                <li key={r.clave} className="flex items-center justify-between px-3 py-1.5">
+                  <span>
+                    {r.nombre}
+                    {r.clave === "personal" && calculo.personal.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {" "}
+                        ({calculo.personal.map((l) => `${l.cantidad} ${l.funcion}`).join(", ")})
+                      </span>
+                    )}
+                  </span>
+                  <span className="tabular-nums">{fmt(r.precio)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {faltan.length > 0 && !soloLectura && <p className="text-xs text-muted-foreground">Falta {faltan.join(", ")}.</p>}
+          {/* minmax(0,1fr) + min-w-0: en 390 px los dos botones entran sin salirse. */}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+            <Button variant="outline" className="h-11 px-3" disabled={!puedeGuardar || !!guardando} onClick={() => guardar("guardar")}>
+              {guardando === "guardar" ? (
+                "Guardando..."
+              ) : (
+                <>
+                  <span className="sm:hidden">Guardar</span>
+                  <span className="hidden sm:inline">Guardar borrador</span>
+                </>
+              )}
+            </Button>
+            <Button className="h-11 min-w-0 px-3 text-base" disabled={!puedeEnviar || !!guardando} onClick={() => guardar("enviar")}>
+              <Send className="h-4 w-4 mr-2 shrink-0" />
+              <span className="truncate">{guardando === "enviar" ? "Enviando..." : "Enviar a Administración"}</span>
+            </Button>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogoPaqueteAbierto(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={generarPaquete} disabled={generandoPaquete || !nombrePaquete.trim()} style={{ backgroundColor: "#c9a227" }} className="text-white hover:opacity-90">
-              {generandoPaquete ? "Generando..." : "Generar paquete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </div>
     </div>
   )
 }
