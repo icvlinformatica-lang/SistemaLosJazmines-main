@@ -11,6 +11,10 @@ import { sql } from "@/lib/db"
  * nunca desde otro estado, para no reenviar algo que ya está en revisión o
  * ya fue procesado. Al reenviar se limpia comentario_admin: era sobre la
  * versión anterior, no sobre esta.
+ *
+ * Modelo nuevo (desglose_venta.version 2): si la cotización supera la
+ * capacidad del salón NO se envía (mismo criterio que "Enviar a
+ * Administración" en /vendedor/cotizar).
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,10 +22,25 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const filas = (await sql`
       UPDATE cotizaciones SET estado = 'lista_para_revisar', comentario_admin = NULL, updated_at = now()
       WHERE id = ${id} AND estado IN ('borrador', 'rechazada')
+        AND NOT (
+          jsonb_typeof(desglose_venta) = 'object'
+          AND coalesce((desglose_venta ->> 'superaCapacidad')::boolean, false)
+        )
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>
 
     if (!filas.length) {
+      const [fila] = (await sql`
+        SELECT estado, (jsonb_typeof(desglose_venta) = 'object'
+          AND coalesce((desglose_venta ->> 'superaCapacidad')::boolean, false)) AS supera
+        FROM cotizaciones WHERE id = ${id}
+      `) as unknown as Array<{ estado: string; supera: boolean | null }>
+      if (fila?.supera && ["borrador", "rechazada"].includes(fila.estado)) {
+        return NextResponse.json(
+          { ok: false, error: "Supera la capacidad del salón: abrila y bajá la cantidad de invitados o cambiá de salón" },
+          { status: 400 },
+        )
+      }
       return NextResponse.json(
         { ok: false, error: "Esta cotización no se puede enviar en su estado actual" },
         { status: 409 },

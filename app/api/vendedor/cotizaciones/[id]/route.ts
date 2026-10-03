@@ -53,12 +53,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
         estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
-        evento_id, eliminado_por
+        evento_id, eliminado_por, cliente_dni
       )
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
         estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
-        evento_id, ${eliminadoPor}
+        evento_id, ${eliminadoPor}, cliente_dni
       FROM movida
       RETURNING id
     `
@@ -78,7 +78,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const filas = (await sql`
       SELECT id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
              nombre_festejados, paquete_id, invitados, servicios_elegidos, precio_venta_sugerido, estado, comentario_admin,
-             modalidad_salon, fuera_de_tarifario, avisos
+             modalidad_salon, fuera_de_tarifario, avisos, cliente_dni
       FROM cotizaciones
       WHERE id = ${id}
       LIMIT 1
@@ -101,6 +101,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         id: f.id,
         clienteNombre: f.cliente_nombre,
         clienteTelefono: f.cliente_telefono || "",
+        clienteDni: (f as unknown as { cliente_dni?: string | null }).cliente_dni || "",
+        // 2 = modelo costo + ganancia por salón (Paso 2). Las anteriores no tienen versión.
+        version: Number(serviciosElegidosData.version) || 1,
+        // Barra armada elegida (modelo nuevo). null en las viejas.
+        barraId:
+          serviciosElegidosData.barra?.tipo === "armada" && typeof serviciosElegidosData.barra.barraTemplateId === "string"
+            ? serviciosElegidosData.barra.barraTemplateId
+            : null,
         fechaEvento: f.fecha_evento || "",
         horario: f.horario || "",
         horarioFin: f.horario_fin || "",

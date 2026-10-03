@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 /**
  * Tarifario del cotizador: la grilla de precio del salón, la regla de
@@ -25,7 +26,9 @@ interface FilaGrilla {
   precio: number
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const [grilla, reglas, vinculosRecetas, vinculosBarra, incluyeServicio, incluyePersonal] = await Promise.all([
       sql`
@@ -87,6 +90,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const body = await req.json().catch(() => ({}))
     const grilla: FilaGrilla[] = Array.isArray(body?.grilla) ? body.grilla : []

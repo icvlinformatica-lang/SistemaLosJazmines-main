@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 /**
  * Precio base de RESPALDO por salón (tabla precios_base_salones), distinto
@@ -11,7 +12,9 @@ import { sql } from "@/lib/db"
  * tarjeta en Eventos > Cotizaciones (/eventos/cotizaciones).
  */
 
-export async function GET() {
+export async function GET(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const filas = (await sql`SELECT salon, precio FROM precios_base_salones`) as unknown as Array<{
       salon: string
@@ -27,6 +30,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const body = await req.json().catch(() => ({}))
     const precios = body?.precios

@@ -1,13 +1,16 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 /**
  * Solo el conteo de cotizaciones "lista_para_revisar" — lo usa el puntito
  * rojo del sidebar (ver components/sidebar.tsx). Liviano a propósito: no
  * trae ningún dato de la cotización, se consulta seguido (polling).
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const filas = (await sql`
       SELECT count(*)::int AS count FROM cotizaciones WHERE estado = 'lista_para_revisar'

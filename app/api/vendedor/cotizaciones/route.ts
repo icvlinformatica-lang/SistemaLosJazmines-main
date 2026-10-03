@@ -2,309 +2,203 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
-import {
-  calcularCotizacion,
-  type DiaTarifario,
-  type ModalidadSalon,
-  type ServicioParaCotizar,
-} from "@/lib/tarifario-cotizador"
-import { calcularBarraPersonalizada, ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
-import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
+import { cotizarEnServidor } from "@/lib/cotizacion-servidor"
+
+/** jsonb de verdad (no texto). El tipo de sql.json no acepta objetos con
+ *  campos opcionales/null anidados, así que se convierte en un solo lugar. */
+const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[0])
 
 /**
- * Alta/edición de cotizaciones (perfil Vendedor). El precio de venta
- * sugerido y los costos internos SIEMPRE se recalculan acá, del lado del
- * servidor, a partir del catálogo real — nunca se confía en un precio que
- * mande el cliente. costos_internos se guarda pero nunca viaja de vuelta
- * en la respuesta.
+ * Alta/edición de cotizaciones (perfil Vendedor), modelo COSTO + GANANCIA
+ * por salón (Paso 2, scripts/015 y 016). El precio SIEMPRE se recalcula acá
+ * con lib/cotizacion-servidor.ts — nunca se confía en un precio que mande el
+ * navegador.
  *
- * POST nunca toca el estado (tanto "Guardar borrador" como "Generar
- * paquete" en /vendedor/cotizar pegan acá): una cotización nueva nace en
- * "borrador", y una que ya estaba "rechazada" (Administración pidió un
- * ajuste) se puede seguir editando y guardando sin perder ese estado hasta
- * que el vendedor la reenvía. Mandar a revisión es una acción aparte, ver
- * [id]/enviar/route.ts, que se dispara desde la tarjeta en
- * /vendedor/paquetes ("Mis cotizaciones generadas"), no desde esta pantalla.
- * Para reabrir una cotización guardada, ver [id]/route.ts (GET).
+ * Al vendedor se le devuelve SOLO precios (total, precio por rubro, avisos
+ * con su texto de vendedor). Costos y ganancias quedan en costos_internos y
+ * desglose_venta, que el vendedor nunca recibe.
+ *
+ * accion:
+ *   - "guardar" (default): guarda sin tocar el estado (nace en "borrador";
+ *     una "rechazada" sigue rechazada hasta que se reenvía).
+ *   - "enviar": guarda y pasa a "lista_para_revisar" en el mismo UPDATE. Si
+ *     se supera la capacidad del salón, se RECHAZA (400).
+ * Una cotización solo se puede editar en "borrador" o "rechazada".
  *
  * body: {
- *   id?: string                     // si viene, actualiza (solo si sigue en "borrador" o "rechazada")
- *   clienteNombre: string
- *   clienteTelefono?: string
- *   fechaEvento?: string
- *   salon?: string
- *   tipoEvento?: string
- *   invitados: { adultos, adolescentes, ninos, personasDietasEspeciales }
- *   recetasElegidas: { adultos: string[], adolescentes: string[], ninos: string[], dietasEspeciales: string[] }
- *   serviciosElegidos: { servicioId: string, cantidad: number }[]
+ *   id?, accion?, clienteNombre, clienteDni?, tipoEvento?, fechaEvento?,
+ *   salon, adultos, ninos, recetas: string[], barraId: string | null,
+ *   servicios: { servicioId, cantidad }[]
  * }
  *
- * GET devuelve "Mis cotizaciones generadas": las cotizaciones del vendedor
- * que entró con esta sesión (por nombre, vía cookie lj_usuario), saneadas
- * (nunca costos_internos).
+ * Los JSON se guardan con sql.json (jsonb de verdad, no texto). Los que leen
+ * cotizaciones aceptan los dos formatos (las viejas quedaron como texto).
+ *
+ * GET devuelve "Mis cotizaciones generadas" (sin costos).
  */
-
-interface ServicioCatalogo {
-  id: string
-  nombre: string
-  categoria: string
-  unidad: string
-  precio_venta: number
-  costo_para_caja_eventos: number
-}
-
-interface FilaTarifarioDB {
-  salon: string
-  invitados_min: number
-  invitados_max: number
-  dia: DiaTarifario
-  modalidad: ModalidadSalon
-  precio: number
-}
-
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}))
-    const {
-      id,
-      clienteNombre,
-      clienteTelefono,
-      fechaEvento,
-      salon,
-      tipoEvento,
-      nombreFestejados,
-      horario,
-      horarioFin,
-      paqueteId,
-      invitados,
-      recetasElegidas,
-      serviciosElegidos,
-      personalSeleccionado,
-      modalidadSalon,
-      barra,
-    } = body || {}
+    const body = ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>
+    const { id, clienteNombre, clienteDni, tipoEvento, fechaEvento } = body
+    const enviar = body.accion === "enviar"
 
     if (typeof clienteNombre !== "string" || !clienteNombre.trim()) {
       return NextResponse.json({ ok: false, error: "Falta el nombre del cliente" }, { status: 400 })
     }
 
-    const vendedor = usuarioDesdeCookie(req)
+    const adultos = Math.max(0, Math.floor(Number(body.adultos) || 0))
+    const ninos = Math.max(0, Math.floor(Number(body.ninos) || 0))
+    const calculo = await cotizarEnServidor({
+      salon: typeof body.salon === "string" ? body.salon : "",
+      fechaEvento: typeof fechaEvento === "string" ? fechaEvento : "",
+      adultos,
+      ninos,
+      recetas: Array.isArray(body.recetas) ? (body.recetas as string[]) : [],
+      barraId: typeof body.barraId === "string" && body.barraId ? body.barraId : null,
+      servicios: Array.isArray(body.servicios) ? (body.servicios as Array<{ servicioId: string; cantidad: number }>) : [],
+    })
+    if (typeof calculo === "string") return NextResponse.json({ ok: false, error: calculo }, { status: 400 })
+    const { resultado: r, config } = calculo
 
-    // El precio se recalcula SIEMPRE acá, con lib/tarifario-cotizador.ts —
-    // la misma función que usa el preview de /vendedor/cotizar, así el
-    // vendedor nunca ve un número distinto del que queda guardado. Nunca se
-    // confía en un precio que mande el cliente.
-    const [catalogoServicios, tarifarioDB, preciosVentaDB, incluidosDB] = (await Promise.all([
-      sql`SELECT id, nombre, categoria, unidad, precio_venta, costo_para_caja_eventos FROM servicios`,
-      sql`SELECT salon, invitados_min, invitados_max, dia, modalidad, precio FROM tarifario_salon`,
-      sql`SELECT salon, fecha, precio FROM precios_venta`,
-      sql`SELECT servicio_id FROM salon_incluye_servicio`,
-    ])) as unknown as [
-      ServicioCatalogo[],
-      FilaTarifarioDB[],
-      Array<{ salon: string; fecha: string; precio: number }>,
-      Array<{ servicio_id: string }>,
-    ]
-
-    const seleccion: Array<{ servicioId: string; cantidad: number }> = Array.isArray(serviciosElegidos)
-      ? serviciosElegidos
-      : []
-
-    const totalInvitados =
-      (Number(invitados?.adultos) || 0) +
-      (Number(invitados?.adolescentes) || 0) +
-      (Number(invitados?.ninos) || 0) +
-      (Number(invitados?.personasDietasEspeciales) || 0)
-
-    const modalidad: ModalidadSalon = modalidadSalon === "con_catering" ? "con_catering" : "solo_salon"
-
-    const preciosVentaMap: Record<string, Record<string, number>> = {}
-    for (const row of preciosVentaDB) {
-      preciosVentaMap[row.salon] = preciosVentaMap[row.salon] || {}
-      preciosVentaMap[row.salon][row.fecha] = Number(row.precio) || 0
+    if (enviar && r.superaCapacidad) {
+      const aviso = r.avisos.find((a) => a.codigo === "capacidad")
+      return NextResponse.json({ ok: false, error: aviso?.textoVendedor ?? "Supera la capacidad del salón" }, { status: 400 })
     }
 
-    // Barra: "clasica" es el servicio BARRA CLÁSICA (ya viene en la selección
-    // de servicios); "personalizada" son cócteles elegidos, con precio que se
-    // recalcula acá con la carta real (lib/precio-barra.ts). Solo se aceptan
-    // cócteles que existen en la carta.
-    const tipoBarra: "clasica" | "personalizada" | null =
-      barra?.tipo === "clasica" || barra?.tipo === "personalizada" ? barra.tipo : null
-    const pedidos: string[] = Array.isArray(barra?.cocteles) ? barra.cocteles.filter((x: unknown) => typeof x === "string") : []
-    const cartaBarra = tipoBarra === "personalizada" ? await leerPreciosCocteles() : []
-    const coctelesBarra = cartaBarra.filter((c) => pedidos.includes(c.id))
-    const adultos = Number(invitados?.adultos) || 0
+    const vendedor = usuarioDesdeCookie(req)
+    const dni = typeof clienteDni === "string" && clienteDni.trim() ? clienteDni.trim() : null
+    const fecha = typeof fechaEvento === "string" && fechaEvento ? fechaEvento : null
+    const tipo = typeof tipoEvento === "string" && tipoEvento ? tipoEvento : null
 
-    const calculo = calcularCotizacion({
-      salon: salon || "",
-      fechaEvento: fechaEvento || "",
-      modalidad,
-      totalInvitados,
-      serviciosElegidos: seleccion,
-      catalogoServicios: catalogoServicios.map((s) => ({
-        id: s.id,
-        nombre: s.nombre,
-        categoria: s.categoria,
-        unidad: s.unidad,
-        precioVenta: Number(s.precio_venta) || 0,
-      })) as ServicioParaCotizar[],
-      tarifario: tarifarioDB.map((t) => ({
-        salon: t.salon,
-        invitadosMin: Number(t.invitados_min) || 0,
-        invitadosMax: Number(t.invitados_max) || 0,
-        dia: t.dia,
-        modalidad: t.modalidad,
-        precio: Number(t.precio) || 0,
-      })),
-      preciosVenta: preciosVentaMap,
-      serviciosIncluidosSalon: incluidosDB.map((r) => r.servicio_id),
-      barraPersonalizada:
-        tipoBarra === "personalizada"
-          ? { cocteles: coctelesBarra.map((c) => ({ id: c.id, nombre: c.nombre, precioPorTrago: c.precioPorTrago })), adultos }
-          : undefined,
-    })
+    const invitados = { adultos, adolescentes: 0, ninos, personasDietasEspeciales: 0 }
 
-    const serviciosDetalle = calculo.servicios.map((s) => ({
-      servicioId: s.servicioId,
-      nombre: s.nombre,
-      categoria: s.categoria,
-      unidad: s.unidad,
-      cantidad: s.cantidad,
-      precioVenta: s.precioUnitario,
-      precioTotal: s.precioTotal,
-      incluidoEnPaquete: s.incluidoEnPaquete,
-      motivoIncluido: s.motivoIncluido,
-    }))
-
-    // Costo interno con la MISMA cantidad que la venta (un menú por persona
-    // cuesta por persona). Es solo informativo para Administración: el costo
-    // real del evento se sigue calculando en vivo (Caja Eventos).
-    // La barra personalizada no es un servicio del catálogo: su costo va
-    // aparte (costoBarraPersonalizada), porque totalCostoServicios se copia al
-    // evento al aprobar y ahí el costo de la barra ya sale de sus cócteles.
-    const costosServiciosDetalle = calculo.servicios
-      .filter((s) => s.servicioId !== ID_BARRA_PERSONALIZADA)
-      .map((s) => {
-        const cat = catalogoServicios.find((c) => c.id === s.servicioId)
+    // Lo elegido, SIN costos (lo lee el vendedor al reabrir la cotización).
+    const serviciosElegidos = {
+      version: 2,
+      recetas: { adultos: calculo.recetas.map((x) => x.id), adolescentes: [], ninos: [], dietasEspeciales: [] },
+      barra: calculo.barra ? { tipo: "armada", barraTemplateId: calculo.barra.id, cocteles: calculo.barra.cocteles } : null,
+      servicios: calculo.servicios.map((s) => {
+        const l = r.servicios.find((x) => x.servicioId === s.servicioId)!
         return {
           servicioId: s.servicioId,
           nombre: s.nombre,
+          categoria: s.categoria,
+          unidad: s.unidad,
           cantidad: s.cantidad,
-          costoTotal: (Number(cat?.costo_para_caja_eventos) || 0) * s.cantidad,
+          precioVenta: l.precioUnitario,
+          precioTotal: l.precioTotal,
+          incluidoEnPaquete: s.incluido,
         }
+      }),
+      personal: [] as string[],
+      personalLineas: r.personal.map((l) => ({ funcion: l.funcion, cantidad: l.cantidad })),
+    }
+
+    // Para Administración: de dónde salió cada número (costo, ganancia y
+    // precio de cada rubro). Nunca viaja al vendedor.
+    const ganancias: Record<string, number | null> = {
+      salon: config.gananciaSalon,
+      cocina: config.gananciaCocina,
+      barra: config.gananciaBarra,
+      servicios: config.gananciaServicios,
+      personal: null, // cada función tiene la suya (ver "personal")
+    }
+    const personal = calculo.personal.map((p) => ({
+      ...p,
+      precioUnitario: r.personal.find((l) => l.funcion === p.funcion)?.precioUnitario ?? 0,
+    }))
+    const desgloseVenta = {
+      version: 2,
+      salon: config.salon,
+      adultos,
+      ninos,
+      comensales: r.comensales,
+      capacidadMaxima: config.capacidadMaxima,
+      superaCapacidad: r.superaCapacidad,
+      modalidad: r.modalidad,
+      rubros: r.rubros.map((x) => ({ ...x, ganancia: ganancias[x.clave] })),
+      recetas: calculo.recetas,
+      barra: calculo.barra,
+      servicios: r.servicios,
+      personal,
+      avisos: r.avisos,
+      costoTotal: r.costoTotal,
+      total: r.total,
+    }
+    // Costo de los servicios CON los incluidos (igual se le pagan al
+    // proveedor): es lo que pasa a evento.costoServicios al aprobar.
+    const costosServicios = r.servicios.map((l) => ({
+      servicioId: l.servicioId,
+      nombre: l.nombre,
+      cantidad: l.cantidad,
+      costoTotal: (l.costoUnitario ?? 0) * l.cantidad,
+    }))
+    const costosInternos = {
+      version: 2,
+      costoTotal: r.costoTotal,
+      servicios: costosServicios,
+      totalCostoServicios: costosServicios.reduce((s, c) => s + c.costoTotal, 0),
+      personal,
+    }
+    const avisosAdmin = r.avisos.map((a) => a.texto)
+
+    const respuesta = (fila: { id: string; estado: string }) =>
+      NextResponse.json({
+        ok: true,
+        id: fila.id,
+        estado: fila.estado,
+        total: r.total,
+        rubros: r.rubros.map((x) => ({ clave: x.clave, nombre: x.nombre, precio: x.precio })),
+        avisos: r.avisos.map((a) => ({ nivel: a.nivel, texto: a.textoVendedor })),
       })
-    const totalCostoServicios = costosServiciosDetalle.reduce((sum, c) => sum + c.costoTotal, 0)
-    // Costo interno de la barra personalizada con la MISMA cantidad de tragos
-    // que el precio (informativo, para la ganancia estimada de la bandeja).
-    const costoBarraPersonalizada =
-      tipoBarra === "personalizada" && coctelesBarra.length > 0
-        ? Math.round(
-            calcularBarraPersonalizada(coctelesBarra.map((c) => c.costoPorTrago), adultos).total,
-          )
-        : 0
 
-    const precioBaseSalon = calculo.precioSalon
-    const precioVentaSugerido = calculo.total
-
-    const invitadosJson = JSON.stringify({
-      adultos: Number(invitados?.adultos) || 0,
-      adolescentes: Number(invitados?.adolescentes) || 0,
-      ninos: Number(invitados?.ninos) || 0,
-      personasDietasEspeciales: Number(invitados?.personasDietasEspeciales) || 0,
-    })
-
-    // "personal" acá son solo IDs del roster (Finanzas → Personal) que el
-    // vendedor marcó como necesarios — nunca un monto, eso lo define
-    // Administración al aprobar (ver [id]/aprobar/route.ts).
-    const personalIds: string[] = Array.isArray(personalSeleccionado)
-      ? personalSeleccionado.filter((x: unknown) => typeof x === "string")
-      : []
-
-    const serviciosElegidosJson = JSON.stringify({
-      recetas: {
-        adultos: Array.isArray(recetasElegidas?.adultos) ? recetasElegidas.adultos : [],
-        adolescentes: Array.isArray(recetasElegidas?.adolescentes) ? recetasElegidas.adolescentes : [],
-        ninos: Array.isArray(recetasElegidas?.ninos) ? recetasElegidas.ninos : [],
-        dietasEspeciales: Array.isArray(recetasElegidas?.dietasEspeciales) ? recetasElegidas.dietasEspeciales : [],
-      },
-      servicios: serviciosDetalle,
-      personal: personalIds,
-      // Qué barra eligió y, si es personalizada, qué cócteles (al aprobar se
-      // cargan como la barra del evento).
-      barra: tipoBarra ? { tipo: tipoBarra, cocteles: coctelesBarra.map((c) => c.id) } : null,
-    })
-
-    // Desglose de venta: de dónde salió cada peso del precio sugerido, para
-    // que Administración lo vea tal cual al revisar la cotización.
-    const desgloseVentaJson = JSON.stringify({
-      modalidad,
-      totalInvitados,
-      precioSalon: calculo.precioSalon,
-      origenPrecioSalon: calculo.origenPrecioSalon,
-      servicios: serviciosDetalle,
-      totalServicios: calculo.totalServicios,
-      total: calculo.total,
-    })
-
-    const costosInternosJson = JSON.stringify({
-      precioBaseSalon,
-      servicios: costosServiciosDetalle,
-      totalCostoServicios,
-      costoBarraPersonalizada,
-      // Nota: no incluye costo de insumos/recetas (comida) — esta etapa
-      // solo calcula el costo interno de los servicios contratados.
-    })
-
-    if (id) {
+    if (typeof id === "string" && id) {
+      // Teléfono, festejados y horarios no están en la pantalla nueva: no se
+      // tocan (una cotización vieja reabierta los conserva).
       const filas = (await sql`
         UPDATE cotizaciones SET
           cliente_nombre = ${clienteNombre.trim()},
-          cliente_telefono = ${clienteTelefono || null},
-          fecha_evento = ${fechaEvento || null},
-          salon = ${salon || null},
-          tipo_evento = ${tipoEvento || null},
-          nombre_festejados = ${nombreFestejados || null},
-          horario = ${horario || null},
-          horario_fin = ${horarioFin || null},
-          paquete_id = ${paqueteId || null},
-          invitados = ${invitadosJson}::jsonb,
-          servicios_elegidos = ${serviciosElegidosJson}::jsonb,
-          precio_venta_sugerido = ${precioVentaSugerido},
-          costos_internos = ${costosInternosJson}::jsonb,
-          modalidad_salon = ${modalidad},
-          desglose_venta = ${desgloseVentaJson}::jsonb,
-          fuera_de_tarifario = ${calculo.fueraDeTarifario},
-          avisos = ${JSON.stringify(calculo.avisos)}::jsonb,
+          cliente_dni = ${dni},
+          fecha_evento = ${fecha},
+          salon = ${config.salon},
+          tipo_evento = ${tipo},
+          invitados = ${jsonb(invitados)},
+          servicios_elegidos = ${jsonb(serviciosElegidos)},
+          precio_venta_sugerido = ${r.total},
+          costos_internos = ${jsonb(costosInternos)},
+          modalidad_salon = ${r.modalidad},
+          desglose_venta = ${jsonb(desgloseVenta)},
+          fuera_de_tarifario = false,
+          avisos = ${jsonb(avisosAdmin)},
+          estado = CASE WHEN ${enviar} THEN 'lista_para_revisar' ELSE estado END,
+          comentario_admin = CASE WHEN ${enviar} THEN NULL ELSE comentario_admin END,
           updated_at = now()
         WHERE id = ${id} AND estado IN ('borrador', 'rechazada')
         RETURNING id, estado
       `) as unknown as Array<{ id: string; estado: string }>
-
       if (!filas.length) {
         return NextResponse.json(
           { ok: false, error: "Esta cotización ya no se puede editar (Administración ya la está revisando o ya fue procesada)" },
           { status: 409 },
         )
       }
-      return NextResponse.json({ ok: true, id: filas[0].id, estado: filas[0].estado, precioVentaSugerido, fueraDeTarifario: calculo.fueraDeTarifario, avisos: calculo.avisos })
+      return respuesta(filas[0])
     }
 
+    const estado = enviar ? "lista_para_revisar" : "borrador"
     const filas = (await sql`
       INSERT INTO cotizaciones (
-        vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
-        nombre_festejados, horario, horario_fin, paquete_id,
+        vendedor, cliente_nombre, cliente_dni, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, precio_venta_sugerido, costos_internos,
-        modalidad_salon, desglose_venta, fuera_de_tarifario, avisos
+        modalidad_salon, desglose_venta, fuera_de_tarifario, avisos, estado
       ) VALUES (
-        ${vendedor}, ${clienteNombre.trim()}, ${clienteTelefono || null}, ${fechaEvento || null}, ${salon || null}, ${tipoEvento || null},
-        ${nombreFestejados || null}, ${horario || null}, ${horarioFin || null}, ${paqueteId || null},
-        ${invitadosJson}::jsonb, ${serviciosElegidosJson}::jsonb, ${precioVentaSugerido}, ${costosInternosJson}::jsonb,
-        ${modalidad}, ${desgloseVentaJson}::jsonb, ${calculo.fueraDeTarifario}, ${JSON.stringify(calculo.avisos)}::jsonb
+        ${vendedor}, ${clienteNombre.trim()}, ${dni}, ${fecha}, ${config.salon}, ${tipo},
+        ${jsonb(invitados)}, ${jsonb(serviciosElegidos)}, ${r.total}, ${jsonb(costosInternos)},
+        ${r.modalidad}, ${jsonb(desgloseVenta)}, false, ${jsonb(avisosAdmin)}, ${estado}
       )
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>
-
-    return NextResponse.json({ ok: true, id: filas[0].id, estado: filas[0].estado, precioVentaSugerido, fueraDeTarifario: calculo.fueraDeTarifario, avisos: calculo.avisos })
+    return respuesta(filas[0])
   } catch (err) {
     console.error("[API] Error en vendedor/cotizaciones:", err)
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })

@@ -1,14 +1,18 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 /**
  * Bandeja de aprobación (Etapa 5): lista las cotizaciones en
  * "lista_para_revisar" para Administración, CON el desglose completo de
  * costos_internos — a diferencia de /api/vendedor/cotizaciones, que nunca
- * lo devuelve. Como el resto del sistema, no hay un chequeo de rol propio
- * acá (el mismo patrón de todo /api/db/* y /api/eventos): la restricción
- * real es que solo administracion/soporte tienen esta pantalla en su menú.
+ * lo devuelve. Solo Administración y Soporte (lib/solo-administracion.ts:
+ * se chequea el PERFIL de la sesión, no solo que haya sesión).
+ *
+ * Modelo nuevo (Paso 2, servicios_elegidos.version 2): trae además el
+ * desglose por rubro (costo, ganancia y precio), los avisos, el DNI y las
+ * líneas de personal que salieron de las reglas del salón.
  */
 
 function parseJson(raw: unknown): any {
@@ -32,17 +36,23 @@ interface CotizacionFila {
   servicios_elegidos: unknown
   precio_venta_sugerido: number
   costos_internos: unknown
+  desglose_venta: unknown
+  avisos: unknown
+  cliente_dni: string | null
   estado: string
   created_at: string
   updated_at: string
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const filas = (await sql`
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin,
              salon, tipo_evento, nombre_festejados, paquete_id, invitados, servicios_elegidos,
-             precio_venta_sugerido, costos_internos, estado, created_at, updated_at
+             precio_venta_sugerido, costos_internos, desglose_venta, avisos, cliente_dni,
+             estado, created_at, updated_at
       FROM cotizaciones
       WHERE estado = 'lista_para_revisar'
       ORDER BY updated_at ASC
@@ -52,6 +62,8 @@ export async function GET() {
       const invitados = parseJson(f.invitados) || {}
       const serviciosElegidos = parseJson(f.servicios_elegidos) || {}
       const costosInternos = parseJson(f.costos_internos) || {}
+      const version = Number(serviciosElegidos.version) || 1
+      const desglose = version === 2 ? parseJson(f.desglose_venta) : null
       const totalPersonas =
         (Number(invitados.adultos) || 0) +
         (Number(invitados.adolescentes) || 0) +
@@ -63,6 +75,13 @@ export async function GET() {
         vendedor: f.vendedor,
         clienteNombre: f.cliente_nombre,
         clienteTelefono: f.cliente_telefono,
+        clienteDni: f.cliente_dni,
+        version,
+        // Solo modelo nuevo: rubros con costo/ganancia/precio, recetas, barra,
+        // servicios, personal y avisos (ver /api/vendedor/cotizaciones).
+        desglose,
+        personalLineas: Array.isArray(serviciosElegidos.personalLineas) ? serviciosElegidos.personalLineas : [],
+        avisos: Array.isArray(parseJson(f.avisos)) ? parseJson(f.avisos) : [],
         fechaEvento: f.fecha_evento,
         horario: f.horario,
         horarioFin: f.horario_fin,

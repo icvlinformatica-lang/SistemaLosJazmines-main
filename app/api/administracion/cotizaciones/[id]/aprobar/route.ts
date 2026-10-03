@@ -1,7 +1,16 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
-import { ID_BARRA_PERSONALIZADA, TRAGOS_POR_ADULTO } from "@/lib/precio-barra"
+import { soloAdministracion } from "@/lib/solo-administracion"
+import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
+
+/**
+ * tragosPorPersona de la barra del evento: el valor que usa el planificador
+ * por defecto (y 114 de los 117 eventos con barra). El costo de la barra NO
+ * lo usa: calcularComprasBarras() cuenta 1 trago de cada cóctel por adulto,
+ * que es la misma regla de "paquete" con la que se cotizó la barra.
+ */
+const TRAGOS_POR_PERSONA_EVENTO = 2
 
 /**
  * "Aprobar" (Etapa 5): crea el evento real a partir de la cotización.
@@ -15,6 +24,16 @@ import { ID_BARRA_PERSONALIZADA, TRAGOS_POR_ADULTO } from "@/lib/precio-barra"
  * Solo trae del lado del servidor lo que hace falta para completar el
  * evento (recetas/servicios ya elegidos, costo de servicios ya calculado)
  * — nunca confía en nada que no sea el "vendedor" elegido a mano en el body.
+ *
+ * Modelo nuevo (servicios_elegidos.version 2, cotizador costo + ganancia
+ * por salón):
+ *   - la barra armada elegida pasa con sus cócteles reales (los de la
+ *     plantilla al momento de cotizar), así el planificador calcula el costo
+ *     de insumos como en cualquier evento;
+ *   - las recetas del menú van a adultos Y a niños (la cocina se cotizó por
+ *     adultos + niños). PENDIENTE de revisar con el negocio;
+ *   - el DNI y el nombre del cliente van a evento.contrato.
+ * Las cotizaciones viejas se aprueban como antes, con su precio guardado.
  *
  * Deja la cotización en "convertida" con evento_id apuntando al nuevo
  * evento — no se borra, queda como historial.
@@ -44,6 +63,7 @@ interface CotizacionFila {
   salon: string | null
   tipo_evento: string | null
   nombre_festejados: string | null
+  cliente_dni: string | null
   invitados: unknown
   servicios_elegidos: unknown
   precio_venta_sugerido: number
@@ -87,6 +107,8 @@ async function liberarReserva(id: string, eventoId: string) {
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   let reservada: { id: string; eventoId: string } | null = null
   try {
     const { id } = await params
@@ -108,7 +130,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       UPDATE cotizaciones SET estado = 'aprobada', updated_at = now()
       WHERE id = ${id} AND estado = 'lista_para_revisar'
       RETURNING id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
-                nombre_festejados, invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
+                nombre_festejados, cliente_dni, invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
     `) as unknown as CotizacionFila[]
 
     if (!filas.length) {
@@ -128,6 +150,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const invitados = parseJson(c.invitados) || {}
     const serviciosElegidos = parseJson(c.servicios_elegidos) || {}
     const recetas = serviciosElegidos.recetas || {}
+    const modeloNuevo = Number(serviciosElegidos.version) === 2
     // La línea "Barra personalizada" no es un servicio del catálogo: no se
     // copia a evento.servicios; sus cócteles pasan a evento.barras (abajo).
     const servicios = (Array.isArray(serviciosElegidos.servicios) ? serviciosElegidos.servicios : []).filter(
@@ -143,9 +166,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       serviciosElegidos.barra?.tipo === "personalizada" && Array.isArray(serviciosElegidos.barra.cocteles)
         ? serviciosElegidos.barra.cocteles.filter((x: unknown) => typeof x === "string")
         : []
-    const barrasEvento = coctelesBarra.length
-      ? [{ id: crypto.randomUUID(), barraTemplateId: "", coctelesIncluidos: coctelesBarra, tragosPorPersona: TRAGOS_POR_ADULTO }]
-      : []
+    // Modelo nuevo: barra armada → sus cócteles y la plantilla de la que salen.
+    const barraArmada =
+      modeloNuevo && serviciosElegidos.barra?.tipo === "armada" && Array.isArray(serviciosElegidos.barra.cocteles)
+        ? {
+            barraTemplateId: String(serviciosElegidos.barra.barraTemplateId || ""),
+            cocteles: serviciosElegidos.barra.cocteles.filter((x: unknown) => typeof x === "string") as string[],
+          }
+        : null
+    // Mismo formato que cualquier evento (BarraEvento de lib/store.ts); POST
+    // /api/eventos lo guarda igual que a todos (JSON.stringify).
+    const barrasEvento = barraArmada?.cocteles.length
+      ? [
+          {
+            id: crypto.randomUUID(),
+            barraTemplateId: barraArmada.barraTemplateId,
+            coctelesIncluidos: barraArmada.cocteles,
+            tragosPorPersona: TRAGOS_POR_PERSONA_EVENTO,
+          },
+        ]
+      : coctelesBarra.length
+        ? [{ id: crypto.randomUUID(), barraTemplateId: "", coctelesIncluidos: coctelesBarra, tragosPorPersona: TRAGOS_POR_PERSONA_EVENTO }]
+        : []
 
     // El vendedor solo eligió ROLES (sin montos, ver /api/vendedor/catalogo).
     // Acá Administración ya definió el monto de cada uno en el body — se
@@ -203,7 +245,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       personasDietasEspeciales: Number(invitados.personasDietasEspeciales) || 0,
       recetasAdultos: Array.isArray(recetas.adultos) ? recetas.adultos : [],
       recetasAdolescentes: Array.isArray(recetas.adolescentes) ? recetas.adolescentes : [],
-      recetasNinos: Array.isArray(recetas.ninos) ? recetas.ninos : [],
+      // Modelo nuevo: el menú elegido va también a niños (ver cabecera).
+      recetasNinos: modeloNuevo
+        ? Array.isArray(recetas.adultos) ? recetas.adultos : []
+        : Array.isArray(recetas.ninos) ? recetas.ninos : [],
       recetasDietasEspeciales: Array.isArray(recetas.dietasEspeciales) ? recetas.dietasEspeciales : [],
       servicios: servicios.map((s: { servicioId: string; nombre: string; unidad: string; cantidad: number }) => ({
         servicioId: s.servicioId,
@@ -217,7 +262,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       cotizacionId: id,
       costoServicios: Number(costosInternos.totalCostoServicios) || 0,
       personalEvento,
-      contrato: { vendedor, telefono: c.cliente_telefono || undefined },
+      contrato: {
+        vendedor,
+        telefono: c.cliente_telefono || undefined,
+        // Solo modelo nuevo: las viejas se aprueban exactamente como antes.
+        nombreCompleto: modeloNuevo ? c.cliente_nombre || undefined : undefined,
+        dni: modeloNuevo ? c.cliente_dni || undefined : undefined,
+      },
       notasInternas: `Convertido desde una cotización generada por ${vendedor}.`,
     }
 

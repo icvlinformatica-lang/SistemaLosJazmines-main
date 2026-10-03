@@ -18,12 +18,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
         estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
-        evento_id
+        evento_id, cliente_dni
       )
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
         estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
-        evento_id
+        evento_id, cliente_dni
       FROM movida
       RETURNING id
     `

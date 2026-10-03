@@ -14,6 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,8 +26,19 @@ import { useToast } from "@/hooks/use-toast"
 import { useStore } from "@/lib/store-context"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { TarifarioEditor } from "@/components/tarifario-editor"
+import {
+  DetalleCotizacionNueva,
+  asignacionesIniciales,
+  type AsignacionPersonal,
+  type DesgloseCotizacionV2,
+} from "@/components/cotizacion-detalle-admin"
 
 interface CotizacionPendiente {
+  /** 2 = modelo costo + ganancia por salón (Paso 2). Las anteriores, 1. */
+  version: number
+  /** Solo modelo nuevo: costo, ganancia y precio por rubro, avisos, etc. */
+  desglose: DesgloseCotizacionV2 | null
+  clienteDni: string | null
   id: string
   vendedor: string
   clienteNombre: string
@@ -72,6 +84,9 @@ export default function CotizacionesPendientesPage() {
   // El vendedor solo eligió roles (sin plata); acá se sugiere la tarifa
   // vigente del roster y Administración la puede ajustar antes de aprobar.
   const [montosPersonal, setMontosPersonal] = useState<Record<string, Record<string, number>>>({})
+  // Modelo nuevo: personal armado desde las reglas del salón, por cotización.
+  const [asignaciones, setAsignaciones] = useState<Record<string, AsignacionPersonal[]>>({})
+  const router = useRouter()
 
   // Aprobar
   const [vendedorElegido, setVendedorElegido] = useState<Record<string, string>>({})
@@ -126,6 +141,19 @@ export default function CotizacionesPendientesPage() {
     })
   }, [cotizaciones, personal])
 
+  // Modelo nuevo: preasigna personas de cada función la primera vez que se ve
+  // cada cotización (si Administración ya la tocó, no la pisa).
+  useEffect(() => {
+    setAsignaciones((prev) => {
+      const siguiente = { ...prev }
+      for (const c of cotizaciones) {
+        if (c.version !== 2 || !c.desglose || siguiente[c.id]) continue
+        siguiente[c.id] = asignacionesIniciales(c.desglose, personal)
+      }
+      return siguiente
+    })
+  }, [cotizaciones, personal])
+
   const nombreReceta = (id: string) => recetas.find((r) => r.id === id)?.nombre || id
   const personaDelRoster = (id: string) => personal.find((p) => p.id === id)
 
@@ -158,15 +186,30 @@ export default function CotizacionesPendientesPage() {
     }
     setAprobandoId(c.id)
     try {
-      const personalEvento = c.personalSeleccionado.map((personalId) => {
-        const persona = personaDelRoster(personalId)
-        return {
-          personalId,
-          nombre: persona ? `${persona.nombre} ${persona.apellido}` : "Sin nombre",
-          funcion: persona?.funcion || "",
-          monto: montosPersonal[c.id]?.[personalId] ?? persona?.tarifaBase ?? 0,
-        }
-      })
+      // Modelo nuevo: el personal que quedó asignado desde las reglas del
+      // salón (los lugares sin persona no se cargan). Viejo: como antes.
+      const personalEvento =
+        c.version === 2
+          ? (asignaciones[c.id] ?? [])
+              .filter((a) => a.personalId)
+              .map((a) => {
+                const persona = personaDelRoster(a.personalId)
+                return {
+                  personalId: a.personalId,
+                  nombre: persona ? `${persona.nombre} ${persona.apellido}` : "Sin nombre",
+                  funcion: a.funcion,
+                  monto: a.monto,
+                }
+              })
+          : c.personalSeleccionado.map((personalId) => {
+              const persona = personaDelRoster(personalId)
+              return {
+                personalId,
+                nombre: persona ? `${persona.nombre} ${persona.apellido}` : "Sin nombre",
+                funcion: persona?.funcion || "",
+                monto: montosPersonal[c.id]?.[personalId] ?? persona?.tarifaBase ?? 0,
+              }
+            })
       const body: Record<string, unknown> = { vendedor, personalEvento }
       // Solo se manda si Administración la tocó a mano (corrigiendo un error
       // previo) — si no, la cotización sigue con su fecha original.
@@ -186,6 +229,11 @@ export default function CotizacionesPendientesPage() {
         return
       }
       toast({ title: "Evento creado", description: `"${data.eventoNombre}" ya figura en Eventos > Lista.` })
+      // Se abre el planificador del evento nuevo (lo trae de /api/eventos/[id]).
+      if (data.eventoId) {
+        router.push(`/evento?id=${data.eventoId}`)
+        return
+      }
       cargar()
     } catch {
       toast({ title: "Error de conexión", variant: "destructive" })
@@ -315,6 +363,20 @@ export default function CotizacionesPendientesPage() {
 
                   <CollapsibleContent>
                     <div className="border-t border-border px-4 py-4 space-y-4">
+                      {c.version === 2 && c.desglose ? (
+                        <DetalleCotizacionNueva
+                          desglose={c.desglose}
+                          clienteDni={c.clienteDni}
+                          fechaEvento={c.fechaEvento}
+                          tipoEvento={c.tipoEvento}
+                          roster={personal}
+                          asignaciones={asignaciones[c.id] ?? []}
+                          onAsignaciones={(a) => setAsignaciones((prev) => ({ ...prev, [c.id]: a }))}
+                        />
+                      ) : (
+                        <>
+                      {/* Cotización del modelo ANTERIOR: se ve como siempre y se
+                          aprueba con su precio guardado (no se recalcula). */}
                       {/* Datos del cliente / evento */}
                       <div className="grid gap-2 sm:grid-cols-2 text-sm">
                         {c.clienteTelefono && (
@@ -443,6 +505,8 @@ export default function CotizacionesPendientesPage() {
                           No incluye costo de insumos/recetas (comida) — esta cotización solo calculó el costo de los servicios contratados.
                         </p>
                       </div>
+                        </>
+                      )}
 
                       {/* Fecha inválida al aprobar: se corrige acá mismo en vez de
                           tener que rechazar la cotización solo por eso. */}
@@ -499,7 +563,7 @@ export default function CotizacionesPendientesPage() {
                               disabled={aprobandoId === c.id}
                             >
                               <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                              {aprobandoId === c.id ? "Aprobando..." : "Aprobar"}
+                              {aprobandoId === c.id ? "Aprobando..." : "Aprobar y crear evento"}
                             </Button>
                             <Button variant="outline" className="flex-1" onClick={() => setMostrarRechazoId(c.id)}>
                               <XCircle className="h-4 w-4 mr-1.5" />
