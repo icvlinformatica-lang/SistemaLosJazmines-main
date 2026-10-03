@@ -2,9 +2,9 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
-import { leerBarrasArmadas, leerConfigCotizador, leerCostosPlatos } from "@/lib/cotizador-config-servidor"
-import { precioPorPorcion } from "@/lib/precio-menu"
-import { precioBarraDesdeCostos } from "@/lib/precio-barra-cotizador"
+import { leerBarrasArmadas, leerCostosPlatos } from "@/lib/cotizador-config-servidor"
+import { leerConfigTodosLosSalones, leerPersonalConTarifa, leerServiciosConCosto } from "@/lib/cotizador-salon-servidor"
+import { precioBarraSalon, precioConGanancia, tarifaDeRegla } from "@/lib/cotizador-salon"
 
 /**
  * Catálogo saneado para la pantalla del vendedor (/vendedor/cotizar):
@@ -70,11 +70,10 @@ export async function GET() {
     // resultado; el costo en sí NUNCA viaja al vendedor.
     const preciosCocteles = await leerPreciosCocteles()
 
-    // Cuarta tanda: configuración del cotizador rápido (Parte 2). Si la
-    // migración 014 todavía no está aplicada, el bloque sale vacío y el resto
-    // del catálogo sigue igual.
-    const cotizadorRapido = await armarCotizadorRapido(preciosCocteles).catch((err) => {
-      console.error("[API] vendedor/catalogo: sin configuración del cotizador rápido:", err)
+    // Cuarta tanda: cotizador por salón (scripts/015), ya en PRECIOS. Si falla,
+    // el bloque sale vacío y el resto del catálogo sigue igual.
+    const cotizadorPorSalon = await armarCotizadorPorSalon(preciosCocteles).catch((err) => {
+      console.error("[API] vendedor/catalogo: sin cotizador por salón:", err)
       return null
     })
 
@@ -157,9 +156,9 @@ export async function GET() {
         },
         {},
       ),
-      // Cotizador rápido (Cotizaciones > Configuración): solo PRECIOS, nunca
-      // costos ni márgenes. Todavía no lo usa ninguna pantalla.
-      cotizadorRapido,
+      // Cotizador por salón (Cotizaciones > Configuración): solo PRECIOS, nunca
+      // costos ni ganancias. Todavía no lo usa ninguna pantalla (Paso 2).
+      cotizadorPorSalon,
     })
   } catch (err) {
     console.error("[API] Error en vendedor/catalogo:", err)
@@ -168,30 +167,50 @@ export async function GET() {
 }
 
 /**
- * Lo que el cotizador rápido necesita, ya convertido a precio: platos del
- * menú con su precio por porción, barras habilitadas con su precio por
- * adulto y qué servicios aparecen. Los costos se usan acá adentro y no salen.
+ * El cotizador por salón ya convertido a PRECIO para el vendedor: por cada
+ * salón, precio del salón, platos, barras visibles, servicios visibles y
+ * reglas de personal con su precio por persona. Costos, tarifas y ganancias
+ * se usan acá adentro y NO salen (ni siquiera los nombres de esos campos).
  */
-async function armarCotizadorRapido(preciosCocteles: Array<{ id: string; costoPorTrago: number }>) {
-  const [config, platos, barras] = await Promise.all([leerConfigCotizador(), leerCostosPlatos(), leerBarrasArmadas()])
-  const costosCocteles = Object.fromEntries(preciosCocteles.map((c) => [c.id, c.costoPorTrago]))
-  return {
-    menu: config.recetasMenu
+async function armarCotizadorPorSalon(preciosCocteles: Array<{ id: string; costoPorTrago: number }>) {
+  const salones = await leerConfigTodosLosSalones()
+  const [platos, barras] = await Promise.all([leerCostosPlatos(), leerBarrasArmadas()])
+  const [servicios, personal] = await Promise.all([leerServiciosConCosto(), leerPersonalConTarifa()])
+  const deCoctel = Object.fromEntries(preciosCocteles.map((c) => [c.id, c.costoPorTrago]))
+
+  return salones.map((cfg) => ({
+    salon: cfg.salon,
+    capacidadMaxima: cfg.capacidadMaxima,
+    precioSalon: precioConGanancia(cfg.costoSalon, cfg.gananciaSalon),
+    menu: cfg.recetas
       .map((id) => platos.find((p) => p.id === id))
       .filter((p): p is NonNullable<typeof p> => !!p)
-      .map((p) => ({ recetaId: p.id, nombre: p.nombre, precioPorPorcion: precioPorPorcion(p.costoPorPorcion, config.margenMenu) })),
+      .map((p) => ({ recetaId: p.id, nombre: p.nombre, precioPorPorcion: precioConGanancia(p.costoPorPorcion, cfg.gananciaCocina) })),
     barras: barras
-      .filter((b) => b.enCotizador)
+      .filter((b) => cfg.barras.includes(b.id))
       .map((b) => {
-        const precio = precioBarraDesdeCostos(b.coctelesIncluidos, costosCocteles, config.margenBarra)
+        const precio = precioBarraSalon(b.coctelesIncluidos, deCoctel, cfg.gananciaBarra)
         return {
           id: b.id,
           nombre: b.nombre,
-          coctelesIncluidos: b.coctelesIncluidos.filter((id) => id in costosCocteles),
+          coctelesIncluidos: b.coctelesIncluidos.filter((id) => id in deCoctel),
           precioPorAdulto: precio.precioPorAdulto,
           tragosPorAdulto: precio.tragosPorAdulto,
         }
       }),
-    serviciosOcultos: config.serviciosOcultos,
-  }
+    servicios: servicios
+      .filter((sv) => !cfg.servicios.find((e) => e.servicioId === sv.id)?.oculto)
+      .map((sv) => ({
+        servicioId: sv.id,
+        precio: precioConGanancia(sv.costo, cfg.gananciaServicios),
+        incluido: !!cfg.servicios.find((e) => e.servicioId === sv.id)?.incluido,
+      })),
+    personal: cfg.reglasPersonal.map((r) => ({
+      funcion: r.funcion,
+      cadaNInvitados: r.cadaNInvitados,
+      minimo: r.minimo,
+      aplica: r.aplica,
+      precioPorPersona: precioConGanancia(tarifaDeRegla(r, personal).tarifa, r.ganancia),
+    })),
+  }))
 }

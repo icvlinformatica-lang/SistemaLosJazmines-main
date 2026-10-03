@@ -1,37 +1,31 @@
 "use client"
 
-// Editor del tarifario del cotizador, embebido en Eventos > Cotizaciones,
-// al lado del precio base por salón.
+// Cotizaciones > Configuración.
 //
-// Acá se cargan SOLO las dos cosas que no son servicios:
-//   1. la grilla de precio del salón (rango de invitados × día × modalidad), y
-//   2. la regla de personal por invitados.
-// Más los vínculos de cada servicio de Menú/Barra con las recetas y el
-// template de barra que premarcan en el cotizador.
+// Arriba: el cotizador POR SALÓN (modelo costo + ganancia, scripts/015),
+// en components/cotizador-salon-editor.tsx.
 //
-// El precio de los menús, las barras y de cualquier otro servicio NO se
-// carga acá: sale de la tabla "servicios" y se edita en Finanzas > Servicios.
+// Abajo, plegada: la CONFIGURACIÓN ANTERIOR (TarifarioAnterior), que sigue
+// usando el cotizador del vendedor hasta el Paso 2 — no se borra:
+//   1. la grilla de precio del salón (rango de invitados × día × modalidad),
+//   2. la regla de personal por invitados (tarifario_personal_regla),
+//   3. servicios y personal "incluidos en el salón" (globales), y
+//   4. qué recetas / barra premarca cada servicio de Menú / Barra.
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed, PackageCheck, Pencil, CheckCircle2, AlertCircle, ChefHat, Wine, UserCheck } from "lucide-react"
+import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed, PackageCheck, Pencil, CheckCircle2, AlertCircle, UserCheck, ChevronDown, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import type { DiaTarifario, ModalidadSalon } from "@/lib/tarifario-cotizador"
-import {
-  BloqueBarrasContenido,
-  BloqueMenuContenido,
-  BloqueServiciosContenido,
-  type PlatoConCosto,
-} from "@/components/cotizador-config-bloques"
-import type { BarraParaEditar, CoctelConCosto } from "@/components/editor-barra"
+import { BloqueIncluidosAnterior } from "@/components/cotizador-config-bloques"
+import { Bloque, InputPrecio } from "@/components/config-bloque"
+import { CotizadorSalonEditor } from "@/components/cotizador-salon-editor"
 
 interface FilaGrilla {
   salon: string
@@ -71,91 +65,7 @@ const MODALIDAD_LABEL: Record<ModalidadSalon, string> = {
   con_catering: "Salón con catering y bebidas",
 }
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
-
-/**
- * Input de precio que muestra "$ 3.500.000" cuando está en reposo y el número
- * pelado apenas se lo enfoca. Formatear mientras se tipea pelea con el cursor
- * (se va al final en cada tecla), así que se formatea solo al salir.
- */
-function InputPrecio({
-  valor,
-  onChange,
-  etiqueta,
-}: {
-  valor: number
-  onChange: (n: number) => void
-  etiqueta: string
-}) {
-  const [enFoco, setEnFoco] = useState(false)
-  const [borrador, setBorrador] = useState("")
-
-  return (
-    <input
-      type="text"
-      inputMode="numeric"
-      aria-label={etiqueta}
-      value={enFoco ? borrador : valor > 0 ? fmt(valor) : ""}
-      placeholder="$ 0"
-      onFocus={() => {
-        setBorrador(valor > 0 ? String(valor) : "")
-        setEnFoco(true)
-      }}
-      onChange={(e) => {
-        const limpio = e.target.value.replace(/[^\d]/g, "")
-        setBorrador(limpio)
-        onChange(Number(limpio) || 0)
-      }}
-      onBlur={() => setEnFoco(false)}
-      className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-2 text-right text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-[#2d5a3d]/40 focus:border-[#2d5a3d]"
-    />
-  )
-}
-
-function Bloque({
-  icon,
-  title,
-  subtitle,
-  children,
-  defaultOpen = false,
-}: {
-  icon: React.ReactNode
-  title: string
-  subtitle?: string
-  children: React.ReactNode
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40">
-          <div className="shrink-0">{icon}</div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm">{title}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
-          </div>
-          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="border-t border-border p-4">{children}</div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
-/** Aviso cuando no se pudo leer la configuración del cotizador rápido. */
-function SinConfigCotizador() {
-  return (
-    <p className="text-xs text-amber-700">
-      No se pudo cargar esta configuración (¿falta aplicar la migración scripts/014_cotizador_config.sql?).
-    </p>
-  )
-}
-
-export function TarifarioEditor() {
+function TarifarioAnterior() {
   const { toast } = useToast()
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -174,19 +84,6 @@ export function TarifarioEditor() {
   const [funciones, setFunciones] = useState<string[]>([])
 
   const [salonVista, setSalonVista] = useState<string>(SALONES[0] ?? "")
-
-  // Cotizador rápido (/api/administracion/cotizador-config, solo Administración).
-  // null = no se pudo cargar (ej. falta la migración 014): sus bloques avisan
-  // y "Guardar" no la toca.
-  const [configCotizador, setConfigCotizador] = useState<{
-    margenMenu: number
-    margenBarra: number
-    recetasMenu: string[]
-    serviciosOcultos: string[]
-  } | null>(null)
-  const [platos, setPlatos] = useState<PlatoConCosto[]>([])
-  const [coctelesCosto, setCoctelesCosto] = useState<CoctelConCosto[]>([])
-  const [barrasArmadas, setBarrasArmadas] = useState<BarraParaEditar[]>([])
 
   // Cambios sin guardar: se compara contra lo que vino de la base al cargar.
   // Sin esto es fácil tocar precios, irse de la pantalla y perder el trabajo.
@@ -207,15 +104,8 @@ export function TarifarioEditor() {
     Promise.all([
       fetch("/api/administracion/tarifario").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/vendedor/catalogo").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/administracion/cotizador-config").then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([tarifario, catalogo, config]) => {
-        if (config?.ok) {
-          setConfigCotizador(config.config)
-          setPlatos(config.platos || [])
-          setCoctelesCosto(config.cocteles || [])
-          setBarrasArmadas(config.barras || [])
-        }
+      .then(([tarifario, catalogo]) => {
         if (tarifario?.ok) {
           setGrilla(tarifario.grilla || [])
           setReglas(tarifario.reglasPersonal || [])
@@ -265,11 +155,8 @@ export function TarifarioEditor() {
       barraPorServicio,
       incluidosServicio: [...incluidosServicio].sort(),
       incluidosPersonal: porClave(incluidosPersonal, (p) => `${p?.personalId ?? ""}|${p?.dia ?? ""}`),
-      configCotizador: configCotizador
-        ? { ...configCotizador, serviciosOcultos: [...configCotizador.serviciosOcultos].sort() }
-        : null,
     })
-  }, [grilla, reglas, recetasPorServicio, barraPorServicio, incluidosServicio, incluidosPersonal, configCotizador])
+  }, [grilla, reglas, recetasPorServicio, barraPorServicio, incluidosServicio, incluidosPersonal])
   const hayCambiosSinGuardar = guardado !== "" && huella !== guardado
 
   // Apenas termina de cargar, lo que vino de la base pasa a ser la referencia
@@ -427,22 +314,6 @@ export function TarifarioEditor() {
         toast({ title: data.error || "No se pudo guardar el tarifario", variant: "destructive" })
         return
       }
-      if (configCotizador) {
-        const resConfig = await fetch("/api/administracion/cotizador-config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(configCotizador),
-        })
-        const dataConfig = await resConfig.json().catch(() => ({}))
-        if (!resConfig.ok || !dataConfig.ok) {
-          toast({
-            title: dataConfig.error || "No se pudo guardar el menú / márgenes / servicios",
-            description: "La grilla y el resto sí se guardaron.",
-            variant: "destructive",
-          })
-          return
-        }
-      }
       setGuardado(huella)
       setGuardadoRecien(true)
       setTimeout(() => setGuardadoRecien(false), 4000)
@@ -590,7 +461,7 @@ export function TarifarioEditor() {
                         <span className="w-16 shrink-0 text-xs text-muted-foreground sm:hidden">Viernes</span>
                         <InputPrecio
                           valor={r.viernes?.precio ?? 0}
-                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "viernes", n)}
+                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "viernes", n ?? 0)}
                           etiqueta={`Precio del viernes, ${r.min} a ${r.max} invitados`}
                         />
                       </div>
@@ -599,7 +470,7 @@ export function TarifarioEditor() {
                         <span className="w-16 shrink-0 text-xs text-muted-foreground sm:hidden">Sábado</span>
                         <InputPrecio
                           valor={r.sabado?.precio ?? 0}
-                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "sabado", n)}
+                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "sabado", n ?? 0)}
                           etiqueta={`Precio del sábado, ${r.min} a ${r.max} invitados`}
                         />
                       </div>
@@ -642,61 +513,12 @@ export function TarifarioEditor() {
       <div className="border-t border-border" />
 
       <Bloque
-        icon={<ChefHat className="h-5 w-5 text-muted-foreground" />}
-        title="Menú"
-        subtitle="Qué platos aparecen como botón en el cotizador, su orden y el margen."
-      >
-        {configCotizador ? (
-          <BloqueMenuContenido
-            platos={platos}
-            recetasMenu={configCotizador.recetasMenu}
-            onRecetasMenu={(recetasMenu) => setConfigCotizador((c) => (c ? { ...c, recetasMenu } : c))}
-            margenMenu={configCotizador.margenMenu}
-            onMargenMenu={(margenMenu) => setConfigCotizador((c) => (c ? { ...c, margenMenu } : c))}
-          />
-        ) : (
-          <SinConfigCotizador />
-        )}
-      </Bloque>
-
-      <div className="border-t border-border" />
-
-      <Bloque
-        icon={<Wine className="h-5 w-5 text-muted-foreground" />}
-        title="Barras"
-        subtitle="Barras armadas para cotizar: una referencia de precio por adulto."
-      >
-        {configCotizador ? (
-          <BloqueBarrasContenido
-            barras={barrasArmadas}
-            onBarras={setBarrasArmadas}
-            cocteles={coctelesCosto}
-            margenBarra={configCotizador.margenBarra}
-            onMargenBarra={(margenBarra) => setConfigCotizador((c) => (c ? { ...c, margenBarra } : c))}
-          />
-        ) : (
-          <SinConfigCotizador />
-        )}
-      </Bloque>
-
-      <div className="border-t border-border" />
-
-      <Bloque
         icon={<PackageCheck className="h-5 w-5 text-muted-foreground" />}
-        title="Servicios del cotizador"
-        subtitle="Qué servicios aparecen en el cotizador y cuáles ya vienen incluidos en el precio del salón."
+        title="Servicios incluidos en el salón"
+        subtitle="Cuáles ya vienen incluidos en el precio del salón (para todos los salones)."
       >
-        {!configCotizador && <SinConfigCotizador />}
-        {/* "Incluido en el salón" ya existía: funciona aunque la configuración
-            nueva no haya cargado; "Aparece" queda deshabilitado en ese caso. */}
-        <BloqueServiciosContenido
+        <BloqueIncluidosAnterior
           servicios={servicios}
-          serviciosOcultos={configCotizador?.serviciosOcultos ?? []}
-          onServiciosOcultos={
-            configCotizador
-              ? (serviciosOcultos) => setConfigCotizador((c) => (c ? { ...c, serviciosOcultos } : c))
-              : undefined
-          }
           incluidosServicio={incluidosServicio}
           onIncluidosServicio={setIncluidosServicio}
         />
@@ -948,6 +770,48 @@ export function TarifarioEditor() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+/**
+ * Cotizaciones > Configuración: arriba el cotizador por salón; abajo, plegada,
+ * la configuración anterior. La anterior se monta recién la primera vez que
+ * se abre y después queda montada (escondida) para no perder lo que se esté
+ * editando si se la pliega sin guardar.
+ */
+export function TarifarioEditor() {
+  const [anteriorAbierta, setAnteriorAbierta] = useState(false)
+  const [anteriorMontada, setAnteriorMontada] = useState(false)
+
+  return (
+    <div className="space-y-4">
+      <CotizadorSalonEditor />
+      <div className="rounded-xl border border-dashed border-border bg-muted/30">
+        <button
+          type="button"
+          onClick={() => {
+            setAnteriorAbierta((v) => !v)
+            setAnteriorMontada(true)
+          }}
+          aria-expanded={anteriorAbierta}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
+        >
+          <History className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Configuración anterior — la usa el cotizador hasta el Paso 2</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Grilla de precios, regla de personal, incluidos y premarcas que usa hoy el cotizador del vendedor.
+            </p>
+          </div>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${anteriorAbierta ? "rotate-180" : ""}`} />
+        </button>
+        {anteriorMontada && (
+          <div className={anteriorAbierta ? "p-2 pt-0" : "hidden"}>
+            <TarifarioAnterior />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

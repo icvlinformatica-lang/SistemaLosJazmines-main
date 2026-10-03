@@ -1,8 +1,10 @@
 "use client"
 
 // Editor de una barra armada para cotizar (barra_templates). Un solo
-// componente con dos accesos: Cotizaciones > Configuración > Barras y el
-// botón "Crear barra" de Cócteles (BotonCrearBarra, abajo).
+// componente con dos accesos: Cotizaciones > Configuración > Barras (con la
+// ganancia de barra del salón elegido) y el botón "Crear barra" de Cócteles
+// (BotonCrearBarra, abajo: solo costo). En qué salones aparece se elige en
+// Configuración (cotizador_salon_barra).
 //
 // La barra es una REFERENCIA DE PRECIO para el cotizador: 1 trago de cada
 // cóctel por adulto (lib/precio-barra-cotizador.ts). Los tragos reales del
@@ -64,6 +66,7 @@ export function EditorBarra({
 
   const costos = useMemo(() => Object.fromEntries(cocteles.map((c) => [c.id, c.costoPorTrago])), [cocteles])
   const precio = precioBarraDesdeCostos(elegidos, costos, margenBarra)
+  const costoPorAdulto = precioBarraDesdeCostos(elegidos, costos, 0).precioPorAdulto
 
   const porCategoria = useMemo(() => {
     const grupos = new Map<string, CoctelConCosto[]>()
@@ -80,12 +83,12 @@ export function EditorBarra({
       const res = await fetch(barra ? `/api/barra-templates/${barra.id}` : "/api/barra-templates", {
         method: barra ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        // Una barra nueva hecha acá es para cotizar: arranca visible en el
-        // cotizador. Al editar no se toca el switch.
+        // Qué barras aparecen en el cotizador se elige POR SALÓN
+        // (cotizador_salon_barra, scripts/015): acá no se toca la marca
+        // global vieja barra_templates.en_cotizador.
         body: JSON.stringify({
           nombre: nombre.trim(),
           coctelesIncluidos: elegidos,
-          ...(barra ? {} : { enCotizador: true }),
         }),
       })
       const data = await res.json().catch(() => null)
@@ -162,11 +165,15 @@ export function EditorBarra({
 
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
             <p className="text-sm font-semibold tabular-nums">
-              {fmt(precio.precioPorAdulto)} por adulto · {precio.tragosPorAdulto}{" "}
-              {precio.tragosPorAdulto === 1 ? "trago" : "tragos"} por adulto
+              {margenBarra > 0
+                ? `costo ${fmt(costoPorAdulto)} → precio ${fmt(precio.precioPorAdulto)} por adulto`
+                : `costo ${fmt(costoPorAdulto)} por adulto`}{" "}
+              · {precio.tragosPorAdulto} {precio.tragosPorAdulto === 1 ? "trago" : "tragos"} por adulto
             </p>
             <p className="text-xs text-muted-foreground">
-              Suma del precio por trago de cada cóctel (costo + {Math.round(margenBarra * 100)} %).
+              {margenBarra > 0
+                ? `Suma de 1 trago de cada cóctel, con la ganancia de barra del salón (${Math.round(margenBarra * 1000) / 10} %).`
+                : "Suma del costo de 1 trago de cada cóctel. La ganancia se pone en cada salón (Cotizaciones > Configuración)."}
             </p>
           </div>
           {precio.esGrande && (
@@ -208,7 +215,9 @@ export function BotonCrearBarra() {
         toast({ title: data?.error || "No se pudo cargar la carta", variant: "destructive" })
         return
       }
-      setDatos({ cocteles: data.cocteles ?? [], margenBarra: Number(data.config?.margenBarra) || 0 })
+      // La ganancia de barra ahora es por salón: desde Cócteles se muestra
+      // solo el costo (margen 0).
+      setDatos({ cocteles: data.cocteles ?? [], margenBarra: 0 })
       setAbierto(true)
     } catch {
       toast({ title: "Error de conexión", variant: "destructive" })

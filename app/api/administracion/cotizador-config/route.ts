@@ -13,7 +13,10 @@ import {
  * Configuración del cotizador rápido (Eventos > Cotizaciones > Configuración):
  * márgenes, platos del menú, servicios visibles y barras armadas, CON costos.
  * Solo Administración y Soporte — el vendedor ve los precios ya calculados
- * en /api/vendedor/catalogo (bloque cotizadorRapido), nunca costos ni márgenes.
+ * en /api/vendedor/catalogo, nunca costos ni márgenes. OJO: desde scripts/015 la
+ * configuración del cotizador es POR SALÓN (/api/administracion/cotizador-salon):
+ * esta config global quedó sin usar salvo la carta con costos para "Crear barra"
+ * de Cócteles. Limpiar después del Paso 2.
  */
 const PERFILES_PERMITIDOS = ["administracion", "soporte"]
 
