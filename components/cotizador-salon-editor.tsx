@@ -36,6 +36,7 @@ import {
   precioConGanancia,
   simularPersonal,
   tarifaDeRegla,
+  tarifaMasAlta,
   type AplicaRegla,
   type PersonaConTarifa,
   type ReglaPersonalSalon,
@@ -550,8 +551,8 @@ function BloquePersonal({
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
         Cantidad = el mínimo, o 1 cada N invitados redondeando para arriba (lo que sea mayor). N = 0 es personal fijo:
-        siempre el mínimo (Puerta, Maestranza, Coordinador...). Tarifa vacía = la tarifa más alta de esa función en
-        Finanzas &gt; Personal.
+        siempre el mínimo (Puerta, Maestranza, Coordinador...). La tarifa sale sola de Finanzas &gt; Personal (la más
+        alta de esa función): cargá ahí el precio de cada persona y acá solo cuántos hacen falta y la ganancia.
       </p>
 
       {reglas.length === 0 && <p className="text-sm text-muted-foreground">Este salón todavía no tiene reglas de personal.</p>}
@@ -559,6 +560,8 @@ function BloquePersonal({
       <div className="space-y-2">
         {reglas.map((r, i) => {
           const tarifa = tarifaDeRegla(r, personal)
+          // La de Finanzas > Personal (la más alta de esa función), se use o no.
+          const tarifaFinanzas = tarifaMasAlta(r.funcion, personal)
           const precioUnitario = precioConGanancia(tarifa.tarifa, r.ganancia)
           // En el desplegable: las funciones libres + la propia (aunque ya no
           // haya nadie activo con esa función).
@@ -592,7 +595,7 @@ function BloquePersonal({
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(2,minmax(0,0.8fr))_minmax(0,1.4fr)_auto_minmax(0,1.2fr)] sm:items-end">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto_minmax(0,1.3fr)] sm:items-end">
                 <label className="space-y-1 text-xs">
                   <span className="text-muted-foreground">1 cada N invitados</span>
                   <input
@@ -615,16 +618,6 @@ function BloquePersonal({
                     value={r.minimo}
                     onChange={(e) => cambiarRegla(i, { minimo: entero(e.target.value) })}
                     className="h-9 w-full rounded-lg border border-input bg-background px-2 text-right text-sm tabular-nums"
-                  />
-                </label>
-                <label className="col-span-2 space-y-1 text-xs sm:col-span-1">
-                  <span className="text-muted-foreground">Tarifa por persona</span>
-                  <InputPrecio
-                    valor={r.tarifa}
-                    onChange={(n) => cambiarRegla(i, { tarifa: n })}
-                    etiqueta={`${r.funcion}: tarifa`}
-                    placeholder={tarifa.origen === "personal" ? `auto ${fmt(tarifa.tarifa)}` : "$ 0"}
-                    className="h-9"
                   />
                 </label>
                 <div className="space-y-1 text-xs">
@@ -652,21 +645,47 @@ function BloquePersonal({
                   </Select>
                 </div>
               </div>
-              <p className="flex flex-wrap items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
-                {tarifa.origen === "sin_costo" ? (
-                  <AvisoSinCosto />
+              {/* Tarifa en su propia línea: por defecto la de Finanzas > Personal
+                  (no se escribe). Escribir otra es una acción aparte, para no
+                  pisarla sin querer. */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-muted/40 px-3 py-2 text-xs tabular-nums">
+                <span className="text-muted-foreground">Tarifa por persona:</span>
+                {r.tarifa == null ? (
+                  tarifaFinanzas ? (
+                    <span>
+                      <span className="font-semibold text-foreground">{fmt(tarifaFinanzas.tarifa)}</span>
+                      <span className="text-muted-foreground"> · de Finanzas &gt; Personal (la más alta: {tarifaFinanzas.de})</span>
+                    </span>
+                  ) : (
+                    <AvisoSinCosto texto={`Nadie con la función ${r.funcion} en Finanzas > Personal: va a cotizar $0`} />
+                  )
                 ) : (
-                  <>
-                    <span>
-                      costo {fmt(tarifa.tarifa)} →{" "}
-                      <span className="font-semibold text-foreground">precio {fmt(precioUnitario)}</span> por persona
-                    </span>
-                    <span>
-                      {tarifa.origen === "personal" ? `· la tarifa más alta, de ${tarifa.de}` : "· tarifa escrita a mano"}
-                    </span>
-                  </>
+                  <span className="flex items-center gap-2">
+                    <InputPrecio
+                      valor={r.tarifa}
+                      onChange={(n) => cambiarRegla(i, { tarifa: n ?? 0 })}
+                      etiqueta={`${r.funcion}: tarifa a mano`}
+                      className="h-8 w-32"
+                    />
+                    <span className="text-muted-foreground">a mano · no sigue los cambios de Finanzas &gt; Personal</span>
+                  </span>
                 )}
-              </p>
+                {tarifa.origen !== "sin_costo" && (
+                  <span>
+                    → con {r.ganancia} %: <span className="font-semibold text-foreground">precio {fmt(precioUnitario)}</span> por persona
+                  </span>
+                )}
+                {r.tarifa != null && tarifa.origen === "sin_costo" && <AvisoSinCosto />}
+                <button
+                  type="button"
+                  onClick={() => cambiarRegla(i, { tarifa: r.tarifa == null ? tarifaFinanzas?.tarifa ?? 0 : null })}
+                  className="ml-auto text-[11px] font-medium text-[#2d5a3d] underline-offset-2 hover:underline"
+                >
+                  {r.tarifa == null
+                    ? "Cambiar a mano"
+                    : `Usar la de Finanzas${tarifaFinanzas ? ` (${fmt(tarifaFinanzas.tarifa)})` : ""}`}
+                </button>
+              </div>
             </div>
           )
         })}
