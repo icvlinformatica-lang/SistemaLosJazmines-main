@@ -780,6 +780,14 @@ function TarifarioAnterior() {
  * se abre y después queda montada (escondida) para no perder lo que se esté
  * editando si se la pliega sin guardar.
  */
+/**
+ * La configuración anterior (grilla, regla de personal vieja, incluidos,
+ * premarcas) ya no la usa nada desde el Paso 2 (PR #290). Escondida a pedido
+ * del negocio (oct 2026), sin borrar ni el código ni las tablas: poner en
+ * true para volver a mostrarla.
+ */
+const MOSTRAR_CONFIGURACION_ANTERIOR = false
+
 export function TarifarioEditor() {
   const [anteriorAbierta, setAnteriorAbierta] = useState(false)
   const [anteriorMontada, setAnteriorMontada] = useState(false)
@@ -787,6 +795,7 @@ export function TarifarioEditor() {
   return (
     <div className="space-y-4">
       <CotizadorSalonEditor />
+      {MOSTRAR_CONFIGURACION_ANTERIOR && (
       <div className="rounded-xl border border-dashed border-border bg-muted/30">
         <button
           type="button"
@@ -812,6 +821,7 @@ export function TarifarioEditor() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
