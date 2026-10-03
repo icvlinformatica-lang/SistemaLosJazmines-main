@@ -2,6 +2,9 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
+import { leerBarrasArmadas, leerConfigCotizador, leerCostosPlatos } from "@/lib/cotizador-config-servidor"
+import { precioPorPorcion } from "@/lib/precio-menu"
+import { precioBarraDesdeCostos } from "@/lib/precio-barra-cotizador"
 
 /**
  * Catálogo saneado para la pantalla del vendedor (/vendedor/cotizar):
@@ -66,6 +69,14 @@ export async function GET() {
     // precio por trago para la barra personalizada. Del costo solo se usa el
     // resultado; el costo en sí NUNCA viaja al vendedor.
     const preciosCocteles = await leerPreciosCocteles()
+
+    // Cuarta tanda: configuración del cotizador rápido (Parte 2). Si la
+    // migración 014 todavía no está aplicada, el bloque sale vacío y el resto
+    // del catálogo sigue igual.
+    const cotizadorRapido = await armarCotizadorRapido(preciosCocteles).catch((err) => {
+      console.error("[API] vendedor/catalogo: sin configuración del cotizador rápido:", err)
+      return null
+    })
 
     const preciosVentaMap: Record<string, Record<string, number>> = {}
     for (const row of preciosVenta as unknown as Array<{ salon: string; fecha: string; precio: number }>) {
@@ -146,9 +157,41 @@ export async function GET() {
         },
         {},
       ),
+      // Cotizador rápido (Cotizaciones > Configuración): solo PRECIOS, nunca
+      // costos ni márgenes. Todavía no lo usa ninguna pantalla.
+      cotizadorRapido,
     })
   } catch (err) {
     console.error("[API] Error en vendedor/catalogo:", err)
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })
+  }
+}
+
+/**
+ * Lo que el cotizador rápido necesita, ya convertido a precio: platos del
+ * menú con su precio por porción, barras habilitadas con su precio por
+ * adulto y qué servicios aparecen. Los costos se usan acá adentro y no salen.
+ */
+async function armarCotizadorRapido(preciosCocteles: Array<{ id: string; costoPorTrago: number }>) {
+  const [config, platos, barras] = await Promise.all([leerConfigCotizador(), leerCostosPlatos(), leerBarrasArmadas()])
+  const costosCocteles = Object.fromEntries(preciosCocteles.map((c) => [c.id, c.costoPorTrago]))
+  return {
+    menu: config.recetasMenu
+      .map((id) => platos.find((p) => p.id === id))
+      .filter((p): p is NonNullable<typeof p> => !!p)
+      .map((p) => ({ recetaId: p.id, nombre: p.nombre, precioPorPorcion: precioPorPorcion(p.costoPorPorcion, config.margenMenu) })),
+    barras: barras
+      .filter((b) => b.enCotizador)
+      .map((b) => {
+        const precio = precioBarraDesdeCostos(b.coctelesIncluidos, costosCocteles, config.margenBarra)
+        return {
+          id: b.id,
+          nombre: b.nombre,
+          coctelesIncluidos: b.coctelesIncluidos.filter((id) => id in costosCocteles),
+          precioPorAdulto: precio.precioPorAdulto,
+          tragosPorAdulto: precio.tragosPorAdulto,
+        }
+      }),
+    serviciosOcultos: config.serviciosOcultos,
   }
 }

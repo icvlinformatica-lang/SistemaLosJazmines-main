@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed, PackageCheck, Pencil, CheckCircle2, AlertCircle } from "lucide-react"
+import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed, PackageCheck, Pencil, CheckCircle2, AlertCircle, ChefHat, Wine, UserCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,6 +25,13 @@ import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import type { DiaTarifario, ModalidadSalon } from "@/lib/tarifario-cotizador"
+import {
+  BloqueBarrasContenido,
+  BloqueMenuContenido,
+  BloqueServiciosContenido,
+  type PlatoConCosto,
+} from "@/components/cotizador-config-bloques"
+import type { BarraParaEditar, CoctelConCosto } from "@/components/editor-barra"
 
 interface FilaGrilla {
   salon: string
@@ -139,6 +146,15 @@ function Bloque({
   )
 }
 
+/** Aviso cuando no se pudo leer la configuración del cotizador rápido. */
+function SinConfigCotizador() {
+  return (
+    <p className="text-xs text-amber-700">
+      No se pudo cargar esta configuración (¿falta aplicar la migración scripts/014_cotizador_config.sql?).
+    </p>
+  )
+}
+
 export function TarifarioEditor() {
   const { toast } = useToast()
   const [cargando, setCargando] = useState(true)
@@ -159,6 +175,19 @@ export function TarifarioEditor() {
 
   const [salonVista, setSalonVista] = useState<string>(SALONES[0] ?? "")
 
+  // Cotizador rápido (/api/administracion/cotizador-config, solo Administración).
+  // null = no se pudo cargar (ej. falta la migración 014): sus bloques avisan
+  // y "Guardar" no la toca.
+  const [configCotizador, setConfigCotizador] = useState<{
+    margenMenu: number
+    margenBarra: number
+    recetasMenu: string[]
+    serviciosOcultos: string[]
+  } | null>(null)
+  const [platos, setPlatos] = useState<PlatoConCosto[]>([])
+  const [coctelesCosto, setCoctelesCosto] = useState<CoctelConCosto[]>([])
+  const [barrasArmadas, setBarrasArmadas] = useState<BarraParaEditar[]>([])
+
   // Cambios sin guardar: se compara contra lo que vino de la base al cargar.
   // Sin esto es fácil tocar precios, irse de la pantalla y perder el trabajo.
   const [guardado, setGuardado] = useState<string>("")
@@ -178,8 +207,15 @@ export function TarifarioEditor() {
     Promise.all([
       fetch("/api/administracion/tarifario").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/vendedor/catalogo").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/administracion/cotizador-config").then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([tarifario, catalogo]) => {
+      .then(([tarifario, catalogo, config]) => {
+        if (config?.ok) {
+          setConfigCotizador(config.config)
+          setPlatos(config.platos || [])
+          setCoctelesCosto(config.cocteles || [])
+          setBarrasArmadas(config.barras || [])
+        }
         if (tarifario?.ok) {
           setGrilla(tarifario.grilla || [])
           setReglas(tarifario.reglasPersonal || [])
@@ -229,8 +265,11 @@ export function TarifarioEditor() {
       barraPorServicio,
       incluidosServicio: [...incluidosServicio].sort(),
       incluidosPersonal: porClave(incluidosPersonal, (p) => `${p?.personalId ?? ""}|${p?.dia ?? ""}`),
+      configCotizador: configCotizador
+        ? { ...configCotizador, serviciosOcultos: [...configCotizador.serviciosOcultos].sort() }
+        : null,
     })
-  }, [grilla, reglas, recetasPorServicio, barraPorServicio, incluidosServicio, incluidosPersonal])
+  }, [grilla, reglas, recetasPorServicio, barraPorServicio, incluidosServicio, incluidosPersonal, configCotizador])
   const hayCambiosSinGuardar = guardado !== "" && huella !== guardado
 
   // Apenas termina de cargar, lo que vino de la base pasa a ser la referencia
@@ -387,6 +426,22 @@ export function TarifarioEditor() {
       if (!res.ok || !data.ok) {
         toast({ title: data.error || "No se pudo guardar el tarifario", variant: "destructive" })
         return
+      }
+      if (configCotizador) {
+        const resConfig = await fetch("/api/administracion/cotizador-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(configCotizador),
+        })
+        const dataConfig = await resConfig.json().catch(() => ({}))
+        if (!resConfig.ok || !dataConfig.ok) {
+          toast({
+            title: dataConfig.error || "No se pudo guardar el menú / márgenes / servicios",
+            description: "La grilla y el resto sí se guardaron.",
+            variant: "destructive",
+          })
+          return
+        }
       }
       setGuardado(huella)
       setGuardadoRecien(true)
@@ -587,6 +642,113 @@ export function TarifarioEditor() {
       <div className="border-t border-border" />
 
       <Bloque
+        icon={<ChefHat className="h-5 w-5 text-muted-foreground" />}
+        title="Menú"
+        subtitle="Qué platos aparecen como botón en el cotizador, su orden y el margen."
+      >
+        {configCotizador ? (
+          <BloqueMenuContenido
+            platos={platos}
+            recetasMenu={configCotizador.recetasMenu}
+            onRecetasMenu={(recetasMenu) => setConfigCotizador((c) => (c ? { ...c, recetasMenu } : c))}
+            margenMenu={configCotizador.margenMenu}
+            onMargenMenu={(margenMenu) => setConfigCotizador((c) => (c ? { ...c, margenMenu } : c))}
+          />
+        ) : (
+          <SinConfigCotizador />
+        )}
+      </Bloque>
+
+      <div className="border-t border-border" />
+
+      <Bloque
+        icon={<Wine className="h-5 w-5 text-muted-foreground" />}
+        title="Barras"
+        subtitle="Barras armadas para cotizar: una referencia de precio por adulto."
+      >
+        {configCotizador ? (
+          <BloqueBarrasContenido
+            barras={barrasArmadas}
+            onBarras={setBarrasArmadas}
+            cocteles={coctelesCosto}
+            margenBarra={configCotizador.margenBarra}
+            onMargenBarra={(margenBarra) => setConfigCotizador((c) => (c ? { ...c, margenBarra } : c))}
+          />
+        ) : (
+          <SinConfigCotizador />
+        )}
+      </Bloque>
+
+      <div className="border-t border-border" />
+
+      <Bloque
+        icon={<PackageCheck className="h-5 w-5 text-muted-foreground" />}
+        title="Servicios del cotizador"
+        subtitle="Qué servicios aparecen en el cotizador y cuáles ya vienen incluidos en el precio del salón."
+      >
+        {!configCotizador && <SinConfigCotizador />}
+        {/* "Incluido en el salón" ya existía: funciona aunque la configuración
+            nueva no haya cargado; "Aparece" queda deshabilitado en ese caso. */}
+        <BloqueServiciosContenido
+          servicios={servicios}
+          serviciosOcultos={configCotizador?.serviciosOcultos ?? []}
+          onServiciosOcultos={
+            configCotizador
+              ? (serviciosOcultos) => setConfigCotizador((c) => (c ? { ...c, serviciosOcultos } : c))
+              : undefined
+          }
+          incluidosServicio={incluidosServicio}
+          onIncluidosServicio={setIncluidosServicio}
+        />
+      </Bloque>
+
+      <div className="border-t border-border" />
+
+      <Bloque
+        icon={<UserCheck className="h-5 w-5 text-muted-foreground" />}
+        title="Personal incluido del salón"
+        subtitle="Qué personal se tilda solo los viernes y cuál los sábados."
+      >
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">
+            Domingo a jueves usan el juego de viernes. El personal no suma al precio de venta: es costo, y se
+            calcula en vivo como siempre.
+          </p>
+          <div className="space-y-1.5">
+            {personalCatalogo.map((p) => {
+              const actual = incluidosPersonal.find((i) => i.personalId === p.id)
+              const setDia = (dia: "viernes" | "sabado" | "ninguno") => {
+                setIncluidosPersonal((prev) => {
+                  const sinEste = prev.filter((i) => i.personalId !== p.id)
+                  return dia === "ninguno" ? sinEste : [...sinEste, { personalId: p.id, dia }]
+                })
+              }
+              return (
+                <div key={p.id} className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm w-56 shrink-0 truncate" title={`${p.nombre} ${p.apellido} — ${p.funcion}`}>
+                    {p.nombre} {p.apellido}
+                    <span className="text-muted-foreground"> · {p.funcion}</span>
+                  </span>
+                  <Select value={actual?.dia ?? "ninguno"} onValueChange={(v) => setDia(v as "viernes" | "sabado" | "ninguno")}>
+                    <SelectTrigger className="h-8 w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ninguno">No incluido</SelectItem>
+                      <SelectItem value="viernes">Incluido viernes</SelectItem>
+                      <SelectItem value="sabado">Incluido sábado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </Bloque>
+
+      <div className="border-t border-border" />
+
+      <Bloque
         icon={<Users className="h-5 w-5 text-muted-foreground" />}
         title="Regla de personal por invitados"
         subtitle="Solo se aplica si el evento lleva menú. El vendedor puede ajustarlo después."
@@ -650,82 +812,6 @@ export function TarifarioEditor() {
 
       <div className="border-t border-border" />
 
-      <Bloque
-        icon={<PackageCheck className="h-5 w-5 text-muted-foreground" />}
-        title="Qué incluye el precio del salón"
-        subtitle="Lo tildado se agrega solo a la cotización y no se cobra aparte."
-      >
-        <div className="space-y-5">
-          <div>
-            <p className="text-sm font-semibold mb-2">Servicios incluidos</p>
-            <p className="text-xs text-muted-foreground mb-2">
-              Solo dejan de cobrarse si el salón se vende a precio de lista (grilla o Calendario de Precios). Si el
-              salón no tiene precio cargado, se cobran como cualquier adicional.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {servicios.map((sv) => {
-                const activo = incluidosServicio.includes(sv.id)
-                return (
-                  <button
-                    key={sv.id}
-                    type="button"
-                    onClick={() =>
-                      setIncluidosServicio((prev) =>
-                        activo ? prev.filter((id) => id !== sv.id) : [...prev, sv.id],
-                      )
-                    }
-                    className={`rounded-full px-2.5 py-1 text-xs border transition-colors ${
-                      activo ? "bg-sky-600 text-white border-sky-600" : "bg-white text-muted-foreground hover:bg-muted"
-                    }`}
-                    title={sv.categoria}
-                  >
-                    {sv.nombre}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold mb-2">Personal incluido, por día</p>
-            <p className="text-xs text-muted-foreground mb-2">
-              Domingo a jueves usan el juego de viernes. El personal no suma al precio de venta: es costo, y se
-              calcula en vivo como siempre.
-            </p>
-            <div className="space-y-1.5">
-              {personalCatalogo.map((p) => {
-                const actual = incluidosPersonal.find((i) => i.personalId === p.id)
-                const setDia = (dia: "viernes" | "sabado" | "ninguno") => {
-                  setIncluidosPersonal((prev) => {
-                    const sinEste = prev.filter((i) => i.personalId !== p.id)
-                    return dia === "ninguno" ? sinEste : [...sinEste, { personalId: p.id, dia }]
-                  })
-                }
-                return (
-                  <div key={p.id} className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm w-56 shrink-0 truncate" title={`${p.nombre} ${p.apellido} — ${p.funcion}`}>
-                      {p.nombre} {p.apellido}
-                      <span className="text-muted-foreground"> · {p.funcion}</span>
-                    </span>
-                    <Select value={actual?.dia ?? "ninguno"} onValueChange={(v) => setDia(v as "viernes" | "sabado" | "ninguno")}>
-                      <SelectTrigger className="h-8 w-40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ninguno">No incluido</SelectItem>
-                        <SelectItem value="viernes">Incluido viernes</SelectItem>
-                        <SelectItem value="sabado">Incluido sábado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      </Bloque>
-
-      <div className="border-t border-border" />
 
       <Bloque
         icon={<UtensilsCrossed className="h-5 w-5 text-muted-foreground" />}

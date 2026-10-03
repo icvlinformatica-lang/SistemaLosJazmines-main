@@ -22,6 +22,8 @@ export interface BarraTemplate {
   id: string
   nombre: string
   coctelesIncluidos: string[] // coctel IDs
+  /** Aparece como barra para cotizar (Cotizaciones > Configuración). */
+  enCotizador?: boolean
 }
 
 export interface InsumoBarra {

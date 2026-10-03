@@ -15,6 +15,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
+import { BotonCrearBarra } from "@/components/editor-barra"
 import { useProfile } from "@/lib/profile-context"
 import { puedeEditarCocteles, puedeVerCostosCocteles } from "@/lib/cocteles-permisos"
 import { Input } from "@/components/ui/input"
@@ -256,6 +257,8 @@ export default function CoctelesPage() {
           </div>
           {puedeEditar && (
           <div className="flex flex-wrap gap-2">
+            {/* Mismo editor que Cotizaciones > Configuración > Barras. */}
+            <BotonCrearBarra />
             <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" onClick={openConvertDialog}>
