@@ -24,6 +24,8 @@ import { ContratoPanel } from "@/components/contrato-panel"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
 import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
 import { PlanillaCuotas } from "@/components/planilla-cuotas"
+import { FechaAltaEvento } from "@/components/fecha-alta-evento"
+import { puedeEditarFechaAlta } from "@/lib/fecha-alta"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
@@ -1434,6 +1436,13 @@ function PagosPageContent() {
                         Creado el {new Date(selectedEvento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
                       </Badge>
                     )}
+                    {/* Fecha de alta (fecha real de venta): solo lectura; la corrige Administración */}
+                    <FechaAltaEvento
+                      key={selectedEvento.id}
+                      fechaAlta={(eventos.find((e) => e.id === selectedEvento.id) ?? selectedEvento).fechaAlta}
+                      puedeEditar={puedeEditarFechaAlta(perfilActivo?.id)}
+                      onGuardar={(fechaAlta) => updateEvento(selectedEvento.id, { fechaAlta })}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className={ESTADO_CONFIG[selectedEvento.estado]?.className || ""}>

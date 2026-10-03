@@ -160,6 +160,12 @@ export interface Evento {
   fecha: string
   /** Fecha de creación del registro (la asigna la base de datos automáticamente) */
   createdAt?: string
+  /**
+   * Fecha de alta del evento (fecha real de venta, "YYYY-MM-DD"). Los eventos
+   * nuevos la toman de la base (default current_date); solo se edita desde
+   * Administración. Ver supabase/migrations/20261002_fecha_alta_eventos.sql.
+   */
+  fechaAlta?: string
   horario?: string
   salon?: string
   tipoEvento?: "Casamiento" | "Cumpleaños de 15" | "Empresarial" | "Cumpleaños" | "Bautismo" | "Otro"

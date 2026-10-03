@@ -370,6 +370,7 @@ export async function fetchEventos(): Promise<Evento[]> {
     pagos: e.pagos || [],
     notas: e.notas,
     contratoGenerado: e.contrato_generado ?? false,
+    fechaAlta: e.fecha_alta || undefined,
   }))
 }
 
@@ -379,6 +380,9 @@ export async function upsertEvento(evento: Partial<Evento>): Promise<Evento | nu
     nombre: evento.nombre,
     nombre_pareja: evento.nombrePareja,
     fecha: evento.fecha,
+    // Fecha de alta: solo si viene (nunca se manda vacía, así no se borra ni
+    // se pisa la guardada; un evento nuevo la toma de la base).
+    ...(evento.fechaAlta ? { fecha_alta: evento.fechaAlta } : {}),
     hora_inicio: evento.horaInicio,
     hora_fin: evento.horaFin,
     tipo_evento: evento.tipoEvento,
