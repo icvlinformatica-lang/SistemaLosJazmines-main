@@ -59,9 +59,12 @@ export async function POST(req: Request) {
 
     await sql.begin(async (tx) => {
       const db = tx as unknown as typeof sql
+      // tx.json y no JSON.stringify(...)::jsonb: la librería ya serializa los
+      // parámetros jsonb, y con el texto armado a mano quedaba guardado dos
+      // veces (un string "[...]" en vez de la lista).
       const guardar = (clave: string, valor: unknown) => db`
         INSERT INTO cotizador_config (clave, valor, updated_at)
-        VALUES (${clave}, ${JSON.stringify(valor)}::jsonb, now())
+        VALUES (${clave}, ${tx.json(valor as Parameters<typeof tx.json>[0])}, now())
         ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor, updated_at = now()
       `
       await guardar("margen_menu", margenMenu)

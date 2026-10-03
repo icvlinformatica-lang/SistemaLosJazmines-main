@@ -41,7 +41,17 @@ export async function leerConfigCotizador(): Promise<ConfigCotizador> {
     sql`SELECT clave, valor FROM cotizador_config`,
     sql`SELECT servicio_id FROM cotizador_servicio_oculto`,
   ])) as unknown as [Array<{ clave: string; valor: unknown }>, Array<{ servicio_id: string }>]
-  const valor = (clave: string) => filas.find((f) => f.clave === clave)?.valor
+  // Un valor guardado como texto JSON dentro del jsonb (string) se desarma:
+  // pasó con la primera versión del guardado.
+  const valor = (clave: string) => {
+    const v = filas.find((f) => f.clave === clave)?.valor
+    if (typeof v !== "string") return v
+    try {
+      return JSON.parse(v)
+    } catch {
+      return v
+    }
+  }
   const recetas = valor("recetas_menu")
   return {
     // Sin fila guardada el margen vale 0 y la pantalla lo muestra: nunca se
