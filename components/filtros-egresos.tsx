@@ -92,9 +92,9 @@ export function BarraFiltrosEgresos({
   egresos: EgresoPendienteServicio[]
   filtro: FiltroEgresos
   onChange: (f: FiltroEgresos) => void
-  /** Nombres de todos los servicios activos del catálogo (Finanzas → Servicios),
-   * para que el sub-filtro de "Servicios" muestre todo lo que ofrecemos, no
-   * solo los que tienen un pago pendiente en este momento. */
+  /** Nombres de todos los servicios activos del catálogo (Finanzas → Servicios).
+   * Solo aportan variantes de nombre para la etiqueta del grupo: el sub-filtro
+   * muestra únicamente los servicios con algún pago en la lista. */
   catalogoServicios?: string[]
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -123,9 +123,9 @@ export function BarraFiltrosEgresos({
     return c
   }, [base])
 
-  // Sub-opciones según el tipo activo: para "Servicios" es el catálogo
-  // completo (todo lo que ofrecemos, tenga o no pagos pendientes ahora),
-  // agrupado: "VESTIDO 2027", "vestido 2025" y "VESTIDO" son una sola
+  // Sub-opciones según el tipo activo: para "Servicios" son los servicios
+  // con algún pago en la lista (los que no tienen ninguno no aparecen),
+  // agrupados: "VESTIDO 2027", "vestido 2025" y "VESTIDO" son una sola
   // pastilla "VESTIDO" (lib/grupo-servicio.ts);
   // para "Sueldos" son las personas (y servicios pagados como sueldo) con
   // pagos pendientes, de todos los eventos.
@@ -146,7 +146,10 @@ export function BarraFiltrosEgresos({
         const g = grupoServicio(e.servicioNombre)
         c.set(g, (c.get(g) || 0) + 1)
       }
+      // Solo los servicios que tienen algún pago en la lista (o el que está
+      // elegido, para poder destildarlo si un filtro lo dejó en 0).
       return [...nombresPorGrupo.entries()]
+        .filter(([g]) => (c.get(g) || 0) > 0 || g === filtro.sub)
         .map(([g, nombres]) => [g, c.get(g) || 0, etiquetaGrupo(g, nombres)] as [string, number, string])
         .sort((a, b) => a[2].localeCompare(b[2], "es"))
     }
@@ -160,7 +163,7 @@ export function BarraFiltrosEgresos({
     return [...c.entries()]
       .sort((a, b) => a[0].localeCompare(b[0], "es"))
       .map(([persona, cant]) => [persona, cant, persona] as [string, number, string])
-  }, [base, filtro.tipo, catalogoServicios])
+  }, [base, filtro.tipo, filtro.sub, catalogoServicios])
 
   const setTipo = (tipo: string) => onChange({ ...filtro, tipo, sub: null })
 

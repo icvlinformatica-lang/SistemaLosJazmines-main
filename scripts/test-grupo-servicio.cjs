@@ -23,8 +23,8 @@ test("fotografía de todos los años", () => {
   mismoGrupo(["FOTOGRAFIA 2025", "FOTOGRAFIA 2026", "FOTOGRAFIA 2027", "FOTOGRAFIA 2028"], "FOTOGRAFIA")
 })
 
-test("foto + video con distintas escrituras", () => {
-  mismoGrupo(["FOTO + VIDEO", "FOTO  + VIDEO", "FOTO + VIDEO 2026", "FOTO-VIDEO 2027"], "FOTO + VIDEO")
+test("foto + video (todas las escrituras) va dentro de fotografía", () => {
+  mismoGrupo(["FOTO + VIDEO", "FOTO  + VIDEO", "FOTO + VIDEO 2026", "FOTO-VIDEO 2027"], "FOTOGRAFIA")
 })
 
 test("altar y altar personalizado", () => {
@@ -37,7 +37,6 @@ test("maquillaje (incluye el typo MAQUILLA)", () => {
 
 test("servicios distintos no se mezclan", () => {
   assert.notEqual(grupoServicio("PANTALLA LED"), grupoServicio("PISTA LED"))
-  assert.notEqual(grupoServicio("FOTOGRAFIA 2026"), grupoServicio("FOTO + VIDEO"))
   assert.equal(grupoServicio("PLATAFORMA 360"), "PLATAFORMA 360") // 360 no es un año
 })
 

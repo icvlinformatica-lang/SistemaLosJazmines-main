@@ -8,7 +8,7 @@ const sinAcentos = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "")
 /** Variantes conocidas que se escriben distinto pero son el mismo servicio. */
 const ALIAS: [RegExp, string][] = [
   [/^ALTAR PERSONALIZADO$/, "ALTAR"],
-  [/^FOTO ?[-+] ?VIDEO$/, "FOTO + VIDEO"],
+  [/^FOTO ?[-+] ?VIDEO$/, "FOTOGRAFIA"], // Foto + Video va junto con Fotografía
   [/^MAQUILLA PEINADO$/, "MAQUILLAJE PEINADO"],
 ]
 
