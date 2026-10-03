@@ -550,9 +550,10 @@ function BloquePersonal({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Cantidad = el mínimo, o 1 cada N invitados redondeando para arriba (lo que sea mayor). N = 0 es personal fijo:
-        siempre el mínimo (Puerta, Maestranza, Coordinador...). La tarifa sale sola de Finanzas &gt; Personal (la más
-        alta de esa función): cargá ahí el precio de cada persona y acá solo cuántos hacen falta y la ganancia.
+        <strong>Invitados</strong>: va 1 persona cada esa cantidad de invitados (redondeando para arriba).{" "}
+        <strong>Personal</strong>: la cantidad mínima de personas, aunque sean pocos invitados. Se usa lo que dé más.
+        Con Invitados en 0 es personal fijo: siempre esa cantidad (Puerta, Maestranza, Coordinador...). La tarifa sale
+        sola de Finanzas &gt; Personal (la más alta de esa función).
       </p>
 
       {reglas.length === 0 && <p className="text-sm text-muted-foreground">Este salón todavía no tiene reglas de personal.</p>}
@@ -597,7 +598,7 @@ function BloquePersonal({
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto_minmax(0,1.3fr)] sm:items-end">
                 <label className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">1 cada N invitados</span>
+                  <span className="text-muted-foreground">Invitados</span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -609,7 +610,7 @@ function BloquePersonal({
                   />
                 </label>
                 <label className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">Mínimo</span>
+                  <span className="text-muted-foreground">Personal</span>
                   <input
                     type="number"
                     inputMode="numeric"
