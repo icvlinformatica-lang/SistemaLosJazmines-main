@@ -62,6 +62,13 @@ interface CotizacionPendiente {
   costoBarraPersonalizada: number
 }
 
+/**
+ * Tarjeta "Precio base por salón" (Configuración): ya no la usa nada.
+ * Escondida a pedido del negocio (oct 2026), sin borrar el dato guardado:
+ * poner en true para volver a mostrarla.
+ */
+const MOSTRAR_PRECIO_BASE = false
+
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -597,6 +604,7 @@ export default function CotizacionesPendientesPage() {
             {/* Precio base por salón: quedó fuera del cálculo. Se conserva
                 plegado y marcado como no usado para no perder lo cargado, y
                 para que quede claro que ya no mueve ningún precio. */}
+            {MOSTRAR_PRECIO_BASE && (
             <div className="rounded-xl border border-border bg-muted/30 overflow-hidden">
               <Collapsible open={precioBaseAbierto} onOpenChange={setPrecioBaseAbierto}>
                 <CollapsibleTrigger asChild>
@@ -654,6 +662,7 @@ export default function CotizacionesPendientesPage() {
                 </CollapsibleContent>
               </Collapsible>
             </div>
+            )}
           </TabsContent>
         </Tabs>
       </main>
