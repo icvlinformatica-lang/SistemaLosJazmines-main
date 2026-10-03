@@ -136,6 +136,8 @@ function fromRow(r: Record<string, any>) {
       ? new Date(r.comision_pagada_fecha).toISOString().slice(0, 10)
       : undefined,
     createdAt: r.created_at,
+    // "YYYY-MM-DD" (leída vía to_jsonb: funciona aunque la columna todavía no exista)
+    fechaAlta: r.fecha_alta || undefined,
     updatedAt: r.updated_at,
   }
 }
@@ -149,7 +151,7 @@ const SELECT_COLS = `
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
   precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
   notas_internas, pagos, asignaciones, costos_calculados,
-  stock_descontado, fecha_impresion, created_at, updated_at
+  stock_descontado, fecha_impresion, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta
 `
 
 // GET — all active eventos (deleted_at IS NULL)
@@ -165,7 +167,7 @@ export async function GET() {
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at,
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos
       WHERE deleted_at IS NULL
@@ -232,7 +234,7 @@ export async function POST(req: Request) {
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, created_at, updated_at,
+        stock_descontado, fecha_impresion, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos WHERE id = ${r.id}
     `

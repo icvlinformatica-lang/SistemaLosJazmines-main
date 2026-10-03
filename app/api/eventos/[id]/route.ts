@@ -6,6 +6,8 @@ import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
 import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
+import { decidirFechaAlta } from "@/lib/fecha-alta"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -78,6 +80,8 @@ function fromRow(r: Record<string, any>) {
       ? new Date(r.comision_pagada_fecha).toISOString().slice(0, 10)
       : undefined,
     createdAt: r.created_at,
+    // "YYYY-MM-DD" (leída vía to_jsonb: funciona aunque la columna todavía no exista)
+    fechaAlta: r.fecha_alta || undefined,
     updatedAt: r.updated_at,
   }
 }
@@ -91,7 +95,7 @@ const SELECT_COLS = `
   condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
   precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
   notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
-  stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, created_at, updated_at, deleted_at,
+  stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta, deleted_at,
   versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
 `
 
@@ -106,7 +110,7 @@ async function fetchEvento(id: string, db = sql) {
       condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
       precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
       notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
-      stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at, deleted_at,
+      stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta, deleted_at,
       versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
     FROM eventos WHERE id = ${id} AND deleted_at IS NULL
   `
@@ -133,7 +137,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const updates = await req.json()
     return await sql.begin(async (tx) => {
     const db = tx as unknown as typeof sql
-    const rows = await db`SELECT id, salon, plan_de_cuotas, pagos, estado FROM eventos WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    const rows = await db`SELECT id, nombre, salon, plan_de_cuotas, pagos, estado, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta FROM eventos WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
     const original = rows[0]
     if (!original) return NextResponse.json({ error: "Not found" }, { status: 404 })
     const actual: EventoIPC = {
@@ -237,7 +241,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
+    // Fecha de alta (lib/fecha-alta.ts): guardar un evento nunca la borra ni la
+    // pisa (vacía, inválida, igual o de otro perfil → se ignora); cambiarla, solo Administración.
+    let fechaAltaAnterior: string | null = null
+    if ("fechaAlta" in updates) {
+      const decision = decidirFechaAlta(updates.fechaAlta, original.fecha_alta, await perfilDesdeRequest(req))
+      if (decision.accion === "ignorar") delete updates.fechaAlta
+      else {
+        updates.fechaAlta = decision.fecha
+        fechaAltaAnterior = original.fecha_alta ?? null
+      }
+    }
+
     const fieldMap: Record<string, string> = {
+      fechaAlta: "fecha_alta",
       nombre: "nombre", fecha: "fecha", horario: "horario", horarioFin: "horario_fin",
       salon: "salon", tipoEvento: "tipo_evento", nombrePareja: "nombre_pareja",
       dniNovio1: "dni_novio1", dniNovio2: "dni_novio2",
@@ -297,6 +314,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       `UPDATE eventos SET ${setClausesStr} WHERE id = $${idx} AND deleted_at IS NULL`,
       values as string[]
     )
+    if ("fechaAlta" in updates) {
+      await logActivity("evento", "modificado", original.nombre || "Sin nombre", `Fecha de alta: ${fechaAltaAnterior ?? "sin cargar"} → ${updates.fechaAlta}`)
+    }
 
     if (movimientosCobro) {
       for (const m of movimientosCobro) {
@@ -419,7 +439,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         condicion_iva, contrato, plan_de_cuotas, estado, color_tag,
         precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
-        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, deleted_at,
+        stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta, deleted_at,
         versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
       FROM eventos WHERE id = ${id}
     `
