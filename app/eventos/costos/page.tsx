@@ -19,6 +19,13 @@ import { useStore } from "@/lib/store-context"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { calcularCostoEventoCajaEventos, congeladoValido } from "@/lib/costo-evento"
 import { useToast } from "@/hooks/use-toast"
+import { aFechaISO, fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
+import {
+  AvisoSeñaBloqueada,
+  PinSeñaExtraordinariaDialog,
+  registrarPagoSeñaExtraordinario,
+  type SeñaExtraordinaria,
+} from "@/components/pago-sena-extraordinario"
 import { formatCurrency } from "@/lib/utils-financieros"
 import {
   generateId,
@@ -86,6 +93,10 @@ function CostosEventoContent() {
     ((evento?.costosCalculados as Record<string, unknown> | null)?.observacionCostos as string) || ""
   const [observacion, setObservacion] = useState(observacionGuardada)
   const [guardandoObs, setGuardandoObs] = useState(false)
+  // Candado de señas: seña bloqueada esperando PIN + motivo (lib/candado-senas.ts).
+  const [señaPidiendoPin, setSeñaPidiendoPin] = useState<
+    { servicioId: string; seña: SeñaExtraordinaria } | null
+  >(null)
 
   // --- ARCHIVO: foto congelada de costos (si el evento está archivado) ---
   // Mientras el evento esté en el Archivo se muestran los datos guardados al
@@ -332,7 +343,36 @@ function CostosEventoContent() {
   }
 
   // --- Servicios: seña ---
+  // Fecha de habilitación si la seña todavía está bloqueada (null si ya se puede pagar).
+  const habilitacionSeña = señaBloqueada(evento.fechaAlta, evento.fecha, aFechaISO(new Date()))
+    ? fechaHabilitacionSeña(evento.fechaAlta, evento.fecha)
+    : null
+
+  // Tildar una seña bloqueada pide PIN + motivo; destildar no cambia.
   const toggleSena = (servicioId: string, checked: boolean) => {
+    if (checked && habilitacionSeña) {
+      if (bloquearPorArchivo()) return
+      const srv = servicios.find((s) => s.servicioId === servicioId)
+      if (!srv) return
+      const { montoSeña } = calcularSeñaSaldoServicio(
+        { ...srv, estadoPago: "sin_seña" },
+        { servicios: state.servicios ?? [] },
+      )
+      setSeñaPidiendoPin({
+        servicioId,
+        seña: {
+          eventoNombre: nombreEvento,
+          servicioNombre: srv.nombre,
+          monto: montoSeña,
+          fechaHabilitacion: habilitacionSeña,
+        },
+      })
+      return
+    }
+    aplicarToggleSena(servicioId, checked)
+  }
+
+  const aplicarToggleSena = (servicioId: string, checked: boolean) => {
     if (bloquearPorArchivo()) return
     const srv = servicios.find((s) => s.servicioId === servicioId)
     if (!srv) return
@@ -432,6 +472,18 @@ function CostosEventoContent() {
 
   return (
     <main className="mx-auto w-full max-w-none px-4 py-6 space-y-5 xl:px-6">
+      <PinSeñaExtraordinariaDialog
+        seña={señaPidiendoPin?.seña ?? null}
+        montoTexto={señaPidiendoPin ? formatCurrency(señaPidiendoPin.seña.monto) : ""}
+        onCancelar={() => setSeñaPidiendoPin(null)}
+        onAutorizado={(motivo) => {
+          if (!señaPidiendoPin) return
+          const { servicioId, seña } = señaPidiendoPin
+          setSeñaPidiendoPin(null)
+          aplicarToggleSena(servicioId, true)
+          registrarPagoSeñaExtraordinario(seña, motivo, formatCurrency(seña.monto))
+        }}
+      />
       {/* Encabezado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -694,6 +746,9 @@ function CostosEventoContent() {
                             <span className="truncate text-xs text-muted-foreground">
                               vence {formatFecha(srv.fechaSeña)}
                             </span>
+                          )}
+                          {habilitacionSeña && !senaPagada && !saldoPagado && !comoSueldo && (
+                            <AvisoSeñaBloqueada fechaHabilitacion={habilitacionSeña} />
                           )}
                         </span>
                         <span

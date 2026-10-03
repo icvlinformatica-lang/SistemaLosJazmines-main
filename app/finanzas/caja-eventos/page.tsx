@@ -59,6 +59,13 @@ import { SaldoHerramientasEventos } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo } from "@/lib/servicio-sueldo"
+import { aFechaISO, fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
+import {
+  AvisoSeñaBloqueada,
+  PinSeñaExtraordinariaDialog,
+  registrarPagoSeñaExtraordinario,
+  type SeñaExtraordinaria,
+} from "@/components/pago-sena-extraordinario"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import type {
   EgresoPendienteServicio,
@@ -829,6 +836,15 @@ useStore()
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
   const hoyStr = ahora.toISOString().split("T")[0]
+  // Candado de señas (lib/candado-senas.ts): seña tocada antes de su fecha de
+  // habilitación → pide PIN + motivo. Si se autoriza, sigue la confirmación
+  // de pago normal y, al pagar, queda registrado como extraordinario.
+  const [señaPidiendoPin, setSeñaPidiendoPin] = useState<
+    { egreso: EgresoPendienteServicio; seña: SeñaExtraordinaria } | null
+  >(null)
+  const [pagoExtraordinario, setPagoExtraordinario] = useState<
+    { egresoId: string; seña: SeñaExtraordinaria; motivo: string } | null
+  >(null)
   // Fecha elegida (por egreso.id) para marcar como pagada una seña pendiente,
   // por defecto hoy pero editable para poder cargar pagos atrasados/viejos.
   const [fechasPagoManual, setFechasPagoManual] = useState<Record<string, string>>({})
@@ -1133,11 +1149,48 @@ useStore()
     return ok
   }
 
+  // Fecha de habilitación de una seña TODAVÍA bloqueada (null si no es seña o
+  // si ya se puede pagar). Hoy en hora local, no UTC.
+  const habilitacionSeñaBloqueada = (egreso: EgresoPendienteServicio | undefined): string | null => {
+    if (!egreso || egreso.tipo !== "seña") return null
+    const evento = state.eventos.find((e) => e.id === egreso.eventoId)
+    if (!evento || !señaBloqueada(evento.fechaAlta, evento.fecha, aFechaISO(new Date()))) return null
+    return fechaHabilitacionSeña(evento.fechaAlta, evento.fecha)
+  }
+
+  // Punto de entrada para pagar una seña: si está bloqueada pide PIN; si no,
+  // abre la confirmación de siempre.
+  const pedirPagoSeña = (egreso: EgresoPendienteServicio) => {
+    const habilitacion = habilitacionSeñaBloqueada(egreso)
+    if (!habilitacion) {
+      setPagoExtraordinario(null)
+      setPagoConfirmar(egreso)
+      return
+    }
+    setSeñaPidiendoPin({
+      egreso,
+      seña: {
+        eventoNombre: egreso.eventoNombre,
+        servicioNombre: egreso.servicioNombre,
+        monto: egreso.monto,
+        fechaHabilitacion: habilitacion,
+      },
+    })
+  }
+
   // Confirma el pago desde el diálogo: ejecuta el marcado y muestra la animación de check.
   const confirmarMarcarPagado = async () => {
     if (!pagoConfirmar) return
     const fechaElegida = fechasPagoManual[pagoConfirmar.id]
     if (!await handleMarcarPagado(pagoConfirmar, fechaElegida)) return
+    if (pagoExtraordinario?.egresoId === pagoConfirmar.id) {
+      await registrarPagoSeñaExtraordinario(
+        pagoExtraordinario.seña,
+        pagoExtraordinario.motivo,
+        formatCurrency(pagoExtraordinario.seña.monto),
+      )
+    }
+    setPagoExtraordinario(null)
     setFechasPagoManual((prev) => {
       const { [pagoConfirmar.id]: _omitida, ...resto } = prev
       return resto
@@ -1521,6 +1574,7 @@ useStore()
     // atrasados/viejos) antes de confirmar, en vez de usar siempre la fecha de hoy.
     const egresoId = dato.egreso?.id
     const fechaElegida = (egresoId && fechasPagoManual[egresoId]) || hoyStr
+    const habilitacion = habilitacionSeñaBloqueada(dato.egreso)
     return (
       <div className="inline-flex flex-col items-end gap-1">
         <input
@@ -1533,12 +1587,13 @@ useStore()
         />
         <button
           type="button"
-          title="Marcar como pagado"
-          onClick={() => dato.egreso && setPagoConfirmar(dato.egreso)}
+          title={habilitacion ? "Seña bloqueada: pago extraordinario con PIN" : "Marcar como pagado"}
+          onClick={() => dato.egreso && pedirPagoSeña(dato.egreso)}
           className="inline-flex items-center gap-0.5 rounded-md border border-yellow-300 bg-yellow-50 px-2.5 py-1 transition-colors hover:bg-yellow-100"
         >
           <span className="text-xs font-bold text-red-600">−{formatCurrency(dato.monto)}</span>
         </button>
+        {habilitacion && <AvisoSeñaBloqueada fechaHabilitacion={habilitacion} />}
       </div>
     )
   }
@@ -2779,7 +2834,26 @@ useStore()
       </Dialog>
 
       {/* Confirmación de pago */}
-      <Dialog open={!!pagoConfirmar} onOpenChange={(open) => !open && setPagoConfirmar(null)}>
+      <PinSeñaExtraordinariaDialog
+        seña={señaPidiendoPin?.seña ?? null}
+        montoTexto={señaPidiendoPin ? formatCurrency(señaPidiendoPin.seña.monto) : ""}
+        onCancelar={() => setSeñaPidiendoPin(null)}
+        onAutorizado={(motivo) => {
+          if (!señaPidiendoPin) return
+          setPagoExtraordinario({ egresoId: señaPidiendoPin.egreso.id, seña: señaPidiendoPin.seña, motivo })
+          setPagoConfirmar(señaPidiendoPin.egreso)
+          setSeñaPidiendoPin(null)
+        }}
+      />
+
+      <Dialog
+        open={!!pagoConfirmar}
+        onOpenChange={(open) => {
+          if (open) return
+          setPagoConfirmar(null)
+          setPagoExtraordinario(null)
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -2800,7 +2874,13 @@ useStore()
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setPagoConfirmar(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPagoConfirmar(null)
+                setPagoExtraordinario(null)
+              }}
+            >
               Cancelar
             </Button>
             <Button
@@ -2872,6 +2952,10 @@ useStore()
                         {eg.eventoNombre} ·{" "}
                         <span className="font-bold text-red-600">−{formatCurrency(eg.monto)}</span>
                       </p>
+                      {(() => {
+                        const habilitacion = habilitacionSeñaBloqueada(eg)
+                        return habilitacion ? <AvisoSeñaBloqueada fechaHabilitacion={habilitacion} /> : null
+                      })()}
                     </div>
                     <Button
                       size="sm"
@@ -2879,7 +2963,8 @@ useStore()
                       className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 shrink-0 bg-transparent"
                       onClick={() => {
                         setDiaDetalle(null)
-                        setPagoConfirmar(eg)
+                        if (eg.tipo === "seña") pedirPagoSeña(eg)
+                        else setPagoConfirmar(eg)
                       }}
                     >
                       Marcar pagado
