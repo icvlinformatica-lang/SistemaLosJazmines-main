@@ -1,30 +1,31 @@
 "use client"
 
-// Editor del tarifario del cotizador, embebido en Eventos > Cotizaciones,
-// al lado del precio base por salón.
+// Cotizaciones > Configuración.
 //
-// Acá se cargan SOLO las dos cosas que no son servicios:
-//   1. la grilla de precio del salón (rango de invitados × día × modalidad), y
-//   2. la regla de personal por invitados.
-// Más los vínculos de cada servicio de Menú/Barra con las recetas y el
-// template de barra que premarcan en el cotizador.
+// Arriba: el cotizador POR SALÓN (modelo costo + ganancia, scripts/015),
+// en components/cotizador-salon-editor.tsx.
 //
-// El precio de los menús, las barras y de cualquier otro servicio NO se
-// carga acá: sale de la tabla "servicios" y se edita en Finanzas > Servicios.
+// Abajo, plegada: la CONFIGURACIÓN ANTERIOR (TarifarioAnterior), que sigue
+// usando el cotizador del vendedor hasta el Paso 2 — no se borra:
+//   1. la grilla de precio del salón (rango de invitados × día × modalidad),
+//   2. la regla de personal por invitados (tarifario_personal_regla),
+//   3. servicios y personal "incluidos en el salón" (globales), y
+//   4. qué recetas / barra premarca cada servicio de Menú / Barra.
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed, PackageCheck, Pencil, CheckCircle2, AlertCircle } from "lucide-react"
+import { Plus, Save, Trash2, Table2, Users, UtensilsCrossed, PackageCheck, Pencil, CheckCircle2, AlertCircle, UserCheck, ChevronDown, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import type { DiaTarifario, ModalidadSalon } from "@/lib/tarifario-cotizador"
+import { BloqueIncluidosAnterior } from "@/components/cotizador-config-bloques"
+import { Bloque, InputPrecio } from "@/components/config-bloque"
+import { CotizadorSalonEditor } from "@/components/cotizador-salon-editor"
 
 interface FilaGrilla {
   salon: string
@@ -64,82 +65,7 @@ const MODALIDAD_LABEL: Record<ModalidadSalon, string> = {
   con_catering: "Salón con catering y bebidas",
 }
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
-
-/**
- * Input de precio que muestra "$ 3.500.000" cuando está en reposo y el número
- * pelado apenas se lo enfoca. Formatear mientras se tipea pelea con el cursor
- * (se va al final en cada tecla), así que se formatea solo al salir.
- */
-function InputPrecio({
-  valor,
-  onChange,
-  etiqueta,
-}: {
-  valor: number
-  onChange: (n: number) => void
-  etiqueta: string
-}) {
-  const [enFoco, setEnFoco] = useState(false)
-  const [borrador, setBorrador] = useState("")
-
-  return (
-    <input
-      type="text"
-      inputMode="numeric"
-      aria-label={etiqueta}
-      value={enFoco ? borrador : valor > 0 ? fmt(valor) : ""}
-      placeholder="$ 0"
-      onFocus={() => {
-        setBorrador(valor > 0 ? String(valor) : "")
-        setEnFoco(true)
-      }}
-      onChange={(e) => {
-        const limpio = e.target.value.replace(/[^\d]/g, "")
-        setBorrador(limpio)
-        onChange(Number(limpio) || 0)
-      }}
-      onBlur={() => setEnFoco(false)}
-      className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-2 text-right text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-[#2d5a3d]/40 focus:border-[#2d5a3d]"
-    />
-  )
-}
-
-function Bloque({
-  icon,
-  title,
-  subtitle,
-  children,
-  defaultOpen = false,
-}: {
-  icon: React.ReactNode
-  title: string
-  subtitle?: string
-  children: React.ReactNode
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40">
-          <div className="shrink-0">{icon}</div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm">{title}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
-          </div>
-          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="border-t border-border p-4">{children}</div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
-export function TarifarioEditor() {
+function TarifarioAnterior() {
   const { toast } = useToast()
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -535,7 +461,7 @@ export function TarifarioEditor() {
                         <span className="w-16 shrink-0 text-xs text-muted-foreground sm:hidden">Viernes</span>
                         <InputPrecio
                           valor={r.viernes?.precio ?? 0}
-                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "viernes", n)}
+                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "viernes", n ?? 0)}
                           etiqueta={`Precio del viernes, ${r.min} a ${r.max} invitados`}
                         />
                       </div>
@@ -544,7 +470,7 @@ export function TarifarioEditor() {
                         <span className="w-16 shrink-0 text-xs text-muted-foreground sm:hidden">Sábado</span>
                         <InputPrecio
                           valor={r.sabado?.precio ?? 0}
-                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "sabado", n)}
+                          onChange={(n) => ponerPrecio(modalidad, r.min, r.max, "sabado", n ?? 0)}
                           etiqueta={`Precio del sábado, ${r.min} a ${r.max} invitados`}
                         />
                       </div>
@@ -582,6 +508,64 @@ export function TarifarioEditor() {
             </div>
           )
         })}
+      </Bloque>
+
+      <div className="border-t border-border" />
+
+      <Bloque
+        icon={<PackageCheck className="h-5 w-5 text-muted-foreground" />}
+        title="Servicios incluidos en el salón"
+        subtitle="Cuáles ya vienen incluidos en el precio del salón (para todos los salones)."
+      >
+        <BloqueIncluidosAnterior
+          servicios={servicios}
+          incluidosServicio={incluidosServicio}
+          onIncluidosServicio={setIncluidosServicio}
+        />
+      </Bloque>
+
+      <div className="border-t border-border" />
+
+      <Bloque
+        icon={<UserCheck className="h-5 w-5 text-muted-foreground" />}
+        title="Personal incluido del salón"
+        subtitle="Qué personal se tilda solo los viernes y cuál los sábados."
+      >
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">
+            Domingo a jueves usan el juego de viernes. El personal no suma al precio de venta: es costo, y se
+            calcula en vivo como siempre.
+          </p>
+          <div className="space-y-1.5">
+            {personalCatalogo.map((p) => {
+              const actual = incluidosPersonal.find((i) => i.personalId === p.id)
+              const setDia = (dia: "viernes" | "sabado" | "ninguno") => {
+                setIncluidosPersonal((prev) => {
+                  const sinEste = prev.filter((i) => i.personalId !== p.id)
+                  return dia === "ninguno" ? sinEste : [...sinEste, { personalId: p.id, dia }]
+                })
+              }
+              return (
+                <div key={p.id} className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm w-56 shrink-0 truncate" title={`${p.nombre} ${p.apellido} — ${p.funcion}`}>
+                    {p.nombre} {p.apellido}
+                    <span className="text-muted-foreground"> · {p.funcion}</span>
+                  </span>
+                  <Select value={actual?.dia ?? "ninguno"} onValueChange={(v) => setDia(v as "viernes" | "sabado" | "ninguno")}>
+                    <SelectTrigger className="h-8 w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ninguno">No incluido</SelectItem>
+                      <SelectItem value="viernes">Incluido viernes</SelectItem>
+                      <SelectItem value="sabado">Incluido sábado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </Bloque>
 
       <div className="border-t border-border" />
@@ -650,82 +634,6 @@ export function TarifarioEditor() {
 
       <div className="border-t border-border" />
 
-      <Bloque
-        icon={<PackageCheck className="h-5 w-5 text-muted-foreground" />}
-        title="Qué incluye el precio del salón"
-        subtitle="Lo tildado se agrega solo a la cotización y no se cobra aparte."
-      >
-        <div className="space-y-5">
-          <div>
-            <p className="text-sm font-semibold mb-2">Servicios incluidos</p>
-            <p className="text-xs text-muted-foreground mb-2">
-              Solo dejan de cobrarse si el salón se vende a precio de lista (grilla o Calendario de Precios). Si el
-              salón no tiene precio cargado, se cobran como cualquier adicional.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {servicios.map((sv) => {
-                const activo = incluidosServicio.includes(sv.id)
-                return (
-                  <button
-                    key={sv.id}
-                    type="button"
-                    onClick={() =>
-                      setIncluidosServicio((prev) =>
-                        activo ? prev.filter((id) => id !== sv.id) : [...prev, sv.id],
-                      )
-                    }
-                    className={`rounded-full px-2.5 py-1 text-xs border transition-colors ${
-                      activo ? "bg-sky-600 text-white border-sky-600" : "bg-white text-muted-foreground hover:bg-muted"
-                    }`}
-                    title={sv.categoria}
-                  >
-                    {sv.nombre}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold mb-2">Personal incluido, por día</p>
-            <p className="text-xs text-muted-foreground mb-2">
-              Domingo a jueves usan el juego de viernes. El personal no suma al precio de venta: es costo, y se
-              calcula en vivo como siempre.
-            </p>
-            <div className="space-y-1.5">
-              {personalCatalogo.map((p) => {
-                const actual = incluidosPersonal.find((i) => i.personalId === p.id)
-                const setDia = (dia: "viernes" | "sabado" | "ninguno") => {
-                  setIncluidosPersonal((prev) => {
-                    const sinEste = prev.filter((i) => i.personalId !== p.id)
-                    return dia === "ninguno" ? sinEste : [...sinEste, { personalId: p.id, dia }]
-                  })
-                }
-                return (
-                  <div key={p.id} className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm w-56 shrink-0 truncate" title={`${p.nombre} ${p.apellido} — ${p.funcion}`}>
-                      {p.nombre} {p.apellido}
-                      <span className="text-muted-foreground"> · {p.funcion}</span>
-                    </span>
-                    <Select value={actual?.dia ?? "ninguno"} onValueChange={(v) => setDia(v as "viernes" | "sabado" | "ninguno")}>
-                      <SelectTrigger className="h-8 w-40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ninguno">No incluido</SelectItem>
-                        <SelectItem value="viernes">Incluido viernes</SelectItem>
-                        <SelectItem value="sabado">Incluido sábado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      </Bloque>
-
-      <div className="border-t border-border" />
 
       <Bloque
         icon={<UtensilsCrossed className="h-5 w-5 text-muted-foreground" />}
@@ -862,6 +770,48 @@ export function TarifarioEditor() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+/**
+ * Cotizaciones > Configuración: arriba el cotizador por salón; abajo, plegada,
+ * la configuración anterior. La anterior se monta recién la primera vez que
+ * se abre y después queda montada (escondida) para no perder lo que se esté
+ * editando si se la pliega sin guardar.
+ */
+export function TarifarioEditor() {
+  const [anteriorAbierta, setAnteriorAbierta] = useState(false)
+  const [anteriorMontada, setAnteriorMontada] = useState(false)
+
+  return (
+    <div className="space-y-4">
+      <CotizadorSalonEditor />
+      <div className="rounded-xl border border-dashed border-border bg-muted/30">
+        <button
+          type="button"
+          onClick={() => {
+            setAnteriorAbierta((v) => !v)
+            setAnteriorMontada(true)
+          }}
+          aria-expanded={anteriorAbierta}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
+        >
+          <History className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Configuración anterior — la usa el cotizador hasta el Paso 2</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Grilla de precios, regla de personal, incluidos y premarcas que usa hoy el cotizador del vendedor.
+            </p>
+          </div>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${anteriorAbierta ? "rotate-180" : ""}`} />
+        </button>
+        {anteriorMontada && (
+          <div className={anteriorAbierta ? "p-2 pt-0" : "hidden"}>
+            <TarifarioAnterior />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
