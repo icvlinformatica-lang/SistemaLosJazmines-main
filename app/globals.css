@@ -66,6 +66,11 @@
   --success-foreground: oklch(0.98 0 0);
   --warning: oklch(0.75 0.14 75);
   --warning-foreground: oklch(0.15 0.02 60);
+
+  /* Rubros del cotizador que no tienen color propio en el tema
+     (lib/colores-cotizador.ts): Barra violeta, Servicios frambuesa. */
+  --rubro-barra: oklch(0.50 0.15 300);
+  --rubro-servicios: oklch(0.55 0.17 355);
 }
 
 .dark {
@@ -105,6 +110,8 @@
   --success-foreground: oklch(0.98 0 0);
   --warning: oklch(0.72 0.12 75);
   --warning-foreground: oklch(0.15 0.02 60);
+  --rubro-barra: oklch(0.65 0.14 300);
+  --rubro-servicios: oklch(0.68 0.15 355);
 }
 
 @theme inline {
@@ -134,6 +141,8 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-rubro-barra: var(--rubro-barra);
+  --color-rubro-servicios: var(--rubro-servicios);
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);

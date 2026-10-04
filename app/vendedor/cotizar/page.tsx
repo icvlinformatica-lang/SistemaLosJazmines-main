@@ -45,7 +45,17 @@ import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
 import { servicioCorrespondeAlAnio } from "@/lib/tarifario-cotizador"
-import { UNIDADES_CON_CANTIDAD, armarCotizacion, type AplicaRegla } from "@/lib/cotizador-salon"
+import {
+  RECARGO_VACIO,
+  UNIDADES_CON_CANTIDAD,
+  armarCotizacion,
+  resolverDia,
+  type AplicaRegla,
+  type ClaveRubro,
+  type FechaEspecial,
+  type ReglaRecargo,
+} from "@/lib/cotizador-salon"
+import { COLOR_RUBRO, ChipDia, PuntoRubro } from "@/components/cotizador-colores"
 
 const TIPOS_EVENTO = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
 const ATAJOS_ADULTOS = [50, 60, 70, 80, 90, 100]
@@ -65,27 +75,39 @@ interface SalonCotizable {
   salon: string
   capacidadMaxima: number | null
   precioSalon: number
+  /** Recargo al cliente un sábado (monto fijo o % sobre el precio de rubros). */
+  recargoSabado?: ReglaRecargo
   menu: Array<{ recetaId: string; nombre: string; precioPorPorcion: number }>
   barras: Array<{ id: string; nombre: string; coctelesIncluidos: string[]; precioPorAdulto: number; tragosPorAdulto: number }>
   servicios: Array<{ servicioId: string; precio: number; incluido: boolean }>
   personal: Array<{ funcion: string; cadaNInvitados: number; minimo: number; aplica: AplicaRegla; precioPorPersona: number }>
 }
 
+/** Tarjeta. Con `rubro`, el borde de arriba y el ícono llevan el color de ese
+ *  rubro (components/cotizador-colores.tsx); sin rubro (Cliente, Comensales)
+ *  va neutra, para no prestarle a nada el color de un rubro. */
 function Tarjeta({
   icono,
   titulo,
   resumen,
+  rubro,
   children,
 }: {
   icono: React.ReactNode
   titulo: string
   resumen?: string
+  rubro?: ClaveRubro
   children: React.ReactNode
 }) {
+  const color = rubro ? COLOR_RUBRO[rubro] : null
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
+    <section className={`rounded-2xl border border-border bg-card p-4 space-y-3 ${color ? `border-t-4 ${color.borde}` : ""}`}>
       <div className="flex items-center gap-2">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2d5a3d]/10 text-[#2d5a3d]">{icono}</span>
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${color ? color.icono : "bg-secondary text-foreground"}`}
+        >
+          {icono}
+        </span>
         <h2 className="flex-1 text-base font-semibold">{titulo}</h2>
         {resumen && <span className="text-xs text-muted-foreground">{resumen}</span>}
       </div>
@@ -160,7 +182,7 @@ function Chip({
       disabled={deshabilitado}
       onClick={onClick}
       className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default ${
-        activo ? "border-[#2d5a3d] bg-[#2d5a3d] text-white" : "border-border bg-white hover:bg-muted"
+        activo ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted"
       }`}
     >
       {children}
@@ -174,7 +196,11 @@ function CotizarPageContent() {
   const { toast } = useToast()
   const idParam = searchParams.get("id")
 
-  const [catalogo, setCatalogo] = useState<{ servicios: ServicioCatalogo[]; salones: SalonCotizable[] } | null>(null)
+  const [catalogo, setCatalogo] = useState<{
+    servicios: ServicioCatalogo[]
+    salones: SalonCotizable[]
+    fechasEspeciales: FechaEspecial[]
+  } | null>(null)
   const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null)
 
   const [cotizacionId, setCotizacionId] = useState<string | null>(idParam)
@@ -210,7 +236,11 @@ function CotizarPageContent() {
         setErrorCatalogo("Todavía no está cargada la configuración de los salones.")
         return
       }
-      setCatalogo({ servicios: data.servicios ?? [], salones: data.cotizadorPorSalon })
+      setCatalogo({
+        servicios: data.servicios ?? [],
+        salones: data.cotizadorPorSalon,
+        fechasEspeciales: Array.isArray(data.fechasEspeciales) ? data.fechasEspeciales : [],
+      })
     } catch {
       setErrorCatalogo("No se pudo cargar el catálogo.")
     }
@@ -290,6 +320,13 @@ function CotizarPageContent() {
     })
   }, [config, serviciosDelSalon, cargandoCotizacion])
 
+  // Día cotizado: fecha especial de ese salón > sábado > como viernes. Sin
+  // salón elegido igual se muestra qué día es (todavía sin monto).
+  const dia = useMemo(
+    () => resolverDia(fecha, salon, config?.recargoSabado ?? RECARGO_VACIO, catalogo?.fechasEspeciales ?? []),
+    [fecha, salon, config, catalogo],
+  )
+
   // ── Precio en vivo: la MISMA cuenta que el servidor, solo con precios ──
   const calculo = useMemo(() => {
     if (!config) return null
@@ -316,8 +353,9 @@ function CotizarPageContent() {
           precio: s.precio,
         })),
       personal: config.personal.map((p) => ({ ...p, precio: p.precioPorPersona })),
+      dia,
     })
-  }, [config, adultos, ninos, recetas, barraId, servicios, serviciosDelSalon])
+  }, [config, adultos, ninos, recetas, barraId, servicios, serviciosDelSalon, dia])
 
   const faltan: string[] = []
   if (!clienteNombre.trim()) faltan.push("el nombre del cliente")
@@ -475,10 +513,15 @@ function CotizarPageContent() {
                 className="h-11 text-base"
               />
             </div>
+            {fecha && (
+              <div className="flex justify-end">
+                <ChipDia dia={dia} recargo={calculo?.recargo?.monto ?? 0} />
+              </div>
+            )}
           </Tarjeta>
 
           {/* 2. Salón */}
-          <Tarjeta icono={<Home className="h-4 w-4" />} titulo="Salón" resumen={salon ? salonLabel(salon) : "Elegí uno"}>
+          <Tarjeta icono={<Home className="h-4 w-4" />} titulo="Salón" rubro="salon" resumen={salon ? salonLabel(salon) : "Elegí uno"}>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {SALONES.map((s) => {
                 const activo = s === salon
@@ -488,16 +531,17 @@ function CotizarPageContent() {
                     type="button"
                     aria-pressed={activo}
                     onClick={() => setSalon(s)}
-                    className={`rounded-xl border-2 px-3 py-4 text-left text-sm font-semibold transition-colors ${
-                      activo ? "text-white shadow-sm" : "bg-white hover:bg-muted"
+                    className={`flex items-center gap-2 rounded-xl border-2 px-3 py-4 text-left text-sm font-semibold transition-colors ${
+                      activo ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted"
                     }`}
-                    style={
-                      activo
-                        ? { backgroundColor: salonColor(s), borderColor: salonColor(s) }
-                        : { color: salonColor(s), borderColor: "var(--border, #e5e5e5)" }
-                    }
                   >
-                    {salonLabel(s)}
+                    {/* El color propio de cada salón (el del calendario) queda como punto. */}
+                    <span
+                      aria-hidden
+                      className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card"
+                      style={{ backgroundColor: salonColor(s) }}
+                    />
+                    <span className="min-w-0 truncate">{salonLabel(s)}</span>
                   </button>
                 )
               })}
@@ -532,6 +576,7 @@ function CotizarPageContent() {
               <Tarjeta
                 icono={<ChefHat className="h-4 w-4" />}
                 titulo="Menú"
+                rubro="cocina"
                 resumen={recetas.length ? `${recetas.length} ${recetas.length === 1 ? "plato" : "platos"}` : "Sin menú"}
               >
                 {config.menu.length === 0 ? (
@@ -552,7 +597,7 @@ function CotizarPageContent() {
               </Tarjeta>
 
               {/* 5. Barra */}
-              <Tarjeta icono={<Wine className="h-4 w-4" />} titulo="Barra" resumen={barraId ? "1 barra" : "Sin barra"}>
+              <Tarjeta icono={<Wine className="h-4 w-4" />} titulo="Barra" rubro="barra" resumen={barraId ? "1 barra" : "Sin barra"}>
                 {config.barras.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Este salón no tiene barras para cotizar.</p>
                 ) : (
@@ -573,6 +618,7 @@ function CotizarPageContent() {
               <Tarjeta
                 icono={<PackageCheck className="h-4 w-4" />}
                 titulo="Servicios"
+                rubro="servicios"
                 resumen={`${Object.keys(servicios).length} adicionales`}
               >
                 {porCategoria.length === 0 && (
@@ -670,26 +716,32 @@ function CotizarPageContent() {
             className="flex w-full items-center justify-between gap-3 text-left"
             aria-expanded={desgloseAbierto}
           >
-            <span className="text-sm text-muted-foreground">Precio total</span>
-            <span className="flex items-center gap-1.5">
+            <span className="text-sm font-medium">Precio total</span>
+            <span className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1 text-primary-foreground">
               <span className="text-2xl font-bold tabular-nums">{fmt(total)}</span>
-              {desgloseAbierto ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+              {desgloseAbierto ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </span>
           </button>
           {desgloseAbierto && calculo && (
             <ul className="divide-y divide-border rounded-lg border border-border text-sm">
               {calculo.rubros.map((r) => (
-                <li key={r.clave} className="flex items-center justify-between px-3 py-1.5">
-                  <span>
-                    {r.nombre}
-                    {r.clave === "personal" && calculo.personal.length > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {" "}
-                        ({calculo.personal.map((l) => `${l.cantidad} ${l.funcion}`).join(", ")})
-                      </span>
-                    )}
+                <li key={r.clave} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <PuntoRubro clave={r.clave} origen={calculo.recargo?.origen} />
+                    <span className="min-w-0">
+                      {r.nombre}
+                      {r.clave === "personal" && calculo.personal.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          ({calculo.personal.map((l) => `${l.cantidad} ${l.funcion}`).join(", ")})
+                        </span>
+                      )}
+                    </span>
                   </span>
-                  <span className="tabular-nums">{fmt(r.precio)}</span>
+                  <span className={`tabular-nums ${r.clave === "recargo" ? "font-semibold" : ""}`}>
+                    {r.clave === "recargo" ? "+" : ""}
+                    {fmt(r.precio)}
+                  </span>
                 </li>
               ))}
             </ul>

@@ -102,6 +102,7 @@ export async function POST(req: Request) {
       barra: config.gananciaBarra,
       servicios: config.gananciaServicios,
       personal: null, // cada función tiene la suya (ver "personal")
+      recargo: null, // ganancia pura: costo 0 (ver "recargo")
     }
     const personal = calculo.personal.map((p) => ({
       ...p,
@@ -121,6 +122,11 @@ export async function POST(req: Request) {
       barra: calculo.barra,
       servicios: r.servicios,
       personal,
+      // Día cotizado y recargo aplicado (scripts/018). Queda fijo: si después
+      // cambia el recargo o la fecha especial, esta cotización no se recalcula
+      // (salvo que el vendedor la vuelva a guardar).
+      dia: { tipo: calculo.dia.tipo, etiqueta: calculo.dia.etiqueta, fechaEspecial: calculo.dia.fechaEspecial },
+      recargo: r.recargo,
       avisos: r.avisos,
       costoTotal: r.costoTotal,
       total: r.total,

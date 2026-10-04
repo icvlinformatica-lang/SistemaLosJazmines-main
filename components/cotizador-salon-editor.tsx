@@ -8,6 +8,9 @@
 // Personal. Cada uno muestra el costo que calcula el sistema, el % de
 // ganancia y el precio resultante. Las cuentas están en lib/cotizador-salon.ts.
 //
+// Más el "Recargo de sábado" del salón (scripts/018): monto fijo o % sobre el
+// precio de los rubros tildados. Colores por rubro: components/cotizador-colores.tsx.
+//
 // Se guarda TODO el salón junto (PUT /api/administracion/cotizador-salon).
 // Las barras en sí (crear / editar / borrar) son compartidas por todos los
 // salones y se guardan al instante; qué barras aparecen es del salón.
@@ -22,6 +25,7 @@ import {
   PackageCheck,
   Plus,
   Save,
+  Sun,
   Trash2,
   Users,
   Wine,
@@ -33,14 +37,20 @@ import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import {
   APLICA_OPCIONES,
+  montoRecargo,
+  precioBarraSalon,
   precioConGanancia,
   simularPersonal,
   tarifaDeRegla,
   tarifaMasAlta,
   type AplicaRegla,
+  type ClaveRubro,
   type PersonaConTarifa,
   type ReglaPersonalSalon,
+  type ReglaRecargo,
 } from "@/lib/cotizador-salon"
+import { COLOR_RUBRO } from "@/components/cotizador-colores"
+import { EditorRecargo, textoRecargo } from "@/components/recargo-editor"
 import { AvisoSinCosto, Bloque, InputGanancia, InputPrecio, fmt } from "@/components/config-bloque"
 import {
   BloqueBarrasContenido,
@@ -60,6 +70,7 @@ interface ConfigSalon {
   gananciaCocina: number
   gananciaBarra: number
   gananciaServicios: number
+  recargoSabado: ReglaRecargo
   recetas: string[]
   barras: string[]
   servicios: EstadoServicioSalon[]
@@ -75,6 +86,13 @@ interface Catalogos {
 }
 
 /** Huella para saber si hay cambios sin guardar (orden de servicios estable). */
+/** Ícono de un bloque con el color de su rubro. */
+function IconoRubro({ rubro, children }: { rubro: ClaveRubro; children: React.ReactNode }) {
+  return (
+    <span className={`flex h-9 w-9 items-center justify-center rounded-full ${COLOR_RUBRO[rubro].icono}`}>{children}</span>
+  )
+}
+
 function huellaDe(c: ConfigSalon | null): string {
   if (!c) return ""
   return JSON.stringify({
@@ -253,12 +271,13 @@ export function CotizadorSalonEditor() {
                 role="tab"
                 aria-selected={activo}
                 onClick={() => elegirSalon(s)}
-                className={`rounded-xl border-2 px-3 py-3 text-left text-sm font-semibold transition-colors ${
-                  activo ? "text-white shadow-sm" : "bg-white hover:bg-muted"
+                className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-semibold transition-colors ${
+                  activo ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted"
                 }`}
-                style={activo ? { backgroundColor: salonColor(s), borderColor: salonColor(s) } : { color: salonColor(s), borderColor: "var(--border, #e5e5e5)" }}
               >
-                {salonLabel(s)}
+                {/* El color propio de cada salón (el del calendario) queda como punto. */}
+                <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card" style={{ backgroundColor: salonColor(s) }} />
+                <span className="min-w-0 truncate">{salonLabel(s)}</span>
               </button>
             )
           })}
@@ -294,7 +313,11 @@ export function CotizadorSalonEditor() {
         <>
           {/* 1. Salón */}
           <Bloque
-            icon={<Home className="h-5 w-5 text-muted-foreground" />}
+            icon={
+              <IconoRubro rubro="salon">
+                <Home className="h-5 w-5" />
+              </IconoRubro>
+            }
             title="Salón"
             subtitle="Costo fijo del salón (no depende de invitados ni del día) y capacidad máxima."
             resumen={
@@ -357,7 +380,11 @@ export function CotizadorSalonEditor() {
 
           {/* 2. Cocina */}
           <Bloque
-            icon={<ChefHat className="h-5 w-5 text-muted-foreground" />}
+            icon={
+              <IconoRubro rubro="cocina">
+                <ChefHat className="h-5 w-5" />
+              </IconoRubro>
+            }
             title="Cocina"
             subtitle="Qué platos aparecen en este salón, su orden y la ganancia de cocina."
             resumen={
@@ -382,7 +409,11 @@ export function CotizadorSalonEditor() {
 
           {/* 3. Barra */}
           <Bloque
-            icon={<Wine className="h-5 w-5 text-muted-foreground" />}
+            icon={
+              <IconoRubro rubro="barra">
+                <Wine className="h-5 w-5" />
+              </IconoRubro>
+            }
             title="Barra"
             subtitle="Barras armadas (paquetes de cócteles), cuáles aparecen en este salón y la ganancia de barra."
             resumen={
@@ -408,7 +439,11 @@ export function CotizadorSalonEditor() {
 
           {/* 4. Servicios */}
           <Bloque
-            icon={<PackageCheck className="h-5 w-5 text-muted-foreground" />}
+            icon={
+              <IconoRubro rubro="servicios">
+                <PackageCheck className="h-5 w-5" />
+              </IconoRubro>
+            }
             title="Servicios"
             subtitle="Qué servicios aparecen en este salón, cuáles vienen incluidos y la ganancia de servicios."
             resumen={
@@ -430,7 +465,11 @@ export function CotizadorSalonEditor() {
 
           {/* 5. Personal */}
           <Bloque
-            icon={<Users className="h-5 w-5 text-muted-foreground" />}
+            icon={
+              <IconoRubro rubro="personal">
+                <Users className="h-5 w-5" />
+              </IconoRubro>
+            }
             title="Personal"
             subtitle="Una regla por función: cuántos hacen falta según los invitados, su tarifa y su ganancia."
             resumen={
@@ -445,6 +484,30 @@ export function CotizadorSalonEditor() {
               personal={catalogos.personal}
               capacidad={config.capacidadMaxima}
             />
+          </Bloque>
+
+          <div className="border-t border-border" />
+
+          {/* 6. Recargo de sábado */}
+          <Bloque
+            icon={
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                <Sun className="h-5 w-5" />
+              </span>
+            }
+            title="Recargo de sábado"
+            subtitle="Lo que se cobra de más un sábado (y en las fechas especiales marcadas «como sábado»). Es ganancia: no suma costo."
+            resumen={
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {config.recargoSabado.valor > 0 ? (
+                  <span className="font-semibold text-foreground">{textoRecargo(config.recargoSabado, fmt)} un sábado</span>
+                ) : (
+                  "Sin recargo: el sábado se cotiza igual que el viernes"
+                )}
+              </span>
+            }
+          >
+            <BloqueRecargoSabado config={config} catalogos={catalogos} onCambio={(recargoSabado) => cambiar({ recargoSabado })} />
           </Bloque>
         </>
       )}
@@ -483,7 +546,7 @@ export function CotizadorSalonEditor() {
             <DialogTitle>Copiar configuración a {nombreSalon}</DialogTitle>
             <DialogDescription>
               Reemplaza TODA la configuración de {nombreSalon} (costo, capacidad, ganancias, platos, barras visibles,
-              servicios y personal) por la del salón que elijas. No se puede deshacer.
+              servicios, personal y recargo de sábado) por la del salón que elijas. No se puede deshacer.
             </DialogDescription>
           </DialogHeader>
           <Select value={copiarDesde} onValueChange={setCopiarDesde}>
@@ -511,6 +574,85 @@ export function CotizadorSalonEditor() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// ─── Recargo de sábado ──────────────────────────────────────────────────
+
+/**
+ * Editor + vista previa: "Un sábado este salón cobra $X más (con [80]
+ * invitados)". Para la vista previa, Cocina = promedio de los platos del
+ * salón y Barra = promedio de las barras visibles (todos adultos), porque
+ * acá no hay una cotización real. Servicios depende de lo que se elija.
+ */
+function BloqueRecargoSabado({
+  config,
+  catalogos,
+  onCambio,
+}: {
+  config: ConfigSalon
+  catalogos: Catalogos
+  onCambio: (r: ReglaRecargo) => void
+}) {
+  const [invitados, setInvitados] = useState(80)
+  const r = config.recargoSabado
+
+  const precios = useMemo(() => {
+    const promedio = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
+    const platos = config.recetas
+      .map((id) => catalogos.platos.find((p) => p.id === id))
+      .filter((p): p is PlatoConCosto => !!p)
+      .map((p) => precioConGanancia(p.costoPorPorcion, config.gananciaCocina))
+    const costos = Object.fromEntries(catalogos.cocteles.map((c) => [c.id, c.costoPorTrago]))
+    const barras = catalogos.barras
+      .filter((b) => config.barras.includes(b.id))
+      .map((b) => precioBarraSalon(b.coctelesIncluidos, costos, config.gananciaBarra).precioPorAdulto)
+    return {
+      salon: precioConGanancia(config.costoSalon, config.gananciaSalon),
+      cocina: Math.round(invitados * promedio(platos)),
+      barra: Math.round(invitados * promedio(barras)),
+      servicios: 0,
+    }
+  }, [config, catalogos, invitados])
+  const monto = montoRecargo(r, precios)
+
+  return (
+    <div className="space-y-4">
+      <EditorRecargo valor={r} onChange={onCambio} etiqueta="Recargo de sábado" />
+      <div className="rounded-lg border-l-4 border-accent bg-accent/10 px-3 py-2 text-sm">
+        <label className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          <span>Un sábado este salón cobra</span>
+          <span className="font-semibold tabular-nums">{fmt(monto)} más</span>
+          {r.tipo === "porcentaje" && (
+            <>
+              <span>(con</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                aria-label="Invitados para la vista previa"
+                value={invitados}
+                onChange={(e) => setInvitados(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                className="h-8 w-20 rounded-lg border border-input bg-background px-2 text-right tabular-nums"
+              />
+              <span>invitados)</span>
+            </>
+          )}
+        </label>
+        {r.tipo === "porcentaje" && (r.rubros.includes("cocina") || r.rubros.includes("barra") || r.rubros.includes("servicios")) && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {[
+              r.rubros.includes("cocina") && "Cocina: promedio de los platos del salón",
+              r.rubros.includes("barra") && "Barra: promedio de las barras visibles, todos adultos",
+              r.rubros.includes("servicios") && `Servicios: además, ${r.valor} % de los que se elijan`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            .
+          </p>
+        )}
+      </div>
     </div>
   )
 }

@@ -14,6 +14,8 @@
 import { AlertTriangle, Calendar, IdCard, UserCheck, Users } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ChipDia, PuntoRubro } from "@/components/cotizador-colores"
+import type { DiaCotizado } from "@/lib/cotizador-salon"
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
@@ -41,6 +43,9 @@ export interface DesgloseCotizacionV2 {
     precioTotal: number
   }>
   personal: Array<{ funcion: string; cantidad: number; tarifa: number; origenTarifa: string; ganancia: number; precioUnitario: number }>
+  /** Desde scripts/018 (las anteriores no lo tienen). */
+  dia?: Pick<DiaCotizado, "tipo" | "etiqueta" | "fechaEspecial">
+  recargo?: { nombre: string; origen: "sabado" | "especial"; tipo: "monto" | "porcentaje"; valor: number; rubros: string[]; monto: number } | null
   avisos: Array<{ codigo: string; nivel: "ambar" | "rojo"; texto: string }>
   costoTotal: number | null
   total: number
@@ -103,8 +108,9 @@ export function DetalleCotizacionNueva({
       {/* Datos */}
       <div className="grid gap-2 sm:grid-cols-2 text-sm text-muted-foreground">
         {fechaEvento && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Calendar className="h-3.5 w-3.5" /> {fechaEvento}
+            {desglose.dia && <ChipDia dia={desglose.dia} recargo={desglose.recargo?.monto ?? 0} />}
           </div>
         )}
         {clienteDni && (
@@ -144,19 +150,36 @@ export function DetalleCotizacionNueva({
           <span className="text-right">Ganancia</span>
           <span className="text-right">Precio</span>
         </div>
+        {/* Mismos colores por rubro que Configuración y el vendedor
+            (components/cotizador-colores.tsx). Rojo/ámbar quedan solo para avisos. */}
         {desglose.rubros.map((r) => (
           <div key={r.clave} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 border-t border-border px-3 py-1.5 tabular-nums">
-            <span>{r.nombre}</span>
-            <span className="text-right text-red-600">{fmt(r.costo ?? 0)}</span>
-            <span className="text-right text-muted-foreground">{r.ganancia == null ? "por función" : `${r.ganancia} %`}</span>
-            <span className="text-right text-emerald-700">{fmt(r.precio)}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <PuntoRubro clave={r.clave} origen={desglose.recargo?.origen} />
+              <span className="min-w-0">{r.nombre}</span>
+            </span>
+            <span className="text-right text-muted-foreground">{fmt(r.costo ?? 0)}</span>
+            <span className="text-right text-muted-foreground">
+              {r.clave === "recargo"
+                ? desglose.recargo?.tipo === "porcentaje"
+                  ? `${desglose.recargo.valor} % de ${desglose.recargo.rubros.length} ${desglose.recargo.rubros.length === 1 ? "rubro" : "rubros"}`
+                  : "monto fijo"
+                : r.ganancia == null
+                  ? "por función"
+                  : `${r.ganancia} %`}
+            </span>
+            <span className="text-right">{fmt(r.precio)}</span>
           </div>
         ))}
         <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 border-t-2 border-border px-3 py-1.5 font-semibold tabular-nums">
           <span>Total</span>
-          <span className="text-right text-red-600">{fmt(desglose.costoTotal ?? 0)}</span>
-          <span className="text-right text-blue-700">{ganancia != null ? fmt(ganancia) : "—"}</span>
-          <span className="text-right text-emerald-700">{fmt(desglose.total)}</span>
+          <span className="text-right text-muted-foreground">{fmt(desglose.costoTotal ?? 0)}</span>
+          <span className="text-right">{ganancia != null ? fmt(ganancia) : "—"}</span>
+          {/* Pastilla verde con número blanco: AA en claro y en oscuro (texto
+              verde suelto sobre fondo oscuro no llega). */}
+          <span className="justify-self-end rounded-md bg-primary px-1.5 text-right text-primary-foreground">
+            {fmt(desglose.total)}
+          </span>
         </div>
       </div>
 
@@ -164,7 +187,10 @@ export function DetalleCotizacionNueva({
       <div className="grid gap-3 text-sm sm:grid-cols-2">
         {desglose.recetas.length > 0 && (
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Menú</p>
+            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <PuntoRubro clave="cocina" />
+              Menú
+            </p>
             <ul className="space-y-0.5 text-muted-foreground">
               {desglose.recetas.map((r) => (
                 <li key={r.id} className="flex justify-between gap-2">
@@ -180,7 +206,10 @@ export function DetalleCotizacionNueva({
         )}
         {desglose.barra && (
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Barra</p>
+            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <PuntoRubro clave="barra" />
+              Barra
+            </p>
             <p className="text-muted-foreground">
               {desglose.barra.nombre} · {desglose.barra.cocteles.length} cócteles ·{" "}
               <span className="tabular-nums">
@@ -191,19 +220,22 @@ export function DetalleCotizacionNueva({
         )}
         {desglose.servicios.length > 0 && (
           <div className="sm:col-span-2">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Servicios (costo / precio)</p>
+            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <PuntoRubro clave="servicios" />
+              Servicios (costo / precio)
+            </p>
             <ul className="space-y-0.5 text-muted-foreground">
               {desglose.servicios.map((s) => (
                 <li key={s.servicioId} className="flex justify-between gap-2">
                   <span>
                     {s.nombre}
                     {s.cantidad > 1 ? ` ×${s.cantidad}` : ""}
-                    {s.incluido && <span className="ml-1 text-xs text-emerald-700">(incluido en el salón, no suma)</span>}
+                    {s.incluido && <span className="ml-1 text-xs">(incluido en el salón, no suma)</span>}
                   </span>
                   <span className="tabular-nums">
-                    <span className="text-red-600">{fmt((s.costoUnitario ?? 0) * s.cantidad)}</span>
+                    {fmt((s.costoUnitario ?? 0) * s.cantidad)}
                     {" / "}
-                    <span className="text-emerald-700">{fmt(s.precioTotal)}</span>
+                    <span className="text-foreground">{fmt(s.precioTotal)}</span>
                   </span>
                 </li>
               ))}
@@ -216,6 +248,7 @@ export function DetalleCotizacionNueva({
       {asignaciones.length > 0 && (
         <div className="text-sm">
           <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <PuntoRubro clave="personal" />
             <UserCheck className="h-3.5 w-3.5" />
             Personal del evento (sale de las reglas del salón)
           </p>
