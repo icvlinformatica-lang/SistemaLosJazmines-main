@@ -248,7 +248,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, m
     <div
       onClick={startEdit}
       className={cn(
-        "group relative h-8 flex items-center px-2.5 rounded cursor-pointer hover:bg-muted/70 transition-colors text-[15px]",
+        "group relative min-h-8 flex items-center px-2.5 py-1 leading-snug rounded cursor-pointer hover:bg-muted/70 transition-colors text-[15px]",
         !value && "text-muted-foreground/50 italic",
         numeric && "justify-end tabular-nums",
         className
