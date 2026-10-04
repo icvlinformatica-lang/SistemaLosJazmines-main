@@ -156,3 +156,15 @@ test("una sola fecha especial por día y salón (la primera que coincide)", () =
 test("hoy en Argentina: a las 23:30 del 4/10 sigue siendo 4/10 (en UTC ya es 5/10)", () => {
   assert.equal(hoyArgentina(new Date("2026-10-05T02:30:00Z")), "2026-10-04")
 })
+
+test("dos barras: cada una cobra adultos × su precio, y el % de barra va sobre las dos", () => {
+  const e = entrada(resolverDia(SABADO, "Quinta", { tipo: "porcentaje", valor: 10, rubros: ["barra"] }, []))
+  e.barras = [e.barra, { id: "b2", nombre: "Barra 2", tragosPorAdulto: 2, costo: 2000, precio: 3000 }]
+  e.barra = null
+  const r = armarCotizacion(e)
+  // barra: 70 × 6.750 + 70 × 3.000 = 472.500 + 210.000 = 682.500
+  assert.equal(r.rubros.find((x) => x.clave === "barra").precio, 682500)
+  assert.equal(r.rubros.find((x) => x.clave === "barra").costo, 70 * 4500 + 70 * 2000)
+  assert.equal(r.recargo.monto, 68250)
+  assert.equal(r.total, 1500000 + 360000 + 682500 + 68250)
+})

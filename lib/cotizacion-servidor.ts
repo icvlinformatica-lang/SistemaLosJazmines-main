@@ -17,6 +17,7 @@ import { leerConfigSalon, leerPersonalConTarifa, leerServiciosConCosto, type Con
 import { leerFechasEspeciales } from "@/lib/fechas-especiales-servidor"
 import {
   CATEGORIAS_FUERA_DE_SERVICIOS,
+  MAX_BARRAS,
   armarCotizacion,
   diaDeSemana,
   resolverDia,
@@ -36,6 +37,8 @@ export interface PedidoCotizacion {
   ninos: number
   recetas: string[]
   barraId: string | null
+  /** Hasta MAX_BARRAS barras. Si viene, manda sobre barraId. */
+  barraIds?: string[]
   servicios: Array<{ servicioId: string; cantidad: number }>
 }
 
@@ -45,12 +48,16 @@ export interface CotizacionCalculada {
   dia: DiaCotizado
   resultado: ResultadoCotizacionSalon
   recetas: Array<{ id: string; nombre: string; costoPorcion: number; precioPorcion: number }>
-  barra: { id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number } | null
+  /** La primera barra (compatibilidad con lo que lee una sola). */
+  barra: BarraCalculada | null
+  barras: BarraCalculada[]
   /** Servicios con nombre/unidad/categoría (para guardar y para el evento). */
   servicios: Array<{ servicioId: string; nombre: string; categoria: string; unidad: string; cantidad: number; incluido: boolean }>
   /** Reglas de personal que se usaron, con su tarifa (para el evento al aprobar). */
   personal: Array<{ funcion: string; cantidad: number; tarifa: number; origenTarifa: string; ganancia: number }>
 }
+
+type BarraCalculada = { id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number }
 
 const entero = (n: unknown) => Math.max(0, Math.floor(Number(n) || 0))
 
@@ -84,21 +91,26 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
     })
   }
 
-  // ── Barra: una o ninguna, solo las visibles del salón ──
-  let barra: CotizacionCalculada["barra"] = null
-  if (p.barraId) {
-    const b = barras.find((x) => x.id === p.barraId)
+  // ── Barras: hasta MAX_BARRAS, distintas, solo las visibles del salón ──
+  const idsBarra = [
+    ...new Set(Array.isArray(p.barraIds) ? p.barraIds.filter((x) => typeof x === "string" && x) : p.barraId ? [p.barraId] : []),
+  ]
+  if (idsBarra.length > MAX_BARRAS) return `Se pueden elegir hasta ${MAX_BARRAS} barras.`
+  const costos = Object.fromEntries(cocteles.map((c) => [c.id, c.costoPorTrago]))
+  const barrasElegidas: BarraCalculada[] = []
+  for (const idBarra of idsBarra) {
+    const b = barras.find((x) => x.id === idBarra)
     if (!b || !config.barras.includes(b.id)) return "Esa barra no está disponible en este salón."
-    const costos = Object.fromEntries(cocteles.map((c) => [c.id, c.costoPorTrago]))
-    barra = {
+    barrasElegidas.push({
       id: b.id,
       nombre: b.nombre,
       // Los cócteles que ya no existen en la carta no se cobran ni pasan al evento.
       cocteles: b.coctelesIncluidos.filter((id) => id in costos),
       costoPorAdulto: precioBarraSalon(b.coctelesIncluidos, costos, 0).precioPorAdulto,
       precioPorAdulto: precioBarraSalon(b.coctelesIncluidos, costos, config.gananciaBarra).precioPorAdulto,
-    }
+    })
   }
+  const barra = barrasElegidas[0] ?? null
 
   // ── Servicios: los elegidos + TODOS los incluidos del salón ──
   const ocultos = new Set(config.servicios.filter((s) => s.oculto).map((s) => s.servicioId))
@@ -129,9 +141,14 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
     capacidadMaxima: config.capacidadMaxima,
     salon: { costo: config.costoSalon, precio: precioConGanancia(config.costoSalon, config.gananciaSalon) },
     recetas: recetas.map((r) => ({ id: r.id, nombre: r.nombre, costo: r.costoPorcion, precio: r.precioPorcion })),
-    barra: barra
-      ? { id: barra.id, nombre: barra.nombre, tragosPorAdulto: barra.cocteles.length, costo: barra.costoPorAdulto, precio: barra.precioPorAdulto }
-      : null,
+    barra: null,
+    barras: barrasElegidas.map((b) => ({
+      id: b.id,
+      nombre: b.nombre,
+      tragosPorAdulto: b.cocteles.length,
+      costo: b.costoPorAdulto,
+      precio: b.precioPorAdulto,
+    })),
     servicios: serviciosElegidos.map((sv) => ({
       servicioId: sv.id,
       nombre: sv.nombre,
@@ -158,6 +175,7 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
     resultado,
     recetas,
     barra,
+    barras: barrasElegidas,
     servicios: resultado.servicios.map((l) => {
       const sv = serviciosElegidos.find((x) => x.id === l.servicioId)!
       return { servicioId: l.servicioId, nombre: l.nombre, categoria: sv.categoria, unidad: l.unidad, cantidad: l.cantidad, incluido: l.incluido }

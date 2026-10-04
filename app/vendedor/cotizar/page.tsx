@@ -46,6 +46,7 @@ import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
 import { servicioCorrespondeAlAnio } from "@/lib/tarifario-cotizador"
 import {
+  MAX_BARRAS,
   RECARGO_VACIO,
   UNIDADES_CON_CANTIDAD,
   armarCotizacion,
@@ -216,7 +217,8 @@ function CotizarPageContent() {
   const [adultos, setAdultos] = useState(0)
   const [ninos, setNinos] = useState(0)
   const [recetas, setRecetas] = useState<string[]>([])
-  const [barraId, setBarraId] = useState<string | null>(null)
+  /** Barras elegidas, hasta MAX_BARRAS (cada una suma adultos × su precio). */
+  const [barraIds, setBarraIds] = useState<string[]>([])
   /** servicioId → cantidad. Solo los ADICIONALES elegidos (los incluidos van solos). */
   const [servicios, setServicios] = useState<Record<string, number>>({})
 
@@ -274,7 +276,7 @@ function CotizarPageContent() {
         setAdultos((c.invitados?.adultos || 0) + (c.invitados?.adolescentes || 0) + (c.invitados?.personasDietasEspeciales || 0))
         setNinos(c.invitados?.ninos || 0)
         setRecetas(Array.isArray(c.recetasElegidas?.adultos) ? c.recetasElegidas.adultos : [])
-        setBarraId(c.barraId || null)
+        setBarraIds(Array.isArray(c.barraIds) && c.barraIds.length ? c.barraIds : c.barraId ? [c.barraId] : [])
         const sel: Record<string, number> = {}
         for (const s of c.serviciosElegidos || []) sel[s.servicioId] = s.cantidad || 1
         setServicios(sel)
@@ -309,7 +311,7 @@ function CotizarPageContent() {
   useEffect(() => {
     if (!config || cargandoCotizacion) return
     setRecetas((prev) => prev.filter((id) => config.menu.some((m) => m.recetaId === id)))
-    setBarraId((prev) => (prev && config.barras.some((b) => b.id === prev) ? prev : null))
+    setBarraIds((prev) => prev.filter((id) => config.barras.some((b) => b.id === id)))
     setServicios((prev) => {
       const sig: Record<string, number> = {}
       for (const [id, cant] of Object.entries(prev)) {
@@ -338,10 +340,10 @@ function CotizarPageContent() {
       recetas: config.menu
         .filter((m) => recetas.includes(m.recetaId))
         .map((m) => ({ id: m.recetaId, nombre: m.nombre, precio: m.precioPorPorcion })),
-      barra: (() => {
-        const b = config.barras.find((x) => x.id === barraId)
-        return b ? { id: b.id, nombre: b.nombre, tragosPorAdulto: b.tragosPorAdulto, precio: b.precioPorAdulto } : null
-      })(),
+      barra: null,
+      barras: config.barras
+        .filter((b) => barraIds.includes(b.id))
+        .map((b) => ({ id: b.id, nombre: b.nombre, tragosPorAdulto: b.tragosPorAdulto, precio: b.precioPorAdulto })),
       servicios: serviciosDelSalon
         .filter((s) => s.incluido || s.servicioId in servicios)
         .map((s) => ({
@@ -355,7 +357,7 @@ function CotizarPageContent() {
       personal: config.personal.map((p) => ({ ...p, precio: p.precioPorPersona })),
       dia,
     })
-  }, [config, adultos, ninos, recetas, barraId, servicios, serviciosDelSalon, dia])
+  }, [config, adultos, ninos, recetas, barraIds, servicios, serviciosDelSalon, dia])
 
   const faltan: string[] = []
   if (!clienteNombre.trim()) faltan.push("el nombre del cliente")
@@ -382,7 +384,8 @@ function CotizarPageContent() {
           adultos,
           ninos,
           recetas,
-          barraId,
+          barraId: barraIds[0] ?? null,
+          barraIds,
           servicios: Object.entries(servicios).map(([servicioId, cantidad]) => ({ servicioId, cantidad })),
         }),
       })
@@ -597,13 +600,26 @@ function CotizarPageContent() {
               </Tarjeta>
 
               {/* 5. Barra */}
-              <Tarjeta icono={<Wine className="h-4 w-4" />} titulo="Barra" rubro="barra" resumen={barraId ? "1 barra" : "Sin barra"}>
+              <Tarjeta
+                icono={<Wine className="h-4 w-4" />}
+                titulo="Barra"
+                rubro="barra"
+                resumen={barraIds.length ? `${barraIds.length} ${barraIds.length === 1 ? "barra" : "barras"}` : "Sin barra"}
+              >
                 {config.barras.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Este salón no tiene barras para cotizar.</p>
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-2">
                     {config.barras.map((b) => (
-                      <Chip key={b.id} activo={barraId === b.id} onClick={() => setBarraId(barraId === b.id ? null : b.id)}>
+                      <Chip
+                        key={b.id}
+                        activo={barraIds.includes(b.id)}
+                        // Hasta MAX_BARRAS: con el cupo lleno, las demás no se pueden tocar.
+                        deshabilitado={!barraIds.includes(b.id) && barraIds.length >= MAX_BARRAS}
+                        onClick={() =>
+                          setBarraIds((prev) => (prev.includes(b.id) ? prev.filter((x) => x !== b.id) : [...prev, b.id].slice(0, MAX_BARRAS)))
+                        }
+                      >
                         <span className="block font-medium">{b.nombre}</span>
                         <span className="block text-xs opacity-80 tabular-nums">
                           {fmt(b.precioPorAdulto)} por adulto · {b.tragosPorAdulto} {b.tragosPorAdulto === 1 ? "trago" : "tragos"}
@@ -611,6 +627,11 @@ function CotizarPageContent() {
                       </Chip>
                     ))}
                   </div>
+                )}
+                {config.barras.length > 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    Podés sumar hasta {MAX_BARRAS} barras: cada una se cobra por adulto.
+                  </p>
                 )}
               </Tarjeta>
 
