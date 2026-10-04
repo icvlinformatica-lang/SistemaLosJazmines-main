@@ -45,7 +45,6 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { calcularCostoEventoCajaEventos } from "@/lib/costo-evento"
 import { generateId, SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
 import {
   BarraFiltrosEgresos,
@@ -1294,11 +1293,15 @@ useStore()
   const cambiarMes = (delta: number) =>
     setMesCalendario((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
 
-  // Eventos del mes visible en el calendario, con su costo para Caja Eventos:
-  // EXACTAMENTE el "Costo total del evento" de /eventos/costos (cocina + barra
-  // + servicios + personal, lib/costo-evento.ts). El costo operativo (gastos
-  // fijos) es de Caja Jazmines y no va acá. Alimenta el panel lateral
-  // "Gastos del mes por evento" pegado al calendario.
+  // Eventos del mes visible en el calendario con lo que FALTA pagar de cada
+  // uno: la suma de sus renglones de "Por pagar" (menú, barra, señas, saldos,
+  // sueldos). Lo ya pagado no cuenta. Alimenta el panel lateral "Pendiente por
+  // evento" pegado al calendario.
+  const pendientePorEvento = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const eg of egresosPendientes) map.set(eg.eventoId, (map.get(eg.eventoId) ?? 0) + eg.monto)
+    return map
+  }, [egresosPendientes])
   const eventosDelMes = useMemo(() => {
     const monthKey = `${mesCalendario.getFullYear()}-${String(mesCalendario.getMonth() + 1).padStart(2, "0")}`
     const eventos = (state.eventos ?? []).filter(
@@ -1313,19 +1316,11 @@ useStore()
         nombre: ev.nombrePareja || ev.nombre || "Sin nombre",
         fecha: ev.fecha,
         salon: ev.salon,
-        costoTotal: calcularCostoEventoCajaEventos(ev, {
-          recetas: state.recetas ?? [],
-          insumos,
-          cocteles: state.cocteles ?? [],
-          insumosBarra,
-          servicios: state.servicios ?? [],
-          personal: state.personal ?? [],
-          movimientosCaja: state.movimientosCaja ?? [],
-        }).costoTotalEvento,
+        pendiente: pendientePorEvento.get(ev.id) ?? 0,
       }))
       .sort((a, b) => a.fecha.localeCompare(b.fecha))
-    return { lista, total: lista.reduce((s, e) => s + e.costoTotal, 0) }
-  }, [mesCalendario, state.eventos, state.recetas, state.cocteles, state.servicios, state.personal, state.movimientosCaja, insumos, insumosBarra, salonFiltro])
+    return { lista, total: lista.reduce((s, e) => s + e.pendiente, 0) }
+  }, [mesCalendario, state.eventos, pendientePorEvento, salonFiltro])
 
   // Movimientos del día seleccionado en el calendario
   const detalleDia = useMemo(() => {
@@ -1357,7 +1352,7 @@ useStore()
     const claves = [...ordenSalones.filter((salon) => map.has(salon)), ...[...map.keys()].filter((salon) => !ordenSalones.includes(salon))]
     return claves.map((salon) => {
       const items = map.get(salon)!
-      return { salon, items, total: items.reduce((sum, evento) => sum + evento.costoTotal, 0) }
+      return { salon, items, total: items.reduce((sum, evento) => sum + evento.pendiente, 0) }
     })
   }, [eventosDelMes.lista, ordenSalones])
 
@@ -1376,7 +1371,11 @@ useStore()
       </div>
       <div className="flex items-center justify-between mt-1">
         <span className="text-[11px] text-muted-foreground">{formatFecha(ev.fecha)}</span>
-        <span className="text-xs font-bold text-destructive">−{formatCurrency(ev.costoTotal)}</span>
+        {ev.pendiente > 0 ? (
+          <span className="text-xs font-bold text-destructive">−{formatCurrency(ev.pendiente)}</span>
+        ) : (
+          <span className="text-xs font-medium text-emerald-700">Todo pagado</span>
+        )}
       </div>
     </button>
   )
@@ -2075,7 +2074,7 @@ useStore()
         <CardHeader className="pb-0 shrink-0">
           <CardTitle className="text-sm flex items-center gap-2">
             <Building className="h-4 w-4 text-teal-600" />
-            Gastos del mes por evento
+            Pendiente por evento
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 flex-1 min-h-0 overflow-y-auto">
