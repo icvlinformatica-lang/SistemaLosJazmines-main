@@ -14,9 +14,13 @@
 import { leerBarrasArmadas, leerCostosPlatos } from "@/lib/cotizador-config-servidor"
 import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
 import { leerConfigSalon, leerPersonalConTarifa, leerServiciosConCosto, type ConfigSalon } from "@/lib/cotizador-salon-servidor"
+import { leerFechasEspeciales } from "@/lib/fechas-especiales-servidor"
 import {
   CATEGORIAS_FUERA_DE_SERVICIOS,
   armarCotizacion,
+  diaDeSemana,
+  resolverDia,
+  type DiaCotizado,
   esSalonCotizador,
   precioBarraSalon,
   precioConGanancia,
@@ -37,6 +41,8 @@ export interface PedidoCotizacion {
 
 export interface CotizacionCalculada {
   config: ConfigSalon
+  /** Tipo de día y recargo que le tocó (sábado / fecha especial / ninguno). */
+  dia: DiaCotizado
   resultado: ResultadoCotizacionSalon
   recetas: Array<{ id: string; nombre: string; costoPorcion: number; precioPorcion: number }>
   barra: { id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number } | null
@@ -54,11 +60,15 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
   const adultos = entero(p.adultos)
   const ninos = entero(p.ninos)
   if (adultos + ninos <= 0) return "Cargá la cantidad de invitados."
+  const fecha = p.fechaEvento || ""
+  if (fecha && diaDeSemana(fecha) == null) return "La fecha del evento no es válida."
 
   // En tandas chicas por el pooler de Supabase (ver /api/vendedor/catalogo).
   const config = await leerConfigSalon(p.salon)
   const [platos, cocteles] = await Promise.all([leerCostosPlatos(), leerPreciosCocteles()])
   const [barras, serviciosCat, roster] = await Promise.all([leerBarrasArmadas(), leerServiciosConCosto(), leerPersonalConTarifa()])
+  // Recargo del día: fecha especial de ese salón > sábado > como viernes.
+  const dia = resolverDia(fecha, p.salon, config.recargoSabado, fecha ? await leerFechasEspeciales({ fecha }) : [])
 
   // ── Recetas: solo las visibles del salón ──
   const recetasPedidas = [...new Set((p.recetas || []).filter((x) => typeof x === "string"))]
@@ -139,10 +149,12 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
       costo: tarifa.tarifa,
       precio,
     })),
+    dia,
   })
 
   return {
     config,
+    dia,
     resultado,
     recetas,
     barra,

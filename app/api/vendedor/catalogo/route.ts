@@ -4,7 +4,8 @@ import { sql } from "@/lib/db"
 import { leerPreciosCocteles } from "@/lib/precio-barra-servidor"
 import { leerBarrasArmadas, leerCostosPlatos } from "@/lib/cotizador-config-servidor"
 import { leerConfigTodosLosSalones, leerPersonalConTarifa, leerServiciosConCosto } from "@/lib/cotizador-salon-servidor"
-import { CATEGORIAS_FUERA_DE_SERVICIOS, precioBarraSalon, precioConGanancia, tarifaDeRegla } from "@/lib/cotizador-salon"
+import { leerFechasEspeciales } from "@/lib/fechas-especiales-servidor"
+import { CATEGORIAS_FUERA_DE_SERVICIOS, hoyArgentina, precioBarraSalon, precioConGanancia, tarifaDeRegla } from "@/lib/cotizador-salon"
 
 /**
  * Catálogo saneado para la pantalla del vendedor (/vendedor/cotizar):
@@ -75,6 +76,12 @@ export async function GET() {
     const cotizadorPorSalon = await armarCotizadorPorSalon(preciosCocteles).catch((err) => {
       console.error("[API] vendedor/catalogo: sin cotizador por salón:", err)
       return null
+    })
+    // Fechas especiales de hoy en adelante (scripts/018): nombre, salones y
+    // cómo se cotizan. Son reglas de PRECIO (recargo al cliente), sin costos.
+    const fechasEspeciales = await leerFechasEspeciales({ desde: hoyArgentina() }).catch((err) => {
+      console.error("[API] vendedor/catalogo: sin fechas especiales:", err)
+      return []
     })
 
     const preciosVentaMap: Record<string, Record<string, number>> = {}
@@ -159,6 +166,7 @@ export async function GET() {
       // Cotizador por salón (Cotizaciones > Configuración): solo PRECIOS, nunca
       // costos ni ganancias. Lo usa /vendedor/cotizar (Paso 2).
       cotizadorPorSalon,
+      fechasEspeciales,
     })
   } catch (err) {
     console.error("[API] Error en vendedor/catalogo:", err)
@@ -182,6 +190,8 @@ async function armarCotizadorPorSalon(preciosCocteles: Array<{ id: string; costo
     salon: cfg.salon,
     capacidadMaxima: cfg.capacidadMaxima,
     precioSalon: precioConGanancia(cfg.costoSalon, cfg.gananciaSalon),
+    // Recargo al cliente un sábado: monto fijo o % sobre el PRECIO de rubros.
+    recargoSabado: cfg.recargoSabado,
     menu: cfg.recetas
       .map((id) => platos.find((p) => p.id === id))
       .filter((p): p is NonNullable<typeof p> => !!p)

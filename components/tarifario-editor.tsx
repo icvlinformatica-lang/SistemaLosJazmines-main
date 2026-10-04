@@ -26,6 +26,7 @@ import type { DiaTarifario, ModalidadSalon } from "@/lib/tarifario-cotizador"
 import { BloqueIncluidosAnterior } from "@/components/cotizador-config-bloques"
 import { Bloque, InputPrecio } from "@/components/config-bloque"
 import { CotizadorSalonEditor } from "@/components/cotizador-salon-editor"
+import { FechasEspecialesEditor } from "@/components/fechas-especiales-editor"
 
 interface FilaGrilla {
   salon: string
@@ -795,6 +796,7 @@ export function TarifarioEditor() {
   return (
     <div className="space-y-4">
       <CotizadorSalonEditor />
+      <FechasEspecialesEditor />
       {MOSTRAR_CONFIGURACION_ANTERIOR && (
       <div className="rounded-xl border border-dashed border-border bg-muted/30">
         <button

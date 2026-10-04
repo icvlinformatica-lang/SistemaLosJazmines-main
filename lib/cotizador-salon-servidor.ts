@@ -5,9 +5,14 @@
 // Administración/Soporte) y /api/vendedor/catalogo (solo precios).
 import { sql } from "@/lib/db"
 import {
+  RECARGO_VACIO,
+  RUBROS_RECARGO,
   SALONES_COTIZADOR,
   esSalonCotizador,
+  validarReglaRecargo,
   type AplicaRegla,
+  type ReglaRecargo,
+  type RubroRecargo,
   type PersonaConTarifa,
   type ReglaPersonalSalon,
 } from "@/lib/cotizador-salon"
@@ -27,6 +32,8 @@ export interface ConfigSalon {
   gananciaCocina: number
   gananciaBarra: number
   gananciaServicios: number
+  /** Recargo de sábado (scripts/018). Valor 0 = sin recargo. */
+  recargoSabado: ReglaRecargo
   /** Platos que aparecen como botón, en orden. */
   recetas: string[]
   /** Barras armadas que aparecen. */
@@ -60,6 +67,7 @@ export function configVacia(salon: string): ConfigSalon {
     gananciaCocina: 0,
     gananciaBarra: 0,
     gananciaServicios: 0,
+    recargoSabado: { ...RECARGO_VACIO, rubros: [...RECARGO_VACIO.rubros] },
     recetas: [],
     barras: [],
     servicios: [],
@@ -95,6 +103,7 @@ export async function leerConfigSalon(salon: string): Promise<ConfigSalon> {
           gananciaCocina: num(f.ganancia_cocina),
           gananciaBarra: num(f.ganancia_barra),
           gananciaServicios: num(f.ganancia_servicios),
+          recargoSabado: recargoDesdeFila(f),
         }
       : {}),
     recetas: recetas.map((r) => r.receta_id),
@@ -141,6 +150,7 @@ export async function leerConfigTodosLosSalones(): Promise<ConfigSalon[]> {
             gananciaCocina: num(f.ganancia_cocina),
             gananciaBarra: num(f.ganancia_barra),
             gananciaServicios: num(f.ganancia_servicios),
+            recargoSabado: recargoDesdeFila(f),
           }
         : {}),
       recetas: recetas.filter((r) => r.salon === salon).map((r) => r.receta_id),
@@ -151,6 +161,17 @@ export async function leerConfigTodosLosSalones(): Promise<ConfigSalon[]> {
       reglasPersonal: reglas.filter((r) => r.salon === salon).map(reglaDesdeFila),
     }
   })
+}
+
+function recargoDesdeFila(f: Record<string, unknown>): ReglaRecargo {
+  const rubros = Array.isArray(f.recargo_sabado_rubros)
+    ? RUBROS_RECARGO.filter((r) => (f.recargo_sabado_rubros as unknown[]).includes(r))
+    : []
+  return {
+    tipo: f.recargo_sabado_tipo === "porcentaje" ? "porcentaje" : "monto",
+    valor: num(f.recargo_sabado_valor),
+    rubros: (rubros.length ? rubros : ["salon"]) as RubroRecargo[],
+  }
 }
 
 function reglaDesdeFila(r: Record<string, unknown>): ReglaPersonalSalon {
@@ -226,6 +247,10 @@ export function validarConfigSalon(body: unknown, funcionesPermitidas: Set<strin
     ganancias[campo] = g
   }
 
+  // Sin el bloque (pantalla vieja abierta) → sin recargo, igual que hoy.
+  const recargoSabado = b.recargoSabado == null ? RECARGO_VACIO : validarReglaRecargo(b.recargoSabado, "Recargo de sábado")
+  if (typeof recargoSabado === "string") return recargoSabado
+
   const textos = (v: unknown) =>
     Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && x.length > 0))] : []
 
@@ -273,6 +298,7 @@ export function validarConfigSalon(body: unknown, funcionesPermitidas: Set<strin
     gananciaCocina: ganancias.gananciaCocina,
     gananciaBarra: ganancias.gananciaBarra,
     gananciaServicios: ganancias.gananciaServicios,
+    recargoSabado,
     recetas: textos(b.recetas),
     barras: textos(b.barras),
     servicios,
@@ -314,9 +340,12 @@ export async function guardarConfigSalon(cfg: ConfigSalon): Promise<void> {
     const db = tx as unknown as typeof sql
     await db`
       INSERT INTO cotizador_salon (salon, costo_salon, capacidad_maxima, ganancia_salon,
-        ganancia_cocina, ganancia_barra, ganancia_servicios, updated_at)
+        ganancia_cocina, ganancia_barra, ganancia_servicios,
+        recargo_sabado_tipo, recargo_sabado_valor, recargo_sabado_rubros, updated_at)
       VALUES (${cfg.salon}, ${cfg.costoSalon}, ${cfg.capacidadMaxima}, ${cfg.gananciaSalon},
-        ${cfg.gananciaCocina}, ${cfg.gananciaBarra}, ${cfg.gananciaServicios}, now())
+        ${cfg.gananciaCocina}, ${cfg.gananciaBarra}, ${cfg.gananciaServicios},
+        ${cfg.recargoSabado.tipo}, ${cfg.recargoSabado.valor},
+        string_to_array(${cfg.recargoSabado.rubros.join(",")}, ','), now())
       ON CONFLICT (salon) DO UPDATE SET
         costo_salon = excluded.costo_salon,
         capacidad_maxima = excluded.capacidad_maxima,
@@ -324,6 +353,9 @@ export async function guardarConfigSalon(cfg: ConfigSalon): Promise<void> {
         ganancia_cocina = excluded.ganancia_cocina,
         ganancia_barra = excluded.ganancia_barra,
         ganancia_servicios = excluded.ganancia_servicios,
+        recargo_sabado_tipo = excluded.recargo_sabado_tipo,
+        recargo_sabado_valor = excluded.recargo_sabado_valor,
+        recargo_sabado_rubros = excluded.recargo_sabado_rubros,
         updated_at = now()
     `
 

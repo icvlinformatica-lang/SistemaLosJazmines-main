@@ -161,6 +161,164 @@ export function simularPersonal(
   }
 }
 
+// ── Recargo de sábado y fechas especiales (scripts/018) ─────────────────────
+//
+// Orden: si la fecha es especial para ese salón, MANDA la fecha especial
+// ("como sábado" usa el recargo de sábado del salón, "como viernes" va sin
+// recargo, "propio" usa el suyo y NO se suma el de sábado). Si no: sábado →
+// recargo de sábado; domingo a viernes → sin recargo (como viernes).
+// El recargo es ganancia pura: no suma costo. Personal NO es un rubro
+// elegible: ya tiene tarifas distintas de viernes y sábado.
+
+export const RUBROS_RECARGO = ["salon", "cocina", "barra", "servicios"] as const
+export type RubroRecargo = (typeof RUBROS_RECARGO)[number]
+export type TipoRecargo = "monto" | "porcentaje"
+export type ModoFechaEspecial = "sabado" | "viernes" | "propio"
+
+export interface ReglaRecargo {
+  tipo: TipoRecargo
+  /** Pesos (monto) o porcentaje (10 = 10 %). */
+  valor: number
+  /** Rubros sobre los que se aplica el porcentaje (en monto fijo no se usan). */
+  rubros: RubroRecargo[]
+}
+
+export const RECARGO_VACIO: ReglaRecargo = { tipo: "monto", valor: 0, rubros: ["salon"] }
+/** Tope del porcentaje de recargo (más que esto es un error de tipeo). */
+export const RECARGO_PORCENTAJE_MAXIMO = 1000
+
+export interface FechaEspecial {
+  id: string
+  /** "YYYY-MM-DD" */
+  fecha: string
+  nombre: string
+  todosLosSalones: boolean
+  /** Salones a los que aplica (con "todos", los 5). */
+  salones: string[]
+  modo: ModoFechaEspecial
+  /** Solo en modo "propio". */
+  recargo: ReglaRecargo | null
+}
+
+const FORMATO_FECHA = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/** Día de la semana de "YYYY-MM-DD" (0 = domingo … 6 = sábado), o null si
+ *  no es una fecha válida. Arma la fecha con año, mes y día en UTC y la lee
+ *  en UTC: la zona horaria nunca entra en juego. (new Date("YYYY-MM-DD")
+ *  .getDay() la toma como UTC y en Argentina puede dar el día anterior.) */
+export function diaDeSemana(fecha: string | null | undefined): number | null {
+  const m = FORMATO_FECHA.exec(String(fecha ?? ""))
+  if (!m) return null
+  const [anio, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const d = new Date(Date.UTC(anio, mes - 1, dia))
+  if (d.getUTCFullYear() !== anio || d.getUTCMonth() !== mes - 1 || d.getUTCDate() !== dia) return null
+  return d.getUTCDay()
+}
+
+export const NOMBRES_DIA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
+
+/** Hoy en Argentina como "YYYY-MM-DD" (para separar fechas pasadas). */
+export function hoyArgentina(ahora: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(ahora)
+}
+
+/** "2026-10-10" → "10/10/2026", sin pasar por Date. */
+export function fechaCorta(fecha: string): string {
+  const m = FORMATO_FECHA.exec(fecha)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : fecha
+}
+
+/** La fecha especial de ese día para ese salón (como mucho una: la base no
+ *  deja cargar dos para el mismo día y salón). */
+export function fechaEspecialDelDia(fecha: string, salon: string, lista: FechaEspecial[]): FechaEspecial | null {
+  return lista.find((f) => f.fecha === fecha && f.salones.includes(salon)) ?? null
+}
+
+export type TipoDia = "sin_fecha" | "sabado" | "viernes" | "como_viernes" | "especial"
+
+export interface DiaCotizado {
+  tipo: TipoDia
+  /** 0 = domingo … 6 = sábado; null sin fecha. */
+  diaSemana: number | null
+  /** "Sábado", "Domingo", … o el nombre de la fecha especial. */
+  etiqueta: string
+  fechaEspecial: { id: string; nombre: string; modo: ModoFechaEspecial } | null
+  /** Recargo a aplicar, con el nombre del renglón del desglose. null = ninguno. */
+  recargo: (ReglaRecargo & { nombre: string; origen: "sabado" | "especial" }) | null
+}
+
+/** Qué tipo de día es para el cotizador y qué recargo le toca. */
+export function resolverDia(
+  fecha: string | null | undefined,
+  salon: string,
+  recargoSabado: ReglaRecargo,
+  fechasEspeciales: FechaEspecial[],
+): DiaCotizado {
+  const diaSemana = diaDeSemana(fecha)
+  if (diaSemana == null) {
+    return { tipo: "sin_fecha", diaSemana: null, etiqueta: "Sin fecha", fechaEspecial: null, recargo: null }
+  }
+  const especial = fechaEspecialDelDia(String(fecha), salon, fechasEspeciales)
+  if (especial) {
+    const fe = { id: especial.id, nombre: especial.nombre, modo: especial.modo }
+    const recargo =
+      especial.modo === "sabado"
+        ? recargoSabado
+        : especial.modo === "propio" && especial.recargo
+          ? especial.recargo
+          : null
+    return {
+      tipo: "especial",
+      diaSemana,
+      etiqueta: especial.nombre,
+      fechaEspecial: fe,
+      recargo: recargo ? { ...recargo, nombre: especial.nombre, origen: "especial" } : null,
+    }
+  }
+  if (diaSemana === 6) {
+    return {
+      tipo: "sabado",
+      diaSemana,
+      etiqueta: NOMBRES_DIA[6],
+      fechaEspecial: null,
+      recargo: { ...recargoSabado, nombre: "Recargo sábado", origen: "sabado" },
+    }
+  }
+  return {
+    tipo: diaSemana === 5 ? "viernes" : "como_viernes",
+    diaSemana,
+    etiqueta: NOMBRES_DIA[diaSemana],
+    fechaEspecial: null,
+    recargo: null,
+  }
+}
+
+/** Monto del recargo: el fijo una vez, o el % sobre el PRECIO de los rubros
+ *  tildados. Redondeado a pesos. */
+export function montoRecargo(regla: ReglaRecargo | null, precios: Partial<Record<ClaveRubro, number>>): number {
+  if (!regla) return 0
+  const valor = Math.max(0, Number(regla.valor) || 0)
+  if (regla.tipo === "monto") return Math.round(valor)
+  const base = regla.rubros.reduce((s, r) => s + (Number(precios[r]) || 0), 0)
+  return Math.round((base * valor) / 100)
+}
+
+/** Valida un recargo que manda una pantalla. Devuelve el limpio o un error. */
+export function validarReglaRecargo(x: unknown, que: string): ReglaRecargo | string {
+  const r = (x ?? {}) as Record<string, unknown>
+  if (r.tipo !== "monto" && r.tipo !== "porcentaje") return `${que}: elegí monto fijo o porcentaje.`
+  const valor = Number(r.valor)
+  if (!Number.isFinite(valor) || valor < 0) return `${que}: el valor tiene que ser un número de 0 para arriba.`
+  if (r.tipo === "porcentaje" && valor > RECARGO_PORCENTAJE_MAXIMO) {
+    return `${que}: el porcentaje va de 0 a ${RECARGO_PORCENTAJE_MAXIMO} %.`
+  }
+  const rubros = Array.isArray(r.rubros)
+    ? RUBROS_RECARGO.filter((k) => (r.rubros as unknown[]).includes(k))
+    : []
+  if (r.tipo === "porcentaje" && rubros.length === 0) return `${que}: tildá al menos un rubro.`
+  return { tipo: r.tipo, valor, rubros: rubros.length ? rubros : ["salon"] }
+}
+
 // ── Cotización completa (Paso 2) ────────────────────────────────────────────
 //
 // UNA sola cuenta para el precio de una cotización. Trabaja con valores POR
@@ -201,9 +359,14 @@ export interface EntradaCotizacionSalon {
   servicios: Array<ValorUnitario & { servicioId: string; nombre: string; unidad: string; cantidad: number; incluido: boolean }>
   /** Reglas de personal del salón, con el valor de UNA persona. */
   personal: Array<ValorUnitario & { funcion: string; cadaNInvitados: number; minimo: number; aplica: AplicaRegla }>
+  /** Día cotizado (resolverDia). Sin esto = sin recargo y sin aviso de fecha
+   *  (cotizaciones viejas / simulaciones sin día). */
+  dia?: DiaCotizado | null
 }
 
-export type ClaveRubro = "salon" | "cocina" | "barra" | "servicios" | "personal"
+/** "recargo" es el renglón aparte del recargo de sábado o de la fecha
+ *  especial: ganancia pura (costo 0). Solo aparece si suma algo. */
+export type ClaveRubro = "salon" | "cocina" | "barra" | "servicios" | "personal" | "recargo"
 
 export interface RubroCotizacion {
   clave: ClaveRubro
@@ -249,6 +412,8 @@ export interface ResultadoCotizacionSalon {
   costoTotal: number | null
   servicios: LineaServicioCotizacion[]
   personal: LineaPersonalCotizacion[]
+  /** Recargo aplicado (null = ninguno o $0). */
+  recargo: { nombre: string; origen: "sabado" | "especial"; tipo: TipoRecargo; valor: number; rubros: RubroRecargo[]; monto: number } | null
   avisos: AvisoCotizacion[]
   superaCapacidad: boolean
   /** Derivada, para no romper lo que la lea: hay menú → "con_catering". */
@@ -350,6 +515,11 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
     avisos.unshift({ codigo: "capacidad", nivel: "rojo", texto, textoVendedor: texto })
   }
 
+  if (e.dia?.tipo === "sin_fecha") {
+    const texto = "Sin fecha: se cotiza como viernes"
+    avisos.push({ codigo: "sin_fecha", nivel: "ambar", texto, textoVendedor: texto })
+  }
+
   const rubros: RubroCotizacion[] = [
     { clave: "salon", nombre: "Salón", costo: c(e.salon.costo), precio: salonPrecio },
     { clave: "cocina", nombre: "Cocina", costo: c(cocinaCosto), precio: cocinaPrecio },
@@ -357,6 +527,23 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
     { clave: "servicios", nombre: "Servicios", costo: c(serviciosCosto), precio: serviciosPrecio },
     { clave: "personal", nombre: "Personal", costo: c(personalCosto), precio: personalPrecio },
   ]
+
+  // Recargo (sábado o fecha especial): sobre el PRECIO de los rubros, costo 0.
+  const reglaRecargo = e.dia?.recargo ?? null
+  const monto = montoRecargo(reglaRecargo, Object.fromEntries(rubros.map((r) => [r.clave, r.precio])))
+  const recargo =
+    reglaRecargo && monto > 0
+      ? {
+          nombre: reglaRecargo.nombre,
+          origen: reglaRecargo.origen,
+          tipo: reglaRecargo.tipo,
+          valor: Number(reglaRecargo.valor) || 0,
+          rubros: [...reglaRecargo.rubros],
+          monto,
+        }
+      : null
+  if (recargo) rubros.push({ clave: "recargo", nombre: recargo.nombre, costo: c(0), precio: monto })
+
   return {
     comensales,
     rubros,
@@ -364,6 +551,7 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
     costoTotal: conCostos ? rubros.reduce((s, r) => s + (r.costo ?? 0), 0) : null,
     servicios,
     personal,
+    recargo,
     avisos,
     superaCapacidad,
     modalidad: e.recetas.length > 0 ? "con_catering" : "solo_salon",
