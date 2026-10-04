@@ -109,6 +109,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           serviciosElegidosData.barra?.tipo === "armada" && typeof serviciosElegidosData.barra.barraTemplateId === "string"
             ? serviciosElegidosData.barra.barraTemplateId
             : null,
+        // Todas las barras armadas (desde que se pueden elegir 2). Las de antes: la única.
+        barraIds: Array.isArray(serviciosElegidosData.barras)
+          ? serviciosElegidosData.barras
+              .filter((b: { tipo?: string; barraTemplateId?: unknown }) => b?.tipo === "armada" && typeof b.barraTemplateId === "string")
+              .map((b: { barraTemplateId: string }) => b.barraTemplateId)
+          : serviciosElegidosData.barra?.tipo === "armada" && typeof serviciosElegidosData.barra.barraTemplateId === "string"
+            ? [serviciosElegidosData.barra.barraTemplateId]
+            : [],
         fechaEvento: f.fecha_evento || "",
         horario: f.horario || "",
         horarioFin: f.horario_fin || "",

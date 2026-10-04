@@ -55,6 +55,7 @@ export async function POST(req: Request) {
       ninos,
       recetas: Array.isArray(body.recetas) ? (body.recetas as string[]) : [],
       barraId: typeof body.barraId === "string" && body.barraId ? body.barraId : null,
+      barraIds: Array.isArray(body.barraIds) ? (body.barraIds as string[]) : undefined,
       servicios: Array.isArray(body.servicios) ? (body.servicios as Array<{ servicioId: string; cantidad: number }>) : [],
     })
     if (typeof calculo === "string") return NextResponse.json({ ok: false, error: calculo }, { status: 400 })
@@ -76,7 +77,9 @@ export async function POST(req: Request) {
     const serviciosElegidos = {
       version: 2,
       recetas: { adultos: calculo.recetas.map((x) => x.id), adolescentes: [], ninos: [], dietasEspeciales: [] },
+      // "barra" = la primera (lo que leen las pantallas viejas); "barras" = todas.
       barra: calculo.barra ? { tipo: "armada", barraTemplateId: calculo.barra.id, cocteles: calculo.barra.cocteles } : null,
+      barras: calculo.barras.map((b) => ({ tipo: "armada", barraTemplateId: b.id, cocteles: b.cocteles })),
       servicios: calculo.servicios.map((s) => {
         const l = r.servicios.find((x) => x.servicioId === s.servicioId)!
         return {
@@ -120,6 +123,7 @@ export async function POST(req: Request) {
       rubros: r.rubros.map((x) => ({ ...x, ganancia: ganancias[x.clave] })),
       recetas: calculo.recetas,
       barra: calculo.barra,
+      barras: calculo.barras,
       servicios: r.servicios,
       personal,
       // Día cotizado y recargo aplicado (scripts/018). Queda fijo: si después

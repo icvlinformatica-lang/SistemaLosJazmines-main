@@ -32,6 +32,8 @@ export interface DesgloseCotizacionV2 {
   rubros: Array<{ clave: string; nombre: string; costo: number | null; precio: number; ganancia: number | null }>
   recetas: Array<{ id: string; nombre: string; costoPorcion: number; precioPorcion: number }>
   barra: { id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number } | null
+  /** Todas las barras (desde que se pueden elegir 2). Las de antes solo traen "barra". */
+  barras?: Array<{ id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number }>
   servicios: Array<{
     servicioId: string
     nombre: string
@@ -204,18 +206,20 @@ export function DetalleCotizacionNueva({
             {desglose.recetas.length > 1 && <p className="text-xs text-muted-foreground">Se cobra el promedio por persona.</p>}
           </div>
         )}
-        {desglose.barra && (
+        {(desglose.barras ?? (desglose.barra ? [desglose.barra] : [])).length > 0 && (
           <div>
             <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <PuntoRubro clave="barra" />
-              Barra
+              {(desglose.barras?.length ?? 1) > 1 ? "Barras" : "Barra"}
             </p>
-            <p className="text-muted-foreground">
-              {desglose.barra.nombre} · {desglose.barra.cocteles.length} cócteles ·{" "}
-              <span className="tabular-nums">
-                {fmt(desglose.barra.costoPorAdulto)} → {fmt(desglose.barra.precioPorAdulto)} por adulto
-              </span>
-            </p>
+            {(desglose.barras ?? (desglose.barra ? [desglose.barra] : [])).map((b) => (
+              <p key={b.id} className="text-muted-foreground">
+                {b.nombre} · {b.cocteles.length} cócteles ·{" "}
+                <span className="tabular-nums">
+                  {fmt(b.costoPorAdulto)} → {fmt(b.precioPorAdulto)} por adulto
+                </span>
+              </p>
+            ))}
           </div>
         )}
         {desglose.servicios.length > 0 && (

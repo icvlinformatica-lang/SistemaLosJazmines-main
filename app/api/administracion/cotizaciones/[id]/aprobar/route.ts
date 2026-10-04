@@ -174,17 +174,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             cocteles: serviciosElegidos.barra.cocteles.filter((x: unknown) => typeof x === "string") as string[],
           }
         : null
+    // Desde que se pueden elegir 2 barras: "barras" trae todas (si no, la única de "barra").
+    const barrasArmadas: Array<{ barraTemplateId: string; cocteles: string[] }> =
+      modeloNuevo && Array.isArray(serviciosElegidos.barras)
+        ? serviciosElegidos.barras
+            .filter((b: { tipo?: string; cocteles?: unknown }) => b?.tipo === "armada" && Array.isArray(b.cocteles))
+            .map((b: { barraTemplateId?: unknown; cocteles: unknown[] }) => ({
+              barraTemplateId: String(b.barraTemplateId || ""),
+              cocteles: b.cocteles.filter((x: unknown) => typeof x === "string") as string[],
+            }))
+        : barraArmada
+          ? [barraArmada]
+          : []
     // Mismo formato que cualquier evento (BarraEvento de lib/store.ts); POST
     // /api/eventos lo guarda igual que a todos (JSON.stringify).
-    const barrasEvento = barraArmada?.cocteles.length
-      ? [
-          {
+    const barrasEvento = barrasArmadas.some((b) => b.cocteles.length)
+      ? barrasArmadas
+          .filter((b) => b.cocteles.length)
+          .map((b) => ({
             id: crypto.randomUUID(),
-            barraTemplateId: barraArmada.barraTemplateId,
-            coctelesIncluidos: barraArmada.cocteles,
+            barraTemplateId: b.barraTemplateId,
+            coctelesIncluidos: b.cocteles,
             tragosPorPersona: TRAGOS_POR_PERSONA_EVENTO,
-          },
-        ]
+          }))
       : coctelesBarra.length
         ? [{ id: crypto.randomUUID(), barraTemplateId: "", coctelesIncluidos: coctelesBarra, tragosPorPersona: TRAGOS_POR_PERSONA_EVENTO }]
         : []

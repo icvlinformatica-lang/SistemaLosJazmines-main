@@ -338,6 +338,9 @@ export const UNIDADES_CON_CANTIDAD = ["Por Hora", "Por Cantidad"]
  *  comida sale de Cocina (recetas) y la bebida de Barra (barras armadas). */
 export const CATEGORIAS_FUERA_DE_SERVICIOS = ["Menú", "Barra"]
 
+/** Cuántas barras puede sumar el vendedor en una cotización. */
+export const MAX_BARRAS = 2
+
 export interface ValorUnitario {
   /** Costo por unidad. undefined en la pantalla del vendedor (no lo recibe). */
   costo?: number
@@ -353,8 +356,10 @@ export interface EntradaCotizacionSalon {
   salon: ValorUnitario
   /** Recetas elegidas, por porción. */
   recetas: Array<ValorUnitario & { id: string; nombre: string }>
-  /** Barra elegida, por adulto. null = sin barra. */
+  /** Barra elegida, por adulto. null = sin barra. (Con `barras`, se ignora.) */
   barra: (ValorUnitario & { id: string; nombre: string; tragosPorAdulto: number }) | null
+  /** Hasta MAX_BARRAS barras; cada una cobra adultos × su precio por adulto. */
+  barras?: Array<ValorUnitario & { id: string; nombre: string; tragosPorAdulto: number }>
   /** Servicios elegidos, por unidad. Los incluidos se listan pero no suman. */
   servicios: Array<ValorUnitario & { servicioId: string; nombre: string; unidad: string; cantidad: number; incluido: boolean }>
   /** Reglas de personal del salón, con el valor de UNA persona. */
@@ -457,10 +462,11 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
   }
   for (const r of e.recetas) if (sinValor(r)) avisoSinValor(`receta:${r.id}`, r.nombre)
 
-  // 3. Barra: adultos × precio por adulto de la barra elegida.
-  const barraPrecio = e.barra ? adultos * Math.round(Number(e.barra.precio) || 0) : 0
-  const barraCosto = e.barra ? adultos * (Number(e.barra.costo) || 0) : 0
-  if (e.barra && sinValor(e.barra)) avisoSinValor(`barra:${e.barra.id}`, e.barra.nombre)
+  // 3. Barra: por cada barra elegida (hasta MAX_BARRAS), adultos × su precio por adulto.
+  const barras = e.barras ?? (e.barra ? [e.barra] : [])
+  const barraPrecio = barras.reduce((s, b) => s + adultos * Math.round(Number(b.precio) || 0), 0)
+  const barraCosto = barras.reduce((s, b) => s + adultos * (Number(b.costo) || 0), 0)
+  for (const b of barras) if (sinValor(b)) avisoSinValor(`barra:${b.id}`, b.nombre)
 
   // 4. Servicios: los incluidos se listan y no suman.
   const servicios: LineaServicioCotizacion[] = e.servicios.map((s) => {
@@ -484,7 +490,7 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
     .reduce((sum, s) => sum + (s.costoUnitario ?? 0) * s.cantidad, 0)
 
   // 5. Personal: reglas del salón con adultos + niños, respetando "aplica".
-  const evento = { conMenu: e.recetas.length > 0, conBarra: !!e.barra }
+  const evento = { conMenu: e.recetas.length > 0, conBarra: barras.length > 0 }
   const personal: LineaPersonalCotizacion[] = []
   for (const r of e.personal) {
     if (!reglaAplica(r.aplica, evento)) continue
