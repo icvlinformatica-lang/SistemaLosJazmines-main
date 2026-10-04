@@ -175,7 +175,11 @@ export function DetalleCotizacionNueva({
           <span>Total</span>
           <span className="text-right text-muted-foreground">{fmt(desglose.costoTotal ?? 0)}</span>
           <span className="text-right">{ganancia != null ? fmt(ganancia) : "—"}</span>
-          <span className="text-right text-primary">{fmt(desglose.total)}</span>
+          {/* Pastilla verde con número blanco: AA en claro y en oscuro (texto
+              verde suelto sobre fondo oscuro no llega). */}
+          <span className="justify-self-end rounded-md bg-primary px-1.5 text-right text-primary-foreground">
+            {fmt(desglose.total)}
+          </span>
         </div>
       </div>
 

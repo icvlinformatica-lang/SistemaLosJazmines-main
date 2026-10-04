@@ -174,7 +174,9 @@ export function FechasEspecialesEditor() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-destructive hover:text-destructive"
+            // Gris (rojo solo al pasar el mouse): al lado del chip terracota, un
+            // tachito rojo fijo se confundía con un error.
+            className="text-muted-foreground hover:text-destructive"
             onClick={() => setABorrar(f)}
             aria-label={`Borrar ${f.nombre}`}
           >
@@ -255,16 +257,20 @@ export function FechasEspecialesEditor() {
             <DialogTitle>{b?.id ? "Editar fecha especial" : "Nueva fecha especial"}</DialogTitle>
             <DialogDescription>Un día puntual: no se repite solo el año que viene.</DialogDescription>
           </DialogHeader>
+          {/* minmax(0,1fr): en el celular la columna no puede ser más ancha que la pantalla. */}
           {b && (
-            <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
-              <div className="flex flex-col items-center gap-1">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
+              <div className="flex min-w-0 flex-col items-center gap-1">
                 <Calendar
                   mode="single"
                   locale={es}
                   selected={aDate(b.fecha)}
                   defaultMonth={aDate(b.fecha)}
                   onSelect={(d) => d && cambiar({ fecha: aTexto(d) })}
-                  className="rounded-lg border border-border"
+                  // El dorado (--accent) está reservado para "sábado": acá "hoy"
+                  // va con un borde verde y el día bajo el mouse en gris.
+                  classNames={{ today: "rounded-md ring-1 ring-primary font-semibold" }}
+                  className="rounded-lg border border-border [&_button:hover]:bg-muted [&_button:hover]:text-foreground [&_button[data-selected-single=true]:hover]:bg-primary [&_button[data-selected-single=true]:hover]:text-primary-foreground"
                 />
                 <p className="text-sm font-medium tabular-nums">
                   {diaBorrador != null ? `${NOMBRES_DIA[diaBorrador]} ${fechaCorta(b.fecha)}` : "Elegí el día"}
@@ -323,7 +329,7 @@ export function FechasEspecialesEditor() {
 
                 <div className="space-y-1.5 text-sm">
                   <span className="block font-medium">Cómo se cotiza</span>
-                  <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Cómo se cotiza">
+                  <div className="grid gap-2" role="radiogroup" aria-label="Cómo se cotiza">
                     {MODOS.map((m) => {
                       const activo = b.modo === m.valor
                       return (

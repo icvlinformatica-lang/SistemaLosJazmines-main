@@ -50,7 +50,8 @@ export function EditorRecargo({
                 type="button"
                 role="radio"
                 aria-checked={valor.tipo === tipo}
-                onClick={() => onChange({ ...valor, tipo })}
+                // Al cambiar de tipo el valor vuelve a 0: $500.000 no son 500.000 %.
+                onClick={() => tipo !== valor.tipo && onChange({ ...valor, tipo, valor: 0 })}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   valor.tipo === tipo ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 }`}
