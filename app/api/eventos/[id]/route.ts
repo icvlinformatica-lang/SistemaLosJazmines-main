@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { respuestaSalonOcupado } from "@/lib/salon-ocupado"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
@@ -330,6 +331,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
   } catch (err) {
     console.error("[API] Error patching evento:", err)
+    const ocupado = respuestaSalonOcupado(err)
+    if (ocupado) return ocupado
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -421,6 +424,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json(fromRow(updated))
   } catch (err) {
     console.error("[API] Error updating evento:", err)
+    const ocupado = respuestaSalonOcupado(err)
+    if (ocupado) return ocupado
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

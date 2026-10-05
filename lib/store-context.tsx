@@ -1373,6 +1373,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(eventoConId),
       })
+      if (res.status === 409) {
+        // Salón ocupado ese día (scripts/019): se muestra el motivo, no "revisá la conexión".
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "No se pudo guardar", description: data.error || "Ese salón ya tiene un evento ese día.", variant: "destructive" })
+        return false
+      }
       if (!res.ok) throw new Error(`Error al crear evento (${res.status})`)
       const created = await res.json()
       setState((prev) => ({
