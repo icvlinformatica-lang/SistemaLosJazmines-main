@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { respuestaSalonOcupado } from "@/lib/salon-ocupado"
 import { logActivity } from "@/lib/activity-logger"
 
 // El soft delete conserva la fila original completa, incluidos sus pagos y cuotas.
@@ -24,6 +25,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ success: true, evento: { id: result.id } })
   } catch (err) {
     console.error("[API] Error restoring evento:", err)
+    const ocupado = respuestaSalonOcupado(err)
+    if (ocupado) return ocupado
     return NextResponse.json({ error: "No se pudo restaurar el evento." }, { status: 500 })
   }
 }

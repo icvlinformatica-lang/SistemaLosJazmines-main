@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { respuestaSalonOcupado } from "@/lib/salon-ocupado"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
@@ -254,6 +255,8 @@ export async function POST(req: Request) {
     return NextResponse.json(fromRow(created), { status: 201 })
   } catch (err) {
     console.error("[API] Error creating evento:", err)
+    const ocupado = respuestaSalonOcupado(err)
+    if (ocupado) return ocupado
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
