@@ -6,16 +6,19 @@
 import { sql } from "@/lib/db"
 import {
   RECARGO_VACIO,
-  RUBROS_RECARGO,
   SALONES_COTIZADOR,
   esSalonCotizador,
+  porcentajesPorRubro,
+  reglaRecargoDesdeColumnas,
   validarReglaRecargo,
   type AplicaRegla,
   type ReglaRecargo,
-  type RubroRecargo,
   type PersonaConTarifa,
   type ReglaPersonalSalon,
 } from "@/lib/cotizador-salon"
+
+/** jsonb de verdad (no texto), como en app/api/vendedor/cotizaciones. */
+const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[0])
 
 export interface ServicioSalon {
   servicioId: string
@@ -163,15 +166,15 @@ export async function leerConfigTodosLosSalones(): Promise<ConfigSalon[]> {
   })
 }
 
+// recargo_sabado_porcentajes (scripts/020) llega con SELECT *; sin la
+// columna o en null, se lee como antes (un solo % para los rubros tildados).
 function recargoDesdeFila(f: Record<string, unknown>): ReglaRecargo {
-  const rubros = Array.isArray(f.recargo_sabado_rubros)
-    ? RUBROS_RECARGO.filter((r) => (f.recargo_sabado_rubros as unknown[]).includes(r))
-    : []
-  return {
-    tipo: f.recargo_sabado_tipo === "porcentaje" ? "porcentaje" : "monto",
-    valor: num(f.recargo_sabado_valor),
-    rubros: (rubros.length ? rubros : ["salon"]) as RubroRecargo[],
-  }
+  return reglaRecargoDesdeColumnas(
+    f.recargo_sabado_tipo,
+    f.recargo_sabado_valor,
+    f.recargo_sabado_rubros,
+    f.recargo_sabado_porcentajes,
+  )
 }
 
 function reglaDesdeFila(r: Record<string, unknown>): ReglaPersonalSalon {
@@ -336,16 +339,18 @@ export async function guardarConfigSalon(cfg: ConfigSalon): Promise<void> {
   const barrasExisten = existe(barrasOk)
   const serviciosExisten = existe(serviciosOk)
 
+  // El % de cada rubro (scripts/020); en monto fijo queda en null.
+  const porcentajes = cfg.recargoSabado.tipo === "porcentaje" ? jsonb(porcentajesPorRubro(cfg.recargoSabado)) : null
   await sql.begin(async (tx) => {
     const db = tx as unknown as typeof sql
     await db`
       INSERT INTO cotizador_salon (salon, costo_salon, capacidad_maxima, ganancia_salon,
         ganancia_cocina, ganancia_barra, ganancia_servicios,
-        recargo_sabado_tipo, recargo_sabado_valor, recargo_sabado_rubros, updated_at)
+        recargo_sabado_tipo, recargo_sabado_valor, recargo_sabado_rubros, recargo_sabado_porcentajes, updated_at)
       VALUES (${cfg.salon}, ${cfg.costoSalon}, ${cfg.capacidadMaxima}, ${cfg.gananciaSalon},
         ${cfg.gananciaCocina}, ${cfg.gananciaBarra}, ${cfg.gananciaServicios},
         ${cfg.recargoSabado.tipo}, ${cfg.recargoSabado.valor},
-        string_to_array(${cfg.recargoSabado.rubros.join(",")}, ','), now())
+        string_to_array(${cfg.recargoSabado.rubros.join(",")}, ','), ${porcentajes}, now())
       ON CONFLICT (salon) DO UPDATE SET
         costo_salon = excluded.costo_salon,
         capacidad_maxima = excluded.capacidad_maxima,
@@ -356,6 +361,7 @@ export async function guardarConfigSalon(cfg: ConfigSalon): Promise<void> {
         recargo_sabado_tipo = excluded.recargo_sabado_tipo,
         recargo_sabado_valor = excluded.recargo_sabado_valor,
         recargo_sabado_rubros = excluded.recargo_sabado_rubros,
+        recargo_sabado_porcentajes = excluded.recargo_sabado_porcentajes,
         updated_at = now()
     `
 

@@ -15,7 +15,8 @@ import { AlertTriangle, Calendar, IdCard, UserCheck, Users } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChipDia, PuntoRubro } from "@/components/cotizador-colores"
-import type { DiaCotizado } from "@/lib/cotizador-salon"
+import { textoRecargo } from "@/components/recargo-editor"
+import { RUBROS_RECARGO, porcentajesPorRubro, type DiaCotizado, type ReglaRecargo, type RubroRecargo } from "@/lib/cotizador-salon"
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
@@ -47,7 +48,17 @@ export interface DesgloseCotizacionV2 {
   personal: Array<{ funcion: string; cantidad: number; tarifa: number; origenTarifa: string; ganancia: number; precioUnitario: number }>
   /** Desde scripts/018 (las anteriores no lo tienen). */
   dia?: Pick<DiaCotizado, "tipo" | "etiqueta" | "fechaEspecial">
-  recargo?: { nombre: string; origen: "sabado" | "especial"; tipo: "monto" | "porcentaje"; valor: number; rubros: string[]; monto: number } | null
+  /** `porcentajes` (el % de cada rubro) desde scripts/020; las anteriores
+   *  tienen un solo `valor` % para todos sus `rubros`. */
+  recargo?: {
+    nombre: string
+    origen: "sabado" | "especial"
+    tipo: "monto" | "porcentaje"
+    valor: number
+    rubros: string[]
+    monto: number
+    porcentajes?: Partial<Record<RubroRecargo, number>>
+  } | null
   avisos: Array<{ codigo: string; nivel: "ambar" | "rojo"; texto: string }>
   costoTotal: number | null
   total: number
@@ -67,6 +78,31 @@ export interface AsignacionPersonal {
   funcion: string
   personalId: string
   monto: number
+}
+
+type RecargoGuardado = NonNullable<DesgloseCotizacionV2["recargo"]>
+
+/** El recargo guardado en la cotización, como regla (para armar los textos). */
+function reglaGuardada(r: RecargoGuardado): ReglaRecargo {
+  return {
+    tipo: r.tipo,
+    valor: r.valor,
+    rubros: RUBROS_RECARGO.filter((x) => r.rubros.includes(x)),
+    ...(r.porcentajes ? { porcentajes: r.porcentajes } : {}),
+  }
+}
+
+/** Columna "Ganancia" del renglón del recargo: "monto fijo", "17 % de 2
+ *  rubros" o, si los rubros tienen porcentajes distintos, "% por rubro" (el
+ *  detalle va en el title de la celda). */
+function detalleRecargo(r: RecargoGuardado | null | undefined): string {
+  if (!r) return ""
+  if (r.tipo !== "porcentaje") return "monto fijo"
+  const p = porcentajesPorRubro(reglaGuardada(r))
+  const conRecargo = RUBROS_RECARGO.filter((x) => p[x] > 0)
+  if (new Set(conRecargo.map((x) => p[x])).size > 1) return "% por rubro"
+  const n = conRecargo.length
+  return `${(conRecargo.length ? p[conRecargo[0]] : r.valor).toLocaleString("es-AR")} % de ${n} ${n === 1 ? "rubro" : "rubros"}`
 }
 
 /** Preasigna personas activas de cada función, con la tarifa de la cotización. */
@@ -161,11 +197,12 @@ export function DetalleCotizacionNueva({
               <span className="min-w-0">{r.nombre}</span>
             </span>
             <span className="text-right text-muted-foreground">{fmt(r.costo ?? 0)}</span>
-            <span className="text-right text-muted-foreground">
+            <span
+              className="text-right text-muted-foreground"
+              title={r.clave === "recargo" && desglose.recargo ? textoRecargo(reglaGuardada(desglose.recargo), fmt) : undefined}
+            >
               {r.clave === "recargo"
-                ? desglose.recargo?.tipo === "porcentaje"
-                  ? `${desglose.recargo.valor} % de ${desglose.recargo.rubros.length} ${desglose.recargo.rubros.length === 1 ? "rubro" : "rubros"}`
-                  : "monto fijo"
+                ? detalleRecargo(desglose.recargo)
                 : r.ganancia == null
                   ? "por función"
                   : `${r.ganancia} %`}

@@ -10,16 +10,19 @@
 // para el mismo salón, además del chequeo de acá con un mensaje claro.
 import { sql } from "@/lib/db"
 import {
-  RUBROS_RECARGO,
   SALONES_COTIZADOR,
   diaDeSemana,
   esSalonCotizador,
   fechaCorta,
+  porcentajesPorRubro,
+  reglaRecargoDesdeColumnas,
   validarReglaRecargo,
   type FechaEspecial,
   type ModoFechaEspecial,
-  type RubroRecargo,
 } from "@/lib/cotizador-salon"
+
+/** jsonb de verdad (no texto), como en app/api/vendedor/cotizaciones. */
+const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[0])
 
 const MODOS: ModoFechaEspecial[] = ["sabado", "viernes", "propio"]
 
@@ -32,13 +35,13 @@ interface Fila {
   recargo_tipo: string | null
   recargo_valor: unknown
   recargo_rubros: unknown
+  /** scripts/020: el % de cada rubro (jsonb). Se lee con to_jsonb para que
+   *  ande aunque la columna todavía no exista. */
+  recargo_porcentajes: unknown
 }
 
 function desdeFila(f: Fila, salones: string[]): FechaEspecial {
   const modo = (MODOS.includes(f.modo as ModoFechaEspecial) ? f.modo : "viernes") as ModoFechaEspecial
-  const rubros = Array.isArray(f.recargo_rubros)
-    ? RUBROS_RECARGO.filter((r) => (f.recargo_rubros as unknown[]).includes(r))
-    : []
   return {
     id: f.id,
     fecha: f.fecha,
@@ -48,11 +51,7 @@ function desdeFila(f: Fila, salones: string[]): FechaEspecial {
     modo,
     recargo:
       modo === "propio"
-        ? {
-            tipo: f.recargo_tipo === "porcentaje" ? "porcentaje" : "monto",
-            valor: Number(f.recargo_valor) || 0,
-            rubros: (rubros.length ? rubros : ["salon"]) as RubroRecargo[],
-          }
+        ? reglaRecargoDesdeColumnas(f.recargo_tipo, f.recargo_valor, f.recargo_rubros, f.recargo_porcentajes)
         : null,
   }
 }
@@ -66,14 +65,17 @@ function desdeFila(f: Fila, salones: string[]): FechaEspecial {
 export async function leerFechasEspeciales(filtro: { desde?: string; fecha?: string } = {}): Promise<FechaEspecial[]> {
   const filas = (filtro.fecha
     ? await sql`
-        SELECT id, fecha::text AS fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros
+        SELECT id, fecha::text AS fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros,
+          (to_jsonb(cotizador_fecha_especial) -> 'recargo_porcentajes') AS recargo_porcentajes
         FROM cotizador_fecha_especial WHERE fecha = ${filtro.fecha}::date ORDER BY fecha, nombre`
     : filtro.desde
       ? await sql`
-        SELECT id, fecha::text AS fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros
+        SELECT id, fecha::text AS fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros,
+          (to_jsonb(cotizador_fecha_especial) -> 'recargo_porcentajes') AS recargo_porcentajes
         FROM cotizador_fecha_especial WHERE fecha >= ${filtro.desde}::date ORDER BY fecha, nombre`
       : await sql`
-        SELECT id, fecha::text AS fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros
+        SELECT id, fecha::text AS fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros,
+          (to_jsonb(cotizador_fecha_especial) -> 'recargo_porcentajes') AS recargo_porcentajes
         FROM cotizador_fecha_especial ORDER BY fecha, nombre`) as unknown as Fila[]
   if (filas.length === 0) return []
   const salones = (await sql`
@@ -136,6 +138,8 @@ export async function guardarFechaEspecial(fe: Omit<FechaEspecial, "id">, id: st
   const msg = await choque(fe, id)
   if (msg) return msg
   const r = fe.recargo
+  // El % de cada rubro (scripts/020); en monto fijo o sin recargo, null.
+  const porcentajes = r?.tipo === "porcentaje" ? jsonb(porcentajesPorRubro(r)) : null
   try {
     return await sql.begin(async (tx) => {
       const db = tx as unknown as typeof sql
@@ -145,16 +149,17 @@ export async function guardarFechaEspecial(fe: Omit<FechaEspecial, "id">, id: st
           UPDATE cotizador_fecha_especial SET
             fecha = ${fe.fecha}::date, nombre = ${fe.nombre}, todos_los_salones = ${fe.todosLosSalones},
             modo = ${fe.modo}, recargo_tipo = ${r?.tipo ?? null}, recargo_valor = ${r?.valor ?? null},
-            recargo_rubros = string_to_array(${r ? r.rubros.join(",") : null}::text, ','), updated_at = now()
+            recargo_rubros = string_to_array(${r ? r.rubros.join(",") : null}::text, ','),
+            recargo_porcentajes = ${porcentajes}, updated_at = now()
           WHERE id = ${fid} RETURNING id
         `) as unknown as Array<{ id: string }>
         if (!filas.length) throw new ErrorVisible("Esa fecha especial ya no existe (¿la borró alguien?).")
         await db`DELETE FROM cotizador_fecha_especial_salon WHERE fecha_especial_id = ${fid}`
       } else {
         const filas = (await db`
-          INSERT INTO cotizador_fecha_especial (fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros)
+          INSERT INTO cotizador_fecha_especial (fecha, nombre, todos_los_salones, modo, recargo_tipo, recargo_valor, recargo_rubros, recargo_porcentajes)
           VALUES (${fe.fecha}::date, ${fe.nombre}, ${fe.todosLosSalones}, ${fe.modo}, ${r?.tipo ?? null}, ${r?.valor ?? null},
-            string_to_array(${r ? r.rubros.join(",") : null}::text, ','))
+            string_to_array(${r ? r.rubros.join(",") : null}::text, ','), ${porcentajes})
           RETURNING id
         `) as unknown as Array<{ id: string }>
         fid = filas[0].id

@@ -38,6 +38,7 @@ import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import {
   APLICA_OPCIONES,
   montoRecargo,
+  porcentajesPorRubro,
   precioBarraSalon,
   precioConGanancia,
   simularPersonal,
@@ -616,6 +617,7 @@ function BloqueRecargoSabado({
     }
   }, [config, catalogos, invitados])
   const monto = montoRecargo(r, precios)
+  const porcentajes = porcentajesPorRubro(r)
 
   return (
     <div className="space-y-4">
@@ -640,12 +642,13 @@ function BloqueRecargoSabado({
             </>
           )}
         </label>
-        {r.tipo === "porcentaje" && (r.rubros.includes("cocina") || r.rubros.includes("barra") || r.rubros.includes("servicios")) && (
+        {r.tipo === "porcentaje" && (porcentajes.cocina > 0 || porcentajes.barra > 0 || porcentajes.servicios > 0) && (
           <p className="mt-1 text-xs text-muted-foreground">
             {[
-              r.rubros.includes("cocina") && "Cocina: promedio de los platos del salón",
-              r.rubros.includes("barra") && "Barra: promedio de las barras visibles, todos adultos",
-              r.rubros.includes("servicios") && `Servicios: además, ${r.valor} % de los que se elijan`,
+              porcentajes.cocina > 0 && "Cocina: promedio de los platos del salón",
+              porcentajes.barra > 0 && "Barra: promedio de las barras visibles, todos adultos",
+              porcentajes.servicios > 0 &&
+                `Servicios: además, ${porcentajes.servicios.toLocaleString("es-AR")} % de los que se elijan`,
             ]
               .filter(Boolean)
               .join(" · ")}
