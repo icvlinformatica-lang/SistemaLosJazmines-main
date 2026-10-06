@@ -34,7 +34,7 @@ Perfiles de acceso (con PIN): Administración, Soporte, Cocina, Barra y Cobrar c
 
 ## Finanzas
 - **Caja Jazmines** (/finanzas/caja-jazmines): caja general del complejo. Registra ingresos y egresos, gastos fijos por carpeta (con "Cargar nuevo monto" mensual por vencimiento) y la evolución de gastos.
-- **Caja Eventos** (/finanzas/caja-eventos): caja específica de los eventos (cuotas cobradas, gastos de eventos).
+- **Caja Eventos** (/finanzas/caja-eventos): caja específica de los eventos (cuotas cobradas, gastos de eventos). Abajo de todo está la "Proyección en 12 meses": tocando el monto de "A cobrar" de un mes se ve cuánto debía ingresar, cuánto ya ingresó y cuánto falta, con la lista de quién debe cada cuota; tocando "A pagar" se ve el total a pagar del mes, lo ya pagado y lo que falta, por proveedor o persona. Si un mes ya está todo cobrado o pagado, dice "al día".
 - **Servicios** (/finanzas/servicios): catálogo de servicios que se venden (DJ, ambientación, altar, etc.) con categoría, precio y "Descripción (letra chica del contrato)": ese texto se imprime debajo del servicio en el contrato. ACÁ ES DONDE SE CARGA UN SERVICIO NUEVO: botón de agregar, se completa nombre, categoría, precio y la letra chica. Para incluirlo en un evento después se selecciona desde el generador de contratos o desde el evento.
 - **Personal** (/finanzas/personal): personal, sueldos y pagos pendientes.
 - **IPC** (/finanzas/ipc): índice de inflación para ajustar precios.

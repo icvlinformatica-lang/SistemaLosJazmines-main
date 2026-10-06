@@ -55,6 +55,8 @@ import {
 } from "@/components/filtros-egresos"
 import { SalonDot } from "@/components/salon-badge"
 import { SaldoHerramientasEventos } from "./saldo-herramientas"
+import { MontoProyeccion } from "./desglose-proyeccion"
+import { desglosarProyeccion } from "@/lib/desglose-proyeccion"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo } from "@/lib/servicio-sueldo"
@@ -1001,6 +1003,31 @@ useStore()
   const dataConHistorialServicios = useMemo(
     () => calcularCajaEventos(state, salonFiltro, ahora, true),
     [state, salonFiltro, ahora],
+  )
+  // Detalle de cada mes de la proyección (al tocar A cobrar / A pagar): lo que
+  // falta sale de las mismas listas que la tabla; lo ya cobrado o pagado, de
+  // los movimientos reales de la caja. Ver lib/desglose-proyeccion.ts.
+  const desglosesProyeccion = useMemo(
+    () =>
+      desglosarProyeccion(
+        {
+          eventos: state.eventos || [],
+          movimientos: state.movimientosCaja || [],
+          salonFiltro,
+          datosCostos: {
+            insumos: state.insumos || [],
+            insumosBarra: state.insumosBarra || [],
+            recetas: state.recetas || [],
+            cocteles: state.cocteles || [],
+            servicios: state.servicios || [],
+          },
+          ingresosPendientes: data.ingresosPendientes,
+          egresosPendientes: data.egresosPendientes,
+          egresosCompletos: dataConHistorialServicios.egresosPendientes,
+        },
+        data.proyeccionMensual.map((m) => m.key),
+      ),
+    [state, salonFiltro, data, dataConHistorialServicios],
   )
   // Solo servicios completamente pagados (seña Y saldo). Los parcialmente
   // pagados (solo seña) ya se muestran correctamente en la lista de
@@ -2541,7 +2568,8 @@ useStore()
           <p className="text-xs text-muted-foreground mt-1 text-pretty">
             A cobrar: solo la parte de cada cuota destinada a cubrir el costo del evento + 5% (insumos, servicios y
             personal). A pagar: los pagos a proveedores y personal de cada evento. El saldo parte del saldo actual de
-            la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección.
+            la caja, por lo que cualquier extracción o ingreso de hoy actualiza toda la proyección. Tocá un monto para
+            ver cuánto ya entró o ya se pagó de ese mes, cuánto falta y de quién.
           </p>
         </CardHeader>
         <CardContent className="px-0">
@@ -2563,10 +2591,10 @@ useStore()
                     {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
                   </TableCell>
                   <TableCell className="text-center text-emerald-700 font-medium">
-                    {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
+                    <MontoProyeccion tipo="cobrar" mesLabel={m.label} monto={m.aCobrar} desglose={desglosesProyeccion[m.key]} />
                   </TableCell>
                   <TableCell className="text-center text-[var(--accent)] font-medium">
-                    {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
+                    <MontoProyeccion tipo="pagar" mesLabel={m.label} monto={m.aPagar} desglose={desglosesProyeccion[m.key]} />
                   </TableCell>
                   <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
                     {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
