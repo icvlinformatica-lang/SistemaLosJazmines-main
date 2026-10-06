@@ -1,5 +1,6 @@
 -- 020 — Recargo de sábado y de fechas especiales con un porcentaje por rubro
 -- (Salón, Cocina, Barra y Servicios, cada uno con el suyo).
+-- Aplicada el 6/10/2026.
 --
 -- SOLO ADITIVA: agrega una columna jsonb que puede quedar vacía (null) en
 -- cotizador_salon (recargo de sábado de cada salón) y en
