@@ -30,8 +30,29 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - **Conectores de Supabase.** Se agregan en https://claude.ai/customize/connectors y se cargan cuando arranca la sesión.
   - El que corresponde es uno en **solo lectura y limitado a este proyecto**: un conector personalizado con la dirección `https://mcp.supabase.com/mcp?project_ref=<ID>&read_only=true`. El ID está en la dirección del panel de Supabase: `supabase.com/dashboard/project/<ID>`.
   - Al 6/10/2026 la cuenta tiene dos conectados: **Supabase** (el del catálogo) y **Supa** (personalizado). El del catálogo tiene **acceso total** a todos los proyectos de la cuenta: trae `apply_migration`, `execute_sql` con escritura, `create_project`, `pause_project`, `restore_project`, ramas y edge functions. Supa todavía no se verificó.
-  - Antes de usar un conector, mirar sus herramientas. Si tiene herramientas de escritura (migraciones, proyectos, ramas, edge functions), no usarlo y avisarle al dueño. Aun con un conector permitido, nada que modifique datos o esquema sin un OK explícito para esa operación puntual.
+  - **Decisión del dueño (6/10/2026): el conector "Supabase" se usa solo para leer.** Se permiten `list_projects`, `list_tables`, `list_migrations`, `get_advisors` y `execute_sql` **solo con `SELECT`**. Nunca `apply_migration`, `execute_sql` con INSERT/UPDATE/DELETE/DDL, ni crear, pausar o restaurar proyectos, ramas o edge functions, salvo un OK explícito para esa operación puntual.
+  - Ante cualquier otro conector, mirar primero sus herramientas. Si tiene herramientas de escritura, avisarle al dueño antes de usarlo.
+  - Leer con cuidado: preferir totales y estructura antes que filas, sin traer datos personales (DNI, nombres, teléfonos) salvo que la tarea lo necesite. Consultas livianas, porque es la base de producción.
   - Nunca pedir claves, tokens ni contraseñas por el chat.
+
+## La base real (leída el 6/10/2026, solo lectura)
+
+- Es el proyecto Supabase **`supabase-indigo-house`**, creado por la integración de Vercel. Su ID sale de `list_projects`. La cuenta tiene otros proyectos: `supabase-canary-cable` es de otro sistema (una escuela) y hay dos pausados. **No tocarlos.**
+- Todas las tablas que usa el código existen, y todas tienen RLS activado. Ni `anon` ni `authenticated` tienen permisos sobre ninguna tabla: es el blindaje de la migración `blindar_acceso_publico_rls`.
+  - Quedan 3 políticas viejas "allow_all" (`paquetes_salones`, `precios_venta`, `temporadas`). Hoy no abren nada, pero lo harían si alguien le devolviera permisos a `anon`.
+  - Las tablas creadas por el rol `postgres` (SQL editor, migraciones) no le dan permisos a `anon`; las creadas por `supabase_admin` sí. Después de crear una tabla, verificar que `information_schema.role_table_grants` no tenga filas de `anon` ni `authenticated` para ella.
+- La base no tiene lógica propia. Solo hay triggers de `updated_at` (en insumos, insumos_barra, recetas, cocteles y barra_templates); no hay funciones RPC ni pg_cron. Toda la lógica está en el código y los crons están en Vercel.
+- Qué está aplicado: `list_migrations` registra casi todo, incluidas migraciones que **no están en el repo** (por ejemplo `blindar_acceso_publico_rls` y `create_cotizaciones`). Algunas se aplicaron sin quedar registradas (011 y 017). Para saber si algo existe hay que consultar `information_schema`, no solo el historial.
+- Respaldos: antes de tocar datos se copiaron tablas con fecha al esquema `backup`. Hay 5 del 2/10/2026, entre ellas `backup.eventos_20261002` y `backup.movimientos_caja_20261002`. Contienen datos reales de clientes.
+- **Los JSON de `eventos` están guardados como texto dentro de jsonb.** Pasa en `pagos`, `plan_de_cuotas`, `servicios`, `contrato` y `asignaciones` de todos los eventos activos (`jsonb_typeof` da `'string'`); solo 4 eventos de la papelera tienen JSON real. En el código lo resuelve `parseJsonField`. En SQL hay que desenvolverlo con `case jsonb_typeof(col) when 'string' then (col #>> '{}')::jsonb else col end`; si no, `col->>'campo'` devuelve vacío **sin dar error**.
+- **`eventos.fecha` es texto** `"YYYY-MM-DD"`, no una fecha. El índice de un evento por salón y día compara ese texto, así que el formato no se puede cambiar.
+- Columnas viejas de `eventos` que el código no usa: `recetas_dietas`, `multipliers_dietas`, `barra_cocteles`, `barra_template_id` y `menu_notas`.
+- Datos al 6/10/2026:
+  - **Eventos**: 147 activos. Por salón: Casona 57, Salon 53 y Quinta 37; "Salon 4" y "Salon 5" no tienen eventos. 120 tienen plan de cuotas, **68 ajustan por IPC** y 66 tienen pagos registrados (111 pagos en total).
+  - **Estados en uso**: pendiente, completado, en_preparacion y borrador. No hay "cancelado", y "confirmado" no existe aunque `DESIGN.md` lo nombre.
+  - **Movimientos de caja**: 731. Hay 84 viejos sin `caja_destino` y 2 con el salón vacío.
+  - **Fecha de alta**: 48 eventos activos no la tienen, así que para ellos no aplica el candado de señas.
+  - **Tablas vacías**: `precios_venta`, `temporadas`, `asignaciones` y `cotizaciones`. `pagos_personal` tiene 1 fila: el personal de cada evento vive en sus JSON `personal_evento` y `asignaciones`.
 
 ## Mapa: qué está conectado con qué
 
@@ -59,7 +80,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Cambios puramente visuales.
 - El chat de ayuda: no toca la base, responde con `lib/guia-sistema.ts`.
 - Novedades.
-- La configuración vieja del cotizador (`tarifario_salon`, `precios_base_salones`, `salon_incluye_*`, `cotizador_config`, `cotizador_servicio_oculto`) ya no la usa el cotizador. Está escondida con `MOSTRAR_* = false` y su limpieza queda pendiente. En cambio `precios_venta` (Calendario de Precios) **sigue en uso** por el planificador.
+- La configuración vieja del cotizador (`tarifario_salon`, `precios_base_salones`, `salon_incluye_*`, `cotizador_config`, `cotizador_servicio_oculto`) ya no la usa el cotizador. Está escondida con `MOSTRAR_* = false` y su limpieza queda pendiente. En cambio `precios_venta` (Calendario de Precios) **sigue en el código** del planificador, aunque hoy la tabla está vacía.
 
 ## Cuidados por tema
 
@@ -140,7 +161,8 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Idempotente (`if not exists`) y aditiva por defecto, con defaults que no cambien el comportamiento.
 - Si tiene varios pasos, va en `begin`/`commit`. Si borra, lleva un freno que verifique que no esté en uso y aborte.
 - `add column … default X` llena las filas existentes. Ver `supabase/migrations/20261002_fecha_alta_eventos.sql`, que lo hace en dos pasos.
-- Las tablas nuevas llevan RLS activado y sin políticas, porque el acceso es por service role.
+- Las tablas nuevas llevan RLS activado y sin políticas, porque el acceso es por service role. Además, `anon` y `authenticated` no deben tener permisos sobre ellas (ver "La base real").
+- Después de aplicarla, verificar en `information_schema` que quedó. El historial de migraciones no siempre la registra.
 - Se aplica **antes** de publicar el código que la usa: el upsert manda todas las columnas y, si falta una, falla cualquier guardado. Si no se puede garantizar el orden, leer la columna con `to_jsonb(tabla) ->> 'col'`.
 - Claude no aplica migraciones ni corre SQL que modifique datos reales sin un OK explícito. Antes de borrar o actualizar datos se hace un respaldo fuera del repo.
 
@@ -176,10 +198,13 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
 - El proxy `/api/db` no filtra por perfil (ver "Permisos"): un perfil como DJ, con sesión, puede leer y modificar tablas de finanzas como `movimientos_caja`.
 - `deleteServicio` (data-service) borra el servicio aunque falle la copia a `servicios_eliminados`. En ese caso no se puede restaurar.
-- En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`).
+- En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`). Hoy ningún servicio tiene 0, así que no afecta a los datos actuales.
 - Recetas y cócteles reemplazan sus insumos con DELETE + INSERT **sin transacción** (`app/api/recetas/[id]`, `app/api/cocteles/[id]`). Si falla a mitad de camino, la receta queda incompleta y cambia el costo de los eventos.
 - `fetchPersonal` y `fetchCostosOperativos` devuelven `[]` ante un error (ver "Estado del cliente").
-- Los años de evento válidos llegan hasta 2032 (ver "Valores guardados").
+- Los años de evento válidos van de 2026 a 2032 (ver "Valores guardados"). Hay 1 evento activo de 2025, ya completado: si se guarda mandando la fecha, el servidor lo rechaza.
+- 3 políticas "allow_all" viejas en `paquetes_salones`, `precios_venta` y `temporadas` (ver "La base real").
+- 48 eventos activos sin `fecha_alta`. El script de carga que menciona `supabase/migrations/20261002_fecha_alta_eventos.sql` no está en el repo.
+- Aviso de seguridad de Supabase (nivel WARN): la función `update_updated_at_column` no tiene `search_path` fijo.
 
 ## Referencia
 
