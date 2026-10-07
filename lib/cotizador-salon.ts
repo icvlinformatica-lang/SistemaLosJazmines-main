@@ -467,6 +467,34 @@ export const CATEGORIAS_FUERA_DE_SERVICIOS = ["Menú", "Barra"]
 /** Cuántas barras puede sumar el vendedor en una cotización. */
 export const MAX_BARRAS = 2
 
+// ── Bebida de mesa ──────────────────────────────────────────────────────────
+//
+// Pedido del dueño (7/10/2026): la barra "BEBIDA DE MESA" acompaña al menú.
+// En el cotizador del vendedor aparece primero, en un grupo aparte dentro de
+// Barra, y se marca sola cuando se elige el primer plato (se puede destildar).
+// Se cobra como cualquier barra y cuenta para MAX_BARRAS. Se reconoce por el
+// NOMBRE: si se renombra y deja de decir "bebida de mesa", es una barra común.
+
+/** true si la barra es la bebida de mesa (sin importar mayúsculas, tildes ni espacios de más). */
+export function esBebidaDeMesa(nombre: string): boolean {
+  return String(nombre ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .includes("bebida de mesa")
+}
+
+/** Barras elegidas después de marcar un plato: si con ese plato empieza el
+ *  menú (antes no había ninguno) y el salón tiene bebida de mesa, se suma
+ *  sola, salvo que ya esté o que ya estén las MAX_BARRAS. Si no, no cambian. */
+export function barrasAlEmpezarMenu(platosAntes: number, barraIds: string[], bebidaDeMesaId: string | null): string[] {
+  if (platosAntes > 0 || !bebidaDeMesaId || barraIds.includes(bebidaDeMesaId) || barraIds.length >= MAX_BARRAS) {
+    return barraIds
+  }
+  return [...barraIds, bebidaDeMesaId]
+}
+
 export interface ValorUnitario {
   /** Costo por unidad. undefined en la pantalla del vendedor (no lo recibe). */
   costo?: number

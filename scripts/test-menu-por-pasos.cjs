@@ -8,7 +8,9 @@ require.extensions[".ts"] = (mod, filename) => {
   const out = ts.transpileModule(fs.readFileSync(filename, "utf8"), { fileName: filename, compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } })
   mod._compile(out.outputText, filename)
 }
-const { armarCotizacion, cocinaPorPasos, pasosMenuFaltantes, textoPasosFaltantes } = require("../lib/cotizador-salon.ts")
+const {
+  armarCotizacion, barrasAlEmpezarMenu, cocinaPorPasos, esBebidaDeMesa, pasosMenuFaltantes, textoPasosFaltantes,
+} = require("../lib/cotizador-salon.ts")
 
 // 70 adultos + 10 niños = 80 comensales. Precios por porción (costo entre paréntesis):
 // entrada $3.000 ($2.000), principal $6.000 ($4.000), postre $1.500 ($1.000).
@@ -91,4 +93,28 @@ test("texto de lo que falta", () => {
   assert.equal(textoPasosFaltantes(["Entrada"]), "una entrada")
   assert.equal(textoPasosFaltantes(["Entrada", "Postre"]), "una entrada y un postre")
   assert.equal(textoPasosFaltantes(["Entrada", "Plato Principal", "Postre"]), "una entrada, un plato principal y un postre")
+})
+
+test("bebida de mesa: se reconoce por el nombre, sin importar mayúsculas, tildes ni espacios", () => {
+  assert.equal(esBebidaDeMesa("BEBIDA DE MESA"), true)
+  assert.equal(esBebidaDeMesa("Bebida de mesa (gaseosas y vino)"), true)
+  assert.equal(esBebidaDeMesa("  bebida   de  mesa "), true)
+  assert.equal(esBebidaDeMesa("BEBÍDA DE MÉSA"), true)
+  assert.equal(esBebidaDeMesa("BARRA LIBRE"), false)
+  assert.equal(esBebidaDeMesa("Mesa dulce"), false)
+  assert.equal(esBebidaDeMesa(""), false)
+})
+
+test("bebida de mesa: se marca sola solo con el primer plato, sin pasarse de 2 barras", () => {
+  // Primer plato: se suma al final, sin tocar lo que ya había
+  assert.deepEqual(barrasAlEmpezarMenu(0, [], "mesa"), ["mesa"])
+  assert.deepEqual(barrasAlEmpezarMenu(0, ["libre"], "mesa"), ["libre", "mesa"])
+  // Ya había platos: no se vuelve a marcar (si la destildaron, queda destildada)
+  assert.deepEqual(barrasAlEmpezarMenu(1, ["libre"], "mesa"), ["libre"])
+  // Ya estaba elegida
+  assert.deepEqual(barrasAlEmpezarMenu(0, ["mesa"], "mesa"), ["mesa"])
+  // Cupo lleno (2 barras): no entra
+  assert.deepEqual(barrasAlEmpezarMenu(0, ["libre", "loca"], "mesa"), ["libre", "loca"])
+  // El salón no tiene bebida de mesa
+  assert.deepEqual(barrasAlEmpezarMenu(0, ["libre"], null), ["libre"])
 })

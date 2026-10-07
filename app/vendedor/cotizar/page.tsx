@@ -21,6 +21,10 @@
 // cada paso que el salón ofrece (entrada, plato principal y postre). El
 // borrador se puede guardar incompleto. Ver PASOS_MENU en lib/cotizador-salon.ts.
 //
+// Bebida de mesa: la barra "BEBIDA DE MESA" va primero, en su propio grupo
+// dentro de Barra, y se marca sola con el primer plato del menú (se puede
+// destildar). Se cobra como cualquier barra. Ver esBebidaDeMesa.
+//
 // ?id=... reabre un borrador o una cotización rechazada para corregirla.
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
@@ -55,6 +59,8 @@ import {
   RECARGO_VACIO,
   UNIDADES_CON_CANTIDAD,
   armarCotizacion,
+  barrasAlEmpezarMenu,
+  esBebidaDeMesa,
   pasosMenuFaltantes,
   resolverDia,
   textoPasosFaltantes,
@@ -425,8 +431,13 @@ function CotizarPageContent() {
     }
   }
 
-  const alternarReceta = (id: string) =>
+  // La bebida de mesa del salón (si tiene): va primero en Barra y se marca
+  // sola con el primer plato del menú.
+  const barrasDeMesa = config?.barras.filter((b) => esBebidaDeMesa(b.nombre)) ?? []
+  const alternarReceta = (id: string) => {
+    if (!recetas.includes(id)) setBarraIds((prev) => barrasAlEmpezarMenu(recetas.length, prev, barrasDeMesa[0]?.id ?? null))
     setRecetas((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
   const alternarServicio = (id: string) =>
     setServicios((prev) => {
       if (id in prev) {
@@ -469,6 +480,14 @@ function CotizarPageContent() {
     return [...grupos.entries()].sort((a, b) => orden(a[0]) - orden(b[0]) || a[0].localeCompare(b[0], "es"))
   })()
   const tituloPaso = (categoria: string) => PASOS_MENU.find((p) => p.categoria === categoria)?.titulo ?? categoria
+  // Barra: la bebida de mesa primero, en su propio grupo; el resto, como
+  // siempre. Si el salón no la tiene, un solo grupo sin título (como antes).
+  const gruposBarra = barrasDeMesa.length
+    ? [
+        { titulo: "Con el menú", deMesa: true, barras: barrasDeMesa },
+        { titulo: "Barras", deMesa: false, barras: (config?.barras ?? []).filter((b) => !esBebidaDeMesa(b.nombre)) },
+      ].filter((g) => g.barras.length > 0)
+    : [{ titulo: "", deMesa: false, barras: config?.barras ?? [] }]
   const hayOpcionesDelMismoPaso = menuPorPaso.some(([, platos]) => platos.filter((m) => recetas.includes(m.recetaId)).length > 1)
 
   return (
@@ -663,24 +682,36 @@ function CotizarPageContent() {
                 {config.barras.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Este salón no tiene barras para cotizar.</p>
                 ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {config.barras.map((b) => (
-                      <Chip
-                        key={b.id}
-                        activo={barraIds.includes(b.id)}
-                        // Hasta MAX_BARRAS: con el cupo lleno, las demás no se pueden tocar.
-                        deshabilitado={!barraIds.includes(b.id) && barraIds.length >= MAX_BARRAS}
-                        onClick={() =>
-                          setBarraIds((prev) => (prev.includes(b.id) ? prev.filter((x) => x !== b.id) : [...prev, b.id].slice(0, MAX_BARRAS)))
-                        }
-                      >
-                        <span className="block font-medium">{b.nombre}</span>
-                        <span className="block text-xs opacity-80 tabular-nums">
-                          {fmt(b.precioPorAdulto)} por adulto · {b.tragosPorAdulto} {b.tragosPorAdulto === 1 ? "trago" : "tragos"}
-                        </span>
-                      </Chip>
-                    ))}
-                  </div>
+                  gruposBarra.map((g) => (
+                    <div key={g.titulo || "barras"} className="space-y-1.5">
+                      {g.titulo && <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{g.titulo}</p>}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {g.barras.map((b) => (
+                          <Chip
+                            key={b.id}
+                            activo={barraIds.includes(b.id)}
+                            // Hasta MAX_BARRAS: con el cupo lleno, las demás no se pueden tocar.
+                            deshabilitado={!barraIds.includes(b.id) && barraIds.length >= MAX_BARRAS}
+                            onClick={() =>
+                              setBarraIds((prev) =>
+                                prev.includes(b.id) ? prev.filter((x) => x !== b.id) : [...prev, b.id].slice(0, MAX_BARRAS),
+                              )
+                            }
+                          >
+                            <span className="block font-medium">{b.nombre}</span>
+                            <span className="block text-xs opacity-80 tabular-nums">
+                              {fmt(b.precioPorAdulto)} por adulto · {b.tragosPorAdulto} {b.tragosPorAdulto === 1 ? "trago" : "tragos"}
+                            </span>
+                          </Chip>
+                        ))}
+                      </div>
+                      {g.deMesa && (
+                        <p className="text-xs text-muted-foreground">
+                          Se marca sola al elegir el primer plato del menú. Si no va, tocala para sacarla.
+                        </p>
+                      )}
+                    </div>
+                  ))
                 )}
                 {config.barras.length > 1 && (
                   <p className="text-xs text-muted-foreground">
