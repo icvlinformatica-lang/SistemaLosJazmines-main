@@ -7,8 +7,8 @@
 // perfil real al guardar.
 //
 // Flujo: elegir salón → menú ("Cargar stock disponible luego del evento X"
-// si hay uno terminado sin cargar, el botón "Carga extraordinaria" con PIN y
-// los próximos 3 eventos del salón con candado) → carga. Sin
+// si hay uno terminado sin cargar, los próximos 3 eventos del salón con
+// candado y, al final, el botón chico "Carga extraordinaria" con PIN) → carga. Sin
 // acceso al calendario desde acá. La carga muestra TODOS los insumos del
 // sector con su casillero: se escribe el número y listo (1 paso por
 // insumo). Al confirmar se envían SOLO los que tienen un número escrito
@@ -362,7 +362,7 @@ export default function StockPorSalonPage() {
   // Una tarjeta por sector: si hay un evento terminado sin cargar, se entra
   // derecho a contar; si no, queda deshabilitada. Debajo, los próximos 3
   // eventos del salón con candado (se habilitan solos cuando terminan). La
-  // carga extraordinaria (con PIN) se abre desde su botón, debajo de las tarjetas.
+  // carga extraordinaria (con PIN) se abre desde un botón chico al final.
   if (paso === "menu") {
     const proximos = proximosEventosDelSalon(
       eventos.map((e) => ({
@@ -419,27 +419,6 @@ export default function StockPorSalonPage() {
           </div>
         )}
 
-        {/* Carga extraordinaria: contar el stock cuando no hay un evento
-            terminado (o cuando se quiere corregir un conteo). Pide el PIN. */}
-        <button
-          type="button"
-          onClick={() => pedirExtraordinaria(sectores[0])}
-          disabled={cargandoEstado}
-          className="block w-full text-left disabled:opacity-50"
-        >
-          <Card className="border-amber-400 transition-colors hover:border-amber-600 hover:bg-amber-50/50">
-            <CardContent className="flex items-center gap-3 p-4">
-              <KeyRound className="h-6 w-6 shrink-0 text-amber-600" />
-              <div className="min-w-0">
-                <p className="font-semibold">Carga extraordinaria</p>
-                <p className="text-xs text-muted-foreground">
-                  Para contar el stock de {salonLabel(salon)} en cualquier momento. Pide PIN.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </button>
-
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próximos eventos en este salón</p>
           {proximos.length === 0 ? (
@@ -462,6 +441,23 @@ export default function StockPorSalonPage() {
           {proximos.length > 0 && (
             <p className="text-xs text-muted-foreground">Se habilitan para cargar cuando termina cada evento.</p>
           )}
+        </div>
+
+        {/* Carga extraordinaria: contar el stock cuando no hay un evento
+            terminado (o para corregir un conteo). Pide el PIN. Va chica y al
+            final a propósito: es ocasional, lo normal es cargar después de
+            cada evento. */}
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-amber-300 text-xs text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+            onClick={() => pedirExtraordinaria(sectores[0])}
+            disabled={cargandoEstado}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Carga extraordinaria
+          </Button>
         </div>
 
         {/* Puerta de la carga extraordinaria. El PIN acá solo abre la lista:
