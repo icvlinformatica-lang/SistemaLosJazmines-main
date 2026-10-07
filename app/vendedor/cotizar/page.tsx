@@ -457,8 +457,8 @@ function CotizarPageContent() {
 
   const total = calculo?.total ?? 0
   const comensales = adultos + ninos
-  // Arriba los que se pueden contratar (por categoría); abajo, aparte, los
-  // incluidos en el salón (tildados y sin sumar).
+  // Arriba, los incluidos en el salón (tildados y sin sumar); abajo, aparte,
+  // los adicionales que se pueden contratar (por categoría).
   const incluidosDelSalon = serviciosDelSalon.filter((s) => s.incluido)
   const porCategoria = (() => {
     const grupos = new Map<string, typeof serviciosDelSalon>()
@@ -727,8 +727,32 @@ function CotizarPageContent() {
                 rubro="servicios"
                 resumen={`${Object.keys(servicios).length} adicionales`}
               >
+                {/* Primero lo que ya viene con el salón; después, los adicionales. */}
+                {incluidosDelSalon.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Incluidos en el salón</p>
+                    <p className="text-xs text-muted-foreground">Vienen con el salón: no se cobran aparte.</p>
+                    <div className="flex flex-wrap gap-2">
+                      {incluidosDelSalon.map((s) => (
+                        <Chip key={s.servicioId} activo deshabilitado>
+                          <span className="flex items-center gap-1.5">
+                            <Check className="h-3.5 w-3.5" />
+                            <span className="font-medium">{s.info.nombre}</span>
+                          </span>
+                          <span className="block text-xs opacity-80">Incluido · no suma</span>
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {incluidosDelSalon.length > 0 && (
+                  <div className="space-y-0.5 border-t border-border pt-3">
+                    <p className="text-sm font-semibold">Adicionales</p>
+                    <p className="text-xs text-muted-foreground">Se suman al precio.</p>
+                  </div>
+                )}
                 {porCategoria.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No hay servicios para contratar en este salón.</p>
+                  <p className="text-sm text-muted-foreground">No hay servicios adicionales para contratar en este salón.</p>
                 )}
                 {porCategoria.map(([categoria, lista]) => (
                   <div key={categoria} className="space-y-1.5">
@@ -772,23 +796,6 @@ function CotizarPageContent() {
                     </div>
                   </div>
                 ))}
-                {incluidosDelSalon.length > 0 && (
-                  <div className="space-y-1.5 border-t border-border pt-3">
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Incluidos en el salón</p>
-                    <p className="text-xs text-muted-foreground">Vienen con el salón: no se cobran aparte.</p>
-                    <div className="flex flex-wrap gap-2">
-                      {incluidosDelSalon.map((s) => (
-                        <Chip key={s.servicioId} activo deshabilitado>
-                          <span className="flex items-center gap-1.5">
-                            <Check className="h-3.5 w-3.5" />
-                            <span className="font-medium">{s.info.nombre}</span>
-                          </span>
-                          <span className="block text-xs opacity-80">Incluido · no suma</span>
-                        </Chip>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </Tarjeta>
             </>
           )}
