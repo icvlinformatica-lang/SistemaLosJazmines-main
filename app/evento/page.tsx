@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
-import { calcularProporcionCajaEventos, repartirEntreCajas } from "@/lib/cobrar-cuota"
+import { calcularProporcionCajaEventos, construirSenaInicial } from "@/lib/cobrar-cuota"
 import { insumosEnSalon } from "@/lib/stock-salon-evento"
 import { moverStockDelEvento } from "@/lib/consumo-stock-evento"
 import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
@@ -20,7 +20,6 @@ import {
   getPrecioVenta,
   calcularVentaServicios,
   generateId,
-  generarMovimientoIngreso,
   obtenerPreciosServicio,
   type EventoHistorial,
   type BarraEvento,
@@ -30,7 +29,6 @@ import {
   type EstadoEvento,
   type EventoGuardado,
   type VersionContrato,
-  type MovimientoCaja,
   type PersonalDelEvento,
   calcularMontoPersonalDelEvento,
   detectarImpactosContrato,
@@ -862,61 +860,22 @@ function EventoPageContent() {
       // Regla nueva (eventos creados desde ahora): a Caja Eventos va solo la parte
       // proporcional del costo del evento + 5%; el resto va a Caja Jazmines.
       if (localModalidadPago === "sena" && localMontoSena > 0 && eventData.salon) {
-        const nombreEvento = eventData.nombrePareja || eventData.nombre || "Evento"
-
-        // Aporte a admin / saldo de la caja del salon (segun configuracion)
-        const movimientosSalon = generarMovimientoIngreso(
-          eventData.salon,
-          localMontoSena,
-          `Seña - ${nombreEvento}`,
-          configuracionCajas,
-          movimientosCaja,
-          nuevoEventoId,
-        )
-
+        // Solo la seña repartida entre las dos cajas (construirSenaInicial). Antes
+        // también se anotaba la seña entera "sin caja" y los resúmenes la contaban
+        // dos veces.
         // Proporción según la regla del evento recién creado (costo + 5%).
         // eventData ya lleva los costos calculados al guardar (insumos, servicios
         // y operativos) y el planDeCuotas con repartoCajas = "costo_mas_5".
-        const proporcionEventos = calcularProporcionCajaEventos(eventData as unknown as EventoGuardado)
-        const { montoEventos, montoJazmines } = repartirEntreCajas(localMontoSena, proporcionEventos)
-        const fecha = new Date().toISOString()
-
-        const saldoPrevEventos = (movimientosCaja || [])
-          .filter((m: MovimientoCaja) => m.cajaDestino === "caja_eventos" && m.salon === eventData.salon)
-          .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
-        const saldoPrevJazmines = (movimientosCaja || [])
-          .filter((m: MovimientoCaja) => m.cajaDestino === "caja_jazmines")
-          .reduce((sum: number, m: MovimientoCaja) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
-
-        const movsSena: MovimientoCaja[] = []
-        if (montoEventos > 0) {
-          movsSena.push({
-            id: generateId(),
-            fecha,
-            tipo: "ingreso",
-            concepto: `Seña - ${nombreEvento} (Caja Eventos)`,
-            monto: montoEventos,
-            salon: eventData.salon,
-            eventoId: nuevoEventoId,
-            cajaDestino: "caja_eventos",
-            saldoResultante: saldoPrevEventos + montoEventos,
-          })
-        }
-        if (montoJazmines > 0) {
-          movsSena.push({
-            id: generateId(),
-            fecha,
-            tipo: "ingreso",
-            concepto: `Seña - ${nombreEvento} (Caja Jazmines)`,
-            monto: montoJazmines,
-            salon: eventData.salon,
-            eventoId: nuevoEventoId,
-            cajaDestino: "caja_jazmines",
-            saldoResultante: saldoPrevJazmines + montoJazmines,
-          })
-        }
-
-        await addMovimientosCaja([...movimientosSalon, ...movsSena])
+        const movsSena = construirSenaInicial({
+          salon: eventData.salon,
+          montoSena: localMontoSena,
+          nombreEvento: eventData.nombrePareja || eventData.nombre || "Evento",
+          eventoId: nuevoEventoId,
+          proporcionEventos: calcularProporcionCajaEventos(eventData as unknown as EventoGuardado),
+          movimientosCaja: movimientosCaja || [],
+          fecha: new Date().toISOString(),
+        })
+        await addMovimientosCaja(movsSena)
       }
 
       // Log activity
