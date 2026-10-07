@@ -1,6 +1,20 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { textoPasosFaltantes } from "@/lib/cotizador-salon"
+
+// El driver a veces entrega jsonb como texto sin parsear: se aceptan los dos.
+function listaDeTextos(valor: unknown): string[] {
+  let v = valor
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v)
+    } catch {
+      return []
+    }
+  }
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
+}
 
 /**
  * Envía a revisión una cotización ya generada (botón directo en la tarjeta
@@ -14,7 +28,9 @@ import { sql } from "@/lib/db"
  *
  * Modelo nuevo (desglose_venta.version 2): si la cotización supera la
  * capacidad del salón NO se envía (mismo criterio que "Enviar a
- * Administración" en /vendedor/cotizar).
+ * Administración" en /vendedor/cotizar). Tampoco si tiene menú y le faltaba
+ * un paso que el salón ofrece (desglose_venta.pasosMenuFaltantes, lo guarda
+ * /api/vendedor/cotizaciones): hay que abrirla y completar el menú.
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -26,18 +42,33 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           jsonb_typeof(desglose_venta) = 'object'
           AND coalesce((desglose_venta ->> 'superaCapacidad')::boolean, false)
         )
+        AND NOT coalesce(
+          CASE WHEN jsonb_typeof(desglose_venta -> 'pasosMenuFaltantes') = 'array'
+            THEN jsonb_array_length(desglose_venta -> 'pasosMenuFaltantes') > 0
+          END,
+          false
+        )
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>
 
     if (!filas.length) {
       const [fila] = (await sql`
         SELECT estado, (jsonb_typeof(desglose_venta) = 'object'
-          AND coalesce((desglose_venta ->> 'superaCapacidad')::boolean, false)) AS supera
+          AND coalesce((desglose_venta ->> 'superaCapacidad')::boolean, false)) AS supera,
+          CASE WHEN jsonb_typeof(desglose_venta -> 'pasosMenuFaltantes') = 'array'
+            THEN desglose_venta -> 'pasosMenuFaltantes' END AS faltantes
         FROM cotizaciones WHERE id = ${id}
-      `) as unknown as Array<{ estado: string; supera: boolean | null }>
+      `) as unknown as Array<{ estado: string; supera: boolean | null; faltantes: unknown }>
       if (fila?.supera && ["borrador", "rechazada"].includes(fila.estado)) {
         return NextResponse.json(
           { ok: false, error: "Supera la capacidad del salón: abrila y bajá la cantidad de invitados o cambiá de salón" },
+          { status: 400 },
+        )
+      }
+      const faltantes = listaDeTextos(fila?.faltantes)
+      if (fila && faltantes.length > 0 && ["borrador", "rechazada"].includes(fila.estado)) {
+        return NextResponse.json(
+          { ok: false, error: `Falta elegir ${textoPasosFaltantes(faltantes)} del menú: abrila y completala` },
           { status: 400 },
         )
       }

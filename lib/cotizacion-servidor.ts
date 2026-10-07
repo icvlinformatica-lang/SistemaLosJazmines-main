@@ -23,6 +23,7 @@ import {
   resolverDia,
   type DiaCotizado,
   esSalonCotizador,
+  pasosMenuFaltantes,
   precioBarraSalon,
   precioConGanancia,
   tarifaDeRegla,
@@ -47,7 +48,11 @@ export interface CotizacionCalculada {
   /** Tipo de día y recargo que le tocó (sábado / fecha especial / ninguno). */
   dia: DiaCotizado
   resultado: ResultadoCotizacionSalon
-  recetas: Array<{ id: string; nombre: string; costoPorcion: number; precioPorcion: number }>
+  /** Con su categoría: el paso del menú (entrada, plato principal, postre...). */
+  recetas: Array<{ id: string; nombre: string; categoria: string; costoPorcion: number; precioPorcion: number }>
+  /** Pasos del menú que el salón ofrece y faltan elegir (pasosMenuFaltantes).
+   *  Con alguno, la cotización se puede guardar pero no enviar. */
+  pasosMenuFaltantes: string[]
   /** La primera barra (compatibilidad con lo que lee una sola). */
   barra: BarraCalculada | null
   barras: BarraCalculada[]
@@ -86,6 +91,7 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
     recetas.push({
       id,
       nombre: plato.nombre,
+      categoria: plato.categoria,
       costoPorcion: plato.costoPorPorcion,
       precioPorcion: precioConGanancia(plato.costoPorPorcion, config.gananciaCocina),
     })
@@ -140,7 +146,7 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
     ninos,
     capacidadMaxima: config.capacidadMaxima,
     salon: { costo: config.costoSalon, precio: precioConGanancia(config.costoSalon, config.gananciaSalon) },
-    recetas: recetas.map((r) => ({ id: r.id, nombre: r.nombre, costo: r.costoPorcion, precio: r.precioPorcion })),
+    recetas: recetas.map((r) => ({ id: r.id, nombre: r.nombre, categoria: r.categoria, costo: r.costoPorcion, precio: r.precioPorcion })),
     barra: null,
     barras: barrasElegidas.map((b) => ({
       id: b.id,
@@ -169,11 +175,18 @@ export async function cotizarEnServidor(p: PedidoCotizacion): Promise<Cotizacion
     dia,
   })
 
+  // Pasos del menú que faltan: contra los platos VISIBLES del salón (los mismos
+  // que ve el vendedor en /api/vendedor/catalogo).
+  const platosDelSalon = config.recetas
+    .map((id) => platos.find((x) => x.id === id))
+    .filter((x): x is NonNullable<typeof x> => !!x)
+
   return {
     config,
     dia,
     resultado,
     recetas,
+    pasosMenuFaltantes: pasosMenuFaltantes(platosDelSalon, recetas),
     barra,
     barras: barrasElegidas,
     servicios: resultado.servicios.map((l) => {

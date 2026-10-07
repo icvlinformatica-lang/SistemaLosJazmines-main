@@ -46,6 +46,54 @@ export function precioBarraSalon(
   return precioBarraDesdeCostos(coctelesIds, costosPorTrago, (Number(gananciaPct) || 0) / 100)
 }
 
+// ── Menú por pasos (entrada, plato principal y postre) ──────────────────────
+//
+// Decisión del dueño (7/10/2026): si el vendedor elige menú, tiene que elegir
+// un plato de cada paso que el salón ofrece. Se pide para ENVIAR a
+// Administración; el borrador se puede guardar incompleto. La Cocina cobra la
+// SUMA de los pasos, y varias opciones del mismo paso se promedian entre sí.
+
+/** Pasos que se piden, con la categoría de receta de cada uno (RecetaCategoria
+ *  de lib/store.ts). Son textos guardados en recetas.categoria: no renombrar. */
+export const PASOS_MENU = [
+  { categoria: "Entrada", titulo: "Entrada", falta: "una entrada" },
+  { categoria: "Plato Principal", titulo: "Plato principal", falta: "un plato principal" },
+  { categoria: "Postre", titulo: "Postre", falta: "un postre" },
+] as const
+
+type ConCategoria = { categoria?: string | null }
+
+/** Categorías de PASOS_MENU que faltan elegir: las que el salón ofrece (tiene
+ *  algún plato visible de esa categoría) y no tienen ningún plato elegido.
+ *  Sin platos elegidos no falta nada: la cotización va sin menú. */
+export function pasosMenuFaltantes(delSalon: ConCategoria[], elegidos: ConCategoria[]): string[] {
+  if (elegidos.length === 0) return []
+  return PASOS_MENU.filter(
+    (p) => delSalon.some((x) => x.categoria === p.categoria) && !elegidos.some((x) => x.categoria === p.categoria),
+  ).map((p) => p.categoria)
+}
+
+/** "una entrada", "una entrada y un postre" o "una entrada, un plato principal y un postre". */
+export function textoPasosFaltantes(categorias: string[]): string {
+  const partes = categorias.map((c) => PASOS_MENU.find((p) => p.categoria === c)?.falta ?? c)
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}` : (partes[0] ?? "")
+}
+
+/** Cocina para `comensales`: los platos de la misma categoría son opciones y
+ *  se promedian entre sí; las categorías distintas (los pasos) se suman. Sin
+ *  categoría van todos juntos y se promedian, como antes del menú por pasos.
+ *  No redondea: el precio lo redondea quien llama (el costo no se redondea). */
+export function cocinaPorPasos<T extends ConCategoria>(comensales: number, recetas: T[], valor: (r: T) => number): number {
+  const grupos = new Map<string, number[]>()
+  for (const r of recetas) {
+    const clave = r.categoria || ""
+    grupos.set(clave, [...(grupos.get(clave) ?? []), valor(r)])
+  }
+  let total = 0
+  for (const valores of grupos.values()) total += (comensales * valores.reduce((s, v) => s + v, 0)) / valores.length
+  return total
+}
+
 // ── Personal ────────────────────────────────────────────────────────────────
 
 export type AplicaRegla = "siempre" | "con_menu" | "con_barra"
@@ -177,15 +225,73 @@ export type ModoFechaEspecial = "sabado" | "viernes" | "propio"
 
 export interface ReglaRecargo {
   tipo: TipoRecargo
-  /** Pesos (monto) o porcentaje (10 = 10 %). */
+  /** Pesos (monto). En porcentaje: el % más alto (resumen para lo que lea
+   *  solo valor + rubros); la cuenta usa `porcentajes`. */
   valor: number
-  /** Rubros sobre los que se aplica el porcentaje (en monto fijo no se usan). */
+  /** Rubros con recargo (en monto fijo no se usan). */
   rubros: RubroRecargo[]
+  /** Porcentaje de CADA rubro (scripts/020; 10 = 10 %, 0 = sin recargo). Los
+   *  recargos guardados antes no lo tienen: un solo `valor` % para todos los
+   *  `rubros` (ver porcentajesPorRubro). */
+  porcentajes?: Partial<Record<RubroRecargo, number>>
 }
 
 export const RECARGO_VACIO: ReglaRecargo = { tipo: "monto", valor: 0, rubros: ["salon"] }
 /** Tope del porcentaje de recargo (más que esto es un error de tipeo). */
 export const RECARGO_PORCENTAJE_MAXIMO = 1000
+
+/**
+ * El porcentaje de cada rubro de un recargo en porcentaje (0 = sin recargo).
+ * Lo guardado antes del % por rubro (sin `porcentajes`) se lee como siempre:
+ * el mismo `valor` para cada rubro tildado. En monto fijo, todo en 0.
+ */
+export function porcentajesPorRubro(regla: ReglaRecargo | null | undefined): Record<RubroRecargo, number> {
+  const out: Record<RubroRecargo, number> = { salon: 0, cocina: 0, barra: 0, servicios: 0 }
+  if (!regla || regla.tipo !== "porcentaje") return out
+  for (const r of RUBROS_RECARGO) {
+    const v = regla.porcentajes ? regla.porcentajes[r] : regla.rubros.includes(r) ? regla.valor : 0
+    out[r] = Math.max(0, Number(v) || 0)
+  }
+  return out
+}
+
+/** Recargo en porcentaje armado desde el % de cada rubro, con `valor` y
+ *  `rubros` al día (el % más alto y los rubros que tienen recargo). */
+export function reglaPorcentajePorRubro(porcentajes: Partial<Record<RubroRecargo, number>>): ReglaRecargo {
+  const p = porcentajesPorRubro({ tipo: "porcentaje", valor: 0, rubros: [], porcentajes })
+  const conRecargo = RUBROS_RECARGO.filter((r) => p[r] > 0)
+  return {
+    tipo: "porcentaje",
+    valor: Math.max(0, ...RUBROS_RECARGO.map((r) => p[r])),
+    rubros: conRecargo.length ? conRecargo : ["salon"],
+    porcentajes: p,
+  }
+}
+
+/**
+ * Recargo desde las columnas de la base (cotizador_salon.recargo_sabado_* y
+ * cotizador_fecha_especial.recargo_*). `porcentajes` es jsonb: puede venir como
+ * objeto o como texto JSON; sin él (o sin la columna), se lee como antes.
+ */
+export function reglaRecargoDesdeColumnas(tipo: unknown, valor: unknown, rubros: unknown, porcentajes: unknown): ReglaRecargo {
+  const lista = Array.isArray(rubros) ? RUBROS_RECARGO.filter((r) => (rubros as unknown[]).includes(r)) : []
+  const legado: ReglaRecargo = {
+    tipo: tipo === "porcentaje" ? "porcentaje" : "monto",
+    valor: Number(valor) || 0,
+    rubros: lista.length ? lista : ["salon"],
+  }
+  if (legado.tipo !== "porcentaje") return legado
+  let p = porcentajes
+  if (typeof p === "string") {
+    try {
+      p = JSON.parse(p)
+    } catch {
+      p = null
+    }
+  }
+  if (!p || typeof p !== "object" || Array.isArray(p)) return legado
+  return reglaPorcentajePorRubro(p as Partial<Record<RubroRecargo, number>>)
+}
 
 export interface FechaEspecial {
   id: string
@@ -293,30 +399,50 @@ export function resolverDia(
   }
 }
 
-/** Monto del recargo: el fijo una vez, o el % sobre el PRECIO de los rubros
- *  tildados. Redondeado a pesos. */
+/** Monto del recargo: el fijo una vez, o el % de cada rubro sobre su PRECIO.
+ *  Redondeado a pesos. Los rubros con el mismo % se suman antes de aplicarlo:
+ *  con un único % para todos da exactamente la cuenta de antes. */
 export function montoRecargo(regla: ReglaRecargo | null, precios: Partial<Record<ClaveRubro, number>>): number {
   if (!regla) return 0
-  const valor = Math.max(0, Number(regla.valor) || 0)
-  if (regla.tipo === "monto") return Math.round(valor)
-  const base = regla.rubros.reduce((s, r) => s + (Number(precios[r]) || 0), 0)
-  return Math.round((base * valor) / 100)
+  if (regla.tipo === "monto") return Math.round(Math.max(0, Number(regla.valor) || 0))
+  const porcentajes = porcentajesPorRubro(regla)
+  const basePorPorcentaje = new Map<number, number>()
+  for (const r of RUBROS_RECARGO) {
+    if (porcentajes[r] <= 0) continue
+    basePorPorcentaje.set(porcentajes[r], (basePorPorcentaje.get(porcentajes[r]) ?? 0) + (Number(precios[r]) || 0))
+  }
+  let total = 0
+  for (const [porcentaje, base] of basePorPorcentaje) total += (base * porcentaje) / 100
+  return Math.round(total)
 }
 
-/** Valida un recargo que manda una pantalla. Devuelve el limpio o un error. */
+/** Valida un recargo que manda una pantalla. Devuelve el limpio o un error.
+ *  En porcentaje acepta `porcentajes` (uno por rubro) o, como antes, un solo
+ *  `valor` para los `rubros` tildados; siempre devuelve los porcentajes. */
 export function validarReglaRecargo(x: unknown, que: string): ReglaRecargo | string {
   const r = (x ?? {}) as Record<string, unknown>
   if (r.tipo !== "monto" && r.tipo !== "porcentaje") return `${que}: elegí monto fijo o porcentaje.`
+  const fueraDeRango = `${que}: el porcentaje va de 0 a ${RECARGO_PORCENTAJE_MAXIMO} %.`
+  if (r.tipo === "porcentaje" && r.porcentajes != null) {
+    if (typeof r.porcentajes !== "object" || Array.isArray(r.porcentajes)) return `${que}: faltan los porcentajes de cada rubro.`
+    const pedidos = r.porcentajes as Record<string, unknown>
+    const porcentajes: Partial<Record<RubroRecargo, number>> = {}
+    for (const rubro of RUBROS_RECARGO) {
+      const v = pedidos[rubro] == null ? 0 : Number(pedidos[rubro])
+      if (!Number.isFinite(v) || v < 0 || v > RECARGO_PORCENTAJE_MAXIMO) return fueraDeRango
+      porcentajes[rubro] = v
+    }
+    return reglaPorcentajePorRubro(porcentajes)
+  }
   const valor = Number(r.valor)
   if (!Number.isFinite(valor) || valor < 0) return `${que}: el valor tiene que ser un número de 0 para arriba.`
-  if (r.tipo === "porcentaje" && valor > RECARGO_PORCENTAJE_MAXIMO) {
-    return `${que}: el porcentaje va de 0 a ${RECARGO_PORCENTAJE_MAXIMO} %.`
-  }
+  if (r.tipo === "porcentaje" && valor > RECARGO_PORCENTAJE_MAXIMO) return fueraDeRango
   const rubros = Array.isArray(r.rubros)
     ? RUBROS_RECARGO.filter((k) => (r.rubros as unknown[]).includes(k))
     : []
   if (r.tipo === "porcentaje" && rubros.length === 0) return `${que}: tildá al menos un rubro.`
-  return { tipo: r.tipo, valor, rubros: rubros.length ? rubros : ["salon"] }
+  if (r.tipo === "monto") return { tipo: r.tipo, valor, rubros: rubros.length ? rubros : ["salon"] }
+  return reglaPorcentajePorRubro(Object.fromEntries(rubros.map((k) => [k, valor])))
 }
 
 // ── Cotización completa (Paso 2) ────────────────────────────────────────────
@@ -341,6 +467,34 @@ export const CATEGORIAS_FUERA_DE_SERVICIOS = ["Menú", "Barra"]
 /** Cuántas barras puede sumar el vendedor en una cotización. */
 export const MAX_BARRAS = 2
 
+// ── Bebida de mesa ──────────────────────────────────────────────────────────
+//
+// Pedido del dueño (7/10/2026): la barra "BEBIDA DE MESA" acompaña al menú.
+// En el cotizador del vendedor aparece primero, en un grupo aparte dentro de
+// Barra, y se marca sola cuando se elige el primer plato (se puede destildar).
+// Se cobra como cualquier barra y cuenta para MAX_BARRAS. Se reconoce por el
+// NOMBRE: si se renombra y deja de decir "bebida de mesa", es una barra común.
+
+/** true si la barra es la bebida de mesa (sin importar mayúsculas, tildes ni espacios de más). */
+export function esBebidaDeMesa(nombre: string): boolean {
+  return String(nombre ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .includes("bebida de mesa")
+}
+
+/** Barras elegidas después de marcar un plato: si con ese plato empieza el
+ *  menú (antes no había ninguno) y el salón tiene bebida de mesa, se suma
+ *  sola, salvo que ya esté o que ya estén las MAX_BARRAS. Si no, no cambian. */
+export function barrasAlEmpezarMenu(platosAntes: number, barraIds: string[], bebidaDeMesaId: string | null): string[] {
+  if (platosAntes > 0 || !bebidaDeMesaId || barraIds.includes(bebidaDeMesaId) || barraIds.length >= MAX_BARRAS) {
+    return barraIds
+  }
+  return [...barraIds, bebidaDeMesaId]
+}
+
 export interface ValorUnitario {
   /** Costo por unidad. undefined en la pantalla del vendedor (no lo recibe). */
   costo?: number
@@ -354,8 +508,9 @@ export interface EntradaCotizacionSalon {
   /** null = el salón no tiene capacidad cargada: no se limita. */
   capacidadMaxima: number | null
   salon: ValorUnitario
-  /** Recetas elegidas, por porción. */
-  recetas: Array<ValorUnitario & { id: string; nombre: string }>
+  /** Recetas elegidas, por porción. La categoría es el paso del menú (entrada,
+   *  plato principal, postre...): ver cocinaPorPasos. */
+  recetas: Array<ValorUnitario & { id: string; nombre: string; categoria?: string | null }>
   /** Barra elegida, por adulto. null = sin barra. (Con `barras`, se ignora.) */
   barra: (ValorUnitario & { id: string; nombre: string; tragosPorAdulto: number }) | null
   /** Hasta MAX_BARRAS barras; cada una cobra adultos × su precio por adulto. */
@@ -417,8 +572,17 @@ export interface ResultadoCotizacionSalon {
   costoTotal: number | null
   servicios: LineaServicioCotizacion[]
   personal: LineaPersonalCotizacion[]
-  /** Recargo aplicado (null = ninguno o $0). */
-  recargo: { nombre: string; origen: "sabado" | "especial"; tipo: TipoRecargo; valor: number; rubros: RubroRecargo[]; monto: number } | null
+  /** Recargo aplicado (null = ninguno o $0). `porcentajes` (el % de cada
+   *  rubro) solo en porcentaje; las cotizaciones guardadas antes no lo tienen. */
+  recargo: {
+    nombre: string
+    origen: "sabado" | "especial"
+    tipo: TipoRecargo
+    valor: number
+    rubros: RubroRecargo[]
+    monto: number
+    porcentajes?: Record<RubroRecargo, number>
+  } | null
   avisos: AvisoCotizacion[]
   superaCapacidad: boolean
   /** Derivada, para no romper lo que la lea: hay menú → "con_catering". */
@@ -452,13 +616,13 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
   const salonPrecio = Math.round(Number(e.salon.precio) || 0)
   if (sinValor(e.salon)) avisoSinValor("salon", "Salón")
 
-  // 2. Cocina: comensales × promedio del precio por porción de las recetas.
+  // 2. Cocina: comensales × el menú por persona. Los platos del mismo paso
+  //    (categoría) se promedian entre sí y los pasos se suman (cocinaPorPasos).
   let cocinaPrecio = 0
   let cocinaCosto = 0
   if (e.recetas.length > 0 && comensales > 0) {
-    const n = e.recetas.length
-    cocinaPrecio = Math.round((comensales * e.recetas.reduce((s, r) => s + (Number(r.precio) || 0), 0)) / n)
-    cocinaCosto = (comensales * e.recetas.reduce((s, r) => s + (Number(r.costo) || 0), 0)) / n
+    cocinaPrecio = Math.round(cocinaPorPasos(comensales, e.recetas, (r) => Number(r.precio) || 0))
+    cocinaCosto = cocinaPorPasos(comensales, e.recetas, (r) => Number(r.costo) || 0)
   }
   for (const r of e.recetas) if (sinValor(r)) avisoSinValor(`receta:${r.id}`, r.nombre)
 
@@ -546,6 +710,7 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
           valor: Number(reglaRecargo.valor) || 0,
           rubros: [...reglaRecargo.rubros],
           monto,
+          ...(reglaRecargo.tipo === "porcentaje" ? { porcentajes: porcentajesPorRubro(reglaRecargo) } : {}),
         }
       : null
   if (recargo) rubros.push({ clave: "recargo", nombre: recargo.nombre, costo: c(0), precio: monto })

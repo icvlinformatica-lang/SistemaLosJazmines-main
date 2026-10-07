@@ -195,7 +195,14 @@ async function armarCotizadorPorSalon(preciosCocteles: Array<{ id: string; costo
     menu: cfg.recetas
       .map((id) => platos.find((p) => p.id === id))
       .filter((p): p is NonNullable<typeof p> => !!p)
-      .map((p) => ({ recetaId: p.id, nombre: p.nombre, precioPorPorcion: precioConGanancia(p.costoPorPorcion, cfg.gananciaCocina) })),
+      // La categoría es el paso del menú (entrada, plato principal, postre):
+      // con ella la pantalla agrupa los platos y pide los pasos que faltan.
+      .map((p) => ({
+        recetaId: p.id,
+        nombre: p.nombre,
+        categoria: p.categoria,
+        precioPorPorcion: precioConGanancia(p.costoPorPorcion, cfg.gananciaCocina),
+      })),
     barras: barras
       .filter((b) => cfg.barras.includes(b.id))
       .map((b) => {
