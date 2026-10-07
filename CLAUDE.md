@@ -55,7 +55,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Datos al 6/10/2026:
   - **Eventos**: 147 activos. Por salón: Casona 57, Salon 53 y Quinta 37; "Salon 4" y "Salon 5" no tienen eventos. 120 tienen plan de cuotas, **68 ajustan por IPC** y 66 tienen pagos registrados (111 pagos en total).
   - **Estados en uso**: pendiente, completado, en_preparacion y borrador. No hay "cancelado", y "confirmado" no existe aunque `DESIGN.md` lo nombre.
-  - **Movimientos de caja**: 731. Hay 84 viejos sin `caja_destino` y 2 con el salón vacío. Al 7/10/2026 son 741 y 85 sin caja: **todos son señas duplicadas** (ver "Problemas conocidos").
+  - **Movimientos de caja**: 731. Hay 84 viejos sin `caja_destino` y 2 con el salón vacío. Al 7/10/2026 había 741 y 85 sin caja, todas señas duplicadas; se borraron ese día y quedaron **656, ninguno sin caja** (respaldo en `backup.movimientos_caja_senas_duplicadas_20261007`).
   - **Fecha de alta**: 48 eventos activos no la tienen, así que para ellos no aplica el candado de señas.
   - **Tablas vacías**: `precios_venta`, `temporadas`, `asignaciones` y `cotizaciones`. `pagos_personal` tiene 1 fila: el personal de cada evento vive en sus JSON `personal_evento` y `asignaciones`.
 
@@ -207,11 +207,12 @@ No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
   - `GET /api/eventos` le devuelve los DNI y los pagos a cualquier sesión.
   - `getPins()` (`lib/auth/server.ts`) tiene PINs de reserva para cuando falta una variable `PIN_*`, y el repositorio de GitHub es público (7/10/2026).
   - El freno de intentos de PIN (`lib/auth/rate-limit.ts`) vive en memoria: es por instancia y por IP.
-- **Señas duplicadas en `movimientos_caja`** (el código se arregló el 7/10/2026; faltan los datos):
+- **Señas duplicadas en `movimientos_caja`** (arreglado el 7/10/2026, código y datos):
   - Al crear un evento con "Seña + Cuotas" la seña se anotaba dos veces: repartida entre las cajas y además entera sin `caja_destino`.
-  - Quedan 85 filas viejas sin caja, que suman $374.776.186,99, una por evento. Cada una tiene su seña repartida, que suma lo mismo, y nada las referencia por id.
-  - Las pantallas de caja las ignoran, pero los mails diario y semanal las suman a Caja Eventos y el control de comisiones las cuenta.
-  - Se borran con OK del dueño y con respaldo antes. Al borrarlas, una comisión que figuraba lista para pagar deja de estarlo: la seña cubría la comisión solo contada dos veces.
+  - Las 85 filas viejas sin caja ($374.776.186,99, una por evento, cada una con su seña repartida por el mismo monto) se borraron el 7/10/2026 con OK del dueño, desde el SQL Editor de Supabase. Respaldo: `backup.movimientos_caja_senas_duplicadas_20261007` (RLS activado, sin permisos para `anon` ni `authenticated`).
+  - Mientras estuvieron, los resúmenes diario y semanal las sumaban a Caja Eventos y el control de comisiones las contaba. Las pantallas de caja nunca las usaron.
+  - Al borrarlas, la comisión del evento del 3/10 en Casona dejó de figurar lista para pagar: la seña la cubría solo contada dos veces.
+  - El conector de Supabase cancela solo las escrituras en las sesiones en la nube (no puede mostrar la confirmación). Lo que modifique datos lo corre el dueño en el SQL Editor.
   - El ajuste "Aporte a Administración" de Configuración de Cajas solo actuaba en esa seña sin caja, así que desde el arreglo no hace nada. Nunca generó movimientos: en la base no hay ninguno de tipo `aporte_admin`.
 - `deleteServicio` (data-service) borra el servicio aunque falle la copia a `servicios_eliminados`. En ese caso no se puede restaurar.
 - En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`). Hoy ningún servicio tiene 0, así que no afecta a los datos actuales.
