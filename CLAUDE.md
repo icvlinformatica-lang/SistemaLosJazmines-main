@@ -26,7 +26,12 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
   3. SQL exploratorio siempre dentro de `begin; … rollback;`.
   4. Al terminar, borrar todo lo de prueba (eventos, cotizaciones, movimientos, `activity_log`) y verificar contra la foto.
   5. No probar cobros, IPC ni caja sobre eventos reales de clientes.
-- En las sesiones en la nube la app no puede conectarse a la base aunque haya `.env`. Lo verifiqué el 6/10/2026: la conexión directa a Postgres no pasa por el proxy y `supabase.com` está bloqueado por la política de red. La única vía es un conector de Supabase. Sin conector, hay que decirlo en el PR y dejarle la prueba en la app al dueño.
+- En las sesiones en la nube la app no puede conectarse a la base aunque haya `.env`. Lo verifiqué el 6/10/2026: la conexión directa a Postgres no pasa por el proxy y `supabase.com` está bloqueado por la política de red. La única vía a la base real es un conector de Supabase. Sin conector, hay que decirlo en el PR y dejarle la prueba en la app al dueño.
+- **Base local de prueba, sin tocar la real.** El contenedor trae Postgres 16 (`/usr/lib/postgresql/16/bin`). Se usó el 7/10/2026 para probar el cotizador de punta a punta:
+  - `initdb` como usuario `postgres` en una carpeta de `/var/lib/postgresql` (no corre como root ni en el scratchpad), solo por TCP (`-c unix_socket_directories=''`) y con SSL (`ssl=on` y un certificado propio), porque `lib/db.ts` exige `ssl: 'require'`.
+  - Esquema: los `scripts/*.sql` que hagan falta, más las tablas que no tienen script (`servicios`, `personal`, `cotizaciones`…) con las columnas que usa el código. Solo datos inventados.
+  - `pnpm build` y `pnpm start` con `POSTGRES_URL` local y `AUTH_SECRET` y `PIN_*` inventados. Sin variables de Supabase, el proxy `/api/db` no llega a ningún lado.
+  - Se recorre con Playwright. Al terminar, apagar la base y borrar la carpeta.
 - **Conectores de Supabase.** Se agregan en https://claude.ai/customize/connectors y se cargan cuando arranca la sesión.
   - El que corresponde es uno en **solo lectura y limitado a este proyecto**: un conector personalizado con la dirección `https://mcp.supabase.com/mcp?project_ref=<ID>&read_only=true`. El ID está en la dirección del panel de Supabase: `supabase.com/dashboard/project/<ID>`.
   - Al 6/10/2026 la cuenta tiene dos conectados: **Supabase** (el del catálogo) y **Supa** (personalizado). El del catálogo tiene **acceso total** a todos los proyectos de la cuenta: trae `apply_migration`, `execute_sql` con escritura, `create_project`, `pause_project`, `restore_project`, ramas y edge functions. Supa todavía no se verificó.
@@ -62,7 +67,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Algunas tablas se usan por los dos caminos: `eventos`, `movimientos_caja`, `servicios`, `personal`, `paquetes_salones` e `historial_ipc`. Un cambio de esquema en esas tablas hay que reflejarlo en los dos.
 - Los eventos se escriben **solo** por `/api/eventos`, que valida, hace concurrencia, papelera y mails. `fetchEventos`/`upsertEvento`/`deleteEvento` de data-service son código muerto: no usarlos.
 
-**Permisos**: la UI esconde pantallas (`PERFILES[].rutas` en `lib/profile-context.tsx`, `app-shell`, `sidebar`), pero esconder no es seguridad. Lo único que protege son las rutas que chequean el perfil: `perfilDesdeRequest`, `soloAdministracion` y `lib/*-permisos.ts`. El proxy `/api/db` **no filtra por perfil**: cualquier sesión, incluso la de DJ, puede leer y escribir esas tablas. Una restricción que importe va en una ruta del servidor. Dos trampas:
+**Permisos**: la UI esconde pantallas (`PERFILES[].rutas` en `lib/profile-context.tsx`, `app-shell`, `sidebar`), pero esconder no es seguridad. Lo único que protege son las rutas que chequean el perfil: `perfilDesdeRequest`, `soloAdministracion` y `lib/*-permisos.ts`. El proxy `/api/db` **no filtra por perfil**: cualquier sesión, incluso la de DJ, puede leer y escribir esas tablas (plan en "Pendiente: permisos por perfil"). Una restricción que importe va en una ruta del servidor. Dos trampas:
 - `rutas: []` significa acceso **total**, no "sin acceso".
 - El Vendedor **nunca** recibe costos, ganancias ni márgenes, tampoco en respuestas de la API.
 
@@ -193,10 +198,15 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Renombrar valores guardados o cambiar fórmulas de plata que afecten eventos ya cobrados o archivados.
 - Saltear, borrar o debilitar tests para que algo pase.
 
-## Problemas conocidos (detectados el 6/10/2026, sin arreglar)
+## Problemas conocidos (detectados el 6 y 7/10/2026, sin arreglar)
 
 No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
-- El proxy `/api/db` no filtra por perfil (ver "Permisos"): un perfil como DJ, con sesión, puede leer y modificar tablas de finanzas como `movimientos_caja`.
+- **Permisos, lo más grave** (plan en "Pendiente: permisos por perfil"):
+  - El proxy `/api/db` no filtra por perfil (ver "Permisos"): un perfil como DJ, con sesión, puede leer y modificar tablas de finanzas como `movimientos_caja`. También puede escribir `eventos` directo (pagos y plan de cuotas), salteando las protecciones de `/api/eventos`.
+  - Al abrir, la app (`StoreProvider` en `components/app-shell.tsx`) descarga para cualquier perfil las tablas de data-service: cajas, personal, pagos y demás.
+  - `GET /api/eventos` le devuelve los DNI y los pagos a cualquier sesión.
+  - `getPins()` (`lib/auth/server.ts`) tiene PINs de reserva para cuando falta una variable `PIN_*`, y el repositorio de GitHub es público (7/10/2026).
+  - El freno de intentos de PIN (`lib/auth/rate-limit.ts`) vive en memoria: es por instancia y por IP.
 - `deleteServicio` (data-service) borra el servicio aunque falle la copia a `servicios_eliminados`. En ese caso no se puede restaurar.
 - En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`). Hoy ningún servicio tiene 0, así que no afecta a los datos actuales.
 - Recetas y cócteles reemplazan sus insumos con DELETE + INSERT **sin transacción** (`app/api/recetas/[id]`, `app/api/cocteles/[id]`). Si falla a mitad de camino, la receta queda incompleta y cambia el costo de los eventos.
@@ -205,6 +215,27 @@ No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
 - 3 políticas "allow_all" viejas en `paquetes_salones`, `precios_venta` y `temporadas` (ver "La base real").
 - 48 eventos activos sin `fecha_alta`. El script de carga que menciona `supabase/migrations/20261002_fecha_alta_eventos.sql` no está en el repo.
 - Aviso de seguridad de Supabase (nivel WARN): la función `update_updated_at_column` no tiene `search_path` fijo.
+
+## Pendiente: permisos por perfil (anotado el 7/10/2026)
+
+El dueño decidió dejarlo para más adelante. Cuando se retome:
+- **El dueño, sin código:** pasar el repositorio de GitHub a privado; revisar en Vercel que estén cargadas `AUTH_SECRET`, `PIN_STOCK_EXTRA` y las once `PIN_*` por perfil; cambiar los PINs que tenga gente que ya no trabaja con ellos. Nunca pedir ni recibir los valores por el chat.
+- **Código, un PR por paso y con OK del dueño** (es "Plata o permisos"):
+  1. Sacar los PINs de reserva de `getPins()`: si falta la variable, ese perfil no entra. Antes, confirmar que estén todas cargadas.
+  2. Permisos en el servidor: el proxy mira el perfil de la sesión y tiene una lista de qué tablas puede leer y cuáles modificar cada perfil; `eventos` deja de escribirse por el proxy (lo que lo hace en data-service es código muerto); `GET /api/eventos` manda DNI y plata solo a los perfiles que los usan; el store carga solo lo de cada perfil.
+  3. Activarlo por partes (primero el staff externo, después cocina y barra, al final cobro y vendedor), probando cada perfil pantalla por pantalla en la base local de prueba.
+- **Borrador de quién ve qué**, sacado de `PERFILES[].rutas` (a confirmar con el dueño):
+
+  | Perfil | Ve | Modifica |
+  |---|---|---|
+  | administracion, soporte | Todo | Todo |
+  | cobro | Eventos con sus cuotas y el resumen del día | Solo cobra cuotas (`PATCH /api/eventos/[id]`) |
+  | cocina | Eventos sin DNI ni plata, recetas e insumos | Conteos de stock |
+  | barra | Lo mismo para barra | Stock y cócteles |
+  | vendedor | Su catálogo con precios, nunca costos | Sus cotizaciones |
+  | coordinacion, dj, fotografo, vestido, pantalla | Eventos (fecha, salón, horario, invitados, nota para staff), sin DNI ni plata | Nada |
+
+- **Preguntas abiertas para el dueño:** ¿el staff externo ve el nombre y el teléfono del cliente? ¿Cobrar cuota ve el resumen de las cajas?
 
 ## Referencia
 

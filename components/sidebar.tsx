@@ -34,6 +34,7 @@ import {
   TrendingUp,
   Building,
   Building2,
+  Calculator,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -513,9 +514,21 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Generar Contrato Button */}
+        {/* Generar Contrato Button (y, solo para Administración, "Cotizar" arriba) */}
         {!["cocina", "barra", "cobro", "vendedor"].includes(perfilActivo?.id ?? "") && (
-          <div className="px-3 pb-3 -mt-[10px]">
+          <div className="px-3 pb-3 -mt-[10px] space-y-2">
+            {perfilActivo?.id === "administracion" && (
+              // Abre el cotizador del vendedor. Mismo estilo que "Generar
+              // Contrato", con el dorado un poco más naranja y 3 px más bajo
+              // (41 px contra 44 px).
+              <Link
+                href="/vendedor/cotizar"
+                className="flex items-center gap-2 w-full h-[41px] px-4 rounded-lg bg-[#d49133] hover:bg-[#e09d40] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
+              >
+                <Calculator className="h-5 w-5 shrink-0" />
+                <span className="flex-1 text-left">Cotizar</span>
+              </Link>
+            )}
             <button
               type="button"
               onClick={handlePlanificarFiesta}
