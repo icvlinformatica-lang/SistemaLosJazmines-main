@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 30 archivos y 295 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 32 archivos y 310 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -72,7 +72,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Personal → asignaciones → pagos y sueldos (los pendientes se generan en el cliente al cargar) → Caja Eventos.
 - Plan de cuotas y pagos del evento (JSON dentro de la fila) → `movimientos_caja` (Caja Eventos / Caja Jazmines, por salón) → resumen diario y semanal (mails), planilla de cuotas, "Vienen a pagar".
 - `historial_ipc` → proyección de cuotas en el cliente (`proyectarIPC`) → validación en el servidor al cobrar.
-- Cotizador del vendedor → `cotizaciones` → aprobar → `POST /api/eventos` (evento con `precioVentaFijo`). El recargo de sábado y el "recargo propio" de las fechas especiales tienen un % por rubro (`porcentajesPorRubro` en `lib/cotizador-salon.ts`, columnas jsonb de la 020); lo guardado antes, sin esa columna, se lee como un solo % para los rubros tildados.
+- Cotizador del vendedor → `cotizaciones` → aprobar → `POST /api/eventos` (evento con `precioVentaFijo`). El recargo de sábado y el "recargo propio" de las fechas especiales tienen un % por rubro (`porcentajesPorRubro` en `lib/cotizador-salon.ts`, columnas jsonb de la 020); lo guardado antes, sin esa columna, se lee como un solo % para los rubros tildados. La Cocina suma un plato por paso del menú (entrada, plato principal y postre, según `recetas.categoria`) y promedia las opciones del mismo paso (`cocinaPorPasos`); para enviar se piden los pasos que el salón ofrece (`pasosMenuFaltantes`, en las dos rutas de envío). Cambiar la categoría de una receta cambia su paso y su precio en el cotizador.
 - Conteos de stock por salón → `stock_salones`. Los eventos descuentan o devuelven en su salón (`stockDescontado` evita descontar dos veces).
 
 **Poco acoplado** (riesgo bajo):

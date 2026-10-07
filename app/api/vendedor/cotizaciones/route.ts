@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { cotizarEnServidor } from "@/lib/cotizacion-servidor"
+import { textoPasosFaltantes } from "@/lib/cotizador-salon"
 
 /** jsonb de verdad (no texto). El tipo de sql.json no acepta objetos con
  *  campos opcionales/null anidados, así que se convierte en un solo lugar. */
@@ -22,7 +23,9 @@ const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[
  *   - "guardar" (default): guarda sin tocar el estado (nace en "borrador";
  *     una "rechazada" sigue rechazada hasta que se reenvía).
  *   - "enviar": guarda y pasa a "lista_para_revisar" en el mismo UPDATE. Si
- *     se supera la capacidad del salón, se RECHAZA (400).
+ *     se supera la capacidad del salón, o si hay menú y falta un paso que el
+ *     salón ofrece (entrada, plato principal o postre), se RECHAZA (400).
+ *     Guardar el borrador con el menú incompleto sí se puede.
  * Una cotización solo se puede editar en "borrador" o "rechazada".
  *
  * body: {
@@ -64,6 +67,12 @@ export async function POST(req: Request) {
     if (enviar && r.superaCapacidad) {
       const aviso = r.avisos.find((a) => a.codigo === "capacidad")
       return NextResponse.json({ ok: false, error: aviso?.textoVendedor ?? "Supera la capacidad del salón" }, { status: 400 })
+    }
+    if (enviar && calculo.pasosMenuFaltantes.length > 0) {
+      return NextResponse.json(
+        { ok: false, error: `Para enviarla falta elegir ${textoPasosFaltantes(calculo.pasosMenuFaltantes)} del menú` },
+        { status: 400 },
+      )
     }
 
     const vendedor = usuarioDesdeCookie(req)
@@ -131,6 +140,9 @@ export async function POST(req: Request) {
       // (salvo que el vendedor la vuelva a guardar).
       dia: { tipo: calculo.dia.tipo, etiqueta: calculo.dia.etiqueta, fechaEspecial: calculo.dia.fechaEspecial },
       recargo: r.recargo,
+      // Pasos del menú que faltaban al guardar: con alguno, el botón "Enviar"
+      // de la lista (/api/vendedor/cotizaciones/[id]/enviar) no la manda.
+      pasosMenuFaltantes: calculo.pasosMenuFaltantes,
       avisos: r.avisos,
       costoTotal: r.costoTotal,
       total: r.total,

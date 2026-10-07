@@ -46,6 +46,54 @@ export function precioBarraSalon(
   return precioBarraDesdeCostos(coctelesIds, costosPorTrago, (Number(gananciaPct) || 0) / 100)
 }
 
+// ── Menú por pasos (entrada, plato principal y postre) ──────────────────────
+//
+// Decisión del dueño (7/10/2026): si el vendedor elige menú, tiene que elegir
+// un plato de cada paso que el salón ofrece. Se pide para ENVIAR a
+// Administración; el borrador se puede guardar incompleto. La Cocina cobra la
+// SUMA de los pasos, y varias opciones del mismo paso se promedian entre sí.
+
+/** Pasos que se piden, con la categoría de receta de cada uno (RecetaCategoria
+ *  de lib/store.ts). Son textos guardados en recetas.categoria: no renombrar. */
+export const PASOS_MENU = [
+  { categoria: "Entrada", titulo: "Entrada", falta: "una entrada" },
+  { categoria: "Plato Principal", titulo: "Plato principal", falta: "un plato principal" },
+  { categoria: "Postre", titulo: "Postre", falta: "un postre" },
+] as const
+
+type ConCategoria = { categoria?: string | null }
+
+/** Categorías de PASOS_MENU que faltan elegir: las que el salón ofrece (tiene
+ *  algún plato visible de esa categoría) y no tienen ningún plato elegido.
+ *  Sin platos elegidos no falta nada: la cotización va sin menú. */
+export function pasosMenuFaltantes(delSalon: ConCategoria[], elegidos: ConCategoria[]): string[] {
+  if (elegidos.length === 0) return []
+  return PASOS_MENU.filter(
+    (p) => delSalon.some((x) => x.categoria === p.categoria) && !elegidos.some((x) => x.categoria === p.categoria),
+  ).map((p) => p.categoria)
+}
+
+/** "una entrada", "una entrada y un postre" o "una entrada, un plato principal y un postre". */
+export function textoPasosFaltantes(categorias: string[]): string {
+  const partes = categorias.map((c) => PASOS_MENU.find((p) => p.categoria === c)?.falta ?? c)
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}` : (partes[0] ?? "")
+}
+
+/** Cocina para `comensales`: los platos de la misma categoría son opciones y
+ *  se promedian entre sí; las categorías distintas (los pasos) se suman. Sin
+ *  categoría van todos juntos y se promedian, como antes del menú por pasos.
+ *  No redondea: el precio lo redondea quien llama (el costo no se redondea). */
+export function cocinaPorPasos<T extends ConCategoria>(comensales: number, recetas: T[], valor: (r: T) => number): number {
+  const grupos = new Map<string, number[]>()
+  for (const r of recetas) {
+    const clave = r.categoria || ""
+    grupos.set(clave, [...(grupos.get(clave) ?? []), valor(r)])
+  }
+  let total = 0
+  for (const valores of grupos.values()) total += (comensales * valores.reduce((s, v) => s + v, 0)) / valores.length
+  return total
+}
+
 // ── Personal ────────────────────────────────────────────────────────────────
 
 export type AplicaRegla = "siempre" | "con_menu" | "con_barra"
@@ -432,8 +480,9 @@ export interface EntradaCotizacionSalon {
   /** null = el salón no tiene capacidad cargada: no se limita. */
   capacidadMaxima: number | null
   salon: ValorUnitario
-  /** Recetas elegidas, por porción. */
-  recetas: Array<ValorUnitario & { id: string; nombre: string }>
+  /** Recetas elegidas, por porción. La categoría es el paso del menú (entrada,
+   *  plato principal, postre...): ver cocinaPorPasos. */
+  recetas: Array<ValorUnitario & { id: string; nombre: string; categoria?: string | null }>
   /** Barra elegida, por adulto. null = sin barra. (Con `barras`, se ignora.) */
   barra: (ValorUnitario & { id: string; nombre: string; tragosPorAdulto: number }) | null
   /** Hasta MAX_BARRAS barras; cada una cobra adultos × su precio por adulto. */
@@ -539,13 +588,13 @@ export function armarCotizacion(e: EntradaCotizacionSalon): ResultadoCotizacionS
   const salonPrecio = Math.round(Number(e.salon.precio) || 0)
   if (sinValor(e.salon)) avisoSinValor("salon", "Salón")
 
-  // 2. Cocina: comensales × promedio del precio por porción de las recetas.
+  // 2. Cocina: comensales × el menú por persona. Los platos del mismo paso
+  //    (categoría) se promedian entre sí y los pasos se suman (cocinaPorPasos).
   let cocinaPrecio = 0
   let cocinaCosto = 0
   if (e.recetas.length > 0 && comensales > 0) {
-    const n = e.recetas.length
-    cocinaPrecio = Math.round((comensales * e.recetas.reduce((s, r) => s + (Number(r.precio) || 0), 0)) / n)
-    cocinaCosto = (comensales * e.recetas.reduce((s, r) => s + (Number(r.costo) || 0), 0)) / n
+    cocinaPrecio = Math.round(cocinaPorPasos(comensales, e.recetas, (r) => Number(r.precio) || 0))
+    cocinaCosto = cocinaPorPasos(comensales, e.recetas, (r) => Number(r.costo) || 0)
   }
   for (const r of e.recetas) if (sinValor(r)) avisoSinValor(`receta:${r.id}`, r.nombre)
 

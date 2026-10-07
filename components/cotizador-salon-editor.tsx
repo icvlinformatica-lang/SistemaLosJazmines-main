@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import {
   APLICA_OPCIONES,
+  cocinaPorPasos,
   montoRecargo,
   porcentajesPorRubro,
   precioBarraSalon,
@@ -583,9 +584,10 @@ export function CotizadorSalonEditor() {
 
 /**
  * Editor + vista previa: "Un sábado este salón cobra $X más (con [80]
- * invitados)". Para la vista previa, Cocina = promedio de los platos del
- * salón y Barra = promedio de las barras visibles (todos adultos), porque
- * acá no hay una cotización real. Servicios depende de lo que se elija.
+ * invitados)". Para la vista previa, Cocina = un plato de cada paso del menú
+ * al precio promedio de ese paso (la misma cuenta del cotizador,
+ * cocinaPorPasos) y Barra = promedio de las barras visibles (todos adultos),
+ * porque acá no hay una cotización real. Servicios depende de lo que se elija.
  */
 function BloqueRecargoSabado({
   config,
@@ -604,14 +606,14 @@ function BloqueRecargoSabado({
     const platos = config.recetas
       .map((id) => catalogos.platos.find((p) => p.id === id))
       .filter((p): p is PlatoConCosto => !!p)
-      .map((p) => precioConGanancia(p.costoPorPorcion, config.gananciaCocina))
+      .map((p) => ({ categoria: p.categoria, precio: precioConGanancia(p.costoPorPorcion, config.gananciaCocina) }))
     const costos = Object.fromEntries(catalogos.cocteles.map((c) => [c.id, c.costoPorTrago]))
     const barras = catalogos.barras
       .filter((b) => config.barras.includes(b.id))
       .map((b) => precioBarraSalon(b.coctelesIncluidos, costos, config.gananciaBarra).precioPorAdulto)
     return {
       salon: precioConGanancia(config.costoSalon, config.gananciaSalon),
-      cocina: Math.round(invitados * promedio(platos)),
+      cocina: Math.round(cocinaPorPasos(invitados, platos, (p) => p.precio)),
       barra: Math.round(invitados * promedio(barras)),
       servicios: 0,
     }
@@ -645,7 +647,7 @@ function BloqueRecargoSabado({
         {r.tipo === "porcentaje" && (porcentajes.cocina > 0 || porcentajes.barra > 0 || porcentajes.servicios > 0) && (
           <p className="mt-1 text-xs text-muted-foreground">
             {[
-              porcentajes.cocina > 0 && "Cocina: promedio de los platos del salón",
+              porcentajes.cocina > 0 && "Cocina: un plato de cada paso, al precio promedio de ese paso",
               porcentajes.barra > 0 && "Barra: promedio de las barras visibles, todos adultos",
               porcentajes.servicios > 0 &&
                 `Servicios: además, ${porcentajes.servicios.toLocaleString("es-AR")} % de los que se elijan`,

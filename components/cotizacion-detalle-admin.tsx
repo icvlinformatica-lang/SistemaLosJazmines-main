@@ -31,7 +31,8 @@ export interface DesgloseCotizacionV2 {
   superaCapacidad: boolean
   modalidad: string
   rubros: Array<{ clave: string; nombre: string; costo: number | null; precio: number; ganancia: number | null }>
-  recetas: Array<{ id: string; nombre: string; costoPorcion: number; precioPorcion: number }>
+  /** categoria (paso del menú) solo en las guardadas desde el menú por pasos. */
+  recetas: Array<{ id: string; nombre: string; categoria?: string; costoPorcion: number; precioPorcion: number }>
   barra: { id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number } | null
   /** Todas las barras (desde que se pueden elegir 2). Las de antes solo traen "barra". */
   barras?: Array<{ id: string; nombre: string; cocteles: string[]; costoPorAdulto: number; precioPorAdulto: number }>
@@ -233,14 +234,24 @@ export function DetalleCotizacionNueva({
             <ul className="space-y-0.5 text-muted-foreground">
               {desglose.recetas.map((r) => (
                 <li key={r.id} className="flex justify-between gap-2">
-                  <span>{r.nombre}</span>
+                  <span>
+                    {r.nombre}
+                    {r.categoria && <span className="text-xs"> · {r.categoria}</span>}
+                  </span>
                   <span className="tabular-nums">
                     {fmt(r.costoPorcion)} → {fmt(r.precioPorcion)}
                   </span>
                 </li>
               ))}
             </ul>
-            {desglose.recetas.length > 1 && <p className="text-xs text-muted-foreground">Se cobra el promedio por persona.</p>}
+            {desglose.recetas.length > 1 && (
+              <p className="text-xs text-muted-foreground">
+                {/* Las guardadas antes del menú por pasos (sin categoría) se cobraron con el promedio. */}
+                {desglose.recetas.some((r) => r.categoria)
+                  ? "Se suma un plato por paso; las opciones del mismo paso se promedian."
+                  : "Se cobra el promedio por persona."}
+              </p>
+            )}
           </div>
         )}
         {(desglose.barras ?? (desglose.barra ? [desglose.barra] : [])).length > 0 && (
