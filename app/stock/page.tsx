@@ -7,15 +7,16 @@
 // perfil real al guardar.
 //
 // Flujo: elegir salón → menú ("Cargar stock disponible luego del evento X"
-// si hay uno terminado sin cargar, los próximos 3 eventos del salón con
-// candado, y el botón "!" de carga extraordinaria con PIN) → carga. Sin
+// si hay uno terminado sin cargar, el botón "Carga extraordinaria" con PIN y
+// los próximos 3 eventos del salón con candado) → carga. Sin
 // acceso al calendario desde acá. La carga muestra TODOS los insumos del
 // sector con su casillero: se escribe el número y listo (1 paso por
 // insumo). Al confirmar se envían SOLO los que tienen un número escrito
 // (ver itemsParaEnviar en lib/stock-carga.ts): vacío = no contado, nunca 0.
 // El nombre de quien carga se pide en el diálogo de confirmación.
-// La sesión se confirma TODA junta (ver /api/stock-salones/sesiones). Esto
-// NO toca el stock global (stock_actual) de /admin/almacen ni /admin/barra.
+// La sesión se confirma TODA junta (ver /api/stock-salones/sesiones). Al
+// guardar, el stock de Administración (stock_actual de /admin/almacen y
+// /admin/barra) pasa a ser la suma de lo contado en cada salón.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useStore } from "@/lib/store-context"
@@ -39,7 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { AlertCircle, ArrowLeft, ChefHat, ChevronDown, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
+import { ArrowLeft, ChefHat, ChevronDown, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -229,7 +230,7 @@ export default function StockPorSalonPage() {
   }
 
   /**
-   * Botón "!": carga extraordinaria (fuera de un evento terminado). Pide el
+   * Botón "Carga extraordinaria" (fuera de un evento terminado). Pide el
    * PIN antes de abrir la lista; si el perfil carga los dos sectores, se
    * elige cuál adentro del diálogo.
    */
@@ -361,7 +362,7 @@ export default function StockPorSalonPage() {
   // Una tarjeta por sector: si hay un evento terminado sin cargar, se entra
   // derecho a contar; si no, queda deshabilitada. Debajo, los próximos 3
   // eventos del salón con candado (se habilitan solos cuando terminan). La
-  // carga extraordinaria (con PIN) se abre desde el botón "!" de arriba.
+  // carga extraordinaria (con PIN) se abre desde su botón, debajo de las tarjetas.
   if (paso === "menu") {
     const proximos = proximosEventosDelSalon(
       eventos.map((e) => ({
@@ -377,20 +378,7 @@ export default function StockPorSalonPage() {
     )
     return (
       <div className="mx-auto max-w-2xl space-y-5 p-4 sm:p-6">
-        <div className="flex items-start justify-between gap-3">
-          {encabezado}
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 shrink-0 rounded-full border-amber-400 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
-            aria-label="Carga extraordinaria de stock (pide PIN)"
-            title="Carga extraordinaria (pide PIN)"
-            onClick={() => pedirExtraordinaria(sectores[0])}
-            disabled={cargandoEstado}
-          >
-            <AlertCircle className="h-5 w-5" />
-          </Button>
-        </div>
+        {encabezado}
 
         {cargandoEstado ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -422,7 +410,7 @@ export default function StockPorSalonPage() {
                   <CardContent className="flex items-center gap-3 p-4 text-muted-foreground">
                     <Icon className="h-6 w-6 shrink-0" />
                     <p className="text-sm">
-                      No hay ningún evento terminado para cargar{sufijo}
+                      No hay ningún evento terminado para cargar{sufijo}.
                     </p>
                   </CardContent>
                 </Card>
@@ -430,6 +418,27 @@ export default function StockPorSalonPage() {
             })}
           </div>
         )}
+
+        {/* Carga extraordinaria: contar el stock cuando no hay un evento
+            terminado (o cuando se quiere corregir un conteo). Pide el PIN. */}
+        <button
+          type="button"
+          onClick={() => pedirExtraordinaria(sectores[0])}
+          disabled={cargandoEstado}
+          className="block w-full text-left disabled:opacity-50"
+        >
+          <Card className="border-amber-400 transition-colors hover:border-amber-600 hover:bg-amber-50/50">
+            <CardContent className="flex items-center gap-3 p-4">
+              <KeyRound className="h-6 w-6 shrink-0 text-amber-600" />
+              <div className="min-w-0">
+                <p className="font-semibold">Carga extraordinaria</p>
+                <p className="text-xs text-muted-foreground">
+                  Para contar el stock de {salonLabel(salon)} en cualquier momento. Pide PIN.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </button>
 
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próximos eventos en este salón</p>
@@ -474,7 +483,7 @@ export default function StockPorSalonPage() {
                 Carga extraordinaria
               </DialogTitle>
               <DialogDescription>
-                Contar el stock de {salonLabel(salon)} fuera de un evento terminado. Hace falta el PIN.
+                Contar el stock de {salonLabel(salon)} sin esperar a que termine un evento. Hace falta el PIN.
               </DialogDescription>
             </DialogHeader>
             {sectores.length > 1 && (
@@ -511,7 +520,7 @@ export default function StockPorSalonPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") confirmarPin()
                 }}
-                placeholder="••••"
+                placeholder="PIN"
               />
               {pinError && <p className="text-sm text-destructive">{pinError}</p>}
             </div>
@@ -701,7 +710,8 @@ export default function StockPorSalonPage() {
             <DialogTitle>¿Confirmar la carga?</DialogTitle>
             <DialogDescription>
               Se guardan {itemsValidos.length} {itemsValidos.length === 1 ? "insumo" : "insumos"} de{" "}
-              {sector ? SECTOR_LABEL[sector] : ""} en {salonLabel(salon)}.
+              {sector ? SECTOR_LABEL[sector] : ""} en {salonLabel(salon)}. Lo que escribiste reemplaza lo que había contado
+              en este salón y actualiza el stock de Administración.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

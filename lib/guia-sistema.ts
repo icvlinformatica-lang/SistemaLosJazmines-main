@@ -32,6 +32,7 @@ Perfiles de acceso (con PIN): Administración, Soporte, Cocina, Barra y Cobrar c
 ## Almacén
 - **Insumos Cocina** (/admin/almacen): insumos de cocina con precio y unidad (KG, GR, LT, CC, UN...). Acá se actualizan los precios que alimentan el costo de las recetas.
 - **Insumos Bebidas** (/admin/barra): lo mismo para la barra.
+- **Stock por salón** (/stock): Cocina y Barra cuentan lo que quedó en un salón. Se elige el salón y aparece "Cargar stock disponible luego del evento X" cuando un evento de ese salón ya terminó (sin PIN). Para contar en cualquier otro momento está el botón "Carga extraordinaria", que pide el PIN de carga extraordinaria. Se escribe la cantidad de cada insumo que se contó (vacío = no contado; si no queda nada, 0) y se confirma con el nombre de quien carga. Al guardar, el stock de Insumos Cocina y Bebidas pasa a ser la suma de lo contado en todos los salones. Al imprimir el documento de un evento, lo que usa la cocina se descuenta del stock de su salón.
 
 ## Producción
 - **Recetas** (/admin/recetario): recetas de cocina con ingredientes, cantidades y "rinde para X personas". El costo por persona de un evento sale de acá.
