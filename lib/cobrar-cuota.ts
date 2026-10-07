@@ -88,6 +88,67 @@ export function repartirEntreCajas(
 }
 
 /**
+ * Movimientos de la seña que se cobra al crear un evento ("Seña + Cuotas"):
+ * se reparte entre Caja Eventos y Caja Jazmines con la misma regla que las
+ * cuotas (costo del evento + 5 % a Eventos y el resto a Jazmines). Una fila
+ * por caja que recibe algo; nunca una fila "sin caja".
+ *
+ * Hasta el 7/10/2026 también se anotaba la seña ENTERA sin caja
+ * (generarMovimientoIngreso de lib/store.ts): las pantallas de caja la
+ * ignoraban, pero el resumen diario, el semanal y el control de comisiones la
+ * contaban otra vez, así que cada seña figuraba dos veces.
+ */
+export function construirSenaInicial(params: {
+  salon: string
+  montoSena: number
+  nombreEvento: string
+  eventoId: string
+  /** calcularProporcionCajaEventos del evento recién creado. */
+  proporcionEventos: number
+  movimientosCaja: MovimientoCaja[]
+  /** Momento del cobro (ISO). */
+  fecha: string
+}): MovimientoCaja[] {
+  const { salon, montoSena, nombreEvento, eventoId, proporcionEventos, movimientosCaja, fecha } = params
+  const { montoEventos, montoJazmines } = repartirEntreCajas(montoSena, proporcionEventos)
+
+  // Saldos previos como los calcula cada caja: Eventos por salón, Jazmines general.
+  const saldo = (movs: MovimientoCaja[]) =>
+    movs.reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+  const saldoPrevEventos = saldo(movimientosCaja.filter((m) => m.cajaDestino === "caja_eventos" && m.salon === salon))
+  const saldoPrevJazmines = saldo(movimientosCaja.filter((m) => m.cajaDestino === "caja_jazmines"))
+
+  const movimientos: MovimientoCaja[] = []
+  if (montoEventos > 0) {
+    movimientos.push({
+      id: generateId(),
+      fecha,
+      tipo: "ingreso",
+      concepto: `Seña - ${nombreEvento} (Caja Eventos)`,
+      monto: montoEventos,
+      salon,
+      eventoId,
+      cajaDestino: "caja_eventos",
+      saldoResultante: saldoPrevEventos + montoEventos,
+    })
+  }
+  if (montoJazmines > 0) {
+    movimientos.push({
+      id: generateId(),
+      fecha,
+      tipo: "ingreso",
+      concepto: `Seña - ${nombreEvento} (Caja Jazmines)`,
+      monto: montoJazmines,
+      salon,
+      eventoId,
+      cajaDestino: "caja_jazmines",
+      saldoResultante: saldoPrevJazmines + montoJazmines,
+    })
+  }
+  return movimientos
+}
+
+/**
  * Construye la actualización necesaria para marcar una cuota como cobrada:
  * - agrega el número de cuota a `planDeCuotas.cuotasPagadas`
  * - genera dos movimientos de ingreso repartidos entre Caja Eventos y Caja

@@ -1982,6 +1982,9 @@ export function calcularSaldoCaja(
   return { saldoInicial: config.saldoInicial, ingresos, egresos, aportesAdmin, saldoActual }
 }
 
+// Ya no se usa (7/10/2026): la seña al crear un evento se anota repartida con
+// construirSenaInicial (lib/cobrar-cuota.ts). Esta función anotaba la seña
+// entera "sin caja" y la duplicaba en los resúmenes. Queda para el PR de limpieza.
 export function generarMovimientoIngreso(
   salon: string,
   monto: number,
