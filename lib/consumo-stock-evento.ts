@@ -5,6 +5,8 @@
 // Antes cada una hacía PATCH /api/insumos/:id restando del total, que mezcla
 // los cinco salones: un evento en Quinta descontaba mercadería de Casona.
 
+import { calcularComprasSegmentadas, type Evento, type Insumo, type Receta } from "./store"
+
 export type MotivoConsumo = "impresion" | "cierre" | "devolucion"
 
 export interface ItemConsumo {
@@ -70,4 +72,38 @@ export function itemsDesdeMapa(
     sector,
     delta: signo * cantidad,
   }))
+}
+
+/**
+ * Cuánto de cada insumo de cocina consume un evento, en la unidad de stock
+ * del insumo (la misma en la que se cuenta en /stock y se muestra en
+ * Almacén). Es la "cantidad necesaria" de la lista de compras
+ * (calcularComprasSegmentadas), así que respeta todo lo que respeta esa
+ * cuenta:
+ * - pasa gramos a kilos, cc a litros y gramos a unidades (contenido por unidad);
+ * - divide por el "rinde para X personas" de la receta;
+ * - aplica los multiplicadores de porción de cada receta.
+ *
+ * Antes la Lista de Eventos lo calculaba a mano como cantidad × personas ×
+ * rinde, sin pasar de unidad: 300 GRS de carne por persona para 100
+ * personas descontaban 30.000 KG en vez de 30 KG, y como el stock no baja
+ * de 0, una impresión dejaba en cero casi todo el salón.
+ *
+ * Al imprimir se descuenta con esto y al recuperar o eliminar se devuelve
+ * con esto mismo, para que lo que vuelve sea igual a lo que salió.
+ */
+export function consumoCocinaDelEvento(
+  evento: Evento,
+  recetas: Receta[],
+  insumos: Insumo[],
+): Record<string, number> {
+  const mapa: Record<string, number> = {}
+  for (const c of calcularComprasSegmentadas(evento, recetas, insumos)) {
+    // 3 decimales: un gramo en KG, un cc en LT. Evita mandar 30.000000000000004.
+    const cantidad = Math.round(c.cantidadNecesaria * 1000) / 1000
+    // Sin invitados cargados la cuenta da NaN o 0: no se mueve nada.
+    if (!Number.isFinite(cantidad) || cantidad <= 0) continue
+    mapa[c.insumoId] = cantidad
+  }
+  return mapa
 }

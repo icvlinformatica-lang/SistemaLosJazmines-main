@@ -24,7 +24,7 @@ import {
 } from "@/lib/store"
 import { salonLabel } from "@/lib/store"
 import { insumosEnSalon } from "@/lib/stock-salon-evento"
-import { moverStockDelEvento, itemsDesdeMapa } from "@/lib/consumo-stock-evento"
+import { moverStockDelEvento, itemsDesdeMapa, consumoCocinaDelEvento } from "@/lib/consumo-stock-evento"
 import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
 import { SalonDot } from "@/components/salon-badge"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
@@ -681,22 +681,8 @@ export default function EventosListaPage() {
     const evento = eventos.find((e) => e.id === selectedEventoId)
     if (!evento) return
 
-    // Recalcular el delta igual que al descontar
-    const cantidadPorReceta: Record<string, number> = {}
-    ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
-    ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
-    ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
-    ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
-
-    const stockDelta: Record<string, number> = {}
-    Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
-      const receta = recetas.find((r) => r.id === recetaId)
-      if (!receta) return
-      receta.insumos.forEach((ri) => {
-        const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
-        stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
-      })
-    })
+    // La misma cuenta que al descontar (ver consumoCocinaDelEvento).
+    const stockDelta = consumoCocinaDelEvento(evento, recetas, insumos)
 
     // Devolver el stock AL SALÓN del que había salido.
     await moverStockDelEvento({
@@ -737,21 +723,11 @@ export default function EventosListaPage() {
     const evento = eventos.find((e) => e.id === selectedEventoId)
 
     // Si el evento esta en preparacion y el usuario quiere recuperar el stock
-    if (recuperarStockAlEliminar && evento && evento.estado === "en_preparacion") {
-      const cantidadPorReceta: Record<string, number> = {}
-      ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
-      ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
-      ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
-      ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
-      const stockDelta: Record<string, number> = {}
-      Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
-        const receta = recetas.find((r) => r.id === recetaId)
-        if (!receta) return
-        receta.insumos.forEach((ri) => {
-          const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
-          stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
-        })
-      })
+    // Solo si el stock se descontó de verdad: un evento puede estar En
+    // Preparación sin descuento (se cambió el estado a mano o el descuento
+    // falló), y devolver ahí sería sumar mercadería que nunca salió.
+    if (recuperarStockAlEliminar && evento && evento.estado === "en_preparacion" && evento.stockDescontado) {
+      const stockDelta = consumoCocinaDelEvento(evento, recetas, insumos)
       // Al eliminar, lo que se había descontado vuelve a SU salón.
       await moverStockDelEvento({
         salon: evento?.salon,
@@ -867,21 +843,9 @@ export default function EventosListaPage() {
 
     // Solo descontar stock si nunca fue descontado antes (campo stockDescontado)
     if (!evento.stockDescontado) {
-      const cantidadPorReceta: Record<string, number> = {}
-      ;(evento.recetasAdultos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adultos || 0) })
-      ;(evento.recetasAdolescentes || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.adolescentes || 0) })
-      ;(evento.recetasNinos || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.ninos || 0) })
-      ;(evento.recetasDietasEspeciales || []).forEach((id) => { cantidadPorReceta[id] = (cantidadPorReceta[id] || 0) + (evento.personasDietasEspeciales || 0) })
-
-      const stockDelta: Record<string, number> = {}
-      Object.entries(cantidadPorReceta).forEach(([recetaId, personas]) => {
-        const receta = recetas.find((r) => r.id === recetaId)
-        if (!receta) return
-        receta.insumos.forEach((ri) => {
-          const cantidad = ri.cantidadBasePorPersona * personas * (receta.factorRendimiento || 1)
-          stockDelta[ri.insumoId] = (stockDelta[ri.insumoId] || 0) + cantidad
-        })
-      })
+      // Misma cuenta que la lista de compras: unidades, rinde y porciones
+      // (ver consumoCocinaDelEvento).
+      const stockDelta = consumoCocinaDelEvento(evento, recetas, insumos)
       // Lo consumido sale del salón del evento, no del total de los cinco.
       // El endpoint deja el total como suma de los salones y registra solo el
       // renglón de Actividad; lo que ese salón nunca contó no se toca.
@@ -893,24 +857,33 @@ export default function EventosListaPage() {
         motivo: "impresion",
         items: itemsDesdeMapa(stockDelta, "cocina", -1),
       })
-      if (!movido.ok) {
-        toast({ title: "No se descontó el stock", description: movido.error, variant: "destructive" })
-      } else if (movido.sinConteo > 0) {
-        toast({
-          title: "Stock descontado en parte",
-          description: `${movido.sinConteo} ${movido.sinConteo === 1 ? "insumo no estaba contado" : "insumos no estaban contados"} en ${salonLabel(evento.salon || "")}, así que no se les descontó nada.`,
-        })
-      }
       // El renglón de Actividad lo escribe /api/stock-salones/consumo, con el
       // salón y cuántos quedaron sin contar. No hace falta otro acá.
 
-      // Cambiar estado a En Preparacion y marcar stock como descontado
+      // Pasa a En Preparación igual. Solo se marca el stock como descontado
+      // si el descuento se aplicó: si falló, la próxima impresión lo vuelve a
+      // intentar en vez de darlo por hecho.
       await updateEvento(imprimirEventoId, {
         estado: "en_preparacion",
-        stockDescontado: true,
+        stockDescontado: movido.ok,
         fechaImpresion: new Date().toISOString(),
       })
-      toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
+      // Un solo aviso al final: si se mostraran dos seguidos, el segundo
+      // taparía al primero.
+      if (!movido.ok) {
+        toast({
+          title: "Documento generado, pero no se descontó el stock",
+          description: `${movido.error} Al volver a imprimir se reintenta el descuento.`,
+          variant: "destructive",
+        })
+      } else if (movido.sinConteo > 0) {
+        toast({
+          title: "Documento generado, stock descontado en parte",
+          description: `${movido.sinConteo} ${movido.sinConteo === 1 ? "insumo no estaba contado" : "insumos no estaban contados"} en ${salonLabel(evento.salon || "")}, así que no se les descontó nada.`,
+        })
+      } else {
+        toast({ title: "Documento generado", description: "El evento paso a En Preparacion y se desconto el stock." })
+      }
     } else {
       // Log reimpresión sin descuento de stock
       const nombreEvento = evento.nombrePareja || evento.nombre || "Evento sin nombre"
@@ -1692,7 +1665,7 @@ export default function EventosListaPage() {
           </AlertDialogHeader>
           {(() => {
             const evento = selectedEventoId ? eventos.find((e) => e.id === selectedEventoId) : null
-            const tieneStockDescontado = evento?.estado === "en_preparacion"
+            const tieneStockDescontado = evento?.estado === "en_preparacion" && !!evento?.stockDescontado
             return tieneStockDescontado ? (
               <div
                 className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 cursor-pointer"
