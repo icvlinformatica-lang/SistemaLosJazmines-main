@@ -43,6 +43,7 @@ import {
   Plus,
   Send,
   User,
+  UserCheck,
   Users,
   Wine,
 } from "lucide-react"
@@ -50,6 +51,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { usuarioActivo } from "@/lib/profile-context"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
 import { servicioCorrespondeAlAnio } from "@/lib/tarifario-cotizador"
@@ -221,6 +223,13 @@ function CotizarPageContent() {
   const [cotizacionId, setCotizacionId] = useState<string | null>(idParam)
   const [estado, setEstado] = useState<EstadoCotizacion>("borrador")
   const [comentarioAdmin, setComentarioAdmin] = useState<string | null>(null)
+  // Quién vende el evento: el usuario con el que se entró (cookie lj_usuario,
+  // la misma que guarda el servidor como "vendedor" de la cotización). Al
+  // reabrir una cotización se muestra el que quedó guardado.
+  const [vendedorCotizacion, setVendedorCotizacion] = useState("")
+  useEffect(() => {
+    if (!idParam) setVendedorCotizacion(usuarioActivo())
+  }, [idParam])
   const [cargandoCotizacion, setCargandoCotizacion] = useState(!!idParam)
 
   const [clienteNombre, setClienteNombre] = useState("")
@@ -281,6 +290,7 @@ function CotizarPageContent() {
         const c = data.cotizacion
         setEstado(c.estado)
         setComentarioAdmin(c.comentarioAdmin || null)
+        setVendedorCotizacion(c.vendedor || "")
         setClienteNombre(c.clienteNombre || "")
         setClienteDni(c.clienteDni || "")
         setTipoEvento(c.tipoEvento || "")
@@ -533,6 +543,12 @@ function CotizarPageContent() {
         <fieldset disabled={soloLectura} className="space-y-4">
           {/* 1. Cliente */}
           <Tarjeta icono={<User className="h-4 w-4" />} titulo="Cliente">
+            {/* Vendedor del evento: sale solo del usuario con el que se entró.
+                Administración lo ve elegido al aprobar y lo puede cambiar. */}
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <UserCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Vende: <span className="font-semibold text-foreground">{vendedorCotizacion || "sin usuario"}</span>
+            </p>
             <Input
               value={clienteNombre}
               onChange={(e) => setClienteNombre(e.target.value)}
