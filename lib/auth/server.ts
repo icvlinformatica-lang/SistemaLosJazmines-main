@@ -93,6 +93,25 @@ export function verifyPinStockExtra(pin: string): boolean {
   return coincide(process.env.PIN_STOCK_EXTRA || "9999", pin) || esPinMaestro(pin)
 }
 
+/**
+ * Personas que, al entrar a su perfil, dejan abiertos TODOS los perfiles en
+ * ese dispositivo (reciben el acceso rápido de cada uno, sin tener que poner
+ * el PIN de cada perfil). Pedido del dueño el 8/10/2026 para Diego.
+ *
+ * No abre nada que esa persona no tenga ya: Administración ve todo, incluidos
+ * los PINs de cada perfil en Configuración > Contraseñas. Para entrar igual
+ * hace falta el PIN de Administración (o la clave maestra).
+ */
+const DESBLOQUEAN_TODO: Record<string, string[]> = {
+  administracion: ["Diego"],
+}
+
+export function desbloqueaTodosLosPerfiles(perfilId: string, quien: string | null | undefined): boolean {
+  const nombre = (quien ?? "").trim()
+  if (!nombre) return false
+  return (DESBLOQUEAN_TODO[perfilId] ?? []).includes(nombre)
+}
+
 // --- Firma HMAC-SHA256 con Web Crypto (Edge + Node) ---
 
 function toBase64Url(bytes: Uint8Array): string {

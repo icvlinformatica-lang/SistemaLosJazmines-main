@@ -462,10 +462,22 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true)
   }, [])
 
-  const activar = (perfil: Perfil, quickToken?: string, sessionToken?: string) => {
+  const activar = (
+    perfil: Perfil,
+    quickToken?: string,
+    sessionToken?: string,
+    accesosRapidos?: Record<string, string>,
+  ) => {
     setPerfilActivo(perfil)
     try {
       sessionStorage.setItem(PERFIL_ACTIVO_KEY, perfil.id)
+      // Quien desbloquea todo (ver desbloqueaTodosLosPerfiles en
+      // lib/auth/server.ts) recibe el acceso rápido de cada perfil.
+      if (accesosRapidos) {
+        for (const [id, token] of Object.entries(accesosRapidos)) {
+          if (typeof token === "string" && token) localStorage.setItem(QUICK_TOKEN_KEY(id), token)
+        }
+      }
       if (quickToken) localStorage.setItem(QUICK_TOKEN_KEY(perfil.id), quickToken)
       if (sessionToken) sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken)
     } catch {}
@@ -478,12 +490,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ perfilId: id, pin }),
+        body: JSON.stringify({ perfilId: id, pin, quien: quienIngresoGuardado() }),
       })
       if (!res.ok) return false
       const data = await res.json()
       if (!data.ok) return false
-      activar(perfil, data.quickToken, data.sessionToken)
+      activar(perfil, data.quickToken, data.sessionToken, data.accesosRapidos)
       return true
     } catch {
       return false
@@ -502,7 +514,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ perfilId: id, quickToken }),
+        body: JSON.stringify({ perfilId: id, quickToken, quien: quienIngresoGuardado() }),
       })
       if (!res.ok) {
         // Token vencido o inválido: limpiar para pedir PIN de nuevo
@@ -513,7 +525,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       }
       const data = await res.json()
       if (!data.ok) return false
-      activar(perfil, data.quickToken, data.sessionToken)
+      activar(perfil, data.quickToken, data.sessionToken, data.accesosRapidos)
       return true
     } catch {
       return false
@@ -539,6 +551,15 @@ export function useProfile() {
   const ctx = useContext(ProfileContext)
   if (!ctx) throw new Error("useProfile debe usarse dentro de ProfileProvider")
   return ctx
+}
+
+/** Quién eligió ingresar en el login (lo guarda app/login en sessionStorage). */
+function quienIngresoGuardado(): string | undefined {
+  try {
+    return sessionStorage.getItem("admin_usuario") || undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function tieneAccesoRapido(id: string): boolean {
