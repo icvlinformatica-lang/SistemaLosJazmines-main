@@ -6,8 +6,10 @@
 // columna Stock (stock_actual global), que no se toca: son dos números
 // distintos a propósito y no hay que igualarlos.
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type CSSProperties } from "react"
 import { useProfile } from "@/lib/profile-context"
+import { useStore } from "@/lib/store-context"
+import { salonColor } from "@/lib/store"
 import {
   fechaHoraCortaArgentina,
   puedeVerConsolidado,
@@ -20,7 +22,8 @@ import { ChevronDown, Info } from "lucide-react"
 interface StockContado {
   /** false → no se muestra la columna (perfil sin permiso o error al cargar). */
   visible: boolean
-  salones: Array<{ id: string; nombre: string }>
+  /** color: el del salón (Configuración de Cajas o el de siempre). */
+  salones: Array<{ id: string; nombre: string; color: string }>
   porInsumo: Map<string, ResumenStockInsumo>
   error: boolean
 }
@@ -54,7 +57,10 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
     }
   }, [permitido, sector])
 
-  return { visible: permitido && !error, salones, porInsumo, error: permitido && error }
+  const { configuracionCajas } = useStore()
+  const salonesConColor = salones.map((s) => ({ ...s, color: salonColor(s.id, configuracionCajas) }))
+
+  return { visible: permitido && !error, salones: salonesConColor, porInsumo, error: permitido && error }
 }
 
 function fmtCantidad(n: number): string {
@@ -169,7 +175,7 @@ export function StockSalonCelda({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="rounded px-1 text-right tabular-nums hover:bg-muted"
+          className="-mr-1 rounded px-1 text-right tabular-nums hover:bg-muted"
           aria-label={`${nombreSalon}: ${fmtCantidad(dato.cantidad)} ${unidad}. Ver quién lo cargó y el desglose completo`}
         >
           <span className="font-semibold underline decoration-dotted underline-offset-4">{fmtCantidad(dato.cantidad)}</span>
@@ -213,6 +219,14 @@ export function StockSalonCelda({
       </PopoverContent>
     </Popover>
   )
+}
+
+/**
+ * Fondo suave con el color del salón para su columna (título y celdas), así
+ * cada columna se reconoce de un vistazo. "14" en hex es ~8 % de opacidad.
+ */
+export function fondoSalon(color: string): CSSProperties {
+  return { backgroundColor: `${color}14` }
 }
 
 /** Nota corta que explica las columnas de salones, arriba de la tabla. */

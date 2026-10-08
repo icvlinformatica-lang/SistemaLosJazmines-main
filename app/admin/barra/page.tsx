@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { StockSalonCelda, StockContadoNota, useStockContadoSalones, fondoSalon } from "@/components/stock-contado-salones"
 import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
 import { StockPorSalonTabla } from "@/components/stock-por-salon-tabla"
 import { useProfile } from "@/lib/profile-context"
@@ -417,8 +417,16 @@ function BarraAlmacenContent() {
                   <TableHead className="w-[100px] text-right">Stock</TableHead>
                   {stockContado.visible &&
                     stockContado.salones.map((s) => (
-                      <TableHead key={s.id} className="w-[76px] px-2 text-right align-bottom text-[11px] leading-tight" title={s.nombre}>
-                        {s.nombre}
+                      <TableHead
+                        key={s.id}
+                        className="w-[90px] text-right"
+                        style={{ ...fondoSalon(s.color), color: s.color }}
+                        title={s.nombre}
+                      >
+                        <span className="inline-flex items-center gap-1.5 font-semibold">
+                          <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} aria-hidden />
+                          {s.nombre}
+                        </span>
                       </TableHead>
                     ))}
                   <TableHead className="w-[120px] text-right">Precio Unit.</TableHead>
@@ -452,7 +460,7 @@ function BarraAlmacenContent() {
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
                       {stockContado.visible &&
                         stockContado.salones.map((s) => (
-                          <TableCell key={s.id} className="text-right">
+                          <TableCell key={s.id} className="text-right" style={fondoSalon(s.color)}>
                             <StockSalonCelda
                               resumen={stockContado.porInsumo.get(insumo.id)}
                               unidad={insumo.unidad}
