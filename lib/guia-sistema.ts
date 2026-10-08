@@ -18,7 +18,7 @@ Cada perfil ve solo las pantallas de su trabajo en el menú.
 - Todos los días a las 21:00 llega automáticamente un mail con el resumen diario.
 
 ## Eventos
-- **Lista** (/eventos/lista): todos los eventos activos. Desde acá se abre cada evento para editar datos, servicios, plan de cuotas y contrato. También se puede imprimir la última versión del contrato.
+- **Lista** (/eventos/lista): todos los eventos activos. Desde acá se abre cada evento para editar datos, servicios, plan de cuotas y contrato. También se puede imprimir la última versión del contrato. Arriba, los botones "Todos", "Borrador", "Pendientes" y "En preparación" dicen cuántos eventos hay de cada estado en el salón elegido y, al tocarlos, muestran solo esos. "En archivo" lleva a los eventos ya realizados.
 - **Calendario** (/eventos/calendario): vista mensual de eventos. Permite crear eventos en una fecha.
 - **Contratos** (/eventos/contratos): generador de contratos. Se elige el evento, se seleccionan los servicios incluidos (con su letra chica), el precio del paquete y el plan de cuotas; tiene Vista Previa e impresión. El contrato imprime dos sectores de firma: El Cliente y Los Jazmines.
 - **Vendedores** (/eventos/vendedores): gestión de vendedores y sus comisiones.
