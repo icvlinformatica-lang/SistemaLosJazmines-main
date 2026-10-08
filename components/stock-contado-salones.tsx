@@ -15,7 +15,7 @@ import {
   type SectorStock,
 } from "@/lib/stock-salones"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Info } from "lucide-react"
+import { ChevronDown, Info } from "lucide-react"
 
 interface StockContado {
   /** false → no se muestra la columna (perfil sin permiso o error al cargar). */
@@ -220,15 +220,21 @@ export function StockContadoNota({ error }: { error?: boolean }) {
   if (error) {
     return <p className="mb-3 text-xs text-muted-foreground">No se pudo cargar el conteo por salón.</p>
   }
+  // Va plegada: es una explicación que se lee una vez y ocupaba lugar arriba
+  // de la tabla. Se despliega tocando el título.
   return (
-    <div className="mb-3 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2.5 text-xs text-sky-900">
-      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <p>
+    <details className="group mb-3 rounded-lg border border-sky-200 bg-sky-50 text-xs text-sky-900">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 font-medium [&::-webkit-details-marker]:hidden">
+        <Info className="h-3.5 w-3.5 shrink-0" />
+        ¿Cómo se lee la columna Stock?
+        <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <p className="px-2.5 pb-2.5 pl-8">
         La columna <span className="font-semibold">Stock</span> es la suma de lo que hay en cada salón. Se actualiza
         sola cuando Cocina o Barra cargan su conteo desde la pantalla de Stock — no hace falta tocarla a mano. Un{" "}
         <span className="font-semibold">—</span> quiere decir que en ese salón todavía nadie contó, que no es lo mismo
         que no haber nada. Tocá un número para ver quién lo cargó.
       </p>
-    </div>
+    </details>
   )
 }

@@ -155,20 +155,20 @@ function BarraAlmacenContent() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight">Almacen de Insumos de Barra</h1>
+    // En escritorio (lg) la pantalla usa todo el ancho y la cabecera va en
+    // una sola línea, para que la tabla tenga lugar. En el celular queda igual.
+    <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 lg:max-w-none lg:py-4">
+      <div className="mb-8 lg:mb-3 lg:flex lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2">
+        <h1 className="text-2xl font-bold tracking-tight lg:text-xl">Almacen de Insumos de Barra</h1>
             {/* Avisa si hay insumos cuyo costo está mal calculado por
                 unidades que no se pueden convertir. Se abre solo una vez
                 por día; después queda este botón. */}
-            <div className="mt-2">
+            <div className="mt-2 lg:mt-0">
               <CostosARevisar pantalla="barra" />
             </div>
-        <p className="mt-1 text-base text-muted-foreground">Gestiona insumos de cocteleria y bebidas</p>
-      </div>
-
+        <p className="mt-1 text-base text-muted-foreground lg:hidden">Gestiona insumos de cocteleria y bebidas</p>
       {stockContado.visible && (
-        <div className="mb-4 inline-flex rounded-lg border p-1" role="group" aria-label="Qué mostrar">
+        <div className="mt-4 inline-flex rounded-lg border p-1 lg:mt-0 lg:ml-auto" role="group" aria-label="Qué mostrar">
           {([
             { v: "insumos", label: "Insumos" },
             { v: "salones", label: "Stock por salón" },
@@ -177,7 +177,7 @@ function BarraAlmacenContent() {
               key={op.v}
               type="button"
               onClick={() => setPestana(op.v)}
-              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors lg:min-h-0 ${
                 pestana === op.v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -186,13 +186,14 @@ function BarraAlmacenContent() {
           ))}
         </div>
       )}
+      </div>
 
       {stockContado.visible && pestana === "salones" ? (
         <StockPorSalonTabla sector="barra" insumos={insumosBarra} />
       ) : (
       <>
       {/* Category Filter */}
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-2 lg:mb-3">
         <Button
           variant={categoriaFiltro === "Todos" ? "default" : "outline"}
           size="sm"
@@ -214,23 +215,29 @@ function BarraAlmacenContent() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="lg:gap-3 lg:py-3">
+        <CardHeader className="lg:px-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+            <div className="lg:hidden">
               <CardTitle>Inventario de Barra</CardTitle>
               <CardDescription>{filteredInsumos.length} insumos encontrados</CardDescription>
             </div>
-            <div className="flex gap-2">
+            {/* En escritorio: la lupa primero y más ancha (para encontrarla
+                de una), la cantidad y el botón de agregar a la derecha. */}
+            <div className="flex gap-2 lg:flex-1 lg:items-center lg:gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar insumo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 w-[200px]"
+                  className="pl-9 w-[200px] lg:w-[320px]"
+                  aria-label="Buscar insumo"
                 />
               </div>
+              <span className="hidden text-sm text-muted-foreground lg:ml-auto lg:inline">
+                {filteredInsumos.length} insumos
+              </span>
               <Dialog
                 open={isAddDialogOpen}
                 onOpenChange={(open) => {
@@ -392,12 +399,16 @@ function BarraAlmacenContent() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="lg:px-4 lg:pb-4">
           {(stockContado.visible || stockContado.error) && <StockContadoNota error={stockContado.error} />}
           <div className="overflow-x-auto">
-          <div className="rounded-lg border">
+          {/* En escritorio la tabla ocupa el alto que queda de la pantalla y
+              se desplaza adentro, con los títulos de las columnas fijos. Las
+              filas son más bajas (con mouse no hace falta el botón de 44 px
+              que piden las pantallas táctiles), así entran más insumos. */}
+          <div className="rounded-lg border lg:[&_[data-slot=table-container]]:max-h-[calc(100dvh-18.75rem)] lg:[&_[data-slot=table-container]]:overflow-y-auto lg:[&_[data-slot=table-cell]]:py-1 lg:[&_td_button]:min-h-0">
             <Table>
-              <TableHeader>
+              <TableHeader className="lg:sticky lg:top-0 lg:z-30 lg:bg-card lg:shadow-[0_1px_0_var(--border)]">
                 <TableRow>
                   <TableHead className="w-[80px]">Codigo</TableHead>
                   <TableHead className="sticky left-0 z-20 bg-card">Descripcion</TableHead>
@@ -453,11 +464,11 @@ function BarraAlmacenContent() {
                       <TableCell className="text-right">{formatCurrency(insumo.precioUnitario)}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}>
+                          <Button variant="ghost" size="icon" className="lg:size-8" onClick={() => handleEdit(insumo)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
                           {!soloStock && (
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)}>
+                            <Button variant="ghost" size="icon" className="lg:size-8" onClick={() => handleDelete(insumo.id)}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
