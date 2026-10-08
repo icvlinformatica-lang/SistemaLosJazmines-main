@@ -55,6 +55,7 @@ function BarraAlmacenContent() {
   // Stock de cada salón en el lapicito (texto de cada campo). Solo se usa
   // si se ven las columnas por salón (Administración / Soporte).
   const [stockSalones, setStockSalones] = useState<Record<string, string>>({})
+  const conSalones = Boolean(editingInsumo) && stockContado.visible
   // Barra entra acá a ajustar existencias, pero el catálogo (unidad,
   // contenido, precio) mueve el costo de los cócteles y es de Administración.
   // Los campos se ven igual, apagados: sirve saber en qué unidad está algo.
@@ -286,7 +287,7 @@ function BarraAlmacenContent() {
                     </Button>
                   </DialogTrigger>
                 )}
-                <DialogContent>
+                <DialogContent className={`max-h-[calc(100dvh-2rem)] overflow-y-auto ${conSalones ? "lg:max-w-4xl" : ""}`}>
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2.5">
                       {(() => {
@@ -303,91 +304,129 @@ function BarraAlmacenContent() {
                           : "Agrega un nuevo insumo al almacen de barra"}
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label className="text-right">Codigo</Label>
-                      <div className="col-span-3">
-                        {editingInsumo ? (
-                          <span className="font-mono text-sm">{formData.codigo}</span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Se asignará automáticamente</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="descripcion" className="text-right">Descripcion</Label>
-                      <Input
-                        id="descripcion"
-                        disabled={soloStock}
-                        value={formData.descripcion}
-                        onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                        className="col-span-3"
-                        placeholder="Ej: Vodka Absolut"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="categoria" className="text-right">Categoria</Label>
-                      <Select
-                        disabled={soloStock}
-                        value={formData.categoria}
-                        onValueChange={(value) => setFormData({ ...formData, categoria: value as CategoriaInsumoBarra })}
-                      >
-                        <SelectTrigger className="col-span-3">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categorias.map((cat) => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="unidad" className="text-right">Unidad</Label>
-                      <Select
-                        disabled={soloStock}
-                        value={formData.unidad}
-                        onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}
-                      >
-                        <SelectTrigger className="col-span-3">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {unidades.map((u) => (
-                            <SelectItem key={u} value={u}>{u}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {/* Solo para lo que se compra por unidad: una botella, una
-                        lata. Sin saber cuánto trae, un cóctel que pide cc
-                        calcula el costo multiplicado por el envase entero. */}
-                    {formData.unidad === "UN" && (
-                      <div className="grid grid-cols-4 items-start gap-4">
-                        <Label className="text-right pt-2">¿Cuánto trae cada unidad?</Label>
+                  {/* Con stock por salón, en la compu la ventana va en dos columnas:
+                      los datos a la izquierda y los salones a la derecha, para que
+                      entre entera sin tener que bajar. */}
+                  <div className={`grid gap-4 py-4 ${conSalones ? "lg:grid-cols-2 lg:items-start lg:gap-x-8" : ""}`}>
+                    <div className="grid gap-4">
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label className="text-right">Codigo</Label>
                         <div className="col-span-3">
-                          <ContenidoPorUnidadInput
-                            disabled={soloStock}
-                            cantidad={formData.contenidoCantidad}
-                            unidad={formData.contenidoUnidad}
-                            onChange={(v) =>
-                              setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
-                            }
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {formData.contenidoCantidad > 0 ? (
-                              <>Los cócteles que lo pidan en cc van a calcular bien el costo.</>
-                            ) : (
-                              <>
-                                <strong>Hace falta si algún cóctel lo pide en cc.</strong> Sin este dato el sistema lee
-                                &quot;60 cc&quot; como &quot;60 botellas&quot;.
-                              </>
-                            )}
-                          </p>
+                          {editingInsumo ? (
+                            <span className="font-mono text-sm">{formData.codigo}</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Se asignará automáticamente</span>
+                          )}
                         </div>
                       </div>
-                    )}
-                    {editingInsumo && stockContado.visible ? (
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="descripcion" className="text-right">Descripcion</Label>
+                        <Input
+                          id="descripcion"
+                          disabled={soloStock}
+                          value={formData.descripcion}
+                          onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                          className="col-span-3"
+                          placeholder="Ej: Vodka Absolut"
+                        />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="categoria" className="text-right">Categoria</Label>
+                        <Select
+                          disabled={soloStock}
+                          value={formData.categoria}
+                          onValueChange={(value) => setFormData({ ...formData, categoria: value as CategoriaInsumoBarra })}
+                        >
+                          <SelectTrigger className="col-span-3">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categorias.map((cat) => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="unidad" className="text-right">Unidad</Label>
+                        <Select
+                          disabled={soloStock}
+                          value={formData.unidad}
+                          onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}
+                        >
+                          <SelectTrigger className="col-span-3">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {unidades.map((u) => (
+                              <SelectItem key={u} value={u}>{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {/* Solo para lo que se compra por unidad: una botella, una
+                          lata. Sin saber cuánto trae, un cóctel que pide cc
+                          calcula el costo multiplicado por el envase entero. */}
+                      {formData.unidad === "UN" && (
+                        <div className="grid grid-cols-4 items-start gap-4">
+                          <Label className="text-right pt-2">¿Cuánto trae cada unidad?</Label>
+                          <div className="col-span-3">
+                            <ContenidoPorUnidadInput
+                              disabled={soloStock}
+                              cantidad={formData.contenidoCantidad}
+                              unidad={formData.contenidoUnidad}
+                              onChange={(v) =>
+                                setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {formData.contenidoCantidad > 0 ? (
+                                <>Los cócteles que lo pidan en cc van a calcular bien el costo.</>
+                              ) : (
+                                <>
+                                  <strong>Hace falta si algún cóctel lo pide en cc.</strong> Sin este dato el sistema lee
+                                  &quot;60 cc&quot; como &quot;60 botellas&quot;.
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {!conSalones && (
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="stock" className="text-right">Stock</Label>
+                          <Input
+                            id="stock"
+                            type="number"
+                            value={formData.stockActual}
+                            onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })}
+                            className="col-span-3"
+                          />
+                        </div>
+                      )}
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="precio" className="text-right">Precio $</Label>
+                        <MoneyInput
+                          id="precio"
+                          disabled={soloStock}
+                          value={formData.precioUnitario}
+                          onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })}
+                          className="col-span-3"
+                        />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
+                        <Input
+                          id="proveedor"
+                          disabled={soloStock}
+                          value={formData.proveedor}
+                          onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
+                          className="col-span-3"
+                          placeholder="Opcional"
+                        />
+                      </div>
+                    </div>
+                    {conSalones && editingInsumo && (
                       <StockPorSalonCampos
                         salones={stockContado.salones}
                         resumen={stockContado.porInsumo.get(editingInsumo.id)}
@@ -395,39 +434,7 @@ function BarraAlmacenContent() {
                         valores={stockSalones}
                         onChange={setStockSalones}
                       />
-                    ) : (
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="stock" className="text-right">Stock</Label>
-                        <Input
-                          id="stock"
-                          type="number"
-                          value={formData.stockActual}
-                          onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })}
-                          className="col-span-3"
-                        />
-                      </div>
                     )}
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="precio" className="text-right">Precio $</Label>
-                      <MoneyInput
-                        id="precio"
-                        disabled={soloStock}
-                        value={formData.precioUnitario}
-                        onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })}
-                        className="col-span-3"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
-                      <Input
-                        id="proveedor"
-                        disabled={soloStock}
-                        value={formData.proveedor}
-                        onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
-                        className="col-span-3"
-                        placeholder="Opcional"
-                      />
-                    </div>
                   </div>
                   <DialogFooter>
                     <Button variant="outline" className="bg-transparent" onClick={() => setIsAddDialogOpen(false)}>

@@ -81,9 +81,14 @@ export function StockPorSalonCampos({
   const total = totalConCambios(actuales, cambiosDeStockPorSalon(actuales, valores))
 
   return (
-    <div className="grid grid-cols-4 items-start gap-4">
-      <Label className="pt-2 text-right">Stock</Label>
-      <div className="col-span-3 space-y-2">
+    // En la compu va en su propia columna del lapicito, como un recuadro con
+    // el título arriba; en el celular sigue el formato etiqueta + campo.
+    <div className="grid grid-cols-4 items-start gap-4 lg:grid-cols-1 lg:gap-3 lg:rounded-lg lg:border lg:p-4">
+      <Label className="pt-2 text-right lg:pt-0 lg:text-left">
+        <span className="lg:hidden">Stock</span>
+        <span className="hidden lg:inline">Stock por salón</span>
+      </Label>
+      <div className="col-span-3 space-y-2 lg:col-span-1">
         {salones.map((s) => (
           <div key={s.id} className="flex items-center gap-2">
             <label htmlFor={`stock-${s.id}`} className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium" style={{ color: s.color }}>
