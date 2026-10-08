@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react"
 
 import { useStore } from "@/lib/store-context"
+import { useToast } from "@/hooks/use-toast"
 import { type InsumoBarra, type Unidad, type CategoriaInsumoBarra, formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
@@ -13,6 +14,7 @@ import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StockSalonCelda, StockContadoNota, useStockContadoSalones, fondoSalon } from "@/components/stock-contado-salones"
+import { StockPorSalonCampos, guardarStockPorSalon, valoresInicialesPorSalon } from "@/components/stock-salones-editor"
 import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
 import { StockPorSalonTabla } from "@/components/stock-por-salon-tabla"
 import { useProfile } from "@/lib/profile-context"
@@ -41,6 +43,7 @@ const NUEVOS_INSUMOS = new Set([
 
 function BarraAlmacenContent() {
   const { insumosBarra, loading: isLoading, addInsumoBarra, updateInsumoBarra, deleteInsumoBarra } = useStore()
+  const { toast } = useToast()
   // Conteo físico por salón (solo lectura, solo Administración/Soporte).
   // Independiente de stockActual, que se sigue mostrando y editando igual.
   const stockContado = useStockContadoSalones("barra")
@@ -49,6 +52,9 @@ function BarraAlmacenContent() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<InsumoBarra | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Stock de cada salón en el lapicito (texto de cada campo). Solo se usa
+  // si se ven las columnas por salón (Administración / Soporte).
+  const [stockSalones, setStockSalones] = useState<Record<string, string>>({})
   // Barra entra acá a ajustar existencias, pero el catálogo (unidad,
   // contenido, precio) mueve el costo de los cócteles y es de Administración.
   // Los campos se ven igual, apagados: sirve saber en qué unidad está algo.
@@ -104,7 +110,33 @@ function BarraAlmacenContent() {
   const handleSubmit = async () => {
     setIsSubmitting(true)
     try {
-      if (editingInsumo) {
+      if (editingInsumo && stockContado.visible) {
+        // Con stock por salón: primero los salones (el servidor recalcula el
+        // total como la suma) y después el resto de los datos con ese total,
+        // para no pisarlo con el número viejo del formulario.
+        let total: number | null
+        try {
+          total = await guardarStockPorSalon({
+            sector: "barra",
+            insumoId: editingInsumo.id,
+            resumen: stockContado.porInsumo.get(editingInsumo.id),
+            valores: stockSalones,
+          })
+        } catch (err) {
+          toast({
+            title: "No se pudo guardar el stock",
+            description: err instanceof Error ? err.message : "Revisá tu conexión e intentá de nuevo.",
+            variant: "destructive",
+          })
+          throw err
+        }
+        const { stockActual: _stockViejo, ...resto } = formData
+        await updateInsumoBarra(
+          editingInsumo.id,
+          total === null ? (soloStock ? {} : resto) : soloStock ? { stockActual: total } : { ...resto, stockActual: total },
+        )
+        if (total !== null) stockContado.recargar()
+      } else if (editingInsumo) {
         await updateInsumoBarra(editingInsumo.id, soloStock ? { stockActual: formData.stockActual } : formData)
       } else {
         await addInsumoBarra(formData)
@@ -131,6 +163,7 @@ function BarraAlmacenContent() {
       contenidoUnidad: insumo.contenidoUnidad ?? "CC",
     })
     setEditingInsumo(insumo)
+    setStockSalones(valoresInicialesPorSalon(stockContado.porInsumo.get(insumo.id), stockContado.salones))
     setIsAddDialogOpen(true)
   }
 
@@ -354,16 +387,26 @@ function BarraAlmacenContent() {
                         </div>
                       </div>
                     )}
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="stock" className="text-right">Stock</Label>
-                      <Input
-                        id="stock"
-                        type="number"
-                        value={formData.stockActual}
-                        onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })}
-                        className="col-span-3"
+                    {editingInsumo && stockContado.visible ? (
+                      <StockPorSalonCampos
+                        salones={stockContado.salones}
+                        resumen={stockContado.porInsumo.get(editingInsumo.id)}
+                        unidad={formData.unidad}
+                        valores={stockSalones}
+                        onChange={setStockSalones}
                       />
-                    </div>
+                    ) : (
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="stock" className="text-right">Stock</Label>
+                        <Input
+                          id="stock"
+                          type="number"
+                          value={formData.stockActual}
+                          onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })}
+                          className="col-span-3"
+                        />
+                      </div>
+                    )}
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="precio" className="text-right">Precio $</Label>
                       <MoneyInput

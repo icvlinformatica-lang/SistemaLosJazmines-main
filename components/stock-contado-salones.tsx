@@ -26,6 +26,8 @@ interface StockContado {
   salones: Array<{ id: string; nombre: string; color: string }>
   porInsumo: Map<string, ResumenStockInsumo>
   error: boolean
+  /** Vuelve a pedir los conteos (después de ajustar el stock desde el lapicito). */
+  recargar: () => void
 }
 
 export function useStockContadoSalones(sector: SectorStock): StockContado {
@@ -34,6 +36,7 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
   const [salones, setSalones] = useState<Array<{ id: string; nombre: string }>>([])
   const [porInsumo, setPorInsumo] = useState<Map<string, ResumenStockInsumo>>(new Map())
   const [error, setError] = useState(false)
+  const [version, setVersion] = useState(0)
 
   useEffect(() => {
     if (!permitido) return
@@ -46,6 +49,7 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
           setError(true)
           return
         }
+        setError(false)
         setSalones(data.salones || [])
         setPorInsumo(new Map((data.insumos as ResumenStockInsumo[]).map((i) => [i.insumoId, i])))
       })
@@ -55,12 +59,18 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
     return () => {
       cancelado = true
     }
-  }, [permitido, sector])
+  }, [permitido, sector, version])
 
   const { configuracionCajas } = useStore()
   const salonesConColor = salones.map((s) => ({ ...s, color: salonColor(s.id, configuracionCajas) }))
 
-  return { visible: permitido && !error, salones: salonesConColor, porInsumo, error: permitido && error }
+  return {
+    visible: permitido && !error,
+    salones: salonesConColor,
+    porInsumo,
+    error: permitido && error,
+    recargar: () => setVersion((v) => v + 1),
+  }
 }
 
 function fmtCantidad(n: number): string {
