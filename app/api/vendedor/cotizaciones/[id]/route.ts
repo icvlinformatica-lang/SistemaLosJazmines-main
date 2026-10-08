@@ -13,6 +13,7 @@ import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
 
 interface CotizacionFila {
   id: string
+  vendedor: string
   cliente_nombre: string
   cliente_telefono: string | null
   fecha_evento: string | null
@@ -76,7 +77,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params
     const filas = (await sql`
-      SELECT id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
+      SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
              nombre_festejados, paquete_id, invitados, servicios_elegidos, precio_venta_sugerido, estado, comentario_admin,
              modalidad_salon, fuera_de_tarifario, avisos, cliente_dni
       FROM cotizaciones
@@ -99,6 +100,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ok: true,
       cotizacion: {
         id: f.id,
+        // Quién la vende: el usuario con el que se entró al cotizarla.
+        vendedor: f.vendedor,
         clienteNombre: f.cliente_nombre,
         clienteTelefono: f.cliente_telefono || "",
         clienteDni: (f as unknown as { cliente_dni?: string | null }).cliente_dni || "",

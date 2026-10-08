@@ -152,6 +152,21 @@ export default function CotizacionesPendientesPage() {
     })
   }, [cotizaciones, personal])
 
+  // Vendedor de la comisión: viene elegido con quien hizo la cotización (el
+  // usuario con el que entró al cotizador), si figura en la lista de
+  // vendedores. Administración lo puede cambiar; si ya lo tocó, no se pisa.
+  useEffect(() => {
+    setVendedorElegido((prev) => {
+      const siguiente = { ...prev }
+      for (const c of cotizaciones) {
+        if (siguiente[c.id]) continue
+        const v = vendedores.find((x) => x.nombre.trim().toLowerCase() === (c.vendedor || "").trim().toLowerCase())
+        if (v) siguiente[c.id] = v.nombre
+      }
+      return siguiente
+    })
+  }, [cotizaciones, vendedores])
+
   // Modelo nuevo: preasigna personas de cada función la primera vez que se ve
   // cada cotización (si Administración ya la tocó, no la pisa).
   useEffect(() => {
