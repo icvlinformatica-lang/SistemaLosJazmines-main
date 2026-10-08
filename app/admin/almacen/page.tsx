@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StockSalonCelda, StockContadoNota, useStockContadoSalones } from "@/components/stock-contado-salones"
+import { StockSalonCelda, StockContadoNota, useStockContadoSalones, fondoSalon } from "@/components/stock-contado-salones"
+import { StockPorSalonCampos, guardarStockPorSalon, valoresInicialesPorSalon } from "@/components/stock-salones-editor"
 import { puedeEditarCatalogo } from "@/lib/insumos-permisos"
 import { StockPorSalonTabla } from "@/components/stock-por-salon-tabla"
 import { useProfile } from "@/lib/profile-context"
@@ -49,6 +50,10 @@ function AlmacenContent() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingInsumo, setEditingInsumo] = useState<Insumo | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Stock de cada salón en el lapicito (texto de cada campo). Solo se usa
+  // si se ven las columnas por salón (Administración / Soporte).
+  const [stockSalones, setStockSalones] = useState<Record<string, string>>({})
+  const conSalones = Boolean(editingInsumo) && stockContado.visible
   // Cocina entra acá a ajustar existencias, pero el catálogo (unidad,
   // contenido, precio) mueve el costo de las recetas y es de Administración.
   // Los campos se ven igual, apagados: sirve saber en qué unidad está algo.
@@ -128,7 +133,33 @@ function AlmacenContent() {
   const handleSubmit = async () => {
     setIsSubmitting(true)
     try {
-      if (editingInsumo) {
+      if (editingInsumo && stockContado.visible) {
+        // Con stock por salón: primero los salones (el servidor recalcula el
+        // total como la suma) y después el resto de los datos con ese total,
+        // para no pisarlo con el número viejo del formulario.
+        let total: number | null
+        try {
+          total = await guardarStockPorSalon({
+            sector: "cocina",
+            insumoId: editingInsumo.id,
+            resumen: stockContado.porInsumo.get(editingInsumo.id),
+            valores: stockSalones,
+          })
+        } catch (err) {
+          toast({
+            title: "No se pudo guardar el stock",
+            description: err instanceof Error ? err.message : "Revisá tu conexión e intentá de nuevo.",
+            variant: "destructive",
+          })
+          throw err
+        }
+        const { stockActual: _stockViejo, ...resto } = formData
+        await updateInsumo(
+          editingInsumo.id,
+          total === null ? (soloStock ? {} : resto) : soloStock ? { stockActual: total } : { ...resto, stockActual: total },
+        )
+        if (total !== null) stockContado.recargar()
+      } else if (editingInsumo) {
         await updateInsumo(editingInsumo.id, soloStock ? { stockActual: formData.stockActual } : formData)
       } else {
         await addInsumo(formData)
@@ -159,6 +190,7 @@ function AlmacenContent() {
       contenidoUnidad: insumo.contenidoUnidad ?? "GRS",
     })
     setEditingInsumo(insumo)
+    setStockSalones(valoresInicialesPorSalon(stockContado.porInsumo.get(insumo.id), stockContado.salones))
     setIsAddDialogOpen(true)
   }
 
@@ -277,20 +309,20 @@ function AlmacenContent() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight">Almacen de Insumos</h1>
+    // En escritorio (lg) la pantalla usa todo el ancho y la cabecera va en
+    // una sola línea, para que la tabla tenga lugar. En el celular queda igual.
+    <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 lg:max-w-none lg:py-4">
+      <div className="mb-8 lg:mb-3 lg:flex lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2">
+        <h1 className="text-2xl font-bold tracking-tight lg:text-xl">Almacen de Insumos</h1>
             {/* Avisa si hay insumos cuyo costo está mal calculado por
                 unidades que no se pueden convertir. Se abre solo una vez
                 por día; después queda este botón. */}
-            <div className="mt-2">
+            <div className="mt-2 lg:mt-0">
               <CostosARevisar pantalla="almacen" />
             </div>
-        <p className="mt-1 text-base text-muted-foreground">Gestiona tu inventario de insumos, precios y stock</p>
-      </div>
-
+        <p className="mt-1 text-base text-muted-foreground lg:hidden">Gestiona tu inventario de insumos, precios y stock</p>
       {stockContado.visible && (
-        <div className="mb-4 inline-flex rounded-lg border p-1" role="group" aria-label="Qué mostrar">
+        <div className="mt-4 inline-flex rounded-lg border p-1 lg:mt-0 lg:ml-auto" role="group" aria-label="Qué mostrar">
           {([
             { v: "insumos", label: "Insumos" },
             { v: "salones", label: "Stock por salón" },
@@ -299,7 +331,7 @@ function AlmacenContent() {
               key={op.v}
               type="button"
               onClick={() => setPestana(op.v)}
-              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors lg:min-h-0 ${
                 pestana === op.v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -308,36 +340,43 @@ function AlmacenContent() {
           ))}
         </div>
       )}
+      </div>
 
       {stockContado.visible && pestana === "salones" ? (
         <StockPorSalonTabla sector="cocina" insumos={insumos} />
       ) : (
       <>
       {/* Search and Add */}
-      <Card>
-        <CardHeader>
+      <Card className="lg:gap-3 lg:py-3">
+        <CardHeader className="lg:px-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
+            <div className="lg:hidden">
               <CardTitle>Inventario de Insumos</CardTitle>
               <CardDescription>{filteredInsumos.length} insumos encontrados</CardDescription>
             </div>
-            <div className="flex flex-col gap-3 sm:items-end">
+            {/* En escritorio todo va en una sola línea: la lupa primero y más
+                ancha (para encontrarla de una), después ordenar, la cantidad
+                y los botones. lg:contents deja que cada pieza tome su lugar. */}
+            <div className="flex flex-col gap-3 sm:items-end lg:flex-1 lg:flex-row lg:items-center lg:gap-4">
               {/* Search + Print + Add */}
-              <div className="flex gap-2">
-                <div className="relative">
+              <div className="flex gap-2 lg:contents">
+                <div className="relative lg:order-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Buscar insumo..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 w-[200px]"
+                    className="pl-9 w-[200px] lg:w-[320px]"
+                    aria-label="Buscar insumo"
                   />
                 </div>
-                <Button variant="outline" size="icon" onClick={handlePrint} title="Imprimir lista de insumos">
+                <Button variant="outline" size="icon" onClick={handlePrint} title="Imprimir lista de insumos" className="lg:order-4">
                   <Printer className="h-4 w-4" />
                   <span className="sr-only">Imprimir lista de insumos</span>
                 </Button>
-                <InsumosPrecioHistorialDialog />
+                <div className="lg:order-4">
+                  <InsumosPrecioHistorialDialog />
+                </div>
                 <Dialog
                   open={isAddDialogOpen}
                   onOpenChange={(open) => {
@@ -347,13 +386,13 @@ function AlmacenContent() {
                 >
                   {!soloStock && (
                     <DialogTrigger asChild>
-                      <Button>
+                      <Button className="lg:order-4">
                         <Plus className="mr-2 h-4 w-4" />
                         Agregar
                       </Button>
                     </DialogTrigger>
                   )}
-                  <DialogContent>
+                  <DialogContent className={`max-h-[calc(100dvh-2rem)] overflow-y-auto ${conSalones ? "lg:max-w-4xl" : ""}`}>
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2.5">
                         {(() => {
@@ -370,76 +409,92 @@ function AlmacenContent() {
                             : "Agrega un nuevo insumo al almacén"}
                       </DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label className="text-right">Código</Label>
-                        <div className="col-span-3">
-                          {editingInsumo ? (
-                            <span className="font-mono text-sm">{formData.codigo}</span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">Se asignará automáticamente</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="descripcion" className="text-right">Descripción</Label>
-                        <Input id="descripcion" disabled={soloStock} value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="col-span-3" placeholder="Ej: Aceite Girasol" />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="unidad" className="text-right">Unidad</Label>
-                        <Select disabled={soloStock} value={formData.unidad} onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}>
-                          <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
-                          <SelectContent>{unidades.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
-                        </Select>
-                      </div>
-                      {/* Solo para insumos que se compran por unidad: una
-                          lata, una bolsa, un paquete. Sin saber cuánto trae
-                          cada uno, una receta en gramos calcula el costo
-                          multiplicado (ver normalizeToStockUnit). */}
-                      {formData.unidad === "UN" && (
-                        <div className="grid grid-cols-4 items-start gap-4">
-                          <Label htmlFor="contenido" className="text-right pt-2">
-                            ¿Cuánto trae cada unidad?
-                          </Label>
-                          <div className="col-span-3 space-y-1.5">
-                            <ContenidoPorUnidadInput
-                              disabled={soloStock}
-                              cantidad={formData.contenidoCantidad}
-                              unidad={formData.contenidoUnidad}
-                              onChange={(v) =>
-                                setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
-                              }
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              {formData.contenidoCantidad > 0 ? (
-                                <>
-                                  Una unidad trae {formData.contenidoCantidad}{" "}
-                                  {formData.contenidoUnidad === "GRS" ? "gramos" : "cc"}. Las recetas que lo pidan en{" "}
-                                  {formData.contenidoUnidad === "GRS" ? "gramos" : "cc"} van a calcular bien el costo.
-                                </>
-                              ) : (
-                                <>
-                                  Opcional, pero <strong>hace falta si alguna receta lo pide en gramos o cc</strong>. Sin
-                                  este dato el sistema lee &quot;30 gramos&quot; como &quot;30 unidades&quot; y el costo
-                                  sale multiplicado.
-                                </>
-                              )}
-                            </p>
+                    {/* Con stock por salón, en la compu la ventana va en dos columnas:
+                        los datos a la izquierda y los salones a la derecha, para que
+                        entre entera sin tener que bajar. */}
+                    <div className={`grid gap-4 py-4 ${conSalones ? "lg:grid-cols-2 lg:items-start lg:gap-x-8" : ""}`}>
+                      <div className="grid gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label className="text-right">Código</Label>
+                          <div className="col-span-3">
+                            {editingInsumo ? (
+                              <span className="font-mono text-sm">{formData.codigo}</span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Se asignará automáticamente</span>
+                            )}
                           </div>
                         </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="descripcion" className="text-right">Descripción</Label>
+                          <Input id="descripcion" disabled={soloStock} value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="col-span-3" placeholder="Ej: Aceite Girasol" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="unidad" className="text-right">Unidad</Label>
+                          <Select disabled={soloStock} value={formData.unidad} onValueChange={(value) => setFormData({ ...formData, unidad: value as Unidad })}>
+                            <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
+                            <SelectContent>{unidades.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
+                          </Select>
+                        </div>
+                        {/* Solo para insumos que se compran por unidad: una
+                            lata, una bolsa, un paquete. Sin saber cuánto trae
+                            cada uno, una receta en gramos calcula el costo
+                            multiplicado (ver normalizeToStockUnit). */}
+                        {formData.unidad === "UN" && (
+                          <div className="grid grid-cols-4 items-start gap-4">
+                            <Label htmlFor="contenido" className="text-right pt-2">
+                              ¿Cuánto trae cada unidad?
+                            </Label>
+                            <div className="col-span-3 space-y-1.5">
+                              <ContenidoPorUnidadInput
+                                disabled={soloStock}
+                                cantidad={formData.contenidoCantidad}
+                                unidad={formData.contenidoUnidad}
+                                onChange={(v) =>
+                                  setFormData({ ...formData, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad })
+                                }
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {formData.contenidoCantidad > 0 ? (
+                                  <>
+                                    Una unidad trae {formData.contenidoCantidad}{" "}
+                                    {formData.contenidoUnidad === "GRS" ? "gramos" : "cc"}. Las recetas que lo pidan en{" "}
+                                    {formData.contenidoUnidad === "GRS" ? "gramos" : "cc"} van a calcular bien el costo.
+                                  </>
+                                ) : (
+                                  <>
+                                    Opcional, pero <strong>hace falta si alguna receta lo pide en gramos o cc</strong>. Sin
+                                    este dato el sistema lee &quot;30 gramos&quot; como &quot;30 unidades&quot; y el costo
+                                    sale multiplicado.
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {!conSalones && (
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="stock" className="text-right">Stock</Label>
+                            <Input id="stock" type="number" value={formData.stockActual} onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })} className="col-span-3" />
+                          </div>
+                        )}
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="precio" className="text-right">Precio $</Label>
+                          <MoneyInput id="precio" disabled={soloStock} value={formData.precioUnitario} onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })} className="col-span-3" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
+                          <Input id="proveedor" disabled={soloStock} value={formData.proveedor} onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })} className="col-span-3" placeholder="Ej: Distribuidora Norte" />
+                        </div>
+                      </div>
+                      {conSalones && editingInsumo && (
+                        <StockPorSalonCampos
+                          salones={stockContado.salones}
+                          resumen={stockContado.porInsumo.get(editingInsumo.id)}
+                          unidad={formData.unidad}
+                          valores={stockSalones}
+                          onChange={setStockSalones}
+                        />
                       )}
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="stock" className="text-right">Stock</Label>
-                        <Input id="stock" type="number" value={formData.stockActual} onChange={(e) => setFormData({ ...formData, stockActual: Number.parseFloat(e.target.value) || 0 })} className="col-span-3" />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="precio" className="text-right">Precio $</Label>
-                        <MoneyInput id="precio" disabled={soloStock} value={formData.precioUnitario} onValueChange={(v) => setFormData({ ...formData, precioUnitario: v })} className="col-span-3" />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
-                        <Input id="proveedor" disabled={soloStock} value={formData.proveedor} onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })} className="col-span-3" placeholder="Ej: Distribuidora Norte" />
-                      </div>
                     </div>
                     <DialogFooter>
                       <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancelar</Button>
@@ -452,7 +507,7 @@ function AlmacenContent() {
               </div>
 
               {/* Sort chips */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 lg:order-2">
                 <span className="text-xs text-muted-foreground mr-1">Ordenar:</span>
                 {(
                   [
@@ -468,7 +523,7 @@ function AlmacenContent() {
                       key={field}
                       type="button"
                       onClick={() => handleSort(field)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors lg:min-h-0 ${
                         active
                           ? "bg-foreground text-background"
                           : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
@@ -480,15 +535,22 @@ function AlmacenContent() {
                   )
                 })}
               </div>
+              <span className="hidden text-sm text-muted-foreground lg:order-3 lg:ml-auto lg:inline">
+                {filteredInsumos.length} insumos
+              </span>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="lg:px-4 lg:pb-4">
           {(stockContado.visible || stockContado.error) && <StockContadoNota error={stockContado.error} />}
           <div className="overflow-x-auto">
-          <div className="rounded-lg border">
+          {/* En escritorio la tabla ocupa el alto que queda de la pantalla y
+              se desplaza adentro, con los títulos de las columnas fijos. Las
+              filas son más bajas (con mouse no hace falta el botón de 44 px
+              que piden las pantallas táctiles), así entran más insumos. */}
+          <div className="rounded-lg border lg:[&_[data-slot=table-container]]:max-h-[calc(100dvh-15rem)] lg:[&_[data-slot=table-container]]:overflow-y-auto lg:[&_[data-slot=table-cell]]:py-1 lg:[&_td_button]:min-h-0">
             <Table>
-              <TableHeader>
+              <TableHeader className="lg:sticky lg:top-0 lg:z-30 lg:bg-card lg:shadow-[0_1px_0_var(--border)]">
                 <TableRow>
                   <TableHead className="w-[80px]">Código</TableHead>
                   <TableHead className="sticky left-0 z-20 bg-card">Descripción</TableHead>
@@ -496,8 +558,16 @@ function AlmacenContent() {
                   <TableHead className="w-[100px] text-right">Stock</TableHead>
                   {stockContado.visible &&
                     stockContado.salones.map((s) => (
-                      <TableHead key={s.id} className="w-[76px] px-2 text-right align-bottom text-[11px] leading-tight" title={s.nombre}>
-                        {s.nombre}
+                      <TableHead
+                        key={s.id}
+                        className="w-[90px] text-right"
+                        style={{ ...fondoSalon(s.color), color: s.color }}
+                        title={s.nombre}
+                      >
+                        <span className="inline-flex items-center gap-1.5 font-semibold">
+                          <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} aria-hidden />
+                          {s.nombre}
+                        </span>
                       </TableHead>
                     ))}
                   <TableHead className="w-[120px] text-right">Precio Unit.</TableHead>
@@ -532,7 +602,7 @@ function AlmacenContent() {
                       <TableCell className="text-right">{insumo.stockActual.toLocaleString()}</TableCell>
                       {stockContado.visible &&
                         stockContado.salones.map((s) => (
-                          <TableCell key={s.id} className="text-right">
+                          <TableCell key={s.id} className="text-right" style={fondoSalon(s.color)}>
                             <StockSalonCelda
                               resumen={stockContado.porInsumo.get(insumo.id)}
                               unidad={insumo.unidad}
@@ -545,13 +615,14 @@ function AlmacenContent() {
                       <TableCell className="text-sm text-muted-foreground">{insumo.proveedor || "-"}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}>
+                          <Button variant="ghost" size="icon" className="lg:size-8" onClick={() => handleEdit(insumo)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
                           {!soloStock && (
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="lg:size-8"
                               onClick={() => setInsumoAEliminar(insumo)}
                               aria-label={`Eliminar ${insumo.descripcion}`}
                             >
