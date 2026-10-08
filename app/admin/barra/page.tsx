@@ -196,10 +196,14 @@ function BarraAlmacenContent() {
         <h1 className="text-2xl font-bold tracking-tight lg:text-xl">Almacen de Insumos de Barra</h1>
             {/* Avisa si hay insumos cuyo costo está mal calculado por
                 unidades que no se pueden convertir. Se abre solo una vez
-                por día; después queda este botón. */}
-            <div className="mt-2 lg:mt-0">
-              <CostosARevisar pantalla="barra" />
-            </div>
+                por día; después queda este botón. Solo para quien puede
+                corregir el catálogo (Administración y Soporte), igual que en
+                Cócteles: al resto no le sirve y el servidor no se lo da. */}
+            {!soloStock && (
+              <div className="mt-2 lg:mt-0">
+                <CostosARevisar pantalla="barra" />
+              </div>
+            )}
         <p className="mt-1 text-base text-muted-foreground lg:hidden">Gestiona insumos de cocteleria y bebidas</p>
       {stockContado.visible && (
         <div className="mt-4 inline-flex rounded-lg border p-1 lg:mt-0 lg:ml-auto" role="group" aria-label="Qué mostrar">

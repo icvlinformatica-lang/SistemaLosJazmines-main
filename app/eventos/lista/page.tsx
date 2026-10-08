@@ -1196,6 +1196,7 @@ export default function EventosListaPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos los activos</SelectItem>
+              <SelectItem value="borrador">Borrador</SelectItem>
               <SelectItem value="pendiente">Pendiente</SelectItem>
               <SelectItem value="en_preparacion">En Preparacion</SelectItem>
               <SelectItem value="cancelado">Cancelado</SelectItem>
@@ -1472,8 +1473,7 @@ export default function EventosListaPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion eliminara el evento permanentemente.
-              No se puede deshacer.
+              El evento va a la papelera: lo podés recuperar desde Eventos → Papelera.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1672,7 +1672,7 @@ export default function EventosListaPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion no se puede deshacer. El evento sera eliminado permanentemente.
+              El evento va a la papelera: lo podés recuperar desde Eventos → Papelera.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {(() => {

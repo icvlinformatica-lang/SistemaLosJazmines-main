@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useEventos } from "@/lib/use-eventos"
 import { salonLabel } from "@/lib/store"
+import { fechaEventoCorta } from "@/lib/fecha-evento"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -89,7 +90,7 @@ export default function EventosFinalizadosPage() {
   }
 
   const handleEliminar = async (eventoId: string) => {
-    if (confirm("¿Eliminar este evento? Esta acción no se puede deshacer.")) {
+    if (confirm("¿Eliminar este evento? Va a la papelera: lo podés recuperar desde Eventos → Papelera.")) {
       await eliminarEvento(eventoId)
       toast({ title: "Evento eliminado", variant: "destructive" })
     }
@@ -213,10 +214,10 @@ export default function EventosFinalizadosPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-sm">{evento.fecha || "-"}</TableCell>
+                          <TableCell className="text-sm">{fechaEventoCorta(evento.fecha)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
-                              {evento.salon || "Sin salón"}
+                              {evento.salon ? salonLabel(evento.salon) : "Sin salón"}
                             </Badge>
                           </TableCell>
                           <TableCell>

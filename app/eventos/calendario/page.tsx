@@ -1842,8 +1842,9 @@ export default function CalendarioPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion no se puede deshacer. Se eliminara permanentemente el evento
-              {selectedEvento && ` "${selectedEvento.nombre || selectedEvento.tipoEvento || ""}"`}.
+              Se elimina el evento
+              {selectedEvento && ` "${selectedEvento.nombre || selectedEvento.tipoEvento || ""}"`}. Va a la papelera: lo
+              podés recuperar desde Eventos → Papelera.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
