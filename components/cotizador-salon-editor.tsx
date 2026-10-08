@@ -53,7 +53,7 @@ import {
 } from "@/lib/cotizador-salon"
 import { COLOR_RUBRO } from "@/components/cotizador-colores"
 import { EditorRecargo, textoRecargo } from "@/components/recargo-editor"
-import { AvisoSinCosto, Bloque, InputGanancia, InputPrecio, fmt } from "@/components/config-bloque"
+import { AvisoSinCosto, Bloque, InputGanancia, InputPrecio, fmt, type TonoBloque } from "@/components/config-bloque"
 import {
   BloqueBarrasContenido,
   BloqueCocinaContenido,
@@ -93,6 +93,24 @@ function IconoRubro({ rubro, children }: { rubro: ClaveRubro; children: React.Re
   return (
     <span className={`flex h-9 w-9 items-center justify-center rounded-full ${COLOR_RUBRO[rubro].icono}`}>{children}</span>
   )
+}
+
+/**
+ * Cada tarjeta con el color de su rubro (el mismo de COLOR_RUBRO, que se usa
+ * en todo el cotizador): borde, encabezado teñido y, al abrirla, un fondo
+ * todavía más claro de la misma paleta.
+ */
+const TONO_BLOQUE: Record<"salon" | "cocina" | "barra" | "servicios" | "personal" | "recargo", TonoBloque> = {
+  salon: { borde: "border-primary/40", encabezado: "bg-primary/10", abierto: "bg-primary/[0.04]" },
+  cocina: { borde: "border-chart-2/40", encabezado: "bg-chart-2/10", abierto: "bg-chart-2/[0.04]" },
+  barra: { borde: "border-rubro-barra/40", encabezado: "bg-rubro-barra/10", abierto: "bg-rubro-barra/[0.04]" },
+  servicios: {
+    borde: "border-rubro-servicios/40",
+    encabezado: "bg-rubro-servicios/10",
+    abierto: "bg-rubro-servicios/[0.04]",
+  },
+  personal: { borde: "border-chart-5/40", encabezado: "bg-chart-5/10", abierto: "bg-chart-5/[0.04]" },
+  recargo: { borde: "border-accent/60", encabezado: "bg-accent/15", abierto: "bg-accent/[0.06]" },
 }
 
 function huellaDe(c: ConfigSalon | null): string {
@@ -231,9 +249,16 @@ export function CotizadorSalonEditor() {
     [config, catalogos],
   )
 
+  // El color del salón elegido (el del calendario) tiñe toda la tarjeta que
+  // contiene los bloques, para que se note de un vistazo qué salón se edita.
+  const colorSalon = salonColor(salon)
+
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border space-y-3">
+    <div
+      className="rounded-xl border-2 bg-card overflow-hidden transition-colors"
+      style={{ borderColor: `${colorSalon}80`, backgroundImage: `linear-gradient(${colorSalon}1a, ${colorSalon}1a)` }}
+    >
+      <div className="px-4 py-3 border-b space-y-3" style={{ borderColor: `${colorSalon}40` }}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-semibold text-sm">Cotizador por salón</p>
@@ -274,8 +299,9 @@ export function CotizadorSalonEditor() {
                 aria-selected={activo}
                 onClick={() => elegirSalon(s)}
                 className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-semibold transition-colors ${
-                  activo ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted"
+                  activo ? "text-white shadow-sm" : "border-border bg-card hover:bg-muted"
                 }`}
+                style={activo ? { backgroundColor: salonColor(s), borderColor: salonColor(s) } : undefined}
               >
                 {/* El color propio de cada salón (el del calendario) queda como punto. */}
                 <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card" style={{ backgroundColor: salonColor(s) }} />
@@ -312,9 +338,10 @@ export function CotizadorSalonEditor() {
       )}
 
       {!cargando && config && catalogos && (
-        <>
+        <div className="space-y-3 p-3 sm:p-4">
           {/* 1. Salón */}
           <Bloque
+            tono={TONO_BLOQUE.salon}
             icon={
               <IconoRubro rubro="salon">
                 <Home className="h-5 w-5" />
@@ -378,10 +405,9 @@ export function CotizadorSalonEditor() {
             </p>
           </Bloque>
 
-          <div className="border-t border-border" />
-
           {/* 2. Cocina */}
           <Bloque
+            tono={TONO_BLOQUE.cocina}
             icon={
               <IconoRubro rubro="cocina">
                 <ChefHat className="h-5 w-5" />
@@ -407,10 +433,9 @@ export function CotizadorSalonEditor() {
             />
           </Bloque>
 
-          <div className="border-t border-border" />
-
           {/* 3. Barra */}
           <Bloque
+            tono={TONO_BLOQUE.barra}
             icon={
               <IconoRubro rubro="barra">
                 <Wine className="h-5 w-5" />
@@ -437,10 +462,9 @@ export function CotizadorSalonEditor() {
             />
           </Bloque>
 
-          <div className="border-t border-border" />
-
           {/* 4. Servicios */}
           <Bloque
+            tono={TONO_BLOQUE.servicios}
             icon={
               <IconoRubro rubro="servicios">
                 <PackageCheck className="h-5 w-5" />
@@ -463,10 +487,9 @@ export function CotizadorSalonEditor() {
             />
           </Bloque>
 
-          <div className="border-t border-border" />
-
           {/* 5. Personal */}
           <Bloque
+            tono={TONO_BLOQUE.personal}
             icon={
               <IconoRubro rubro="personal">
                 <Users className="h-5 w-5" />
@@ -488,10 +511,9 @@ export function CotizadorSalonEditor() {
             />
           </Bloque>
 
-          <div className="border-t border-border" />
-
           {/* 6. Recargo de sábado */}
           <Bloque
+            tono={TONO_BLOQUE.recargo}
             icon={
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground">
                 <Sun className="h-5 w-5" />
@@ -511,7 +533,7 @@ export function CotizadorSalonEditor() {
           >
             <BloqueRecargoSabado config={config} catalogos={catalogos} onCambio={(recargoSabado) => cambiar({ recargoSabado })} />
           </Bloque>
-        </>
+        </div>
       )}
 
       {/* Cambiar de salón con cambios sin guardar */}

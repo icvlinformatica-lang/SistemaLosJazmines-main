@@ -101,6 +101,14 @@ export function AvisoSinCosto({ texto = "Sin costo cargado: va a cotizar $0" }: 
   )
 }
 
+/**
+ * Colores de un bloque que se ve como tarjeta propia: el borde, el fondo del
+ * encabezado y el fondo más claro de lo que se despliega al abrirlo. Son
+ * clases enteras de Tailwind (no se pueden armar con texto, el build no las ve).
+ * La tarjeta tiene fondo opaco abajo, así el tinte no se mezcla con el del salón.
+ */
+export type TonoBloque = { borde: string; encabezado: string; abierto: string }
+
 export function Bloque({
   icon,
   title,
@@ -108,6 +116,7 @@ export function Bloque({
   resumen,
   children,
   defaultOpen = false,
+  tono,
 }: {
   icon: React.ReactNode
   title: string
@@ -116,12 +125,21 @@ export function Bloque({
   resumen?: React.ReactNode
   children: React.ReactNode
   defaultOpen?: boolean
+  /** Si viene, el bloque es una tarjeta con el color de su rubro. */
+  tono?: TonoBloque
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className={tono ? `overflow-hidden rounded-xl border-2 bg-card shadow-sm ${tono.borde}` : undefined}
+    >
       <CollapsibleTrigger asChild>
-        <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40">
+        <button
+          type="button"
+          className={`flex w-full items-center gap-3 px-4 py-3 text-left ${tono ? `${tono.encabezado} hover:brightness-[0.97]` : "hover:bg-muted/40"}`}
+        >
           <div className="shrink-0">{icon}</div>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm">{title}</p>
@@ -132,7 +150,7 @@ export function Bloque({
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border-t border-border p-4">{children}</div>
+        <div className={`border-t p-4 ${tono ? `${tono.borde} ${tono.abierto}` : "border-border"}`}>{children}</div>
       </CollapsibleContent>
     </Collapsible>
   )
