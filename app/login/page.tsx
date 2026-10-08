@@ -404,7 +404,8 @@ export default function LoginPage() {
                   )}
                   <input
                     type="password"
-                    maxLength={6}
+                    // 12 y no 6: la clave maestra (PIN_MAESTRO) tiene 8 o más números.
+                    maxLength={12}
                     value={pinInput}
                     onChange={(e) => {
                       setPinInput(e.target.value.replace(/\D/g, ""))

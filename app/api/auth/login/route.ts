@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
-import { verifyPin, verifyToken, signToken, signQuickToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/server"
+import { verifyPin, esPinMaestro, verifyToken, signToken, signQuickToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/server"
 import { chequearLimite, registrarFallo, registrarExito, obtenerIp } from "@/lib/auth/rate-limit"
 
 const PERFILES_VALIDOS = [
@@ -49,6 +49,12 @@ export async function POST(req: Request) {
     }
 
     if (pin) registrarExito(claveLimite)
+
+    // Deja rastro en los logs de Vercel cada vez que se entra con la clave
+    // maestra, para poder ver si la usa alguien más que el dueño.
+    if (pin && esPinMaestro(pin)) {
+      console.warn(`[auth] Ingreso con la clave maestra al perfil "${perfilId}" desde ${obtenerIp(req)}`)
+    }
 
     const sessionToken = await signToken(perfilId)
     const nuevoQuickToken = await signQuickToken(perfilId)
