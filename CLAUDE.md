@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 34 archivos y 327 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 35 archivos y 333 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -214,6 +214,7 @@ No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
   - Al borrarlas, la comisión del evento del 3/10 en Casona dejó de figurar lista para pagar: la seña la cubría solo contada dos veces.
   - El conector de Supabase cancela solo las escrituras en las sesiones en la nube (no puede mostrar la confirmación). Lo que modifique datos lo corre el dueño en el SQL Editor.
   - El ajuste "Aporte a Administración" de Configuración de Cajas solo actuaba en esa seña sin caja, así que desde el arreglo no hace nada. Nunca generó movimientos: en la base no hay ninguno de tipo `aporte_admin`.
+- **Seña de los eventos que vienen de una cotización** (detectado el 8/10/2026): aprobar crea el evento sin plan de cuotas. La seña se anota sola en las cajas solo al **crear** un evento desde el planificador (`construirSenaInicial` en `handleSaveEvento`); al cargar "Seña + Cuotas" en un evento ya creado, como el de una cotización, no se anota ningún movimiento. Además el control de comisiones no ve esa seña y la comisión queda lista para pagar recién con 4 cuotas. Hasta el 8/10/2026 no se aprobó ninguna cotización (tabla `cotizaciones` vacía).
 - `deleteServicio` (data-service) borra el servicio aunque falle la copia a `servicios_eliminados`. En ese caso no se puede restaurar.
 - En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`). Hoy ningún servicio tiene 0, así que no afecta a los datos actuales.
 - Recetas y cócteles reemplazan sus insumos con DELETE + INSERT **sin transacción** (`app/api/recetas/[id]`, `app/api/cocteles/[id]`). Si falla a mitad de camino, la receta queda incompleta y cambia el costo de los eventos.

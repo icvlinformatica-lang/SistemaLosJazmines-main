@@ -111,6 +111,7 @@ import {
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
 import { ContratoPreviewCard } from "@/components/contrato-preview-card"
+import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
 import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
 import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
 
@@ -1482,6 +1483,12 @@ function EventoPageContent() {
               <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
+        )}
+
+        {/* Evento que vino de una cotización aprobada: qué le falta cargar.
+            Se mira lo GUARDADO (originalEvento), no lo que se está tipeando. */}
+        {isEditing && !esSoloLectura && originalEvento?.cotizacionId && (
+          <FaltantesEventoAviso evento={originalEvento} />
         )}
 
         {/* Banner de bloqueo por stock comprometido */}
