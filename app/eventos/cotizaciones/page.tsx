@@ -32,6 +32,8 @@ import {
   type AsignacionPersonal,
   type DesgloseCotizacionV2,
 } from "@/components/cotizacion-detalle-admin"
+import { FaltantesChip } from "@/components/faltantes-evento-aviso"
+import type { FaltanteEvento } from "@/lib/faltantes-evento"
 
 interface CotizacionPendiente {
   /** 2 = modelo costo + ganancia por salón (Paso 2). Las anteriores, 1. */
@@ -60,6 +62,8 @@ interface CotizacionPendiente {
   totalCostoServicios: number
   /** Costo de los tragos de la barra personalizada (0 si no hay). */
   costoBarraPersonalizada: number
+  /** Qué le va a faltar al evento al aprobarla (lib/faltantes-evento.ts). */
+  faltantes?: FaltanteEvento[]
 }
 
 /**
@@ -362,6 +366,10 @@ export default function CotizacionesPendientesPage() {
                           {c.salon && <span>{salonLabel(c.salon)}</span>}
                           {c.fechaEvento && <span>{c.fechaEvento}</span>}
                         </div>
+                        <FaltantesChip
+                          faltan={c.faltantes ?? []}
+                          title="Lo que le va a faltar al evento cuando se apruebe. Se completa después en el planificador."
+                        />
                       </div>
                       <span className="text-lg font-bold text-emerald-700 shrink-0">{fmt(c.precioVentaSugerido)}</span>
                       <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${abierta ? "rotate-180" : ""}`} />

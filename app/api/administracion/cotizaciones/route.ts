@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { soloAdministracion } from "@/lib/solo-administracion"
+import { faltantesCotizacion } from "@/lib/faltantes-evento"
 
 /**
  * Bandeja de aprobación (Etapa 5): lista las cotizaciones en
@@ -82,6 +83,13 @@ export async function GET(req: Request) {
         desglose,
         personalLineas: Array.isArray(serviciosElegidos.personalLineas) ? serviciosElegidos.personalLineas : [],
         avisos: Array.isArray(parseJson(f.avisos)) ? parseJson(f.avisos) : [],
+        // Qué le va a faltar al evento que se cree al aprobar (aviso "Falta: …").
+        faltantes: faltantesCotizacion({
+          serviciosElegidos,
+          clienteNombre: f.cliente_nombre,
+          clienteDni: f.cliente_dni,
+          clienteTelefono: f.cliente_telefono,
+        }),
         fechaEvento: f.fecha_evento,
         horario: f.horario,
         horarioFin: f.horario_fin,

@@ -8,7 +8,7 @@ require.extensions[".ts"] = (mod, filename) => {
   const out = ts.transpileModule(fs.readFileSync(filename, "utf8"), { fileName: filename, compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } })
   mod._compile(out.outputText, filename)
 }
-const { faltantesEvento, textoFaltantes, faltantesContrato } = require("../lib/faltantes-evento.ts")
+const { faltantesEvento, textoFaltantes, faltantesContrato, faltantesCotizacion } = require("../lib/faltantes-evento.ts")
 
 // Evento completo: contrato, plan, servicios, menú y barra.
 const completo = () => ({
@@ -63,4 +63,51 @@ test("plan en $0 o sin contrato: faltan", () => {
 
 test("evento vacío (campos nulos) no rompe", () => {
   assert.deepEqual(faltantesEvento({ barras: [null], servicios: null }), ["contrato", "plan de pagos", "servicios", "menú", "barra"])
+})
+
+// Antes de aprobar: lo que le va a faltar al evento (bandeja de cotizaciones).
+test("cotización nueva completa: solo faltan la dirección (contrato) y el plan de pagos", () => {
+  const f = faltantesCotizacion({
+    serviciosElegidos: {
+      version: 2,
+      recetas: { adultos: ["r1", "r2", "r3"] },
+      servicios: [{ servicioId: "dj" }],
+      barras: [{ tipo: "armada", barraTemplateId: "b1", cocteles: ["c1"] }],
+    },
+    clienteNombre: "PRUEBA Cliente",
+    clienteDni: "1",
+    clienteTelefono: "11",
+  })
+  assert.deepEqual(f, ["contrato", "plan de pagos"])
+})
+
+test("cotización a medias: sin menú, sin barra y solo la línea de barra personalizada vacía", () => {
+  const f = faltantesCotizacion({
+    serviciosElegidos: {
+      version: 2,
+      recetas: { adultos: [] },
+      servicios: [{ servicioId: "barra-personalizada" }],
+      barra: { tipo: "personalizada", cocteles: [] },
+    },
+    clienteNombre: "PRUEBA",
+    clienteTelefono: "11",
+  })
+  assert.deepEqual(f, ["contrato", "plan de pagos", "servicios", "menú", "barra"])
+})
+
+test("cotización vieja (sin version): menú de niños y barra personalizada cuentan", () => {
+  const f = faltantesCotizacion({
+    serviciosElegidos: {
+      recetas: { ninos: ["r1"] },
+      servicios: [{ servicioId: "dj" }],
+      barra: { tipo: "personalizada", cocteles: ["c1"] },
+    },
+    clienteNombre: "PRUEBA",
+    clienteTelefono: "11",
+  })
+  assert.deepEqual(f, ["contrato", "plan de pagos"])
+})
+
+test("cotización vacía no rompe", () => {
+  assert.deepEqual(faltantesCotizacion({ serviciosElegidos: null }), ["contrato", "plan de pagos", "servicios", "menú", "barra"])
 })

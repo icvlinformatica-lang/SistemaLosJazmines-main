@@ -5,16 +5,26 @@
 // nada ni cambia cálculos.
 
 import { AlertTriangle } from "lucide-react"
-import { faltantesContrato, faltantesEvento, textoFaltantes, type EventoParaFaltantes } from "@/lib/faltantes-evento"
+import { faltantesContrato, faltantesEvento, textoFaltantes, type EventoParaFaltantes, type FaltanteEvento } from "@/lib/faltantes-evento"
 
 /** Chip chico para la lista de eventos. No muestra nada si no falta nada. */
 export function FaltantesEventoChip({ evento }: { evento: EventoParaFaltantes }) {
-  const texto = textoFaltantes(faltantesEvento(evento))
+  return (
+    <FaltantesChip
+      faltan={faltantesEvento(evento)}
+      title="Este evento vino de una cotización y todavía le faltan datos. Completalos desde el planificador."
+    />
+  )
+}
+
+/** El mismo chip a partir de la lista ya calculada (bandeja de cotizaciones). */
+export function FaltantesChip({ faltan, title }: { faltan: FaltanteEvento[]; title?: string }) {
+  const texto = textoFaltantes(faltan)
   if (!texto) return null
   return (
     <span
       className="mt-1 inline-flex max-w-full items-start gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium leading-tight text-amber-800"
-      title="Este evento vino de una cotización y todavía le faltan datos. Completalos desde el planificador."
+      title={title}
     >
       <AlertTriangle className="h-3 w-3 shrink-0 mt-px" aria-hidden="true" />
       <span className="whitespace-normal break-words">{texto}</span>

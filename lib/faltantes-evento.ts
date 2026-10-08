@@ -10,6 +10,8 @@
  * Solo lee el evento: no cambia ningún cálculo ni ningún dato guardado.
  */
 
+import { ID_BARRA_PERSONALIZADA } from "./precio-barra"
+
 export type FaltanteEvento = "contrato" | "plan de pagos" | "servicios" | "menú" | "barra"
 
 /** Lo mínimo del evento que hace falta mirar (sirve el de lib/store.ts). */
@@ -78,4 +80,50 @@ export function faltantesContrato(contrato: EventoParaFaltantes["contrato"]): st
   if (!lleno(c.direccion)) faltan.push("dirección")
   if (!lleno(c.vendedor)) faltan.push("vendedor")
   return faltan
+}
+
+/**
+ * Lo mismo, pero ANTES de aprobar: qué le va a faltar al evento que se cree
+ * con esta cotización. Lee servicios_elegidos con las mismas reglas que
+ * app/api/administracion/cotizaciones/[id]/aprobar (qué pasa al evento):
+ * - el nombre completo y el DNI van al contrato solo en el modelo nuevo
+ *   (version 2); el teléfono, siempre; la dirección, nunca;
+ * - el vendedor no cuenta: se elige obligatoriamente al aprobar;
+ * - la cotización nunca trae plan de pagos;
+ * - la línea "Barra personalizada" no es un servicio;
+ * - barra: las armadas del modelo nuevo o la personalizada, con cócteles.
+ */
+export function faltantesCotizacion(cot: {
+  serviciosElegidos: any
+  clienteNombre?: string | null
+  clienteDni?: string | null
+  clienteTelefono?: string | null
+}): FaltanteEvento[] {
+  const se = cot.serviciosElegidos || {}
+  const modeloNuevo = Number(se.version) === 2
+  const recetas = se.recetas || {}
+  const barras: Array<{ coctelesIncluidos?: unknown[] }> = []
+  if (se.barra?.tipo === "personalizada") barras.push({ coctelesIncluidos: se.barra.cocteles })
+  if (modeloNuevo) {
+    const armadas = Array.isArray(se.barras) ? se.barras : se.barra ? [se.barra] : []
+    for (const b of armadas) if (b?.tipo === "armada") barras.push({ coctelesIncluidos: b.cocteles })
+  }
+  return faltantesEvento({
+    contrato: {
+      nombreCompleto: modeloNuevo ? cot.clienteNombre || undefined : undefined,
+      dni: modeloNuevo ? cot.clienteDni || undefined : undefined,
+      telefono: cot.clienteTelefono || undefined,
+      direccion: undefined,
+      vendedor: "se elige al aprobar",
+    },
+    planDeCuotas: null,
+    servicios: (Array.isArray(se.servicios) ? se.servicios : []).filter(
+      (s: { servicioId?: string }) => s?.servicioId !== ID_BARRA_PERSONALIZADA,
+    ),
+    recetasAdultos: recetas.adultos,
+    recetasAdolescentes: recetas.adolescentes,
+    recetasNinos: modeloNuevo ? recetas.adultos : recetas.ninos,
+    recetasDietasEspeciales: recetas.dietasEspeciales,
+    barras,
+  })
 }
