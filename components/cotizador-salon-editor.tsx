@@ -53,7 +53,7 @@ import {
 } from "@/lib/cotizador-salon"
 import { COLOR_RUBRO } from "@/components/cotizador-colores"
 import { EditorRecargo, textoRecargo } from "@/components/recargo-editor"
-import { AvisoSinCosto, Bloque, InputGanancia, InputPrecio, fmt } from "@/components/config-bloque"
+import { AvisoSinCosto, Bloque, InputGanancia, InputPrecio, fmt, type TonoBloque } from "@/components/config-bloque"
 import {
   BloqueBarrasContenido,
   BloqueCocinaContenido,
@@ -93,6 +93,24 @@ function IconoRubro({ rubro, children }: { rubro: ClaveRubro; children: React.Re
   return (
     <span className={`flex h-9 w-9 items-center justify-center rounded-full ${COLOR_RUBRO[rubro].icono}`}>{children}</span>
   )
+}
+
+/**
+ * Cada tarjeta con el color de su rubro (el mismo de COLOR_RUBRO, que se usa
+ * en todo el cotizador): borde, encabezado teñido y, al abrirla, un fondo
+ * todavía más claro de la misma paleta.
+ */
+const TONO_BLOQUE: Record<"salon" | "cocina" | "barra" | "servicios" | "personal" | "recargo", TonoBloque> = {
+  salon: { borde: "border-primary/40", encabezado: "bg-primary/10", abierto: "bg-primary/[0.04]" },
+  cocina: { borde: "border-chart-2/40", encabezado: "bg-chart-2/10", abierto: "bg-chart-2/[0.04]" },
+  barra: { borde: "border-rubro-barra/40", encabezado: "bg-rubro-barra/10", abierto: "bg-rubro-barra/[0.04]" },
+  servicios: {
+    borde: "border-rubro-servicios/40",
+    encabezado: "bg-rubro-servicios/10",
+    abierto: "bg-rubro-servicios/[0.04]",
+  },
+  personal: { borde: "border-chart-5/40", encabezado: "bg-chart-5/10", abierto: "bg-chart-5/[0.04]" },
+  recargo: { borde: "border-accent/60", encabezado: "bg-accent/15", abierto: "bg-accent/[0.06]" },
 }
 
 function huellaDe(c: ConfigSalon | null): string {
@@ -231,351 +249,356 @@ export function CotizadorSalonEditor() {
     [config, catalogos],
   )
 
+  // El color del salón elegido (el del calendario) tiñe toda la tarjeta que
+  // contiene los bloques, para que se note de un vistazo qué salón se edita.
+  const colorSalon = salonColor(salon)
+
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="font-semibold text-sm">Cotizador por salón</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Cada salón es una empresa aparte: costo de cada rubro + su ganancia. Todo lo de abajo es del salón
-              elegido.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {hayCambios && (
-              <span className="flex items-center gap-1 text-xs font-medium text-amber-700">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Sin guardar
-              </span>
-            )}
-            {guardadoRecien && !hayCambios && (
-              <span className="flex items-center gap-1 text-xs font-medium text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Guardado
-              </span>
-            )}
-            <Button size="sm" onClick={guardar} disabled={guardando || !hayCambios || !config}>
-              <Save className="h-3.5 w-3.5 mr-1.5" />
-              {guardando ? "Guardando..." : `Guardar ${nombreSalon}`}
-            </Button>
-          </div>
-        </div>
-
-        {/* Selector grande de salón */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="tablist" aria-label="Salón">
-          {SALONES.map((s) => {
-            const activo = s === salon
-            return (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={activo}
-                onClick={() => elegirSalon(s)}
-                className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-semibold transition-colors ${
-                  activo ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted"
-                }`}
-              >
-                {/* El color propio de cada salón (el del calendario) queda como punto. */}
-                <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card" style={{ backgroundColor: salonColor(s) }} />
-                <span className="min-w-0 truncate">{salonLabel(s)}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!config || cargando}
-            onClick={() => {
-              setCopiarDesde("")
-              setCopiaAbierta(true)
-            }}
-          >
-            <Copy className="h-3.5 w-3.5 mr-1.5" />
-            Copiar configuración de otro salón
-          </Button>
-        </div>
+    <div className="space-y-3">
+      {/* Selector grande de salón */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="tablist" aria-label="Salón">
+        {SALONES.map((s) => {
+          const activo = s === salon
+          return (
+            <button
+              key={s}
+              type="button"
+              role="tab"
+              aria-selected={activo}
+              onClick={() => elegirSalon(s)}
+              className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-semibold transition-colors ${
+                activo ? "text-white shadow-sm" : "border-border bg-card hover:bg-muted"
+              }`}
+              style={activo ? { backgroundColor: salonColor(s), borderColor: salonColor(s) } : undefined}
+            >
+              {/* El color propio de cada salón (el del calendario) queda como punto. */}
+              <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card" style={{ backgroundColor: salonColor(s) }} />
+              <span className="min-w-0 truncate">{salonLabel(s)}</span>
+            </button>
+          )
+        })}
       </div>
-
-      {cargando && <p className="px-4 py-4 text-sm text-muted-foreground">Cargando {nombreSalon}...</p>}
-      {!cargando && error && (
-        <div className="px-4 py-4 space-y-2">
-          <p className="text-sm text-red-700">{error}</p>
-          <Button size="sm" variant="outline" onClick={() => cargar(salon)}>
-            Reintentar
-          </Button>
-        </div>
-      )}
-
-      {!cargando && config && catalogos && (
-        <>
-          {/* 1. Salón */}
-          <Bloque
-            icon={
-              <IconoRubro rubro="salon">
-                <Home className="h-5 w-5" />
-              </IconoRubro>
-            }
-            title="Salón"
-            subtitle="Costo fijo del salón (no depende de invitados ni del día) y capacidad máxima."
-            resumen={
-              <span className="flex flex-wrap items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
-                costo {fmt(config.costoSalon)} →{" "}
-                <span className="font-semibold text-foreground">precio {fmt(precioConGanancia(config.costoSalon, config.gananciaSalon))}</span>
-                {config.costoSalon <= 0 && <AvisoSinCosto />}
-              </span>
-            }
-            defaultOpen
-          >
-            <div className="grid gap-4 sm:grid-cols-3">
-              <label className="space-y-1.5 text-sm">
-                <span className="font-medium">Costo del salón</span>
-                <InputPrecio
-                  valor={config.costoSalon}
-                  onChange={(n) => cambiar({ costoSalon: n ?? 0 })}
-                  etiqueta={`Costo del salón ${nombreSalon}`}
-                />
-              </label>
-              <div className="space-y-1.5 text-sm">
-                <span className="font-medium">Ganancia del salón</span>
-                <div>
-                  <InputGanancia
-                    etiqueta="Ganancia del salón"
-                    mostrarEtiqueta={false}
-                    valor={config.gananciaSalon}
-                    onChange={(n) => cambiar({ gananciaSalon: n })}
-                  />
-                </div>
-              </div>
-              <label className="space-y-1.5 text-sm">
-                <span className="font-medium">Capacidad máxima</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  step={1}
-                  aria-label={`Capacidad máxima de ${nombreSalon}`}
-                  value={config.capacidadMaxima ?? ""}
-                  placeholder="Sin cargar"
-                  onChange={(e) => {
-                    const n = Math.floor(Number(e.target.value))
-                    cambiar({ capacidadMaxima: e.target.value === "" || !(n > 0) ? null : n })
-                  }}
-                  className="h-10 w-full rounded-lg border border-input bg-background px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[#2d5a3d]/40"
-                />
-                <span className="block text-xs text-muted-foreground">
-                  invitados. Si una cotización la supera, no se va a poder enviar (Paso 2).
-                </span>
-              </label>
+      <div
+        className="rounded-xl border-2 bg-card overflow-hidden transition-colors"
+        style={{ borderColor: `${colorSalon}80`, backgroundImage: `linear-gradient(${colorSalon}1a, ${colorSalon}1a)` }}
+      >
+        <div className="px-4 py-3 border-b space-y-3" style={{ borderColor: `${colorSalon}40` }}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm">Cotizador por salón</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Cada salón es una empresa aparte: costo de cada rubro + su ganancia. Todo lo de abajo es del salón
+                elegido.
+              </p>
             </div>
-            <p className="mt-3 text-sm tabular-nums">
-              costo {fmt(config.costoSalon)} →{" "}
-              <span className="font-semibold">precio {fmt(precioConGanancia(config.costoSalon, config.gananciaSalon))}</span>
-            </p>
-          </Bloque>
+            <div className="flex items-center gap-2 shrink-0">
+              {hayCambios && (
+                <span className="flex items-center gap-1 text-xs font-medium text-amber-700">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  Sin guardar
+                </span>
+              )}
+              {guardadoRecien && !hayCambios && (
+                <span className="flex items-center gap-1 text-xs font-medium text-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Guardado
+                </span>
+              )}
+              <Button size="sm" onClick={guardar} disabled={guardando || !hayCambios || !config}>
+                <Save className="h-3.5 w-3.5 mr-1.5" />
+                {guardando ? "Guardando..." : `Guardar ${nombreSalon}`}
+              </Button>
+            </div>
+          </div>
 
-          <div className="border-t border-border" />
-
-          {/* 2. Cocina */}
-          <Bloque
-            icon={
-              <IconoRubro rubro="cocina">
-                <ChefHat className="h-5 w-5" />
-              </IconoRubro>
-            }
-            title="Cocina"
-            subtitle="Qué platos aparecen en este salón, su orden y la ganancia de cocina."
-            resumen={
-              <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                {config.recetas.length} {config.recetas.length === 1 ? "plato" : "platos"} · ganancia {config.gananciaCocina} %
-                {platosSinCosto > 0 && (
-                  <AvisoSinCosto texto={`${platosSinCosto} ${platosSinCosto === 1 ? "plato" : "platos"} sin costo: van a cotizar $0`} />
-                )}
-              </span>
-            }
-          >
-            <BloqueCocinaContenido
-              platos={catalogos.platos}
-              recetas={config.recetas}
-              onRecetas={(recetas) => cambiar({ recetas })}
-              ganancia={config.gananciaCocina}
-              onGanancia={(gananciaCocina) => cambiar({ gananciaCocina })}
-            />
-          </Bloque>
-
-          <div className="border-t border-border" />
-
-          {/* 3. Barra */}
-          <Bloque
-            icon={
-              <IconoRubro rubro="barra">
-                <Wine className="h-5 w-5" />
-              </IconoRubro>
-            }
-            title="Barra"
-            subtitle="Barras armadas (paquetes de cócteles), cuáles aparecen en este salón y la ganancia de barra."
-            resumen={
-              <span className="text-xs text-muted-foreground">
-                {config.barras.length} {config.barras.length === 1 ? "barra visible" : "barras visibles"} · ganancia{" "}
-                {config.gananciaBarra} %
-              </span>
-            }
-          >
-            <BloqueBarrasContenido
-              barras={catalogos.barras}
-              onBarras={(barras) => setCatalogos((c) => (c ? { ...c, barras } : c))}
-              visibles={config.barras}
-              onVisibles={(barras) => cambiar({ barras })}
-              cocteles={catalogos.cocteles}
-              ganancia={config.gananciaBarra}
-              onGanancia={(gananciaBarra) => cambiar({ gananciaBarra })}
-              salonNombre={nombreSalon}
-            />
-          </Bloque>
-
-          <div className="border-t border-border" />
-
-          {/* 4. Servicios */}
-          <Bloque
-            icon={
-              <IconoRubro rubro="servicios">
-                <PackageCheck className="h-5 w-5" />
-              </IconoRubro>
-            }
-            title="Servicios"
-            subtitle="Qué servicios aparecen en este salón, cuáles vienen incluidos y la ganancia de servicios."
-            resumen={
-              <span className="text-xs text-muted-foreground">
-                {serviciosVisibles.length} de {catalogos.servicios.length} aparecen · ganancia {config.gananciaServicios} %
-              </span>
-            }
-          >
-            <BloqueServiciosContenido
-              servicios={catalogos.servicios}
-              estado={config.servicios}
-              onEstado={(servicios) => cambiar({ servicios })}
-              ganancia={config.gananciaServicios}
-              onGanancia={(gananciaServicios) => cambiar({ gananciaServicios })}
-            />
-          </Bloque>
-
-          <div className="border-t border-border" />
-
-          {/* 5. Personal */}
-          <Bloque
-            icon={
-              <IconoRubro rubro="personal">
-                <Users className="h-5 w-5" />
-              </IconoRubro>
-            }
-            title="Personal"
-            subtitle="Una regla por función: cuántos hacen falta según los invitados, su tarifa y su ganancia."
-            resumen={
-              <span className="text-xs text-muted-foreground">
-                {config.reglasPersonal.length} {config.reglasPersonal.length === 1 ? "regla" : "reglas"}
-              </span>
-            }
-          >
-            <BloquePersonal
-              reglas={config.reglasPersonal}
-              onReglas={(reglasPersonal) => cambiar({ reglasPersonal })}
-              personal={catalogos.personal}
-              capacidad={config.capacidadMaxima}
-            />
-          </Bloque>
-
-          <div className="border-t border-border" />
-
-          {/* 6. Recargo de sábado */}
-          <Bloque
-            icon={
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                <Sun className="h-5 w-5" />
-              </span>
-            }
-            title="Recargo de sábado"
-            subtitle="Lo que se cobra de más un sábado (y en las fechas especiales marcadas «como sábado»). Es ganancia: no suma costo."
-            resumen={
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {config.recargoSabado.valor > 0 ? (
-                  <span className="font-semibold text-foreground">{textoRecargo(config.recargoSabado, fmt)} un sábado</span>
-                ) : (
-                  "Sin recargo: el sábado se cotiza igual que el viernes"
-                )}
-              </span>
-            }
-          >
-            <BloqueRecargoSabado config={config} catalogos={catalogos} onCambio={(recargoSabado) => cambiar({ recargoSabado })} />
-          </Bloque>
-        </>
-      )}
-
-      {/* Cambiar de salón con cambios sin guardar */}
-      <Dialog open={!!salonPendiente} onOpenChange={(open) => !open && setSalonPendiente(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Hay cambios sin guardar</DialogTitle>
-            <DialogDescription>
-              Si cambiás a {salonPendiente ? salonLabel(salonPendiente) : ""}, se pierden los cambios de {nombreSalon}.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSalonPendiente(null)}>
-              Quedarme en {nombreSalon}
-            </Button>
+          <div className="flex justify-end">
             <Button
-              variant="destructive"
+              variant="outline"
+              size="sm"
+              disabled={!config || cargando}
               onClick={() => {
-                const s = salonPendiente
-                setSalonPendiente(null)
-                if (s) setSalon(s)
+                setCopiarDesde("")
+                setCopiaAbierta(true)
               }}
             >
-              Descartar cambios
+              <Copy className="h-3.5 w-3.5 mr-1.5" />
+              Copiar configuración de otro salón
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
 
-      {/* Copiar configuración de otro salón */}
-      <Dialog open={copiaAbierta} onOpenChange={(open) => !open && setCopiaAbierta(false)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Copiar configuración a {nombreSalon}</DialogTitle>
-            <DialogDescription>
-              Reemplaza TODA la configuración de {nombreSalon} (costo, capacidad, ganancias, platos, barras visibles,
-              servicios, personal y recargo de sábado) por la del salón que elijas. No se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <Select value={copiarDesde} onValueChange={setCopiarDesde}>
-            <SelectTrigger className="h-10">
-              <SelectValue placeholder="Copiar desde..." />
-            </SelectTrigger>
-            <SelectContent>
-              {SALONES.filter((s) => s !== salon).map((s) => (
-                <SelectItem key={s} value={s}>
-                  {salonLabel(s)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {hayCambios && (
-            <p className="text-xs text-amber-700">Los cambios sin guardar de {nombreSalon} también se pierden.</p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCopiaAbierta(false)}>
-              Cancelar
+        {cargando && <p className="px-4 py-4 text-sm text-muted-foreground">Cargando {nombreSalon}...</p>}
+        {!cargando && error && (
+          <div className="px-4 py-4 space-y-2">
+            <p className="text-sm text-red-700">{error}</p>
+            <Button size="sm" variant="outline" onClick={() => cargar(salon)}>
+              Reintentar
             </Button>
-            <Button variant="destructive" disabled={!copiarDesde || copiando} onClick={copiar}>
-              {copiando ? "Copiando..." : copiarDesde ? `Reemplazar con ${salonLabel(copiarDesde)}` : "Elegí un salón"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        )}
+
+        {!cargando && config && catalogos && (
+          <div className="space-y-3 p-3 sm:p-4">
+            {/* 1. Salón */}
+            <Bloque
+              tono={TONO_BLOQUE.salon}
+              icon={
+                <IconoRubro rubro="salon">
+                  <Home className="h-5 w-5" />
+                </IconoRubro>
+              }
+              title="Salón"
+              subtitle="Costo fijo del salón (no depende de invitados ni del día) y capacidad máxima."
+              resumen={
+                <span className="flex flex-wrap items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
+                  costo {fmt(config.costoSalon)} →{" "}
+                  <span className="font-semibold text-foreground">precio {fmt(precioConGanancia(config.costoSalon, config.gananciaSalon))}</span>
+                  {config.costoSalon <= 0 && <AvisoSinCosto />}
+                </span>
+              }
+              defaultOpen
+            >
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="space-y-1.5 text-sm">
+                  <span className="font-medium">Costo del salón</span>
+                  <InputPrecio
+                    valor={config.costoSalon}
+                    onChange={(n) => cambiar({ costoSalon: n ?? 0 })}
+                    etiqueta={`Costo del salón ${nombreSalon}`}
+                  />
+                </label>
+                <div className="space-y-1.5 text-sm">
+                  <span className="font-medium">Ganancia del salón</span>
+                  <div>
+                    <InputGanancia
+                      etiqueta="Ganancia del salón"
+                      mostrarEtiqueta={false}
+                      valor={config.gananciaSalon}
+                      onChange={(n) => cambiar({ gananciaSalon: n })}
+                    />
+                  </div>
+                </div>
+                <label className="space-y-1.5 text-sm">
+                  <span className="font-medium">Capacidad máxima</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    step={1}
+                    aria-label={`Capacidad máxima de ${nombreSalon}`}
+                    value={config.capacidadMaxima ?? ""}
+                    placeholder="Sin cargar"
+                    onChange={(e) => {
+                      const n = Math.floor(Number(e.target.value))
+                      cambiar({ capacidadMaxima: e.target.value === "" || !(n > 0) ? null : n })
+                    }}
+                    className="h-10 w-full rounded-lg border border-input bg-background px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[#2d5a3d]/40"
+                  />
+                  <span className="block text-xs text-muted-foreground">
+                    invitados. Si una cotización la supera, no se va a poder enviar (Paso 2).
+                  </span>
+                </label>
+              </div>
+              <p className="mt-3 text-sm tabular-nums">
+                costo {fmt(config.costoSalon)} →{" "}
+                <span className="font-semibold">precio {fmt(precioConGanancia(config.costoSalon, config.gananciaSalon))}</span>
+              </p>
+            </Bloque>
+
+            {/* 2. Cocina */}
+            <Bloque
+              tono={TONO_BLOQUE.cocina}
+              icon={
+                <IconoRubro rubro="cocina">
+                  <ChefHat className="h-5 w-5" />
+                </IconoRubro>
+              }
+              title="Cocina"
+              subtitle="Qué platos aparecen en este salón, su orden y la ganancia de cocina."
+              resumen={
+                <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  {config.recetas.length} {config.recetas.length === 1 ? "plato" : "platos"} · ganancia {config.gananciaCocina} %
+                  {platosSinCosto > 0 && (
+                    <AvisoSinCosto texto={`${platosSinCosto} ${platosSinCosto === 1 ? "plato" : "platos"} sin costo: van a cotizar $0`} />
+                  )}
+                </span>
+              }
+            >
+              <BloqueCocinaContenido
+                platos={catalogos.platos}
+                recetas={config.recetas}
+                onRecetas={(recetas) => cambiar({ recetas })}
+                ganancia={config.gananciaCocina}
+                onGanancia={(gananciaCocina) => cambiar({ gananciaCocina })}
+              />
+            </Bloque>
+
+            {/* 3. Barra */}
+            <Bloque
+              tono={TONO_BLOQUE.barra}
+              icon={
+                <IconoRubro rubro="barra">
+                  <Wine className="h-5 w-5" />
+                </IconoRubro>
+              }
+              title="Barra"
+              subtitle="Barras armadas (paquetes de cócteles), cuáles aparecen en este salón y la ganancia de barra."
+              resumen={
+                <span className="text-xs text-muted-foreground">
+                  {config.barras.length} {config.barras.length === 1 ? "barra visible" : "barras visibles"} · ganancia{" "}
+                  {config.gananciaBarra} %
+                </span>
+              }
+            >
+              <BloqueBarrasContenido
+                barras={catalogos.barras}
+                onBarras={(barras) => setCatalogos((c) => (c ? { ...c, barras } : c))}
+                visibles={config.barras}
+                onVisibles={(barras) => cambiar({ barras })}
+                cocteles={catalogos.cocteles}
+                ganancia={config.gananciaBarra}
+                onGanancia={(gananciaBarra) => cambiar({ gananciaBarra })}
+                salonNombre={nombreSalon}
+              />
+            </Bloque>
+
+            {/* 4. Servicios */}
+            <Bloque
+              tono={TONO_BLOQUE.servicios}
+              icon={
+                <IconoRubro rubro="servicios">
+                  <PackageCheck className="h-5 w-5" />
+                </IconoRubro>
+              }
+              title="Servicios"
+              subtitle="Qué servicios aparecen en este salón, cuáles vienen incluidos y la ganancia de servicios."
+              resumen={
+                <span className="text-xs text-muted-foreground">
+                  {serviciosVisibles.length} de {catalogos.servicios.length} aparecen · ganancia {config.gananciaServicios} %
+                </span>
+              }
+            >
+              <BloqueServiciosContenido
+                servicios={catalogos.servicios}
+                estado={config.servicios}
+                onEstado={(servicios) => cambiar({ servicios })}
+                ganancia={config.gananciaServicios}
+                onGanancia={(gananciaServicios) => cambiar({ gananciaServicios })}
+              />
+            </Bloque>
+
+            {/* 5. Personal */}
+            <Bloque
+              tono={TONO_BLOQUE.personal}
+              icon={
+                <IconoRubro rubro="personal">
+                  <Users className="h-5 w-5" />
+                </IconoRubro>
+              }
+              title="Personal"
+              subtitle="Una regla por función: cuántos hacen falta según los invitados, su tarifa y su ganancia."
+              resumen={
+                <span className="text-xs text-muted-foreground">
+                  {config.reglasPersonal.length} {config.reglasPersonal.length === 1 ? "regla" : "reglas"}
+                </span>
+              }
+            >
+              <BloquePersonal
+                reglas={config.reglasPersonal}
+                onReglas={(reglasPersonal) => cambiar({ reglasPersonal })}
+                personal={catalogos.personal}
+                capacidad={config.capacidadMaxima}
+              />
+            </Bloque>
+
+            {/* 6. Recargo de sábado */}
+            <Bloque
+              tono={TONO_BLOQUE.recargo}
+              icon={
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                  <Sun className="h-5 w-5" />
+                </span>
+              }
+              title="Recargo de sábado"
+              subtitle="Lo que se cobra de más un sábado (y en las fechas especiales marcadas «como sábado»). Es ganancia: no suma costo."
+              resumen={
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {config.recargoSabado.valor > 0 ? (
+                    <span className="font-semibold text-foreground">{textoRecargo(config.recargoSabado, fmt)} un sábado</span>
+                  ) : (
+                    "Sin recargo: el sábado se cotiza igual que el viernes"
+                  )}
+                </span>
+              }
+            >
+              <BloqueRecargoSabado config={config} catalogos={catalogos} onCambio={(recargoSabado) => cambiar({ recargoSabado })} />
+            </Bloque>
+          </div>
+        )}
+
+        {/* Cambiar de salón con cambios sin guardar */}
+        <Dialog open={!!salonPendiente} onOpenChange={(open) => !open && setSalonPendiente(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Hay cambios sin guardar</DialogTitle>
+              <DialogDescription>
+                Si cambiás a {salonPendiente ? salonLabel(salonPendiente) : ""}, se pierden los cambios de {nombreSalon}.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSalonPendiente(null)}>
+                Quedarme en {nombreSalon}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const s = salonPendiente
+                  setSalonPendiente(null)
+                  if (s) setSalon(s)
+                }}
+              >
+                Descartar cambios
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Copiar configuración de otro salón */}
+        <Dialog open={copiaAbierta} onOpenChange={(open) => !open && setCopiaAbierta(false)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Copiar configuración a {nombreSalon}</DialogTitle>
+              <DialogDescription>
+                Reemplaza TODA la configuración de {nombreSalon} (costo, capacidad, ganancias, platos, barras visibles,
+                servicios, personal y recargo de sábado) por la del salón que elijas. No se puede deshacer.
+              </DialogDescription>
+            </DialogHeader>
+            <Select value={copiarDesde} onValueChange={setCopiarDesde}>
+              <SelectTrigger className="h-10">
+                <SelectValue placeholder="Copiar desde..." />
+              </SelectTrigger>
+              <SelectContent>
+                {SALONES.filter((s) => s !== salon).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {salonLabel(s)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {hayCambios && (
+              <p className="text-xs text-amber-700">Los cambios sin guardar de {nombreSalon} también se pierden.</p>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCopiaAbierta(false)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" disabled={!copiarDesde || copiando} onClick={copiar}>
+                {copiando ? "Copiando..." : copiarDesde ? `Reemplazar con ${salonLabel(copiarDesde)}` : "Elegí un salón"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }
