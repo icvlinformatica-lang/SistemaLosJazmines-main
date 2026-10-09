@@ -124,6 +124,8 @@ test("la vista muestra filtros, cantidades y cinco filas con Ver más", () => {
   Module._load = function (request, ...args) {
     if (request === "swr") return { __esModule: true, default: () => ({ data: { vienenAPagar: [{ eventoId: "evento test&1", evento: "Evento test", salon: "Salón", salonId: "Salon", fechaEvento: "2026-12-01", cuotasPendientes }] }, isLoading: false, mutate: () => {} }) }
     if (request === "@/lib/store-context") return { useStore: () => ({ state: { eventos: [] }, configuracionCajas: { salones: {} } }) }
+    // El modal "Este finde" usa el reloj del sistema para calcular lo que queda por pagar.
+    if (request === "@/lib/clock-context") return { useClock: () => ({ ahora: new Date(2026, 9, 9, 12) }) }
     return load.call(this, request, ...args)
   }
   try {

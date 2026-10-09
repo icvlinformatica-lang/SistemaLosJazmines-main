@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback, memo } from "react"
+import { useState, useRef, useCallback, useEffect, memo, type ReactNode } from "react"
 import { useStore } from "@/lib/store-context"
 import { generateId, type Servicio, type CategoriaServicio } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
@@ -18,6 +18,9 @@ import {
   Minus,
   AlertTriangle,
   RefreshCw,
+  ChevronsLeftRight,
+  ChevronsRightLeft,
+  Info,
 } from "lucide-react"
 import {
   Dialog,
@@ -119,6 +122,96 @@ function margenColor(margen: number): string {
 const AYUDA_SUELDO =
   "En Caja Eventos aparece en Sueldos, como un pago único el día del evento, en vez de seña y saldo."
 
+// ─── Columnas plegables ──────────────────────────────────────────────────────
+// Solo visual: plegar una columna la deja angosta y vacía, no toca ningún dato.
+// Cuáles están plegadas se recuerda en este navegador (localStorage).
+
+type ColumnaPlegable =
+  | "categoria"
+  | "unidad"
+  | "venta"
+  | "costo"
+  | "sena"
+  | "margen"
+  | "descripcion"
+  | "creado"
+  | "activo"
+  | "sueldo"
+
+const COLUMNAS_PLEGABLES: ColumnaPlegable[] = [
+  "categoria", "unidad", "venta", "costo", "sena", "margen", "descripcion", "creado", "activo", "sueldo",
+]
+
+const CLAVE_COLUMNAS_PLEGADAS = "finanzas-servicios-columnas-plegadas"
+
+function leerColumnasPlegadas(): Set<ColumnaPlegable> {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(CLAVE_COLUMNAS_PLEGADAS) || "[]")
+    if (!Array.isArray(guardado)) return new Set()
+    return new Set(guardado.filter((c): c is ColumnaPlegable => COLUMNAS_PLEGABLES.includes(c)))
+  } catch {
+    return new Set()
+  }
+}
+
+function guardarColumnasPlegadas(plegadas: Set<ColumnaPlegable>) {
+  try {
+    localStorage.setItem(CLAVE_COLUMNAS_PLEGADAS, JSON.stringify([...plegadas]))
+  } catch {
+    // Sin localStorage (ventana privada, etc.): se pliega igual, solo que no se recuerda.
+  }
+}
+
+interface ThPlegableProps {
+  etiqueta: string
+  plegada: boolean
+  onToggle: () => void
+  className?: string
+  title?: string
+  children: ReactNode
+}
+
+/** Encabezado con botón para plegar. Plegado: columna angosta con el nombre vertical. */
+function ThPlegable({ etiqueta, plegada, onToggle, className, title, children }: ThPlegableProps) {
+  if (plegada) {
+    return (
+      <th className="w-8 px-0 py-1.5 align-top">
+        <button
+          type="button"
+          onClick={onToggle}
+          title={`Mostrar ${etiqueta}`}
+          aria-label={`Mostrar columna ${etiqueta}`}
+          className="min-h-0 mx-auto flex flex-col items-center gap-1 rounded px-1 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        >
+          <ChevronsLeftRight className="h-3.5 w-3.5 shrink-0" />
+          <span className="text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap [writing-mode:vertical-rl] rotate-180">
+            {etiqueta}
+          </span>
+        </button>
+      </th>
+    )
+  }
+  return (
+    <th className={cn("group/col relative", className)} title={title}>
+      {children}
+      <button
+        type="button"
+        onClick={onToggle}
+        title={`Plegar ${etiqueta}`}
+        aria-label={`Plegar columna ${etiqueta}`}
+        className="min-h-0 absolute top-0.5 right-0.5 p-0.5 rounded text-muted-foreground opacity-0 group-hover/col:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground transition-opacity"
+      >
+        <ChevronsRightLeft className="h-3 w-3" />
+      </button>
+    </th>
+  )
+}
+
+/** Celda de una columna plegada (angosta y vacía). */
+function TdPlegada() {
+  return <td className="w-8 bg-muted/30" />
+}
+
 // ─── Celda editable inline ────────────────────────────────────────────────────
 
 interface EditableCellProps {
@@ -179,7 +272,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, m
       // Input numérico con símbolo $ visual (meramente estético)
       return (
         <div className="relative w-full">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[15px] pointer-events-none select-none">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[14px] pointer-events-none select-none">
             $
           </span>
           <input
@@ -197,7 +290,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, m
               if (e.key === "Escape") cancel()
             }}
             className={cn(
-              "w-full h-8 pl-6 pr-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white text-right tabular-nums",
+              "w-full h-8 pl-6 pr-2.5 text-[14px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white text-right tabular-nums",
               className
             )}
             autoFocus
@@ -216,7 +309,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, m
           if (e.key === "Escape") cancel()
         }}
         className={cn(
-          "w-full h-8 px-2.5 text-[15px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white",
+          "w-full h-8 px-2.5 text-[14px] border border-primary/60 rounded outline-none bg-primary/5 focus:bg-white",
           className
         )}
         autoFocus
@@ -248,7 +341,7 @@ function EditableCell({ value, onCommit, placeholder = "—", numeric = false, m
     <div
       onClick={startEdit}
       className={cn(
-        "group relative min-h-8 flex items-center px-2.5 py-1 leading-snug rounded cursor-pointer hover:bg-muted/70 transition-colors text-[15px]",
+        "group relative min-h-8 flex items-center px-2.5 py-1 leading-snug rounded cursor-pointer hover:bg-muted/70 transition-colors text-[14px]",
         !value && "text-muted-foreground/50 italic",
         numeric && "justify-end tabular-nums",
         className
@@ -367,6 +460,26 @@ export default function FinanzasServiciosPage() {
   const [confirmoCongelado, setConfirmoCongelado] = useState(false)
   const [separadorDialogOpen, setSeparadorDialogOpen] = useState(false)
   const [separadorEliminar, setSeparadorEliminar] = useState<Servicio | null>(null)
+
+  // Explicación y leyenda de la tarjeta de arriba: plegadas por defecto.
+  const [infoAbierta, setInfoAbierta] = useState(false)
+
+  // Columnas plegadas: arranca todo abierto y después lee lo recordado en este
+  // navegador (en un efecto, para no chocar con el render del servidor).
+  const [plegadas, setPlegadas] = useState<Set<ColumnaPlegable>>(() => new Set())
+  useEffect(() => {
+    setPlegadas(leerColumnasPlegadas())
+  }, [])
+  const plegada = (col: ColumnaPlegable) => plegadas.has(col)
+  const togglePlegada = (col: ColumnaPlegable) => {
+    setPlegadas((prev) => {
+      const next = new Set(prev)
+      if (next.has(col)) next.delete(col)
+      else next.add(col)
+      guardarColumnasPlegadas(next)
+      return next
+    })
+  }
 
   // ── Servicios ordenados (orden manual tipo Excel) ─────────────────────────
   const serviciosOrdenados = servicios
@@ -539,61 +652,93 @@ export default function FinanzasServiciosPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────��───
   return (
-    <div className="flex flex-col h-full min-h-0 p-6 gap-4">
+    <div className="flex flex-col h-full min-h-0 p-6 gap-4 lg:h-dvh lg:p-4 lg:gap-3">
 
-      {/* Header */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Servicios</h1>
-          <p className="text-sm text-muted-foreground">
-            Configurá el precio de venta (contrato) y el costo que impacta en Caja Eventos.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <PapeleraServiciosButton />
-          <Button
-            variant="outline"
-            onClick={() => setSeparadorDialogOpen(true)}
-            className="gap-2 border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+      {/* Tarjeta única: título, filtros y botones en una línea; la explicación y
+          la leyenda quedan plegadas para dejarle más lugar a la tabla. */}
+      <div className="shrink-0 rounded-lg border border-border bg-card shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+          <h1 className="text-xl font-bold text-foreground mr-1">Servicios</h1>
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar servicio..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="pl-9 h-9"
+            />
+          </div>
+          <Select
+            value={categoriaFiltro}
+            onValueChange={(v) => setCategoriaFiltro(v as CategoriaServicio | "todas")}
           >
-            <Minus className="h-4 w-4" />
-            Separadores
-          </Button>
-          <Button onClick={handleAgregarFila} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Agregar servicio
-          </Button>
+            <SelectTrigger className="w-[190px] h-9">
+              <SelectValue placeholder="Todas las categorias" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas las categorias</SelectItem>
+              {CATEGORIAS.map((cat) => (
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            {serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""}
+          </span>
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <PapeleraServiciosButton />
+            <Button
+              variant="outline"
+              onClick={() => setSeparadorDialogOpen(true)}
+              className="gap-2 border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+            >
+              <Minus className="h-4 w-4" />
+              Separadores
+            </Button>
+            <Button onClick={handleAgregarFila} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Agregar servicio
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setInfoAbierta((v) => !v)}
+              title={infoAbierta ? "Ocultar explicación" : "Ver explicación de las columnas"}
+              aria-label={infoAbierta ? "Ocultar explicación" : "Ver explicación de las columnas"}
+              aria-expanded={infoAbierta}
+              className="text-muted-foreground"
+            >
+              <Info className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* Filtros */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar servicio..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className="pl-9 h-9"
-          />
-        </div>
-        <Select
-          value={categoriaFiltro}
-          onValueChange={(v) => setCategoriaFiltro(v as CategoriaServicio | "todas")}
-        >
-          <SelectTrigger className="w-[200px] h-9">
-            <SelectValue placeholder="Todas las categorias" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas las categorias</SelectItem>
-            {CATEGORIAS.map((cat) => (
-              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="text-sm text-muted-foreground ml-auto hidden sm:block">
-          {serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""}
-        </span>
+        {infoAbierta && (
+          <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2 text-[12px] text-muted-foreground">
+            <p className="text-sm">
+              Configurá el precio de venta (contrato) y el costo que impacta en Caja Eventos.
+            </p>
+            <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-300" />
+                Precio Venta = precio que figura en el contrato
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-rose-100 border border-rose-300" />
+                Costo Caja Eventos = egreso que impacta en Caja Eventos al registrar el servicio
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="font-semibold text-foreground/80">Se paga como sueldo:</span> {AYUDA_SUELDO}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="font-semibold text-emerald-600">Verde</span> ≥ 30% &nbsp;
+                <span className="font-semibold text-amber-600">Naranja</span> 10-30% &nbsp;
+                <span className="font-semibold text-red-500">Rojo</span> {`< 10%`}
+              </span>
+              <span>Cada columna se pliega con el botón chico arriba a la derecha de su título.</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Aviso: la lista no vino de la base (falló la carga al abrir el sistema) */}
@@ -613,41 +758,56 @@ export default function FinanzasServiciosPage() {
 
       {/* Tabla estilo spreadsheet */}
       <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-card shadow-sm">
-        <table className="w-full text-[15px] border-collapse min-w-[920px]">
+        <table className="w-full text-[14px] border-collapse min-w-[920px]">
           <thead>
-            <tr className="bg-muted/80 border-b border-border sticky top-0 z-10">
+            <tr className="bg-muted border-b border-border sticky top-0 z-10 shadow-[0_1px_0_var(--border)]">
               <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground w-[58px] text-[13px] uppercase tracking-wide">#</th>
               <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Nombre</th>
-              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[165px]">Categoria</th>
-              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[125px]">Unidad</th>
-              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
+              <ThPlegable etiqueta="Categoría" plegada={plegada("categoria")} onToggle={() => togglePlegada("categoria")} className="px-3 pt-5 pb-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[165px]">
+                Categoria
+              </ThPlegable>
+              <ThPlegable etiqueta="Unidad" plegada={plegada("unidad")} onToggle={() => togglePlegada("unidad")} className="px-3 pt-5 pb-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[125px]">
+                Unidad
+              </ThPlegable>
+              <ThPlegable etiqueta="Venta" plegada={plegada("venta")} onToggle={() => togglePlegada("venta")} className="px-3 pt-5 pb-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
                 <span className="flex items-center justify-end gap-1 text-emerald-700">
                   <ShoppingBag className="h-4 w-4" />
                   Precio Venta
                 </span>
-              </th>
-              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
+              </ThPlegable>
+              <ThPlegable etiqueta="Costo" plegada={plegada("costo")} onToggle={() => togglePlegada("costo")} className="px-3 pt-5 pb-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[170px]">
                 <span className="flex items-center justify-end gap-1 text-rose-600">
                   <DollarSign className="h-4 w-4" />
                   Costo Caja Eventos
                 </span>
-              </th>
-              <th className="px-3 py-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[150px]">
+              </ThPlegable>
+              <ThPlegable etiqueta="Seña" plegada={plegada("sena")} onToggle={() => togglePlegada("sena")} className="px-3 pt-5 pb-1.5 text-right font-semibold text-[13px] uppercase tracking-wide w-[150px]">
                 <span className="flex items-center justify-end gap-1 text-amber-600">
                   <Tag className="h-4 w-4" />
                   Seña por evento
                 </span>
-              </th>
-              <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">Margen</th>
-              <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">Descripcion (letra chica del contrato)</th>
-              <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[110px]">Creado</th>
-              <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[70px]">Activo</th>
-              <th
-                className="px-2 py-1.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wide leading-tight w-[96px]"
+              </ThPlegable>
+              <ThPlegable etiqueta="Margen" plegada={plegada("margen")} onToggle={() => togglePlegada("margen")} className="px-2 pt-5 pb-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[95px]">
+                Margen
+              </ThPlegable>
+              <ThPlegable etiqueta="Descripción" plegada={plegada("descripcion")} onToggle={() => togglePlegada("descripcion")} className="px-3 pt-5 pb-1.5 text-left font-semibold text-muted-foreground text-[13px] uppercase tracking-wide">
+                Descripcion (letra chica del contrato)
+              </ThPlegable>
+              <ThPlegable etiqueta="Creado" plegada={plegada("creado")} onToggle={() => togglePlegada("creado")} className="px-2 pt-5 pb-1.5 text-right font-semibold text-muted-foreground text-[13px] uppercase tracking-wide w-[110px]">
+                Creado
+              </ThPlegable>
+              <ThPlegable etiqueta="Activo" plegada={plegada("activo")} onToggle={() => togglePlegada("activo")} className="px-2 pt-5 pb-1.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wide w-[70px]">
+                Activo
+              </ThPlegable>
+              <ThPlegable
+                etiqueta="Sueldo"
+                plegada={plegada("sueldo")}
+                onToggle={() => togglePlegada("sueldo")}
+                className="px-2 pt-5 pb-1.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wide leading-tight w-[96px]"
                 title={AYUDA_SUELDO}
               >
                 Se paga como sueldo
-              </th>
+              </ThPlegable>
               <th className="px-2 py-1.5 w-10" />
             </tr>
           </thead>
@@ -755,7 +915,7 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Nombre */}
-                  <td className="px-1.5 py-[3px] min-w-[180px]">
+                  <td className="px-1.5 py-[3px] min-w-[120px]">
                     <EditableCell
                       value={s.nombre}
                       placeholder="Nombre del servicio"
@@ -764,145 +924,165 @@ export default function FinanzasServiciosPage() {
                   </td>
 
                   {/* Categoria */}
-                  <td className="px-2 py-[3px]">
-                    <Select
-                      value={s.categoria}
-                      onValueChange={(v) => update(s.id, { categoria: v as CategoriaServicio })}
-                    >
-                      <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 gap-1 text-[15px]">
-                        <Badge
-                          variant="outline"
-                          className={cn("text-[13px] font-medium px-2 py-0.5 border", CATEGORIA_COLORS[s.categoria])}
-                        >
-                          {s.categoria}
-                        </Badge>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CATEGORIAS.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            <Badge variant="outline" className={cn("text-[13px] font-medium", CATEGORIA_COLORS[cat])}>
-                              {cat}
-                            </Badge>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </td>
+                  {plegada("categoria") ? <TdPlegada /> : (
+                    <td className="px-2 py-[3px]">
+                      <Select
+                        value={s.categoria}
+                        onValueChange={(v) => update(s.id, { categoria: v as CategoriaServicio })}
+                      >
+                        <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 gap-1 text-[14px] [&>svg]:hidden">
+                          <Badge
+                            variant="outline"
+                            className={cn("text-[13px] font-medium px-2 py-0.5 border", CATEGORIA_COLORS[s.categoria])}
+                          >
+                            {s.categoria}
+                          </Badge>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CATEGORIAS.map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              <Badge variant="outline" className={cn("text-[13px] font-medium", CATEGORIA_COLORS[cat])}>
+                                {cat}
+                              </Badge>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                  )}
 
                   {/* Unidad */}
-                  <td className="px-2 py-[3px]">
-                    <Select
-                      value={s.unidad}
-                      onValueChange={(v) => update(s.id, { unidad: v as Servicio["unidad"] })}
-                    >
-                      <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 text-[15px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {UNIDADES.map((u) => (
-                          <SelectItem key={u} value={u}>{u}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </td>
+                  {plegada("unidad") ? <TdPlegada /> : (
+                    <td className="px-2 py-[3px]">
+                      <Select
+                        value={s.unidad}
+                        onValueChange={(v) => update(s.id, { unidad: v as Servicio["unidad"] })}
+                      >
+                        <SelectTrigger className="h-8 min-h-0 border-0 bg-transparent shadow-none px-1.5 hover:bg-muted/70 focus:ring-0 text-[14px] [&>svg]:hidden">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UNIDADES.map((u) => (
+                            <SelectItem key={u} value={u}>{u}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                  )}
 
                   {/* Precio Venta */}
-                  <td className="px-1.5 py-[3px]">
-                    <EditableCell
-                      value={formatMiles(venta)}
-                      placeholder="0"
-                      numeric
-                      onCommit={(v) => {
-                            const nuevo = parseARS(v)
-                            if (nuevo === venta) return
-                            setCambioMonto({ servicio: s, campo: "precioVenta", valorNuevo: nuevo })
-                      }}
-                    />
-                  </td>
+                  {plegada("venta") ? <TdPlegada /> : (
+                    <td className="px-1.5 py-[3px]">
+                      <EditableCell
+                        value={formatMiles(venta)}
+                        placeholder="0"
+                        numeric
+                        onCommit={(v) => {
+                              const nuevo = parseARS(v)
+                              if (nuevo === venta) return
+                              setCambioMonto({ servicio: s, campo: "precioVenta", valorNuevo: nuevo })
+                        }}
+                      />
+                    </td>
+                  )}
 
                   {/* Costo Caja Eventos */}
-                  <td className="px-1.5 py-[3px]">
-                    <EditableCell
-                      value={formatMiles(costo)}
-                      placeholder="0"
-                      numeric
-                      onCommit={(v) => {
-                            const nuevo = parseARS(v)
-                            if (nuevo === costo) return
-                            setCambioMonto({ servicio: s, campo: "costoParaCajaEventos", valorNuevo: nuevo })
-                      }}
-                    />
-                  </td>
+                  {plegada("costo") ? <TdPlegada /> : (
+                    <td className="px-1.5 py-[3px]">
+                      <EditableCell
+                        value={formatMiles(costo)}
+                        placeholder="0"
+                        numeric
+                        onCommit={(v) => {
+                              const nuevo = parseARS(v)
+                              if (nuevo === costo) return
+                              setCambioMonto({ servicio: s, campo: "costoParaCajaEventos", valorNuevo: nuevo })
+                        }}
+                      />
+                    </td>
+                  )}
 
                   {/* Seña por evento */}
-                  <td className="px-1.5 py-[3px]">
-                    <EditableCell
-                      value={s.costoParaCajaEventos && s.porcentajeSeña
-                        ? formatMiles(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))
-                        : ""}
-                      placeholder="0"
-                      numeric
-                      onCommit={(v) => {
-                        const montoSeña = parseARS(v)
-                        const base = s.costoParaCajaEventos ?? 0
-                        const pct = base > 0 ? Math.round((montoSeña / base) * 100) : 30
-                            if (pct === (s.porcentajeSeña ?? 30)) return
-                            setCambioMonto({ servicio: s, campo: "porcentajeSeña", valorNuevo: pct })
-                      }}
-                    />
-                  </td>
+                  {plegada("sena") ? <TdPlegada /> : (
+                    <td className="px-1.5 py-[3px]">
+                      <EditableCell
+                        value={s.costoParaCajaEventos && s.porcentajeSeña
+                          ? formatMiles(Math.round((s.costoParaCajaEventos * (s.porcentajeSeña ?? 30)) / 100))
+                          : ""}
+                        placeholder="0"
+                        numeric
+                        onCommit={(v) => {
+                          const montoSeña = parseARS(v)
+                          const base = s.costoParaCajaEventos ?? 0
+                          const pct = base > 0 ? Math.round((montoSeña / base) * 100) : 30
+                              if (pct === (s.porcentajeSeña ?? 30)) return
+                              setCambioMonto({ servicio: s, campo: "porcentajeSeña", valorNuevo: pct })
+                        }}
+                      />
+                    </td>
+                  )}
 
                   {/* Margen */}
-                  <td className="px-3 py-[3px] text-right tabular-nums">
-                    {venta > 0 && costo > 0 ? (
-                      <span className={cn("font-semibold text-[15px]", margenColor(margen))}>
-                        {margen.toFixed(0)}%
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground/40">—</span>
-                    )}
-                  </td>
+                  {plegada("margen") ? <TdPlegada /> : (
+                    <td className="px-2 py-[3px] text-right tabular-nums">
+                      {venta > 0 && costo > 0 ? (
+                        <span className={cn("font-semibold text-[14px]", margenColor(margen))}>
+                          {margen.toFixed(0)}%
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </td>
+                  )}
 
                   {/* Descripcion = letra chica que se imprime en el contrato (~90 palabras) */}
-                  <td className="px-1.5 py-[3px] min-w-[300px] max-w-[420px] align-top">
-                    <EditableCell
-                      value={s.descripcion ?? ""}
-                      placeholder="Letra chica del contrato"
-                      multiline
-                      onCommit={(v) => update(s.id, { descripcion: v })}
-                    />
-                  </td>
+                  {plegada("descripcion") ? <TdPlegada /> : (
+                    <td className="px-1.5 py-[3px] min-w-[160px] align-top">
+                      <EditableCell
+                        value={s.descripcion ?? ""}
+                        placeholder="Letra chica del contrato"
+                        multiline
+                        onCommit={(v) => update(s.id, { descripcion: v })}
+                      />
+                    </td>
+                  )}
 
                   {/* Fecha de creación */}
-                  <td className="px-3 py-[3px] text-right tabular-nums text-[13px] text-muted-foreground whitespace-nowrap">
-                    {s.createdAt
-                      ? new Date(s.createdAt).toLocaleDateString("es-AR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </td>
+                  {plegada("creado") ? <TdPlegada /> : (
+                    <td className="px-2 py-[3px] text-right tabular-nums text-[13px] text-muted-foreground whitespace-nowrap">
+                      {s.createdAt
+                        ? new Date(s.createdAt).toLocaleDateString("es-AR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "2-digit",
+                          })
+                        : "—"}
+                    </td>
+                  )}
 
                   {/* Activo / Inactivo */}
-                  <td className="px-2 py-[3px] text-center">
-                    <Switch
-                      checked={s.activo}
-                      onCheckedChange={(checked) => update(s.id, { activo: checked })}
-                      title={s.activo ? "Servicio activo (visible en eventos)" : "Servicio desactivado (oculto en eventos)"}
-                      aria-label={`${s.activo ? "Desactivar" : "Activar"} ${s.nombre}`}
-                    />
-                  </td>
+                  {plegada("activo") ? <TdPlegada /> : (
+                    <td className="px-2 py-[3px] text-center">
+                      <Switch
+                        checked={s.activo}
+                        onCheckedChange={(checked) => update(s.id, { activo: checked })}
+                        title={s.activo ? "Servicio activo (visible en eventos)" : "Servicio desactivado (oculto en eventos)"}
+                        aria-label={`${s.activo ? "Desactivar" : "Activar"} ${s.nombre}`}
+                      />
+                    </td>
+                  )}
 
                   {/* Se paga como sueldo (pago único el día del evento, ver lib/servicio-sueldo.ts) */}
-                  <td className="px-2 py-[3px] text-center">
-                    <Switch
-                      checked={s.sePagaComoSueldo === true}
-                      onCheckedChange={(checked) => update(s.id, { sePagaComoSueldo: checked })}
-                      title={AYUDA_SUELDO}
-                      aria-label={`${s.sePagaComoSueldo ? "Dejar de pagar" : "Pagar"} ${s.nombre} como sueldo`}
-                    />
-                  </td>
+                  {plegada("sueldo") ? <TdPlegada /> : (
+                    <td className="px-2 py-[3px] text-center">
+                      <Switch
+                        checked={s.sePagaComoSueldo === true}
+                        onCheckedChange={(checked) => update(s.id, { sePagaComoSueldo: checked })}
+                        title={AYUDA_SUELDO}
+                        aria-label={`${s.sePagaComoSueldo ? "Dejar de pagar" : "Pagar"} ${s.nombre} como sueldo`}
+                      />
+                    </td>
+                  )}
 
                   {/* Eliminar */}
                   <td className="px-2 py-[3px]">
@@ -927,48 +1107,36 @@ export default function FinanzasServiciosPage() {
                 <td colSpan={4} className="px-3 py-2.5 text-sm text-muted-foreground">
                   Total ({serviciosReales.length} servicio{serviciosReales.length !== 1 ? "s" : ""})
                 </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
-                  {formatARS(totalVenta)}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-rose-600">
-                  {formatARS(totalCosto)}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-amber-700 font-semibold">
-                  {formatARS(serviciosFiltrados.reduce((sum, s) =>
-                    sum + Math.round((s.costoParaCajaEventos ?? 0) * (s.porcentajeSeña ?? 30) / 100), 0))}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums">
-                  {totalCosto > 0 ? (
-                    <span className={cn("font-semibold", margenColor(((totalVenta - totalCosto) / totalCosto) * 100))}>
-                      {(((totalVenta - totalCosto) / totalCosto) * 100).toFixed(0)}%
-                    </span>
-                  ) : "—"}
-                </td>
+                {plegada("venta") ? <TdPlegada /> : (
+                  <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
+                    {formatARS(totalVenta)}
+                  </td>
+                )}
+                {plegada("costo") ? <TdPlegada /> : (
+                  <td className="px-3 py-2.5 text-right tabular-nums text-rose-600">
+                    {formatARS(totalCosto)}
+                  </td>
+                )}
+                {plegada("sena") ? <TdPlegada /> : (
+                  <td className="px-3 py-2.5 text-right tabular-nums text-amber-700 font-semibold">
+                    {formatARS(serviciosFiltrados.reduce((sum, s) =>
+                      sum + Math.round((s.costoParaCajaEventos ?? 0) * (s.porcentajeSeña ?? 30) / 100), 0))}
+                  </td>
+                )}
+                {plegada("margen") ? <TdPlegada /> : (
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    {totalCosto > 0 ? (
+                      <span className={cn("font-semibold", margenColor(((totalVenta - totalCosto) / totalCosto) * 100))}>
+                        {(((totalVenta - totalCosto) / totalCosto) * 100).toFixed(0)}%
+                      </span>
+                    ) : "—"}
+                  </td>
+                )}
                 <td colSpan={2} />
               </tr>
             </tfoot>
           )}
         </table>
-      </div>
-
-      {/* Leyenda */}
-      <div className="flex items-center gap-4 text-[12px] text-muted-foreground shrink-0 flex-wrap">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-300" />
-          Precio Venta = precio que figura en el contrato
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-rose-100 border border-rose-300" />
-          Costo Caja Eventos = egreso que impacta en Caja Eventos al registrar el servicio
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="font-semibold text-foreground/80">Se paga como sueldo:</span> {AYUDA_SUELDO}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="font-semibold text-emerald-600">Verde</span> ≥ 30% &nbsp;
-          <span className="font-semibold text-amber-600">Naranja</span> 10-30% &nbsp;
-          <span className="font-semibold text-red-500">Rojo</span> {`< 10%`}
-        </span>
       </div>
 
       {/* Confirm delete */}
