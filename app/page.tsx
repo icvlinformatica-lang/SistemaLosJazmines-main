@@ -1,12 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import useSWR from "swr"
 import Link from "next/link"
 import { Bell, HelpCircle, FileBarChart, PartyPopper, HandCoins, Receipt, FileText } from "lucide-react"
 import { NovedadesModal } from "@/components/novedades-modal"
 import { ResumenDiarioModal } from "@/components/resumen-diario-modal"
 import { FindeModal } from "@/components/finde-modal"
-import { VienenAPagarModal } from "@/components/vienen-a-pagar-modal"
+import { VienenAPagarModal, CLAVE_VIENEN_A_PAGAR, cargarResumenVienenAPagar } from "@/components/vienen-a-pagar-modal"
+import { contarCuotasAtrasadas } from "@/lib/vienen-a-pagar"
 import { ChatAyuda } from "@/components/chat-ayuda"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
@@ -51,6 +53,14 @@ export default function HomePage() {
       document.removeEventListener("visibilitychange", alVolver)
     }
   }, [puedeAprobarCotizaciones])
+
+  // Cuotas atrasadas para el botón "Vienen a pagar". Misma clave y misma
+  // carga que el modal (SWR comparte los datos), así el número coincide con
+  // el recuadro "Atrasado" del modal. Solo para quienes cobran o administran:
+  // al staff de eventos no le sirve y así no se pide el resumen de más.
+  const veAtrasadas = perfilActivo?.id === "administracion" || perfilActivo?.id === "soporte" || perfilActivo?.id === "cobro"
+  const { data: resumenPagar } = useSWR(veAtrasadas ? CLAVE_VIENEN_A_PAGAR : null, cargarResumenVienenAPagar)
+  const cuotasAtrasadas = contarCuotasAtrasadas(resumenPagar?.vienenAPagar ?? [])
 
   const handleBackgroundClick = () => {
     toggleSidebar()
@@ -122,6 +132,11 @@ export default function HomePage() {
         >
           <HandCoins className="h-4 w-4" />
           <span>Vienen a pagar</span>
+          {veAtrasadas && cuotasAtrasadas > 0 && (
+            <span className="rounded-full bg-destructive px-2 py-0.5 text-xs font-bold text-destructive-foreground">
+              {cuotasAtrasadas} {cuotasAtrasadas === 1 ? "atrasada" : "atrasadas"}
+            </span>
+          )}
         </button>
         {puedeCargarGastos && (
           <button

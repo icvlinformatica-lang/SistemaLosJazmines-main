@@ -4,6 +4,8 @@ export type CuotaPorPagar = VieneAPagar["cuotasPendientes"][number] & {
   eventoId: string
   evento: string
   fechaEvento: string
+  /** Teléfono del cliente (del contrato), para el botón de WhatsApp. */
+  telefono?: string
 }
 
 export function limiteCuotasVisibles(ampliaciones: number): number {
@@ -22,7 +24,7 @@ export function agruparCuotasPorSalon(lista: VieneAPagar[]) {
     const salon = evento.salonId
     const cuotas = grupos.get(salon) ?? []
     for (const cuota of evento.cuotasPendientes) {
-      cuotas.push({ ...cuota, eventoId: evento.eventoId, evento: evento.evento, fechaEvento: evento.fechaEvento })
+      cuotas.push({ ...cuota, eventoId: evento.eventoId, evento: evento.evento, fechaEvento: evento.fechaEvento, telefono: evento.telefono })
     }
     if (cuotas.length) grupos.set(salon, cuotas)
   }
@@ -40,4 +42,13 @@ export function agruparCuotasPorSalon(lista: VieneAPagar[]) {
       totalAtrasado: cuotas.reduce((s, c) => s + (c.atrasada ? c.monto : 0), 0),
     }
   })
+}
+
+/**
+ * Cuántas cuotas atrasadas hay en total. Sale de la misma agrupación que usa
+ * el modal "Vienen a pagar", para que el número del botón de Inicio coincida
+ * siempre con el recuadro "Atrasado" del modal.
+ */
+export function contarCuotasAtrasadas(lista: VieneAPagar[]): number {
+  return agruparCuotasPorSalon(lista).reduce((s, g) => s + g.cantidadAtrasada, 0)
 }

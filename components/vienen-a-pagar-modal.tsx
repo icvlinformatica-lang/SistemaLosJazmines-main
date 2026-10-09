@@ -7,16 +7,32 @@
 import { useEffect, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
-import { X, Users, Loader2, Search } from "lucide-react"
+import { X, Users, Loader2, Search, Phone, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SalonDot } from "@/components/salon-badge"
 import { useStore } from "@/lib/store-context"
 import { SALON_COLORES_DEFAULT, salonLabel } from "@/lib/store"
 import { agruparCuotasPorSalon, ordenarCuotasPorEvento, limiteCuotasVisibles, type CuotaPorPagar } from "@/lib/vienen-a-pagar"
 import type { ResumenDiario } from "@/lib/resumen-diario"
+import { enlaceWhatsApp, mensajeRecordatorioCuota } from "@/lib/recordatorio-cuota"
+
+/**
+ * Carga de la lista. Se exporta para que el botón de Inicio use la MISMA
+ * clave y la misma validación de SWR: así el número de atrasadas del botón
+ * sale de los mismos datos que muestra este modal (y al abrirlo ya están).
+ */
+export const CLAVE_VIENEN_A_PAGAR = "/api/resumen-diario"
+export async function cargarResumenVienenAPagar(url: string): Promise<ResumenDiario> {
+  const response = await fetch(url, { cache: "no-store" })
+  if (!response.ok) throw new Error("No se pudo cargar la lista")
+  const resumen = await response.json()
+  if (!Array.isArray(resumen.vienenAPagar) || resumen.vienenAPagar.some((v: { cuotasPendientes?: unknown }) => !Array.isArray(v.cuotasPendientes))) throw new Error("Respuesta de cuotas incompleta")
+  return resumen
+}
 
 function fmt(n: number): string {
   return "$" + Math.round(n).toLocaleString("es-AR")
@@ -28,14 +44,31 @@ function fechaCorta(ymd: string): string {
 }
 
 function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: string }; onAbrirEvento: () => void }) {
+  // Recordatorio por WhatsApp: solo si el teléfono del contrato da un número
+  // usable. "venció" para las que ya pasaron su vencimiento (aunque sean de
+  // esta semana), "vence" para las que todavía no.
+  const whatsapp = enlaceWhatsApp(cuota.telefono, mensajeRecordatorioCuota({
+    nombre: cuota.evento,
+    numeroCuota: cuota.numero,
+    monto: cuota.monto,
+    fechaVencimiento: cuota.fechaVencimiento,
+    vencida: cuota.atrasada || (cuota.diasAtraso ?? 0) > 0,
+    montoADefinir: !!cuota.ipcPendiente,
+  }))
   return (
     <li className="border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="break-words text-sm font-semibold">{cuota.evento}</p>
+          <p className="flex flex-wrap items-center gap-2 break-words text-sm font-semibold">
+            {cuota.evento}
+            {cuota.atrasada && <span className="rounded bg-destructive px-1.5 py-0.5 text-xs font-bold text-destructive-foreground">ATRASADA</span>}
+          </p>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             <span>Evento {fechaCorta(cuota.fechaEvento)}</span>
             <span className="inline-flex items-center gap-1"><SalonDot salon={cuota.salon} />{salonLabel(cuota.salon)}</span>
+            {cuota.telefono && (
+              <a href={`tel:${cuota.telefono.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1 underline underline-offset-2"><Phone className="size-3.5" />{cuota.telefono}</a>
+            )}
           </p>
         </div>
         <div className="flex flex-col gap-1 text-right text-sm">
@@ -51,11 +84,18 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
           )}
           <p className="text-muted-foreground">Vence {fechaCorta(cuota.fechaVencimiento)}</p>
         </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+        {whatsapp && (
+          <Button asChild variant="outline" size="sm">
+            <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Mandar recordatorio por WhatsApp a ${cuota.evento}, cuota ${cuota.numero}`}><MessageCircle />WhatsApp</a>
+          </Button>
+        )}
         {cuota.eventoId ? (
           <Button asChild variant="outline" size="sm" className="shrink-0">
             <Link href={`/eventos/pagos?evento=${encodeURIComponent(cuota.eventoId)}`} prefetch={false} onClick={onAbrirEvento} aria-label={`Ir al evento ${cuota.evento}, cuota ${cuota.numero}`}>Ir al evento</Link>
           </Button>
         ) : <Button variant="outline" size="sm" disabled title="No se pudo identificar el evento. Volvé a abrir la lista.">Ir al evento</Button>}
+        </div>
       </div>
     </li>
   )
@@ -71,14 +111,9 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
   const [salonFiltro, setSalonFiltro] = useState("todos")
   const [busqueda, setBusqueda] = useState("")
   const [ampliaciones, setAmpliaciones] = useState(0)
-  const { data, isLoading, error, mutate } = useSWR<ResumenDiario>(open ? "/api/resumen-diario" : null, async (url: string) => {
-    const response = await fetch(url, { cache: "no-store" })
-    if (!response.ok) throw new Error("No se pudo cargar la lista")
-    const resumen = await response.json()
-    if (!Array.isArray(resumen.vienenAPagar) || resumen.vienenAPagar.some((v: { cuotasPendientes?: unknown }) => !Array.isArray(v.cuotasPendientes))) throw new Error("Respuesta de cuotas incompleta")
-    return resumen
-  })
-  useEffect(() => { if (!open) { setSalonFiltro("todos"); setBusqueda(""); setAmpliaciones(0) } }, [open])
+  const [soloAtrasadas, setSoloAtrasadas] = useState(false)
+  const { data, isLoading, error, mutate } = useSWR<ResumenDiario>(open ? CLAVE_VIENEN_A_PAGAR : null, cargarResumenVienenAPagar)
+  useEffect(() => { if (!open) { setSalonFiltro("todos"); setBusqueda(""); setAmpliaciones(0); setSoloAtrasadas(false) } }, [open])
 
   if (!open) return null
 
@@ -86,7 +121,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
   const salones = [...new Set([...Object.keys(SALON_COLORES_DEFAULT), ...Object.keys(configuracionCajas?.salones ?? {}), ...grupos.map((g) => g.salon)])]
   const visibles = grupos.filter((g) => salonFiltro === "todos" || (g.salon || "general") === salonFiltro)
   const textoBusqueda = busqueda.trim().toLowerCase()
-  const cuotasOrdenadas = ordenarCuotasPorEvento(visibles)
+  const cuotasOrdenadas = ordenarCuotasPorEvento(visibles).filter((cuota) => !soloAtrasadas || cuota.atrasada)
   const cuotas = textoBusqueda
     ? cuotasOrdenadas.filter((cuota) =>
         cuota.evento.toLowerCase().includes(textoBusqueda) ||
@@ -98,6 +133,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
   const totalSemana = visibles.reduce((s, g) => s + g.totalSemana, 0)
   const cantidadSemana = visibles.reduce((s, g) => s + g.cantidadSemana, 0)
   const cantidadAtrasada = visibles.reduce((s, g) => s + g.cantidadAtrasada, 0)
+  const totalAtrasado = visibles.reduce((s, g) => s + g.totalAtrasado, 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false) }} role="dialog" aria-modal="true" aria-labelledby="titulo-vienen-pagar" onKeyDown={(e) => { if (e.key === "Escape") onOpenChange(false) }}>
@@ -136,7 +172,14 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
             <>
               {/* Totales rápidos */}
               <div className="flex flex-col gap-3">
-                <div className="rounded-lg border bg-card p-3 text-card-foreground" aria-live="polite"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} cuotas</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-card p-3 text-card-foreground" aria-live="polite"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} cuotas</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
+                  <div className={`rounded-lg border p-3 ${cantidadAtrasada > 0 ? "border-destructive bg-destructive/10" : "bg-card text-card-foreground"}`} aria-live="polite"><p className={`text-sm ${cantidadAtrasada > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>Atrasado · {cantidadAtrasada} {cantidadAtrasada === 1 ? "cuota" : "cuotas"}</p><p className={`font-bold tabular-nums ${cantidadAtrasada > 0 ? "text-destructive" : ""}`}>{fmt(totalAtrasado)}</p></div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch id="solo-atrasadas" checked={soloAtrasadas} onCheckedChange={(v) => { setSoloAtrasadas(v); setAmpliaciones(0) }} />
+                  <Label htmlFor="solo-atrasadas">Solo atrasadas</Label>
+                </div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <Input
@@ -151,7 +194,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
               </div>
 
               {/* Lista */}
-              {cuotas.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No hay cuotas por pagar esta semana ni atrasadas{salonFiltro !== "todos" ? " para este salón" : ""}.</p> : (
+              {cuotas.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{soloAtrasadas ? "No hay cuotas atrasadas" : "No hay cuotas por pagar esta semana ni atrasadas"}{salonFiltro !== "todos" ? " para este salón" : ""}.</p> : (
                 <div className="flex flex-col gap-3">
                   <p className="text-sm text-muted-foreground">Ordenadas por evento más próximo a más lejano</p>
                   <ul id="lista-cuotas-pendientes" className="rounded-lg border bg-card text-card-foreground" aria-label="Cuotas por fecha del evento">

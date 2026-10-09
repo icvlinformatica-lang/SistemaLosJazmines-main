@@ -62,6 +62,8 @@ export interface VieneAPagar {
   /** Deuda de cuotas vencidas sin pagar (semana pasada o antes) */
   montoAtrasado: number
   cuotasAtrasadas: number
+  /** Teléfono del cliente tal como está en el contrato (para el botón de WhatsApp de Inicio). Los mails no lo usan. */
+  telefono?: string
 }
 
 export interface ResumenDiario {
@@ -293,7 +295,7 @@ export interface VienenAPagarResumen {
  */
 export async function buildVienenAPagar(referencia: string): Promise<VienenAPagarResumen> {
   const evRows = (await sql`
-    SELECT id, nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas
+    SELECT id, nombre, nombre_pareja, salon, fecha, estado, pagos, plan_de_cuotas, contrato
     FROM eventos
     WHERE deleted_at IS NULL
   `) as unknown as Record<string, unknown>[]
@@ -388,6 +390,7 @@ export async function buildVienenAPagar(referencia: string): Promise<VienenAPaga
         cuotaSemana,
         montoAtrasado,
         cuotasAtrasadas,
+        telefono: String(parseJson<Record<string, unknown> | null>(ev.contrato, null)?.telefono ?? "").trim() || undefined,
       })
     }
   }
