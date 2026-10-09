@@ -29,7 +29,7 @@ const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[
  * Una cotización solo se puede editar en "borrador" o "rechazada".
  *
  * body: {
- *   id?, accion?, clienteNombre, clienteDni?, tipoEvento?, fechaEvento?,
+ *   id?, accion?, clienteNombre, clienteDni?, clienteTelefono?, tipoEvento?, fechaEvento?,
  *   salon, adultos, ninos, recetas: string[], barraId: string | null,
  *   servicios: { servicioId, cantidad }[]
  * }
@@ -77,6 +77,11 @@ export async function POST(req: Request) {
 
     const vendedor = usuarioDesdeCookie(req)
     const dni = typeof clienteDni === "string" && clienteDni.trim() ? clienteDni.trim() : null
+    // Teléfono del cliente (opcional). Si el pedido no lo trae (una pantalla
+    // abierta antes de este cambio), al editar se conserva el guardado en vez
+    // de borrarlo; si lo trae vacío, se borra.
+    const traeTelefono = typeof body.clienteTelefono === "string"
+    const telefono = traeTelefono && (body.clienteTelefono as string).trim() ? (body.clienteTelefono as string).trim().slice(0, 40) : null
     const fecha = typeof fechaEvento === "string" && fechaEvento ? fechaEvento : null
     const tipo = typeof tipoEvento === "string" && tipoEvento ? tipoEvento : null
 
@@ -175,12 +180,13 @@ export async function POST(req: Request) {
       })
 
     if (typeof id === "string" && id) {
-      // Teléfono, festejados y horarios no están en la pantalla nueva: no se
-      // tocan (una cotización vieja reabierta los conserva).
+      // Festejados y horarios no están en la pantalla nueva: no se tocan (una
+      // cotización vieja reabierta los conserva). El teléfono sí (ver arriba).
       const filas = (await sql`
         UPDATE cotizaciones SET
           cliente_nombre = ${clienteNombre.trim()},
           cliente_dni = ${dni},
+          cliente_telefono = CASE WHEN ${traeTelefono} THEN ${telefono} ELSE cliente_telefono END,
           fecha_evento = ${fecha},
           salon = ${config.salon},
           tipo_evento = ${tipo},
@@ -212,11 +218,11 @@ export async function POST(req: Request) {
       INSERT INTO cotizaciones (
         vendedor, cliente_nombre, cliente_dni, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, precio_venta_sugerido, costos_internos,
-        modalidad_salon, desglose_venta, fuera_de_tarifario, avisos, estado
+        modalidad_salon, desglose_venta, fuera_de_tarifario, avisos, cliente_telefono, estado
       ) VALUES (
         ${vendedor}, ${clienteNombre.trim()}, ${dni}, ${fecha}, ${config.salon}, ${tipo},
         ${jsonb(invitados)}, ${jsonb(serviciosElegidos)}, ${r.total}, ${jsonb(costosInternos)},
-        ${r.modalidad}, ${jsonb(desgloseVenta)}, false, ${jsonb(avisosAdmin)}, ${estado}
+        ${r.modalidad}, ${jsonb(desgloseVenta)}, false, ${jsonb(avisosAdmin)}, ${telefono}, ${estado}
       )
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>

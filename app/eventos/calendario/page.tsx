@@ -73,6 +73,7 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
+import { ConfirmarFinalizarEventoDialog } from "@/components/confirmar-finalizar-evento"
 
 // --- Helpers ---
 const DIAS_SEMANA = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -324,6 +325,7 @@ export default function CalendarioPage() {
 
   // Filtro por salón: vacío = mostrar todos
   const [salonesFiltrados, setSalonesFiltrados] = useState<string[]>([])
+  const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false)
   // Selector de salón estilo perfiles al entrar a la página
   const [selectorAbierto, setSelectorAbierto] = useState(true)
   const eventos = useMemo(() => {
@@ -565,7 +567,9 @@ export default function CalendarioPage() {
       nombre: "",
       fecha: `${y}-${m}-${d}`,
       horario: "",
-      salon: undefined,
+      // Si el calendario está filtrado a un solo salón, el evento nuevo
+      // arranca en ese salón (se puede cambiar en el planificador).
+      salon: salonesFiltrados.length === 1 ? salonesFiltrados[0] : undefined,
       tipoEvento: undefined,
       nombrePareja: "",
       adultos: 0,
@@ -1753,11 +1757,9 @@ export default function CalendarioPage() {
                         variant="outline"
                         size="sm"
                         className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
-                        onClick={async () => {
-                          await updateEvento(selectedEvento.id, { estado: "completado" })
-                          toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
-                          setShowDetailDialog(false)
-                        }}
+                        // Igual que en la Lista: se pide confirmación antes de
+                        // archivar (un toque accidental lo sacaba de la lista).
+                        onClick={() => setFinalizarDialogOpen(true)}
                       >
                         <CheckCircle2 className="h-4 w-4 mr-1" /> Finalizar
                       </Button>
@@ -1837,6 +1839,19 @@ export default function CalendarioPage() {
       </Dialog>
 
       {/* --- Delete Confirmation --- */}
+      <ConfirmarFinalizarEventoDialog
+        open={finalizarDialogOpen}
+        onOpenChange={setFinalizarDialogOpen}
+        fechaEvento={selectedEvento?.fecha}
+        onConfirm={async () => {
+          if (!selectedEvento) return
+          setFinalizarDialogOpen(false)
+          await updateEvento(selectedEvento.id, { estado: "completado" })
+          toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
+          setShowDetailDialog(false)
+        }}
+      />
+
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>

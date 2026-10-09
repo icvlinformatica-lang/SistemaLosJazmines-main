@@ -25,6 +25,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import {
   Eye,
@@ -53,6 +63,9 @@ export default function EventosFinalizadosPage() {
   const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
   // Selector de salón estilo perfiles al entrar a la página
   const [selectorAbierto, setSelectorAbierto] = useState(true)
+  // Evento que se está por sacar del archivo (pide confirmación: sus costos
+  // dejan de estar congelados).
+  const [eventoASacarId, setEventoASacarId] = useState<string | null>(null)
 
   // Filtrar solo eventos finalizados
   const eventosFiltrados = (eventos || [])
@@ -271,7 +284,7 @@ export default function EventosFinalizadosPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => handleReactivar(evento.id)}
+                                  onClick={() => setEventoASacarId(evento.id)}
                                   className="text-sky-600 focus:text-sky-600"
                                 >
                                   <RotateCcw className="h-4 w-4 mr-2" />
@@ -298,6 +311,31 @@ export default function EventosFinalizadosPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!eventoASacarId} onOpenChange={(open) => { if (!open) setEventoASacarId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Sacar este evento del archivo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vuelve a la lista como &quot;En preparación&quot; y sus costos dejan de estar congelados: se vuelven a
+              calcular en vivo con los precios de hoy de insumos, servicios y personal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const id = eventoASacarId
+                setEventoASacarId(null)
+                if (id) handleReactivar(id)
+              }}
+              className="bg-sky-600 hover:bg-sky-700 text-white"
+            >
+              Sí, sacar del archivo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

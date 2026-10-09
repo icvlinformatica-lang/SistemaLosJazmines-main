@@ -70,6 +70,7 @@ import {
   FileText,
   TrendingUp,
   X,
+  CheckCircle2,
 } from "lucide-react"
 
 const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -119,10 +120,13 @@ function PaymentReceipt({
   evento,
   pago,
   historialIPC = [],
+  conTexto = false,
 }: {
   evento: EventoGuardado
   pago: PagoEvento
   historialIPC?: HistorialIPCEntry[]
+  /** true: botones grandes con texto (aviso de "cuota cobrada"); por defecto, íconos chicos de la lista de pagos. */
+  conTexto?: boolean
 }) {
   const receiptRef = useRef<HTMLDivElement>(null)
 
@@ -299,20 +303,21 @@ function PaymentReceipt({
     <>
       {/* Imprimir directo con datos autocompletados */}
       <Button
-        variant="ghost"
+        variant={conTexto ? "default" : "ghost"}
         size="sm"
-        className="h-7 px-2"
+        className={conTexto ? "" : "h-7 px-2"}
         title="Imprimir recibo"
         onClick={() => imprimirRecibo(buildDefaults())}
       >
         <Printer className="h-3.5 w-3.5" />
+        {conTexto && "Imprimir recibo"}
       </Button>
 
       {/* Editar los datos del recibo antes de imprimir */}
       <Button
-        variant="ghost"
+        variant={conTexto ? "outline" : "ghost"}
         size="sm"
-        className="h-7 px-2"
+        className={conTexto ? "" : "h-7 px-2"}
         title="Editar recibo antes de imprimir"
         onClick={() => {
           setCampos(buildDefaults())
@@ -320,6 +325,7 @@ function PaymentReceipt({
         }}
       >
         <Pencil className="h-3.5 w-3.5" />
+        {conTexto && "Editar recibo"}
       </Button>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -612,6 +618,9 @@ function PagosPageContent() {
 
   // Confirmación de eliminación de comprobante/pago
   const [pagoToDelete, setPagoToDelete] = useState<PagoEvento | null>(null)
+  // Aviso final después de un cobro normal que salió bien: muestra la cuota
+  // cobrada y deja imprimir el mismo recibo que la lista de pagos.
+  const [cobroConfirmado, setCobroConfirmado] = useState<{ evento: EventoGuardado; pago: PagoEvento } | null>(null)
   const [borrandoPago, setBorrandoPago] = useState(false)
   const borrandoPagoRef = useRef(false)
 
@@ -1079,6 +1088,9 @@ function PagosPageContent() {
         recibidoPor: "",
       })
       setShowPagoDialog(false)
+      // Solo en el cobro normal (no al cargar pagos atrasados): el cobro ya
+      // quedó guardado, esto es solo el aviso con el recibo a mano.
+      if (!modoHistorico) setCobroConfirmado({ evento: evolucionado, pago: newPago })
     }
     } finally {
       guardandoPagoRef.current = false
@@ -2552,6 +2564,33 @@ function PagosPageContent() {
                 Registrar {formatCurrency(pagoForm.monto)}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Aviso final del cobro normal: cuota cobrada + recibo de ese pago */}
+      <Dialog open={!!cobroConfirmado} onOpenChange={(open) => !open && setCobroConfirmado(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              {cobroConfirmado?.pago.numeroCuota ? `Cuota ${cobroConfirmado.pago.numeroCuota} cobrada` : "Pago cobrado"}: {formatCurrency(cobroConfirmado?.pago.monto ?? 0)}
+            </DialogTitle>
+            <DialogDescription>
+              {cobroConfirmado ? `${cobroConfirmado.evento.nombre || cobroConfirmado.evento.nombrePareja || "Evento"} · pagó ${cobroConfirmado.pago.pagadoPor}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-row flex-wrap justify-end gap-2">
+            {cobroConfirmado && (
+              <PaymentReceipt
+                key={cobroConfirmado.pago.id}
+                evento={cobroConfirmado.evento}
+                pago={cobroConfirmado.pago}
+                historialIPC={historialIPC}
+                conTexto
+              />
+            )}
+            <Button variant="outline" size="sm" onClick={() => setCobroConfirmado(null)}>Listo</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

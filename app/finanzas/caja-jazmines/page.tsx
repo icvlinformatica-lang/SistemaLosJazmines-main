@@ -1,6 +1,7 @@
 "use client"
 
 import { Children, useState, useRef, useEffect, useMemo } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -104,6 +105,8 @@ import { MesesFijo, pagoDelMesActual } from "./meses-fijo"
 import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
+import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
+import { almacenDelNavegador, guardarSalonRecordado, leerSalonRecordado } from "@/lib/salon-recordado"
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -1009,10 +1012,11 @@ function CuerpoColapsable({ colapsado, children }: { colapsado: boolean; childre
 }
 
 export default function CajaJazminePage() {
-  // Tarjetas de métricas: siempre plegadas por defecto, con los montos
-  // siempre visibles. Al pasar el cursor por encima del grupo se despliegan
-  // todas juntas y al quitarlo se vuelven a plegar.
-  const [tarjetasAbiertas, setTarjetasAbiertas] = useState(false)
+  // Tarjetas de métricas: el monto principal se ve siempre; lo que se pliega
+  // es solo el detalle de abajo. Se despliega con el mouse encima del grupo
+  // o tocando el chevron de cualquier tarjeta (celular y teclado).
+  const tarjetas = useTarjetasPlegables()
+  const tarjetasAbiertas = tarjetas.abiertas
   const colapsado30 = !tarjetasAbiertas
   const colapsadoSemana = !tarjetasAbiertas
   const {
@@ -1028,8 +1032,18 @@ export default function CajaJazminePage() {
   const { ahora } = useClock()
   const { toast } = useToast()
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
-  // Selector de salón estilo perfiles al entrar a la página
+  // Selector de salón estilo perfiles al entrar a la página. Se recuerda el
+  // último salón elegido en este navegador: si hay uno guardado y sigue siendo
+  // válido, se entra directo a ese salón; si no, se abre el selector como
+  // siempre. El botón "Cambiar salón" vuelve a abrir el selector.
   const [selectorAbierto, setSelectorAbierto] = useState(true)
+  useEffect(() => {
+    const recordado = leerSalonRecordado(almacenDelNavegador(), "caja-jazmines", ["todos", ...SALONES])
+    if (recordado) {
+      setSalonFiltro(recordado)
+      setSelectorAbierto(false)
+    }
+  }, [])
 
   const data = useCajaJazmines(state, salonFiltro, ahora)
 
@@ -1226,7 +1240,15 @@ export default function CajaJazminePage() {
       }
       toast({
         title: "Pago registrado",
-        description: `"${costo.concepto}" se movió al Archivo Histórico.`,
+        description: (
+          <span>
+            {`"${costo.concepto}" se movió al `}
+            <Link href="/finanzas/archivo" className="font-medium underline underline-offset-2">
+              Archivo Histórico
+            </Link>
+            .
+          </span>
+        ),
       })
       setAlertasPagando((prev) => {
         const next = new Set(prev)
@@ -1711,6 +1733,7 @@ export default function CajaJazminePage() {
         onSelect={(salon) => {
           setSalonFiltro(salon)
           setSelectorAbierto(false)
+          guardarSalonRecordado(almacenDelNavegador(), "caja-jazmines", salon)
         }}
       />
     )
@@ -1779,12 +1802,11 @@ export default function CajaJazminePage() {
       </div>
 
       {/* Métricas: 6 indicadores compactos (30 días + esta semana) en una sola fila.
-          Siempre plegadas; el hover sobre el grupo las despliega todas juntas
-          y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
+          El monto de cada tarjeta se ve siempre; el detalle de abajo se
+          despliega con el mouse encima del grupo o tocando un chevron. */}
       <div
         className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 items-start"
-        onMouseEnter={() => setTarjetasAbiertas(true)}
-        onMouseLeave={() => setTarjetasAbiertas(false)}
+        {...tarjetas.propsGrupo}
       >
             {/* ── Slide 1: A 30 DÍAS ──────────────────────���─────���───── */}
             <div className="contents">
@@ -1797,17 +1819,28 @@ export default function CajaJazminePage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#0035db" }}>Saldo Actual</p>
                     <div className="flex items-center gap-1.5">
                       <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
-                        style={{ color: "#0035db" }}
-                        aria-hidden="true"
-                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          tarjetas.alternar()
+                        }}
+                        aria-expanded={tarjetasAbiertas}
+                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
+                          style={{ color: "#0035db" }}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </div>
                   </div>
+                  <p className="text-lg font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
+                    {formatCurrency(saldoActual)}
+                  </p>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    <p className="text-lg font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
-                      {formatCurrency(saldoActual)}
-                    </p>
                     <p
                       className="text-xs mt-auto pt-1 flex items-center gap-1.5 font-semibold"
                       style={{ color: colorSalonActivo }}
@@ -1834,16 +1867,27 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <ArrowUpFromLine className="h-4 w-4 text-red-500" />
-                      <ChevronDown
-                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
-                        aria-hidden="true"
-                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          tarjetas.alternar()
+                        }}
+                        aria-expanded={tarjetasAbiertas}
+                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </div>
                   </div>
+                  <p className="text-lg font-bold whitespace-nowrap text-red-600">
+                    {formatCurrency(gastosPróximos30Dias)}
+                  </p>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    <p className="text-lg font-bold whitespace-nowrap text-red-600">
-                      {formatCurrency(gastosPróximos30Dias)}
-                    </p>
                     <p className="text-xs mt-auto pt-1 text-muted-foreground">Gastos pendientes</p>
                   </CuerpoColapsable>
                 </CardContent>
@@ -1860,16 +1904,27 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
-                      <ChevronDown
-                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
-                        aria-hidden="true"
-                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          tarjetas.alternar()
+                        }}
+                        aria-expanded={tarjetasAbiertas}
+                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </div>
                   </div>
+                  <p className="text-lg font-bold whitespace-nowrap text-foreground">
+                    {formatCurrency(saldoProyectado30Dias)}
+                  </p>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    <p className="text-lg font-bold whitespace-nowrap text-foreground">
-                      {formatCurrency(saldoProyectado30Dias)}
-                    </p>
                     {(() => {
                       const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
                       const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
@@ -1899,16 +1954,27 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-                      <ChevronDown
-                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                        aria-hidden="true"
-                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          tarjetas.alternar()
+                        }}
+                        aria-expanded={tarjetasAbiertas}
+                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </div>
                   </div>
+                  <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
+                    {`+${formatCurrency(cobroSemanaJaz)}`}
+                  </p>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
-                    <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
-                      {`+${formatCurrency(cobroSemanaJaz)}`}
-                    </p>
                     <p className="text-xs mt-auto pt-1 text-muted-foreground">
                       {(() => {
                         const total = cuotasSemanaJazCount + cuotasVencidasJazCount
@@ -1935,16 +2001,27 @@ export default function CajaJazminePage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Gastos esta semana</p>
                     <div className="flex items-center gap-1.5">
                       <ArrowUpFromLine className="h-4 w-4 text-red-500" />
-                      <ChevronDown
-                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                        aria-hidden="true"
-                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          tarjetas.alternar()
+                        }}
+                        aria-expanded={tarjetasAbiertas}
+                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </div>
                   </div>
+                  <p className="text-lg font-bold whitespace-nowrap text-red-600">
+                    {`−${formatCurrency(gastosSemanaJaz)}`}
+                  </p>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
-                    <p className="text-lg font-bold whitespace-nowrap text-red-600">
-                      {`−${formatCurrency(gastosSemanaJaz)}`}
-                    </p>
                     <p className="text-xs mt-auto pt-1 text-muted-foreground">
                       {gastosSemanaJazDetalle || "Sin gastos esta semana"}
                     </p>
@@ -1963,16 +2040,27 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
-                      <ChevronDown
-                        className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                        aria-hidden="true"
-                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          tarjetas.alternar()
+                        }}
+                        aria-expanded={tarjetasAbiertas}
+                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </div>
                   </div>
+                  <p className="text-lg font-bold whitespace-nowrap text-foreground">
+                    {formatCurrency(saldoFinSemanaJaz)}
+                  </p>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
-                    <p className="text-lg font-bold whitespace-nowrap text-foreground">
-                      {formatCurrency(saldoFinSemanaJaz)}
-                    </p>
                     <p className="text-xs mt-auto pt-1 text-muted-foreground">
                       Saldo actual + cobros − gastos
                     </p>

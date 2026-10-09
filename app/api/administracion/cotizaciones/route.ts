@@ -14,6 +14,10 @@ import { faltantesCotizacion } from "@/lib/faltantes-evento"
  * Modelo nuevo (Paso 2, servicios_elegidos.version 2): trae además el
  * desglose por rubro (costo, ganancia y precio), los avisos, el DNI y las
  * líneas de personal que salieron de las reglas del salón.
+ *
+ * Con ?historial=1 trae en cambio las ya resueltas (convertidas en evento y
+ * rechazadas), las más recientes primero, para la pestaña "Historial". Mismo
+ * chequeo de perfil: solo Administración y Soporte.
  */
 
 function parseJson(raw: unknown): any {
@@ -40,6 +44,8 @@ interface CotizacionFila {
   desglose_venta: unknown
   avisos: unknown
   cliente_dni: string | null
+  comentario_admin: string | null
+  evento_id: string | null
   estado: string
   created_at: string
   updated_at: string
@@ -49,11 +55,23 @@ export async function GET(req: Request) {
   const prohibido = await soloAdministracion(req)
   if (prohibido) return prohibido
   try {
-    const filas = (await sql`
+    const historial = new URL(req.url).searchParams.get("historial") === "1"
+    const filas = (historial
+      ? await sql`
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin,
              salon, tipo_evento, nombre_festejados, paquete_id, invitados, servicios_elegidos,
              precio_venta_sugerido, costos_internos, desglose_venta, avisos, cliente_dni,
-             estado, created_at, updated_at
+             comentario_admin, evento_id, estado, created_at, updated_at
+      FROM cotizaciones
+      WHERE estado IN ('convertida', 'rechazada')
+      ORDER BY updated_at DESC
+      LIMIT 200
+    `
+      : await sql`
+      SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin,
+             salon, tipo_evento, nombre_festejados, paquete_id, invitados, servicios_elegidos,
+             precio_venta_sugerido, costos_internos, desglose_venta, avisos, cliente_dni,
+             comentario_admin, evento_id, estado, created_at, updated_at
       FROM cotizaciones
       WHERE estado = 'lista_para_revisar'
       ORDER BY updated_at ASC
@@ -121,6 +139,8 @@ export async function GET(req: Request) {
         // cotizaciones sin barra personalizada o anteriores a esto.
         costoBarraPersonalizada: Number(costosInternos.costoBarraPersonalizada) || 0,
         estado: f.estado,
+        comentarioAdmin: f.comentario_admin,
+        eventoId: f.evento_id,
         createdAt: f.created_at,
         updatedAt: f.updated_at,
       }

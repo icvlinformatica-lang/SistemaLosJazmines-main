@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Clock, History, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -34,6 +34,7 @@ import {
 } from "@/components/cotizacion-detalle-admin"
 import { FaltantesChip } from "@/components/faltantes-evento-aviso"
 import type { FaltanteEvento } from "@/lib/faltantes-evento"
+import { diasEsperando, fechaEventoCorta, haceCuanto, ordenarPorFechaEvento } from "@/lib/cotizaciones-bandeja"
 
 interface CotizacionPendiente {
   /** 2 = modelo costo + ganancia por salón (Paso 2). Las anteriores, 1. */
@@ -64,7 +65,17 @@ interface CotizacionPendiente {
   costoBarraPersonalizada: number
   /** Qué le va a faltar al evento al aprobarla (lib/faltantes-evento.ts). */
   faltantes?: FaltanteEvento[]
+  estado?: string
+  /** Comentario del rechazo (solo en el Historial). */
+  comentarioAdmin?: string | null
+  /** Evento creado al aprobarla (solo en el Historial). */
+  eventoId?: string | null
+  /** Lo deja "Enviar a revisión" (y aprobar o rechazar, en el Historial). */
+  updatedAt?: string
 }
+
+/** A partir de cuántos días esperando se marca en ámbar "enviada hace N días". */
+const DIAS_ESPERA_AVISO = 3
 
 /**
  * Tarjeta "Precio base por salón" (Configuración): ya no la usa nada.
@@ -78,6 +89,18 @@ const TITULO_FALTANTES = "Lo que le va a faltar al evento cuando se apruebe. Se 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
+/** "enviada hace N días": en ámbar si ya espera DIAS_ESPERA_AVISO días o más. */
+function Espera({ cuando }: { cuando?: string | null }) {
+  const texto = haceCuanto(cuando)
+  if (!texto) return null
+  const demorada = diasEsperando(cuando) >= DIAS_ESPERA_AVISO
+  return (
+    <span className={`inline-flex items-center gap-1 ${demorada ? "font-medium text-amber-700" : ""}`}>
+      <Clock className="h-3 w-3" /> {texto}
+    </span>
+  )
+}
+
 export default function CotizacionesPendientesPage() {
   const { toast } = useToast()
   const { recetas, vendedores, personal } = useStore()
@@ -88,7 +111,9 @@ export default function CotizacionesPendientesPage() {
   // Compu: cotización abierta en el panel de la derecha. Si no se eligió
   // ninguna (o la elegida ya no está), se muestra la primera.
   const [seleccionadaId, setSeleccionadaId] = useState<string | null>(null)
-  const seleccionada = cotizaciones.find((c) => c.id === seleccionadaId) ?? cotizaciones[0] ?? null
+  // Primero el evento más cercano: es el que más apura aprobar.
+  const ordenadas = useMemo(() => ordenarPorFechaEvento(cotizaciones), [cotizaciones])
+  const seleccionada = ordenadas.find((c) => c.id === seleccionadaId) ?? ordenadas[0] ?? null
 
   // Precio base de respaldo por salón (Calendario de Precios cubre fecha
   // exacta; esto es lo que se usa cuando esa fecha no tiene precio cargado).
@@ -131,6 +156,22 @@ export default function CotizacionesPendientesPage() {
   }
 
   useEffect(cargar, [])
+
+  // Pestaña "Historial": convertidas en evento y rechazadas. Se carga recién
+  // al abrirla (y de nuevo cada vez que se vuelve a abrir, por si se aprobó o
+  // rechazó algo mientras tanto).
+  const [historial, setHistorial] = useState<CotizacionPendiente[] | null>(null)
+  const [errorHistorial, setErrorHistorial] = useState(false)
+  const cargarHistorial = () => {
+    setErrorHistorial(false)
+    fetch("/api/administracion/cotizaciones?historial=1")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok) setHistorial(data.cotizaciones || [])
+        else setErrorHistorial(true)
+      })
+      .catch(() => setErrorHistorial(true))
+  }
 
   useEffect(() => {
     fetch("/api/administracion/precios-base")
@@ -309,6 +350,13 @@ export default function CotizacionesPendientesPage() {
     const ganancia = c.precioVentaSugerido - (c.precioBaseSalon + c.totalCostoServicios + costoBarra)
     return (
       <>
+        {/* Teléfono del cliente para llamarlo desde acá. Las del modelo
+            anterior ya lo muestran en sus datos, más abajo. */}
+        {c.version === 2 && c.clienteTelefono && (
+          <a href={`tel:${c.clienteTelefono.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-2 hover:underline">
+            <Phone className="h-3.5 w-3.5" /> {c.clienteTelefono}
+          </a>
+        )}
         {c.version === 2 && c.desglose ? (
           <DetalleCotizacionNueva
             desglose={c.desglose}
@@ -332,7 +380,7 @@ export default function CotizacionesPendientesPage() {
           )}
           {c.fechaEvento && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
-              <Calendar className="h-3.5 w-3.5" /> {c.fechaEvento}
+              <Calendar className="h-3.5 w-3.5" /> {fechaEventoCorta(c.fechaEvento)}
               {c.horario && ` · ${c.horario}${c.horarioFin ? ` a ${c.horarioFin}` : ""}`}
             </div>
           )}
@@ -552,16 +600,27 @@ export default function CotizacionesPendientesPage() {
             mandaron los vendedores, y configurar con qué precios cotizan.
             Lo primero es lo que se hace todos los días, así que va primero
             y abierto; lo segundo se toca cada tanto. */}
-        <Tabs defaultValue="aprobar" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2 lg:max-w-lg">
+        <Tabs
+          defaultValue="aprobar"
+          className="space-y-4"
+          onValueChange={(v) => {
+            if (v === "historial") cargarHistorial()
+          }}
+        >
+          <TabsList className="grid w-full grid-cols-3 lg:max-w-2xl">
             <TabsTrigger value="aprobar" className="gap-2">
               <CheckCircle2 className="h-4 w-4" />
-              Cotizaciones a aprobar
+              <span className="sm:hidden">A aprobar</span>
+              <span className="hidden sm:inline">Cotizaciones a aprobar</span>
               {cotizaciones.length > 0 && (
                 <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
                   {cotizaciones.length}
                 </span>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="historial" className="gap-2">
+              <History className="h-4 w-4" />
+              Historial
             </TabsTrigger>
             <TabsTrigger value="configuracion" className="gap-2">
               <Settings className="h-4 w-4" />
@@ -596,7 +655,7 @@ export default function CotizacionesPendientesPage() {
             {/* Celular y tablet: una tarjeta por cotización que se despliega
                 ahí mismo (como siempre). */}
             <div className="space-y-4 lg:hidden">
-              {cotizaciones.map((c) => {
+              {ordenadas.map((c) => {
                 const abierta = abiertaId === c.id
                 return (
                   <div
@@ -612,7 +671,8 @@ export default function CotizacionesPendientesPage() {
                             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-muted-foreground">
                               <span>Vendedor: {c.vendedor}</span>
                               {c.salon && <span>{salonLabel(c.salon)}</span>}
-                              {c.fechaEvento && <span>{c.fechaEvento}</span>}
+                              {c.fechaEvento && <span>{fechaEventoCorta(c.fechaEvento)}</span>}
+                              <Espera cuando={c.updatedAt} />
                             </div>
                             <FaltantesChip faltan={c.faltantes ?? []} title={TITULO_FALTANTES} />
                           </div>
@@ -638,7 +698,7 @@ export default function CotizacionesPendientesPage() {
                 vista abajo. Se pasa de una a otra sin abrir y cerrar. */}
             <div className="hidden lg:grid lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] lg:items-start lg:gap-6">
               <div className="sticky top-24 max-h-[calc(100vh-7rem)] space-y-2 overflow-y-auto pr-1" role="list" aria-label="Cotizaciones esperando aprobación">
-                {cotizaciones.map((c) => {
+                {ordenadas.map((c) => {
                   const elegida = seleccionada?.id === c.id
                   return (
                     <button
@@ -658,8 +718,9 @@ export default function CotizacionesPendientesPage() {
                       </div>
                       <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                         {c.salon && <span>{salonLabel(c.salon)}</span>}
-                        {c.fechaEvento && <span>{c.fechaEvento}</span>}
+                        {c.fechaEvento && <span>{fechaEventoCorta(c.fechaEvento)}</span>}
                         <span>Vendedor: {c.vendedor}</span>
+                        <Espera cuando={c.updatedAt} />
                       </div>
                       <FaltantesChip faltan={c.faltantes ?? []} title={TITULO_FALTANTES} />
                     </button>
@@ -686,7 +747,7 @@ export default function CotizacionesPendientesPage() {
                         {seleccionada.fechaEvento && (
                           <span className="flex items-center gap-1.5">
                             <Calendar className="h-3.5 w-3.5" />
-                            {seleccionada.fechaEvento}
+                            {fechaEventoCorta(seleccionada.fechaEvento)}
                             {seleccionada.horario && ` · ${seleccionada.horario}${seleccionada.horarioFin ? ` a ${seleccionada.horarioFin}` : ""}`}
                           </span>
                         )}
@@ -717,6 +778,68 @@ export default function CotizacionesPendientesPage() {
               y el tarifario se recarga entero cada vez que se cambia de
               pestaña — perdiendo, sin aviso, los precios editados y todavía
               sin guardar. Montado siempre, el trabajo a medias sobrevive. */}
+          <TabsContent value="historial" className="space-y-3 mt-0">
+            <p className="text-sm text-muted-foreground">
+              Las cotizaciones ya resueltas: las que se aprobaron (convertidas en evento) y las rechazadas, las más
+              recientes primero.
+            </p>
+            {errorHistorial ? (
+              <div role="alert" className="flex flex-col items-center gap-3 py-8 text-sm">
+                <p>No se pudo cargar el historial.</p>
+                <Button variant="outline" onClick={cargarHistorial}>Reintentar</Button>
+              </div>
+            ) : historial === null ? (
+              <p className="text-sm text-muted-foreground">Cargando...</p>
+            ) : historial.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed rounded-lg">
+                <History className="h-10 w-10 text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground">Todavía no hay cotizaciones aprobadas ni rechazadas</p>
+              </div>
+            ) : (
+              <ul className="space-y-2 lg:max-w-3xl" aria-label="Historial de cotizaciones">
+                {historial.map((c) => {
+                  const convertida = c.estado === "convertida"
+                  return (
+                    <li
+                      key={c.id}
+                      className="rounded-lg border border-l-4 border-border bg-card px-3 py-2.5"
+                      style={{ borderLeftColor: c.salon ? salonColor(c.salon) : "#6b7280" }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 truncate font-semibold text-card-foreground">{c.clienteNombre}</p>
+                        <span className="shrink-0 font-bold tabular-nums text-card-foreground">{fmt(c.precioVentaSugerido)}</span>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        {c.salon && <span>{salonLabel(c.salon)}</span>}
+                        {c.fechaEvento && <span>{fechaEventoCorta(c.fechaEvento)}</span>}
+                        <span>Vendedor: {c.vendedor}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${
+                            convertida ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {convertida ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                          {convertida ? "Aprobada, convertida en evento" : "Rechazada"}
+                        </span>
+                        <span className="text-muted-foreground">{haceCuanto(c.updatedAt, convertida ? "aprobada" : "rechazada")}</span>
+                        {convertida && c.eventoId && (
+                          <Link href={`/evento?id=${c.eventoId}`} className="font-medium text-primary underline underline-offset-2">
+                            Ver evento
+                          </Link>
+                        )}
+                      </div>
+                      {!convertida && c.comentarioAdmin && (
+                        <p className="mt-1.5 break-words text-xs text-muted-foreground">Comentario: {c.comentarioAdmin}</p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </TabsContent>
+
           <TabsContent
             value="configuracion"
             forceMount
