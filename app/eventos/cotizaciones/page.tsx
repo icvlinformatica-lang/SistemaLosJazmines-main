@@ -720,7 +720,7 @@ export default function CotizacionesPendientesPage() {
           <TabsContent
             value="configuracion"
             forceMount
-            className="space-y-4 mt-0 lg:max-w-4xl data-[state=inactive]:hidden"
+            className="space-y-4 mt-0 data-[state=inactive]:hidden"
           >
             {/* Tarifario del cotizador: grilla del salón, regla de personal y
                 qué incluye el precio del salón. */}
