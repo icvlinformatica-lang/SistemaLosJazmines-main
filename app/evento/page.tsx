@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
+import { DietasDetalleEditor } from "@/components/dietas-detalle-editor"
+import { normalizarDietasDetalle, totalConDetalle, type DietaDetalle } from "@/lib/dietas-evento"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { calcularProporcionCajaEventos, construirSenaInicial, senaAAnotarAlEditar } from "@/lib/cobrar-cuota"
 import { insumosEnSalon } from "@/lib/stock-salon-evento"
@@ -612,6 +614,9 @@ function EventoPageContent() {
       adolescentes: evento.adolescentes,
       ninos: evento.ninos,
       personasDietasEspeciales: evento.personasDietasEspeciales,
+      // Dietas por tipo (scripts/022): solo si se cargaron, para no escribir la
+      // columna nueva en cada guardado.
+      ...(evento.dietasDetalle ? { dietasDetalle: normalizarDietasDetalle(evento.dietasDetalle) } : {}),
       recetasAdultos: evento.recetasAdultos,
       recetasAdolescentes: evento.recetasAdolescentes,
       recetasNinos: evento.recetasNinos,
@@ -1966,12 +1971,34 @@ function EventoPageContent() {
                     type="number"
                     value={localDietasEspeciales}
                     onChange={(e) => setLocalDietasEspeciales(e.target.value)}
-                    onBlur={() => handleBlur("personasDietasEspeciales", Number.parseInt(localDietasEspeciales) || 0)}
+                    onBlur={() => {
+                      // Nunca menos que lo detallado por tipo (abajo): para bajar el
+                      // total hay que sacar primero alguna dieta del detalle.
+                      const total = totalConDetalle(Number.parseInt(localDietasEspeciales) || 0, evento.dietasDetalle)
+                      setLocalDietasEspeciales(String(total))
+                      handleBlur("personasDietasEspeciales", total)
+                    }}
                     className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
+              </div>
+
+              {/* El total de dietas es el número de arriba (el que usa el
+                  costo de cocina); acá se detalla por tipo para la cocina. */}
+              <div className="mt-2">
+                <DietasDetalleEditor
+                  detalle={evento.dietasDetalle ?? []}
+                  total={evento.personasDietasEspeciales || 0}
+                  disabled={esBloqueado}
+                  ayuda="La cocina lo ve en la guía de producción. Las alergias aparecen en rojo."
+                  onChange={(detalle: DietaDetalle[]) => {
+                    const total = totalConDetalle(evento.personasDietasEspeciales, detalle)
+                    setLocalDietasEspeciales(String(total))
+                    updateEventoActual({ dietasDetalle: detalle, personasDietasEspeciales: total })
+                  }}
+                />
               </div>
 
               <div className="rounded-lg bg-secondary p-3 mt-2">

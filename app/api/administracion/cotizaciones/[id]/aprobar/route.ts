@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { soloAdministracion } from "@/lib/solo-administracion"
+import { separarDietasDeAdultos } from "@/lib/dietas-evento"
+import { normalizarOrigen } from "@/lib/origen-cliente"
 import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
 
 /**
@@ -69,6 +71,7 @@ interface CotizacionFila {
   precio_venta_sugerido: number
   costos_internos: unknown
   estado: string
+  origen_cliente?: string | null
 }
 
 interface PersonalEventoBody {
@@ -130,7 +133,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       UPDATE cotizaciones SET estado = 'aprobada', updated_at = now()
       WHERE id = ${id} AND estado = 'lista_para_revisar'
       RETURNING id, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
-                nombre_festejados, cliente_dni, invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado
+                nombre_festejados, cliente_dni, invitados, servicios_elegidos, precio_venta_sugerido, costos_internos, estado,
+                (to_jsonb(cotizaciones) ->> 'origen_cliente') AS origen_cliente
     `) as unknown as CotizacionFila[]
 
     if (!filas.length) {
@@ -233,6 +237,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const fechaEvento = fechaEventoOverride !== undefined ? fechaEventoOverride : c.fecha_evento || ""
 
+    // Dietas por tipo (lib/dietas-evento.ts): el vendedor las carga como parte
+    // de los adultos (se cobran igual, el precio no cambia). En el evento la
+    // cocina las cuenta aparte: salen de los adultos. El menú de dietas lo
+    // elige Administración en el planificador, como siempre.
+    const dietas = separarDietasDeAdultos(Number(invitados.adultos) || 0, invitados.dietasDetalle)
+    const conDietasNuevas = dietas.personasDietasEspeciales > 0
+
     // Precio de venta del evento = EXACTAMENTE el precio que se le cotizó al
     // cliente (precio_venta_sugerido, calculado por lib/tarifario-cotizador.ts
     // al guardar la cotización). Ya no se recalcula acá: lo que se firmó con
@@ -251,10 +262,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       horarioFin: c.horario_fin || "",
       salon: c.salon || undefined,
       tipoEvento: c.tipo_evento || undefined,
-      adultos: Number(invitados.adultos) || 0,
+      adultos: conDietasNuevas ? dietas.adultos : Number(invitados.adultos) || 0,
       adolescentes: Number(invitados.adolescentes) || 0,
       ninos: Number(invitados.ninos) || 0,
-      personasDietasEspeciales: Number(invitados.personasDietasEspeciales) || 0,
+      personasDietasEspeciales: conDietasNuevas ? dietas.personasDietasEspeciales : Number(invitados.personasDietasEspeciales) || 0,
+      ...(conDietasNuevas ? { dietasDetalle: dietas.dietasDetalle } : {}),
+      ...(normalizarOrigen(c.origen_cliente) ? { origenCliente: normalizarOrigen(c.origen_cliente) } : {}),
       recetasAdultos: Array.isArray(recetas.adultos) ? recetas.adultos : [],
       recetasAdolescentes: Array.isArray(recetas.adolescentes) ? recetas.adolescentes : [],
       // Modelo nuevo: el menú elegido va también a niños (ver cabecera).
