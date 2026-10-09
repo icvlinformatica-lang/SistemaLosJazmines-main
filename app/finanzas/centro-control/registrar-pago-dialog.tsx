@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { DollarSign, Save } from "lucide-react"
 import type { EgresoUnificado } from "@/lib/tipos-financieros"
 import { toast } from "sonner"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
 
 // En comprobantes/pagos al cliente se muestran los centavos
 const formatCurrencyConCentavos = (monto: number) =>
@@ -59,7 +60,7 @@ export default function RegistrarPagoDialog({
   
   const [formData, setFormData] = useState({
     tipoPago: "" as "transferencia" | "efectivo" | "otro" | "",
-    fechaPago: new Date().toISOString().split("T")[0],
+    fechaPago: fechaNegocio(),
     notas: "",
     archivar: true,
   })
@@ -68,7 +69,7 @@ export default function RegistrarPagoDialog({
     if (egreso && open) {
       setFormData({
         tipoPago: egreso.pago?.tipoPago || "",
-        fechaPago: new Date().toISOString().split("T")[0],
+        fechaPago: fechaNegocio(),
         notas: egreso.pago?.notas || "",
         archivar: egreso.archivaAutomatico,
       })

@@ -28,6 +28,8 @@ import { puedeVerConsolidado } from "@/lib/stock-salones"
  * que la pantalla lo pueda avisar.
  *
  * Todo en una transacción: o se aplica entero o no se aplica nada.
+ * Con motivo "impresion" y eventoId, también marca el evento como descontado
+ * y, si ya lo estaba, no descuenta nada (yaDescontado: true).
  */
 
 const MAX_ITEMS = 1000
@@ -84,6 +86,20 @@ export async function POST(req: Request) {
       const saltados: string[] = []
       let aplicados = 0
 
+      // Al imprimir, el descuento y la marca "stock descontado" del evento van
+      // en la misma transacción, con el evento bloqueado: si la conexión se
+      // corta entre los dos pasos, o dos personas imprimen a la vez, el stock
+      // no se descuenta dos veces.
+      const marcarEvento = motivo === "impresion" && eventoId !== null
+      if (marcarEvento) {
+        const ev = (await tx`
+          SELECT stock_descontado FROM eventos WHERE id = ${eventoId} FOR UPDATE
+        `) as unknown as Array<{ stock_descontado: boolean | null }>
+        if (ev[0]?.stock_descontado === true) {
+          return { aplicados: 0, saltados, yaDescontado: true }
+        }
+      }
+
       for (const it of items) {
         const delta = Number(it.delta)
         if (delta === 0) continue
@@ -133,7 +149,11 @@ export async function POST(req: Request) {
         `
       }
 
-      return { aplicados, saltados }
+      if (marcarEvento) {
+        await tx`UPDATE eventos SET stock_descontado = true WHERE id = ${eventoId}`
+      }
+
+      return { aplicados, saltados, yaDescontado: false }
     })
 
     return NextResponse.json({
@@ -141,6 +161,7 @@ export async function POST(req: Request) {
       aplicados: resultado.aplicados,
       sinConteo: resultado.saltados.length,
       saltados: resultado.saltados,
+      yaDescontado: resultado.yaDescontado,
       eventoId,
     })
   } catch (err) {

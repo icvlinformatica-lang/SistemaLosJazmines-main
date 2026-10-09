@@ -5,6 +5,7 @@ import { respuestaSalonOcupado } from "@/lib/salon-ocupado"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
 
 // camelCase → snake_case for DB insert/update
 function toRow(ev: Record<string, unknown>) {
@@ -194,7 +195,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: mensajeAnioEventoInvalido(validacionAnio.anio) }, { status: 400 })
     }
 
-    await sql`
+    // `fecha_alta` va explícita con la fecha de Argentina: el default de la base
+    // (current_date) es el día UTC y desde las 21:00 anotaba la de mañana.
+    // RETURNING (xmax = 0) dice si la fila es nueva: si es un reintento de
+    // fetchWithRetry que cae en ON CONFLICT, no se repiten el mail ni el registro.
+    const [filaInsert] = await sql`
       INSERT INTO eventos (
         id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
         dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
@@ -205,7 +210,8 @@ export async function POST(req: Request) {
         precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion,
-        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato,
+        fecha_alta
       ) VALUES (
         ${r.id}, ${r.nombre}, ${r.fecha}, ${r.horario}, ${r.horario_fin}, ${r.salon},
         ${r.tipo_evento}, ${r.nombre_pareja}, ${r.dni_novio1}, ${r.dni_novio2},
@@ -217,12 +223,15 @@ export async function POST(req: Request) {
         ${r.precio_venta}, ${r.precio_venta_fijo}, ${r.cotizacion_id}, ${r.costo_personal}, ${r.costo_insumos}, ${r.costo_servicios}, ${r.costo_operativo},
         ${r.notas_internas}, ${r.pagos}, ${r.asignaciones}, ${r.costos_calculados},
         ${r.stock_descontado}, ${r.fecha_impresion},
-        ${r.versiones_contrato}, ${r.generaciones_contrato}, ${r.servicios_contrato}, ${r.servicios_libres_contrato}
+        ${r.versiones_contrato}, ${r.generaciones_contrato}, ${r.servicios_contrato}, ${r.servicios_libres_contrato},
+        ${fechaNegocio()}
       )
       ON CONFLICT (id) DO UPDATE SET
         nombre = EXCLUDED.nombre, fecha = EXCLUDED.fecha, estado = EXCLUDED.estado,
         updated_at = NOW()
+      RETURNING (xmax = 0) AS insertado
     `
+    const esNuevo = filaInsert?.insertado !== false
 
     // Re-fetch con columnas explícitas
     const rows2 = await sql`
@@ -240,6 +249,7 @@ export async function POST(req: Request) {
       FROM eventos WHERE id = ${r.id}
     `
     const created = rows2[0]
+    if (!esNuevo) return NextResponse.json(fromRow(created), { status: 201 })
     await logActivity("evento", "creado", nombre, `Fecha: ${r.fecha || "sin fecha"} | Salon: ${r.salon || "sin salon"}`)
     await sendEventNotification("creado", {
       nombre,

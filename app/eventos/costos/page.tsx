@@ -19,7 +19,8 @@ import { useStore } from "@/lib/store-context"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { calcularCostoEventoCajaEventos, congeladoValido } from "@/lib/costo-evento"
 import { useToast } from "@/hooks/use-toast"
-import { aFechaISO, fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
+import { fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
 import {
   AvisoSeñaBloqueada,
   PinSeñaExtraordinariaDialog,
@@ -301,7 +302,7 @@ function CostosEventoContent() {
     return mov
   }
 
-  const hoyStr = new Date().toISOString().split("T")[0]
+  const hoyStr = fechaNegocio()
 
   // Con el evento archivado no se registran ni revierten pagos: los datos
   // están congelados hasta que se saque el evento del archivo.
@@ -344,7 +345,7 @@ function CostosEventoContent() {
 
   // --- Servicios: seña ---
   // Fecha de habilitación si la seña todavía está bloqueada (null si ya se puede pagar).
-  const habilitacionSeña = señaBloqueada(evento.fechaAlta, evento.fecha, aFechaISO(new Date()))
+  const habilitacionSeña = señaBloqueada(evento.fechaAlta, evento.fecha, fechaNegocio())
     ? fechaHabilitacionSeña(evento.fechaAlta, evento.fecha)
     : null
 

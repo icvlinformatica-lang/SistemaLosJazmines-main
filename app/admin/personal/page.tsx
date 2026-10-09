@@ -53,6 +53,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { PersonalEvento, PagoPersonal } from "@/lib/store"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
 
 // Colores de badge por función (estilo Servicios)
 const FUNCION_COLORS: Record<string, string> = {
@@ -342,7 +343,7 @@ export default function PersonalPage() {
     updatePagoPersonal(pagoSeleccionado.id, {
       estado: "pagado",
       tipoPago: pagoForm.tipoPago,
-      fechaPago: new Date().toISOString().split("T")[0],
+      fechaPago: fechaNegocio(),
       notasPago: pagoForm.notas,
     })
 
