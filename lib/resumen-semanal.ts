@@ -94,10 +94,17 @@ export async function buildResumenSemanal(hoy = hoyArgentina()): Promise<Resumen
   const inicio = lunesDeLaSemana(hoy)
   const fin = sumarDias(inicio, 4) // viernes
 
+  // Sin los movimientos de eventos borrados (en la papelera): las pantallas de
+  // caja tampoco los cuentan (store-context, "Auto-sanear"), y el mail tiene
+  // que dar lo mismo que la pantalla.
   const movRows = (await sql`
     SELECT tipo, concepto, monto, salon, caja_destino, fecha
     FROM movimientos_caja
     WHERE LEFT(fecha, 10) BETWEEN ${sumarDias(inicio, -1)} AND ${sumarDias(fin, 1)}
+      AND (
+        evento_id IS NULL OR evento_id::text = ''
+        OR EXISTS (SELECT 1 FROM eventos e WHERE e.id = movimientos_caja.evento_id::text AND e.deleted_at IS NULL)
+      )
     ORDER BY created_at DESC
   `) as unknown as Record<string, unknown>[]
 
@@ -135,6 +142,10 @@ export async function buildResumenSemanal(hoy = hoyArgentina()): Promise<Resumen
     SELECT salon, caja_destino, tipo, SUM(monto)::float AS total
     FROM movimientos_caja
     WHERE salon = ANY(${SALONES as unknown as string[]})
+      AND (
+        evento_id IS NULL OR evento_id::text = ''
+        OR EXISTS (SELECT 1 FROM eventos e WHERE e.id = movimientos_caja.evento_id::text AND e.deleted_at IS NULL)
+      )
     GROUP BY salon, caja_destino, tipo
   `) as unknown as Record<string, unknown>[]
   for (const r of saldoRows) {

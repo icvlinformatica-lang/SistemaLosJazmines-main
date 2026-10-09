@@ -93,3 +93,15 @@ test("con el PIN equivocado, poner Diego no sirve", async () => {
   assert.equal(status, 401)
   assert.equal(data.accesosRapidos, undefined)
 })
+
+test("entrar con la clave maestra da una sesión válida con la firma de sesiones actual", async () => {
+  process.env.PIN_MAESTRO = "48151623"
+  try {
+    const { status, data } = await login({ perfilId: "cocina", pin: "48151623" })
+    assert.equal(status, 200)
+    assert.equal((await auth.verifyToken(data.sessionToken))?.perfilId, "cocina")
+    assert.equal((await auth.verifyToken(data.quickToken))?.perfilId, "cocina")
+  } finally {
+    delete process.env.PIN_MAESTRO
+  }
+})

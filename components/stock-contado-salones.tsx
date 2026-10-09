@@ -6,8 +6,10 @@
 // columna Stock (stock_actual global), que no se toca: son dos números
 // distintos a propósito y no hay que igualarlos.
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type CSSProperties } from "react"
 import { useProfile } from "@/lib/profile-context"
+import { useStore } from "@/lib/store-context"
+import { salonColor } from "@/lib/store"
 import {
   fechaHoraCortaArgentina,
   puedeVerConsolidado,
@@ -15,14 +17,17 @@ import {
   type SectorStock,
 } from "@/lib/stock-salones"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Info } from "lucide-react"
+import { ChevronDown, Info } from "lucide-react"
 
 interface StockContado {
   /** false → no se muestra la columna (perfil sin permiso o error al cargar). */
   visible: boolean
-  salones: Array<{ id: string; nombre: string }>
+  /** color: el del salón (Configuración de Cajas o el de siempre). */
+  salones: Array<{ id: string; nombre: string; color: string }>
   porInsumo: Map<string, ResumenStockInsumo>
   error: boolean
+  /** Vuelve a pedir los conteos (después de ajustar el stock desde el lapicito). */
+  recargar: () => void
 }
 
 export function useStockContadoSalones(sector: SectorStock): StockContado {
@@ -31,6 +36,7 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
   const [salones, setSalones] = useState<Array<{ id: string; nombre: string }>>([])
   const [porInsumo, setPorInsumo] = useState<Map<string, ResumenStockInsumo>>(new Map())
   const [error, setError] = useState(false)
+  const [version, setVersion] = useState(0)
 
   useEffect(() => {
     if (!permitido) return
@@ -43,6 +49,7 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
           setError(true)
           return
         }
+        setError(false)
         setSalones(data.salones || [])
         setPorInsumo(new Map((data.insumos as ResumenStockInsumo[]).map((i) => [i.insumoId, i])))
       })
@@ -52,9 +59,18 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
     return () => {
       cancelado = true
     }
-  }, [permitido, sector])
+  }, [permitido, sector, version])
 
-  return { visible: permitido && !error, salones, porInsumo, error: permitido && error }
+  const { configuracionCajas } = useStore()
+  const salonesConColor = salones.map((s) => ({ ...s, color: salonColor(s.id, configuracionCajas) }))
+
+  return {
+    visible: permitido && !error,
+    salones: salonesConColor,
+    porInsumo,
+    error: permitido && error,
+    recargar: () => setVersion((v) => v + 1),
+  }
 }
 
 function fmtCantidad(n: number): string {
@@ -169,7 +185,7 @@ export function StockSalonCelda({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="rounded px-1 text-right tabular-nums hover:bg-muted"
+          className="-mr-1 rounded px-1 text-right tabular-nums hover:bg-muted"
           aria-label={`${nombreSalon}: ${fmtCantidad(dato.cantidad)} ${unidad}. Ver quién lo cargó y el desglose completo`}
         >
           <span className="font-semibold underline decoration-dotted underline-offset-4">{fmtCantidad(dato.cantidad)}</span>
@@ -215,20 +231,34 @@ export function StockSalonCelda({
   )
 }
 
+/**
+ * Fondo suave con el color del salón para su columna (título y celdas), así
+ * cada columna se reconoce de un vistazo. "14" en hex es ~8 % de opacidad.
+ */
+export function fondoSalon(color: string): CSSProperties {
+  return { backgroundColor: `${color}14` }
+}
+
 /** Nota corta que explica las columnas de salones, arriba de la tabla. */
 export function StockContadoNota({ error }: { error?: boolean }) {
   if (error) {
     return <p className="mb-3 text-xs text-muted-foreground">No se pudo cargar el conteo por salón.</p>
   }
+  // Va plegada: es una explicación que se lee una vez y ocupaba lugar arriba
+  // de la tabla. Se despliega tocando el título.
   return (
-    <div className="mb-3 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2.5 text-xs text-sky-900">
-      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <p>
+    <details className="group mb-3 rounded-lg border border-sky-200 bg-sky-50 text-xs text-sky-900">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 font-medium [&::-webkit-details-marker]:hidden">
+        <Info className="h-3.5 w-3.5 shrink-0" />
+        ¿Cómo se lee la columna Stock?
+        <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <p className="px-2.5 pb-2.5 pl-8">
         La columna <span className="font-semibold">Stock</span> es la suma de lo que hay en cada salón. Se actualiza
         sola cuando Cocina o Barra cargan su conteo desde la pantalla de Stock — no hace falta tocarla a mano. Un{" "}
         <span className="font-semibold">—</span> quiere decir que en ese salón todavía nadie contó, que no es lo mismo
         que no haber nada. Tocá un número para ver quién lo cargó.
       </p>
-    </div>
+    </details>
   )
 }

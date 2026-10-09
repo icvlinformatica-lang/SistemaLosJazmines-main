@@ -27,6 +27,7 @@ import { insumosEnSalon } from "@/lib/stock-salon-evento"
 import { moverStockDelEvento, itemsDesdeMapa, consumoCocinaDelEvento } from "@/lib/consumo-stock-evento"
 import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
 import { SalonDot } from "@/components/salon-badge"
+import { FaltantesEventoChip } from "@/components/faltantes-evento-aviso"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useEventos } from "@/lib/use-eventos"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
@@ -1324,6 +1325,12 @@ export default function EventosListaPage() {
                                 Creado: {new Date(evento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
                               </Badge>
                             )}
+                            {/* Eventos que vinieron de una cotización: qué les falta cargar. */}
+                            {evento.cotizacionId && evento.estado !== "completado" && (
+                              <div>
+                                <FaltantesEventoChip evento={evento} />
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">
@@ -1410,6 +1417,11 @@ export default function EventosListaPage() {
                             >
                               Creado: {new Date(evento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </Badge>
+                          )}
+                          {evento.cotizacionId && evento.estado !== "completado" && (
+                            <div>
+                              <FaltantesEventoChip evento={evento} />
+                            </div>
                           )}
                         </div>
                       </div>

@@ -2,9 +2,15 @@ export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
+import { soloAdministracion } from "@/lib/solo-administracion"
+
+// La papelera de eventos es solo de Administración y Soporte: trae los eventos
+// completos (con DNI y pagos) y vaciarla no tiene vuelta atrás desde la app.
 
 // GET all deleted eventos (papelera)
-export async function GET() {
+export async function GET(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const rows = await sql`
       SELECT id, estado, nombre, fecha, eliminado_at, motivo,
@@ -29,6 +35,8 @@ export async function GET() {
 
 // DELETE - eliminar definitivamente de la papelera
 export async function DELETE(req: Request) {
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const url = new URL(req.url)
     const id = url.searchParams.get("id")

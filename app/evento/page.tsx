@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
-import { calcularProporcionCajaEventos, construirSenaInicial } from "@/lib/cobrar-cuota"
+import { calcularProporcionCajaEventos, construirSenaInicial, senaAAnotarAlEditar } from "@/lib/cobrar-cuota"
 import { insumosEnSalon } from "@/lib/stock-salon-evento"
 import { moverStockDelEvento } from "@/lib/consumo-stock-evento"
 import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
@@ -111,6 +111,7 @@ import {
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
 import { ContratoPreviewCard } from "@/components/contrato-preview-card"
+import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
 import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
 import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
 
@@ -779,6 +780,16 @@ function EventoPageContent() {
         }
       }
 
+      // Seña de un evento que vino de una cotización (ver senaAAnotarAlEditar):
+      // se decide contra lo GUARDADO antes de este cambio.
+      const eventoGuardadoAntes = (state.eventos || []).find((e) => e.id === editingEventoId)
+      const senaAAnotar = senaAAnotarAlEditar({
+        eventoGuardado: eventoGuardadoAntes,
+        planNuevo: eventData.planDeCuotas,
+        salon: eventData.salon,
+        movimientosCaja: movimientosCaja || [],
+      })
+
       // Actualizar evento existente — await para garantizar persistencia antes de navegar
       const guardado = await updateEvento(editingEventoId, {
         ...eventData,
@@ -787,6 +798,24 @@ function EventoPageContent() {
       if (!guardado) {
         setIsSaving(false)
         return
+      }
+
+      // Recién con el evento guardado: la seña va a las cajas con la misma
+      // regla que al crear un evento (costo + 5% a Caja Eventos, el resto a
+      // Caja Jazmines).
+      if (senaAAnotar > 0 && eventData.salon) {
+        const movsSena = construirSenaInicial({
+          salon: eventData.salon,
+          montoSena: senaAAnotar,
+          nombreEvento: eventData.nombrePareja || eventData.nombre || "Evento",
+          eventoId: editingEventoId,
+          proporcionEventos: calcularProporcionCajaEventos({ ...eventoGuardadoAntes, ...eventData } as unknown as EventoGuardado),
+          movimientosCaja: movimientosCaja || [],
+          fecha: new Date().toISOString(),
+        })
+        if (await addMovimientosCaja(movsSena)) {
+          toast({ title: "Seña anotada en las cajas", description: `Se anotaron ${formatCurrency(senaAAnotar)} de seña, repartidos entre Caja Eventos y Caja Jazmines.` })
+        }
       }
       toast({
         title: fromContratos ? "Contrato actualizado" : "Evento actualizado",
@@ -1482,6 +1511,12 @@ function EventoPageContent() {
               <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
+        )}
+
+        {/* Evento que vino de una cotización aprobada: qué le falta cargar.
+            Se mira lo GUARDADO (originalEvento), no lo que se está tipeando. */}
+        {isEditing && !esSoloLectura && originalEvento?.cotizacionId && (
+          <FaltantesEventoAviso evento={originalEvento} />
         )}
 
         {/* Banner de bloqueo por stock comprometido */}

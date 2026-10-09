@@ -149,6 +149,40 @@ export function construirSenaInicial(params: {
 }
 
 /**
+ * Al EDITAR un evento que vino de una cotización: ¿cuánta seña hay que anotar
+ * en las cajas? Devuelve 0 si no hay que anotar nada.
+ *
+ * Aprobar una cotización crea el evento sin plan de cuotas. Cuando después
+ * Administración le carga "Seña + Cuotas" en el planificador, la seña no se
+ * anotaba en ninguna caja (eso solo pasaba al CREAR un evento) y el control de
+ * comisiones no la veía. Se anota con la misma regla que al crear
+ * (construirSenaInicial), una sola vez:
+ * - solo eventos que vienen de una cotización (los demás ya la anotaron al
+ *   crearse, o son eventos viejos cuya seña se cobró antes del sistema);
+ * - solo si el plan GUARDADO no tenía seña y el nuevo sí;
+ * - y solo si el evento todavía no tiene ningún movimiento de "Seña".
+ */
+export function senaAAnotarAlEditar(params: {
+  /** El evento como estaba guardado antes de este cambio. */
+  eventoGuardado: Pick<EventoGuardado, "id" | "cotizacionId" | "planDeCuotas"> | null | undefined
+  planNuevo: EventoGuardado["planDeCuotas"] | null | undefined
+  salon: string | null | undefined
+  movimientosCaja: MovimientoCaja[]
+}): number {
+  const { eventoGuardado, planNuevo, salon, movimientosCaja } = params
+  if (!eventoGuardado?.cotizacionId || !salon) return 0
+  const montoNuevo = planNuevo?.modalidadPago === "sena" ? Number(planNuevo.montoSena ?? 0) : 0
+  if (!(montoNuevo > 0)) return 0
+  const anterior = eventoGuardado.planDeCuotas
+  const teniaSena = anterior?.modalidadPago === "sena" && Number(anterior.montoSena ?? 0) > 0
+  if (teniaSena) return 0
+  const yaAnotada = movimientosCaja.some(
+    (m) => m.eventoId === eventoGuardado.id && m.tipo === "ingreso" && /^Seña/i.test(m.concepto || ""),
+  )
+  return yaAnotada ? 0 : Math.round(montoNuevo * 100) / 100
+}
+
+/**
  * Construye la actualización necesaria para marcar una cuota como cobrada:
  * - agrega el número de cuota a `planDeCuotas.cuotasPagadas`
  * - genera dos movimientos de ingreso repartidos entre Caja Eventos y Caja
