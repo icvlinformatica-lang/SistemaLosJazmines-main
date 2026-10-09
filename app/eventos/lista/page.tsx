@@ -112,6 +112,40 @@ import {
   MoreVertical,
 } from "lucide-react"
 import { generateId } from "@/lib/utils-client"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
+import {
+  FILTRO_YA_PASARON,
+  coincideBusquedaEvento,
+  entraEnFiltroDeLista,
+  esPasadoSinFinalizar,
+} from "@/lib/lista-eventos"
+import { estadoPagosEvento, textoEstadoPagos } from "@/lib/estado-pagos-evento"
+import { ConfirmarFinalizarEventoDialog } from "@/components/confirmar-finalizar-evento"
+
+// Filtro de estado, orden y búsqueda de la Lista: se recuerdan mientras dure
+// la pestaña (sessionStorage), para que al volver de un evento la lista siga
+// como estaba. Puede fallar (modo privado, almacenamiento bloqueado): en ese
+// caso la pantalla arranca con los valores de siempre.
+const CLAVE_FILTROS_LISTA = "lista-eventos:filtros"
+
+/** Marca chica del estado de pagos (Al día / N cuotas atrasadas). */
+function MarcaPagos({ evento, hoy }: { evento: EventoGuardado; hoy: string }) {
+  const estado = estadoPagosEvento(evento, hoy)
+  if (!estado) return null
+  const atrasado = estado.tipo === "atrasado"
+  return (
+    <div className="mt-1">
+      <Badge
+        variant="outline"
+        className={`px-1.5 py-0 text-[10px] font-medium ${
+          atrasado ? "border-red-300 bg-red-50 text-red-700" : "border-emerald-300 bg-emerald-50 text-emerald-700"
+        }`}
+      >
+        {textoEstadoPagos(estado)}
+      </Badge>
+    </div>
+  )
+}
 
 type CoberturaItem = {
   icon: typeof ChefHat
@@ -438,7 +472,36 @@ export default function EventosListaPage() {
     hojaGastos: true,
   })
 
-  const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("desc")
+  // Por defecto, próximos primero (de hoy en adelante, el más cercano arriba).
+  const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("asc")
+  // "Hoy" del negocio (hora argentina), no el día UTC.
+  const hoy = fechaNegocio()
+
+  // Recuperar filtro, orden y búsqueda al volver a la pantalla.
+  const [filtrosRecuperados, setFiltrosRecuperados] = useState(false)
+  useEffect(() => {
+    try {
+      const guardado = JSON.parse(sessionStorage.getItem(CLAVE_FILTROS_LISTA) || "null")
+      if (guardado && typeof guardado === "object") {
+        const estadosValidos = [...ESTADOS_FILTRO.map((e) => e.valor), FILTRO_YA_PASARON]
+        if (estadosValidos.includes(guardado.filtroEstado)) setFiltroEstado(guardado.filtroEstado)
+        if (guardado.ordenFecha === "asc" || guardado.ordenFecha === "desc") setOrdenFecha(guardado.ordenFecha)
+        if (typeof guardado.searchQuery === "string") setSearchQuery(guardado.searchQuery)
+      }
+    } catch {
+      // Sin almacenamiento: se queda con los valores por defecto.
+    }
+    setFiltrosRecuperados(true)
+  }, [])
+  useEffect(() => {
+    // No guardar antes de recuperar: pisaría lo guardado con los valores por defecto.
+    if (!filtrosRecuperados) return
+    try {
+      sessionStorage.setItem(CLAVE_FILTROS_LISTA, JSON.stringify({ filtroEstado, ordenFecha, searchQuery }))
+    } catch {
+      // Sin almacenamiento: no se recuerda, la lista funciona igual.
+    }
+  }, [filtrosRecuperados, filtroEstado, ordenFecha, searchQuery])
   const [finalizandoId, setFinalizandoId] = useState<string | null>(null)
   const [finalizadoAnimacion, setFinalizadoAnimacion] = useState<string | null>(null)
   const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false)
@@ -495,18 +558,14 @@ export default function EventosListaPage() {
   const [compraConsolidada, setCompraConsolidada] = useState<CalculoCompraSegmentado[] | null>(null)
   const [consolidadaDialogOpen, setConsolidadaDialogOpen] = useState(false)
 
-  // Filter events - excluye completados siempre
+  // Filtrar eventos: los completados nunca (tienen su archivo); los que ya
+  // pasaron sin finalizar van solo en "Ya pasaron" (ver entraEnFiltroDeLista).
+  // La búsqueda mira nombre, pareja, DNI y teléfono del contrato.
   const eventosFiltrados = (eventos || [])
     .filter((e) => {
-      const matchesSearch =
-        !searchQuery ||
-        (e.nombre || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (e.nombrePareja || "").toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesEstado = filtroEstado === "todos" || e.estado === filtroEstado
+      const matchesSearch = coincideBusquedaEvento(e, searchQuery)
       const matchesSalon = filtroSalon === "todos" || e.salon === filtroSalon
-      // Excluir completados completamente de esta vista
-      const esCompletado = e.estado === "completado"
-      return matchesSearch && matchesEstado && matchesSalon && !esCompletado
+      return matchesSearch && matchesSalon && entraEnFiltroDeLista(e, filtroEstado, hoy)
     })
     .sort((a, b) => {
       if (!a.fecha) return 1
@@ -916,9 +975,14 @@ export default function EventosListaPage() {
   const totalEventos = (eventos || []).filter((e) => e.estado !== "completado").length
   // Contadores de los botones de estado: del salón elegido, como la tabla.
   const delSalon = (eventos || []).filter((e) => filtroSalon === "todos" || e.salon === filtroSalon)
-  const conteoPorEstado: Record<string, number> = { todos: 0 }
+  // Los que ya pasaron sin finalizar se cuentan aparte, en su propio botón.
+  const conteoPorEstado: Record<string, number> = { todos: 0, [FILTRO_YA_PASARON]: 0 }
   for (const e of delSalon) {
     if (e.estado === "completado") continue
+    if (esPasadoSinFinalizar(e, hoy)) {
+      conteoPorEstado[FILTRO_YA_PASARON]++
+      continue
+    }
     conteoPorEstado.todos++
     conteoPorEstado[e.estado] = (conteoPorEstado[e.estado] ?? 0) + 1
   }
@@ -947,7 +1011,8 @@ export default function EventosListaPage() {
 
     const elegirEvento = (evento: EventoGuardado) => {
       setFiltroSalon(evento.salon || "todos")
-      setFiltroEstado("todos")
+      // Si ya pasó sin finalizar, solo se ve en "Ya pasaron".
+      setFiltroEstado(esPasadoSinFinalizar(evento, hoy) ? FILTRO_YA_PASARON : "todos")
       setSearchQuery("")
       setEventoResaltado(evento.id)
       setBusquedaEvento("")
@@ -1159,6 +1224,27 @@ export default function EventosListaPage() {
                 </button>
               )
             })}
+            {/* Eventos cuya fecha ya pasó y nadie finalizó: no se mezclan con
+                los próximos. Solo aparece si hay alguno (o si está elegido). */}
+            {(conteoPorEstado[FILTRO_YA_PASARON] > 0 || filtroEstado === FILTRO_YA_PASARON) && (
+              <button
+                type="button"
+                onClick={() => setFiltroEstado(FILTRO_YA_PASARON)}
+                aria-pressed={filtroEstado === FILTRO_YA_PASARON}
+                title="Eventos cuya fecha ya pasó y falta marcarlos como finalizados"
+                className={`flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors ${
+                  filtroEstado === FILTRO_YA_PASARON
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <span className="h-2 w-2 rounded-full bg-orange-500" aria-hidden="true" />
+                Ya pasaron, falta finalizar
+                <span className={`font-bold ${filtroEstado === FILTRO_YA_PASARON ? "" : "text-foreground"}`}>
+                  {conteoPorEstado[FILTRO_YA_PASARON]}
+                </span>
+              </button>
+            )}
             <Link
               href="/eventos/finalizados"
               className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
@@ -1171,7 +1257,7 @@ export default function EventosListaPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nombre..."
+                placeholder="Buscar por nombre, DNI o teléfono..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 h-9"
@@ -1302,6 +1388,7 @@ export default function EventosListaPage() {
                                 Creado: {new Date(evento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
                               </Badge>
                             )}
+                            <MarcaPagos evento={evento} hoy={hoy} />
                             {/* Eventos que vinieron de una cotización: qué les falta cargar. */}
                             {evento.cotizacionId && evento.estado !== "completado" && (
                               <div>
@@ -1395,6 +1482,7 @@ export default function EventosListaPage() {
                               Creado: {new Date(evento.createdAt).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </Badge>
                           )}
+                          <MarcaPagos evento={evento} hoy={hoy} />
                           {evento.cotizacionId && evento.estado !== "completado" && (
                             <div>
                               <FaltantesEventoChip evento={evento} />
@@ -1465,25 +1553,12 @@ export default function EventosListaPage() {
       </AlertDialog>
 
       {/* Finalizar Dialog */}
-      <AlertDialog open={finalizarDialogOpen} onOpenChange={setFinalizarDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Seguro que querés finalizar este evento?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Va a desaparecer de esta lista e irá al archivo de eventos completados.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmFinalizar}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              Sí, finalizar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmarFinalizarEventoDialog
+        open={finalizarDialogOpen}
+        onOpenChange={setFinalizarDialogOpen}
+        fechaEvento={eventoAFinalizarId ? eventos.find((e) => e.id === eventoAFinalizarId)?.fecha : undefined}
+        onConfirm={confirmFinalizar}
+      />
 
       {/* Print Sections Dialog */}
       <Dialog open={imprimirDialogOpen} onOpenChange={setImprimirDialogOpen}>
