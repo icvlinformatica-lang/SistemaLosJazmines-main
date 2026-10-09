@@ -404,6 +404,13 @@ export default function LoginPage() {
                   )}
                   <input
                     type="password"
+                    // El PIN es solo números (abajo se filtra lo que no sea dígito):
+                    // en el celular abre el teclado numérico. La letra va a 16 px en
+                    // pantallas chicas porque con menos el iPhone agranda la página
+                    // al tocar el campo.
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     // 12 y no 6: la clave maestra (PIN_MAESTRO) tiene 8 o más números.
                     maxLength={12}
                     value={pinInput}
@@ -414,7 +421,7 @@ export default function LoginPage() {
                     onKeyDown={(e) => e.key === "Enter" && handleIngresar()}
                     placeholder="PIN"
                     autoFocus
-                    className="w-full text-center rounded-lg px-3 py-2 text-sm border border-gray-200 focus:outline-none focus:border-[#1a3a2a] focus:ring-1 focus:ring-[#1a3a2a] tracking-widest text-[#1a3a2a] placeholder-gray-300 transition-colors"
+                    className="w-full text-center rounded-lg px-3 py-2 text-base sm:text-sm border border-gray-200 focus:outline-none focus:border-[#1a3a2a] focus:ring-1 focus:ring-[#1a3a2a] tracking-widest text-[#1a3a2a] placeholder-gray-300 transition-colors"
                   />
                   {error && <p className="text-red-500 text-xs">{error}</p>}
                   <button

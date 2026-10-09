@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
+import { salonLabel } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -238,7 +239,7 @@ export default function PapeleraPage() {
                           {d.salon ? (
                             <div className="flex items-center gap-1.5 text-sm">
                               <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                              {d.salon}
+                              {salonLabel(d.salon)}
                             </div>
                           ) : (
                             <span className="text-muted-foreground text-sm">-</span>
@@ -285,6 +286,8 @@ export default function PapeleraPage() {
                               size="sm"
                               className="h-7 gap-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                               onClick={() => setEliminarId(evento.id)}
+                              aria-label="Eliminar para siempre"
+                              title="Eliminar para siempre"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>

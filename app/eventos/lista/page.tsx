@@ -98,10 +98,6 @@ import {
   Building2,
   Search,
   ClipboardList,
-  ChevronDown,
-  ChevronUp,
-  LayoutDashboard,
-  CheckCircle,
   CheckCircle2,
   Sparkles,
   RefreshCw,
@@ -232,6 +228,16 @@ function calcularCobertura(evento: EventoGuardado): {
 
   return { items, todoCubierto, algoAplica }
 }
+
+// Botones de estado de la Lista (filtro y contador a la vez). El color del
+// punto es el mismo de la etiqueta de estado de cada fila.
+const ESTADOS_FILTRO: { valor: string; label: string; punto?: string }[] = [
+  { valor: "todos", label: "Todos" },
+  { valor: "borrador", label: "Borrador", punto: "bg-slate-400" },
+  { valor: "pendiente", label: "Pendientes", punto: "bg-amber-400" },
+  { valor: "en_preparacion", label: "En preparación", punto: "bg-sky-400" },
+  { valor: "cancelado", label: "Cancelados", punto: "bg-red-400" },
+]
 
 const estadoConfig: Record<string, { label: string; className: string }> = {
   borrador: {
@@ -423,7 +429,6 @@ export default function EventosListaPage() {
   const [recuperarStockAlEliminar, setRecuperarStockAlEliminar] = useState(false)
   const [recuperarStockDialogOpen, setRecuperarStockDialogOpen] = useState(false)
   const [selectedEventoId, setSelectedEventoId] = useState<string | null>(null)
-  const [showDashboard, setShowDashboard] = useState(true)
   const [imprimirDialogOpen, setImprimirDialogOpen] = useState(false)
   const [imprimirEventoId, setImprimirEventoId] = useState<string | null>(null)
   const [seccionesSeleccionadas, setSeccionesSeleccionadas] = useState<DocumentSections>({
@@ -909,9 +914,15 @@ export default function EventosListaPage() {
 
   // Summary stats (sin incluir finalizados, que tienen su propia página)
   const totalEventos = (eventos || []).filter((e) => e.estado !== "completado").length
-  const eventosPendientes = (eventos || []).filter((e) => e.estado === "pendiente").length
-  const eventosEnPreparacion = (eventos || []).filter((e) => e.estado === "en_preparacion").length
-  const eventosFinalizados = (eventos || []).filter((e) => e.estado === "completado").length
+  // Contadores de los botones de estado: del salón elegido, como la tabla.
+  const delSalon = (eventos || []).filter((e) => filtroSalon === "todos" || e.salon === filtroSalon)
+  const conteoPorEstado: Record<string, number> = { todos: 0 }
+  for (const e of delSalon) {
+    if (e.estado === "completado") continue
+    conteoPorEstado.todos++
+    conteoPorEstado[e.estado] = (conteoPorEstado[e.estado] ?? 0) + 1
+  }
+  const eventosFinalizados = delSalon.filter((e) => e.estado === "completado").length
 
   // Selector de salón estilo perfiles al entrar
   if (selectorAbierto) {
@@ -1088,26 +1099,28 @@ export default function EventosListaPage() {
               <ShoppingCart className="h-4 w-4" />
               <span className="hidden sm:inline">{modoConsolidar ? "Cancelar" : "Consolidar compras"}</span>
             </Button>
-            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
+            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
               Cambiar salón
               <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
             </span>
             <button
               type="button"
               onClick={() => setSelectorAbierto(true)}
-              className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
+              className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background px-2.5 sm:pl-3 sm:pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
               aria-label="Cambiar salón: volver al selector de salones"
             >
               <RefreshCw
                 className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
                 aria-hidden="true"
               />
+              {/* En el celular queda solo el ícono (y el punto del salón): el
+                  nombre ya se ve en el filtro de salón de abajo. */}
               {filtroSalon === "todos" ? (
-                <span>Todos los salones</span>
+                <span className="hidden sm:inline">Todos los salones</span>
               ) : (
                 <span className="flex items-center gap-2">
                   <SalonDot salon={filtroSalon} size={8} />
-                  {salonLabel(filtroSalon)}
+                  <span className="hidden sm:inline">{salonLabel(filtroSalon)}</span>
                 </span>
               )}
             </button>
@@ -1116,107 +1129,71 @@ export default function EventosListaPage() {
       </header>
 
       <main className="mx-auto w-full max-w-none px-4 py-6 sm:px-6">
-        {/* Dashboard Toggle + Summary Cards */}
-        <div className="mb-6">
-          <button
-            onClick={() => setShowDashboard(!showDashboard)}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            <span className="font-medium">Dashboard</span>
-            {showDashboard ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
-          {showDashboard && (
-            <>
-            {/* Total — contador minimalista */}
-            <div className="flex items-center gap-1.5 mb-3">
-              <span className="text-xs text-muted-foreground font-medium">Total</span>
-              <span className="text-xs font-bold text-foreground bg-muted rounded-full px-2 py-0.5">{totalEventos}</span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 sm:gap-4">
-              <Card className="border-amber-200 bg-amber-50">
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-200">
-                      <CalendarIcon className="h-5 w-5 text-amber-800" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-amber-900">{eventosPendientes}</p>
-                      <p className="text-xs text-amber-700 font-medium">Pendientes</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-sky-200 bg-sky-50">
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-200">
-                      <CheckCircle className="h-5 w-5 text-sky-800" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-sky-900">{eventosEnPreparacion}</p>
-                      <p className="text-xs text-sky-700 font-medium">En Preparacion</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-emerald-200 bg-emerald-50">
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-200">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-800" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-emerald-900">{eventosFinalizados}</p>
-                      <p className="text-xs text-emerald-700 font-medium">En archivo</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-            </>
-          )}
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nombre..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-10"
-            />
+        {/* Resumen y filtros en un solo bloque compacto. Los contadores por
+            estado son también el filtro: tocar uno muestra solo esos eventos
+            (reemplazan a las tarjetas grandes y al desplegable de estado).
+            Cuentan los eventos del salón elegido. */}
+        <div className="mb-4 space-y-2.5">
+          {/* En el celular van en una sola fila que se desliza de costado,
+              para no ocupar dos o tres renglones. */}
+          <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+            {ESTADOS_FILTRO.map(({ valor, label, punto }) => {
+              const activo = filtroEstado === valor
+              // "Cancelados" solo aparece si hay alguno (hoy no se usa).
+              if (valor === "cancelado" && !conteoPorEstado.cancelado && !activo) return null
+              return (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => setFiltroEstado(valor)}
+                  aria-pressed={activo}
+                  className={`flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors ${
+                    activo
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {punto && <span className={`h-2 w-2 rounded-full ${punto}`} aria-hidden="true" />}
+                  {label}
+                  <span className={`font-bold ${activo ? "" : "text-foreground"}`}>{conteoPorEstado[valor] ?? 0}</span>
+                </button>
+              )
+            })}
+            <Link
+              href="/eventos/finalizados"
+              className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              En archivo <span className="font-bold text-foreground">{eventosFinalizados}</span>
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
           </div>
-          <Select value={filtroEstado} onValueChange={setFiltroEstado}>
-            <SelectTrigger className="w-full sm:w-[160px] h-10">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos los activos</SelectItem>
-              <SelectItem value="pendiente">Pendiente</SelectItem>
-              <SelectItem value="en_preparacion">En Preparacion</SelectItem>
-              <SelectItem value="cancelado">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filtroSalon} onValueChange={setFiltroSalon}>
-            <SelectTrigger className="w-full sm:w-[160px] h-10">
-              <SelectValue placeholder="Salon" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              {SALONES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  <span className="flex items-center gap-2">
-                    <SalonDot salon={s} size={8} />
-                    {salonLabel(s)}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nombre..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-9"
+              />
+            </div>
+            <Select value={filtroSalon} onValueChange={setFiltroSalon}>
+              <SelectTrigger className="w-full sm:w-[180px] h-9">
+                <SelectValue placeholder="Salon" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos los salones</SelectItem>
+                {SALONES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    <span className="flex items-center gap-2">
+                      <SalonDot salon={s} size={8} />
+                      {salonLabel(s)}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Events Table */}
@@ -1472,8 +1449,7 @@ export default function EventosListaPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion eliminara el evento permanentemente.
-              No se puede deshacer.
+              El evento va a la papelera: lo podés recuperar desde Eventos → Papelera.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1672,7 +1648,7 @@ export default function EventosListaPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion no se puede deshacer. El evento sera eliminado permanentemente.
+              El evento va a la papelera: lo podés recuperar desde Eventos → Papelera.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {(() => {

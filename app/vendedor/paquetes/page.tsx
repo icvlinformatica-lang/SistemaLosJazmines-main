@@ -3,18 +3,17 @@
 // Pantalla de paquetes para el perfil Vendedor. Dos secciones:
 //
 // "Mis cotizaciones generadas": las cotizaciones completas (cliente, fecha,
-// menú, servicios) que el vendedor generó desde /vendedor/cotizar con el
-// botón "Generar cotización" — nunca se envían a revisión desde Cotizar, eso
-// pasa acá, con el botón "Enviar a revisión" en la tarjeta. Se pueden borrar
-// si se cargó mal alguna.
+// menú, servicios) que el vendedor guardó desde /vendedor/cotizar con
+// "Guardar borrador" o "Enviar a Administración". Un borrador también se
+// puede mandar a revisión desde acá, con "Enviar a revisión" en la tarjeta.
+// Borrar una la manda a "Mi papelera" (se puede recuperar).
 //
 // "Paquetes reutilizables por salón": leída de "paquetes_salones" — la misma
 // tabla que usa Administración en /admin/servicios, siempre a través de
 // /api/vendedor/paquetes, que nunca expone precioInterno/costoTotal/
 // ganancia/margen por servicio (eso sigue siendo exclusivo de
-// Administración). La creación pasa por /vendedor/cotizar (botón dorado
-// "Generar paquete", junto a los servicios ya armados ahí) — acá solo se
-// usan, se prueban en el cotizador o se borran.
+// Administración). El vendedor no los crea: acá se ven, se llevan al
+// cotizador o se borran (van a "Mi papelera").
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
@@ -183,7 +182,7 @@ export default function PaquetesPage() {
                 <Link href="/vendedor/cotizar" className="underline">
                   Cotizar
                 </Link>{" "}
-                y tocá "Generar cotización".
+                y tocá "Guardar borrador" o "Enviar a Administración".
               </p>
             </div>
           ) : (
@@ -270,11 +269,7 @@ export default function PaquetesPage() {
           <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed rounded-lg">
             <Package className="h-10 w-10 text-muted-foreground mb-3" />
             <p className="text-sm text-muted-foreground">
-              Todavía no hay paquetes creados. Armá los servicios en{" "}
-              <Link href="/vendedor/cotizar" className="underline">
-                Cotizar
-              </Link>{" "}
-              y tocá el botón dorado "Generar paquete".
+              Todavía no hay paquetes armados para tus salones.
             </p>
           </div>
         ) : (
@@ -345,7 +340,7 @@ export default function PaquetesPage() {
             <DialogTitle>Borrar paquete</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            ¿Seguro que querés borrar "{paqueteABorrar?.nombre}"? Esta acción no se puede deshacer.
+            ¿Seguro que querés borrar "{paqueteABorrar?.nombre}"? Va a tu papelera: lo podés recuperar desde "Mi papelera".
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPaqueteABorrar(null)}>
@@ -364,7 +359,7 @@ export default function PaquetesPage() {
             <DialogTitle>Borrar cotización</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            ¿Seguro que querés borrar la cotización de "{cotizacionABorrar?.clienteNombre}"? Esta acción no se puede deshacer.
+            ¿Seguro que querés borrar la cotización de "{cotizacionABorrar?.clienteNombre}"? Va a tu papelera: la podés recuperar desde "Mi papelera".
             {cotizacionABorrar?.estado === "convertida" && " El evento ya creado a partir de esta cotización no se ve afectado."}
           </p>
           <DialogFooter>
