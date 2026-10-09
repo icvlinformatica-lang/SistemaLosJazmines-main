@@ -162,7 +162,7 @@ function PaymentReceipt({
   const buildDefaults = () => ({
     nombreApellido: pago.pagadoPor || evento.nombrePareja || evento.nombre || "",
     dni: pago.dni || evento.dniNovio1 || "",
-    fechaPago: pago.fecha || new Date().toISOString().split("T")[0],
+    fechaPago: pago.fecha || fechaNegocio(),
     fechaEvento: evento.fecha || "",
     valor: formatCurrency(pago.monto),
     sumaPesos: `${numeroALetras(Math.round(pago.monto))} (${formatCurrency(pago.monto)})`,

@@ -941,6 +941,8 @@ export default function EventosListaPage() {
           description: `${movido.error} Al volver a imprimir se reintenta el descuento.`,
           variant: "destructive",
         })
+      } else if (movido.yaDescontado) {
+        toast({ title: "Documento generado", description: "El stock de este evento ya estaba descontado, así que no se descontó de nuevo." })
       } else if (movido.sinConteo > 0) {
         toast({
           title: "Documento generado, stock descontado en parte",

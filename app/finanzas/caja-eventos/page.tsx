@@ -73,7 +73,8 @@ import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
 import { almacenDelNavegador, guardarSalonRecordado, leerSalonRecordado } from "@/lib/salon-recordado"
 import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo } from "@/lib/servicio-sueldo"
-import { aFechaISO, fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
+import { fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
 import {
   AvisoSeñaBloqueada,
   PinSeñaExtraordinariaDialog,
@@ -865,7 +866,7 @@ useStore()
   const [marcarCobrada, setMarcarCobrada] = useState(false)
   const [pagoConfirmar, setPagoConfirmar] = useState<EgresoPendienteServicio | null>(null)
   const [pagoExito, setPagoExito] = useState(false)
-  const hoyStr = ahora.toISOString().split("T")[0]
+  const hoyStr = fechaNegocio(ahora)
   // Candado de señas (lib/candado-senas.ts): seña tocada antes de su fecha de
   // habilitación → pide PIN + motivo. Si se autoriza, sigue la confirmación
   // de pago normal y, al pagar, queda registrado como extraordinario.
@@ -1095,7 +1096,7 @@ useStore()
     if (!evento || !egresosPendientes.some((pendiente) => pendiente.id === egreso.id)) return false
     // fechaPagoOverride permite cargar pagos atrasados/viejos con su fecha real
     // en vez de la fecha de hoy (usado hoy solo para señas, desde renderCeldaPago).
-    const fechaPago = fechaPagoOverride || new Date().toISOString().split("T")[0]
+    const fechaPago = fechaPagoOverride || fechaNegocio()
     const fechaISO = fechaPagoOverride ? new Date(`${fechaPagoOverride}T12:00:00`).toISOString() : new Date().toISOString()
     let guardarEstado: () => Promise<boolean>
 
@@ -1118,7 +1119,7 @@ useStore()
         // Compromiso asignado manualmente desde Finanzas → Personal
         guardarEstado = () => updatePagoPersonal(egreso.servicioId!, {
           estado: "pagado",
-          fechaPago: new Date().toISOString().split("T")[0],
+          fechaPago: fechaNegocio(),
         })
       } else {
         // Sueldo del personal del evento (generador de contrato): marcar la
@@ -1209,7 +1210,7 @@ useStore()
   const habilitacionSeñaBloqueada = (egreso: EgresoPendienteServicio | undefined): string | null => {
     if (!egreso || egreso.tipo !== "seña") return null
     const evento = state.eventos.find((e) => e.id === egreso.eventoId)
-    if (!evento || !señaBloqueada(evento.fechaAlta, evento.fecha, aFechaISO(new Date()))) return null
+    if (!evento || !señaBloqueada(evento.fechaAlta, evento.fecha, fechaNegocio())) return null
     return fechaHabilitacionSeña(evento.fechaAlta, evento.fecha)
   }
 

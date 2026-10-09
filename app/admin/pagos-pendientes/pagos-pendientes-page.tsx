@@ -40,6 +40,7 @@ import {
 } from "lucide-react"
 import type { PagoPersonal } from "@/lib/store"
 import ComprobantePago from "./comprobante-pago"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
 
 type FiltroAsignacion = "todos" | "confirmado" | "sinConfirmar" | "desasignado"
 
@@ -138,7 +139,7 @@ export default function PagosPendientesPage() {
       return
     }
 
-    const hoy = new Date().toISOString().split("T")[0]
+    const hoy = fechaNegocio()
 
     updatePagoPersonal(pagoSeleccionado.id, {
       estado: "pagado",

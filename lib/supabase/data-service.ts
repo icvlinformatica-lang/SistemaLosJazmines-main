@@ -123,7 +123,13 @@ export async function deleteServicio(id: string): Promise<boolean> {
     .eq("id", id)
     .single()
 
-  if (!fetchError && existing) {
+  // Si no se pudo leer el servicio o guardar la copia, no se borra: borrado
+  // sin copia no se puede restaurar. PGRST116 = no existe (ya estaba borrado).
+  if (fetchError && fetchError.code !== "PGRST116") {
+    console.error("Error leyendo servicio antes de borrarlo:", fetchError)
+    return false
+  }
+  if (existing) {
     const { error: trashError } = await supabase
       .from("servicios_eliminados")
       .upsert({
@@ -132,6 +138,7 @@ export async function deleteServicio(id: string): Promise<boolean> {
       })
     if (trashError) {
       console.error("Error moviendo servicio a la papelera:", trashError)
+      return false
     }
   }
 

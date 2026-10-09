@@ -22,6 +22,8 @@ export interface ResultadoConsumo {
   aplicados: number
   /** Cuántos quedaron afuera porque ese salón nunca los contó. */
   sinConteo: number
+  /** Al imprimir: el evento ya estaba descontado, no se movió nada. */
+  yaDescontado?: boolean
   error?: string
 }
 
@@ -55,7 +57,7 @@ export async function moverStockDelEvento(params: {
     if (!res.ok || !data?.ok) {
       return { ok: false, aplicados: 0, sinConteo: 0, error: data?.error || "No se pudo mover el stock." }
     }
-    return { ok: true, aplicados: data.aplicados ?? 0, sinConteo: data.sinConteo ?? 0 }
+    return { ok: true, aplicados: data.aplicados ?? 0, sinConteo: data.sinConteo ?? 0, yaDescontado: data.yaDescontado === true }
   } catch {
     return { ok: false, aplicados: 0, sinConteo: 0, error: "Se cortó la conexión al mover el stock." }
   }
