@@ -1000,6 +1000,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const deleteServicio = async (id: string) => {
     const servicioBorrado = (state.servicios || []).find((s) => s.id === id)
+    const indiceBorrado = (state.servicios || []).findIndex((s) => s.id === id)
     // Foto de precios ANTES de borrar del catálogo: en cada evento que tenga
     // este servicio contratado se congelan montoSeña y saldoPendiente con los
     // precios vigentes. Sin esto, el costo del servicio caería a $0 en Costos
@@ -1037,7 +1038,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Sync to Supabase
     try {
       const { deleteServicio: deleteServ } = await import("./supabase/data-service")
-      await deleteServ(id)
+      if (!(await deleteServ(id))) {
+        // No se borró (falló la copia a la papelera o el borrado): vuelve a la lista.
+        if (servicioBorrado) {
+          setState((prev) => {
+            const lista = (prev.servicios || []).filter((s) => s.id !== id)
+            lista.splice(Math.min(indiceBorrado, lista.length), 0, servicioBorrado)
+            return { ...prev, servicios: lista }
+          })
+        }
+        toast({ title: "No se pudo eliminar", description: "No se pudo guardar la copia en la papelera, así que el servicio no se borró. Volvé a intentarlo.", variant: "destructive" })
+        return
+      }
       // Registrar en el historial de actividad
       if (servicioBorrado) {
         fetch("/api/activity-log", {

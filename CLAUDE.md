@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 39 archivos y 367 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 40 archivos y 376 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -78,7 +78,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Plan de cuotas y pagos del evento (JSON dentro de la fila) → `movimientos_caja` (Caja Eventos / Caja Jazmines, por salón) → resumen diario y semanal (mails), planilla de cuotas, "Vienen a pagar". La seña que se cobra al crear el evento se reparte entre las dos cajas con la misma regla que las cuotas (`construirSenaInicial` en `lib/cobrar-cuota.ts`). Las filas de seña (concepto "Seña …") las suma también el control de comisiones de vendedores (`lib/hooks/use-caja-jazmines.ts`).
 - `historial_ipc` → proyección de cuotas en el cliente (`proyectarIPC`) → validación en el servidor al cobrar.
 - Cotizador del vendedor → `cotizaciones` → aprobar → `POST /api/eventos` (evento con `precioVentaFijo`). El recargo de sábado y el "recargo propio" de las fechas especiales tienen un % por rubro (`porcentajesPorRubro` en `lib/cotizador-salon.ts`, columnas jsonb de la 020); lo guardado antes, sin esa columna, se lee como un solo % para los rubros tildados. La Cocina suma un plato por paso del menú (entrada, plato principal y postre, según `recetas.categoria`) y promedia las opciones del mismo paso (`cocinaPorPasos`); para enviar se piden los pasos que el salón ofrece (`pasosMenuFaltantes`, en las dos rutas de envío). Cambiar la categoría de una receta cambia su paso y su precio en el cotizador. La barra cuyo nombre dice "bebida de mesa" (`esBebidaDeMesa`: se reconoce por el nombre) va primero en el cotizador y se marca sola con el primer plato; si se la renombra, pasa a ser una barra común.
-- Conteos de stock por salón → `stock_salones`. Los eventos descuentan o devuelven en su salón (`stockDescontado` evita descontar dos veces). Se escribe por dos rutas, las dos recalculan `stock_actual` como la suma de los salones: la carga de `/stock` (`/api/stock-salones/sesiones`) y el lapicito de Almacén para Administración y Soporte (`/api/stock-salones/ajuste`, una sesión `extraordinaria` por salón, sin PIN).
+- Conteos de stock por salón → `stock_salones`. Los eventos descuentan o devuelven en su salón (`stockDescontado` evita descontar dos veces; al imprimir, `/api/stock-salones/consumo` lo marca en la misma transacción del descuento). Se escribe por dos rutas, las dos recalculan `stock_actual` como la suma de los salones: la carga de `/stock` (`/api/stock-salones/sesiones`) y el lapicito de Almacén para Administración y Soporte (`/api/stock-salones/ajuste`, una sesión `extraordinaria` por salón, sin PIN).
 
 **Poco acoplado** (riesgo bajo):
 - Vistas de solo lectura del staff externo (`/eventos/staff`).
@@ -119,7 +119,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
   - Tests que lo cubren: `test-cobro-ipc-api`, `test-ipc-provisorio`, `test-candado-senas`, `test-caja-eventos`, `test-desglose-ipc`.
 - Los pagos anulados no se borran: pasan a `planDeCuotas.pagosAnulados`.
 - El IPC aplica solo con `ajustaPorIPC === true`. En `historial_ipc.mes` los meses van de 0 a 11; en un `periodo` "YYYY-MM" van de 1 a 12.
-- Para "hoy" se usa la fecha de negocio de Argentina, `fechaNegocio()` en `lib/ipc-cuotas.ts`. `toISOString().slice(0,10)` da el día UTC: desde las 21:00 ya es "mañana". Hay decenas de usos viejos; no sumar más.
+- Para "hoy" se usa la fecha de negocio de Argentina, `fechaNegocio()` en `lib/ipc-cuotas.ts`. `toISOString().slice(0,10)` da el día UTC: desde las 21:00 ya es "mañana". Quedan usos viejos (los pagos a proveedores y personal y la fecha de alta ya se pasaron el 9/10/2026); no sumar más.
 - Pesos con centavos: redondear a 2 decimales y comparar con tolerancia (0,005 / 0,01), como hace el código.
 - Usar `??` y no `||` para defaults numéricos, porque `|| 30` pisa un 0 legítimo.
 - El pasado no se recalcula:
@@ -215,7 +215,6 @@ No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
   - El conector de Supabase cancela solo las escrituras en las sesiones en la nube (no puede mostrar la confirmación). Lo que modifique datos lo corre el dueño en el SQL Editor.
   - El ajuste "Aporte a Administración" de Configuración de Cajas solo actuaba en esa seña sin caja, así que desde el arreglo no hace nada. Nunca generó movimientos: en la base no hay ninguno de tipo `aporte_admin`.
 - **Seña de los eventos que vienen de una cotización** (detectado y arreglado el 8/10/2026): aprobar crea el evento sin plan de cuotas. Ahora, al cargarle "Seña + Cuotas" por primera vez en el planificador, la seña se anota en las cajas con la misma regla que al crear (`senaAAnotarAlEditar` en `lib/cobrar-cuota.ts`): solo eventos con `cotizacionId`, solo si el plan guardado no tenía seña y si el evento no tiene ya un movimiento "Seña …".
-- `deleteServicio` (data-service) borra el servicio aunque falle la copia a `servicios_eliminados`. En ese caso no se puede restaurar.
 - En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`). Hoy ningún servicio tiene 0, así que no afecta a los datos actuales.
 - `fetchPersonal` y `fetchCostosOperativos` devuelven `[]` ante un error (ver "Estado del cliente").
 - Los años de evento válidos van de 2026 a 2032 (ver "Valores guardados"). Hay 1 evento activo de 2025, ya completado: si se guarda mandando la fecha, el servidor lo rechaza.
