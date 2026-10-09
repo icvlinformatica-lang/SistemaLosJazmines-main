@@ -25,8 +25,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye, Wine } from "lucide-react"
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye, Wine, MessageCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { enlaceWhatsApp } from "@/lib/recordatorio-cuota"
 import { salonColor, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
@@ -412,9 +413,22 @@ export default function StaffPage() {
                     <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span>{selectedEvento.tipoEvento || "Sin tipo de evento"}</span>
                   </div>
-                  <div className="flex items-center gap-2 sm:col-span-2">
+                  <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span>{selectedEvento.contrato?.telefono || "Sin teléfono cargado"}</span>
+                    {selectedEvento.contrato?.telefono?.trim() ? (
+                      <>
+                        {/* Tocable: en el celular abre el marcador. */}
+                        <a href={`tel:${selectedEvento.contrato.telefono.replace(/[^\d+]/g, "")}`} className="underline underline-offset-2">{selectedEvento.contrato.telefono}</a>
+                        {/* WhatsApp sin mensaje armado; solo si el número es usable. */}
+                        {enlaceWhatsApp(selectedEvento.contrato.telefono) && (
+                          <Button asChild variant="outline" size="sm" className="h-7 px-2">
+                            <a href={enlaceWhatsApp(selectedEvento.contrato.telefono)!} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <span>Sin teléfono cargado</span>
+                    )}
                   </div>
                 </div>
 

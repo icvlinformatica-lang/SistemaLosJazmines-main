@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Clock, History, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -34,6 +34,7 @@ import {
 } from "@/components/cotizacion-detalle-admin"
 import { FaltantesChip } from "@/components/faltantes-evento-aviso"
 import type { FaltanteEvento } from "@/lib/faltantes-evento"
+import { diasEsperando, fechaEventoCorta, haceCuanto, ordenarPorFechaEvento } from "@/lib/cotizaciones-bandeja"
 
 interface CotizacionPendiente {
   /** 2 = modelo costo + ganancia por salón (Paso 2). Las anteriores, 1. */
@@ -64,7 +65,17 @@ interface CotizacionPendiente {
   costoBarraPersonalizada: number
   /** Qué le va a faltar al evento al aprobarla (lib/faltantes-evento.ts). */
   faltantes?: FaltanteEvento[]
+  estado?: string
+  /** Comentario del rechazo (solo en el Historial). */
+  comentarioAdmin?: string | null
+  /** Evento creado al aprobarla (solo en el Historial). */
+  eventoId?: string | null
+  /** Lo deja "Enviar a revisión" (y aprobar o rechazar, en el Historial). */
+  updatedAt?: string
 }
+
+/** A partir de cuántos días esperando se marca en ámbar "enviada hace N días". */
+const DIAS_ESPERA_AVISO = 3
 
 /**
  * Tarjeta "Precio base por salón" (Configuración): ya no la usa nada.
@@ -73,8 +84,22 @@ interface CotizacionPendiente {
  */
 const MOSTRAR_PRECIO_BASE = false
 
+const TITULO_FALTANTES = "Lo que le va a faltar al evento cuando se apruebe. Se completa después en el planificador."
+
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+
+/** "enviada hace N días": en ámbar si ya espera DIAS_ESPERA_AVISO días o más. */
+function Espera({ cuando }: { cuando?: string | null }) {
+  const texto = haceCuanto(cuando)
+  if (!texto) return null
+  const demorada = diasEsperando(cuando) >= DIAS_ESPERA_AVISO
+  return (
+    <span className={`inline-flex items-center gap-1 ${demorada ? "font-medium text-amber-700" : ""}`}>
+      <Clock className="h-3 w-3" /> {texto}
+    </span>
+  )
+}
 
 export default function CotizacionesPendientesPage() {
   const { toast } = useToast()
@@ -83,6 +108,12 @@ export default function CotizacionesPendientesPage() {
   const [cargando, setCargando] = useState(true)
   const [cotizaciones, setCotizaciones] = useState<CotizacionPendiente[]>([])
   const [abiertaId, setAbiertaId] = useState<string | null>(null)
+  // Compu: cotización abierta en el panel de la derecha. Si no se eligió
+  // ninguna (o la elegida ya no está), se muestra la primera.
+  const [seleccionadaId, setSeleccionadaId] = useState<string | null>(null)
+  // Primero el evento más cercano: es el que más apura aprobar.
+  const ordenadas = useMemo(() => ordenarPorFechaEvento(cotizaciones), [cotizaciones])
+  const seleccionada = ordenadas.find((c) => c.id === seleccionadaId) ?? ordenadas[0] ?? null
 
   // Precio base de respaldo por salón (Calendario de Precios cubre fecha
   // exacta; esto es lo que se usa cuando esa fecha no tiene precio cargado).
@@ -125,6 +156,22 @@ export default function CotizacionesPendientesPage() {
   }
 
   useEffect(cargar, [])
+
+  // Pestaña "Historial": convertidas en evento y rechazadas. Se carga recién
+  // al abrirla (y de nuevo cada vez que se vuelve a abrir, por si se aprobó o
+  // rechazó algo mientras tanto).
+  const [historial, setHistorial] = useState<CotizacionPendiente[] | null>(null)
+  const [errorHistorial, setErrorHistorial] = useState(false)
+  const cargarHistorial = () => {
+    setErrorHistorial(false)
+    fetch("/api/administracion/cotizaciones?historial=1")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok) setHistorial(data.cotizaciones || [])
+        else setErrorHistorial(true)
+      })
+      .catch(() => setErrorHistorial(true))
+  }
 
   useEffect(() => {
     fetch("/api/administracion/precios-base")
@@ -296,10 +343,242 @@ export default function CotizacionesPendientesPage() {
     }
   }
 
+  // Detalle de una cotización (datos, costos y personal). Lo usan las dos
+  // vistas: la tarjeta desplegable del celular y el panel de la compu.
+  const renderDetalle = (c: CotizacionPendiente) => {
+    const costoBarra = c.costoBarraPersonalizada || 0
+    const ganancia = c.precioVentaSugerido - (c.precioBaseSalon + c.totalCostoServicios + costoBarra)
+    return (
+      <>
+        {/* Teléfono del cliente para llamarlo desde acá. Las del modelo
+            anterior ya lo muestran en sus datos, más abajo. */}
+        {c.version === 2 && c.clienteTelefono && (
+          <a href={`tel:${c.clienteTelefono.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-2 hover:underline">
+            <Phone className="h-3.5 w-3.5" /> {c.clienteTelefono}
+          </a>
+        )}
+        {c.version === 2 && c.desglose ? (
+          <DetalleCotizacionNueva
+            desglose={c.desglose}
+            clienteDni={c.clienteDni}
+            fechaEvento={c.fechaEvento}
+            tipoEvento={c.tipoEvento}
+            roster={personal}
+            asignaciones={asignaciones[c.id] ?? []}
+            onAsignaciones={(a) => setAsignaciones((prev) => ({ ...prev, [c.id]: a }))}
+          />
+        ) : (
+          <>
+        {/* Cotización del modelo ANTERIOR: se ve como siempre y se
+            aprueba con su precio guardado (no se recalcula). */}
+        {/* Datos del cliente / evento */}
+        <div className="grid gap-2 sm:grid-cols-2 text-sm">
+          {c.clienteTelefono && (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Phone className="h-3.5 w-3.5" /> {c.clienteTelefono}
+            </div>
+          )}
+          {c.fechaEvento && (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5" /> {fechaEventoCorta(c.fechaEvento)}
+              {c.horario && ` · ${c.horario}${c.horarioFin ? ` a ${c.horarioFin}` : ""}`}
+            </div>
+          )}
+          {c.tipoEvento && <div className="text-muted-foreground">Tipo: {c.tipoEvento}</div>}
+          {c.nombreFestejados && <div className="text-muted-foreground">Festejados: {c.nombreFestejados}</div>}
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Users className="h-3.5 w-3.5" /> {c.totalPersonas} personas
+            <span className="text-xs">
+              ({c.invitados.adultos} ad. · {c.invitados.adolescentes} adol. · {c.invitados.ninos} niños · {c.invitados.personasDietasEspeciales} dietas)
+            </span>
+          </div>
+        </div>
+
+        {/* Menú */}
+        {(c.recetasElegidas.adultos.length + c.recetasElegidas.adolescentes.length + c.recetasElegidas.ninos.length + c.recetasElegidas.dietasEspeciales.length) > 0 && (
+          <div className="text-sm">
+            <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1">Menú elegido</p>
+            <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+              {c.recetasElegidas.adultos.map((id) => <li key={`a-${id}`}>{nombreReceta(id)} (adultos)</li>)}
+              {c.recetasElegidas.adolescentes.map((id) => <li key={`t-${id}`}>{nombreReceta(id)} (adolescentes)</li>)}
+              {c.recetasElegidas.ninos.map((id) => <li key={`n-${id}`}>{nombreReceta(id)} (niños)</li>)}
+              {c.recetasElegidas.dietasEspeciales.map((id) => <li key={`d-${id}`}>{nombreReceta(id)} (dietas)</li>)}
+            </ul>
+          </div>
+        )}
+
+        {/* Servicios: costo interno vs precio de venta */}
+        {c.servicios.length > 0 && (
+          <div className="text-sm">
+            <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1">Servicios (costo interno / precio de venta)</p>
+            <div className="space-y-1">
+              {c.servicios.map((s) => {
+                const costo = c.costosServicios.find((cs) => cs.servicioId === s.servicioId)
+                return (
+                  <div key={s.servicioId} className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {s.nombre}
+                      {s.cantidad > 1 ? ` ×${s.cantidad}` : ""}
+                    </span>
+                    <span className="tabular-nums">
+                      <span className="text-red-600">{fmt(costo?.costoTotal || 0)}</span>
+                      {" / "}
+                      <span className="text-emerald-700">{fmt(s.precioTotal)}</span>
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Personal solicitado por el vendedor: sin montos hasta acá.
+            Administración sugiere/ajusta el monto de cada uno antes
+            de aprobar — eso es lo que termina en Personal del Evento. */}
+        {c.personalSeleccionado.length > 0 && (
+          <div className="text-sm">
+            <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1.5">
+              <UserCheck className="h-3.5 w-3.5" />
+              Personal solicitado
+            </p>
+            <div className="space-y-1.5">
+              {c.personalSeleccionado.map((personalId) => {
+                const persona = personaDelRoster(personalId)
+                return (
+                  <div key={personalId} className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground flex-1 min-w-0 truncate">
+                      {persona ? `${persona.nombre} ${persona.apellido}` : "Persona eliminada del roster"}
+                      {persona?.funcion && <span className="text-xs"> · {persona.funcion}</span>}
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={montosPersonal[c.id]?.[personalId] ?? ""}
+                      onChange={(e) =>
+                        setMontosPersonal((prev) => ({
+                          ...prev,
+                          [c.id]: { ...prev[c.id], [personalId]: Number(e.target.value) || 0 },
+                        }))
+                      }
+                      className="h-8 w-28 shrink-0 text-right"
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Totales */}
+        <div className="rounded-lg bg-muted/40 p-3 space-y-1 text-sm">
+          {c.precioBaseSalon > 0 && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>Precio base del salón</span>
+              <span className="tabular-nums">{fmt(c.precioBaseSalon)}</span>
+            </div>
+          )}
+          {costoBarra > 0 && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>Costo de la barra personalizada (tragos)</span>
+              <span className="tabular-nums">{fmt(costoBarra)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-muted-foreground">
+            <span>Costo interno total (servicios{costoBarra > 0 ? " y barra" : ""})</span>
+            <span className="tabular-nums text-red-600">{fmt(c.precioBaseSalon + c.totalCostoServicios + costoBarra)}</span>
+          </div>
+          <div className="flex justify-between font-semibold">
+            <span>Precio de venta</span>
+            <span className="tabular-nums text-emerald-700">{fmt(c.precioVentaSugerido)}</span>
+          </div>
+          <div className="flex justify-between font-bold border-t border-border pt-1">
+            <span>Ganancia estimada</span>
+            <span className="tabular-nums text-blue-700">{fmt(ganancia)}</span>
+          </div>
+          <p className="text-xs text-muted-foreground pt-1">
+            No incluye costo de insumos/recetas (comida) — esta cotización solo calculó el costo de los servicios contratados.
+          </p>
+        </div>
+          </>
+        )}
+
+        {/* Fecha inválida al aprobar: se corrige acá mismo en vez de
+            tener que rechazar la cotización solo por eso. */}
+        {errorFechaId === c.id && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 space-y-2">
+            <p className="text-sm text-amber-900">
+              La fecha del evento {c.fechaEvento ? `("${c.fechaEvento}")` : "está vacía"} no es válida. Corregila para poder aprobar.
+            </p>
+            <Input
+              type="date"
+              value={fechaCorregida[c.id] ?? ""}
+              onChange={(e) => setFechaCorregida((prev) => ({ ...prev, [c.id]: e.target.value }))}
+              className="h-9 max-w-[200px]"
+            />
+          </div>
+        )}
+      </>
+    )
+  }
+
+  // Vendedor de la comisión, aprobar y rechazar (las dos vistas).
+  const renderAcciones = (c: CotizacionPendiente) => (
+    <>
+      {/* Acciones */}
+      {mostrarRechazoId === c.id ? (
+        <div className="space-y-2">
+          <Textarea
+            placeholder="¿Qué hay que ajustar?"
+            value={comentarioPorId[c.id] || ""}
+            onChange={(e) => setComentarioPorId((prev) => ({ ...prev, [c.id]: e.target.value }))}
+            rows={3}
+          />
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setMostrarRechazoId(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={() => rechazar(c)} disabled={rechazandoId === c.id}>
+              {rechazandoId === c.id ? "Enviando..." : "Confirmar rechazo"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={vendedorElegido[c.id] || ""} onValueChange={(v) => setVendedorElegido((prev) => ({ ...prev, [c.id]: v }))}>
+            <SelectTrigger className="sm:w-48">
+              <SelectValue placeholder="Vendedor (comisión)" />
+            </SelectTrigger>
+            <SelectContent>
+              {vendedores.map((v) => (
+                <SelectItem key={v.id} value={v.nombre}>
+                  {v.emoji} {v.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex gap-2 flex-1">
+            <Button
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => aprobar(c)}
+              disabled={aprobandoId === c.id}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1.5" />
+              {aprobandoId === c.id ? "Aprobando..." : "Aprobar y crear evento"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setMostrarRechazoId(c.id)}>
+              <XCircle className="h-4 w-4 mr-1.5" />
+              Rechazar
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
-        <div className="mx-auto max-w-4xl flex items-center gap-3">
+        <div className="mx-auto max-w-4xl lg:max-w-7xl flex items-center gap-3">
           <Link href="/" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -316,21 +595,32 @@ export default function CotizacionesPendientesPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:max-w-7xl lg:px-8">
         {/* Dos cosas bien distintas en la misma pantalla: aprobar lo que
             mandaron los vendedores, y configurar con qué precios cotizan.
             Lo primero es lo que se hace todos los días, así que va primero
             y abierto; lo segundo se toca cada tanto. */}
-        <Tabs defaultValue="aprobar" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs
+          defaultValue="aprobar"
+          className="space-y-4"
+          onValueChange={(v) => {
+            if (v === "historial") cargarHistorial()
+          }}
+        >
+          <TabsList className="grid w-full grid-cols-3 lg:max-w-2xl">
             <TabsTrigger value="aprobar" className="gap-2">
               <CheckCircle2 className="h-4 w-4" />
-              Cotizaciones a aprobar
+              <span className="sm:hidden">A aprobar</span>
+              <span className="hidden sm:inline">Cotizaciones a aprobar</span>
               {cotizaciones.length > 0 && (
                 <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
                   {cotizaciones.length}
                 </span>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="historial" className="gap-2">
+              <History className="h-4 w-4" />
+              Historial
             </TabsTrigger>
             <TabsTrigger value="configuracion" className="gap-2">
               <Settings className="h-4 w-4" />
@@ -361,253 +651,126 @@ export default function CotizacionesPendientesPage() {
             <p className="text-sm text-muted-foreground">No hay cotizaciones esperando revisión</p>
           </div>
         ) : (
-          cotizaciones.map((c) => {
-            const costoBarra = c.costoBarraPersonalizada || 0
-            const ganancia = c.precioVentaSugerido - (c.precioBaseSalon + c.totalCostoServicios + costoBarra)
-            const abierta = abiertaId === c.id
-            return (
-              <div
-                key={c.id}
-                className="rounded-xl border-l-4 border border-border bg-card overflow-hidden"
-                style={{ borderLeftColor: c.salon ? salonColor(c.salon) : "#6b7280" }}
-              >
-                <Collapsible open={abierta} onOpenChange={(open) => setAbiertaId(open ? c.id : null)}>
-                  <CollapsibleTrigger asChild>
-                    <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-card-foreground">{c.clienteNombre}</p>
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-muted-foreground">
-                          <span>Vendedor: {c.vendedor}</span>
-                          {c.salon && <span>{salonLabel(c.salon)}</span>}
-                          {c.fechaEvento && <span>{c.fechaEvento}</span>}
+          <>
+            {/* Celular y tablet: una tarjeta por cotización que se despliega
+                ahí mismo (como siempre). */}
+            <div className="space-y-4 lg:hidden">
+              {ordenadas.map((c) => {
+                const abierta = abiertaId === c.id
+                return (
+                  <div
+                    key={c.id}
+                    className="rounded-xl border-l-4 border border-border bg-card overflow-hidden"
+                    style={{ borderLeftColor: c.salon ? salonColor(c.salon) : "#6b7280" }}
+                  >
+                    <Collapsible open={abierta} onOpenChange={(open) => setAbiertaId(open ? c.id : null)}>
+                      <CollapsibleTrigger asChild>
+                        <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-card-foreground">{c.clienteNombre}</p>
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-muted-foreground">
+                              <span>Vendedor: {c.vendedor}</span>
+                              {c.salon && <span>{salonLabel(c.salon)}</span>}
+                              {c.fechaEvento && <span>{fechaEventoCorta(c.fechaEvento)}</span>}
+                              <Espera cuando={c.updatedAt} />
+                            </div>
+                            <FaltantesChip faltan={c.faltantes ?? []} title={TITULO_FALTANTES} />
+                          </div>
+                          <span className="text-lg font-bold text-emerald-700 shrink-0">{fmt(c.precioVentaSugerido)}</span>
+                          <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${abierta ? "rotate-180" : ""}`} />
+                        </button>
+                      </CollapsibleTrigger>
+
+                      <CollapsibleContent>
+                        <div className="border-t border-border px-4 py-4 space-y-4">
+                          {renderDetalle(c)}
+                          {renderAcciones(c)}
                         </div>
-                        <FaltantesChip
-                          faltan={c.faltantes ?? []}
-                          title="Lo que le va a faltar al evento cuando se apruebe. Se completa después en el planificador."
-                        />
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Compu: la lista a la izquierda y la cotización elegida abierta a
+                la derecha, con los botones de aprobar y rechazar siempre a la
+                vista abajo. Se pasa de una a otra sin abrir y cerrar. */}
+            <div className="hidden lg:grid lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] lg:items-start lg:gap-6">
+              <div className="sticky top-24 max-h-[calc(100vh-7rem)] space-y-2 overflow-y-auto pr-1" role="list" aria-label="Cotizaciones esperando aprobación">
+                {ordenadas.map((c) => {
+                  const elegida = seleccionada?.id === c.id
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="listitem"
+                      aria-current={elegida ? "true" : undefined}
+                      onClick={() => setSeleccionadaId(c.id)}
+                      className={`w-full rounded-lg border border-l-4 px-3 py-2.5 text-left transition-colors ${
+                        elegida ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border bg-card hover:bg-muted/50"
+                      }`}
+                      style={{ borderLeftColor: c.salon ? salonColor(c.salon) : "#6b7280" }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 truncate font-semibold text-card-foreground">{c.clienteNombre}</p>
+                        <span className="shrink-0 font-bold tabular-nums text-emerald-700">{fmt(c.precioVentaSugerido)}</span>
                       </div>
-                      <span className="text-lg font-bold text-emerald-700 shrink-0">{fmt(c.precioVentaSugerido)}</span>
-                      <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${abierta ? "rotate-180" : ""}`} />
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        {c.salon && <span>{salonLabel(c.salon)}</span>}
+                        {c.fechaEvento && <span>{fechaEventoCorta(c.fechaEvento)}</span>}
+                        <span>Vendedor: {c.vendedor}</span>
+                        <Espera cuando={c.updatedAt} />
+                      </div>
+                      <FaltantesChip faltan={c.faltantes ?? []} title={TITULO_FALTANTES} />
                     </button>
-                  </CollapsibleTrigger>
-
-                  <CollapsibleContent>
-                    <div className="border-t border-border px-4 py-4 space-y-4">
-                      {c.version === 2 && c.desglose ? (
-                        <DetalleCotizacionNueva
-                          desglose={c.desglose}
-                          clienteDni={c.clienteDni}
-                          fechaEvento={c.fechaEvento}
-                          tipoEvento={c.tipoEvento}
-                          roster={personal}
-                          asignaciones={asignaciones[c.id] ?? []}
-                          onAsignaciones={(a) => setAsignaciones((prev) => ({ ...prev, [c.id]: a }))}
-                        />
-                      ) : (
-                        <>
-                      {/* Cotización del modelo ANTERIOR: se ve como siempre y se
-                          aprueba con su precio guardado (no se recalcula). */}
-                      {/* Datos del cliente / evento */}
-                      <div className="grid gap-2 sm:grid-cols-2 text-sm">
-                        {c.clienteTelefono && (
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Phone className="h-3.5 w-3.5" /> {c.clienteTelefono}
-                          </div>
-                        )}
-                        {c.fechaEvento && (
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Calendar className="h-3.5 w-3.5" /> {c.fechaEvento}
-                            {c.horario && ` · ${c.horario}${c.horarioFin ? ` a ${c.horarioFin}` : ""}`}
-                          </div>
-                        )}
-                        {c.tipoEvento && <div className="text-muted-foreground">Tipo: {c.tipoEvento}</div>}
-                        {c.nombreFestejados && <div className="text-muted-foreground">Festejados: {c.nombreFestejados}</div>}
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Users className="h-3.5 w-3.5" /> {c.totalPersonas} personas
-                          <span className="text-xs">
-                            ({c.invitados.adultos} ad. · {c.invitados.adolescentes} adol. · {c.invitados.ninos} niños · {c.invitados.personasDietasEspeciales} dietas)
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Menú */}
-                      {(c.recetasElegidas.adultos.length + c.recetasElegidas.adolescentes.length + c.recetasElegidas.ninos.length + c.recetasElegidas.dietasEspeciales.length) > 0 && (
-                        <div className="text-sm">
-                          <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1">Menú elegido</p>
-                          <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
-                            {c.recetasElegidas.adultos.map((id) => <li key={`a-${id}`}>{nombreReceta(id)} (adultos)</li>)}
-                            {c.recetasElegidas.adolescentes.map((id) => <li key={`t-${id}`}>{nombreReceta(id)} (adolescentes)</li>)}
-                            {c.recetasElegidas.ninos.map((id) => <li key={`n-${id}`}>{nombreReceta(id)} (niños)</li>)}
-                            {c.recetasElegidas.dietasEspeciales.map((id) => <li key={`d-${id}`}>{nombreReceta(id)} (dietas)</li>)}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Servicios: costo interno vs precio de venta */}
-                      {c.servicios.length > 0 && (
-                        <div className="text-sm">
-                          <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1">Servicios (costo interno / precio de venta)</p>
-                          <div className="space-y-1">
-                            {c.servicios.map((s) => {
-                              const costo = c.costosServicios.find((cs) => cs.servicioId === s.servicioId)
-                              return (
-                                <div key={s.servicioId} className="flex justify-between">
-                                  <span className="text-muted-foreground">
-                                    {s.nombre}
-                                    {s.cantidad > 1 ? ` ×${s.cantidad}` : ""}
-                                  </span>
-                                  <span className="tabular-nums">
-                                    <span className="text-red-600">{fmt(costo?.costoTotal || 0)}</span>
-                                    {" / "}
-                                    <span className="text-emerald-700">{fmt(s.precioTotal)}</span>
-                                  </span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Personal solicitado por el vendedor: sin montos hasta acá.
-                          Administración sugiere/ajusta el monto de cada uno antes
-                          de aprobar — eso es lo que termina en Personal del Evento. */}
-                      {c.personalSeleccionado.length > 0 && (
-                        <div className="text-sm">
-                          <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1.5">
-                            <UserCheck className="h-3.5 w-3.5" />
-                            Personal solicitado
-                          </p>
-                          <div className="space-y-1.5">
-                            {c.personalSeleccionado.map((personalId) => {
-                              const persona = personaDelRoster(personalId)
-                              return (
-                                <div key={personalId} className="flex items-center justify-between gap-2">
-                                  <span className="text-muted-foreground flex-1 min-w-0 truncate">
-                                    {persona ? `${persona.nombre} ${persona.apellido}` : "Persona eliminada del roster"}
-                                    {persona?.funcion && <span className="text-xs"> · {persona.funcion}</span>}
-                                  </span>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    value={montosPersonal[c.id]?.[personalId] ?? ""}
-                                    onChange={(e) =>
-                                      setMontosPersonal((prev) => ({
-                                        ...prev,
-                                        [c.id]: { ...prev[c.id], [personalId]: Number(e.target.value) || 0 },
-                                      }))
-                                    }
-                                    className="h-8 w-28 shrink-0 text-right"
-                                  />
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Totales */}
-                      <div className="rounded-lg bg-muted/40 p-3 space-y-1 text-sm">
-                        {c.precioBaseSalon > 0 && (
-                          <div className="flex justify-between text-muted-foreground">
-                            <span>Precio base del salón</span>
-                            <span className="tabular-nums">{fmt(c.precioBaseSalon)}</span>
-                          </div>
-                        )}
-                        {costoBarra > 0 && (
-                          <div className="flex justify-between text-muted-foreground">
-                            <span>Costo de la barra personalizada (tragos)</span>
-                            <span className="tabular-nums">{fmt(costoBarra)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Costo interno total (servicios{costoBarra > 0 ? " y barra" : ""})</span>
-                          <span className="tabular-nums text-red-600">{fmt(c.precioBaseSalon + c.totalCostoServicios + costoBarra)}</span>
-                        </div>
-                        <div className="flex justify-between font-semibold">
-                          <span>Precio de venta</span>
-                          <span className="tabular-nums text-emerald-700">{fmt(c.precioVentaSugerido)}</span>
-                        </div>
-                        <div className="flex justify-between font-bold border-t border-border pt-1">
-                          <span>Ganancia estimada</span>
-                          <span className="tabular-nums text-blue-700">{fmt(ganancia)}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground pt-1">
-                          No incluye costo de insumos/recetas (comida) — esta cotización solo calculó el costo de los servicios contratados.
-                        </p>
-                      </div>
-                        </>
-                      )}
-
-                      {/* Fecha inválida al aprobar: se corrige acá mismo en vez de
-                          tener que rechazar la cotización solo por eso. */}
-                      {errorFechaId === c.id && (
-                        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 space-y-2">
-                          <p className="text-sm text-amber-900">
-                            La fecha del evento {c.fechaEvento ? `("${c.fechaEvento}")` : "está vacía"} no es válida. Corregila para poder aprobar.
-                          </p>
-                          <Input
-                            type="date"
-                            value={fechaCorregida[c.id] ?? ""}
-                            onChange={(e) => setFechaCorregida((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                            className="h-9 max-w-[200px]"
-                          />
-                        </div>
-                      )}
-
-                      {/* Acciones */}
-                      {mostrarRechazoId === c.id ? (
-                        <div className="space-y-2">
-                          <Textarea
-                            placeholder="¿Qué hay que ajustar?"
-                            value={comentarioPorId[c.id] || ""}
-                            onChange={(e) => setComentarioPorId((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                            rows={3}
-                          />
-                          <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => setMostrarRechazoId(null)}>
-                              Cancelar
-                            </Button>
-                            <Button variant="destructive" onClick={() => rechazar(c)} disabled={rechazandoId === c.id}>
-                              {rechazandoId === c.id ? "Enviando..." : "Confirmar rechazo"}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <Select value={vendedorElegido[c.id] || ""} onValueChange={(v) => setVendedorElegido((prev) => ({ ...prev, [c.id]: v }))}>
-                            <SelectTrigger className="sm:w-48">
-                              <SelectValue placeholder="Vendedor (comisión)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {vendedores.map((v) => (
-                                <SelectItem key={v.id} value={v.nombre}>
-                                  {v.emoji} {v.nombre}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <div className="flex gap-2 flex-1">
-                            <Button
-                              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                              onClick={() => aprobar(c)}
-                              disabled={aprobandoId === c.id}
-                            >
-                              <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                              {aprobandoId === c.id ? "Aprobando..." : "Aprobar y crear evento"}
-                            </Button>
-                            <Button variant="outline" className="flex-1" onClick={() => setMostrarRechazoId(c.id)}>
-                              <XCircle className="h-4 w-4 mr-1.5" />
-                              Rechazar
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                  )
+                })}
               </div>
-            )
-          })
+
+              {seleccionada && (
+                <section
+                  key={seleccionada.id}
+                  className="rounded-xl border border-l-4 border-border bg-card"
+                  style={{ borderLeftColor: seleccionada.salon ? salonColor(seleccionada.salon) : "#6b7280" }}
+                  aria-label={`Cotización de ${seleccionada.clienteNombre}`}
+                >
+                  <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-xl font-semibold text-card-foreground">{seleccionada.clienteNombre}</h2>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        {seleccionada.salon && (
+                          <span className="font-medium" style={{ color: salonColor(seleccionada.salon) }}>
+                            {salonLabel(seleccionada.salon)}
+                          </span>
+                        )}
+                        {seleccionada.fechaEvento && (
+                          <span className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5" />
+                            {fechaEventoCorta(seleccionada.fechaEvento)}
+                            {seleccionada.horario && ` · ${seleccionada.horario}${seleccionada.horarioFin ? ` a ${seleccionada.horarioFin}` : ""}`}
+                          </span>
+                        )}
+                        <span>Vendedor: {seleccionada.vendedor}</span>
+                        {seleccionada.nombreFestejados && <span>Festejados: {seleccionada.nombreFestejados}</span>}
+                      </div>
+                      <FaltantesChip faltan={seleccionada.faltantes ?? []} title={TITULO_FALTANTES} />
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs text-muted-foreground">Precio de venta</p>
+                      <p className="text-2xl font-bold tabular-nums text-emerald-700">{fmt(seleccionada.precioVentaSugerido)}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 px-6 py-5">{renderDetalle(seleccionada)}</div>
+
+                  <div className="sticky bottom-0 rounded-b-xl border-t border-border bg-card/95 px-6 py-4 backdrop-blur">
+                    {renderAcciones(seleccionada)}
+                  </div>
+                </section>
+              )}
+            </div>
+          </>
         )}
           </TabsContent>
 
@@ -615,6 +778,68 @@ export default function CotizacionesPendientesPage() {
               y el tarifario se recarga entero cada vez que se cambia de
               pestaña — perdiendo, sin aviso, los precios editados y todavía
               sin guardar. Montado siempre, el trabajo a medias sobrevive. */}
+          <TabsContent value="historial" className="space-y-3 mt-0">
+            <p className="text-sm text-muted-foreground">
+              Las cotizaciones ya resueltas: las que se aprobaron (convertidas en evento) y las rechazadas, las más
+              recientes primero.
+            </p>
+            {errorHistorial ? (
+              <div role="alert" className="flex flex-col items-center gap-3 py-8 text-sm">
+                <p>No se pudo cargar el historial.</p>
+                <Button variant="outline" onClick={cargarHistorial}>Reintentar</Button>
+              </div>
+            ) : historial === null ? (
+              <p className="text-sm text-muted-foreground">Cargando...</p>
+            ) : historial.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed rounded-lg">
+                <History className="h-10 w-10 text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground">Todavía no hay cotizaciones aprobadas ni rechazadas</p>
+              </div>
+            ) : (
+              <ul className="space-y-2 lg:max-w-3xl" aria-label="Historial de cotizaciones">
+                {historial.map((c) => {
+                  const convertida = c.estado === "convertida"
+                  return (
+                    <li
+                      key={c.id}
+                      className="rounded-lg border border-l-4 border-border bg-card px-3 py-2.5"
+                      style={{ borderLeftColor: c.salon ? salonColor(c.salon) : "#6b7280" }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 truncate font-semibold text-card-foreground">{c.clienteNombre}</p>
+                        <span className="shrink-0 font-bold tabular-nums text-card-foreground">{fmt(c.precioVentaSugerido)}</span>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        {c.salon && <span>{salonLabel(c.salon)}</span>}
+                        {c.fechaEvento && <span>{fechaEventoCorta(c.fechaEvento)}</span>}
+                        <span>Vendedor: {c.vendedor}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${
+                            convertida ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {convertida ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                          {convertida ? "Aprobada, convertida en evento" : "Rechazada"}
+                        </span>
+                        <span className="text-muted-foreground">{haceCuanto(c.updatedAt, convertida ? "aprobada" : "rechazada")}</span>
+                        {convertida && c.eventoId && (
+                          <Link href={`/evento?id=${c.eventoId}`} className="font-medium text-primary underline underline-offset-2">
+                            Ver evento
+                          </Link>
+                        )}
+                      </div>
+                      {!convertida && c.comentarioAdmin && (
+                        <p className="mt-1.5 break-words text-xs text-muted-foreground">Comentario: {c.comentarioAdmin}</p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </TabsContent>
+
           <TabsContent
             value="configuracion"
             forceMount

@@ -2,7 +2,9 @@
 
 // Sección "Este finde" de Inicio: eventos del fin de semana (viernes a
 // domingo) con su salón y un pequeño desglose de costos calculado en vivo
-// con los mismos criterios que la pantalla Costos del evento.
+// con los mismos criterios que la pantalla Costos del evento. Cada evento
+// muestra además lo que todavía falta pagarles a proveedores y personal,
+// con la misma cuenta que el panel "Pendiente por evento" de Caja Eventos.
 
 import { useEffect, useMemo, useState } from "react"
 import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight } from "lucide-react"
@@ -11,6 +13,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cambiarDiaResumen, fechaArgentina, fechaResumenValida, rangoFinde } from "@/lib/resumen-fecha"
 import { useStore } from "@/lib/store-context"
+import { useClock } from "@/lib/clock-context"
+import { calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import {
   calcularComprasSegmentadas,
   calcularComprasBarras,
@@ -44,12 +48,26 @@ interface Props {
 
 export function FindeModal({ open, onOpenChange }: Props) {
   const { state, configuracionCajas } = useStore()
+  const { ahora } = useClock()
 
   const [fechaElegida, setFechaElegida] = useState<string | null>(null)
   const fecha = fechaElegida ?? fechaArgentina()
   const { desde, hasta } = rangoFinde(fecha)
   const actual = rangoFinde()
   useEffect(() => { if (!open) setFechaElegida(null) }, [open])
+
+  // Lo que falta pagar de cada evento: suma de sus renglones de "Por pagar" de
+  // Caja Eventos (menú, barra, señas, saldos, sueldos). Lo ya pagado no cuenta.
+  // Solo se calcula con el modal abierto.
+  const ahoraMs = ahora.getTime()
+  const pendientePorEvento = useMemo(() => {
+    const map = new Map<string, number>()
+    if (!open) return map
+    for (const eg of calcularCajaEventos(state, undefined, ahora).egresosPendientes) {
+      map.set(eg.eventoId, (map.get(eg.eventoId) ?? 0) + eg.monto)
+    }
+    return map
+  }, [open, state, ahoraMs])
 
   const eventosFinde = useMemo(() => {
     return (state.eventos || [])
@@ -143,7 +161,9 @@ export function FindeModal({ open, onOpenChange }: Props) {
               <p className="text-sm">No hay eventos este fin de semana.</p>
             </div>
           ) : (
-            eventosFinde.map(({ evento, costoCocina, costoBarra, totalPersonal, totalServicios, total, invitados }) => (
+            eventosFinde.map(({ evento, costoCocina, costoBarra, totalPersonal, totalServicios, total, invitados }) => {
+              const pendiente = pendientePorEvento.get(evento.id) ?? 0
+              return (
               <div
                 key={evento.id}
                 className="rounded-lg border border-t-4 bg-card p-4 text-card-foreground"
@@ -198,8 +218,21 @@ export function FindeModal({ open, onOpenChange }: Props) {
                   </span>
                   <span className="text-sm font-bold text-card-foreground">Total {fmt(total)}</span>
                 </div>
+
+                {/* Lo que todavía falta pagar (mismo número que Caja Eventos) */}
+                <div className="mt-2 flex items-center justify-between rounded-md bg-background/70 px-2.5 py-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Queda por pagar</span>
+                  {pendiente > 0 ? (
+                    <span className="text-sm font-bold text-red-700">{fmt(pendiente)}</span>
+                  ) : total === 0 ? (
+                    <span className="text-xs text-muted-foreground">Sin costos cargados</span>
+                  ) : (
+                    <span className="text-sm font-semibold text-emerald-700">Todo pagado</span>
+                  )}
+                </div>
               </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

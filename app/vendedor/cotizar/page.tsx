@@ -13,9 +13,11 @@
 // siempre al guardar con los costos reales (/api/vendedor/cotizaciones). El
 // vendedor nunca recibe costos, ganancias ni márgenes.
 //
-// Fuera de esta pantalla (los carga Administración después): teléfono,
-// festejados, horarios, dietas, plato por plato, trago por trago y datos del
-// contrato. Adolescentes y dietas especiales quedan en 0.
+// El teléfono del cliente es opcional y pasa al evento al aprobar.
+//
+// Fuera de esta pantalla (los carga Administración después): festejados,
+// horarios, dietas, plato por plato, trago por trago y datos del contrato.
+// Adolescentes y dietas especiales quedan en 0.
 //
 // Menú por pasos: si se elige algún plato, para ENVIAR hay que elegir uno de
 // cada paso que el salón ofrece (entrada, plato principal y postre). El
@@ -26,6 +28,14 @@
 // destildar). Se cobra como cualquier barra. Ver esBebidaDeMesa.
 //
 // ?id=... reabre un borrador o una cotización rechazada para corregirla.
+//
+// Cambios sin guardar: si se tocó algo desde la última vez que se guardó (o
+// desde que se abrió), la flecha de volver pide confirmación y el navegador
+// avisa al cerrar o recargar la pestaña (beforeunload).
+//
+// Salón ocupado: al elegir la fecha se consulta /api/vendedor/salones-ocupados
+// (solo claves de salón, nada del evento) y se marca "Ocupado ese día" en la
+// grilla. No frena el borrador: el que frena es el servidor al aprobar.
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
@@ -40,6 +50,7 @@ import {
   Home,
   Minus,
   PackageCheck,
+  Phone,
   Plus,
   Send,
   User,
@@ -234,6 +245,7 @@ function CotizarPageContent() {
 
   const [clienteNombre, setClienteNombre] = useState("")
   const [clienteDni, setClienteDni] = useState("")
+  const [clienteTelefono, setClienteTelefono] = useState("")
   const [tipoEvento, setTipoEvento] = useState("")
   const [fecha, setFecha] = useState("")
   const [salon, setSalon] = useState("")
@@ -249,6 +261,61 @@ function CotizarPageContent() {
   const [guardando, setGuardando] = useState<"guardar" | "enviar" | null>(null)
 
   const soloLectura = !!cotizacionId && !["borrador", "rechazada"].includes(estado)
+
+  // ── Cambios sin guardar ──
+  // "Firma" de todo lo que se carga en la pantalla. Se compara con la de la
+  // última vez que se guardó (o se abrió): si difieren, hay cambios. Textos
+  // sin espacios de más y listas ordenadas, porque así vuelven del servidor
+  // al reabrir: si no, recién guardada ya parecería "con cambios".
+  const firma = JSON.stringify({
+    clienteNombre: clienteNombre.trim(),
+    clienteDni: clienteDni.trim(),
+    clienteTelefono: clienteTelefono.trim(),
+    tipoEvento,
+    fecha,
+    salon,
+    adultos,
+    ninos,
+    recetas: [...recetas].sort(),
+    barraIds: [...barraIds].sort(),
+    servicios: Object.entries(servicios).sort(([a], [b]) => a.localeCompare(b)),
+  })
+  const [firmaGuardada, setFirmaGuardada] = useState<string | null>(null)
+  useEffect(() => {
+    // La primera firma, ya con la cotización cargada (o vacía si es nueva).
+    if (firmaGuardada === null && !cargandoCotizacion) setFirmaGuardada(firma)
+  }, [firmaGuardada, cargandoCotizacion, firma])
+  const hayCambios = !soloLectura && firmaGuardada !== null && firma !== firmaGuardada
+  useEffect(() => {
+    if (!hayCambios) return
+    const avisar = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Algunos navegadores todavía piden returnValue para mostrar el aviso.
+      e.returnValue = ""
+    }
+    window.addEventListener("beforeunload", avisar)
+    return () => window.removeEventListener("beforeunload", avisar)
+  }, [hayCambios])
+
+  // ── Salones ocupados ese día (solo las claves de salón) ──
+  const [salonesOcupados, setSalonesOcupados] = useState<string[]>([])
+  useEffect(() => {
+    setSalonesOcupados([])
+    // En solo lectura (enviada, aprobada o convertida) no se consulta: una
+    // convertida vería como "ocupado" a su propio evento.
+    if (soloLectura || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return
+    let cancelado = false
+    fetch(`/api/vendedor/salones-ocupados?fecha=${encodeURIComponent(fecha)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        // Si falla, no se marca nada: es solo un aviso, el servidor frena al aprobar.
+        if (!cancelado && data?.ok && Array.isArray(data.salones)) setSalonesOcupados(data.salones)
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [fecha, soloLectura])
 
   // ── Catálogo (solo precios) ──
   const cargarCatalogo = useCallback(async () => {
@@ -293,6 +360,7 @@ function CotizarPageContent() {
         setVendedorCotizacion(c.vendedor || "")
         setClienteNombre(c.clienteNombre || "")
         setClienteDni(c.clienteDni || "")
+        setClienteTelefono(c.clienteTelefono || "")
         setTipoEvento(c.tipoEvento || "")
         setFecha(c.fechaEvento || "")
         setSalon(c.salon || "")
@@ -400,6 +468,9 @@ function CotizarPageContent() {
   const guardar = async (accion: "guardar" | "enviar") => {
     if (accion === "enviar" ? !puedeEnviar : !puedeGuardar) return
     setGuardando(accion)
+    // Lo que se manda ahora es lo que queda guardado (si se cambia algo
+    // mientras guarda, eso sigue contando como cambio sin guardar).
+    const firmaEnviada = firma
     try {
       const res = await fetch("/api/vendedor/cotizaciones", {
         method: "POST",
@@ -409,6 +480,7 @@ function CotizarPageContent() {
           accion,
           clienteNombre: clienteNombre.trim(),
           clienteDni: clienteDni.trim(),
+          clienteTelefono: clienteTelefono.trim(),
           tipoEvento,
           fechaEvento: fecha,
           salon,
@@ -425,6 +497,7 @@ function CotizarPageContent() {
         toast({ title: data?.error || "No se pudo guardar", variant: "destructive" })
         return
       }
+      setFirmaGuardada(firmaEnviada)
       if (accion === "enviar") {
         toast({ title: "Enviada a Administración", description: `${clienteNombre.trim()} · ${fmt(data.total)}` })
         router.push("/vendedor/paquetes")
@@ -504,7 +577,14 @@ function CotizarPageContent() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
         <div className="mx-auto max-w-2xl flex items-center gap-3">
-          <Link href="/vendedor/paquetes" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" aria-label="Volver">
+          <Link
+            href="/vendedor/paquetes"
+            onClick={(e) => {
+              if (hayCambios && !window.confirm("Tenés cambios sin guardar. ¿Salir igual y perderlos?")) e.preventDefault()
+            }}
+            className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Volver"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="flex-1 min-w-0">
@@ -574,14 +654,28 @@ function CotizarPageContent() {
                 autoComplete="off"
                 className="h-11 text-base"
               />
-              <Input
-                type="date"
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                aria-label="Fecha del evento"
-                className="h-11 text-base"
-              />
+              <div className="relative">
+                <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="tel"
+                  value={clienteTelefono}
+                  onChange={(e) => setClienteTelefono(e.target.value)}
+                  placeholder="Teléfono"
+                  aria-label="Teléfono del cliente"
+                  inputMode="tel"
+                  autoComplete="off"
+                  maxLength={40}
+                  className="h-11 pl-9 text-base"
+                />
+              </div>
             </div>
+            <Input
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              aria-label="Fecha del evento"
+              className="h-11 text-base"
+            />
             {fecha && (
               <div className="flex justify-end">
                 <ChipDia dia={dia} recargo={calculo?.recargo?.monto ?? 0} />
@@ -594,6 +688,7 @@ function CotizarPageContent() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {SALONES.map((s) => {
                 const activo = s === salon
+                const ocupado = salonesOcupados.includes(s)
                 return (
                   <button
                     key={s}
@@ -610,11 +705,27 @@ function CotizarPageContent() {
                       className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card"
                       style={{ backgroundColor: salonColor(s) }}
                     />
-                    <span className="min-w-0 truncate">{salonLabel(s)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{salonLabel(s)}</span>
+                      {ocupado && (
+                        <span className={`block text-xs font-medium ${activo ? "text-primary-foreground/90" : "text-red-700"}`}>
+                          Ocupado ese día
+                        </span>
+                      )}
+                    </span>
                   </button>
                 )
               })}
             </div>
+            {salon && salonesOcupados.includes(salon) && (
+              <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="status">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>
+                  {salonLabel(salon)} ya tiene un evento ese día. Podés guardar el borrador, pero Administración no la va a
+                  poder aprobar así: elegí otra fecha u otro salón.
+                </p>
+              </div>
+            )}
             {config?.capacidadMaxima ? (
               <p className="text-xs text-muted-foreground">Capacidad: hasta {config.capacidadMaxima} invitados.</p>
             ) : null}

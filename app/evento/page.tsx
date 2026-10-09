@@ -114,6 +114,7 @@ import { ContratoPreviewCard } from "@/components/contrato-preview-card"
 import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
 import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
 import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
+import { salonesOcupadosEnFecha } from "@/lib/salones-ocupados"
 
 function EventoPageContent() {
   const router = useRouter()
@@ -139,6 +140,11 @@ function EventoPageContent() {
   const [showSectionSelector, setShowSectionSelector] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
   const [showDraftDialog, setShowDraftDialog] = useState(false)
+  // Salir de un evento ya creado con cambios sin guardar: se pregunta antes.
+  const [showSalirDialog, setShowSalirDialog] = useState(false)
+  // Salón al que se quiere cambiar cuando hay paquetes o servicios elegidos
+  // (cambiar de salón los borra): se confirma antes.
+  const [salonPendiente, setSalonPendiente] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [showSaveSuccess, setShowSaveSuccess] = useState(false)
   const [docSections, setDocSections] = useState<DocumentSections>({
@@ -232,6 +238,19 @@ function EventoPageContent() {
     if (!isEditing || !originalEvento || !evento) return []
     return detectarCambiosEvento(originalEvento, evento as EventoGuardado, state.recetas, catalogoServicios || [], state.barrasTemplates || [])
   }, [isEditing, originalEvento, evento, state.recetas, catalogoServicios, state.barrasTemplates])
+
+  // Cerrar o recargar la pestaña con cambios sin guardar: el navegador pide
+  // confirmación (no deja poner un texto propio, muestra el suyo).
+  const hayCambiosSinGuardar = isEditing && cambiosEnCurso.length > 0
+  useEffect(() => {
+    if (!hayCambiosSinGuardar) return
+    const avisar = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ""
+    }
+    window.addEventListener("beforeunload", avisar)
+    return () => window.removeEventListener("beforeunload", avisar)
+  }, [hayCambiosSinGuardar])
 
   // Versiones del contrato ordenadas de mas nueva a mas vieja
   const versionesContratoOrdenadas = useMemo(
@@ -535,8 +554,10 @@ function EventoPageContent() {
   }
 
   // NUEVO: Guardar/Actualizar Evento
-  const handleSaveEvento = async () => {
-    if (!evento || isSaving) return
+  // Devuelve true si se guardó (lo usa el "Guardar" del aviso de cambios sin
+  // guardar para saber si puede salir de la pantalla).
+  const handleSaveEvento = async (): Promise<boolean> => {
+    if (!evento || isSaving) return false
     
     setIsSaving(true)
     
@@ -572,7 +593,7 @@ function EventoPageContent() {
         variant: "destructive",
       })
       setTimeout(() => setSaveErrors([]), 5000)
-      return
+      return false
     }
     setSaveErrors([])
     
@@ -801,7 +822,7 @@ function EventoPageContent() {
       })
       if (!guardado) {
         setIsSaving(false)
-        return
+        return false
       }
 
       // Recién con el evento guardado: la seña va a las cajas con la misma
@@ -886,7 +907,7 @@ function EventoPageContent() {
       } as any)
       if (!guardado) {
         setIsSaving(false)
-        return
+        return false
       }
 
       // 2) Registrar automaticamente la seña en las cajas.
@@ -929,6 +950,33 @@ function EventoPageContent() {
         }, 300)
       }, 3000)
     }
+    return true
+  }
+
+  // Volver a la Lista desde un evento ya creado. Si hay cambios sin guardar
+  // se pregunta (antes la flecha los descartaba sin avisar).
+  const handleVolverALista = () => {
+    if (hayCambiosSinGuardar) {
+      setShowSalirDialog(true)
+      return
+    }
+    router.push("/eventos/lista")
+  }
+
+  // "Guardar" del aviso: el mismo guardado que el botón Actualizar Evento.
+  // Si se guardó, recién ahí sale (desde Contratos el guardado ya navega solo).
+  const handleGuardarYSalir = async () => {
+    const ok = await handleSaveEvento()
+    setShowSalirDialog(false)
+    if (ok && !fromContratos) router.push("/eventos/lista")
+  }
+
+  // "Descartar": sale sin guardar. Se suelta el evento en memoria para que,
+  // al volver a abrirlo, se cargue lo guardado y no lo que se había tocado.
+  const handleDescartarYSalir = () => {
+    setShowSalirDialog(false)
+    setEventoActual(null)
+    router.push("/eventos/lista")
   }
 
   // BUTTON 2: Close Event (Deducts stock, saves history, resets)
@@ -1256,6 +1304,9 @@ function EventoPageContent() {
     evento.estado === "completado"
   )
   const esSoloLectura = evento.estado === "completado"
+  // Salones que ya tienen otro evento en la fecha elegida (la que está
+  // escrita, aunque todavía no se haya salido del campo).
+  const salonesOcupados = salonesOcupadosEnFecha(eventos || [], localFecha || evento.fecha, evento.id)
 
   // Handlers that depend on derived values (must be after early return)
   // Selección de cocteles por click (estilo tabla de menú).
@@ -1445,9 +1496,14 @@ function EventoPageContent() {
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sticky top-0 z-40">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
           {isEditing ? (
-            <Link href="/eventos/lista" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+            <button
+              type="button"
+              onClick={handleVolverALista}
+              aria-label="Volver a la lista de eventos"
+              className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
               <ArrowLeft className="h-5 w-5" />
-            </Link>
+            </button>
           ) : (
             <button
               type="button"
@@ -1739,25 +1795,51 @@ function EventoPageContent() {
                 <Building2 className="h-4 w-4 text-muted-foreground" />
                 Salon
               </Label>
-              <div className="flex gap-2">
+              {/* En el celular van en dos filas (3 + 2) para que no desborden. */}
+              <div className="grid grid-cols-3 gap-2 sm:flex">
                 {SALONES.map((s) => {
                   const active = evento.salon === s
                   // Cada salón se muestra en su propio color (el mismo que usa
                   // el resto del sistema), personalizable desde Configuración.
                   const color = salonColor(s, configuracionCajas)
+                  // Ya hay otro evento ese día en ese salón: la base no deja
+                  // guardar dos, así que se avisa antes de elegirlo.
+                  const ocupado = salonesOcupados.has(s)
                   return (
                     <button
                       key={s}
                       type="button"
-                      onClick={() => updateEventoActual({ salon: s, paquetesSeleccionados: [], servicios: [] })}
-                      className="flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => {
+                        // Tocar el salón que ya está elegido no cambia nada
+                        // (antes vaciaba paquetes y servicios igual).
+                        if (s === evento.salon) return
+                        const hayElegidos =
+                          (evento.paquetesSeleccionados || []).length > 0 || (evento.servicios || []).length > 0
+                        if (hayElegidos) {
+                          setSalonPendiente(s)
+                          return
+                        }
+                        updateEventoActual({ salon: s, paquetesSeleccionados: [], servicios: [] })
+                      }}
+                      title={ocupado ? "Ese día ya hay otro evento en este salón" : undefined}
+                      className="min-w-0 flex-1 rounded-lg border px-2 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       style={{
                         borderColor: color,
                         backgroundColor: active ? color : `color-mix(in srgb, ${color} 8%, white)`,
                         color: active ? "white" : color,
                       }}
                     >
-                      {salonLabel(s)}
+                      <span className="block truncate">{salonLabel(s)}</span>
+                      {ocupado && (
+                        <span
+                          className={`mt-0.5 flex items-center justify-center gap-1 text-[10px] font-semibold uppercase ${
+                            active ? "text-white" : "text-red-600"
+                          }`}
+                        >
+                          <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          Ocupado
+                        </span>
+                      )}
                     </button>
                   )
                 })}
@@ -2947,12 +3029,10 @@ function EventoPageContent() {
 
           {/* Botón volver a lista (solo en modo edición) */}
           {isEditing && (
-            <Link href="/eventos/lista" className="block">
-              <Button variant="ghost" className="w-full">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver a Lista
-              </Button>
-            </Link>
+            <Button variant="ghost" className="w-full" onClick={handleVolverALista}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Volver a Lista
+            </Button>
           )}
         </div>
 
@@ -2975,6 +3055,61 @@ function EventoPageContent() {
                 className="h-12 text-base bg-emerald-600 hover:bg-emerald-700"
               >
                 Si, Cerrar Evento
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Salir de un evento ya creado con cambios sin guardar */}
+        <AlertDialog open={showSalirDialog} onOpenChange={setShowSalirDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Tenés {cambiosEnCurso.length} {cambiosEnCurso.length === 1 ? "cambio" : "cambios"} sin guardar
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Si salís sin guardar, se pierden. Podés guardarlos ahora (igual que con el botón Actualizar Evento),
+                descartarlos o seguir editando.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                variant="ghost"
+                className="sm:mr-auto text-destructive hover:text-destructive"
+                onClick={handleDescartarYSalir}
+                disabled={isSaving}
+              >
+                Descartar
+              </Button>
+              <AlertDialogCancel disabled={isSaving}>Seguir editando</AlertDialogCancel>
+              <Button onClick={handleGuardarYSalir} disabled={isSaving}>
+                <Save className="h-4 w-4 mr-2" />
+                {isSaving ? "Guardando..." : "Guardar"}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Confirmar cambio de salón cuando ya hay paquetes o servicios elegidos */}
+        <AlertDialog open={!!salonPendiente} onOpenChange={(open) => { if (!open) setSalonPendiente(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Cambiar a {salonPendiente ? salonLabel(salonPendiente) : ""}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Al cambiar de salón se quitan los paquetes y servicios que ya elegiste
+                ({(evento.paquetesSeleccionados || []).length} {(evento.paquetesSeleccionados || []).length === 1 ? "paquete" : "paquetes"} y {(evento.servicios || []).length} {(evento.servicios || []).length === 1 ? "servicio" : "servicios"}).
+                Los vas a tener que elegir de nuevo para el salón nuevo.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>No, dejar como está</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (salonPendiente) updateEventoActual({ salon: salonPendiente, paquetesSeleccionados: [], servicios: [] })
+                  setSalonPendiente(null)
+                }}
+              >
+                Sí, cambiar de salón
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

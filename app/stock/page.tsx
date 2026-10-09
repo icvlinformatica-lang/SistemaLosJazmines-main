@@ -17,6 +17,9 @@
 // La sesión se confirma TODA junta (ver /api/stock-salones/sesiones). Al
 // guardar, el stock de Administración (stock_actual de /admin/almacen y
 // /admin/barra) pasa a ser la suma de lo contado en cada salón.
+// Mientras se escribe, lo tipeado queda como borrador en el celular (ver
+// lib/stock-borrador.ts) para no perderlo si se cierra el navegador; al
+// volver a la misma carga se ofrece seguir. El borrador nunca va al servidor.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useStore } from "@/lib/store-context"
@@ -24,6 +27,14 @@ import { useProfile, usuarioActivo } from "@/lib/profile-context"
 import { salonLabel } from "@/lib/store"
 import { proximosEventosDelSalon, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 import { insumosVisibles, itemsParaEnviar, type InsumoCarga } from "@/lib/stock-carga"
+import {
+  armarBorradorStock,
+  claveBorradorStock,
+  clavesBorradorStockVencidas,
+  leerBorradorStock,
+  valoresDelCatalogo,
+  type BorradorStock,
+} from "@/lib/stock-borrador"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { ConfirmAction } from "@/components/confirm-action"
@@ -40,7 +51,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, ChefHat, ChevronDown, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
+import { ArrowLeft, ChefHat, ChevronDown, History, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -60,6 +71,25 @@ const SECTOR_ICON: Record<SectorStock, typeof ChefHat> = { cocina: ChefHat, barr
 
 function fmtCantidad(n: number): string {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(n)
+}
+
+// Acceso al localStorage siempre con try/catch: en modo privado o con el
+// almacenamiento bloqueado puede tirar error, y la carga tiene que seguir
+// andando igual (solo que sin borrador).
+function leerLocal(clave: string): string | null {
+  try {
+    return window.localStorage.getItem(clave)
+  } catch {
+    return null
+  }
+}
+function escribirLocal(clave: string, texto: string | null) {
+  try {
+    if (texto === null) window.localStorage.removeItem(clave)
+    else window.localStorage.setItem(clave, texto)
+  } catch {
+    // Sin lugar o bloqueado: no hay borrador, la carga sigue igual.
+  }
 }
 
 function fmtFechaHora(iso: string): string {
@@ -117,6 +147,14 @@ export default function StockPorSalonPage() {
   const [verificandoPin, setVerificandoPin] = useState(false)
   const [pinExtra, setPinExtra] = useState("")
   const inputsRef = useRef<Map<string, HTMLInputElement>>(new Map())
+  // Borrador en el celular de la carga en curso (clave por salón, sector y
+  // tipo de carga). Mientras se ofrece uno viejo ("¿Seguir con ese
+  // conteo?") no se guarda nada, para no pisarlo antes de que elijan.
+  const [claveBorrador, setClaveBorrador] = useState<string | null>(null)
+  const [borradorOfrecido, setBorradorOfrecido] = useState<BorradorStock | null>(null)
+  // Copia solo para el texto del diálogo: así no queda vacío durante la
+  // animación de cierre (borradorOfrecido ya pasó a null).
+  const [borradorTexto, setBorradorTexto] = useState<BorradorStock | null>(null)
 
   const cargarEstados = useCallback(
     async (salonElegido: string) => {
@@ -153,6 +191,28 @@ export default function StockPorSalonPage() {
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
   }, [paso, hayAlgoEscrito])
+
+  // Al abrir la pantalla se borran los borradores vencidos (más de 3 días)
+  // o rotos, también los de eventos a los que no se vuelve a entrar.
+  useEffect(() => {
+    try {
+      const entradas: Array<[string, string | null]> = []
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i)
+        if (k) entradas.push([k, window.localStorage.getItem(k)])
+      }
+      for (const k of clavesBorradorStockVencidas(entradas, new Date())) escribirLocal(k, null)
+    } catch {
+      // Sin acceso al almacenamiento: no hay nada que limpiar.
+    }
+  }, [])
+
+  // Guarda lo escrito en el celular a medida que se tipea. Si se borra todo,
+  // se borra el borrador. Nunca se manda nada al servidor desde acá.
+  useEffect(() => {
+    if (paso !== "carga" || !claveBorrador || borradorOfrecido) return
+    escribirLocal(claveBorrador, armarBorradorStock(valores, new Date()))
+  }, [paso, claveBorrador, borradorOfrecido, valores])
 
   const catalogo: InsumoCarga[] = useMemo(() => {
     if (sector === "cocina") return (state.insumos || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad }))
@@ -219,10 +279,43 @@ export default function StockPorSalonPage() {
     // Cocina: si el salón ya tiene conteos, arranca mostrando solo esos; si
     // no, "Todos" (si no, la lista aparecería vacía).
     setSoloContados(Object.keys(estados[s]?.saldos || {}).length > 0)
+    // Borrador: con PIN es la carga extraordinaria; sin PIN, la de "luego
+    // del evento X" (cada evento tiene el suyo).
+    const clave = claveBorradorStock(salon, s, pin ? null : (estados[s]?.eventoPendiente?.id ?? null))
+    const previo = leerBorradorStock(leerLocal(clave), new Date())
+    if (!previo) escribirLocal(clave, null) // vencido o roto: se descarta solo
+    setClaveBorrador(clave)
+    setBorradorOfrecido(previo)
+    if (previo) setBorradorTexto(previo)
     setPaso("carga")
   }
 
+  /** "Seguir con ese conteo": vuelve a poner lo escrito en los casilleros. */
+  const seguirConBorrador = () => {
+    if (!borradorOfrecido) return
+    // Sin catálogo cargado no se filtra (mejor no perder lo escrito).
+    setValores(
+      catalogo.length > 0
+        ? valoresDelCatalogo(borradorOfrecido.valores, catalogo.map((i) => i.id))
+        : borradorOfrecido.valores,
+    )
+    setBorradorOfrecido(null)
+  }
+
+  /** "Empezar de nuevo": se descarta el borrador y la lista arranca vacía. */
+  const descartarBorrador = () => {
+    if (claveBorrador) escribirLocal(claveBorrador, null)
+    setValores({})
+    setBorradorOfrecido(null)
+  }
+
   const salirDeCarga = () => {
+    // Salir descarta lo escrito (con confirmación si había algo) o la carga
+    // se guardó bien: en los dos casos se borra el borrador. Si todavía se
+    // estaba ofreciendo uno viejo y no se eligió nada, se deja como estaba.
+    if (claveBorrador && !borradorOfrecido) escribirLocal(claveBorrador, null)
+    setClaveBorrador(null)
+    setBorradorOfrecido(null)
     setValores({})
     setSesion(null)
     setPinExtra("")
@@ -698,6 +791,31 @@ export default function StockPorSalonPage() {
           </Button>
         </div>
       </div>
+
+      {/* Conteo sin confirmar guardado en este celular para esta misma carga.
+          Cerrar el diálogo sin elegir equivale a seguir (no se pierde nada). */}
+      <Dialog open={borradorOfrecido !== null} onOpenChange={(o) => !o && seguirConBorrador()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-sky-600" />
+              Conteo sin confirmar
+            </DialogTitle>
+            <DialogDescription>
+              Tenés un conteo sin confirmar del {borradorTexto ? fmtFechaHora(borradorTexto.guardadoEn) : ""} (
+              {borradorTexto ? Object.keys(borradorTexto.valores).length : 0}{" "}
+              {borradorTexto && Object.keys(borradorTexto.valores).length === 1 ? "insumo escrito" : "insumos escritos"}
+              ). Todavía no se guardó.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={descartarBorrador}>
+              Empezar de nuevo
+            </Button>
+            <Button onClick={seguirConBorrador}>Seguir con ese conteo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Diálogo final: resumen + nombre de quien carga (obligatorio). */}
       <Dialog open={confirmando} onOpenChange={(o) => !guardando && setConfirmando(o)}>

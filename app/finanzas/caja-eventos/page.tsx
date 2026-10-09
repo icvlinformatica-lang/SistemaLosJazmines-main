@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,16 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -58,6 +69,8 @@ import { SaldoHerramientasEventos } from "./saldo-herramientas"
 import { MontoProyeccion } from "./desglose-proyeccion"
 import { desglosarProyeccion } from "@/lib/desglose-proyeccion"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
+import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
+import { almacenDelNavegador, guardarSalonRecordado, leerSalonRecordado } from "@/lib/salon-recordado"
 import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo } from "@/lib/servicio-sueldo"
 import { fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
@@ -453,10 +466,11 @@ export default function CajaEventosPage() {
   const { state, syncGuard, updateEvento, addMovimientosCaja, deleteMovimientoCaja, gastosArchivados, archivarGasto, updatePagoPersonal, configuracionCajas } =
 useStore()
 
-  // Tarjetas de métricas: siempre plegadas por defecto, con los montos
-  // siempre visibles. Al pasar el cursor por encima del grupo se despliegan
-  // todas juntas y al quitarlo se vuelven a plegar.
-  const [tarjetasAbiertas, setTarjetasAbiertas] = useState(false)
+  // Tarjetas de métricas: el monto principal se ve siempre; lo que se pliega
+  // es solo el detalle de abajo. Se despliega con el mouse encima del grupo
+  // o tocando el chevron de cualquier tarjeta (celular y teclado).
+  const tarjetas = useTarjetasPlegables()
+  const tarjetasAbiertas = tarjetas.abiertas
   const colapsadoMes = !tarjetasAbiertas
   const colapsadoSemana = !tarjetasAbiertas
 
@@ -489,12 +503,27 @@ useStore()
       refId: pago.id,
     })
   }
+  // Confirmación de "Archivar" y "Revertir" en el historial de pagos: antes
+  // eran de un toque y "Revertir" reabre el compromiso y borra el egreso de
+  // la caja. El diálogo solo agrega el paso de confirmar; la acción que corre
+  // después es exactamente la misma (archivarPagoEvento / handleRevertirPago).
+  const [accionHistorial, setAccionHistorial] = useState<{ tipo: "archivar" | "revertir"; pago: PagoRealizado } | null>(null)
   const { ahora } = useClock()
   const insumos = state.insumos ?? []
   const insumosBarra = state.insumosBarra ?? []
   const [salonFiltro, setSalonFiltro] = useState<string>("todos")
-  // Selector de salón estilo perfiles al entrar a la página
+  // Selector de salón estilo perfiles al entrar a la página. Se recuerda el
+  // último salón elegido en este navegador: si hay uno guardado y sigue siendo
+  // válido, se entra directo a ese salón; si no, se abre el selector como
+  // siempre. El botón "Cambiar salón" vuelve a abrir el selector.
   const [selectorAbierto, setSelectorAbierto] = useState(true)
+  useEffect(() => {
+    const recordado = leerSalonRecordado(almacenDelNavegador(), "caja-eventos", ["todos", ...SALONES])
+    if (recordado) {
+      setSalonFiltro(recordado)
+      setSelectorAbierto(false)
+    }
+  }, [])
   const data = useCajaEventos(state, salonFiltro, ahora)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
@@ -1711,6 +1740,7 @@ useStore()
         onSelect={(salon) => {
           setSalonFiltro(salon)
           setSelectorAbierto(false)
+          guardarSalonRecordado(almacenDelNavegador(), "caja-eventos", salon)
         }}
       />
     )
@@ -1778,12 +1808,11 @@ useStore()
           ventana (100dvh menos padding, header fijo y separación) sin scroll */}
       <div className="flex min-h-0 flex-col gap-3 lg:h-[calc(100dvh-6.5rem)] lg:overflow-hidden">
       {/* DASHBOARD: tarjetas en una fila, estilo Caja Jazmines.
-          Siempre plegadas; el hover sobre el grupo las despliega todas juntas
-          y al retirar el cursor se vuelven a plegar. Montos siempre visibles. */}
+          El monto de cada tarjeta se ve siempre; el detalle de abajo se
+          despliega con el mouse encima del grupo o tocando un chevron. */}
       <div
         className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2 items-start shrink-0"
-        onMouseEnter={() => setTarjetasAbiertas(true)}
-        onMouseLeave={() => setTarjetasAbiertas(false)}
+        {...tarjetas.propsGrupo}
       >
         {/* Saldo Actual (destacada, igual que en Jazmines) */}
         <Card
@@ -1791,7 +1820,7 @@ useStore()
           className="cursor-pointer rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
           onClick={() => {
             if (colapsadoMes) {
-              setTarjetasAbiertas(true)
+              tarjetas.abrir()
               return
             }
             setDesgloseOpen(true)
@@ -1807,17 +1836,28 @@ useStore()
               </p>
               <div className="flex items-center gap-1.5">
                 <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
-                  style={{ color: "#0035db" }}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    tarjetas.alternar()
+                  }}
+                  aria-expanded={tarjetasAbiertas}
+                  aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                  className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
+                    style={{ color: "#0035db" }}
+                    aria-hidden="true"
+                  />
+                </button>
               </div>
             </div>
+            <p className="text-lg font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
+              {formatCurrency(saldoActual)}
+            </p>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-lg font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
-                {formatCurrency(saldoActual)}
-              </p>
               <p
                 className="text-xs mt-auto pt-1 flex items-center gap-1.5 font-semibold"
                 style={{ color: colorSalonActivo }}
@@ -1845,16 +1885,27 @@ useStore()
               </p>
               <div className="flex items-center gap-1.5">
                 <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-                <ChevronDown
-                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    tarjetas.alternar()
+                  }}
+                  aria-expanded={tarjetasAbiertas}
+                  aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                  className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
+                    aria-hidden="true"
+                  />
+                </button>
               </div>
             </div>
+            <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
+              {`+${formatCurrency(porCobrarEsteMes)}`}
+            </p>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
-                {`+${formatCurrency(porCobrarEsteMes)}`}
-              </p>
               <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {(() => {
                   const mesKey = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
@@ -1880,16 +1931,27 @@ useStore()
               </p>
               <div className="flex items-center gap-1.5">
                 <ArrowUpFromLine className="h-4 w-4 text-red-500" />
-                <ChevronDown
-                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    tarjetas.alternar()
+                  }}
+                  aria-expanded={tarjetasAbiertas}
+                  aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                  className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
+                    aria-hidden="true"
+                  />
+                </button>
               </div>
             </div>
+            <p className="text-lg font-bold whitespace-nowrap text-red-600">
+              {`−${formatCurrency(porPagarEsteMes)}`}
+            </p>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-lg font-bold whitespace-nowrap text-red-600">
-                {`−${formatCurrency(porPagarEsteMes)}`}
-              </p>
               <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {pagoMesDetalle || "Sin pagos este mes"}
               </p>
@@ -1909,16 +1971,27 @@ useStore()
               </p>
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
-                <ChevronDown
-                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    tarjetas.alternar()
+                  }}
+                  aria-expanded={tarjetasAbiertas}
+                  aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                  className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoMes ? "" : "rotate-180"}`}
+                    aria-hidden="true"
+                  />
+                </button>
               </div>
             </div>
+            <p className="text-lg font-bold whitespace-nowrap text-foreground">
+              {formatCurrency(saldoFinMes)}
+            </p>
             <CuerpoColapsable colapsado={colapsadoMes}>
-              <p className="text-lg font-bold whitespace-nowrap text-foreground">
-                {formatCurrency(saldoFinMes)}
-              </p>
               <p className="text-xs mt-auto pt-1 capitalize text-muted-foreground">
                 {mesActualLabel}
               </p>
@@ -1938,16 +2011,27 @@ useStore()
               </p>
               <div className="flex items-center gap-1.5">
                 <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-                <ChevronDown
-                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    tarjetas.alternar()
+                  }}
+                  aria-expanded={tarjetasAbiertas}
+                  aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                  className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                    aria-hidden="true"
+                  />
+                </button>
               </div>
             </div>
+            <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
+              {`+${formatCurrency(cobroSemana)}`}
+            </p>
             <CuerpoColapsable colapsado={colapsadoSemana}>
-              <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
-                {`+${formatCurrency(cobroSemana)}`}
-              </p>
               <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {cuotasSemanaCount > 0
                   ? `${cuotasSemanaCount} ${cuotasSemanaCount === 1 ? "cuota a cobrar" : "cuotas a cobrar"}`
@@ -1969,16 +2053,27 @@ useStore()
               </p>
               <div className="flex items-center gap-1.5">
                 <ArrowUpFromLine className="h-4 w-4 text-red-500" />
-                <ChevronDown
-                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    tarjetas.alternar()
+                  }}
+                  aria-expanded={tarjetasAbiertas}
+                  aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                  className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                    aria-hidden="true"
+                  />
+                </button>
               </div>
             </div>
+            <p className="text-lg font-bold whitespace-nowrap text-red-600">
+              {`−${formatCurrency(pagoSemana)}`}
+            </p>
             <CuerpoColapsable colapsado={colapsadoSemana}>
-              <p className="text-lg font-bold whitespace-nowrap text-red-600">
-                {`−${formatCurrency(pagoSemana)}`}
-              </p>
               <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 {pagoSemanaDetalle || "Sin gastos esta semana"}
               </p>
@@ -1998,16 +2093,27 @@ useStore()
               </p>
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
-                <ChevronDown
-                  className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    tarjetas.alternar()
+                  }}
+                  aria-expanded={tarjetasAbiertas}
+                  aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
+                  className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
+                    aria-hidden="true"
+                  />
+                </button>
               </div>
             </div>
+            <p className="text-lg font-bold whitespace-nowrap text-foreground">
+              {formatCurrency(saldoFinSemana)}
+            </p>
             <CuerpoColapsable colapsado={colapsadoSemana}>
-              <p className="text-lg font-bold whitespace-nowrap text-foreground">
-                {formatCurrency(saldoFinSemana)}
-              </p>
               <p className="text-xs mt-auto pt-1 text-muted-foreground">
                 Saldo actual + cobros − gastos
               </p>
@@ -2459,7 +2565,11 @@ useStore()
             <CardContent className="px-0 py-2">
               {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  No hay pagos en el historial activo. Los pagos archivados se ven en el Archivo.
+                  No hay pagos en el historial activo. Los pagos archivados se ven en el{" "}
+                  <Link href="/finanzas/archivo" className="font-medium text-primary underline underline-offset-2">
+                    Archivo
+                  </Link>
+                  .
                 </p>
               ) : (
                 <Table>
@@ -2504,7 +2614,7 @@ useStore()
                               variant="outline"
                               size="sm"
                               className="h-8 gap-1.5 text-xs bg-transparent"
-                              onClick={() => archivarPagoEvento(pago)}
+                              onClick={() => setAccionHistorial({ tipo: "archivar", pago })}
                             >
                               <Archive className="h-3.5 w-3.5" />
                               Archivar
@@ -2513,7 +2623,7 @@ useStore()
                               variant="outline"
                               size="sm"
                               className="h-8 gap-1.5 text-xs bg-transparent"
-                              onClick={() => handleRevertirPago(pago)}
+                              onClick={() => setAccionHistorial({ tipo: "revertir", pago })}
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
                               Revertir
@@ -3065,6 +3175,56 @@ useStore()
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Confirmación de Archivar / Revertir del historial de pagos ───── */}
+      <AlertDialog open={!!accionHistorial} onOpenChange={(open) => !open && setAccionHistorial(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {accionHistorial?.tipo === "revertir" ? "¿Revertir este pago?" : "¿Archivar este pago?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                {accionHistorial && (
+                  <div className="rounded-lg border border-border bg-muted/40 p-3 text-foreground">
+                    <p className="font-medium break-words">{accionHistorial.pago.concepto}</p>
+                    <p className="text-xs text-muted-foreground break-words">
+                      {accionHistorial.pago.eventoNombre || "Sin evento"}
+                      {accionHistorial.pago.salon ? ` · ${salonLabel(accionHistorial.pago.salon)}` : ""}
+                    </p>
+                    <p className="mt-1 text-base font-bold text-red-600">
+                      −{formatCurrency(accionHistorial.pago.monto)}
+                    </p>
+                  </div>
+                )}
+                <p>
+                  {accionHistorial?.tipo === "revertir"
+                    ? "El pago vuelve a figurar como pendiente en el evento y se borra el egreso de la caja, así que el saldo sube por este monto."
+                    : "El pago sale del historial activo y queda en el Archivo. No cambia el saldo de la caja."}
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                accionHistorial?.tipo === "revertir"
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined
+              }
+              onClick={() => {
+                if (!accionHistorial) return
+                if (accionHistorial.tipo === "revertir") handleRevertirPago(accionHistorial.pago)
+                else archivarPagoEvento(accionHistorial.pago)
+                setAccionHistorial(null)
+              }}
+            >
+              {accionHistorial?.tipo === "revertir" ? "Sí, revertir" : "Sí, archivar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Animación de check verde al confirmar */}
       {pagoExito && (
