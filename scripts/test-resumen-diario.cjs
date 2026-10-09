@@ -158,3 +158,18 @@ test("API transmite fecha elegida; sin fecha conserva hoy para el cron", async (
   assert.equal(actual.fecha, hoyArgentina())
   assert.equal(actual.cantidadMovimientos, 0)
 })
+test("los mails no cuentan movimientos de eventos que están en la papelera", async () => {
+  consultas.length = 0
+  movimientos = []; eventos = []
+  await buildResumenDiario("2026-10-08")
+  const deCaja = consultas.filter((c) => c.query.includes("FROM movimientos_caja"))
+  // La del día y la de saldos: las dos dejan afuera los eventos borrados,
+  // igual que las pantallas de caja.
+  assert.equal(deCaja.length, 2)
+  for (const c of deCaja) {
+    assert.match(c.query, /evento_id IS NULL/)
+    assert.match(c.query, /e\.deleted_at IS NULL/)
+  }
+  const fuenteSemanal = fs.readFileSync(path.join(__dirname, "..", "lib", "resumen-semanal.ts"), "utf8")
+  assert.equal((fuenteSemanal.match(/e\.deleted_at IS NULL/g) || []).length, 2)
+})
