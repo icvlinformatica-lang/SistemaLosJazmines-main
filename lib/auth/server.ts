@@ -5,6 +5,7 @@
 // PIN_VESTIDO, PIN_PANTALLA, PIN_COORDINACION, PIN_VENDEDOR) sin tocar el código.
 // También vive acá PIN_STOCK_EXTRA, que no es de un perfil sino de una acción
 // (la carga extraordinaria de stock): ver verifyPinStockExtra.
+// Y PIN_MAESTRO, la clave general del dueño: ver esPinMaestro.
 // Usa Web Crypto (crypto.subtle) para que funcione tanto en Node como en Edge middleware.
 
 export const SESSION_COOKIE = "lj_session"
@@ -53,11 +54,31 @@ function coincide(esperado: string, recibido: string): boolean {
   return diff === 0
 }
 
+/** Largo mínimo de la clave maestra. Si es más corta, no se acepta. */
+export const LARGO_MINIMO_PIN_MAESTRO = 8
+
+/**
+ * Clave general ("maestra"): abre CUALQUIER perfil en el login y también los
+ * PINs de acción (el de administración para acciones sensibles y el de carga
+ * extraordinaria de stock). Es para el dueño.
+ *
+ * Vive SOLO en la variable de entorno PIN_MAESTRO y, a diferencia de los otros
+ * PINs, NO tiene valor de reserva: si la variable no está cargada, o tiene
+ * menos de LARGO_MINIMO_PIN_MAESTRO caracteres, no hay clave maestra. El
+ * repositorio es público, así que un valor por defecto acá abriría todo.
+ * Tampoco se muestra en Configuración > Contraseñas (no está en getPins).
+ */
+export function esPinMaestro(pin: string): boolean {
+  const maestro = (process.env.PIN_MAESTRO ?? "").trim()
+  if (maestro.length < LARGO_MINIMO_PIN_MAESTRO) return false
+  return coincide(maestro, pin)
+}
+
 export function verifyPin(perfilId: string, pin: string): boolean {
   const pins = getPins()
   const expected = pins[perfilId]
   if (!expected) return false
-  return coincide(expected, pin)
+  return coincide(expected, pin) || esPinMaestro(pin)
 }
 
 /**
@@ -66,10 +87,29 @@ export function verifyPin(perfilId: string, pin: string): boolean {
  * perfil activo, no habilita ninguna pantalla más. Solo abre esa carga.
  *
  * Se cambia con la variable de entorno PIN_STOCK_EXTRA, sin redeploy, igual
- * que los PINs de los perfiles.
+ * que los PINs de los perfiles. La clave maestra (PIN_MAESTRO) también la abre.
  */
 export function verifyPinStockExtra(pin: string): boolean {
-  return coincide(process.env.PIN_STOCK_EXTRA || "9999", pin)
+  return coincide(process.env.PIN_STOCK_EXTRA || "9999", pin) || esPinMaestro(pin)
+}
+
+/**
+ * Personas que, al entrar a su perfil, dejan abiertos TODOS los perfiles en
+ * ese dispositivo (reciben el acceso rápido de cada uno, sin tener que poner
+ * el PIN de cada perfil). Pedido del dueño el 8/10/2026 para Diego.
+ *
+ * No abre nada que esa persona no tenga ya: Administración ve todo, incluidos
+ * los PINs de cada perfil en Configuración > Contraseñas. Para entrar igual
+ * hace falta el PIN de Administración (o la clave maestra).
+ */
+const DESBLOQUEAN_TODO: Record<string, string[]> = {
+  administracion: ["Diego"],
+}
+
+export function desbloqueaTodosLosPerfiles(perfilId: string, quien: string | null | undefined): boolean {
+  const nombre = (quien ?? "").trim()
+  if (!nombre) return false
+  return (DESBLOQUEAN_TODO[perfilId] ?? []).includes(nombre)
 }
 
 // --- Firma HMAC-SHA256 con Web Crypto (Edge + Node) ---

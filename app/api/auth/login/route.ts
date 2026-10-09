@@ -1,6 +1,16 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
-import { verifyPin, verifyToken, signToken, signQuickToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/server"
+import {
+  verifyPin,
+  esPinMaestro,
+  desbloqueaTodosLosPerfiles,
+  verifyToken,
+  signToken,
+  signQuickToken,
+  sessionCookieOptions,
+  SESSION_COOKIE,
+} from "@/lib/auth/server"
+import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { chequearLimite, registrarFallo, registrarExito, obtenerIp } from "@/lib/auth/rate-limit"
 
 const PERFILES_VALIDOS = [
@@ -17,6 +27,9 @@ export async function POST(req: Request) {
     const perfilId = typeof body.perfilId === "string" ? body.perfilId : ""
     const pin = typeof body.pin === "string" ? body.pin : ""
     const quickToken = typeof body.quickToken === "string" ? body.quickToken : ""
+    // Quién ingresa (Diego, Leila…). Viene en el body y, si no, de la cookie
+    // lj_usuario: en la vista previa embebida las cookies pueden no viajar.
+    const quien = typeof body.quien === "string" && body.quien.trim() ? body.quien.trim() : usuarioDesdeCookie(req, "")
 
     if (!PERFILES_VALIDOS.includes(perfilId)) {
       return NextResponse.json({ ok: false, error: "Perfil inválido" }, { status: 400 })
@@ -50,12 +63,29 @@ export async function POST(req: Request) {
 
     if (pin) registrarExito(claveLimite)
 
+    // Deja rastro en los logs de Vercel cada vez que se entra con la clave
+    // maestra, para poder ver si la usa alguien más que el dueño.
+    if (pin && esPinMaestro(pin)) {
+      console.warn(`[auth] Ingreso con la clave maestra al perfil "${perfilId}" desde ${obtenerIp(req)}`)
+    }
+
     const sessionToken = await signToken(perfilId)
     const nuevoQuickToken = await signQuickToken(perfilId)
 
+    // Si entra alguien de DESBLOQUEAN_TODO (Diego en Administración), se le
+    // devuelve el acceso rápido de TODOS los perfiles: el navegador los guarda
+    // y después entra a cualquiera tocándolo, sin PIN.
+    let accesosRapidos: Record<string, string> | undefined
+    if (desbloqueaTodosLosPerfiles(perfilId, quien)) {
+      accesosRapidos = {}
+      for (const id of PERFILES_VALIDOS) {
+        accesosRapidos[id] = id === perfilId ? nuevoQuickToken : await signQuickToken(id)
+      }
+    }
+
     // sessionToken también se devuelve en el body: en la vista previa embebida
     // (iframe) las cookies pueden estar bloqueadas, y el cliente lo envía por header.
-    const res = NextResponse.json({ ok: true, perfilId, quickToken: nuevoQuickToken, sessionToken })
+    const res = NextResponse.json({ ok: true, perfilId, quickToken: nuevoQuickToken, sessionToken, accesosRapidos })
     res.cookies.set(SESSION_COOKIE, sessionToken, sessionCookieOptions())
     return res
   } catch (err) {

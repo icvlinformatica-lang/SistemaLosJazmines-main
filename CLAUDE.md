@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 39 archivos y 367 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 41 archivos y 381 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -250,6 +250,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
   - La firma de la sesión incluye el PIN vigente del perfil (`datosFirmados`): cambiar una variable `PIN_*` (y volver a publicar) cierra las sesiones y los accesos rápidos de ese perfil. Al publicar ese cambio, el 8/10/2026, todos tuvieron que volver a entrar una vez.
   - Gestión: administracion, soporte, cobro, coordinacion, vendedor.
   - Evento: cocina, barra, dj, fotografo, vestido, pantalla.
+  - Diego, al entrar a Administración eligiendo su nombre, recibe el acceso rápido (30 días) de **todos** los perfiles en ese navegador (`desbloqueaTodosLosPerfiles` en `lib/auth/server.ts`, `accesosRapidos` en la respuesta del login). "Olvidar accesos rápidos" en el login los borra.
   - `middleware.ts` solo exige sesión en `/api/*`; las páginas redirigen solas a `/login`.
 - **Variables de entorno**:
   - `POSTGRES_URL`: pooler de Supabase en modo transacción, por eso `prepare: false`.
@@ -257,6 +258,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
   - Sesiones y cron: `AUTH_SECRET`, `CRON_SECRET`.
   - Mails: `RESEND_API_KEY`, `NOTIFICATION_EMAIL`.
   - PINs: `PIN_*` por perfil, más `PIN_STOCK_EXTRA`.
+  - `PIN_MAESTRO`: clave general del dueño: solo números y 8 o más, porque el campo del login filtra todo lo que no sea número. Entra a cualquier perfil y abre los PINs de acción (administración y stock extraordinario). No tiene valor de reserva: sin la variable no existe. No se muestra en Configuración y cada ingreso con ella queda en los logs de Vercel (`esPinMaestro` en `lib/auth/server.ts`).
 - **Rutas**:
   - `app/admin/*`: catálogos y administración.
   - `app/eventos/*`: lista, calendario, pagos, costos, producción, staff, cotizaciones y papeleras.

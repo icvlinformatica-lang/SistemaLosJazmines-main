@@ -641,6 +641,7 @@ export default function ConfiguracionPage() {
             )}
             <p className="text-xs text-muted-foreground">
               Se pueden cambiar por variable de entorno (PIN_COCINA, PIN_BARRA, etc.) sin tocar código.
+              La clave maestra (PIN_MAESTRO, de 8 números o más) entra a cualquier perfil y no se muestra acá.
             </p>
           </CardContent>
           </CollapsibleContent>
