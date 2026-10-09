@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { respuestaSalonOcupado } from "@/lib/salon-ocupado"
 import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
-import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
+import { validarAnioEventoAlEditar, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
 import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
 import { decidirFechaAlta } from "@/lib/fecha-alta"
@@ -139,7 +139,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const updates = await req.json()
     return await sql.begin(async (tx) => {
     const db = tx as unknown as typeof sql
-    const rows = await db`SELECT id, nombre, salon, plan_de_cuotas, pagos, estado, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta FROM eventos WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    const rows = await db`SELECT id, nombre, fecha, salon, plan_de_cuotas, pagos, estado, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta FROM eventos WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
     const original = rows[0]
     if (!original) return NextResponse.json({ error: "Not found" }, { status: 404 })
     const actual: EventoIPC = {
@@ -237,7 +237,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     if ("fecha" in updates) {
-      const validacionAnio = validarAnioEvento(updates.fecha)
+      const validacionAnio = validarAnioEventoAlEditar(updates.fecha, original.fecha)
       if (!validacionAnio.valido) {
         return NextResponse.json({ error: mensajeAnioEventoInvalido(validacionAnio.anio) }, { status: 400 })
       }
@@ -349,7 +349,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
     const nombre = ev.nombrePareja || ev.nombre || "Sin nombre"
 
-    const validacionAnio = validarAnioEvento(ev.fecha)
+    const validacionAnio = validarAnioEventoAlEditar(ev.fecha, previo?.fecha)
     if (!validacionAnio.valido) {
       return NextResponse.json({ error: mensajeAnioEventoInvalido(validacionAnio.anio) }, { status: 400 })
     }

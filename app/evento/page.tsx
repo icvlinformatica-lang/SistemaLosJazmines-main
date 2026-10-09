@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
-import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
+import { validarAnioEventoAlEditar, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { calcularProporcionCajaEventos, construirSenaInicial, senaAAnotarAlEditar } from "@/lib/cobrar-cuota"
 import { insumosEnSalon } from "@/lib/stock-salon-evento"
 import { moverStockDelEvento } from "@/lib/consumo-stock-evento"
@@ -336,7 +336,8 @@ function EventoPageContent() {
   // ✅ Handlers para actualizar el store cuando el usuario termina de escribir
   const handleBlur = useCallback((field: string, value: string | number) => {
     if (field === "fecha" && typeof value === "string" && value) {
-      const { valido, anio } = validarAnioEvento(value)
+      const fechaGuardada = editingEventoId ? (state.eventos || []).find((e) => e.id === editingEventoId)?.fecha : undefined
+      const { valido, anio } = validarAnioEventoAlEditar(value, fechaGuardada)
       if (!valido) {
         toast({
           title: "Fecha inválida",
@@ -349,7 +350,7 @@ function EventoPageContent() {
       }
     }
     updateEventoActual({ [field]: value })
-  }, [updateEventoActual, evento?.fecha, toast])
+  }, [updateEventoActual, evento?.fecha, toast, editingEventoId, state.eventos])
 
   const addRecetaToSegment = useCallback((segment: "adultos" | "adolescentes" | "ninos" | "dietasEspeciales", recetaId: string) => {
     if (!evento) return
@@ -547,7 +548,10 @@ function EventoPageContent() {
     if (!evento.fecha) {
       errors.push("Fecha")
     } else {
-      const { valido, anio } = validarAnioEvento(evento.fecha)
+      // Un evento ya guardado con un año fuera del rango (por ejemplo de 2025)
+      // se puede volver a guardar si no se le cambia la fecha.
+      const fechaGuardada = editingEventoId ? (state.eventos || []).find((e) => e.id === editingEventoId)?.fecha : undefined
+      const { valido, anio } = validarAnioEventoAlEditar(evento.fecha, fechaGuardada)
       if (!valido) {
         errors.push(`Fecha (${mensajeAnioEventoInvalido(anio)})`)
       }
