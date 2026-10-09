@@ -12,7 +12,7 @@ Perfiles de acceso (con PIN):
 Cada perfil ve solo las pantallas de su trabajo en el menú.
 
 ## Pantalla de Inicio (/)
-- Botones: "Novedades", "Resumen diario" (dinero que entró hoy por caja y por salón, movimientos importantes, cuotas cobradas hoy, y desde ahí se puede enviar el resumen por mail), "Este finde" (eventos del fin de semana con desglose de costos) y "Vienen a pagar" (quiénes deben pagar cuota esta semana, con atrasos).
+- Botones: "Novedades", "Resumen diario" (dinero que entró hoy por caja y por salón, movimientos importantes, cuotas cobradas hoy, y desde ahí se puede enviar el resumen por mail), "Este finde" (eventos del fin de semana con desglose de costos y lo que queda por pagarles a proveedores y personal, el mismo número que "Pendiente por evento" de Caja Eventos) y "Vienen a pagar" (quiénes deben pagar cuota esta semana, con atrasos).
 - Si hay cotizaciones esperando aprobación, Administración y Soporte ven arriba el botón "N cotizaciones para revisar". Administración y Cobrar cuota tienen además "Cargar gastos".
 - El botón redondo "?" de abajo a la derecha abre esta guía.
 - Todos los días a las 21:00 llega automáticamente un mail con el resumen diario.
