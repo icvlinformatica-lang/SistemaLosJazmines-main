@@ -53,42 +53,52 @@ export async function PUT(
 
     // null = no vino en el body, no se toca; un texto vacío sí se guarda.
     const c = camposDelBody(body)
-
-    const [coctelData] = await sql`
-      UPDATE cocteles SET
-        codigo = COALESCE(${c.codigo}, codigo),
-        nombre = COALESCE(${c.nombre}, nombre),
-        categoria = COALESCE(${c.categoria}, categoria),
-        descripcion = COALESCE(${c.descripcion}, descripcion),
-        imagen = COALESCE(${c.imagen}, imagen),
-        instrucciones = COALESCE(${c.instrucciones}, instrucciones),
-        updated_at = NOW()
-      WHERE id = ${id}
-      RETURNING *
-    `
-
-    if (!coctelData) {
-      return NextResponse.json({ error: "Coctel not found" }, { status: 404 })
-    }
-
     // Support both "insumos" and "ingredientes" keys
     const insumosList = body.insumos || body.ingredientes || null
 
-    if (insumosList) {
-      await sql`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
+    // Todo en una transacción: los insumos se reemplazan borrando y volviendo
+    // a cargar, y si algo fallaba en el medio el cóctel quedaba con menos
+    // ingredientes (y cambiaba el costo de la barra de los eventos). Así se
+    // guarda entero o no se guarda nada.
+    const coctelData = await sql.begin(async (trx) => {
+      // Los tipos de postgres.js no marcan la transacción como invocable
+      // (TS2349), aunque en ejecución funciona igual que sql.
+      const tx = trx as unknown as typeof sql
+      const [fila] = await tx`
+        UPDATE cocteles SET
+          codigo = COALESCE(${c.codigo}, codigo),
+          nombre = COALESCE(${c.nombre}, nombre),
+          categoria = COALESCE(${c.categoria}, categoria),
+          descripcion = COALESCE(${c.descripcion}, descripcion),
+          imagen = COALESCE(${c.imagen}, imagen),
+          instrucciones = COALESCE(${c.instrucciones}, instrucciones),
+          updated_at = NOW()
+        WHERE id = ${id}
+        RETURNING *
+      `
+      if (!fila) return null
 
-      for (const insumo of insumosList) {
-        await sql`
-          INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad_por_coctel, unidad_coctel)
-          VALUES (
-            ${generateId()},
-            ${id},
-            ${insumo.insumoBarraId || insumo.insumoId},
-            ${insumo.cantidadPorCoctel ?? insumo.cantidadBasePorPersona ?? insumo.cantidad ?? 0},
-            ${insumo.unidadCoctel || insumo.unidadReceta || insumo.unidad || "CC"}
-          )
-        `
+      if (insumosList) {
+        await tx`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
+
+        for (const insumo of insumosList) {
+          await tx`
+            INSERT INTO coctel_insumos (id, coctel_id, insumo_barra_id, cantidad_por_coctel, unidad_coctel)
+            VALUES (
+              ${generateId()},
+              ${id},
+              ${insumo.insumoBarraId || insumo.insumoId},
+              ${insumo.cantidadPorCoctel ?? insumo.cantidadBasePorPersona ?? insumo.cantidad ?? 0},
+              ${insumo.unidadCoctel || insumo.unidadReceta || insumo.unidad || "CC"}
+            )
+          `
+        }
       }
+      return fila
+    })
+
+    if (!coctelData) {
+      return NextResponse.json({ error: "Coctel not found" }, { status: 404 })
     }
 
     // Si no vinieron insumos, se devuelven los que ya tenía (no una lista vacía).
@@ -121,8 +131,12 @@ export async function DELETE(
     const { id } = await params
 
     const [coctel] = await sql`SELECT nombre FROM cocteles WHERE id = ${id}`
-    await sql`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
-    await sql`DELETE FROM cocteles WHERE id = ${id}`
+    // Juntos o nada: si fallaba el segundo, el cóctel quedaba sin ingredientes.
+    await sql.begin(async (trx) => {
+      const tx = trx as unknown as typeof sql
+      await tx`DELETE FROM coctel_insumos WHERE coctel_id = ${id}`
+      await tx`DELETE FROM cocteles WHERE id = ${id}`
+    })
     if (coctel) await logActivity("coctel", "eliminado", coctel.nombre)
 
     return NextResponse.json({ success: true })

@@ -9,6 +9,7 @@ import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
 import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
 import { decidirFechaAlta } from "@/lib/fecha-alta"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -431,7 +432,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 // DELETE — soft delete
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Mandar un evento a la papelera es de Administración y Soporte (son los
+  // únicos con Lista y Calendario). Esconder el botón no alcanzaba: cualquier
+  // sesión, incluso la de DJ, podía pegarle a esta ruta.
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const rows = await sql`
@@ -467,7 +473,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
           ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, eliminado_at=NOW()
         `
       } catch (e2) {
+        // Sin la copia, el evento no aparecería en la Papelera y no se podría
+        // restaurar desde la pantalla: mejor no borrarlo.
         console.error("[API] No se pudo guardar en papelera:", e2)
+        return NextResponse.json({ error: "No se pudo guardar el evento en la papelera. No se borró: volvé a intentar." }, { status: 500 })
       }
     }
 

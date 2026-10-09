@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 /**
  * Vista de Administración sobre la papelera de los vendedores: todas las
@@ -35,7 +36,11 @@ interface PaqueteEliminadoFila {
 
 const parseData = (raw: Record<string, unknown> | string) => (typeof raw === "string" ? JSON.parse(raw) : raw)
 
-export async function GET() {
+export async function GET(req: Request) {
+  // Es la vista de Administración: trae costos y ganancias de los paquetes,
+  // que el Vendedor nunca tiene que recibir.
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const [cotizaciones, paquetes] = await Promise.all([
       sql`

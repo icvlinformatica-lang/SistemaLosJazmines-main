@@ -3,9 +3,13 @@ import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { respuestaSalonOcupado } from "@/lib/salon-ocupado"
 import { logActivity } from "@/lib/activity-logger"
+import { soloAdministracion } from "@/lib/solo-administracion"
 
 // El soft delete conserva la fila original completa, incluidos sus pagos y cuotas.
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Igual que la papelera: solo Administración y Soporte.
+  const prohibido = await soloAdministracion(req)
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const [result] = await sql`

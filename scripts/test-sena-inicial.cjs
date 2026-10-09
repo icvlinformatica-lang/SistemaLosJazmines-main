@@ -24,7 +24,7 @@ for (const extension of [".ts", ".tsx"]) {
   }
 }
 
-const { construirSenaInicial } = require("../lib/cobrar-cuota.ts")
+const { construirSenaInicial, senaAAnotarAlEditar } = require("../lib/cobrar-cuota.ts")
 
 const FECHA = "2026-10-06T21:13:19.577Z"
 const sena = (montoSena, proporcionEventos, movimientosCaja = [], salon = "Quinta") =>
@@ -90,4 +90,49 @@ test("el saldo que queda anotado sigue la regla de cada caja (Eventos por salón
   assert.equal(eventos.saldoResultante, 420000)
   // Caja Jazmines (todos los salones): 700.000 + 180.000
   assert.equal(jazmines.saldoResultante, 880000)
+})
+
+// --- Seña de un evento que vino de una cotización (revisión del 8/10/2026) ---
+const planSena = (montoSena) => ({ modalidadPago: "sena", montoSena, montoTotal: 10000000, numeroCuotas: 6 })
+const deCotizacion = { id: "ev-cot", cotizacionId: "cot-1", planDeCuotas: undefined }
+const aAnotar = (overrides = {}) => senaAAnotarAlEditar({
+  eventoGuardado: deCotizacion, planNuevo: planSena(2500000), salon: "Casona", movimientosCaja: [], ...overrides,
+})
+
+test("evento de cotización sin plan: al cargarle Seña + Cuotas se anota la seña ($2.500.000)", () => {
+  assert.equal(aAnotar(), 2500000)
+  // Y se reparte entre las cajas igual que al crear un evento.
+  const movs = construirSenaInicial({ salon: "Casona", montoSena: aAnotar(), nombreEvento: "PRUEBA", eventoId: "ev-cot", proporcionEventos: 0.4, movimientosCaja: [], fecha: FECHA })
+  assert.equal(total(movs), 2500000)
+  assert.deepEqual(movs.map((m) => [m.cajaDestino, m.monto]), [["caja_eventos", 1000000], ["caja_jazmines", 1500000]])
+})
+
+test("no se anota dos veces: si el evento ya tiene un movimiento de seña, nada", () => {
+  const yaAnotada = [{ id: "m1", eventoId: "ev-cot", tipo: "ingreso", concepto: "Seña - PRUEBA (Caja Eventos)", monto: 1000000, cajaDestino: "caja_eventos", salon: "Casona", fecha: FECHA }]
+  assert.equal(aAnotar({ movimientosCaja: yaAnotada }), 0)
+  // Una seña de OTRO evento no cuenta.
+  assert.equal(aAnotar({ movimientosCaja: [{ ...yaAnotada[0], eventoId: "otro" }] }), 2500000)
+})
+
+test("si el plan guardado ya tenía seña, editarlo no anota nada (ni al cambiar el monto)", () => {
+  const guardado = { ...deCotizacion, planDeCuotas: planSena(2000000) }
+  assert.equal(aAnotar({ eventoGuardado: guardado }), 0)
+})
+
+test("eventos que no vienen de una cotización no cambian: su seña se anota al crearlos", () => {
+  assert.equal(aAnotar({ eventoGuardado: { id: "ev-1", planDeCuotas: undefined } }), 0)
+  assert.equal(aAnotar({ eventoGuardado: { id: "ev-1", cotizacionId: null, planDeCuotas: undefined } }), 0)
+})
+
+test("sin seña, seña en 0, sin salón o sin evento guardado: nada", () => {
+  assert.equal(aAnotar({ planNuevo: { modalidadPago: "cuotas", montoTotal: 100 } }), 0)
+  assert.equal(aAnotar({ planNuevo: planSena(0) }), 0)
+  assert.equal(aAnotar({ planNuevo: undefined }), 0)
+  assert.equal(aAnotar({ salon: "" }), 0)
+  assert.equal(aAnotar({ eventoGuardado: undefined }), 0)
+})
+
+test("pasar de Solo Cuotas a Seña + Cuotas en un evento de cotización sí la anota", () => {
+  const guardado = { ...deCotizacion, planDeCuotas: { modalidadPago: "cuotas", montoTotal: 10000000, numeroCuotas: 6 } }
+  assert.equal(aAnotar({ eventoGuardado: guardado, planNuevo: planSena(1234567.891) }), 1234567.89)
 })
