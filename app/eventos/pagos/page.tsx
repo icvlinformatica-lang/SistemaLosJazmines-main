@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
+import { fechaEventoCorta } from "@/lib/fecha-evento"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
 import {
@@ -1361,7 +1362,7 @@ function PagosPageContent() {
                             <div className="min-w-0 flex-1">
                               <p className="font-medium truncate">{ev.nombre || ev.tipoEvento || "Evento"}</p>
                               <p className="text-sm text-muted-foreground">
-                                {ev.fecha}
+                                {fechaEventoCorta(ev.fecha)}
                                 {ev.salon && ` - ${salonLabel(ev.salon)}`}
                                 {ev.nombrePareja && ` - ${ev.nombrePareja}`}
                                 {` - ${total} pax`}
@@ -1465,7 +1466,7 @@ function PagosPageContent() {
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">Fecha:</span>
-                    <span className="font-medium">{selectedEvento.fecha}</span>
+                    <span className="font-medium">{fechaEventoCorta(selectedEvento.fecha)}</span>
                   </div>
                   {selectedEvento.horario && (
                     <div className="flex items-center gap-2">

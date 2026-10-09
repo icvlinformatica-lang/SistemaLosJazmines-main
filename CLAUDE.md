@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 38 archivos y 365 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 39 archivos y 367 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.

@@ -9,6 +9,7 @@ import { FindeModal } from "@/components/finde-modal"
 import { VienenAPagarModal } from "@/components/vienen-a-pagar-modal"
 import { ChatAyuda } from "@/components/chat-ayuda"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
+import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
 
@@ -18,6 +19,7 @@ export default function HomePage() {
   const [findeOpen, setFindeOpen] = useState(false)
   const [pagarOpen, setPagarOpen] = useState(false)
   const [gastoOpen, setGastoOpen] = useState(false)
+  const [guiaOpen, setGuiaOpen] = useState(false)
   const { toggleSidebar } = useUI()
   const { perfilActivo } = useProfile()
   const puedeCargarGastos = perfilActivo?.id === "administracion" || perfilActivo?.id === "cobro"
@@ -140,10 +142,12 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Help button - bottom right */}
+      {/* Botón de ayuda, abajo a la derecha: abre la guía de uso */}
       <div className="absolute bottom-5 right-5 z-10">
         <button
           type="button"
+          onClick={() => setGuiaOpen(true)}
+          title="Guía de uso"
           className="flex items-center justify-center w-10 h-10 rounded-full bg-[#f5f0e8] hover:bg-[#e8e0d0] text-[#2d5a3d] shadow-lg transition-colors"
           aria-label="Ayuda"
         >
@@ -156,6 +160,7 @@ export default function HomePage() {
       <FindeModal open={findeOpen} onOpenChange={setFindeOpen} />
       <VienenAPagarModal open={pagarOpen} onOpenChange={setPagarOpen} />
       <GastoRapidoModal open={gastoOpen} onOpenChange={setGastoOpen} />
+      <GuiaAyudaModal open={guiaOpen} onOpenChange={setGuiaOpen} />
     </div>
   )
 }
