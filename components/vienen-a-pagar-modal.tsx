@@ -173,7 +173,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
               {/* Totales rápidos */}
               <div className="flex flex-col gap-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border bg-card p-3 text-card-foreground" aria-live="polite"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} cuotas</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
+                  <div className="rounded-lg border bg-card p-3 text-card-foreground" aria-live="polite"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} {cantidadSemana === 1 ? "cuota" : "cuotas"}</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
                   <div className={`rounded-lg border p-3 ${cantidadAtrasada > 0 ? "border-destructive bg-destructive/10" : "bg-card text-card-foreground"}`} aria-live="polite"><p className={`text-sm ${cantidadAtrasada > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>Atrasado · {cantidadAtrasada} {cantidadAtrasada === 1 ? "cuota" : "cuotas"}</p><p className={`font-bold tabular-nums ${cantidadAtrasada > 0 ? "text-destructive" : ""}`}>{fmt(totalAtrasado)}</p></div>
                 </div>
                 <div className="flex items-center gap-2">
