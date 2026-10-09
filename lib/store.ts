@@ -2,6 +2,8 @@
 
 import { fechaNegocio, proyectarIPC } from "./ipc-cuotas"
 import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota, type DecisionSaldoCuota, type RecargoSaldoCuota } from "./estado-cuotas"
+import type { NotasStaffPerfil, MomentoCronograma } from "./staff-evento"
+import type { DietaDetalle } from "./dietas-evento"
 
 // Data Store for Los Jazmines Catering System
 // Uses localStorage for persistence
@@ -178,6 +180,14 @@ export interface Evento {
   adolescentes: number
   ninos: number
   personasDietasEspeciales: number
+  /**
+   * Desglose de personasDietasEspeciales por tipo (celíaco, vegano, alergia…).
+   * El total sigue siendo personasDietasEspeciales: lo que no está detallado
+   * se muestra como "sin detallar". lib/dietas-evento.ts, scripts/022.
+   */
+  dietasDetalle?: DietaDetalle[]
+  /** "¿Cómo nos conoció?" (lib/origen-cliente.ts, scripts/022). */
+  origenCliente?: string
   recetasAdultos: string[] // Keep for backwards compatibility - array of recipe IDs
   recetasAdolescentes: string[]
   recetasNinos: string[]
@@ -655,6 +665,10 @@ export interface EventoGuardado extends Evento {
   notasInternas?: string
   /** Nota privada para el staff externo (DJ/Foto/Vestido/Pantalla/Coordinación), separada de notasInternas. */
   notaStaff?: string
+  /** Nota solo para un oficio del staff (DJ, Fotógrafo…), además de notaStaff, que es para todos. scripts/022. */
+  notasStaffPerfil?: NotasStaffPerfil
+  /** Cronograma de la noche. Se guarda por /api/eventos/[id]/cronograma, no por el PATCH del evento. */
+  cronograma?: MomentoCronograma[]
   pagos?: PagoEvento[]
   planCuotas?: number
   montoTotalPlan?: number

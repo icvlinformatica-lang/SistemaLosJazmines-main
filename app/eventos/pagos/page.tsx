@@ -55,6 +55,8 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+import { CronogramaEvento } from "@/components/cronograma-evento"
+import { PERFILES_STAFF, NOMBRE_PERFIL_STAFF, normalizarNotasStaffPerfil, type NotasStaffPerfil } from "@/lib/staff-evento"
 import {
   ArrowLeft,
   Search,
@@ -462,6 +464,8 @@ function PagosPageContent() {
   const { perfilActivo } = useProfile()
   const puedeEditarNotaStaff = ["administracion", "soporte"].includes(perfilActivo?.id ?? "")
   const [notaStaffDraft, setNotaStaffDraft] = useState("")
+  // Notas para un solo oficio (DJ, Fotógrafo…), además de la de todos.
+  const [notasPerfilDraft, setNotasPerfilDraft] = useState<NotasStaffPerfil>({})
   const [guardandoNotaStaff, setGuardandoNotaStaff] = useState(false)
 
   // Ocultar automáticamente el panel lateral al entrar (se reabre con hover)
@@ -596,16 +600,24 @@ function PagosPageContent() {
     setModoHistorico(false)
     setMostrarDetalleCalculo(false)
     setNotaStaffDraft(selectedEvento?.notaStaff || "")
+    setNotasPerfilDraft(normalizarNotasStaffPerfil(selectedEvento?.notasStaffPerfil))
   }, [selectedEvento?.id])
+
+  const notasStaffSinCambios =
+    !!selectedEvento &&
+    notaStaffDraft === (selectedEvento.notaStaff || "") &&
+    JSON.stringify(normalizarNotasStaffPerfil(notasPerfilDraft)) ===
+      JSON.stringify(normalizarNotasStaffPerfil(selectedEvento.notasStaffPerfil))
 
   const guardarNotaStaff = async () => {
     if (!selectedEvento || guardandoNotaStaff) return
     setGuardandoNotaStaff(true)
     try {
-      const guardado = await updateEvento(selectedEvento.id, { notaStaff: notaStaffDraft })
+      const notasStaffPerfil = normalizarNotasStaffPerfil(notasPerfilDraft)
+      const guardado = await updateEvento(selectedEvento.id, { notaStaff: notaStaffDraft, notasStaffPerfil })
       if (guardado) {
-        setSelectedEvento({ ...selectedEvento, notaStaff: notaStaffDraft })
-        toast({ title: "Nota para staff guardada" })
+        setSelectedEvento({ ...selectedEvento, notaStaff: notaStaffDraft, notasStaffPerfil })
+        toast({ title: "Notas para el staff guardadas" })
       }
     } finally {
       setGuardandoNotaStaff(false)
@@ -1536,31 +1548,65 @@ function PagosPageContent() {
                   </div>
                 )}
                 {puedeEditarNotaStaff && (
-                  <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3">
-                    <Label className="text-xs font-semibold text-sky-800 mb-1.5 block">
-                      Nota para staff (DJ/Foto/Vestido/Pantalla/Coordinación)
-                    </Label>
-                    <Textarea
-                      value={notaStaffDraft}
-                      onChange={(e) => setNotaStaffDraft(e.target.value)}
-                      placeholder="Instrucciones o info para el staff del evento (visible solo para ellos, de solo lectura)..."
-                      className="bg-white text-sm"
-                      rows={2}
-                    />
-                    <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="mt-4 space-y-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                    <div>
+                      <Label className="text-xs font-semibold text-sky-800 mb-1.5 block">
+                        Nota para todo el staff (DJ/Foto/Vestido/Pantalla/Coordinación)
+                      </Label>
+                      <Textarea
+                        value={notaStaffDraft}
+                        onChange={(e) => setNotaStaffDraft(e.target.value)}
+                        placeholder="Instrucciones o info para todo el staff del evento (la ven de solo lectura)..."
+                        className="bg-white text-sm"
+                        rows={2}
+                      />
+                    </div>
+                    {/* Una nota por oficio: lo que es solo para el DJ no lo lee el
+                        fotógrafo. Coordinación las ve todas. */}
+                    <Collapsible defaultOpen={Object.keys(notasPerfilDraft).length > 0}>
+                      <CollapsibleTrigger className="text-xs font-semibold text-sky-800 underline-offset-2 hover:underline">
+                        Notas para un solo oficio
+                        {Object.keys(normalizarNotasStaffPerfil(notasPerfilDraft)).length > 0 &&
+                          ` (${Object.keys(normalizarNotasStaffPerfil(notasPerfilDraft)).length})`}
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-2 space-y-2">
+                        {PERFILES_STAFF.map((p) => (
+                          <div key={p}>
+                            <Label className="mb-1 block text-[11px] font-medium text-sky-800">Solo para {NOMBRE_PERFIL_STAFF[p]}</Label>
+                            <Textarea
+                              value={notasPerfilDraft[p] ?? ""}
+                              onChange={(e) => setNotasPerfilDraft((prev) => ({ ...prev, [p]: e.target.value }))}
+                              className="bg-white text-sm"
+                              rows={1}
+                            />
+                          </div>
+                        ))}
+                      </CollapsibleContent>
+                    </Collapsible>
+                    <div className="flex items-center justify-between gap-2">
                       <p className="text-[11px] text-sky-700/80">
-                        La ven, de solo lectura, DJ/Fotógrafo/Vestido/Pantalla/Coordinación en su calendario.
+                        Cada uno ve la nota para todos y la de su oficio en su calendario. Coordinación ve todas.
                       </p>
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         className="shrink-0 bg-white"
-                        disabled={guardandoNotaStaff || notaStaffDraft === (selectedEvento.notaStaff || "")}
+                        disabled={guardandoNotaStaff || notasStaffSinCambios}
                         onClick={guardarNotaStaff}
                       >
                         {guardandoNotaStaff ? "Guardando..." : "Guardar"}
                       </Button>
+                    </div>
+                    <div className="rounded-lg border border-sky-200 bg-white p-3">
+                      <CronogramaEvento
+                        eventoId={selectedEvento.id}
+                        tipoEvento={selectedEvento.tipoEvento}
+                        horario={selectedEvento.horario}
+                        cronograma={selectedEvento.cronograma}
+                        editable
+                        onGuardado={(cronograma) => setSelectedEvento({ ...selectedEvento, cronograma })}
+                      />
                     </div>
                   </div>
                 )}

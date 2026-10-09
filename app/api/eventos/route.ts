@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
+import { camposStaffDesdeFila, columnasStaffParaGuardar } from "@/lib/eventos-campos-staff"
 
 // camelCase → snake_case for DB insert/update
 function toRow(ev: Record<string, unknown>) {
@@ -141,6 +142,8 @@ function fromRow(r: Record<string, any>) {
     // "YYYY-MM-DD" (leída vía to_jsonb: funciona aunque la columna todavía no exista)
     fechaAlta: r.fecha_alta || undefined,
     updatedAt: r.updated_at,
+    // Notas por oficio, cronograma, dietas con su tipo y origen (scripts/022)
+    ...camposStaffDesdeFila(r),
   }
 }
 
@@ -170,7 +173,8 @@ export async function GET() {
         precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta,
-        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato,
+        (to_jsonb(eventos) -> 'notas_staff_perfil') AS notas_staff_perfil, (to_jsonb(eventos) -> 'cronograma') AS cronograma, (to_jsonb(eventos) -> 'dietas_detalle') AS dietas_detalle, (to_jsonb(eventos) ->> 'origen_cliente') AS origen_cliente
       FROM eventos
       WHERE deleted_at IS NULL
       ORDER BY fecha DESC NULLS LAST, created_at DESC
@@ -199,7 +203,14 @@ export async function POST(req: Request) {
     // (current_date) es el día UTC y desde las 21:00 anotaba la de mañana.
     // RETURNING (xmax = 0) dice si la fila es nueva: si es un reintento de
     // fetchWithRetry que cae en ON CONFLICT, no se repiten el mail ni el registro.
-    const [filaInsert] = await sql`
+    // Notas por oficio, dietas con su tipo y origen (scripts/022) van en un
+    // UPDATE aparte dentro de la misma transacción, y solo si traen algo: así
+    // el alta de siempre no nombra columnas nuevas. Si la migración no está
+    // aplicada y el pedido trae alguna, falla entera y no queda nada a medias.
+    const extra = Object.entries(columnasStaffParaGuardar(body)).filter(([, v]) => v !== null)
+    const filaInsert = await sql.begin(async (tx) => {
+    const db = tx as unknown as typeof sql
+    const [fila] = await db`
       INSERT INTO eventos (
         id, nombre, fecha, horario, horario_fin, salon, tipo_evento, nombre_pareja,
         dni_novio1, dni_novio2, adultos, adolescentes, ninos, personas_dietas_especiales,
@@ -231,6 +242,14 @@ export async function POST(req: Request) {
         updated_at = NOW()
       RETURNING (xmax = 0) AS insertado
     `
+    if (extra.length) {
+      await db.unsafe(
+        `UPDATE eventos SET ${extra.map(([col], i) => `${col} = $${i + 1}`).join(", ")} WHERE id = $${extra.length + 1}`,
+        [...extra.map(([, v]) => v), r.id] as string[],
+      )
+    }
+    return fila
+    })
     const esNuevo = filaInsert?.insertado !== false
 
     // Re-fetch con columnas explícitas
@@ -245,7 +264,8 @@ export async function POST(req: Request) {
         precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta,
-        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato,
+        (to_jsonb(eventos) -> 'notas_staff_perfil') AS notas_staff_perfil, (to_jsonb(eventos) -> 'cronograma') AS cronograma, (to_jsonb(eventos) -> 'dietas_detalle') AS dietas_detalle, (to_jsonb(eventos) ->> 'origen_cliente') AS origen_cliente
       FROM eventos WHERE id = ${r.id}
     `
     const created = rows2[0]

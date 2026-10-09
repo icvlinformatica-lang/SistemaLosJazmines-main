@@ -31,6 +31,8 @@ const db = async (parts, ...values) => {
   throw new Error(`Consulta inesperada: ${query}`)
 }
 db.json = (valor) => ({ json: valor })
+// Alta y edición van en una transacción (el origen del cliente se guarda aparte, scripts/022).
+db.begin = (fn) => fn(db)
 
 const load = Module._load
 Module._load = function (request, ...args) {

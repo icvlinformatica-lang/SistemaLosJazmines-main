@@ -82,6 +82,9 @@ import {
   type FechaEspecial,
   type ReglaRecargo,
 } from "@/lib/cotizador-salon"
+import { DietasDetalleEditor } from "@/components/dietas-detalle-editor"
+import { normalizarDietasDetalle, totalDietasDetalle, type DietaDetalle } from "@/lib/dietas-evento"
+import { ORIGENES_CLIENTE } from "@/lib/origen-cliente"
 import { COLOR_RUBRO, ChipDia, PuntoRubro } from "@/components/cotizador-colores"
 
 const TIPOS_EVENTO = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
@@ -251,6 +254,10 @@ function CotizarPageContent() {
   const [salon, setSalon] = useState("")
   const [adultos, setAdultos] = useState(0)
   const [ninos, setNinos] = useState(0)
+  /** Dietas especiales por tipo: son parte de los adultos (se cobran igual). */
+  const [dietas, setDietas] = useState<DietaDetalle[]>([])
+  /** "¿Cómo nos conoció?" (lib/origen-cliente.ts). Se pide para enviar. */
+  const [origenCliente, setOrigenCliente] = useState("")
   const [recetas, setRecetas] = useState<string[]>([])
   /** Barras elegidas, hasta MAX_BARRAS (cada una suma adultos × su precio). */
   const [barraIds, setBarraIds] = useState<string[]>([])
@@ -276,6 +283,8 @@ function CotizarPageContent() {
     salon,
     adultos,
     ninos,
+    dietas: normalizarDietasDetalle(dietas),
+    origenCliente,
     recetas: [...recetas].sort(),
     barraIds: [...barraIds].sort(),
     servicios: Object.entries(servicios).sort(([a], [b]) => a.localeCompare(b)),
@@ -367,6 +376,8 @@ function CotizarPageContent() {
         // Las cotizaciones viejas podían tener adolescentes y dietas: cuentan como adultos.
         setAdultos((c.invitados?.adultos || 0) + (c.invitados?.adolescentes || 0) + (c.invitados?.personasDietasEspeciales || 0))
         setNinos(c.invitados?.ninos || 0)
+        setDietas(normalizarDietasDetalle(c.invitados?.dietasDetalle))
+        setOrigenCliente(c.origenCliente || "")
         setRecetas(Array.isArray(c.recetasElegidas?.adultos) ? c.recetasElegidas.adultos : [])
         setBarraIds(Array.isArray(c.barraIds) && c.barraIds.length ? c.barraIds : c.barraId ? [c.barraId] : [])
         const sel: Record<string, number> = {}
@@ -455,6 +466,8 @@ function CotizarPageContent() {
   if (!clienteNombre.trim()) faltan.push("el nombre del cliente")
   if (!salon) faltan.push("el salón")
   if (adultos + ninos <= 0) faltan.push("los invitados")
+  const dietasDeMas = totalDietasDetalle(normalizarDietasDetalle(dietas)) > adultos
+  if (dietasDeMas) faltan.push("revisar las dietas (son más que los adultos)")
   // Con menú, un plato de cada paso que el salón ofrece (entrada, principal y
   // postre). Se pide para enviar; el borrador se puede guardar igual. En solo
   // lectura no se marca nada (ya no se puede cambiar).
@@ -463,7 +476,7 @@ function CotizarPageContent() {
       ? pasosMenuFaltantes(config.menu, config.menu.filter((m) => recetas.includes(m.recetaId)))
       : []
   const puedeGuardar = faltan.length === 0 && !soloLectura && !!config
-  const puedeEnviar = puedeGuardar && !calculo?.superaCapacidad && pasosFaltantes.length === 0
+  const puedeEnviar = puedeGuardar && !calculo?.superaCapacidad && pasosFaltantes.length === 0 && !!origenCliente
 
   const guardar = async (accion: "guardar" | "enviar") => {
     if (accion === "enviar" ? !puedeEnviar : !puedeGuardar) return
@@ -486,6 +499,8 @@ function CotizarPageContent() {
           salon,
           adultos,
           ninos,
+          dietasDetalle: normalizarDietasDetalle(dietas),
+          origenCliente: origenCliente || null,
           recetas,
           barraId: barraIds[0] ?? null,
           barraIds,
@@ -681,6 +696,18 @@ function CotizarPageContent() {
                 <ChipDia dia={dia} recargo={calculo?.recargo?.monto ?? 0} />
               </div>
             )}
+            {/* De dónde vino: sirve para saber qué red trae ventas. Se pide
+                para enviar (el borrador se puede guardar sin esto). */}
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">¿Cómo nos conoció? *</p>
+              <div className="flex flex-wrap gap-2">
+                {ORIGENES_CLIENTE.map((o) => (
+                  <Chip key={o.valor} activo={origenCliente === o.valor} onClick={() => setOrigenCliente(origenCliente === o.valor ? "" : o.valor)}>
+                    {o.etiqueta}
+                  </Chip>
+                ))}
+              </div>
+            </div>
           </Tarjeta>
 
           {/* 2. Salón */}
@@ -746,6 +773,15 @@ function CotizarPageContent() {
             </div>
             <Contador etiqueta="Adultos" valor={adultos} onChange={setAdultos} />
             <Contador etiqueta="Niños" valor={ninos} onChange={setNinos} />
+            <DietasDetalleEditor
+              detalle={dietas}
+              disabled={soloLectura}
+              onChange={setDietas}
+              ayuda="¿Hay adultos con dieta especial? Se cobran igual que un adulto: es para que la cocina lo sepa."
+            />
+            {dietasDeMas && (
+              <p className="text-xs text-red-700">Las dietas suman más que los adultos: revisalas.</p>
+            )}
           </Tarjeta>
 
           {!salon ? (
@@ -987,6 +1023,9 @@ function CotizarPageContent() {
             </ul>
           )}
           {faltan.length > 0 && !soloLectura && <p className="text-xs text-muted-foreground">Falta {faltan.join(", ")}.</p>}
+          {faltan.length === 0 && !origenCliente && !soloLectura && (
+            <p className="text-xs text-amber-700">Para enviarla falta elegir cómo nos conoció.</p>
+          )}
           {pasosFaltantes.length > 0 && !soloLectura && (
             <p className="text-xs text-amber-700">Para enviarla falta elegir {textoPasosFaltantes(pasosFaltantes)} del menú.</p>
           )}

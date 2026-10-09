@@ -9,6 +9,10 @@ import { calcularProporcionCajaEventos, construirSenaInicial, senaAAnotarAlEdita
 import { insumosEnSalon } from "@/lib/stock-salon-evento"
 import { moverStockDelEvento } from "@/lib/consumo-stock-evento"
 import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
+import { YaFueCliente } from "@/components/ya-fue-cliente"
+import { ORIGENES_CLIENTE } from "@/lib/origen-cliente"
+import { DietasDetalleEditor } from "@/components/dietas-detalle-editor"
+import { normalizarDietasDetalle, totalConDetalle, type DietaDetalle } from "@/lib/dietas-evento"
 import {
   formatCurrency,
   calcularComprasSegmentadas,
@@ -612,6 +616,11 @@ function EventoPageContent() {
       adolescentes: evento.adolescentes,
       ninos: evento.ninos,
       personasDietasEspeciales: evento.personasDietasEspeciales,
+      // Dietas por tipo (scripts/022): solo si se cargaron, para no escribir la
+      // columna nueva en cada guardado.
+      ...(evento.dietasDetalle ? { dietasDetalle: normalizarDietasDetalle(evento.dietasDetalle) } : {}),
+      // "¿Cómo nos conoció?": igual, solo si se tocó ("" lo borra).
+      ...(evento.origenCliente !== undefined ? { origenCliente: evento.origenCliente } : {}),
       recetasAdultos: evento.recetasAdultos,
       recetasAdolescentes: evento.recetasAdolescentes,
       recetasNinos: evento.recetasNinos,
@@ -1966,12 +1975,34 @@ function EventoPageContent() {
                     type="number"
                     value={localDietasEspeciales}
                     onChange={(e) => setLocalDietasEspeciales(e.target.value)}
-                    onBlur={() => handleBlur("personasDietasEspeciales", Number.parseInt(localDietasEspeciales) || 0)}
+                    onBlur={() => {
+                      // Nunca menos que lo detallado por tipo (abajo): para bajar el
+                      // total hay que sacar primero alguna dieta del detalle.
+                      const total = totalConDetalle(Number.parseInt(localDietasEspeciales) || 0, evento.dietasDetalle)
+                      setLocalDietasEspeciales(String(total))
+                      handleBlur("personasDietasEspeciales", total)
+                    }}
                     className="h-11 text-center text-lg font-semibold"
                     min={0}
                     disabled={esBloqueado}
                   />
                 </div>
+              </div>
+
+              {/* El total de dietas es el número de arriba (el que usa el
+                  costo de cocina); acá se detalla por tipo para la cocina. */}
+              <div className="mt-2">
+                <DietasDetalleEditor
+                  detalle={evento.dietasDetalle ?? []}
+                  total={evento.personasDietasEspeciales || 0}
+                  disabled={esBloqueado}
+                  ayuda="La cocina lo ve en la guía de producción. Las alergias aparecen en rojo."
+                  onChange={(detalle: DietaDetalle[]) => {
+                    const total = totalConDetalle(evento.personasDietasEspeciales, detalle)
+                    setLocalDietasEspeciales(String(total))
+                    updateEventoActual({ dietasDetalle: detalle, personasDietasEspeciales: total })
+                  }}
+                />
               </div>
 
               <div className="rounded-lg bg-secondary p-3 mt-2">
@@ -2472,6 +2503,38 @@ function EventoPageContent() {
                     placeholder="cliente@email.com"
                     className="h-11"
                   />
+                </div>
+              </div>
+
+              {/* Mismo DNI o teléfono que otro evento (solo Administración y Soporte). */}
+              <YaFueCliente
+                dni={localContratoDni || evento.dniNovio1}
+                telefono={localContratoTelefono}
+                excluirId={evento.id}
+              />
+
+              {/* De dónde vino el cliente (lib/origen-cliente.ts): sirve para
+                  saber qué red trae ventas. Si vino de una cotización, ya viene
+                  cargado. */}
+              <div className="space-y-2">
+                <Label>¿Cómo nos conoció?</Label>
+                <div className="flex flex-wrap gap-2">
+                  {ORIGENES_CLIENTE.map((o) => {
+                    const activo = evento.origenCliente === o.valor
+                    return (
+                      <button
+                        key={o.valor}
+                        type="button"
+                        aria-pressed={activo}
+                        onClick={() => updateEventoActual({ origenCliente: activo ? "" : o.valor })}
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                          activo ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted"
+                        }`}
+                      >
+                        {o.etiqueta}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 

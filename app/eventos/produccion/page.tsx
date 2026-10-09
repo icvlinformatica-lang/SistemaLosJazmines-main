@@ -36,10 +36,12 @@ import {
   List,
   ArrowRight,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react"
 import { SALONES, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
+import { lineasDietas, hayAlergias } from "@/lib/dietas-evento"
 import { cn } from "@/lib/utils"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { iconoTipoEvento, referenciaTiposEvento } from "@/lib/icono-tipo-evento"
@@ -563,6 +565,14 @@ export default function ProduccionPage() {
                           <Users className="h-3.5 w-3.5 text-muted-foreground" />
                           <span className="text-sm font-medium">{totalInvitados}</span>
                         </div>
+                        {(evento.personasDietasEspeciales || 0) > 0 && (
+                          <p
+                            className={`mt-0.5 flex items-center justify-center gap-1 text-[11px] ${hayAlergias(evento.dietasDetalle) ? "font-semibold text-red-700" : "text-muted-foreground"}`}
+                          >
+                            {hayAlergias(evento.dietasDetalle) && <AlertTriangle className="h-3 w-3" />}
+                            {evento.personasDietasEspeciales} con dieta
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={`text-xs font-medium ${config.className}`}>
@@ -652,6 +662,22 @@ export default function ProduccionPage() {
                       {" | "}{totalPersonas} personas
                     </p>
                   </div>
+
+                  {/* Dietas especiales con su tipo: las alergias primero y en
+                      rojo, porque son de riesgo (lib/dietas-evento.ts). */}
+                  {lineasDietas(selectedEvento.personasDietasEspeciales, selectedEvento.dietasDetalle).length > 0 && (
+                    <div className="dietas-box" style={{ border: "1px solid #999", padding: "6px 8px", marginBottom: "10px", fontSize: "9pt" }}>
+                      <p style={{ fontWeight: "bold", marginBottom: "2px" }}>DIETAS ESPECIALES</p>
+                      <ul style={{ margin: 0, paddingLeft: "16px" }}>
+                        {lineasDietas(selectedEvento.personasDietasEspeciales, selectedEvento.dietasDetalle).map((l) => (
+                          <li key={l.texto} style={l.alergia ? { color: "#b91c1c", fontWeight: "bold" } : undefined}>
+                            {l.alergia ? "ALERGIA · " : ""}
+                            {l.texto}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {dishes.length === 0 ? (
                     <div className="text-center text-sm text-gray-500 py-10">

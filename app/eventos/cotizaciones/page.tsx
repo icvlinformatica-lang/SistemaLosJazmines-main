@@ -13,6 +13,9 @@
 // comentario para que el vendedor la corrija desde /vendedor/paquetes.
 
 import { useEffect, useMemo, useState } from "react"
+import { textoDietas, hayAlergias, type DietaDetalle } from "@/lib/dietas-evento"
+import { etiquetaOrigen } from "@/lib/origen-cliente"
+import { YaFueCliente } from "@/components/ya-fue-cliente"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Clock, History, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
@@ -53,7 +56,9 @@ interface CotizacionPendiente {
   tipoEvento: string | null
   nombreFestejados: string | null
   totalPersonas: number
-  invitados: { adultos: number; adolescentes: number; ninos: number; personasDietasEspeciales: number }
+  invitados: { adultos: number; adolescentes: number; ninos: number; personasDietasEspeciales: number; dietasDetalle?: DietaDetalle[] }
+  /** "¿Cómo nos conoció?" (null en las de antes). */
+  origenCliente?: string | null
   recetasElegidas: { adultos: string[]; adolescentes: string[]; ninos: string[]; dietasEspeciales: string[] }
   servicios: Array<{ servicioId: string; nombre: string; unidad: string; cantidad: number; precioVenta: number; precioTotal: number }>
   personalSeleccionado: string[]
@@ -356,6 +361,24 @@ export default function CotizacionesPendientesPage() {
           <a href={`tel:${c.clienteTelefono.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-2 hover:underline">
             <Phone className="h-3.5 w-3.5" /> {c.clienteTelefono}
           </a>
+        )}
+        {/* El cliente ya hizo otro evento (mismo DNI o teléfono). */}
+        {c.estado !== "convertida" && <YaFueCliente dni={c.clienteDni} telefono={c.clienteTelefono} />}
+        {/* De dónde vino el cliente y las dietas que cargó el vendedor (son
+            parte de los adultos; al aprobar pasan al evento por separado). */}
+        {(c.origenCliente || textoDietas(undefined, c.invitados.dietasDetalle)) && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {c.origenCliente && (
+              <span className="rounded-full border px-2 py-0.5 text-xs">
+                Nos conoció por: {etiquetaOrigen(c.origenCliente)}
+              </span>
+            )}
+            {textoDietas(undefined, c.invitados.dietasDetalle) && (
+              <span className={hayAlergias(c.invitados.dietasDetalle) ? "font-semibold text-red-700" : "text-muted-foreground"}>
+                Dietas: {textoDietas(undefined, c.invitados.dietasDetalle)}
+              </span>
+            )}
+          </div>
         )}
         {c.version === 2 && c.desglose ? (
           <DetalleCotizacionNueva

@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { normalizarDietasDetalle } from "@/lib/dietas-evento"
+import { normalizarOrigen } from "@/lib/origen-cliente"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
 
@@ -54,12 +56,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
         estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
-        evento_id, eliminado_por, cliente_dni
+        evento_id, eliminado_por, cliente_dni, origen_cliente
       )
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, paquete_id, precio_venta_sugerido, costos_internos,
         estado, comentario_admin, created_at, updated_at, nombre_festejados, horario, horario_fin,
-        evento_id, ${eliminadoPor}, cliente_dni
+        evento_id, ${eliminadoPor}, cliente_dni, origen_cliente
       FROM movida
       RETURNING id
     `
@@ -79,7 +81,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const filas = (await sql`
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin, salon, tipo_evento,
              nombre_festejados, paquete_id, invitados, servicios_elegidos, precio_venta_sugerido, estado, comentario_admin,
-             modalidad_salon, fuera_de_tarifario, avisos, cliente_dni
+             modalidad_salon, fuera_de_tarifario, avisos, cliente_dni,
+             (to_jsonb(cotizaciones) ->> 'origen_cliente') AS origen_cliente
       FROM cotizaciones
       WHERE id = ${id}
       LIMIT 1
@@ -132,7 +135,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           adolescentes: Number(invitados.adolescentes) || 0,
           ninos: Number(invitados.ninos) || 0,
           personasDietasEspeciales: Number(invitados.personasDietasEspeciales) || 0,
+          // Dietas por tipo (parte de los adultos), scripts/022.
+          dietasDetalle: normalizarDietasDetalle(invitados.dietasDetalle),
         },
+        // "¿Cómo nos conoció?" (scripts/022)
+        origenCliente: normalizarOrigen((f as unknown as { origen_cliente?: string | null }).origen_cliente) ?? "",
         recetasElegidas: {
           adultos: Array.isArray(recetasElegidas.adultos) ? recetasElegidas.adultos : [],
           adolescentes: Array.isArray(recetasElegidas.adolescentes) ? recetasElegidas.adolescentes : [],
