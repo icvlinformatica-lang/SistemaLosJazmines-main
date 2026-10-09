@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ConfirmAction } from "@/components/confirm-action"
+import { VentasPorOrigen } from "@/components/ventas-por-origen"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import {
@@ -713,6 +714,9 @@ export default function VendedoresPage() {
             </p>
           </div>
         </div>
+
+        {/* De qué red vino cada venta (scripts/022) */}
+        <VentasPorOrigen eventos={eventos || []} />
 
         {/* Cards de vendedores */}
         <div className="grid gap-4 items-start md:grid-cols-2 lg:grid-cols-3">

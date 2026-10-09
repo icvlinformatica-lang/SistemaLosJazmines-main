@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { textoDietas, hayAlergias, type DietaDetalle } from "@/lib/dietas-evento"
 import { etiquetaOrigen } from "@/lib/origen-cliente"
+import { YaFueCliente } from "@/components/ya-fue-cliente"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Calendar, CheckCircle2, ChevronDown, Clock, History, Info, Phone, Save, Settings, Trash2, UserCheck, Users, XCircle } from "lucide-react"
@@ -361,6 +362,8 @@ export default function CotizacionesPendientesPage() {
             <Phone className="h-3.5 w-3.5" /> {c.clienteTelefono}
           </a>
         )}
+        {/* El cliente ya hizo otro evento (mismo DNI o teléfono). */}
+        {c.estado !== "convertida" && <YaFueCliente dni={c.clienteDni} telefono={c.clienteTelefono} />}
         {/* De dónde vino el cliente y las dietas que cargó el vendedor (son
             parte de los adultos; al aprobar pasan al evento por separado). */}
         {(c.origenCliente || textoDietas(undefined, c.invitados.dietasDetalle)) && (

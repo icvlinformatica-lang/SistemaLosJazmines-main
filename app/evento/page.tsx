@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
+import { YaFueCliente } from "@/components/ya-fue-cliente"
+import { ORIGENES_CLIENTE } from "@/lib/origen-cliente"
 import { DietasDetalleEditor } from "@/components/dietas-detalle-editor"
 import { normalizarDietasDetalle, totalConDetalle, type DietaDetalle } from "@/lib/dietas-evento"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
@@ -617,6 +619,8 @@ function EventoPageContent() {
       // Dietas por tipo (scripts/022): solo si se cargaron, para no escribir la
       // columna nueva en cada guardado.
       ...(evento.dietasDetalle ? { dietasDetalle: normalizarDietasDetalle(evento.dietasDetalle) } : {}),
+      // "¿Cómo nos conoció?": igual, solo si se tocó ("" lo borra).
+      ...(evento.origenCliente !== undefined ? { origenCliente: evento.origenCliente } : {}),
       recetasAdultos: evento.recetasAdultos,
       recetasAdolescentes: evento.recetasAdolescentes,
       recetasNinos: evento.recetasNinos,
@@ -2499,6 +2503,38 @@ function EventoPageContent() {
                     placeholder="cliente@email.com"
                     className="h-11"
                   />
+                </div>
+              </div>
+
+              {/* Mismo DNI o teléfono que otro evento (solo Administración y Soporte). */}
+              <YaFueCliente
+                dni={localContratoDni || evento.dniNovio1}
+                telefono={localContratoTelefono}
+                excluirId={evento.id}
+              />
+
+              {/* De dónde vino el cliente (lib/origen-cliente.ts): sirve para
+                  saber qué red trae ventas. Si vino de una cotización, ya viene
+                  cargado. */}
+              <div className="space-y-2">
+                <Label>¿Cómo nos conoció?</Label>
+                <div className="flex flex-wrap gap-2">
+                  {ORIGENES_CLIENTE.map((o) => {
+                    const activo = evento.origenCliente === o.valor
+                    return (
+                      <button
+                        key={o.valor}
+                        type="button"
+                        aria-pressed={activo}
+                        onClick={() => updateEventoActual({ origenCliente: activo ? "" : o.valor })}
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                          activo ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted"
+                        }`}
+                      >
+                        {o.etiqueta}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 

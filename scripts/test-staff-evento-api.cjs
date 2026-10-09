@@ -160,3 +160,45 @@ test("GET de un evento devuelve los campos nuevos solo si tienen algo", async ()
   assert.equal("dietasDetalle" in json, false)
   assert.equal(json.origenCliente, "recomendacion")
 })
+
+const clientePrevio = cargar("app/api/eventos/cliente-previo/route.ts")
+
+test("ya fue cliente: solo Administración y Soporte; busca por DNI del contrato o de los novios", async () => {
+  const filas = [
+    { id: "a", nombre: "Ana", nombre_pareja: null, fecha: "2026-03-14", salon: "Casona", tipo_evento: "Casamiento", dni_novio1: null, dni_novio2: null, contrato: '{"dni":"30.123.456","telefono":"11 4444 5555"}' },
+    { id: "b", nombre: "Lola", nombre_pareja: "Bautismo Lola", fecha: "2027-05-02", salon: "Quinta", tipo_evento: "Bautismo", dni_novio1: "30123456", dni_novio2: null, contrato: null },
+  ]
+  const anterior = sqlMock
+  for (const p of ["dj", "coordinacion", "vendedor", "cobro"]) {
+    perfil = p
+    const res = await clientePrevio.GET(new Request("http://localhost/x?dni=30123456"))
+    assert.equal(res.status, 403, `perfil ${p}`)
+  }
+  perfil = "administracion"
+  consultas = []
+  const sqlConFilas = async (parts, ...values) => { consultas.push({ query: parts.join("?"), values }); return filas }
+  const route = (() => {
+    const load = Module._load
+    Module._load = function (request, ...args) {
+      if (request === "@/lib/db") return { sql: sqlConFilas }
+      if (request === "@/lib/stock-salones-server") return { perfilDesdeRequest: async () => perfil }
+      return load.call(this, request, ...args)
+    }
+    try {
+      const r = path.join(__dirname, "..", "app/api/eventos/cliente-previo/route.ts")
+      delete require.cache[require.resolve(r)]
+      return require(r)
+    } finally { Module._load = load }
+  })()
+  const res = await route.GET(new Request("http://localhost/x?dni=30123456&excluir=a"))
+  const json = await res.json()
+  assert.deepEqual(json.eventos.map((e) => [e.id, e.nombre, e.coincide]), [["b", "Bautismo Lola", "dni"]])
+  assert.equal(JSON.stringify(json).includes("30123456"), false, "no devuelve DNI")
+  const porTel = await (await route.GET(new Request("http://localhost/x?telefono=%2B54%209%2011%204444-5555"))).json()
+  assert.deepEqual(porTel.eventos.map((e) => [e.id, e.coincide]), [["a", "telefono"]])
+  consultas = []
+  const vacio = await (await route.GET(new Request("http://localhost/x?dni=12"))).json()
+  assert.deepEqual(vacio.eventos, [])
+  assert.equal(consultas.length, 0, "sin datos útiles no consulta la base")
+  void anterior
+})
