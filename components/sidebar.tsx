@@ -170,6 +170,9 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
         { href: "/finanzas/servicios", label: "Servicios", icon: Briefcase },
         { href: "/finanzas/personal", label: "Personal", icon: Users, locked: !tieneAccesoTotal },
         { href: "/finanzas/ipc", label: "IPC", icon: TrendingUp, locked: !tieneAccesoTotal },
+        // Archivo de gastos y pagos archivados de las dos cajas (antes no tenía
+        // entrada en el menú y solo se llegaba escribiendo la dirección).
+        { href: "/finanzas/archivo", label: "Archivo", icon: Archive, locked: !tieneAccesoTotal },
         // { href: "/finanzas/cashflow", label: "Cashflow", icon: TrendingUp },
         // { href: "/finanzas/balance-mensual", label: "Balance Mensual", icon: BarChart2 },
         // { href: "/finanzas/configuracion", label: "Config. Cajas", icon: Settings },

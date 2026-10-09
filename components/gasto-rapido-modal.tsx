@@ -30,6 +30,8 @@ import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salone
 import { cambiarDiaResumen, fechaArgentina, fechaResumenValida } from "@/lib/resumen-fecha"
 import { usuarioActivo } from "@/lib/profile-context"
 import type { GastoVariable } from "@/lib/hooks/use-caja-jazmines"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
+import { camposFaltantesGasto, MENSAJE_CAMPO_FALTANTE, type CampoGasto } from "@/lib/gasto-rapido-validacion"
 import { Plus, ChevronLeft, ChevronRight, CalendarDays, Sparkles } from "lucide-react"
 
 /**
@@ -88,8 +90,30 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
   // Modo del modal: "gasto" agenda un gasto variable; "retiro" extrae dinero
   // de la caja ya mismo, siempre asignado a un salón.
   const [modoVariable, setModoVariable] = useState<"gasto" | "retiro">("gasto")
+  // "Ya está pagado": el gasto nuevo se agenda ya marcado como pagado. Es el
+  // mismo dato que deja el círculo "Marcar como pagado" de Caja Jazmines
+  // (pagado: true en el gasto): no genera movimiento de caja ni elige caja o
+  // medio de pago, igual que ese botón.
+  const [yaPagado, setYaPagado] = useState(false)
+  // Se vuelve true al tocar "Agendar"/"Registrar retiro" con datos faltantes:
+  // desde ahí se marcan en rojo los campos que faltan, con un texto corto.
+  const [intentoGuardar, setIntentoGuardar] = useState(false)
 
   const variableRepartoInvalido = nuevoGasto.repartir && !repartoValido(nuevoGasto.distribucion)
+
+  const camposFaltantes = camposFaltantesGasto({
+    modo: modoVariable,
+    editando: !!editandoVariableId,
+    nombre: nuevoGasto.nombre,
+    monto: nuevoGasto.monto,
+    salon: nuevoGasto.salon,
+    fecha: nuevoGasto.fecha,
+    repartir: nuevoGasto.repartir,
+    repartoValido: !variableRepartoInvalido,
+  })
+  const falta = (campo: CampoGasto) => intentoGuardar && camposFaltantes.includes(campo)
+  const avisoFalta = (campo: CampoGasto) =>
+    falta(campo) ? <p className="text-xs font-medium text-red-600">{MENSAJE_CAMPO_FALTANTE[campo]}</p> : null
 
   // Carpetas ya usadas por otros gastos variables, para el selector.
   const carpetasExistentes = [...new Set(
@@ -134,10 +158,22 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
   const [fechaPanel, setFechaPanel] = useState<string | null>(null)
   const fechaPanelActual = fechaPanel ?? hoyPanelISO
 
-  // Siempre arranca mostrando "hoy" cada vez que se abre el modal.
+  // Siempre arranca mostrando "hoy" cada vez que se abre el modal, con el
+  // interruptor "Ya está pagado" apagado y sin campos marcados en rojo.
   useEffect(() => {
-    if (open) setFechaPanel(null)
+    if (!open) return
+    setFechaPanel(null)
+    setYaPagado(false)
+    setIntentoGuardar(false)
   }, [open])
+
+  // Al abrir para cargar un gasto nuevo, el vencimiento arranca con la fecha
+  // de hoy en Argentina (fechaNegocio, no toISOString: después de las 21:00
+  // daría mañana). Se puede cambiar. En edición se respeta el guardado.
+  useEffect(() => {
+    if (!open || costoAEditar) return
+    setNuevoGasto((p) => (p.fecha ? p : { ...p, fecha: fechaNegocio() }))
+  }, [open, costoAEditar])
 
   const gastosDelPanel: ItemDelDia[] = (state.costosOperativos || [])
     .filter((c) => c.esVariable && c.createdAt && fechaArgentina(new Date(c.createdAt)) === fechaPanelActual)
@@ -283,10 +319,17 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     setCreandoCarpeta(false)
     setEditandoVariableId(null)
     setModoVariable("gasto")
+    setYaPagado(false)
+    setIntentoGuardar(false)
     onOpenChange(false)
   }
 
   function handleAgregarGasto() {
+    // Si falta algo, se marca en rojo qué campo es en vez de no hacer nada.
+    if (camposFaltantes.length > 0) {
+      setIntentoGuardar(true)
+      return
+    }
     // Modo retiro: extrae el dinero de la caja ahora mismo, con salón asignado.
     if (modoVariable === "retiro" && !editandoVariableId) {
       if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon) return
@@ -302,7 +345,14 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
       return
     }
     const esEdicion = !!editandoVariableId
-    if (!esEdicion && !confirm(`¿Agendar el gasto "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} con vencimiento el ${nuevoGasto.fecha}?`)) return
+    const marcarPagado = !esEdicion && yaPagado
+    if (
+      !esEdicion &&
+      !confirm(
+        `¿Agendar el gasto "${nuevoGasto.nombre}" por ${formatCurrency(Number(nuevoGasto.monto))} con vencimiento el ${nuevoGasto.fecha}${marcarPagado ? ", ya marcado como pagado" : ""}?`,
+      )
+    )
+      return
     const dist = nuevoGasto.repartir
       ? nuevoGasto.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
@@ -329,7 +379,8 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
         fechaVencimiento: nuevoGasto.fecha,
         fechaGasto: nuevoGasto.fechaGasto || undefined,
         esVariable: true,
-        pagado: false,
+        // Mismo dato que deja "Marcar como pagado" en Caja Jazmines.
+        pagado: marcarPagado,
         distribucion: dist.length > 0 ? dist : undefined,
         categoria: nuevoGasto.carpeta,
         createdAt: new Date().toISOString(),
@@ -349,6 +400,8 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
           setModoVariable("gasto")
           setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
           setCreandoCarpeta(false)
+          setYaPagado(false)
+          setIntentoGuardar(false)
         }
       }}
     >
@@ -403,10 +456,13 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
               </div>
             )}
             {modoVariable !== "retiro" && nuevoGasto.repartir ? (
-              <RepartoSalonesEditor
-                value={nuevoGasto.distribucion}
-                onChange={(v) => setNuevoGasto((p) => ({ ...p, distribucion: v }))}
-              />
+              <>
+                <RepartoSalonesEditor
+                  value={nuevoGasto.distribucion}
+                  onChange={(v) => setNuevoGasto((p) => ({ ...p, distribucion: v }))}
+                />
+                {avisoFalta("reparto")}
+              </>
             ) : (
               <div className="space-y-1.5">
                 <Label htmlFor="gv-salon">{modoVariable === "retiro" ? "Salón del que se retira" : "Salón"}</Label>
@@ -414,7 +470,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
                   value={nuevoGasto.salon}
                   onValueChange={(v) => setNuevoGasto((p) => ({ ...p, salon: v }))}
                 >
-                  <SelectTrigger id="gv-salon">
+                  <SelectTrigger id="gv-salon" aria-invalid={falta("salon")}>
                     <SelectValue placeholder="Seleccionar salón" />
                   </SelectTrigger>
                   <SelectContent>
@@ -428,6 +484,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
                     ))}
                   </SelectContent>
                 </Select>
+                {avisoFalta("salon")}
               </div>
             )}
           </div>
@@ -438,7 +495,9 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
               placeholder={modoVariable === "retiro" ? "Ej: Retiro de socios" : "Ej: Reparación de heladera"}
               value={nuevoGasto.nombre}
               onChange={(e) => setNuevoGasto((p) => ({ ...p, nombre: e.target.value }))}
+              aria-invalid={falta("nombre")}
             />
+            {avisoFalta("nombre")}
             {sugerirCarpeta && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
                 <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
@@ -480,7 +539,9 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
               placeholder="Ej: 50.000"
               value={Number(nuevoGasto.monto) || 0}
               onValueChange={(v) => setNuevoGasto((p) => ({ ...p, monto: v ? String(v) : "" }))}
+              aria-invalid={falta("monto")}
             />
+            {avisoFalta("monto")}
           </div>
           {modoVariable !== "retiro" && (
             <div className="space-y-1.5">
@@ -604,10 +665,24 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
                   type="date"
                   value={nuevoGasto.fecha}
                   onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
+                  aria-invalid={falta("fecha")}
                 />
+                {avisoFalta("fecha")}
               </div>
               <p className="text-xs text-muted-foreground col-span-2">
                 La fecha del gasto es opcional (cuándo se hizo). El vencimiento ordena la lista y dispara las alertas.
+              </p>
+            </div>
+          )}
+          {modoVariable !== "retiro" && !editandoVariableId && (
+            <div className="space-y-1 rounded-lg border border-border p-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="gv-ya-pagado">Ya está pagado</Label>
+                <Switch id="gv-ya-pagado" checked={yaPagado} onCheckedChange={setYaPagado} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se agenda ya marcado como pagado, igual que tocar el círculo de pagado en Caja Jazmines. No registra un
+                movimiento de caja.
               </p>
             </div>
           )}
@@ -698,14 +773,6 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
           </Button>
           <Button
             onClick={handleAgregarGasto}
-            disabled={
-              modoVariable === "retiro" && !editandoVariableId
-                ? !nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.salon
-                : !nuevoGasto.nombre ||
-                  !nuevoGasto.monto ||
-                  !nuevoGasto.fecha ||
-                  (nuevoGasto.repartir ? variableRepartoInvalido : !nuevoGasto.salon)
-            }
             className={
               modoVariable === "retiro" && !editandoVariableId
                 ? "bg-red-600 hover:bg-red-700 text-white"
