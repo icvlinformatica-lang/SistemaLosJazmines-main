@@ -463,7 +463,7 @@ export default function StaffPage() {
                     key={n.titulo}
                     className={cn("rounded-lg border p-3", n.propia ? "border-primary bg-primary/10" : "border-sky-200 bg-sky-50")}
                   >
-                    <p className={cn("mb-1 text-xs font-semibold", n.propia ? "text-primary" : "text-sky-800")}>Nota {n.titulo.toLowerCase()}</p>
+                    <p className={cn("mb-1 text-xs font-semibold", n.propia ? "text-primary" : "text-sky-800")}>Nota {n.titulo.replace(/^Para /, "para ")}</p>
                     <p className={cn("whitespace-pre-line text-sm", n.propia ? "text-primary" : "text-sky-900")}>{n.texto}</p>
                   </div>
                 ))}

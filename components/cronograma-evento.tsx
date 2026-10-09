@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import { Clock, ListOrdered, Plus, Trash2, Wand2 } from "lucide-react"
+import { ListOrdered, Plus, Trash2, Wand2 } from "lucide-react"
 import {
   PERFILES_STAFF,
   NOMBRE_PERFIL_STAFF,
@@ -159,16 +159,13 @@ export function CronogramaEvento({ eventoId, tipoEvento, horario, cronograma, pe
       {borrador.map((m) => (
         <div key={m.id} className="space-y-1.5 rounded-lg border p-2">
           <div className="flex items-center gap-2">
-            <div className="relative w-[6.5rem] shrink-0">
-              <Clock className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="time"
-                value={m.hora}
-                onChange={(e) => cambiar(m.id, { hora: e.target.value })}
-                className="h-9 pl-7 text-sm"
-                aria-label="Hora"
-              />
-            </div>
+            <Input
+              type="time"
+              value={m.hora}
+              onChange={(e) => cambiar(m.id, { hora: e.target.value })}
+              className="h-9 w-[7.5rem] shrink-0 px-2 text-sm"
+              aria-label="Hora"
+            />
             <Input
               value={m.momento}
               onChange={(e) => cambiar(m.id, { momento: e.target.value })}
