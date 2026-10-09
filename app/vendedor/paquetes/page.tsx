@@ -7,6 +7,11 @@
 // "Guardar borrador" o "Enviar a Administración". Un borrador también se
 // puede mandar a revisión desde acá, con "Enviar a revisión" en la tarjeta.
 // Borrar una la manda a "Mi papelera" (se puede recuperar).
+// Arriba, botones por estado con su contador y un buscador por nombre del
+// cliente (lib/cotizaciones-listas.ts). El filtro inicial puede venir en la
+// dirección (?estado=rechazada): así llegan los botones del inicio del
+// vendedor. El teléfono del cliente se puede tocar para llamar, y al lado va
+// un botón de WhatsApp (sin mensaje armado; lib/telefono-whatsapp.ts).
 //
 // "Paquetes reutilizables por salón": leída de "paquetes_salones" — la misma
 // tabla que usa Administración en /admin/servicios, siempre a través de
@@ -17,13 +22,22 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, CalendarClock, Package, Phone, Send, Trash2, Users } from "lucide-react"
+import { ArrowLeft, CalendarClock, MessageCircle, Package, Phone, Search, Send, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { ESTADO_COTIZACION_CLASE, ESTADO_COTIZACION_LABEL, type EstadoCotizacion } from "@/lib/estado-cotizacion"
+import {
+  FILTROS_COTIZACION,
+  contarPorFiltro,
+  filtrarCotizaciones,
+  filtroDesdeParam,
+  type FiltroCotizacion,
+} from "@/lib/cotizaciones-listas"
+import { numeroWhatsApp } from "@/lib/telefono-whatsapp"
 
 interface PaqueteVendedor {
   id: string
@@ -65,6 +79,16 @@ export default function PaquetesPage() {
   const [borrandoPaqueteId, setBorrandoPaqueteId] = useState<string | null>(null)
   const [cotizacionABorrar, setCotizacionABorrar] = useState<CotizacionGenerada | null>(null)
   const [borrandoCotizacionId, setBorrandoCotizacionId] = useState<string | null>(null)
+  const [filtro, setFiltro] = useState<FiltroCotizacion>("todas")
+  const [busqueda, setBusqueda] = useState("")
+
+  // Filtro inicial desde la dirección (?estado=...). Se lee de window y no con
+  // useSearchParams para no tener que envolver la página en <Suspense>.
+  useEffect(() => {
+    setFiltro(filtroDesdeParam(new URLSearchParams(window.location.search).get("estado")))
+  }, [])
+  const conteo = useMemo(() => contarPorFiltro(cotizaciones), [cotizaciones])
+  const cotizacionesVisibles = useMemo(() => filtrarCotizaciones(cotizaciones, filtro, busqueda), [cotizaciones, filtro, busqueda])
 
   const cargarDatos = () => {
     setCargando(true)
@@ -186,8 +210,48 @@ export default function PaquetesPage() {
               </p>
             </div>
           ) : (
+            <>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
+              {FILTROS_COTIZACION.map((f) => {
+                const activo = filtro === f.clave
+                return (
+                  <button
+                    key={f.clave}
+                    type="button"
+                    aria-pressed={activo}
+                    onClick={() => setFiltro(f.clave)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                      activo ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted"
+                    }`}
+                  >
+                    {f.etiqueta}
+                    <span className={`tabular-nums text-xs ${activo ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                      {conteo[f.clave]}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                type="search"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar por nombre del cliente"
+                aria-label="Buscar por nombre del cliente"
+                className="h-10 pl-9 text-base"
+              />
+            </div>
+            {cotizacionesVisibles.length === 0 ? (
+              <p className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">
+                No hay cotizaciones con este filtro.
+              </p>
+            ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              {cotizaciones.map((c) => (
+              {cotizacionesVisibles.map((c) => {
+                const whatsapp = numeroWhatsApp(c.clienteTelefono)
+                return (
                 <div
                   key={c.id}
                   className="rounded-xl border-l-4 border border-border bg-card overflow-hidden"
@@ -227,10 +291,26 @@ export default function PaquetesPage() {
                         </span>
                       )}
                       {c.clienteTelefono && (
-                        <span className="flex items-center gap-1">
+                        <a
+                          href={`tel:${c.clienteTelefono.replace(/[^\d+]/g, "")}`}
+                          className="flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
+                          aria-label={`Llamar a ${c.clienteNombre}`}
+                        >
                           <Phone className="h-3 w-3" />
                           {c.clienteTelefono}
-                        </span>
+                        </a>
+                      )}
+                      {whatsapp && (
+                        <a
+                          href={`https://wa.me/${whatsapp}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 font-medium text-emerald-700 hover:underline"
+                          aria-label={`Escribirle por WhatsApp a ${c.clienteNombre}`}
+                        >
+                          <MessageCircle className="h-3 w-3" />
+                          WhatsApp
+                        </a>
                       )}
                     </div>
                     {c.estado === "rechazada" && c.comentarioAdmin && (
@@ -256,8 +336,11 @@ export default function PaquetesPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
+            )}
+            </>
           )}
         </div>
 
