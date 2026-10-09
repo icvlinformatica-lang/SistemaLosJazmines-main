@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 50 archivos y 427 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → los archivos `scripts/test-*.cjs` dan 461 tests al 9/10/2026, todos pasan (~12 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -51,6 +51,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Respaldos: antes de tocar datos se copiaron tablas con fecha al esquema `backup`. Hay 5 del 2/10/2026, entre ellas `backup.eventos_20261002` y `backup.movimientos_caja_20261002`. Contienen datos reales de clientes.
 - **Los JSON de `eventos` están guardados como texto dentro de jsonb.** Pasa en `pagos`, `plan_de_cuotas`, `servicios`, `contrato` y `asignaciones` de todos los eventos activos (`jsonb_typeof` da `'string'`); solo 4 eventos de la papelera tienen JSON real. En el código lo resuelve `parseJsonField`. En SQL hay que desenvolverlo con `case jsonb_typeof(col) when 'string' then (col #>> '{}')::jsonb else col end`; si no, `col->>'campo'` devuelve vacío **sin dar error**.
 - **`eventos.fecha` es texto** `"YYYY-MM-DD"`, no una fecha. El índice de un evento por salón y día compara ese texto, así que el formato no se puede cambiar.
+- Columnas nuevas de `eventos` (migración 022): `notas_staff_perfil`, `cronograma`, `dietas_detalle` y `origen_cliente`; y `origen_cliente` en `cotizaciones` y `cotizaciones_eliminadas`. Se leen con `to_jsonb(eventos)` y su ida y vuelta está en `lib/eventos-campos-staff.ts`. El cronograma se escribe **solo** por `PATCH /api/eventos/[id]/cronograma` (Administración, Soporte y Coordinación), nunca con el evento entero. `GET /api/eventos/cliente-previo` (solo Administración y Soporte) busca eventos anteriores del mismo DNI o teléfono y no devuelve DNI.
 - Columnas viejas de `eventos` que el código no usa: `recetas_dietas`, `multipliers_dietas`, `barra_cocteles`, `barra_template_id` y `menu_notas`.
 - Datos al 6/10/2026:
   - **Eventos**: 147 activos. Por salón: Casona 57, Salon 53 y Quinta 37; "Salon 4" y "Salon 5" no tienen eventos. 120 tienen plan de cuotas, **68 ajustan por IPC** y 66 tienen pagos registrados (111 pagos en total).
@@ -161,7 +162,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Comentarios en español que expliquen el porqué, como en el resto del código.
 - UI: seguir `DESIGN.md` (íconos solo de `lucide-react`, un color por categoría o estado) y probar a 390 px sin scroll horizontal.
 
-**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 020)
+**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 022. La 021 es la del PR de "Revisión de errores")
 - Encabezado con qué hace y por qué, "SOLO ADITIVA" si lo es, y "Aplicada el <fecha>" cuando se aplique.
 - Idempotente (`if not exists`) y aditiva por defecto, con defaults que no cambien el comportamiento.
 - Si tiene varios pasos, va en `begin`/`commit`. Si borra, lleva un freno que verifique que no esté en uso y aborte.
