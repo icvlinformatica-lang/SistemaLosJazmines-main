@@ -22,6 +22,15 @@ async function fetchReportRows(table: "personal" | "costos_operativos" | "gastos
     .abortSignal(AbortSignal.timeout(15000)))
 }
 
+
+/** Lee un número guardado y usa el valor por defecto solo si falta o no es
+ *  un número. Con `|| 30`, una seña cargada en 0 % se leía como 30 %. */
+export function numeroGuardado(valor: unknown, porDefecto: number): number {
+  if (valor === null || valor === undefined || valor === "") return porDefecto
+  const n = Number(valor)
+  return Number.isFinite(n) ? n : porDefecto
+}
+
 // ============ SERVICIOS ============
 export async function fetchServicios(): Promise<Servicio[]> {
   const data = await fetchAllPages<Record<string, any> & { id: string }>((from, to) => supabase
@@ -44,9 +53,9 @@ export async function fetchServicios(): Promise<Servicio[]> {
     margenGanancia: Number(s.margen_ganancia) || 0,
     precioVenta: Number(s.precio_venta) || 0,
     costoParaCajaEventos: Number(s.costo_para_caja_eventos) || 0,
-    porcentajeSeña: Number(s.porcentaje_sena) || 30,
-    diasAnticipacionSeña: Number(s.dias_anticipacion_sena) || 30,
-    diasAnticipacionSaldo: Number(s.dias_anticipacion_saldo) || 7,
+    porcentajeSeña: numeroGuardado(s.porcentaje_sena, 30),
+    diasAnticipacionSeña: numeroGuardado(s.dias_anticipacion_sena, 30),
+    diasAnticipacionSaldo: numeroGuardado(s.dias_anticipacion_saldo, 7),
     proveedor: s.proveedor || undefined,
     notas: s.notas || undefined,
     orden: s.orden ?? undefined,
@@ -104,9 +113,9 @@ export async function upsertServicio(servicio: Partial<Servicio>): Promise<Servi
     margenGanancia: Number(data.margen_ganancia) || 0,
     precioVenta: Number(data.precio_venta) || 0,
     costoParaCajaEventos: Number(data.costo_para_caja_eventos) || 0,
-    porcentajeSeña: Number(data.porcentaje_sena) || 30,
-    diasAnticipacionSeña: Number(data.dias_anticipacion_sena) || 30,
-    diasAnticipacionSaldo: Number(data.dias_anticipacion_saldo) || 7,
+    porcentajeSeña: numeroGuardado(data.porcentaje_sena, 30),
+    diasAnticipacionSeña: numeroGuardado(data.dias_anticipacion_sena, 30),
+    diasAnticipacionSaldo: numeroGuardado(data.dias_anticipacion_saldo, 7),
     proveedor: data.proveedor || undefined,
     notas: data.notas || undefined,
     orden: data.orden ?? undefined,
@@ -165,9 +174,9 @@ function mapServicioRow(s: any): Servicio {
     margenGanancia: Number(s.margen_ganancia) || 0,
     precioVenta: Number(s.precio_venta) || 0,
     costoParaCajaEventos: Number(s.costo_para_caja_eventos) || 0,
-    porcentajeSeña: Number(s.porcentaje_sena) || 30,
-    diasAnticipacionSeña: Number(s.dias_anticipacion_sena) || 30,
-    diasAnticipacionSaldo: Number(s.dias_anticipacion_saldo) || 7,
+    porcentajeSeña: numeroGuardado(s.porcentaje_sena, 30),
+    diasAnticipacionSeña: numeroGuardado(s.dias_anticipacion_sena, 30),
+    diasAnticipacionSaldo: numeroGuardado(s.dias_anticipacion_saldo, 7),
     proveedor: s.proveedor || undefined,
     notas: s.notas || undefined,
     orden: s.orden ?? undefined,

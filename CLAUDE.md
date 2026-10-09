@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 40 archivos y 376 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 41 archivos y 382 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -134,7 +134,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Claves de salón `SALONES` ("Quinta", "Casona", "Salon", "Salon 4", "Salon 5"). El nombre visible se cambia en Configuración (`salonLabel`), nunca la clave.
 - Estados de evento (`borrador|pendiente|en_preparacion|completado|cancelado`) y de cotización, `cajaDestino`, tipos de movimiento y categorías. Renombrar o borrar un valor exige migrar los datos.
 - Los JSON viejos conviven con los nuevos: `servicios_elegidos` v1 y v2, movimientos sin `cajaDestino`, cotizaciones de una sola barra. Leer siempre tolerando el formato viejo.
-- Los años de evento válidos son 2026 a 2032 (`lib/validacion-anio-evento.ts`). Hay que extenderlo antes de 2033.
+- Los años de evento válidos son 2026 a 2032 (`lib/validacion-anio-evento.ts`). Hay que extenderlo antes de 2033. Al editar, una fecha que no cambió se acepta aunque esté fuera del rango (`validarAnioEventoAlEditar`).
 
 **Efectos laterales**
 - Crons a las 00:00 UTC (21:00 en Argentina): el resumen diario todos los días y el semanal los sábados. Los dos mandan mail.
@@ -161,7 +161,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Comentarios en español que expliquen el porqué, como en el resto del código.
 - UI: seguir `DESIGN.md` (íconos solo de `lucide-react`, un color por categoría o estado) y probar a 390 px sin scroll horizontal.
 
-**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 020)
+**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 021, que todavía no está aplicada)
 - Encabezado con qué hace y por qué, "SOLO ADITIVA" si lo es, y "Aplicada el <fecha>" cuando se aplique.
 - Idempotente (`if not exists`) y aditiva por defecto, con defaults que no cambien el comportamiento.
 - Si tiene varios pasos, va en `begin`/`commit`. Si borra, lleva un freno que verifique que no esté en uso y aborte.
@@ -215,10 +215,8 @@ No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
   - El conector de Supabase cancela solo las escrituras en las sesiones en la nube (no puede mostrar la confirmación). Lo que modifique datos lo corre el dueño en el SQL Editor.
   - El ajuste "Aporte a Administración" de Configuración de Cajas solo actuaba en esa seña sin caja, así que desde el arreglo no hace nada. Nunca generó movimientos: en la base no hay ninguno de tipo `aporte_admin`.
 - **Seña de los eventos que vienen de una cotización** (detectado y arreglado el 8/10/2026): aprobar crea el evento sin plan de cuotas. Ahora, al cargarle "Seña + Cuotas" por primera vez en el planificador, la seña se anota en las cajas con la misma regla que al crear (`senaAAnotarAlEditar` en `lib/cobrar-cuota.ts`): solo eventos con `cotizacionId`, solo si el plan guardado no tenía seña y si el evento no tiene ya un movimiento "Seña …".
-- En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`). Hoy ningún servicio tiene 0, así que no afecta a los datos actuales.
 - `fetchPersonal` y `fetchCostosOperativos` devuelven `[]` ante un error (ver "Estado del cliente").
-- Los años de evento válidos van de 2026 a 2032 (ver "Valores guardados"). Hay 1 evento activo de 2025, ya completado: si se guarda mandando la fecha, el servidor lo rechaza.
-- 3 políticas "allow_all" viejas en `paquetes_salones`, `precios_venta` y `temporadas` (ver "La base real").
+- 3 políticas "allow_all" viejas en `paquetes_salones`, `precios_venta` y `temporadas` (ver "La base real"), y el aviso de `search_path` de abajo: los arregla `scripts/021_limpiar_politicas_viejas.sql`, que corre el dueño en el SQL Editor (al 9/10/2026 sin aplicar).
 - 48 eventos activos sin `fecha_alta`. El script de carga que menciona `supabase/migrations/20261002_fecha_alta_eventos.sql` no está en el repo.
 - Aviso de seguridad de Supabase (nivel WARN): la función `update_updated_at_column` no tiene `search_path` fijo.
 
@@ -253,7 +251,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
 - **Variables de entorno**:
   - `POSTGRES_URL`: pooler de Supabase en modo transacción, por eso `prepare: false`.
   - Supabase: `SUPABASE_URL` o `NEXT_PUBLIC_SUPABASE_URL`, y `SUPABASE_SERVICE_ROLE_KEY`.
-  - Sesiones y cron: `AUTH_SECRET`, `CRON_SECRET`.
+  - Sesiones y cron: `AUTH_SECRET`, `CRON_SECRET`. Sin `CRON_SECRET` los resúmenes por mail no salen (`lib/cron-auth.ts`, desde el 9/10/2026).
   - Mails: `RESEND_API_KEY`, `NOTIFICATION_EMAIL`.
   - PINs: `PIN_*` por perfil, más `PIN_STOCK_EXTRA`.
 - **Rutas**:

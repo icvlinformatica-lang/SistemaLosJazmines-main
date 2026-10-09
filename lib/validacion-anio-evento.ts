@@ -34,6 +34,21 @@ export function validarAnioEvento(fecha: unknown): { valido: boolean; anio: numb
   return { valido: anio !== null && anio >= ANIO_EVENTO_MIN && anio <= ANIO_EVENTO_MAX, anio }
 }
 
+/**
+ * Igual que validarAnioEvento, pero al editar un evento que ya existe: si la
+ * fecha no cambió, se acepta aunque esté fuera del rango. Así se puede volver
+ * a guardar un evento viejo (por ejemplo uno de 2025) sin tocarle la fecha.
+ */
+export function validarAnioEventoAlEditar(
+  fechaNueva: unknown,
+  fechaGuardada: unknown,
+): { valido: boolean; anio: number | null } {
+  if (typeof fechaNueva === "string" && fechaNueva !== "" && fechaNueva === fechaGuardada) {
+    return { valido: true, anio: extraerAnioFecha(fechaNueva) }
+  }
+  return validarAnioEvento(fechaNueva)
+}
+
 export function mensajeAnioEventoInvalido(anio: number | null): string {
   return `El año ${anio ?? "ingresado"} no es válido. La fecha del evento debe estar entre ${ANIO_EVENTO_MIN} y ${ANIO_EVENTO_MAX}.`
 }
