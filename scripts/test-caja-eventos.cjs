@@ -188,6 +188,8 @@ test("restauración usa la fila original y una única sentencia parametrizada", 
   const route = loadMocked("app/api/eventos/papelera/[id]/restaurar/route.ts", {
     "@/lib/db": { sql: async (parts, ...values) => { calls.push({ sql: parts.join("?"), values }); return [{ id: "a", nombre: "Prueba" }] } },
     "@/lib/activity-logger": { logActivity: async () => {} },
+    // Restaurar es de Administración y Soporte (ver test-papelera-y-transacciones).
+    "@/lib/stock-salones-server": { perfilDesdeRequest: async () => "administracion" },
   })
   const response = await route.POST(new Request("http://localhost/test"), { params: Promise.resolve({ id: "a" }) })
   assert.equal(response.status, 200)
