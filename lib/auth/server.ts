@@ -98,12 +98,22 @@ export interface SessionPayload {
   exp: number
 }
 
+/**
+ * Lo que se firma: perfil, vencimiento y el PIN VIGENTE de ese perfil. El PIN
+ * no viaja en el token (solo entra en la firma), pero ata la sesión a él: si
+ * se cambia la variable PIN_* de un perfil, todas sus sesiones y accesos
+ * rápidos dejan de valer y hay que volver a entrar con el PIN nuevo. Antes un
+ * acceso rápido se renovaba solo y seguía entrando aunque se cambiara el PIN.
+ */
+function datosFirmados(perfilId: string, exp: number): string {
+  return `${perfilId}.${exp}.${getPins()[perfilId] ?? ""}`
+}
+
 // Token con formato: perfilId.exp.firma
 export async function signToken(perfilId: string, durationMs: number = SESSION_DURATION_MS): Promise<string> {
   const exp = Date.now() + durationMs
-  const data = `${perfilId}.${exp}`
-  const sig = await hmac(data)
-  return `${data}.${sig}`
+  const sig = await hmac(datosFirmados(perfilId, exp))
+  return `${perfilId}.${exp}.${sig}`
 }
 
 export async function signQuickToken(perfilId: string): Promise<string> {
@@ -118,7 +128,7 @@ export async function verifyToken(token: string | undefined | null): Promise<Ses
   const exp = Number(expStr)
   if (!perfilId || !Number.isFinite(exp)) return null
   if (Date.now() > exp) return null
-  const expectedSig = await hmac(`${perfilId}.${exp}`)
+  const expectedSig = await hmac(datosFirmados(perfilId, exp))
   if (sig.length !== expectedSig.length) return null
   let diff = 0
   for (let i = 0; i < sig.length; i++) {
