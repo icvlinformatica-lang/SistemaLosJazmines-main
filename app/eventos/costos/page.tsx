@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { destinoVolverCostos } from "@/lib/volver-desde-costos"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -70,6 +71,8 @@ function formatFecha(dateStr?: string): string {
 function CostosEventoContent() {
   const searchParams = useSearchParams()
   const eventoId = searchParams.get("id") || ""
+  // Si se entró desde Caja de eventos, la flecha vuelve ahí (al mismo mes)
+  const volver = destinoVolverCostos(searchParams.get("from"), searchParams.get("mes"))
   const {
     state,
     updateEvento,
@@ -146,8 +149,8 @@ function CostosEventoContent() {
       <main className="container mx-auto max-w-4xl px-4 py-10">
         <p className="text-muted-foreground">Evento no encontrado.</p>
         <Button asChild variant="outline" className="mt-4 bg-transparent">
-          <Link href="/eventos/lista">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Volver a la lista
+          <Link href={volver.href}>
+            <ArrowLeft className="h-4 w-4 mr-2" /> {volver.etiqueta}
           </Link>
         </Button>
       </main>
@@ -489,7 +492,7 @@ function CostosEventoContent() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button asChild variant="ghost" size="icon" className="h-9 w-9">
-            <Link href="/eventos/lista" aria-label="Volver a la lista de eventos">
+            <Link href={volver.href} aria-label={volver.etiqueta} title={volver.etiqueta}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
