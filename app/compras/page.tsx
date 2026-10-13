@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { Printer, ShoppingCart, ArrowLeft, CheckCircle2, CalendarClock } from "lucide-react"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { cn } from "@/lib/utils"
 
 export default function ComprasPage() {
@@ -86,9 +87,9 @@ export default function ComprasPage() {
         <div className="no-print mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button asChild variant="ghost" size="icon">
-              <Link href="/evento">
+              <LinkVolver href="/evento">
                 <ArrowLeft className="h-5 w-5" />
-              </Link>
+              </LinkVolver>
             </Button>
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Orden de Compra</h1>
