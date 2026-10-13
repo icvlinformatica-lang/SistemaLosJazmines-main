@@ -3,6 +3,7 @@
 import type React from "react"
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { formatCurrency, salonLabel, PORCENTAJE_COMISION_VENDEDOR, type EventoGuardado, type Vendedor } from "@/lib/store"
@@ -683,10 +684,10 @@ export default function VendedoresPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/eventos/lista" className="text-muted-foreground hover:text-foreground">
+            <LinkVolver href="/eventos/lista" className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-5 w-5" />
               <span className="sr-only">Volver a la lista de eventos</span>
-            </Link>
+            </LinkVolver>
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-balance">Vendedores</h1>
               <p className="text-sm text-muted-foreground mt-1">

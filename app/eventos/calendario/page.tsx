@@ -4,6 +4,7 @@
 import { useState, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { useStore } from "@/lib/store-context"
 import { iconoTipoEvento, referenciaTiposEvento } from "@/lib/icono-tipo-evento"
 import {
@@ -1098,9 +1099,9 @@ export default function CalendarioPage() {
       {/* Header */}
       <header className="border-b border-border bg-background px-6 py-4">
         <div className="mx-auto max-w-7xl flex items-center gap-4">
-          <Link href="/" className="text-muted-foreground hover:text-foreground">
+          <LinkVolver href="/" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
-          </Link>
+          </LinkVolver>
           <CalendarIcon className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">Calendario de Eventos</h1>
           <div className="ml-auto flex items-center gap-3">

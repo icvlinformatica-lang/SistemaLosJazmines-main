@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Printer, ClipboardList, ArrowLeft, ChefHat, Utensils } from "lucide-react"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 
 export default function MiseEnPlacePage() {
   const { state } = useStore()
@@ -71,9 +72,9 @@ export default function MiseEnPlacePage() {
         <div className="no-print mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button asChild variant="ghost" size="icon">
-              <Link href="/evento">
+              <LinkVolver href="/evento">
                 <ArrowLeft className="h-5 w-5" />
-              </Link>
+              </LinkVolver>
             </Button>
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Guia de Batalla</h1>

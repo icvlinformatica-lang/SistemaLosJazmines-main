@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { useToast } from "@/hooks/use-toast"
 import { salonLabel } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -155,12 +156,12 @@ export default function PapeleraPage() {
         {/* Header */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/eventos/lista">
+            <LinkVolver href="/eventos/lista">
               <Button variant="ghost" size="sm" className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 Volver
               </Button>
-            </Link>
+            </LinkVolver>
             <div>
               <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <Trash2 className="h-6 w-6 text-muted-foreground" />

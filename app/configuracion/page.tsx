@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { useStore } from "@/lib/store-context"
 import { formatCurrency } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -569,9 +570,9 @@ export default function ConfiguracionPage() {
       {/* Header */}
       <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-4xl flex items-center gap-4">
-          <Link href="/" className="text-muted-foreground hover:text-foreground">
+          <LinkVolver href="/" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
-          </Link>
+          </LinkVolver>
           <h1 className="text-xl font-semibold">Configuracion</h1>
         </div>
       </header>
