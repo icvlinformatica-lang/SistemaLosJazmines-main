@@ -10,7 +10,6 @@ import { FindeModal } from "@/components/finde-modal"
 import { VienenAPagarModal, CLAVE_VIENEN_A_PAGAR, cargarResumenVienenAPagar } from "@/components/vienen-a-pagar-modal"
 import { contarCuotasAtrasadas } from "@/lib/vienen-a-pagar"
 import { ChatAyuda } from "@/components/chat-ayuda"
-import { PERFILES_CON_CHAT_IA } from "@/components/chat-ia-flotante"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
 import { useUI } from "@/lib/ui-context"
@@ -164,7 +163,7 @@ export default function HomePage() {
 
       {/* Botón de ayuda, abajo a la derecha: abre la guía de uso */}
       {/* Con el botón flotante de la IA (abajo a la derecha), este va a su izquierda. */}
-      <div className={`absolute bottom-6 z-10 ${PERFILES_CON_CHAT_IA.includes(perfilActivo?.id ?? "") ? "right-20" : "right-5"}`}>
+      <div className="absolute bottom-6 right-5 z-10">
         <button
           type="button"
           onClick={() => setGuiaOpen(true)}

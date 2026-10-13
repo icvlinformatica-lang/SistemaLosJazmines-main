@@ -18,10 +18,12 @@ import {
   filtrarEventosChat,
   resumenEventoChat,
   sumarAcciones,
+  tarjetaEventoChat,
   type AccionChat,
   type FilaEventoChat,
   type PantallaChat,
 } from "@/lib/chat-ia-datos"
+import { MAX_TARJETAS_CHAT, sumarTarjetas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 
 /** Máximo de eventos que se le pasan a la IA por búsqueda. */
 export const MAX_EVENTOS_POR_BUSQUEDA = 10
@@ -31,7 +33,15 @@ const fechaISO = z
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .describe("Fecha en formato AAAA-MM-DD, por ejemplo 2026-10-06")
 
-export function crearHerramientasChat({ hoy, acciones }: { hoy: string; acciones: AccionChat[] }) {
+export function crearHerramientasChat({
+  hoy,
+  acciones,
+  tarjetas = [],
+}: {
+  hoy: string
+  acciones: AccionChat[]
+  tarjetas?: TarjetaEventoChat[]
+}) {
   // Se lee una sola vez por pregunta, y solo si la IA lo necesita.
   let eventos: Promise<FilaEventoChat[]> | null = null
   let historial: Promise<HistorialIPCEntry[]> | null = null
@@ -126,6 +136,22 @@ export function crearHerramientasChat({ hoy, acciones }: { hoy: string; acciones
         const nombre = String(fila.nombre_pareja || fila.nombre || "Evento")
         sumarAcciones(acciones, accesosEvento(eventoId, nombre, String(fila.estado ?? "")))
         return { ok: true, botones: "Lista, cuotas por cobrar y costos" }
+      },
+    }),
+
+    mostrarResumenEventos: tool({
+      description:
+        "Pone en el chat una tarjeta por evento con su plata ordenada: total, seña, cobrado (con barra), saldo, cuotas vencidas y la próxima cuota. " +
+        `Usala SIEMPRE que respondas montos de uno o más eventos (hasta ${MAX_TARJETAS_CHAT}). Necesita los ids que devolvió buscarEventos.`,
+      inputSchema: z.object({ eventoIds: z.array(z.string().min(1).max(100)).min(1).max(MAX_TARJETAS_CHAT) }),
+      execute: async ({ eventoIds }) => {
+        const [filas, hist] = await Promise.all([cargarEventos(), cargarHistorial()])
+        const encontrados = eventoIds
+          .map((id) => filas.find((f) => String(f.id) === id))
+          .filter((f): f is FilaEventoChat => !!f)
+        sumarTarjetas(tarjetas, encontrados.map((f) => tarjetaEventoChat(resumenEventoChat(f, hist, hoy))))
+        if (encontrados.length === 0) return { ok: false, motivo: "Ningún id coincide. Buscalos primero con buscarEventos." }
+        return { ok: true, tarjetas: encontrados.length }
       },
     }),
 

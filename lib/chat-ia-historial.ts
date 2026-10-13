@@ -7,6 +7,7 @@
 // Corre SOLO en el servidor (app/api/chat).
 import { sql } from "@/lib/db"
 import type { AccionChat } from "@/lib/chat-ia-datos"
+import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 
 /** Perfiles que tienen el chat con IA. */
 export const PERFILES_CHAT_IA = ["administracion", "soporte"]
@@ -38,6 +39,7 @@ export interface MensajeHistorial {
   rol: "user" | "assistant"
   contenido: string
   acciones: AccionChat[]
+  tarjetas: TarjetaEventoChat[]
   fecha: string
 }
 
@@ -49,19 +51,34 @@ export function idMensajeValido(id: unknown): id is string {
   return typeof id === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(id)
 }
 
-function leerAcciones(valor: unknown): AccionChat[] {
+/**
+ * La columna `acciones` guarda los botones como lista ([{etiqueta, href}]),
+ * o, si la respuesta trae tarjetas de eventos, { botones, tarjetas }. Los
+ * mensajes viejos son siempre la lista: se leen los dos formatos.
+ */
+function leerAdjuntos(valor: unknown): { acciones: AccionChat[]; tarjetas: TarjetaEventoChat[] } {
   let v = valor
   if (typeof v === "string") {
     try {
       v = JSON.parse(v)
     } catch {
-      return []
+      return { acciones: [], tarjetas: [] }
     }
   }
-  if (!Array.isArray(v)) return []
-  return v.filter(
-    (a): a is AccionChat => !!a && typeof a.etiqueta === "string" && typeof a.href === "string" && a.href.startsWith("/"),
-  )
+  const objeto = v && typeof v === "object" && !Array.isArray(v) ? (v as { botones?: unknown; tarjetas?: unknown }) : null
+  const botones = objeto ? objeto.botones : v
+  const acciones = Array.isArray(botones)
+    ? botones.filter(
+        (a): a is AccionChat => !!a && typeof a.etiqueta === "string" && typeof a.href === "string" && a.href.startsWith("/"),
+      )
+    : []
+  return { acciones, tarjetas: objeto ? tarjetasValidas(objeto.tarjetas) : [] }
+}
+
+/** Lo que se guarda en `acciones` (null si no hay nada). */
+export function adjuntosAGuardar(acciones: AccionChat[], tarjetas: TarjetaEventoChat[]): string | null {
+  if (tarjetas.length > 0) return JSON.stringify({ botones: acciones, tarjetas })
+  return acciones.length > 0 ? JSON.stringify(acciones) : null
 }
 
 export function filaAMensaje(f: Record<string, unknown>): MensajeHistorial {
@@ -71,7 +88,7 @@ export function filaAMensaje(f: Record<string, unknown>): MensajeHistorial {
     perfil: String(f.perfil ?? ""),
     rol: f.rol === "assistant" ? "assistant" : "user",
     contenido: String(f.contenido ?? ""),
-    acciones: leerAcciones(f.acciones),
+    ...leerAdjuntos(f.acciones),
     fecha,
   }
 }
@@ -88,13 +105,14 @@ export async function guardarIntercambio(p: {
   pregunta: string
   respuesta: string
   acciones: AccionChat[]
+  tarjetas?: TarjetaEventoChat[]
 }): Promise<boolean> {
   try {
     await sql`
       INSERT INTO chat_ia_mensajes (id, perfil, usuario, rol, contenido, acciones, created_at)
       VALUES
         (${p.id}, ${p.perfil}, ${p.usuario}, 'user', ${p.pregunta}, NULL, now()),
-        (${`${p.id}-r`}, ${p.perfil}, ${p.usuario}, 'assistant', ${p.respuesta}, ${p.acciones.length > 0 ? JSON.stringify(p.acciones) : null}::jsonb, now() + interval '1 millisecond')
+        (${`${p.id}-r`}, ${p.perfil}, ${p.usuario}, 'assistant', ${p.respuesta}, ${adjuntosAGuardar(p.acciones, p.tarjetas ?? [])}::jsonb, now() + interval '1 millisecond')
       ON CONFLICT (id) DO NOTHING
     `
     return true
