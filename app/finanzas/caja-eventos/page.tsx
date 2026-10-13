@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { mesDesdeUrl, urlCostosDesdeCaja } from "@/lib/volver-desde-costos"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -977,6 +978,12 @@ useStore()
   const [mesCalendario, setMesCalendario] = useState(() => {
     return new Date(ahora.getFullYear(), ahora.getMonth(), 1)
   })
+  // Al volver desde Costos del evento, la dirección trae el mes que se estaba
+  // mirando (?mes=YYYY-MM): se abre el calendario en ese mes.
+  useEffect(() => {
+    const mes = mesDesdeUrl(new URLSearchParams(window.location.search).get("mes"))
+    if (mes) setMesCalendario(mes)
+  }, [])
 
   // Día del calendario seleccionado para ver el detalle de cobros/pagos (fecha YYYY-MM-DD)
   const [diaDetalle, setDiaDetalle] = useState<string | null>(null)
@@ -1417,7 +1424,7 @@ useStore()
     <button
       key={ev.id}
       type="button"
-      onClick={() => router.push(`/eventos/costos?id=${ev.id}`)}
+      onClick={() => router.push(urlCostosDesdeCaja(ev.id, mesCalendario))}
       title="Ver el detalle de costos de este evento"
       className="w-full text-left rounded-md border border-border bg-muted/30 p-2.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
@@ -1717,7 +1724,7 @@ useStore()
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={() => router.push(`/eventos/costos?id=${fila.eventoId}`)}>
+                <DropdownMenuItem onClick={() => router.push(urlCostosDesdeCaja(fila.eventoId, mesCalendario))}>
                   <Receipt className="h-4 w-4" />
                   Costos del evento
                 </DropdownMenuItem>

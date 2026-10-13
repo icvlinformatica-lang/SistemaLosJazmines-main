@@ -10,6 +10,7 @@ Perfiles de acceso (con PIN):
 - Gestión: Administración, Soporte, Cobrar cuota, Coordinación y Vendedor.
 - Del evento: Cocina, Barra y el staff externo (DJ, Fotógrafo, Vestido y Pantalla).
 Cada perfil ve solo las pantallas de su trabajo en el menú.
+La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "atrás" del navegador). Si se entró directo a una pantalla, lleva a su pantalla de siempre (por ejemplo, la lista de eventos).
 
 ## Pantalla de Inicio (/)
 - Botones: "Novedades", "Resumen diario" (dinero que entró hoy por caja y por salón, movimientos importantes, cuotas cobradas hoy, y desde ahí se puede enviar el resumen por mail), "Este finde" (eventos del fin de semana con desglose de costos y lo que queda por pagarles a proveedores y personal, el mismo número que "Pendiente por evento" de Caja Eventos) y "Vienen a pagar" (quiénes deben pagar cuota esta semana, con atrasos). Administración, Soporte y Cobrar cuota ven en ese botón un aviso rojo "N atrasadas" si hay cuotas vencidas sin cobrar. Dentro de "Vienen a pagar" lo atrasado va aparte, con el filtro "Solo atrasadas", y cada cliente tiene botones para llamarlo o mandarle un WhatsApp con el recordatorio de la cuota ya escrito.
