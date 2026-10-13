@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge"
 import { useStore } from "@/lib/store-context"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
+import { fechaArgentina } from "@/lib/resumen-fecha"
 import { SALONES, salonLabel, generateId } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { ConfirmAction } from "@/components/confirm-action"
@@ -168,8 +169,10 @@ export function SaldoHerramientas({ salonFiltro }: { salonFiltro: string }) {
 
   function aplicarConciliacion() {
     if (ajustesPendientes.length === 0) return
-    const hoyISO = new Date().toISOString()
-    const fechaCorta = hoyISO.slice(0, 10)
+    const ahora = new Date()
+    const hoyISO = ahora.toISOString()
+    // Día en hora argentina: con toISOString() desde las 21 hs ya era mañana.
+    const fechaCorta = fechaArgentina(ahora)
 
     // Un movimiento por salón: ingreso si falta registrar plata, egreso si sobra.
     let saldoAcum = (state.movimientosCaja || [])

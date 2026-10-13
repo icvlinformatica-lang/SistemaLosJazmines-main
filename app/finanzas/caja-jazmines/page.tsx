@@ -29,12 +29,20 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
-import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
+import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type CostoOperativo, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salones-editor"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
-import type { EstadoAlerta, GastoFijoMes, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
+import type { AlertaVencimiento, EstadoAlerta, GastoFijoMes, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
+import { fechaArgentina } from "@/lib/resumen-fecha"
+import {
+  cambiosPagoDelMes,
+  descripcionPagoFijo,
+  deudaDelPeriodo,
+  nombreMesLargo,
+  parteDelSalon,
+} from "@/lib/pago-gasto-fijo"
 import {
   Building,
   TrendingDown,
@@ -1047,7 +1055,10 @@ export default function CajaJazminePage() {
 
   const data = useCajaJazmines(state, salonFiltro, ahora)
 
-  const hoyStr = ahora.toISOString().slice(0, 10)
+  // "Hoy" en hora argentina: toISOString() da el día UTC y desde las 21 hs ya
+  // es mañana. El mes de los pagos de gastos fijos sale de este mismo "hoy".
+  const hoyStr = fechaArgentina(ahora)
+  const mesHoy = hoyStr.slice(0, 7)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
   // Todas arrancan plegadas: se despliegan solas al dejar el mouse encima
@@ -1092,6 +1103,7 @@ export default function CajaJazminePage() {
   // Archivar un gasto FIJO: registra el pago del período en el archivo y avanza
   // el vencimiento al próximo mes/año. El gasto sale de la lista activa (queda el
   // tilde verde de "cubierto") y reaparece automáticamente en el próximo período.
+  // Próximos vencimientos ya no lo usa: paga el mes con pagarFijoDelMes.
   function archivarFijo(gasto: GastoFijoMes) {
     const costo = state.costosOperativos?.find((c) => c.id === gasto.id)
     archivarGasto({
@@ -1107,7 +1119,7 @@ export default function CajaJazminePage() {
     // El historial de evolución se genera solo: cada pago archivado deja
     // registrado cuánto se pagó ese mes (si el mes aún no tiene registro).
     const historial = costo?.historialMontos || []
-    const mes = mesActualISO()
+    const mes = mesHoy
     const yaRegistrado = historial.some((r) => r.mes === mes)
     const ultimo = historial.length > 0 ? historial[historial.length - 1] : null
     updateCostoOperativo(gasto.id, {
@@ -1212,9 +1224,53 @@ export default function CajaJazminePage() {
   }
 
   // ── Pagar directo desde la tarjeta de alertas ─���────────────────���───────
-  // Dispara la animación de desvanecido y, al terminar, archiva el gasto en
-  // el Archivo Histórico (fijo: avanza vencimiento / variable: se elimina).
+  // Dispara la animación de desvanecido y, al terminar, registra el pago.
+  // Fijo: anota el mes como pagado en su historial, igual que el botón
+  // "Pagar" de la tira de meses. Variable: se archiva en el Archivo Histórico.
   const [alertasPagando, setAlertasPagando] = useState<Set<string>>(new Set())
+
+  /**
+   * Parte del salón elegido si el gasto es repartido (paga solo esa parte).
+   * En "Todos los salones" no hay parte: se pagan todas las que faltan.
+   */
+  function parteAlPagar(costo: CostoOperativo) {
+    return salonFiltro !== "todos" ? parteDelSalon(costo, salonFiltro) : undefined
+  }
+
+  /** Texto de la confirmación de pago de una alerta, según el tipo de gasto. */
+  function descripcionPagoAlerta(alerta: AlertaVencimiento): string {
+    const costo = state.costosOperativos?.find((c) => c.id === alerta.id)
+    if (costo && !costo.esVariable) {
+      const parte = parteAlPagar(costo)
+      return descripcionPagoFijo(costo.concepto, deudaDelPeriodo(costo, mesHoy, parte), parte)
+    }
+    return `Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`
+  }
+
+  /**
+   * Pago de un gasto FIJO desde Próximos vencimientos: anota el mes en el
+   * historial con la misma cuenta que el botón "Pagar" de la tira de meses
+   * (cambiosPagoDelMes). No archiva ni adelanta el vencimiento: el mes queda
+   * en verde en la tira y el gasto vuelve a deberse el mes que viene.
+   */
+  function pagarFijoDelMes(costo: CostoOperativo) {
+    const parte = parteAlPagar(costo)
+    const deuda = deudaDelPeriodo(costo, mesHoy, parte)
+    const cambios = cambiosPagoDelMes(costo, {
+      mes: deuda.mes,
+      montoGeneral: deuda.montoGeneral,
+      pagado: true,
+      parte,
+      fechaISO: new Date().toISOString(),
+      nuevoId: generateId(),
+    })
+    if (!cambios) return
+    updateCostoOperativo(costo.id, cambios)
+    toast({
+      title: "Pago registrado",
+      description: `${costo.concepto}${parte ? ` (${salonLabel(parte.salon)})` : ""} · ${nombreMesLargo(deuda.mes)} · ${formatCurrency(deuda.monto)}`,
+    })
+  }
 
   function pagarDesdeAlerta(alerta: { id: string; concepto: string; monto: number }) {
     const costo = state.costosOperativos?.find((c) => c.id === alerta.id)
@@ -1229,27 +1285,21 @@ export default function CajaJazminePage() {
           fecha: costo.fechaVencimiento || hoyStr,
           monto: costo.monto,
         })
+        toast({
+          title: "Pago registrado",
+          description: (
+            <span>
+              {`"${costo.concepto}" se movió al `}
+              <Link href="/finanzas/archivo" className="font-medium underline underline-offset-2">
+                Archivo Histórico
+              </Link>
+              .
+            </span>
+          ),
+        })
       } else {
-        archivarFijo({
-          id: costo.id,
-          concepto: costo.concepto,
-          monto: costo.monto,
-          salon: costo.salon,
-          frecuencia: costo.frecuencia,
-        } as GastoFijoMes)
+        pagarFijoDelMes(costo)
       }
-      toast({
-        title: "Pago registrado",
-        description: (
-          <span>
-            {`"${costo.concepto}" se movió al `}
-            <Link href="/finanzas/archivo" className="font-medium underline underline-offset-2">
-              Archivo Histórico
-            </Link>
-            .
-          </span>
-        ),
-      })
       setAlertasPagando((prev) => {
         const next = new Set(prev)
         next.delete(alerta.id)
@@ -1304,7 +1354,11 @@ export default function CajaJazminePage() {
     const variablesSemana = data.gastosVariables.filter(
       (g) => g.fecha && g.fecha >= desde && g.fecha <= hasta && g.estado !== "pagado",
     )
-    const gastos = fijosSemana.reduce((s, g) => s + g.monto, 0) + variablesSemana.reduce((s, g) => s + g.monto, 0)
+    // De los fijos cuenta lo que falta pagar del mes, como en Próximos
+    // vencimientos (de un repartido con partes ya pagadas, solo el resto).
+    const gastos =
+      fijosSemana.reduce((s, g) => s + (g.montoPendiente ?? g.monto), 0) +
+      variablesSemana.reduce((s, g) => s + g.monto, 0)
 
     const partes: string[] = []
     if (fijosSemana.length > 0) partes.push(`${fijosSemana.length} ${fijosSemana.length === 1 ? "fijo" : "fijos"}`)
@@ -1501,7 +1555,7 @@ export default function CajaJazminePage() {
       } else {
         historial.push({
           id: generateId(),
-          mes: mesActualISO(),
+          mes: mesHoy,
           monto: original.monto,
           montoAnterior: original.monto,
           fecha: new Date().toISOString(),
@@ -1672,6 +1726,7 @@ export default function CajaJazminePage() {
       distribucion: dist.length > 0 ? dist : undefined,
       // El mes indicado queda como primer período del historial: desde ahí
       // el gasto figura pendiente y "Cargar nuevo monto" ofrece el siguiente.
+      // pagado: false explícito: un registro sin ese dato se lee como pagado.
       historialMontos: [
         {
           id: generateId(),
@@ -1680,6 +1735,7 @@ export default function CajaJazminePage() {
           montoAnterior: Number(nuevoFijo.monto),
           fecha: new Date().toISOString(),
           nota: "Alta del gasto",
+          pagado: false,
         },
       ],
     })
@@ -2487,26 +2543,34 @@ export default function CajaJazminePage() {
                           </span>
                         )}
                       </p>
+                      {/* Los sueldos de vendedores no se pagan desde acá: el ✓
+                          abría la confirmación y no registraba nada. El aviso
+                          va debajo para no apretar la fila en pantallas chicas. */}
+                      {alerta.esSueldoVendedor && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">Se paga desde Eventos › Vendedores</p>
+                      )}
                     </div>
                     <span className="text-sm font-bold text-red-600 shrink-0">
                       {formatCurrency(alerta.monto)}
                     </span>
-                    <ConfirmAction
-                      title="¿Marcar como pagado?"
-                      description={`Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`}
-                      confirmLabel="Sí, marcar pagado"
-                      onConfirm={() => pagarDesdeAlerta(alerta)}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
-                        title="Marcar como pagado"
+                    {!alerta.esSueldoVendedor && (
+                      <ConfirmAction
+                        title="¿Marcar como pagado?"
+                        description={descripcionPagoAlerta(alerta)}
+                        confirmLabel="Sí, marcar pagado"
+                        onConfirm={() => pagarDesdeAlerta(alerta)}
                       >
-                        <CheckCircle2 className="h-4 w-4" />
-                        <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
-                      </Button>
-                    </ConfirmAction>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
+                          title="Marcar como pagado"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
+                        </Button>
+                      </ConfirmAction>
+                    )}
                   </div>
                 )
                 // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
@@ -2928,7 +2992,7 @@ export default function CajaJazminePage() {
                       // período anterior esté saldado.
                       const origPill = state.costosOperativos?.find((c) => c.id === cuota.id)
                       const pagoMes = origPill
-                        ? pagoDelMesActual(origPill, { salon: carpeta.salon, porcentaje: cuota.porcentaje })
+                        ? pagoDelMesActual(origPill, { salon: carpeta.salon, porcentaje: cuota.porcentaje }, mesHoy)
                         : { monto: cuota.monto, pagado: cuota.pagado }
                       return (
                       <GastoPlegable
@@ -3052,6 +3116,7 @@ export default function CajaJazminePage() {
                                 parteSalon
                                   ? { salon: parteSalon.salon, porcentaje: parteSalon.porcentaje }
                                   : undefined,
+                                mesHoy,
                               )
                               return <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
                             })()}
