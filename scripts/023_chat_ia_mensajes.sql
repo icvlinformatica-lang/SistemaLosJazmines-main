@@ -1,6 +1,8 @@
 -- 023 — Historial del chat con IA (Administración y Soporte).
 --
 -- SOLO ADITIVA: crea una tabla nueva. No toca ninguna tabla existente.
+-- Aplicada el 13/10/2026 (SQL Editor de Supabase, verificada en information_schema).
+--
 --
 -- Guarda cada pregunta y cada respuesta del chat flotante de IA para que no
 -- se borre nunca. Cada persona tiene su chat (Diego, Leila, Ricky y Soporte);
