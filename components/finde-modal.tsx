@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight } from "lucide-react"
+import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -57,6 +57,9 @@ export function FindeModal({ open, onOpenChange }: Props) {
   // entrar a esa pantalla. A Cobrar cuota, que ve Inicio pero no Costos, la
   // tarjeta no lo lleva a ningún lado: si no, lo rebotaría de vuelta.
   const puedeVerCostos = puedeEntrarARuta(perfilActivo, "/eventos/costos")
+  // "Ver cuotas pagadas" abre el evento en Pagos, donde están las cuotas
+  // pagas y las que faltan. Cobrar cuota sí entra ahí.
+  const puedeVerCuotas = puedeEntrarARuta(perfilActivo, "/eventos/pagos")
 
   const [fechaElegida, setFechaElegida] = useState<string | null>(null)
   const fecha = fechaElegida ?? fechaArgentina()
@@ -172,15 +175,17 @@ export function FindeModal({ open, onOpenChange }: Props) {
             eventosFinde.map(({ evento, costoCocina, costoBarra, totalPersonal, totalServicios, total, invitados }) => {
               const pendiente = pendientePorEvento.get(evento.id) ?? 0
               return (
-              <TarjetaEvento
+              <div
                 key={evento.id}
-                href={puedeVerCostos ? `/eventos/costos?id=${evento.id}` : undefined}
-                onIr={() => onOpenChange(false)}
                 className="rounded-lg border border-t-4 bg-card p-4 text-card-foreground"
                 style={{
                   borderColor: salonColor(evento.salon, configuracionCajas),
                   backgroundColor: `color-mix(in srgb, ${salonColor(evento.salon, configuracionCajas)} 10%, var(--card))`,
                 }}
+              >
+              <TarjetaEvento
+                href={puedeVerCostos ? `/eventos/costos?id=${evento.id}` : undefined}
+                onIr={() => onOpenChange(false)}
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -247,6 +252,17 @@ export function FindeModal({ open, onOpenChange }: Props) {
                   </p>
                 )}
               </TarjetaEvento>
+
+              {/* Va afuera del link de costos: un botón no puede ir dentro de otro link. */}
+              {puedeVerCuotas && (
+                <Button asChild variant="outline" size="sm" className="mt-3 w-full">
+                  <Link href={`/eventos/pagos?evento=${encodeURIComponent(evento.id)}`} onClick={() => onOpenChange(false)}>
+                    <Receipt className="h-4 w-4" />
+                    Ver cuotas pagadas
+                  </Link>
+                </Button>
+              )}
+              </div>
               )
             })
           )}
@@ -256,28 +272,23 @@ export function FindeModal({ open, onOpenChange }: Props) {
   )
 }
 
-// Tarjeta de un evento: si hay adónde ir, es un link a sus costos (y cierra
-// el modal al tocarla); si no, un recuadro común.
+// Cuerpo de la tarjeta de un evento: si hay adónde ir, es un link a sus
+// costos (y cierra el modal al tocarla); si no, un recuadro común.
 function TarjetaEvento({
   href,
   onIr,
-  className,
-  style,
   children,
 }: {
   href?: string
   onIr: () => void
-  className: string
-  style: React.CSSProperties
   children: React.ReactNode
 }) {
-  if (!href) return <div className={className} style={style}>{children}</div>
+  if (!href) return <div>{children}</div>
   return (
     <Link
       href={href}
       onClick={onIr}
-      className={`${className} block transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]`}
-      style={style}
+      className="block rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]"
     >
       {children}
     </Link>
