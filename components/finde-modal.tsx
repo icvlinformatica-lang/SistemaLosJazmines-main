@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight, Receipt } from "lucide-react"
+import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -253,14 +253,17 @@ export function FindeModal({ open, onOpenChange }: Props) {
                 )}
               </TarjetaEvento>
 
-              {/* Va afuera del link de costos: un botón no puede ir dentro de otro link. */}
+              {/* Va afuera del link de costos: un link no puede ir dentro de otro. */}
               {puedeVerCuotas && (
-                <Button asChild variant="outline" size="sm" className="mt-3 w-full">
-                  <Link href={`/eventos/pagos?evento=${encodeURIComponent(evento.id)}`} onClick={() => onOpenChange(false)}>
-                    <Receipt className="h-4 w-4" />
-                    Ver cuotas pagadas
+                <div className="mt-1 flex justify-end">
+                  <Link
+                    href={`/eventos/pagos?evento=${encodeURIComponent(evento.id)}`}
+                    onClick={() => onOpenChange(false)}
+                    className="flex items-center gap-0.5 rounded text-xs font-medium text-[#2d5a3d] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]"
+                  >
+                    Ver cuotas pagadas <ChevronRight className="h-3.5 w-3.5" />
                   </Link>
-                </Button>
+                </div>
               )}
               </div>
               )
