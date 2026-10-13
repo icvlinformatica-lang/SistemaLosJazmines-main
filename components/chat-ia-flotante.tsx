@@ -21,6 +21,8 @@ import {
   type Pantalla,
   type Punto,
 } from "@/lib/chat-ia-posicion"
+import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
+import { TarjetaEventoChatIA } from "@/components/chat-ia-tarjeta-evento"
 
 interface AccionChat {
   etiqueta: string
@@ -33,6 +35,8 @@ interface MensajeChat {
   contenido: string
   perfil?: string
   acciones?: AccionChat[]
+  /** Tarjetas de eventos con su plata (armadas en el servidor). */
+  tarjetas?: TarjetaEventoChat[]
   fecha?: string
   /** Error que se muestra solo en esta pantalla (no se guarda). */
   error?: boolean
@@ -133,6 +137,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
           contenido: String(m.contenido ?? ""),
           perfil: typeof m.perfil === "string" ? m.perfil : undefined,
           acciones: accionesValidas(m.acciones),
+          tarjetas: tarjetasValidas(m.tarjetas),
           fecha: typeof m.fecha === "string" ? m.fecha : undefined,
         }),
       )
@@ -264,6 +269,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
             rol: "assistant",
             contenido: String(data.text ?? ""),
             acciones: accionesValidas(data.acciones),
+            tarjetas: tarjetasValidas(data.tarjetas),
             perfil: perfilId,
             fecha: new Date().toISOString(),
           },
@@ -357,7 +363,16 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
             )}
             <div className="flex flex-col gap-2">
               {mensajes.map((m) => (
-                <div key={m.id} className={m.rol === "user" ? "self-end max-w-[85%]" : "self-start max-w-[90%]"}>
+                <div
+                  key={m.id}
+                  className={
+                    m.rol === "user"
+                      ? "self-end max-w-[85%]"
+                      : m.tarjetas && m.tarjetas.length > 0
+                        ? "self-stretch"
+                        : "self-start max-w-[90%]"
+                  }
+                >
                   {m.rol === "user" && m.fecha && (
                     <p className="mb-0.5 text-right text-[10px] text-gray-500">{horaCorta(m.fecha)}</p>
                   )}
@@ -372,6 +387,20 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   >
                     {m.contenido}
                   </div>
+                  {m.tarjetas && m.tarjetas.length > 0 && (
+                    <div className="mt-1.5 flex flex-col gap-1.5">
+                      {m.tarjetas.map((t) => (
+                        <TarjetaEventoChatIA
+                          key={t.id}
+                          t={t}
+                          // En el celular el chat tapa la pantalla: se cierra al ir.
+                          onIr={() => {
+                            if (window.innerWidth < 640) setAbierto(false)
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
                   {m.acciones && m.acciones.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {m.acciones.map((a) => (

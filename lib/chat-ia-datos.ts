@@ -9,6 +9,7 @@
 // Corre SOLO en el servidor (lo usa app/api/chat/route.ts).
 import { cuotasPendientesEvento } from "@/lib/resumen-diario"
 import type { HistorialIPCEntry } from "@/lib/store"
+import type { TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 
 export interface AccionChat {
   etiqueta: string
@@ -141,6 +142,28 @@ export function resumenEventoChat(fila: FilaEventoChat, historialIPC: HistorialI
     cuotasDelPlan,
     cuotasPendientes,
     montoAtrasado,
+  }
+}
+
+/** Tarjeta del evento para el chat (ver lib/chat-ia-tarjetas.ts). */
+export function tarjetaEventoChat(r: ResumenEventoChat): TarjetaEventoChat {
+  const vencidas = r.cuotasPendientes.filter((c) => c.atrasada)
+  const proxima = r.cuotasPendientes.find((c) => !c.atrasada)
+  return {
+    id: r.id,
+    nombre: r.nombre,
+    fecha: r.fecha,
+    salon: r.salon,
+    estado: r.estado,
+    montoTotal: r.montoTotal,
+    sena: r.sena,
+    cobrado: r.cobrado,
+    saldoPendiente: r.saldoPendiente,
+    cuotasPendientes: r.cuotasPendientes.length,
+    cuotasVencidas: vencidas.length,
+    montoVencido: r.montoAtrasado,
+    proximaCuota: proxima ? { numero: proxima.numero, vencimiento: proxima.vencimiento, monto: proxima.monto } : null,
+    ipcPendiente: r.cuotasPendientes.some((c) => !!c.ipcPendiente),
   }
 }
 

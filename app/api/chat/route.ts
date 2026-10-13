@@ -12,6 +12,7 @@ import { GUIA_SISTEMA } from "@/lib/guia-sistema"
 import { mensajeErrorChatIA } from "@/lib/chat-ia-errores"
 import { crearHerramientasChat } from "@/lib/chat-ia-herramientas"
 import type { AccionChat } from "@/lib/chat-ia-datos"
+import type { TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
@@ -71,6 +72,8 @@ export async function POST(req: Request) {
   const hoy = fechaNegocio()
   // Los botones los agregan las herramientas mientras la IA responde.
   const acciones: AccionChat[] = []
+  // Las tarjetas de eventos también: los montos salen del servidor, no del texto de la IA.
+  const tarjetas: TarjetaEventoChat[] = []
   try {
     const { text } = await generateText({
       model: "openai/gpt-5-mini",
@@ -81,6 +84,7 @@ Podés hacer dos cosas:
 2. Consultar datos con tus herramientas: eventos y su plata (total, seña, cobrado, saldo, cuotas por cobrar), quién viene a pagar en la semana y el resumen de caja de un día.
 
 Reglas:
+- Cuando respondas la plata de uno o más eventos (total, cobrado, saldo, cuotas), llamá a mostrarResumenEventos con sus ids: aparece una tarjeta ordenada por evento. En ese caso NO repitas en el texto los montos de cada evento; escribí solo una o dos frases con lo importante (por ejemplo, cuál tiene más vencido o cuál está al día).
 - Los montos y datos salen SIEMPRE de las herramientas. Nunca inventes ni calcules un monto que no te dieron; si algo no está, decilo.
 - Texto plano, sin markdown ni asteriscos; para listas usá un renglón por ítem con guion.
 - Montos en pesos con punto de miles, por ejemplo $1.250.000. Fechas como 6/10/2026.
@@ -95,7 +99,7 @@ Esta es la guía del sistema:
 
 ${GUIA_SISTEMA}`,
       messages,
-      tools: crearHerramientasChat({ hoy, acciones }),
+      tools: crearHerramientasChat({ hoy, acciones, tarjetas }),
       stopWhen: stepCountIs(6),
     })
     // Sin id válido (pantalla vieja abierta) responde igual, sin guardar.
@@ -107,9 +111,10 @@ ${GUIA_SISTEMA}`,
           pregunta: messages[messages.length - 1].content,
           respuesta: text,
           acciones,
+          tarjetas,
         })
       : false
-    return Response.json({ text, acciones, guardado })
+    return Response.json({ text, acciones, tarjetas, guardado })
   } catch (error) {
     console.error("[chat-ia] Error generando respuesta:", error)
     const { mensaje, status } = mensajeErrorChatIA(error)
