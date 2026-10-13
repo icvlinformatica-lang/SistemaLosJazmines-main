@@ -67,6 +67,18 @@ import {
 } from "@/components/filtros-egresos"
 import { SalonDot } from "@/components/salon-badge"
 import { SaldoHerramientasEventos } from "./saldo-herramientas"
+import { BuscadorCaja } from "./buscador-caja"
+import { DatosBancariosPersona } from "./datos-bancarios"
+import {
+  armarHistorialCajaEventos,
+  filtrarHistorial,
+  filtrarIngresosPendientes,
+  mesesDisponibles,
+  personalDelSueldo,
+  totalesHistorial,
+  FILTRO_HISTORIAL_INICIAL,
+  type FiltroHistorial,
+} from "@/lib/buscador-caja-eventos"
 import { MontoProyeccion } from "./desglose-proyeccion"
 import { desglosarProyeccion } from "@/lib/desglose-proyeccion"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
@@ -117,6 +129,8 @@ import {
   MoreVertical,
   Receipt,
   UserCircle,
+  Plus,
+  Minus,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -257,6 +271,13 @@ function vencBadge(dias: number) {
     return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">{dias}d</Badge>
   return <Badge variant="outline" className="text-[11px]">{dias}d</Badge>
 }
+
+// Chips del Historial: todo, solo cobros (verde) o solo pagos (rojo).
+const CHIPS_HISTORIAL = [
+  { id: "todos", label: "Todo", activo: "bg-foreground text-background border-foreground", inactivo: "bg-muted/50 text-muted-foreground border-border hover:bg-muted" },
+  { id: "ingreso", label: "Cobros", activo: "bg-emerald-600 text-white border-emerald-600", inactivo: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
+  { id: "egreso", label: "Pagos", activo: "bg-red-600 text-white border-red-600", inactivo: "bg-red-50 text-red-700 border-red-200 hover:bg-red-100" },
+] as const
 
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
@@ -487,8 +508,12 @@ useStore()
   useSyncTiempoReal(15000, true)
 
   // Ids de pagos ya archivados (para ocultarlos del historial activo sin tocar el saldo)
-  const pagosArchivadosIds = new Set(
-    (gastosArchivados || []).filter((g) => g.origen === "caja_eventos" && g.refId).map((g) => g.refId as string),
+  const pagosArchivadosIds = useMemo(
+    () =>
+      new Set(
+        (gastosArchivados || []).filter((g) => g.origen === "caja_eventos" && g.refId).map((g) => g.refId as string),
+      ),
+    [gastosArchivados],
   )
 
   function archivarPagoEvento(pago: PagoRealizado) {
@@ -546,8 +571,6 @@ useStore()
   // Límite de filas por tab. Cada lista muestra hasta 7 filas y un botón
   // "Ver más" para expandir el resto (o "Ver menos" para volver a colapsar).
   const LIMITE_FILAS = 7
-  const [expandido, setExpandido] = useState<Record<string, boolean>>({})
-  const toggleExpandido = (tab: string) => setExpandido((prev) => ({ ...prev, [tab]: !prev[tab] }))
   // Expansión progresiva en "Por pagar" y "Por cobrar": 7 iniciales → +10 → +15 → todo.
   const siguientePasoFilas = (actual: number, total: number) => {
     if (actual <= LIMITE_FILAS) return Math.min(actual + 10, total)
@@ -1027,6 +1050,52 @@ useStore()
     [state.servicios],
   )
   const filtroPagarActivo = esFiltroEgresosActivo(filtroPagar)
+  // Meses de vencimiento que tienen algo por pagar (del más cercano al más lejano).
+  const mesesPagar = useMemo(
+    () => mesesDisponibles(egresosProximos.map((e) => e.fechaVencimiento)).reverse(),
+    [egresosProximos],
+  )
+
+  // "Por cobrar": búsqueda (cliente, evento) y mes de vencimiento. Solo filtra
+  // la lista que ya calculó useCajaEventos; no cambia montos.
+  const [filtroCobrar, setFiltroCobrar] = useState<{ q: string; mes: string }>({ q: "", mes: "todos" })
+  const filtroCobrarActivo = filtroCobrar.q.trim() !== "" || filtroCobrar.mes !== "todos"
+  const ingresosFiltrados = useMemo(
+    () => filtrarIngresosPendientes(ingresosPendientes, filtroCobrar),
+    [ingresosPendientes, filtroCobrar],
+  )
+  const mesesCobrar = useMemo(
+    () => mesesDisponibles(ingresosPendientes.map((i) => i.fechaVencimiento)).reverse(),
+    [ingresosPendientes],
+  )
+  const totalCobrarFiltrado = ingresosFiltrados.reduce((s, i) => s + i.monto, 0)
+
+  // Historial completo: lo que entró (cuotas, señas) y lo que salió (pagos),
+  // de los mismos movimientos de caja que ya están cargados. Los pagos
+  // archivados siguen afuera, como antes.
+  const historialCompleto = useMemo(
+    () =>
+      armarHistorialCajaEventos({
+        movimientos: state.movimientosCaja || [],
+        pagosRealizados,
+        pagosArchivadosIds,
+        eventos: state.eventos || [],
+        salonFiltro,
+      }),
+    [state.movimientosCaja, state.eventos, pagosRealizados, pagosArchivadosIds, salonFiltro],
+  )
+  const [filtroHistorial, setFiltroHistorial] = useState<FiltroHistorial>(FILTRO_HISTORIAL_INICIAL)
+  const historialFiltrado = useMemo(
+    () => filtrarHistorial(historialCompleto, filtroHistorial),
+    [historialCompleto, filtroHistorial],
+  )
+  const mesesHistorial = useMemo(() => mesesDisponibles(historialCompleto.map((h) => h.fecha)), [historialCompleto])
+  const totalesHistorialVisible = useMemo(() => totalesHistorial(historialFiltrado), [historialFiltrado])
+  const [filasHistorial, setFilasHistorial] = useState(LIMITE_FILAS)
+  const cambiarFiltroHistorial = (f: FiltroHistorial) => {
+    setFiltroHistorial(f)
+    setFilasHistorial(LIMITE_FILAS)
+  }
   const totalPorPagar60 = useMemo(
     () => egresosPendientes.filter((e) => e.diasRestantes <= DIAS_TOTAL_PAGO).reduce((s, e) => s + e.monto, 0),
     [egresosPendientes],
@@ -1446,7 +1515,7 @@ useStore()
 
   const gruposCobrar = useMemo(() => {
     const map = new Map<string, IngresoPendiente[]>()
-    for (const ing of ingresosPendientes) {
+    for (const ing of ingresosFiltrados) {
       const key = ing.salon && ing.salon !== "" ? ing.salon : "General"
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(ing)
@@ -1456,7 +1525,7 @@ useStore()
       const items = map.get(s)!
       return { salon: s, items, total: items.reduce((sum, i) => sum + i.monto, 0) }
     })
-  }, [ingresosPendientes, ordenSalones])
+  }, [ingresosFiltrados, ordenSalones])
 
   const gruposPagar = useMemo(() => {
     const map = new Map<string, EgresoPendienteServicio[]>()
@@ -2275,7 +2344,7 @@ useStore()
           <TabsTrigger value="historial" className="gap-1.5 bg-slate-200/50">
             <History className="h-4 w-4" /> Historial
             <Badge className="bg-muted text-muted-foreground border-border text-[10px] ml-1">
-              {pagosRealizados.length}
+              {historialCompleto.length}
             </Badge>
           </TabsTrigger>
         </TabsList>
@@ -2284,8 +2353,29 @@ useStore()
         <TabsContent value="cobrar" className="mt-4">
           <Card>
             <CardContent className="px-0 py-2">
+              {ingresosPendientes.length > 0 && (
+                <BuscadorCaja
+                  q={filtroCobrar.q}
+                  onQ={(q) => {
+                    setFiltroCobrar((f) => ({ ...f, q }))
+                    setFilasCobrar(LIMITE_FILAS)
+                  }}
+                  mes={filtroCobrar.mes}
+                  onMes={(mes) => {
+                    setFiltroCobrar((f) => ({ ...f, mes }))
+                    setFilasCobrar(LIMITE_FILAS)
+                  }}
+                  meses={mesesCobrar}
+                  placeholder="Buscar cliente o evento..."
+                  etiquetaMesTodos="Vence: todos los meses"
+                />
+              )}
               {ingresosPendientes.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">No hay cuotas pendientes de cobro.</p>
+              ) : ingresosFiltrados.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  No hay cuotas pendientes que coincidan con la búsqueda.
+                </p>
               ) : salonFiltro === "todos" ? (
                 <div>
                   <p className="text-xs text-muted-foreground px-6 pb-2">
@@ -2328,20 +2418,20 @@ useStore()
                       <TableHead className="text-right pr-6">A cobrar</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>{renderFilasCobrar(ingresosPendientes.slice(0, filasCobrar))}</TableBody>
+                  <TableBody>{renderFilasCobrar(ingresosFiltrados.slice(0, filasCobrar))}</TableBody>
                 </Table>
               )}
-              {salonFiltro !== "todos" && ingresosPendientes.length > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && ingresosFiltrados.length > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
-                  {filasCobrar < ingresosPendientes.length ? (
+                  {filasCobrar < ingresosFiltrados.length ? (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setFilasCobrar(siguientePasoFilas(filasCobrar, ingresosPendientes.length))}
+                      onClick={() => setFilasCobrar(siguientePasoFilas(filasCobrar, ingresosFiltrados.length))}
                       className="w-full text-xs text-muted-foreground hover:text-foreground"
                     >
                       <ChevronDown className="h-3.5 w-3.5 mr-1" />
-                      {etiquetaVerMas(filasCobrar, ingresosPendientes.length)}
+                      {etiquetaVerMas(filasCobrar, ingresosFiltrados.length)}
                     </Button>
                   ) : (
                     <Button
@@ -2355,10 +2445,14 @@ useStore()
                   )}
                 </div>
               )}
-              {ingresosPendientes.length > 0 && (
+              {ingresosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
-                  <span className="text-sm font-medium text-muted-foreground">Total por cobrar</span>
-                  <span className="text-base font-bold text-emerald-700">+{formatCurrency(totalPorCobrar)}</span>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {filtroCobrarActivo ? "Total de la búsqueda" : "Total por cobrar"}
+                  </span>
+                  <span className="text-base font-bold text-emerald-700">
+                    +{formatCurrency(filtroCobrarActivo ? totalCobrarFiltrado : totalPorCobrar)}
+                  </span>
                 </div>
               )}
             </CardContent>
@@ -2372,7 +2466,25 @@ useStore()
               <p className="text-xs text-muted-foreground px-6 pb-2">
                 Todos los pagos pendientes a proveedores, ordenados por fecha de vencimiento.
               </p>
-              {/* Filtros combinables: salón + tipo + sub-filtro + búsqueda */}
+              {/* Búsqueda (evento, proveedor/persona o concepto) y mes de vencimiento */}
+              {(egresosProximos.length > 0 || serviciosPagados.length > 0) && (
+                <BuscadorCaja
+                  q={filtroPagar.q}
+                  onQ={(q) => {
+                    setFiltroPagar((f) => ({ ...f, q }))
+                    setFilasPagar(LIMITE_FILAS)
+                  }}
+                  mes={filtroPagar.mes}
+                  onMes={(mes) => {
+                    setFiltroPagar((f) => ({ ...f, mes }))
+                    setFilasPagar(LIMITE_FILAS)
+                  }}
+                  meses={mesesPagar}
+                  placeholder="Buscar evento, proveedor, persona o concepto..."
+                  etiquetaMesTodos="Vence: todos los meses"
+                />
+              )}
+              {/* Filtros combinables: salón + tipo + sub-filtro */}
               {egresosProximos.length > 0 && (
                 <BarraFiltrosEgresos
                   egresos={egresosProximos}
@@ -2566,110 +2678,179 @@ useStore()
           </Card>
         </TabsContent>
 
-        {/* HISTORIAL DE PAGOS REALIZADOS */}
+        {/* HISTORIAL: cobros (ingresos) y pagos (egresos) de Caja Eventos */}
         <TabsContent value="historial" className="mt-4">
           <Card>
             <CardContent className="px-0 py-2">
-              {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  No hay pagos en el historial activo. Los pagos archivados se ven en el{" "}
+              {historialCompleto.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 px-4 text-center">
+                  No hay movimientos en el historial activo. Los pagos archivados se ven en el{" "}
                   <Link href="/finanzas/archivo" className="font-medium text-primary underline underline-offset-2">
                     Archivo
                   </Link>
                   .
                 </p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="pl-6">Concepto</TableHead>
-                      <TableHead>Evento</TableHead>
-                      <TableHead>Fecha de pago</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                      <TableHead className="text-right pr-6">Acción</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(() => {
-                      const activos = pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id))
-                      return expandido.historial ? activos : activos.slice(0, LIMITE_FILAS)
-                    })().map((pago) => (
-                      <TableRow key={pago.id}>
-                        <TableCell className="pl-6">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                            <span className="font-medium text-sm">{pago.concepto}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {pago.eventoNombre || "—"}
-                          {pago.salon ? ` · ${pago.salon}` : ""}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {new Date(pago.fecha).toLocaleDateString("es-AR", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-red-600">
-                          −{formatCurrency(pago.monto)}
-                        </TableCell>
-                        <TableCell className="text-right pr-6">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-1.5 text-xs bg-transparent"
-                              onClick={() => setAccionHistorial({ tipo: "archivar", pago })}
-                            >
-                              <Archive className="h-3.5 w-3.5" />
-                              Archivar
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-1.5 text-xs bg-transparent"
-                              onClick={() => setAccionHistorial({ tipo: "revertir", pago })}
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              Revertir
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                <>
+                  <BuscadorCaja
+                    q={filtroHistorial.q}
+                    onQ={(q) => cambiarFiltroHistorial({ ...filtroHistorial, q })}
+                    mes={filtroHistorial.mes}
+                    onMes={(mes) => cambiarFiltroHistorial({ ...filtroHistorial, mes })}
+                    meses={mesesHistorial}
+                    placeholder="Buscar evento, proveedor o concepto..."
+                  />
+                  {/* Cobros / pagos: los cobros en verde con +, los pagos en rojo con − */}
+                  <div className="flex flex-wrap items-center gap-1.5 px-4 sm:px-6 pb-3">
+                    {CHIPS_HISTORIAL.map((chip) => (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => cambiarFiltroHistorial({ ...filtroHistorial, tipo: chip.id })}
+                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          filtroHistorial.tipo === chip.id ? chip.activo : chip.inactivo
+                        }`}
+                      >
+                        {chip.id === "ingreso" && <Plus className="h-3 w-3" />}
+                        {chip.id === "egreso" && <Minus className="h-3 w-3" />}
+                        {chip.label}
+                      </button>
                     ))}
-                  </TableBody>
-                </Table>
-              )}
-              {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length > LIMITE_FILAS && (
-                <div className="px-6 pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExpandido("historial")}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {expandido.historial ? (
-                      <><ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos</>
-                    ) : (
-                      <><ChevronDown className="h-3.5 w-3.5 mr-1" /> Ver más ({pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length - LIMITE_FILAS} más)</>
-                    )}
-                  </Button>
-                </div>
-              )}
-              {pagosRealizados.filter((p) => !pagosArchivadosIds.has(p.id)).length > 0 && (
-                <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
-                  <span className="text-sm font-medium text-muted-foreground">Total pagado</span>
-                  <span className="text-base font-bold text-red-600">
-                    −
-                    {formatCurrency(
-                      pagosRealizados
-                        .filter((p) => !pagosArchivadosIds.has(p.id))
-                        .reduce((s, p) => s + p.monto, 0),
-                    )}
-                  </span>
-                </div>
+                  </div>
+                  {historialFiltrado.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-6 text-center">
+                      No hay movimientos que coincidan con la búsqueda.
+                    </p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="pl-6">Concepto</TableHead>
+                          <TableHead>Evento</TableHead>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                          <TableHead className="text-right pr-6">Acción</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {historialFiltrado.slice(0, filasHistorial).map((mov) => {
+                          const esIngreso = mov.tipo === "ingreso"
+                          const pago = mov.pago
+                          return (
+                            <TableRow key={`${mov.tipo}-${mov.id}`}>
+                              <TableCell className="pl-6">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                                      esIngreso ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                                    }`}
+                                    title={esIngreso ? "Cobro (entró a la caja)" : "Pago (salió de la caja)"}
+                                  >
+                                    {esIngreso ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                                  </span>
+                                  <span className="font-medium text-sm">{mov.concepto}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {mov.eventoNombre || "—"}
+                                {mov.salon ? ` · ${salonLabel(mov.salon)}` : ""}
+                              </TableCell>
+                              <TableCell className="text-sm whitespace-nowrap">
+                                {new Date(mov.fecha).toLocaleDateString("es-AR", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                              </TableCell>
+                              <TableCell
+                                className={`text-right font-bold whitespace-nowrap ${esIngreso ? "text-emerald-700" : "text-red-600"}`}
+                              >
+                                {esIngreso ? "+" : "−"}
+                                {formatCurrency(mov.monto)}
+                              </TableCell>
+                              <TableCell className="text-right pr-6">
+                                {/* Archivar y Revertir son solo para pagos: los cobros se
+                                    corrigen desde el evento (Pagos / Cobrar cuota). */}
+                                {pago ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 gap-1.5 text-xs bg-transparent"
+                                      onClick={() => setAccionHistorial({ tipo: "archivar", pago })}
+                                    >
+                                      <Archive className="h-3.5 w-3.5" />
+                                      Archivar
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 gap-1.5 text-xs bg-transparent"
+                                      onClick={() => setAccionHistorial({ tipo: "revertir", pago })}
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5" />
+                                      Revertir
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                  {historialFiltrado.length > LIMITE_FILAS && (
+                    <div className="px-6 pt-2">
+                      {filasHistorial < historialFiltrado.length ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setFilasHistorial((n) => Math.min(n + 20, historialFiltrado.length))}
+                          className="w-full text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                          {(() => {
+                            const restantes = historialFiltrado.length - filasHistorial
+                            const paso = Math.min(20, restantes)
+                            return paso === restantes ? `Ver más (${paso} más)` : `Ver más (${paso} más de ${restantes})`
+                          })()}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setFilasHistorial(LIMITE_FILAS)}
+                          className="w-full text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5 mr-1" /> Ver menos
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {historialFiltrado.length > 0 && (
+                    <div className="flex flex-col gap-1 px-6 pt-3 mt-1 border-t border-border">
+                      {totalesHistorialVisible.ingresos > 0 && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-muted-foreground">Total cobrado</span>
+                          <span className="text-base font-bold text-emerald-700">
+                            +{formatCurrency(totalesHistorialVisible.ingresos)}
+                          </span>
+                        </div>
+                      )}
+                      {totalesHistorialVisible.egresos > 0 && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-muted-foreground">Total pagado</span>
+                          <span className="text-base font-bold text-red-600">
+                            −{formatCurrency(totalesHistorialVisible.egresos)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -3018,6 +3199,17 @@ useStore()
                 : ""}
             </DialogDescription>
           </DialogHeader>
+          {/* Sueldo de alguien del personal: banco, CBU y alias a mano para transferir.
+              Un servicio que se paga como sueldo es un proveedor y no tiene CBU cargado. */}
+          {pagoConfirmar?.tipo === "sueldo" && !pagoConfirmar.id.includes("-srvsueldo-") && (
+            <DatosBancariosPersona
+              persona={personalDelSueldo(pagoConfirmar, {
+                eventos: state.eventos || [],
+                pagosPersonal: state.pagosPersonal || [],
+                personal: state.personal || [],
+              })}
+            />
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button
               variant="outline"
