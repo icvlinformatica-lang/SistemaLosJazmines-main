@@ -1,4 +1,7 @@
-// Chat de ayuda con IA — SOLO para el perfil Soporte.
+// Chat con IA — SOLO para Administración y Soporte (botón flotante en todo
+// el sistema). Cada pregunta y su respuesta se guardan en chat_ia_mensajes
+// (lib/chat-ia-historial.ts), en el chat de quien pregunta (Diego, Leila,
+// Ricky o Soporte), y no se borran.
 // Responde cómo usar el sistema (guía embebida, lib/guia-sistema.ts) y
 // consulta eventos, cuotas y cajas con herramientas de SOLO LECTURA
 // (lib/chat-ia-herramientas.ts). Puede devolver botones a pantallas.
@@ -10,10 +13,12 @@ import { mensajeErrorChatIA } from "@/lib/chat-ia-errores"
 import { crearHerramientasChat } from "@/lib/chat-ia-herramientas"
 import type { AccionChat } from "@/lib/chat-ia-datos"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
+import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
+import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 
 export const maxDuration = 60
 
-// Rate limit simple en memoria: máx 20 preguntas por sesión cada 10 minutos
+// Rate limit simple en memoria: máx 20 preguntas por persona cada 10 minutos
 const ventanas = new Map<string, { count: number; reset: number }>()
 function permitido(clave: string): boolean {
   const ahora = Date.now()
@@ -28,7 +33,7 @@ function permitido(clave: string): boolean {
 }
 
 export async function POST(req: Request) {
-  // El middleware ya exige sesión; acá verificamos que sea el perfil Soporte
+  // El middleware ya exige sesión; acá verificamos que sea Administración o Soporte
   const cookieHeader = req.headers.get("cookie") || ""
   const cookieToken = cookieHeader
     .split(";")
@@ -37,15 +42,16 @@ export async function POST(req: Request) {
     ?.slice(SESSION_COOKIE.length + 1)
   const token = cookieToken || req.headers.get(SESSION_HEADER)
   const session = await verifyToken(token)
-  if (!session || session.perfilId !== "soporte") {
-    return Response.json({ error: "Disponible solo para el perfil Soporte" }, { status: 403 })
+  if (!session || !PERFILES_CHAT_IA.includes(session.perfilId)) {
+    return Response.json({ error: "Disponible solo para Administración y Soporte" }, { status: 403 })
   }
 
-  if (!permitido(session.perfilId)) {
+  const usuario = usuarioChat(session.perfilId, usuarioDesdeCookie(req, ""))
+  if (!permitido(usuario)) {
     return Response.json({ error: "Demasiadas preguntas seguidas. Esperá unos minutos." }, { status: 429 })
   }
 
-  let body: { messages?: { role: string; content: string }[] }
+  let body: { id?: unknown; messages?: { role: string; content: string }[] }
   try {
     body = await req.json()
   } catch {
@@ -92,7 +98,18 @@ ${GUIA_SISTEMA}`,
       tools: crearHerramientasChat({ hoy, acciones }),
       stopWhen: stepCountIs(6),
     })
-    return Response.json({ text, acciones })
+    // Sin id válido (pantalla vieja abierta) responde igual, sin guardar.
+    const guardado = idMensajeValido(body.id)
+      ? await guardarIntercambio({
+          id: body.id,
+          perfil: session.perfilId,
+          usuario,
+          pregunta: messages[messages.length - 1].content,
+          respuesta: text,
+          acciones,
+        })
+      : false
+    return Response.json({ text, acciones, guardado })
   } catch (error) {
     console.error("[chat-ia] Error generando respuesta:", error)
     const { mensaje, status } = mensajeErrorChatIA(error)

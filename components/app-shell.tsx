@@ -8,6 +8,7 @@ import { ClockProvider } from "@/lib/clock-context"
 import { Sidebar } from "@/components/sidebar"
 import { TimeTravelBanner } from "@/components/time-travel-banner"
 import { Toaster } from "@/components/ui/toaster"
+import { ChatIAFlotante, PERFILES_CON_CHAT_IA } from "@/components/chat-ia-flotante"
 import { WelcomeModal } from "@/components/welcome-modal"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -75,6 +76,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
           <Toaster />
           <WelcomeModal />
+          {/* Asistente con IA flotante, en todas las pantallas (Administración y Soporte) */}
+          {PERFILES_CON_CHAT_IA.includes(perfilActivo.id) && <ChatIAFlotante perfilId={perfilActivo.id} />}
         </div>
       </StoreProvider>
     </ClockProvider>
