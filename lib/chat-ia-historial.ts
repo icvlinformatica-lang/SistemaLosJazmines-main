@@ -8,6 +8,7 @@
 import { sql } from "@/lib/db"
 import type { AccionChat } from "@/lib/chat-ia-datos"
 import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
+import { propuestaGastoValida, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 
 /** Perfiles que tienen el chat con IA. */
 export const PERFILES_CHAT_IA = ["administracion", "soporte"]
@@ -40,6 +41,8 @@ export interface MensajeHistorial {
   contenido: string
   acciones: AccionChat[]
   tarjetas: TarjetaEventoChat[]
+  /** Gasto que propuso la IA, con su estado (pendiente, cargado o cancelado). */
+  gasto: PropuestaGastoChat | null
   fecha: string
 }
 
@@ -53,31 +56,45 @@ export function idMensajeValido(id: unknown): id is string {
 
 /**
  * La columna `acciones` guarda los botones como lista ([{etiqueta, href}]),
- * o, si la respuesta trae tarjetas de eventos, { botones, tarjetas }. Los
- * mensajes viejos son siempre la lista: se leen los dos formatos.
+ * o, si la respuesta trae tarjetas de eventos o un gasto propuesto,
+ * { botones, tarjetas, gasto }. Los mensajes viejos son siempre la lista: se
+ * leen los dos formatos.
  */
-function leerAdjuntos(valor: unknown): { acciones: AccionChat[]; tarjetas: TarjetaEventoChat[] } {
+export function leerAdjuntos(valor: unknown): {
+  acciones: AccionChat[]
+  tarjetas: TarjetaEventoChat[]
+  gasto: PropuestaGastoChat | null
+} {
   let v = valor
   if (typeof v === "string") {
     try {
       v = JSON.parse(v)
     } catch {
-      return { acciones: [], tarjetas: [] }
+      return { acciones: [], tarjetas: [], gasto: null }
     }
   }
-  const objeto = v && typeof v === "object" && !Array.isArray(v) ? (v as { botones?: unknown; tarjetas?: unknown }) : null
+  const objeto =
+    v && typeof v === "object" && !Array.isArray(v) ? (v as { botones?: unknown; tarjetas?: unknown; gasto?: unknown }) : null
   const botones = objeto ? objeto.botones : v
   const acciones = Array.isArray(botones)
     ? botones.filter(
         (a): a is AccionChat => !!a && typeof a.etiqueta === "string" && typeof a.href === "string" && a.href.startsWith("/"),
       )
     : []
-  return { acciones, tarjetas: objeto ? tarjetasValidas(objeto.tarjetas) : [] }
+  return {
+    acciones,
+    tarjetas: objeto ? tarjetasValidas(objeto.tarjetas) : [],
+    gasto: objeto ? propuestaGastoValida(objeto.gasto) : null,
+  }
 }
 
 /** Lo que se guarda en `acciones` (null si no hay nada). */
-export function adjuntosAGuardar(acciones: AccionChat[], tarjetas: TarjetaEventoChat[]): string | null {
-  if (tarjetas.length > 0) return JSON.stringify({ botones: acciones, tarjetas })
+export function adjuntosAGuardar(
+  acciones: AccionChat[],
+  tarjetas: TarjetaEventoChat[],
+  gasto: PropuestaGastoChat | null = null,
+): string | null {
+  if (tarjetas.length > 0 || gasto) return JSON.stringify({ botones: acciones, tarjetas, ...(gasto ? { gasto } : {}) })
   return acciones.length > 0 ? JSON.stringify(acciones) : null
 }
 
@@ -106,13 +123,14 @@ export async function guardarIntercambio(p: {
   respuesta: string
   acciones: AccionChat[]
   tarjetas?: TarjetaEventoChat[]
+  gasto?: PropuestaGastoChat | null
 }): Promise<boolean> {
   try {
     await sql`
       INSERT INTO chat_ia_mensajes (id, perfil, usuario, rol, contenido, acciones, created_at)
       VALUES
         (${p.id}, ${p.perfil}, ${p.usuario}, 'user', ${p.pregunta}, NULL, now()),
-        (${`${p.id}-r`}, ${p.perfil}, ${p.usuario}, 'assistant', ${p.respuesta}, ${adjuntosAGuardar(p.acciones, p.tarjetas ?? [])}::jsonb, now() + interval '1 millisecond')
+        (${`${p.id}-r`}, ${p.perfil}, ${p.usuario}, 'assistant', ${p.respuesta}, ${adjuntosAGuardar(p.acciones, p.tarjetas ?? [], p.gasto ?? null)}::jsonb, now() + interval '1 millisecond')
       ON CONFLICT (id) DO NOTHING
     `
     return true

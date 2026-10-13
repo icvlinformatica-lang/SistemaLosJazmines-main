@@ -1,8 +1,10 @@
-// Herramientas que el chat de ayuda (solo perfil Soporte) le ofrece a la IA:
-// buscar eventos con su plata, ver quién viene a pagar, el resumen del día y
-// poner botones a pantallas. TODAS son de solo lectura: ninguna escribe en
-// la base. Los botones se arman acá, con direcciones fijas: la IA solo elige
-// el evento o la pantalla, nunca escribe una dirección.
+// Herramientas que el chat de ayuda (Administración y Soporte) le ofrece a la IA:
+// buscar eventos con su plata, ver quién viene a pagar, el resumen del día,
+// poner botones a pantallas y preparar un gasto. TODAS son de solo lectura:
+// ninguna escribe en la base (proponerGasto solo arma la propuesta; la carga
+// la hace la persona con el botón, por /api/chat/gasto). Los botones se
+// arman acá, con direcciones fijas: la IA solo elige el evento o la
+// pantalla, nunca escribe una dirección.
 //
 // Corre SOLO en el servidor (lo usa app/api/chat/route.ts).
 import { tool } from "ai"
@@ -24,6 +26,7 @@ import {
   type PantallaChat,
 } from "@/lib/chat-ia-datos"
 import { MAX_TARJETAS_CHAT, sumarTarjetas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
+import { SALONES_GASTO_CHAT, armarPropuestaGasto, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 
 /** Máximo de eventos que se le pasan a la IA por búsqueda. */
 export const MAX_EVENTOS_POR_BUSQUEDA = 10
@@ -37,10 +40,13 @@ export function crearHerramientasChat({
   hoy,
   acciones,
   tarjetas = [],
+  gasto = { propuesta: null },
 }: {
   hoy: string
   acciones: AccionChat[]
   tarjetas?: TarjetaEventoChat[]
+  /** Dónde queda la propuesta de gasto de esta respuesta (una sola). */
+  gasto?: { propuesta: PropuestaGastoChat | null }
 }) {
   // Se lee una sola vez por pregunta, y solo si la IA lo necesita.
   let eventos: Promise<FilaEventoChat[]> | null = null
@@ -152,6 +158,32 @@ export function crearHerramientasChat({
         sumarTarjetas(tarjetas, encontrados.map((f) => tarjetaEventoChat(resumenEventoChat(f, hist, hoy))))
         if (encontrados.length === 0) return { ok: false, motivo: "Ningún id coincide. Buscalos primero con buscarEventos." }
         return { ok: true, tarjetas: encontrados.length }
+      },
+    }),
+
+    proponerGasto: tool({
+      description:
+        "Prepara un gasto variable para Caja Jazmines (agendado, sin pagar), como 'Cargar gastos' de Inicio. NO lo carga: " +
+        "pone en el chat una tarjeta con los datos y los botones 'Sí, cargar' y 'Cancelar'; solo la persona, con el botón, lo carga. " +
+        "Usala solo cuando pidan cargar o agendar un gasto, y solo con concepto, monto y salón claros (si falta alguno, preguntalo antes). " +
+        "El concepto incluye a nombre de quién es, por ejemplo 'Pepo - arreglo de luces'. Un gasto por respuesta. " +
+        "Gastos repartidos entre varios salones, retiros o ya pagados no: para eso está 'Cargar gastos' en Inicio.",
+      inputSchema: z.object({
+        concepto: z.string().min(2).max(120).describe("Qué es el gasto y a nombre de quién"),
+        monto: z.number().positive().describe("Monto en pesos, sin puntos de miles"),
+        salon: z.enum(SALONES_GASTO_CHAT).describe('Clave del salón. "Salon" es el que se muestra como "Salón"'),
+        vencimiento: fechaISO.optional().describe("Vencimiento; si no lo dicen, hoy"),
+      }),
+      execute: async (entrada) => {
+        if (gasto.propuesta) return { ok: false, motivo: "Ya hay un gasto preparado en esta respuesta: uno por vez." }
+        const r = armarPropuestaGasto(entrada, { id: crypto.randomUUID(), hoy })
+        if (!r.ok) return r
+        gasto.propuesta = r.propuesta
+        return {
+          ok: true,
+          aviso: "Todavía NO está cargado: la persona tiene que tocar 'Sí, cargar' en la tarjeta. Preguntale si está seguro.",
+          gasto: { concepto: r.propuesta.concepto, monto: r.propuesta.monto, salon: r.propuesta.salon, vencimiento: r.propuesta.vencimiento },
+        }
       },
     }),
 

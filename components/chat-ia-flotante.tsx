@@ -23,6 +23,8 @@ import {
 } from "@/lib/chat-ia-posicion"
 import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import { TarjetaEventoChatIA } from "@/components/chat-ia-tarjeta-evento"
+import { propuestaGastoValida, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
+import { TarjetaGastoChatIA } from "@/components/chat-ia-tarjeta-gasto"
 
 interface AccionChat {
   etiqueta: string
@@ -37,6 +39,8 @@ interface MensajeChat {
   acciones?: AccionChat[]
   /** Tarjetas de eventos con su plata (armadas en el servidor). */
   tarjetas?: TarjetaEventoChat[]
+  /** Gasto propuesto por la IA, a confirmar con el botón. */
+  gasto?: PropuestaGastoChat | null
   fecha?: string
   /** Error que se muestra solo en esta pantalla (no se guarda). */
   error?: boolean
@@ -138,6 +142,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
           perfil: typeof m.perfil === "string" ? m.perfil : undefined,
           acciones: accionesValidas(m.acciones),
           tarjetas: tarjetasValidas(m.tarjetas),
+          gasto: propuestaGastoValida(m.gasto),
           fecha: typeof m.fecha === "string" ? m.fecha : undefined,
         }),
       )
@@ -146,6 +151,9 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
       setHayMas((prev) => (antes || !cargadoRef.current || otraPersona ? data.hayMas === true : prev))
       setMensajes((prev) => {
         if (otraPersona) return traidos
+        // Un gasto confirmado o cancelado en otra pestaña: se toma el estado guardado.
+        const gastoGuardado = new Map(traidos.filter((m) => m.gasto).map((m) => [m.id, m.gasto]))
+        prev = prev.map((m) => (gastoGuardado.has(m.id) ? { ...m, gasto: gastoGuardado.get(m.id) } : m))
         // Los anteriores van arriba; sin repetir los que ya están.
         const ids = new Set(prev.map((m) => m.id))
         const nuevos = traidos.filter((m) => !ids.has(m.id))
@@ -267,9 +275,14 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
           {
             id: `${id}-r`,
             rol: "assistant",
-            contenido: String(data.text ?? ""),
+            contenido:
+              String(data.text ?? "") +
+              (data.gastoSinGuardar
+                ? "\n\nOjo: no pude dejar listo el botón para cargar el gasto porque el chat no se guardó. Cargalo desde \"Cargar gastos\" en Inicio."
+                : ""),
             acciones: accionesValidas(data.acciones),
             tarjetas: tarjetasValidas(data.tarjetas),
+            gasto: propuestaGastoValida(data.gasto),
             perfil: perfilId,
             fecha: new Date().toISOString(),
           },
@@ -368,7 +381,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   className={
                     m.rol === "user"
                       ? "self-end max-w-[85%]"
-                      : m.tarjetas && m.tarjetas.length > 0
+                      : (m.tarjetas && m.tarjetas.length > 0) || m.gasto
                         ? "self-stretch"
                         : "self-start max-w-[90%]"
                   }
@@ -387,6 +400,21 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   >
                     {m.contenido}
                   </div>
+                  {m.gasto && (
+                    <div className="mt-1.5">
+                      <TarjetaGastoChatIA
+                        gasto={m.gasto}
+                        mensajeId={m.id}
+                        propio={propio}
+                        onResuelto={(g) =>
+                          setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, gasto: g } : x)))
+                        }
+                        onIr={() => {
+                          if (window.innerWidth < 640) setAbierto(false)
+                        }}
+                      />
+                    </div>
+                  )}
                   {m.tarjetas && m.tarjetas.length > 0 && (
                     <div className="mt-1.5 flex flex-col gap-1.5">
                       {m.tarjetas.map((t) => (

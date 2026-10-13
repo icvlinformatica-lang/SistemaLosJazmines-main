@@ -13,6 +13,7 @@ import { mensajeErrorChatIA } from "@/lib/chat-ia-errores"
 import { crearHerramientasChat } from "@/lib/chat-ia-herramientas"
 import type { AccionChat } from "@/lib/chat-ia-datos"
 import type { TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
+import type { PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
@@ -74,6 +75,8 @@ export async function POST(req: Request) {
   const acciones: AccionChat[] = []
   // Las tarjetas de eventos también: los montos salen del servidor, no del texto de la IA.
   const tarjetas: TarjetaEventoChat[] = []
+  // Un gasto propuesto (no cargado): lo carga la persona con el botón (/api/chat/gasto).
+  const gasto: { propuesta: PropuestaGastoChat | null } = { propuesta: null }
   try {
     const { text } = await generateText({
       model: "openai/gpt-5-mini",
@@ -93,13 +96,14 @@ Reglas:
 - Si te pide ir a una pantalla, usá mostrarPantalla. No escribas direcciones web: los botones aparecen solos debajo de tu respuesta.
 - Los costos del evento (menú, barra, servicios, personal) no los tenés: para eso está el botón de costos.
 - Si una cuota tiene ipcPendiente, aclarás que el monto puede cambiar porque falta el IPC.
-- No podés modificar nada (cobrar, borrar, editar): si te lo piden, indicá la pantalla y poné el botón.
+- Lo único que podés preparar es un gasto variable de Caja Jazmines, con proponerGasto. Nunca lo cargás vos: aparece una tarjeta y la persona lo carga con el botón "Sí, cargar". Antes de proponerlo necesitás concepto (qué es y a nombre de quién), monto y salón; si falta algo, preguntalo. Después de proponerlo, preguntá en una frase si está seguro, por ejemplo: "¿Seguro que querés cargar un gasto variable en Salón a nombre de Pepo por $50.000?". Nunca digas que ya está cargado. Si la persona responde "sí" escribiendo, recordale que lo confirme con el botón de la tarjeta.
+- Fuera de eso no podés modificar nada (cobrar, borrar, editar, retiros, gastos repartidos entre salones): si te lo piden, indicá la pantalla y poné el botón.
 
 Esta es la guía del sistema:
 
 ${GUIA_SISTEMA}`,
       messages,
-      tools: crearHerramientasChat({ hoy, acciones, tarjetas }),
+      tools: crearHerramientasChat({ hoy, acciones, tarjetas, gasto }),
       stopWhen: stepCountIs(6),
     })
     // Sin id válido (pantalla vieja abierta) responde igual, sin guardar.
@@ -112,9 +116,12 @@ ${GUIA_SISTEMA}`,
           respuesta: text,
           acciones,
           tarjetas,
+          gasto: gasto.propuesta,
         })
       : false
-    return Response.json({ text, acciones, tarjetas, guardado })
+    // Sin historial no hay de dónde confirmar el gasto: se avisa en vez de mostrar el botón.
+    const propuesta = gasto.propuesta && guardado ? gasto.propuesta : null
+    return Response.json({ text, acciones, tarjetas, gasto: propuesta, gastoSinGuardar: !!gasto.propuesta && !guardado, guardado })
   } catch (error) {
     console.error("[chat-ia] Error generando respuesta:", error)
     const { mensaje, status } = mensajeErrorChatIA(error)
