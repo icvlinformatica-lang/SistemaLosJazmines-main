@@ -135,8 +135,9 @@ test("la vista muestra filtros, cantidades y cinco filas con Ver más", () => {
     store.setSalonNombresCustom({ salones: { Salon: { nombre: "Salón personalizado" } } })
     const { VienenAPagarModal } = require("../components/vienen-a-pagar-modal.tsx")
     const html = renderToStaticMarkup(React.createElement(VienenAPagarModal, { open: true, onOpenChange: () => {} }))
-    assert.match(html, /Filtrar por salón/)
-    assert.match(html, /12 cuotas por pagar/)
+    // El filtro por salón ahora son las tarjetas de arriba ("Todos" + los 5 salones), más Sin/Con recargo.
+    assert.equal((html.match(/aria-pressed=/g) || []).length, 8)
+    assert.match(html, /Mostrando 5 de 12 cuotas/)
     assert.match(html, /Salón personalizado/)
     assert.match(html, /aria-label="Cuotas por fecha del evento"/)
     assert.match(html, /Ver más/)
