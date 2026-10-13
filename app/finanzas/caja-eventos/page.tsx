@@ -85,7 +85,7 @@ import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
 import { almacenDelNavegador, guardarSalonRecordado, leerSalonRecordado } from "@/lib/salon-recordado"
 import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
-import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo } from "@/lib/servicio-sueldo"
+import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo, saldoEsperaSeña } from "@/lib/servicio-sueldo"
 import { fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import {
@@ -1170,6 +1170,14 @@ useStore()
   const handleMarcarPagado = async (egreso: EgresoPendienteServicio, fechaPagoOverride?: string) => {
     const evento = state.eventos.find((e) => e.id === egreso.eventoId)
     if (!evento || !egresosPendientes.some((pendiente) => pendiente.id === egreso.id)) return false
+    if (saldoBloqueadoPorSeña(egreso)) {
+      toast({
+        title: "Primero la seña",
+        description: `Pagá la seña de ${egreso.servicioNombre} antes que el saldo.`,
+        variant: "destructive",
+      })
+      return false
+    }
     // fechaPagoOverride permite cargar pagos atrasados/viejos con su fecha real
     // en vez de la fecha de hoy (usado hoy solo para señas, desde renderCeldaPago).
     const fechaPago = fechaPagoOverride || fechaNegocio()
@@ -1279,6 +1287,14 @@ useStore()
       await addMovimientosCaja([{ ...movimiento, fecha: nuevaFechaISO }])
     }
     return ok
+  }
+
+  // Saldo de un proveedor cuya seña todavía no se pagó: espera a la seña
+  // (lib/servicio-sueldo.ts → saldoEsperaSeña).
+  const saldoBloqueadoPorSeña = (egreso: EgresoPendienteServicio | undefined): boolean => {
+    if (!egreso || egreso.tipo !== "saldo") return false
+    const srv = state.eventos.find((e) => e.id === egreso.eventoId)?.servicios?.find((s) => s.servicioId === egreso.servicioId)
+    return !!srv && saldoEsperaSeña(srv, { servicios: state.servicios ?? [] })
   }
 
   // Fecha de habilitación de una seña TODAVÍA bloqueada (null si no es seña o
@@ -1686,6 +1702,18 @@ useStore()
             </Button>
           </PopoverContent>
         </Popover>
+      )
+    }
+
+    if (!esSeña && saldoBloqueadoPorSeña(dato.egreso)) {
+      return (
+        <span
+          title="Primero hay que pagar la seña"
+          className="inline-flex flex-col items-end gap-0.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-right"
+        >
+          <span className="text-xs font-bold text-muted-foreground">−{formatCurrency(dato.monto)}</span>
+          <span className="text-[10px] text-muted-foreground">primero la seña</span>
+        </span>
       )
     }
 
@@ -3298,6 +3326,8 @@ useStore()
                       size="sm"
                       variant="outline"
                       className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 shrink-0 bg-transparent"
+                      disabled={saldoBloqueadoPorSeña(eg)}
+                      title={saldoBloqueadoPorSeña(eg) ? "Primero hay que pagar la seña" : undefined}
                       onClick={() => {
                         setDiaDetalle(null)
                         if (eg.tipo === "seña") pedirPagoSeña(eg)
