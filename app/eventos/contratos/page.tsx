@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store-context"
 import {
@@ -678,9 +679,9 @@ function ContratosPageContent() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center gap-4">
-          <Link href="/eventos/lista" className="text-muted-foreground hover:text-foreground">
+          <LinkVolver href="/eventos/lista" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
-          </Link>
+          </LinkVolver>
           <FileText className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">Contratos de Eventos</h1>
         </div>

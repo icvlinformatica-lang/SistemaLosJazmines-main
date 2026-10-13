@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { useStore } from "@/lib/store-context"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { salonLabel, type GastoArchivado } from "@/lib/store"
@@ -169,10 +170,10 @@ export default function ArchivoPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
-            <Link href="/finanzas/caja-jazmines">
+            <LinkVolver href="/finanzas/caja-jazmines">
               <ArrowLeft className="h-4 w-4" />
               Volver
-            </Link>
+            </LinkVolver>
           </Button>
           <Select value={origenFiltro} onValueChange={setOrigenFiltro}>
             <SelectTrigger className="w-[160px] h-9" aria-label="Filtrar por caja">

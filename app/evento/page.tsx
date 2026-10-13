@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { LinkVolver, useVolverAtras } from "@/components/link-volver"
 import { useStore } from "@/lib/store-context"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { calcularProporcionCajaEventos, construirSenaInicial, senaAAnotarAlEditar } from "@/lib/cobrar-cuota"
@@ -960,12 +961,15 @@ function EventoPageContent() {
 
   // Volver a la Lista desde un evento ya creado. Si hay cambios sin guardar
   // se pregunta (antes la flecha los descartaba sin avisar).
+  // La flecha de volver lleva a la pantalla de la que se vino (por ejemplo
+  // Caja de eventos o el calendario); si se entró directo, a la lista.
+  const volverAtras = useVolverAtras("/eventos/lista")
   const handleVolverALista = () => {
     if (hayCambiosSinGuardar) {
       setShowSalirDialog(true)
       return
     }
-    router.push("/eventos/lista")
+    volverAtras()
   }
 
   // "Guardar" del aviso: el mismo guardado que el botón Actualizar Evento.
@@ -973,7 +977,7 @@ function EventoPageContent() {
   const handleGuardarYSalir = async () => {
     const ok = await handleSaveEvento()
     setShowSalirDialog(false)
-    if (ok && !fromContratos) router.push("/eventos/lista")
+    if (ok && !fromContratos) volverAtras()
   }
 
   // "Descartar": sale sin guardar. Se suelta el evento en memoria para que,
@@ -981,7 +985,7 @@ function EventoPageContent() {
   const handleDescartarYSalir = () => {
     setShowSalirDialog(false)
     setEventoActual(null)
-    router.push("/eventos/lista")
+    volverAtras()
   }
 
   // BUTTON 2: Close Event (Deducts stock, saves history, resets)
@@ -1241,9 +1245,9 @@ function EventoPageContent() {
       <div className="min-h-screen bg-background">
         <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
           <div className="mx-auto max-w-4xl flex items-center gap-4">
-            <Link href="/" className="text-muted-foreground hover:text-foreground">
+            <LinkVolver href="/" className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-6 w-6" />
-            </Link>
+            </LinkVolver>
             <h1 className="text-xl font-semibold">Planificador de Evento</h1>
           </div>
         </header>

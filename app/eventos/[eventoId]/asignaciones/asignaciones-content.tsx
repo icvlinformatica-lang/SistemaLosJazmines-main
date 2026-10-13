@@ -20,6 +20,7 @@ import {
   ClipboardList,
 } from "lucide-react"
 import Link from "next/link"
+import { LinkVolver } from "@/components/link-volver"
 import { Button } from "@/components/ui/button"
 import { ResumenCostos } from "./resumen-costos"
 import { ServicioAsignacionCard } from "./servicio-asignacion-card"
@@ -157,12 +158,12 @@ export function AsignacionesContent({ evento }: { evento: EventoGuardado }) {
       {/* Header */}
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Link href="/eventos/lista">
+          <LinkVolver href="/eventos/lista">
             <Button variant="ghost" size="icon" className="shrink-0">
               <ArrowLeft className="h-5 w-5" />
               <span className="sr-only">Volver a lista de eventos</span>
             </Button>
-          </Link>
+          </LinkVolver>
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight text-balance">
               {"Asignacion de Personal"}
