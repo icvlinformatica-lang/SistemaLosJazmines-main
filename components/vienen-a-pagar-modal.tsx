@@ -4,19 +4,19 @@
 // esta semana, con nombre, fecha del evento y salón. Si además deben cuotas
 // vencidas de semanas anteriores, se marca ATRASADO con el monto adeudado.
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import { X, Users, Loader2, Search, Phone, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SalonDot } from "@/components/salon-badge"
 import { useStore } from "@/lib/store-context"
-import { SALON_COLORES_DEFAULT, salonLabel } from "@/lib/store"
-import { agruparCuotasPorSalon, ordenarCuotasPorEvento, limiteCuotasVisibles, type CuotaPorPagar } from "@/lib/vienen-a-pagar"
+import { SALONES, salonColor, salonLabel } from "@/lib/store"
+import { useProfile } from "@/lib/profile-context"
+import { calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
+import { agruparCuotasPorSalon, ordenarCuotasPorEvento, limiteCuotasVisibles, porEntrarDelMesPorSalon, type CuotaPorPagar, type PorEntrarSalon } from "@/lib/vienen-a-pagar"
 import type { ResumenDiario } from "@/lib/resumen-diario"
 import { enlaceWhatsApp, mensajeRecordatorioCuota } from "@/lib/recordatorio-cuota"
 
@@ -84,9 +84,10 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
           )}
           <p className="text-muted-foreground">Vence {fechaCorta(cuota.fechaVencimiento)}</p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        {/* En la compu (lg) los botones van apilados; en el celular siguen uno al lado del otro. */}
+        <div className="flex shrink-0 flex-wrap gap-2 lg:flex-col lg:flex-nowrap lg:items-stretch">
         {whatsapp && (
-          <Button asChild variant="outline" size="sm">
+          <Button asChild size="sm" className="bg-[#2f8f5b] text-white hover:bg-[#2f8f5b]/90">
             <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Mandar recordatorio por WhatsApp a ${cuota.evento}, cuota ${cuota.numero}`}><MessageCircle />WhatsApp</a>
           </Button>
         )}
@@ -101,27 +102,75 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
   )
 }
 
+/**
+ * Tarjeta de un salón (o "Todos") con lo que falta entrar este mes. Plegada
+ * es una sola línea del tamaño del texto; desplegada se agranda y, para
+ * Administración y Soporte, muestra cuánto va a cada caja.
+ */
+export function TarjetaPorEntrar({ fila, color, elegida, desplegada, veCajas, onClick }: {
+  fila: PorEntrarSalon
+  color: string
+  elegida: boolean
+  desplegada: boolean
+  veCajas: boolean
+  onClick: () => void
+}) {
+  const nombre = fila.salon === "todos" ? "Todos" : salonLabel(fila.salon)
+  const total = fmt(fila.cajaEventos + fila.cajaJazmines)
+  return (
+    <button
+      type="button"
+      aria-pressed={elegida}
+      aria-expanded={desplegada}
+      data-tarjeta-salon=""
+      onClick={onClick}
+      className={`rounded-lg border-2 text-left text-foreground transition-all ${desplegada ? "flex flex-col gap-1 p-3 text-sm" : "inline-flex items-center gap-1.5 px-2 py-0.5 text-xs"}`}
+      style={{ backgroundColor: `${color}${elegida ? "4d" : "1f"}`, borderColor: elegida ? color : `${color}59` }}
+    >
+      <span className="font-semibold">{nombre}</span>
+      <strong className={`tabular-nums ${desplegada ? "text-lg" : ""}`}>{total}</strong>
+      {desplegada && veCajas && (
+        <span className="flex flex-col gap-1 border-t pt-1" style={{ borderColor: `${color}59` }}>
+          <span className="flex items-baseline justify-between gap-4"><span>Caja Eventos</span><strong className="tabular-nums">{fmt(fila.cajaEventos)}</strong></span>
+          <span className="flex items-baseline justify-between gap-4"><span>Caja Jazmines</span><strong className="tabular-nums">{fmt(fila.cajaJazmines)}</strong></span>
+        </span>
+      )}
+    </button>
+  )
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 export function VienenAPagarModal({ open, onOpenChange }: Props) {
-  const { configuracionCajas } = useStore()
+  const { state, configuracionCajas } = useStore()
+  const [conRecargo, setConRecargo] = useState(false)
+  const { perfilActivo } = useProfile()
+  // El reparto entre cajas deja deducir el costo de cada evento: solo lo ven
+  // Administración y Soporte (Cobrar cuota tampoco ve las cajas en el Resumen diario).
+  const veCajas = perfilActivo?.id === "administracion" || perfilActivo?.id === "soporte"
+  const hoy = fechaNegocio()
+  // El total por salón lo ven todos (es la suma de las cuotas); el desglose por caja, solo veCajas.
+  const porEntrar = useMemo(
+    () => (open ? porEntrarDelMesPorSalon(calcularCajaEventos(state).ingresosPendientes, hoy, SALONES, conRecargo) : []),
+    [open, state, hoy, conRecargo],
+  )
+  const nombreMes = new Date(`${hoy}T12:00:00`).toLocaleDateString("es-AR", { month: "long" })
   const [salonFiltro, setSalonFiltro] = useState("todos")
+  const [desplegada, setDesplegada] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState("")
   const [ampliaciones, setAmpliaciones] = useState(0)
-  const [soloAtrasadas, setSoloAtrasadas] = useState(false)
   const { data, isLoading, error, mutate } = useSWR<ResumenDiario>(open ? CLAVE_VIENEN_A_PAGAR : null, cargarResumenVienenAPagar)
-  useEffect(() => { if (!open) { setSalonFiltro("todos"); setBusqueda(""); setAmpliaciones(0); setSoloAtrasadas(false) } }, [open])
+  useEffect(() => { if (!open) { setSalonFiltro("todos"); setDesplegada(null); setBusqueda(""); setAmpliaciones(0); setConRecargo(false) } }, [open])
 
   if (!open) return null
 
   const grupos = agruparCuotasPorSalon(data?.vienenAPagar ?? [])
-  const salones = [...new Set([...Object.keys(SALON_COLORES_DEFAULT), ...Object.keys(configuracionCajas?.salones ?? {}), ...grupos.map((g) => g.salon)])]
   const visibles = grupos.filter((g) => salonFiltro === "todos" || (g.salon || "general") === salonFiltro)
   const textoBusqueda = busqueda.trim().toLowerCase()
-  const cuotasOrdenadas = ordenarCuotasPorEvento(visibles).filter((cuota) => !soloAtrasadas || cuota.atrasada)
+  const cuotasOrdenadas = ordenarCuotasPorEvento(visibles)
   const cuotas = textoBusqueda
     ? cuotasOrdenadas.filter((cuota) =>
         cuota.evento.toLowerCase().includes(textoBusqueda) ||
@@ -132,8 +181,6 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
   const cuotasMostradas = cuotas.slice(0, limiteCuotasVisibles(ampliaciones))
   const totalSemana = visibles.reduce((s, g) => s + g.totalSemana, 0)
   const cantidadSemana = visibles.reduce((s, g) => s + g.cantidadSemana, 0)
-  const cantidadAtrasada = visibles.reduce((s, g) => s + g.cantidadAtrasada, 0)
-  const totalAtrasado = visibles.reduce((s, g) => s + g.totalAtrasado, 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false) }} role="dialog" aria-modal="true" aria-labelledby="titulo-vienen-pagar" onKeyDown={(e) => { if (e.key === "Escape") onOpenChange(false) }}>
@@ -149,20 +196,37 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="salon-cuotas">Filtrar por salón</Label>
-              <Select value={salonFiltro} onValueChange={(salon) => { setSalonFiltro(salon); setAmpliaciones(0) }}>
-                <SelectTrigger id="salon-cuotas" className="w-64 max-w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  <SelectItem value="todos">Todos los salones</SelectItem>
-                  {salones.map((salon) => <SelectItem key={salon || "general"} value={salon || "general"}><SalonDot salon={salon} />{salonLabel(salon)}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </div>
-            {!isLoading && !error && data && <p className="text-sm font-semibold" aria-live="polite">{cantidadSemana + cantidadAtrasada} cuotas por pagar</p>}
-          </div>
+        {/* Tocar cualquier lugar que no sea una tarjeta de salón las pliega a todas (el filtro elegido sigue). */}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5" onClick={(e) => { if (!(e.target as HTMLElement).closest("[data-tarjeta-salon]")) setDesplegada(null) }}>
+              {/* Tarjetas por salón: lo que falta entrar este mes. Tocar una filtra la lista por ese salón y la despliega. */}
+              <section aria-labelledby="titulo-por-entrar" className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 id="titulo-por-entrar" className="text-sm font-semibold">Falta entrar si se pagan todas las cuotas de {nombreMes} (con las atrasadas)</h3>
+                  <div className="flex gap-1" role="group" aria-label="Recargo por atraso">
+                    <Button type="button" size="sm" variant={conRecargo ? "outline" : "default"} aria-pressed={!conRecargo} onClick={() => setConRecargo(false)}>Sin recargo</Button>
+                    <Button type="button" size="sm" variant={conRecargo ? "default" : "outline"} aria-pressed={conRecargo} onClick={() => setConRecargo(true)}>Con recargo</Button>
+                  </div>
+                </div>
+                {/* Plegadas: una línea con nombre y total, del tamaño del texto. Al tocarla se agranda y filtra la lista. */}
+                <div className="flex flex-wrap items-start gap-2">
+                  {[{ salon: "todos", cajaEventos: porEntrar.reduce((s, f) => s + f.cajaEventos, 0), cajaJazmines: porEntrar.reduce((s, f) => s + f.cajaJazmines, 0) }, ...porEntrar].map((fila) => (
+                    <TarjetaPorEntrar
+                      key={fila.salon}
+                      fila={fila}
+                      color={fila.salon === "todos" ? "#64748b" : salonColor(fila.salon, configuracionCajas)}
+                      elegida={salonFiltro === fila.salon}
+                      desplegada={desplegada === fila.salon}
+                      veCajas={veCajas}
+                      onClick={() => {
+                        const cerrar = desplegada === fila.salon
+                        setDesplegada(cerrar ? null : fila.salon)
+                        setSalonFiltro(cerrar ? "todos" : fila.salon)
+                        setAmpliaciones(0)
+                      }}
+                    />
+                  ))}
+                </div>
+              </section>
 
           {isLoading ? (
             <div role="status" className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="size-4 animate-spin" />Buscando cuotas de la semana...</div>
@@ -172,14 +236,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
             <>
               {/* Totales rápidos */}
               <div className="flex flex-col gap-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border bg-card p-3 text-card-foreground" aria-live="polite"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} {cantidadSemana === 1 ? "cuota" : "cuotas"}</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
-                  <div className={`rounded-lg border p-3 ${cantidadAtrasada > 0 ? "border-destructive bg-destructive/10" : "bg-card text-card-foreground"}`} aria-live="polite"><p className={`text-sm ${cantidadAtrasada > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>Atrasado · {cantidadAtrasada} {cantidadAtrasada === 1 ? "cuota" : "cuotas"}</p><p className={`font-bold tabular-nums ${cantidadAtrasada > 0 ? "text-destructive" : ""}`}>{fmt(totalAtrasado)}</p></div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch id="solo-atrasadas" checked={soloAtrasadas} onCheckedChange={(v) => { setSoloAtrasadas(v); setAmpliaciones(0) }} />
-                  <Label htmlFor="solo-atrasadas">Solo atrasadas</Label>
-                </div>
+                <div className="rounded-lg border bg-card p-3 text-card-foreground" aria-live="polite"><p className="text-sm text-muted-foreground">Por cobrar esta semana · {cantidadSemana} {cantidadSemana === 1 ? "cuota" : "cuotas"}</p><p className="font-bold tabular-nums">{fmt(totalSemana)}</p></div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <Input
@@ -194,7 +251,7 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
               </div>
 
               {/* Lista */}
-              {cuotas.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{soloAtrasadas ? "No hay cuotas atrasadas" : "No hay cuotas por pagar esta semana ni atrasadas"}{salonFiltro !== "todos" ? " para este salón" : ""}.</p> : (
+              {cuotas.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No hay cuotas por pagar esta semana ni atrasadas{salonFiltro !== "todos" ? " para este salón" : ""}.</p> : (
                 <div className="flex flex-col gap-3">
                   <p className="text-sm text-muted-foreground">Ordenadas por evento más próximo a más lejano</p>
                   <ul id="lista-cuotas-pendientes" className="rounded-lg border bg-card text-card-foreground" aria-label="Cuotas por fecha del evento">
