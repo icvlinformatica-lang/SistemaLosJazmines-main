@@ -7,6 +7,7 @@
 // con la misma cuenta que el panel "Pendiente por evento" de Caja Eventos.
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +15,8 @@ import { Label } from "@/components/ui/label"
 import { cambiarDiaResumen, fechaArgentina, fechaResumenValida, rangoFinde } from "@/lib/resumen-fecha"
 import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
+import { useProfile } from "@/lib/profile-context"
+import { puedeEntrarARuta } from "@/lib/acceso-ruta"
 import { calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import {
   calcularComprasSegmentadas,
@@ -49,6 +52,11 @@ interface Props {
 export function FindeModal({ open, onOpenChange }: Props) {
   const { state, configuracionCajas } = useStore()
   const { ahora } = useClock()
+  const { perfilActivo } = useProfile()
+  // Tocar la tarjeta lleva a los costos del evento, pero solo a quien puede
+  // entrar a esa pantalla. A Cobrar cuota, que ve Inicio pero no Costos, la
+  // tarjeta no lo lleva a ningún lado: si no, lo rebotaría de vuelta.
+  const puedeVerCostos = puedeEntrarARuta(perfilActivo, "/eventos/costos")
 
   const [fechaElegida, setFechaElegida] = useState<string | null>(null)
   const fecha = fechaElegida ?? fechaArgentina()
@@ -164,8 +172,10 @@ export function FindeModal({ open, onOpenChange }: Props) {
             eventosFinde.map(({ evento, costoCocina, costoBarra, totalPersonal, totalServicios, total, invitados }) => {
               const pendiente = pendientePorEvento.get(evento.id) ?? 0
               return (
-              <div
+              <TarjetaEvento
                 key={evento.id}
+                href={puedeVerCostos ? `/eventos/costos?id=${evento.id}` : undefined}
+                onIr={() => onOpenChange(false)}
                 className="rounded-lg border border-t-4 bg-card p-4 text-card-foreground"
                 style={{
                   borderColor: salonColor(evento.salon, configuracionCajas),
@@ -230,12 +240,46 @@ export function FindeModal({ open, onOpenChange }: Props) {
                     <span className="text-sm font-semibold text-emerald-700">Todo pagado</span>
                   )}
                 </div>
-              </div>
+
+                {puedeVerCostos && (
+                  <p className="mt-2 flex items-center justify-end gap-0.5 text-xs font-medium text-[#2d5a3d]">
+                    Ver costos del evento <ChevronRight className="h-3.5 w-3.5" />
+                  </p>
+                )}
+              </TarjetaEvento>
               )
             })
           )}
         </div>
       </div>
     </div>
+  )
+}
+
+// Tarjeta de un evento: si hay adónde ir, es un link a sus costos (y cierra
+// el modal al tocarla); si no, un recuadro común.
+function TarjetaEvento({
+  href,
+  onIr,
+  className,
+  style,
+  children,
+}: {
+  href?: string
+  onIr: () => void
+  className: string
+  style: React.CSSProperties
+  children: React.ReactNode
+}) {
+  if (!href) return <div className={className} style={style}>{children}</div>
+  return (
+    <Link
+      href={href}
+      onClick={onIr}
+      className={`${className} block transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]`}
+      style={style}
+    >
+      {children}
+    </Link>
   )
 }
