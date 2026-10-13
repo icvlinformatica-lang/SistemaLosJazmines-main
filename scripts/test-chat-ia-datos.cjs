@@ -153,7 +153,7 @@ test("ruta: la IA busca el evento del 6/10 y deja los tres botones; sin escritur
   const res = await pedir([{ role: "user", content: "quiero ver el evento del 6 de octubre de 2026" }])
   assert.equal(res.status, 200)
   const data = await res.json()
-  assert.deepEqual(toolsRecibidas, ["buscarEventos", "mostrarAccesosEvento", "mostrarPantalla", "resumenDelDia", "vienenAPagar"])
+  assert.deepEqual(toolsRecibidas, ["buscarEventos", "mostrarAccesosEvento", "mostrarPantalla", "mostrarResumenEventos", "resumenDelDia", "vienenAPagar"])
   assert.deepEqual(data.acciones.map((a) => a.href), [
     "/eventos/lista?evento=ev-prueba",
     "/eventos/pagos?evento=ev-prueba",
@@ -326,4 +326,55 @@ test("usuarioChat: Diego, Leila y Ricky por separado; el resto no se cuela", () 
   assert.equal(usuarioChat("administracion", "Aylin"), "Administración")
   assert.equal(usuarioChat("administracion", null), "Administración")
   assert.equal(usuarioChat("soporte", "Diego"), "Soporte")
+})
+
+test("tarjetas: la plata del evento sale del servidor, ordenada, y se guarda con los botones", async () => {
+  sesion = { perfilId: "administracion" }
+  filasEventos = [PRUEBA]
+  sinTablaHistorial = false
+  valoresHistorial.length = 0
+  simularIA = async (opts) => {
+    const nada = await opts.tools.mostrarResumenEventos.execute({ eventoIds: ["no-existe"] })
+    assert.equal(nada.ok, false)
+    await opts.tools.mostrarResumenEventos.execute({ eventoIds: ["ev-prueba", "ev-prueba"] })
+    await opts.tools.mostrarPantalla.execute({ pantalla: "cobrar_cuota" })
+    return { text: "PRUEBA Ana y Juan tiene 2 cuotas vencidas." }
+  }
+  const data = await (await pedirConId("abc12345-tarjetas", [{ role: "user", content: "¿cómo viene PRUEBA?" }], "Diego")).json()
+  // Evento de referencia: $1.000.000, seña $300.000, cuota 1 pagada; hoy 2 vencidas de $175.000.
+  assert.equal(data.tarjetas.length, 1)
+  const t = data.tarjetas[0]
+  assert.equal(t.id, "ev-prueba")
+  assert.equal(t.nombre, "PRUEBA Ana y Juan")
+  assert.equal(t.salon, "Casona")
+  assert.equal(t.montoTotal, 1000000)
+  assert.equal(t.sena, 300000)
+  assert.equal(t.cobrado, 475000)
+  assert.equal(t.saldoPendiente, 525000)
+  assert.equal(t.cuotasPendientes, 3)
+  assert.equal(t.cuotasVencidas, 2)
+  assert.equal(t.montoVencido, 350000)
+  assert.deepEqual(t.proximaCuota, { numero: 4, vencimiento: "2026-11-10", monto: 175000 })
+  // Sin DNI ni nada que no sea plata del evento.
+  assert.doesNotMatch(JSON.stringify(t), /12345678/)
+  // Se guarda { botones, tarjetas } en la columna acciones.
+  const v = valoresHistorial[valoresHistorial.length - 1]
+  const guardado = JSON.parse(v[8])
+  assert.deepEqual(guardado.botones, [{ etiqueta: "Cobrar cuota", href: "/eventos/pagos" }])
+  assert.equal(guardado.tarjetas[0].saldoPendiente, 525000)
+  sesion = { perfilId: "soporte" }
+})
+
+test("tarjetas: el historial lee el formato nuevo y el viejo (solo botones)", () => {
+  const { filaAMensaje } = historial
+  const tarjeta = { id: "e1", nombre: "X", fecha: "2026-10-17", salon: "Casona", estado: "pendiente", montoTotal: 100, sena: 0, cobrado: 50, saldoPendiente: 50, cuotasPendientes: 1, cuotasVencidas: 0, montoVencido: 0, proximaCuota: null, ipcPendiente: false }
+  const nuevo = filaAMensaje({ id: "a", rol: "assistant", contenido: "t", created_at: "2026-10-13T12:00:00Z",
+    acciones: { botones: [{ etiqueta: "IPC", href: "/finanzas/ipc" }, { etiqueta: "x", href: "https://afuera" }], tarjetas: [tarjeta, { id: "rota" }] } })
+  assert.deepEqual(nuevo.acciones, [{ etiqueta: "IPC", href: "/finanzas/ipc" }])
+  assert.deepEqual(nuevo.tarjetas, [tarjeta])
+  const viejo = filaAMensaje({ id: "b", rol: "assistant", contenido: "t", created_at: "2026-10-13T12:00:00Z",
+    acciones: JSON.stringify([{ etiqueta: "Lista", href: "/eventos/lista" }]) })
+  assert.deepEqual(viejo.acciones, [{ etiqueta: "Lista", href: "/eventos/lista" }])
+  assert.deepEqual(viejo.tarjetas, [])
+  assert.equal(historial.adjuntosAGuardar([], []), null)
 })
