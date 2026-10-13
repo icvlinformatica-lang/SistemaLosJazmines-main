@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { LinkVolver, useVolverAtras } from "@/components/link-volver"
+import { AvisoFechaEvento } from "@/components/aviso-fecha-evento"
 import { useStore } from "@/lib/store-context"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { calcularProporcionCajaEventos, construirSenaInicial, senaAAnotarAlEditar } from "@/lib/cobrar-cuota"
@@ -283,6 +284,9 @@ function EventoPageContent() {
   // ✅ FIX: Estado local para prevenir pérdida de foco
   const [localNombre, setLocalNombre] = useState("")
   const [localFecha, setLocalFecha] = useState("")
+  // Última fecha que se escribió, aunque el campo la haya rechazado al salir:
+  // así el aviso "¿La fecha está bien?" sigue a la vista hasta que se corrija.
+  const [fechaEscrita, setFechaEscrita] = useState("")
   const [localHorario, setLocalHorario] = useState("")
   const [localHorarioFin, setLocalHorarioFin] = useState("")
   const [localNombrePareja, setLocalNombrePareja] = useState("")
@@ -1742,7 +1746,10 @@ function EventoPageContent() {
                   id="fecha"
                   type="date"
                   value={localFecha}
-                  onChange={(e) => setLocalFecha(e.target.value)}
+                  onChange={(e) => {
+                    setLocalFecha(e.target.value)
+                    setFechaEscrita(e.target.value)
+                  }}
                   onBlur={() => handleBlur("fecha", localFecha)}
                   min={FECHA_EVENTO_MIN}
                   max={FECHA_EVENTO_MAX}
@@ -1788,6 +1795,7 @@ function EventoPageContent() {
                 />
               </div>
             </div>
+            <AvisoFechaEvento fecha={fechaEscrita} fechaGuardada={evento?.fecha} />
 
             {/* Fila 3: Salon (toggle buttons) */}
             <div className="space-y-2">
