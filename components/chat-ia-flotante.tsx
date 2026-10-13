@@ -1,7 +1,9 @@
 "use client"
 
-// Botón flotante del chat con IA, abajo a la derecha en todas las pantallas.
-// Solo Administración y Soporte (lo decide app-shell; el servidor lo vuelve
+// Botón flotante del chat con IA, en todas las pantallas. Arranca arriba a
+// la izquierda, al lado del panel lateral, y se puede arrastrar a cualquier
+// lado (la posición queda guardada en ese navegador). El chat se abre pegado
+// al botón (lib/chat-ia-posicion.ts). Solo Administración y Soporte (lo decide app-shell; el servidor lo vuelve
 // a chequear). Al abrirlo carga el historial guardado de quien entró: cada
 // persona (Diego, Leila, Ricky, Soporte) tiene su chat, que no se borra.
 // Soporte puede elegir y leer el chat de los demás, sin escribir en él.
@@ -10,6 +12,15 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Sparkles, Send, Loader2, ArrowRight, X } from "lucide-react"
+import {
+  UMBRAL_ARRASTRE_IA,
+  ajustarBoton,
+  leerPosicionGuardada,
+  posicionInicialBoton,
+  posicionPanel,
+  type Pantalla,
+  type Punto,
+} from "@/lib/chat-ia-posicion"
 
 interface AccionChat {
   etiqueta: string
@@ -61,8 +72,20 @@ function horaCorta(fecha?: string): string {
   })
 }
 
+/** Dónde guarda el navegador la posición del botón (solo comodidad de cada compu). */
+const CLAVE_POSICION = "lj_chat_ia_posicion"
+/** El contenedor del contenido (app-shell); el botón arranca a su izquierda arriba. */
+export const ID_CONTENIDO_PRINCIPAL = "contenido-principal"
+
 export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
   const [abierto, setAbierto] = useState(false)
+  // Posición: hasta que se mueve, sigue al borde del panel lateral.
+  const [listo, setListo] = useState(false)
+  const [pantalla, setPantalla] = useState<Pantalla>({ ancho: 1024, alto: 768 })
+  const [bordeContenido, setBordeContenido] = useState(0)
+  const [movido, setMovido] = useState<Punto | null>(null)
+  const arrastreRef = useRef<{ x: number; y: number; origen: Punto; movio: boolean } | null>(null)
+  const recienArrastradoRef = useRef(false)
   const [mensajes, setMensajes] = useState<MensajeChat[]>([])
   const [cargado, setCargado] = useState(false)
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
@@ -133,6 +156,64 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
       setCargado(true)
     }
   }, [])
+
+  // Mide la pantalla y dónde termina el panel lateral (cambia al abrirlo o cerrarlo).
+  useEffect(() => {
+    try {
+      setMovido(leerPosicionGuardada(localStorage.getItem(CLAVE_POSICION)))
+    } catch {
+      // sin almacenamiento: arranca en la posición inicial
+    }
+    const contenido = document.getElementById(ID_CONTENIDO_PRINCIPAL)
+    const medir = () => {
+      setPantalla({ ancho: window.innerWidth, alto: window.innerHeight })
+      setBordeContenido(contenido ? contenido.getBoundingClientRect().left : 0)
+    }
+    medir()
+    setListo(true)
+    window.addEventListener("resize", medir)
+    const observador = contenido && typeof ResizeObserver !== "undefined" ? new ResizeObserver(medir) : null
+    if (contenido) observador?.observe(contenido)
+    return () => {
+      window.removeEventListener("resize", medir)
+      observador?.disconnect()
+    }
+  }, [])
+
+  const boton = ajustarBoton(movido ?? posicionInicialBoton(bordeContenido), pantalla)
+  const panel = posicionPanel(boton, pantalla)
+
+  // Arrastrar: si el dedo o el mouse se mueve poco, cuenta como un toque (abre o cierra).
+  const alApretar = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    arrastreRef.current = { x: e.clientX, y: e.clientY, origen: boton, movio: false }
+  }
+  const alMover = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const a = arrastreRef.current
+    if (!a) return
+    const dx = e.clientX - a.x
+    const dy = e.clientY - a.y
+    if (!a.movio && Math.hypot(dx, dy) < UMBRAL_ARRASTRE_IA) return
+    a.movio = true
+    setMovido(ajustarBoton({ x: a.origen.x + dx, y: a.origen.y + dy }, pantalla))
+  }
+  const alSoltar = () => {
+    const a = arrastreRef.current
+    arrastreRef.current = null
+    if (!a) return
+    recienArrastradoRef.current = a.movio
+    if (a.movio) {
+      setMovido((p) => {
+        try {
+          if (p) localStorage.setItem(CLAVE_POSICION, JSON.stringify(p))
+        } catch {
+          // sin almacenamiento: la posición dura hasta recargar
+        }
+        return p
+      })
+    }
+  }
 
   // Cada vez que se abre, trae lo último.
   useEffect(() => {
@@ -207,7 +288,8 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
         <div
           role="dialog"
           aria-label="Asistente con IA"
-          className="fixed bottom-20 right-4 z-50 flex h-[min(34rem,calc(100dvh-7rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#2d5a3d]/30 bg-[#f5f0e8] shadow-2xl"
+          style={{ left: panel.x, top: panel.y, width: panel.ancho, height: panel.alto }}
+          className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[#2d5a3d]/30 bg-[#f5f0e8] shadow-2xl"
         >
           <div className="flex items-center gap-2 bg-[#2d5a3d] px-4 py-2.5 text-[#f5f0e8]">
             <Sparkles className="h-4 w-4 text-[#d4a533]" aria-hidden="true" />
@@ -352,13 +434,26 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
         </div>
       )}
 
+      {/* z-[35]: por encima de las pantallas, pero debajo del panel lateral del celular cuando se abre. */}
       <button
         type="button"
-        onClick={() => setAbierto((a) => !a)}
-        className="fixed bottom-5 right-5 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[#2d5a3d] text-[#d4a533] shadow-lg ring-2 ring-[#d4a533]/40 transition-colors hover:bg-[#3a6f4e]"
+        onPointerDown={alApretar}
+        onPointerMove={alMover}
+        onPointerUp={alSoltar}
+        onPointerCancel={alSoltar}
+        onClick={() => {
+          // Después de arrastrar no se abre ni se cierra.
+          if (recienArrastradoRef.current) {
+            recienArrastradoRef.current = false
+            return
+          }
+          setAbierto((a) => !a)
+        }}
+        style={{ left: boton.x, top: boton.y, touchAction: "none", visibility: listo ? "visible" : "hidden" }}
+        className="fixed z-[35] flex h-12 w-12 cursor-grab select-none items-center justify-center rounded-full bg-[#2d5a3d] text-[#d4a533] shadow-lg ring-2 ring-[#d4a533]/40 transition-colors hover:bg-[#3a6f4e] active:cursor-grabbing"
         aria-label={abierto ? "Cerrar el asistente con IA" : "Abrir el asistente con IA"}
         aria-expanded={abierto}
-        title="Asistente IA"
+        title="Asistente IA (se puede arrastrar)"
       >
         {abierto ? <X className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
       </button>
