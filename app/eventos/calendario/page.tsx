@@ -20,7 +20,7 @@ import {
   type PagoEvento,
 } from "@/lib/store"
 import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
-import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX } from "@/lib/validacion-anio-evento"
+import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX, ANIO_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { useToast } from "@/hooks/use-toast"
 import { SalonDot } from "@/components/salon-badge"
 import { Button } from "@/components/ui/button"
@@ -75,6 +75,7 @@ import {
 } from "lucide-react"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { ConfirmarFinalizarEventoDialog } from "@/components/confirmar-finalizar-evento"
+import { AvisoFechaEvento } from "@/components/aviso-fecha-evento"
 
 // --- Helpers ---
 const DIAS_SEMANA = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -393,7 +394,9 @@ export default function CalendarioPage() {
   // --- Navigation ---
   const navigateYear = (dir: number) => {
     const newYear = currentDate.getFullYear() + dir
-    if (newYear >= 2020 && newYear <= 2030) {
+    // Hasta el último año en que se aceptan eventos (antes cortaba en 2030
+    // aunque se pueden cargar eventos hasta 2032).
+    if (newYear >= 2020 && newYear <= ANIO_EVENTO_MAX) {
       setCurrentDate(new Date(newYear, currentDate.getMonth(), 1))
     }
   }
@@ -1409,6 +1412,7 @@ export default function CalendarioPage() {
                       </Select>
                     </div>
                   </div>
+                  <AvisoFechaEvento fecha={form.fecha} fechaGuardada={selectedEvento?.fecha} />
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-2">
                       <Label>Tipo de Evento</Label>
