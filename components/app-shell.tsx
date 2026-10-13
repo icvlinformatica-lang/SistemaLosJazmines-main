@@ -8,7 +8,7 @@ import { ClockProvider } from "@/lib/clock-context"
 import { Sidebar } from "@/components/sidebar"
 import { TimeTravelBanner } from "@/components/time-travel-banner"
 import { Toaster } from "@/components/ui/toaster"
-import { ChatIAFlotante, PERFILES_CON_CHAT_IA } from "@/components/chat-ia-flotante"
+import { ChatIAFlotante, ID_CONTENIDO_PRINCIPAL, PERFILES_CON_CHAT_IA } from "@/components/chat-ia-flotante"
 import { WelcomeModal } from "@/components/welcome-modal"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -70,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <StoreProvider>
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
-          <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col">
+          <main id={ID_CONTENIDO_PRINCIPAL} className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col">
             <TimeTravelBanner />
             <div className="flex-1 min-w-0">{children}</div>
           </main>
