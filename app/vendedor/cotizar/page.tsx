@@ -86,6 +86,7 @@ import { DietasDetalleEditor } from "@/components/dietas-detalle-editor"
 import { normalizarDietasDetalle, totalDietasDetalle, type DietaDetalle } from "@/lib/dietas-evento"
 import { ORIGENES_CLIENTE } from "@/lib/origen-cliente"
 import { COLOR_RUBRO, ChipDia, PuntoRubro } from "@/components/cotizador-colores"
+import { AvisoFechaEvento } from "@/components/aviso-fecha-evento"
 
 const TIPOS_EVENTO = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
 const ATAJOS_ADULTOS = [50, 60, 70, 80, 90, 100]
@@ -691,6 +692,7 @@ function CotizarPageContent() {
               aria-label="Fecha del evento"
               className="h-11 text-base"
             />
+            <AvisoFechaEvento fecha={fecha} />
             {fecha && (
               <div className="flex justify-end">
                 <ChipDia dia={dia} recargo={calculo?.recargo?.monto ?? 0} />

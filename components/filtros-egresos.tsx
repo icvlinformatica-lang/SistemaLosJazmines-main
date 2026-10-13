@@ -2,21 +2,25 @@
 
 // Barra de filtros combinables para las tablas "Por pagar" y "Gastos futuros"
 // de Caja Eventos: salón (filtro madre) + tipo de pasivo + sub-filtro
-// (tipo de servicio o evento según el chip) + búsqueda por texto (lupa).
-// Todos los filtros se aplican A LA VEZ.
+// (tipo de servicio o evento según el chip) + búsqueda por texto + mes de
+// vencimiento. Todos los filtros se aplican A LA VEZ. El campo de búsqueda y
+// el mes se dibujan aparte (app/finanzas/caja-eventos/buscador-caja.tsx),
+// siempre visibles; acá solo se aplican.
 
-import { useMemo, useRef, useEffect } from "react"
-import { Search, X, ChevronDown } from "lucide-react"
+import { useMemo } from "react"
+import { ChevronDown } from "lucide-react"
 import { salonLabel } from "@/lib/store"
 import type { EgresoPendienteServicio } from "@/lib/hooks/use-caja-eventos"
 import { etiquetaGrupo, grupoServicio } from "@/lib/grupo-servicio"
+import { coincideEgresoBusqueda, coincideMes } from "@/lib/buscador-caja-eventos"
 
 export interface FiltroEgresos {
   salon: string // "todos" o id del salón
   tipo: string // "todos" | "seña" | "saldo" | "menu" | "barra" | "sueldo" | "servicios"
   sub: string | null // grupo de servicio (grupoServicio, ej. "VESTIDO") o persona (sueldo)
-  q: string // texto de búsqueda
-  qAbierta: boolean // si el input de búsqueda está desplegado
+  q: string // texto de búsqueda (evento, proveedor/persona o concepto)
+  qAbierta: boolean // ya no se usa: la búsqueda queda siempre visible
+  mes: string // "todos" o "YYYY-MM" (mes de vencimiento)
 }
 
 export const FILTRO_EGRESOS_INICIAL: FiltroEgresos = {
@@ -25,13 +29,8 @@ export const FILTRO_EGRESOS_INICIAL: FiltroEgresos = {
   sub: null,
   q: "",
   qAbierta: false,
+  mes: "todos",
 }
-
-const norm = (s: string) =>
-  (s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
 
 /** A quién se le paga un sueldo: el personal (sin la función) o el servicio
  *  que se paga como sueldo. Fallback al nombre completo por las dudas. */
@@ -55,16 +54,14 @@ export function filtrarEgresos(egresos: EgresoPendienteServicio[], f: FiltroEgre
         return false
       }
     }
-    if (f.q.trim()) {
-      const q = norm(f.q)
-      if (!norm(e.eventoNombre).includes(q) && !norm(e.servicioNombre).includes(q)) return false
-    }
+    if (!coincideMes(f.mes, e.fechaVencimiento)) return false
+    if (!coincideEgresoBusqueda(e, f.q)) return false
     return true
   })
 }
 
 export function esFiltroEgresosActivo(f: FiltroEgresos): boolean {
-  return f.salon !== "todos" || f.tipo !== "todos" || f.sub !== null || f.q.trim() !== ""
+  return f.salon !== "todos" || f.tipo !== "todos" || f.sub !== null || f.q.trim() !== "" || (f.mes ?? "todos") !== "todos"
 }
 
 const CHIPS_TIPO = [
@@ -97,11 +94,6 @@ export function BarraFiltrosEgresos({
    * muestra únicamente los servicios con algún pago en la lista. */
   catalogoServicios?: string[]
 }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (filtro.qAbierta) inputRef.current?.focus()
-  }, [filtro.qAbierta])
-
   // Salones disponibles entre los egresos (filtro madre, siempre sobre el total)
   const salones = useMemo(() => {
     const s = new Set<string>()
@@ -212,39 +204,6 @@ export function BarraFiltrosEgresos({
             </span>
           </button>
         ))}
-        {/* Lupa de búsqueda a la derecha */}
-        <div className="ml-auto flex items-center gap-1">
-          {filtro.qAbierta ? (
-            <div className="flex items-center gap-1 rounded-full border border-border bg-card pl-2.5 pr-1 py-0.5">
-              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={filtro.q}
-                onChange={(ev) => onChange({ ...filtro, q: ev.target.value })}
-                placeholder="Buscar evento o servicio..."
-                className="w-44 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-              />
-              <button
-                type="button"
-                onClick={() => onChange({ ...filtro, q: "", qAbierta: false })}
-                aria-label="Cerrar búsqueda"
-                className="rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onChange({ ...filtro, qAbierta: true })}
-              aria-label="Buscar evento"
-              className="rounded-full border border-border bg-muted/50 p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <Search className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
       </div>
       {/* Sub-filtros del tipo activo: tipos de servicio o eventos */}
       {subOpciones.length > 0 && (

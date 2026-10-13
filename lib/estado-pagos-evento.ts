@@ -20,10 +20,21 @@ export function estadoPagosEvento(evento: EventoGuardado, hoy: string): EstadoPa
   const calendario = generarCalendarioCuotas(evento)
   if (calendario.length === 0) return null
   const pagadas = new Set(numerosPagados(evento))
-  const atrasadas = calendario.filter(
-    (c) => !c.pagada && !pagadas.has(c.numeroCuota) && !!c.fechaVencimiento && c.fechaVencimiento < hoy,
-  ).length
+  const atrasadas = calendario.filter((c) => cuotaAtrasada(c, pagadas, hoy)).length
   return atrasadas > 0 ? { tipo: "atrasado", cuotas: atrasadas } : { tipo: "al_dia" }
+}
+
+/**
+ * La regla de "cuota atrasada" de arriba, sola, para que la planilla de
+ * cuotas pinte de rojo exactamente las mismas cuotas que cuenta esta marca.
+ * `pagadas` = numerosPagados(evento).
+ */
+export function cuotaAtrasada(
+  cuota: { numeroCuota: number; fechaVencimiento: string; pagada: boolean },
+  pagadas: ReadonlySet<number>,
+  hoy: string,
+): boolean {
+  return !cuota.pagada && !pagadas.has(cuota.numeroCuota) && !!cuota.fechaVencimiento && cuota.fechaVencimiento < hoy
 }
 
 export function textoEstadoPagos(estado: EstadoPagosEvento): string {

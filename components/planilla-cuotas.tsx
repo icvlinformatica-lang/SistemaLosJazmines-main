@@ -5,15 +5,19 @@
 // ese mes ("C3") con su estado. SOLO VISUAL: el estado sale tal cual de
 // generarCalendarioCuotas (pendiente / parcial / pagada); acá no se calcula
 // ningún monto ni IPC. Tocar una cuota pendiente o parcial avisa a la página,
-// que abre el cobro como siempre.
+// que abre el cobro como siempre. El buscador, el filtro "Solo con atrasos" y
+// el color de cada cuota salen de lib/planilla-cuotas.ts (reglas puras con test).
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { CalendarDays, ChevronDown, ChevronRight } from "lucide-react"
+import { CalendarDays, ChevronDown, ChevronRight, Search, X } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { SalonDot } from "@/components/salon-badge"
 import { generarCalendarioCuotas, salonLabel, SALONES, type EventoGuardado } from "@/lib/store"
 import { formatCurrency } from "@/lib/utils-financieros"
+import { numerosPagados } from "@/lib/ipc-cuotas"
+import { coincideBusquedaPlanilla, tieneCuotasAtrasadas, tonoCuota, type TonoCuota } from "@/lib/planilla-cuotas"
 
 type CuotaCalendario = ReturnType<typeof generarCalendarioCuotas>[number]
 
@@ -45,35 +49,39 @@ function mesesEntre(desde: string, hasta: string): string[] {
   return out
 }
 
-type Tono = "pagada" | "parcial" | "atrasada" | "futura"
-
-// Estado visual de una cuota: el estado (pagada/parcial/pendiente) es el del
-// sistema; acá solo se decide el color de una pendiente según su mes.
-function tonoDe(cuota: CuotaCalendario, mesActual: string): Tono {
-  if (cuota.estado === "pagada") return "pagada"
-  if (cuota.estado === "parcial") return "parcial"
-  return cuota.fechaVencimiento.slice(0, 7) <= mesActual ? "atrasada" : "futura"
-}
-
-const ESTILO_TONO: Record<Tono, string> = {
+// Un color por estado (DESIGN.md): atrasada roja, del mes ámbar, pagada
+// verde, futura neutra. Una parcial toma el color según su vencimiento y
+// muestra "falta $…" adentro.
+const ESTILO_TONO: Record<TonoCuota, string> = {
   pagada: "bg-emerald-100 text-emerald-800 border-emerald-300",
-  parcial: "bg-amber-100 text-amber-900 border-amber-300",
   atrasada: "bg-red-100 text-red-800 border-red-300",
+  este_mes: "bg-amber-100 text-amber-900 border-amber-300",
   futura: "bg-muted text-muted-foreground border-border",
 }
 
-const TITULO_TONO: Record<Tono, string> = {
+const TITULO_TONO: Record<TonoCuota, string> = {
   pagada: "Pagada",
-  parcial: "Pago parcial",
-  atrasada: "Sin cobrar",
+  atrasada: "Atrasada, sin cobrar",
+  este_mes: "Vence este mes",
   futura: "Todavía no vence",
 }
+
+const LEYENDA_TONO: Array<[TonoCuota, string]> = [
+  ["atrasada", "Atrasada"],
+  ["este_mes", "Vence este mes"],
+  ["pagada", "Pagada"],
+  ["futura", "Futura"],
+]
 
 interface FilaEvento {
   evento: EventoGuardado
   cuotasPorMes: Map<string, CuotaCalendario[]>
+  /** Color de cada cuota, por número de cuota. */
+  tonos: Map<number, TonoCuota>
   totalCuotas: number
   todoPagado: boolean
+  /** Tiene alguna cuota vencida sin cobrar (filtro "Solo con atrasos"). */
+  conAtrasos: boolean
 }
 
 export function PlanillaCuotas({
@@ -89,11 +97,22 @@ export function PlanillaCuotas({
 }) {
   const mesActual = hoy.slice(0, 7)
   const [ocultarPagados, setOcultarPagados] = useState(true)
+  const [busqueda, setBusqueda] = useState("")
+  const [soloAtrasos, setSoloAtrasos] = useState(false)
+  // Con una búsqueda o "Solo con atrasos", los salones se muestran todos
+  // desplegados (para no tener que abrir uno por uno); igual se pueden plegar.
+  const filtroActivo = busqueda.trim().length > 0 || soloAtrasos
 
   // Salones desplegados: al entrar, todos arrancan plegados.
   const [abiertos, setAbiertos] = useState<string[]>([])
+  // Salones plegados a mano mientras hay un filtro; se limpia al cambiarlo.
+  const [plegadosEnFiltro, setPlegadosEnFiltro] = useState<string[]>([])
+  useEffect(() => setPlegadosEnFiltro([]), [busqueda, soloAtrasos])
+  const alternar = (prev: string[], salon: string) =>
+    prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon]
   const togglePlegado = (salon: string) =>
-    setAbiertos((prev) => (prev.includes(salon) ? prev.filter((s) => s !== salon) : [...prev, salon]))
+    filtroActivo ? setPlegadosEnFiltro((prev) => alternar(prev, salon)) : setAbiertos((prev) => alternar(prev, salon))
+  const estaPlegado = (salon: string) => (filtroActivo ? plegadosEnFiltro.includes(salon) : !abiertos.includes(salon))
 
   // Una fila por evento con plan de cuotas (mismo universo que la tarjeta
   // anterior: sin cancelados ni archivados).
@@ -107,18 +126,31 @@ export function PlanillaCuotas({
           const mes = c.fechaVencimiento.slice(0, 7)
           cuotasPorMes.set(mes, [...(cuotasPorMes.get(mes) ?? []), c])
         }
+        const pagadas = new Set(numerosPagados(evento))
         return {
           evento,
           cuotasPorMes,
+          tonos: new Map(cuotas.map((c) => [c.numeroCuota, tonoCuota(c, pagadas, hoy)] as const)),
           totalCuotas: cuotas.length,
           todoPagado: cuotas.length > 0 && cuotas.every((c) => c.estado === "pagada"),
+          conAtrasos: tieneCuotasAtrasadas(evento, hoy),
         }
       })
       .filter((f) => f.totalCuotas > 0)
-  }, [eventos])
+  }, [eventos, hoy])
 
-  const visibles = useMemo(() => (ocultarPagados ? filas.filter((f) => !f.todoPagado) : filas), [filas, ocultarPagados])
+  const visibles = useMemo(
+    () =>
+      filas.filter(
+        (f) =>
+          (!ocultarPagados || !f.todoPagado) &&
+          (!soloAtrasos || f.conAtrasos) &&
+          coincideBusquedaPlanilla(f.evento, busqueda),
+      ),
+    [filas, ocultarPagados, soloAtrasos, busqueda],
+  )
   const cantidadPagados = filas.filter((f) => f.todoPagado).length
+  const cantidadConAtrasos = filas.filter((f) => f.conAtrasos).length
 
   // Grupos por salón, en el orden de SALONES; "Sin salón" al final.
   const grupos = useMemo(() => {
@@ -204,7 +236,7 @@ export function PlanillaCuotas({
     if (!cont || !th) return
     const fija = cont.querySelector<HTMLElement>("[data-columna-fija]")?.offsetWidth ?? 0
     cont.scrollLeft = Math.max(0, th.offsetLeft - fija - (cont.clientWidth - fija - th.offsetWidth) / 2)
-  }, [meses, ocultarPagados])
+  }, [meses, ocultarPagados, soloAtrasos, busqueda])
 
   return (
     <Card className="mb-6">
@@ -217,25 +249,63 @@ export function PlanillaCuotas({
             </CardTitle>
             <CardDescription>Cada celda es la cuota que vence ese mes. Tocá una sin cobrar para registrar el pago.</CardDescription>
           </div>
-          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm">
-            <Switch checked={ocultarPagados} onCheckedChange={setOcultarPagados} aria-label="Ocultar eventos 100% pagados" />
-            Ocultar eventos 100% pagados
-            {cantidadPagados > 0 && <span className="text-xs text-muted-foreground">({cantidadPagados})</span>}
-          </label>
+          <div className="flex shrink-0 flex-col gap-2">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <Switch checked={ocultarPagados} onCheckedChange={setOcultarPagados} aria-label="Ocultar eventos 100% pagados" />
+              Ocultar eventos 100% pagados
+              {cantidadPagados > 0 && <span className="text-xs text-muted-foreground">({cantidadPagados})</span>}
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <Switch checked={soloAtrasos} onCheckedChange={setSoloAtrasos} aria-label="Solo eventos con cuotas atrasadas" />
+              Solo con atrasos
+              <span className={`text-xs ${cantidadConAtrasos > 0 ? "font-semibold text-red-700" : "text-muted-foreground"}`}>
+                ({cantidadConAtrasos})
+              </span>
+            </label>
+          </div>
+        </div>
+        {/* Buscador: nombre del cliente o del evento, festejados o DNI, en todos los salones */}
+        <div className="relative mt-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Filtrar la planilla por nombre o DNI..."
+            aria-label="Buscar en la planilla de cuotas"
+            className="h-10 pl-9 pr-9"
+          />
+          {busqueda && (
+            <button
+              type="button"
+              onClick={() => setBusqueda("")}
+              className="absolute right-2 top-1/2 flex h-6 min-h-0 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+              aria-label="Borrar búsqueda"
+              title="Borrar búsqueda"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-muted-foreground">
-          {(["pagada", "parcial", "atrasada", "futura"] as Tono[]).map((t) => (
+          {LEYENDA_TONO.map(([t, texto]) => (
             <span key={t} className="flex items-center gap-1">
               <span className={`inline-block h-3 w-3 rounded-sm border ${ESTILO_TONO[t]}`} />
-              {t === "atrasada" ? "Atrasada o del mes, sin cobrar" : t === "futura" ? "Futura" : t === "parcial" ? "Parcial (falta)" : "Pagada"}
+              {texto}
             </span>
           ))}
+          <span>· “falta $…” = pago parcial</span>
         </div>
       </CardHeader>
       <CardContent className="px-0 pb-2 sm:px-6">
         {visibles.length === 0 ? (
           <p className="px-6 py-8 text-center text-sm text-muted-foreground">
-            {ocultarPagados && filas.length > 0 ? "Todos los eventos tienen sus cuotas pagadas." : "No hay eventos con plan de cuotas."}
+            {filas.length === 0
+              ? "No hay eventos con plan de cuotas."
+              : busqueda.trim()
+                ? `Sin resultados para "${busqueda.trim()}"${soloAtrasos ? " entre los eventos con atrasos" : ""}.`
+                : soloAtrasos
+                  ? "Ningún evento tiene cuotas atrasadas."
+                  : "Todos los eventos tienen sus cuotas pagadas."}
           </p>
         ) : (
           <div ref={scrollRef} className="max-h-[70vh] overflow-auto border-y sm:rounded-md sm:border">
@@ -304,7 +374,7 @@ export function PlanillaCuotas({
                     filas={g.filas}
                     meses={meses}
                     hoy={hoy}
-                    plegado={!abiertos.includes(g.salon)}
+                    plegado={estaPlegado(g.salon)}
                     onTogglePlegado={() => togglePlegado(g.salon)}
                     onCobrarCuota={onCobrarCuota}
                   />
@@ -408,12 +478,9 @@ function GrupoSalon({
   onCobrarCuota: (evento: EventoGuardado, numeroCuota: number) => void
 }) {
   const mesActual = hoy.slice(0, 7)
-  // Cuotas sin cobrar que ya vencieron o vencen este mes (rojas o parciales):
-  // se muestran en el título para que no se pierdan con el salón plegado.
-  const urgentes = filas.reduce(
-    (n, f) => n + [...f.cuotasPorMes.values()].flat().filter((c) => tonoDe(c, mesActual) === "atrasada" || c.estado === "parcial").length,
-    0,
-  )
+  // Cuotas atrasadas (rojas): se muestran en el título para que no se pierdan
+  // con el salón plegado.
+  const urgentes = filas.reduce((n, f) => n + [...f.tonos.values()].filter((t) => t === "atrasada").length, 0)
 
   // Subgrupos por fecha del evento, del más próximo al más lejano: primero los
   // que ya se hicieron y todavía deben cuotas, después mes a mes.
@@ -457,7 +524,7 @@ function GrupoSalon({
             <span className="truncate">{salon === SIN_SALON ? "Sin salón" : salonLabel(salon)}</span>
             <span className="text-[10px] font-normal text-muted-foreground">{filas.length}</span>
             {plegado && urgentes > 0 && (
-              <span className="ml-auto shrink-0 rounded bg-red-100 px-1 text-[10px] font-semibold text-red-800" title="Cuotas sin cobrar vencidas o del mes">
+              <span className="ml-auto shrink-0 rounded bg-red-100 px-1 text-[10px] font-semibold text-red-800" title="Cuotas atrasadas">
                 {urgentes}
               </span>
             )}
@@ -511,7 +578,7 @@ function SubgrupoFecha({
               <td key={mes} className={`border-b px-1 py-1 text-center align-middle ${mes === mesActual ? "bg-amber-50" : ""}`}>
                 <div className="flex flex-col items-center gap-0.5">
                   {cuotas.map((c) => {
-                    const tono = tonoDe(c, mesActual)
+                    const tono = f.tonos.get(c.numeroCuota) ?? "futura"
                     const cobrable = c.estado === "pendiente" || c.estado === "parcial"
                     const contenido = (
                       <>
