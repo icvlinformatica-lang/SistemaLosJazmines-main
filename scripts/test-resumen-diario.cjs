@@ -126,6 +126,8 @@ test("la vista muestra filtros, cantidades y cinco filas con Ver más", () => {
     if (request === "@/lib/store-context") return { useStore: () => ({ state: { eventos: [] }, configuracionCajas: { salones: {} } }) }
     // El modal "Este finde" usa el reloj del sistema para calcular lo que queda por pagar.
     if (request === "@/lib/clock-context") return { useClock: () => ({ ahora: new Date(2026, 9, 9, 12) }) }
+    // Y el perfil, para saber si la tarjeta del evento lleva a sus costos.
+    if (request === "@/lib/profile-context") return { useProfile: () => ({ perfilActivo: { id: "administracion", rutas: ["*"] } }) }
     return load.call(this, request, ...args)
   }
   try {
