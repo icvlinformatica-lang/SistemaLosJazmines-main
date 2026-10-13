@@ -23,20 +23,38 @@ let simularIA = null
 let filasHistorial = []
 let sinTablaHistorial = false
 const valoresHistorial = []
+const valoresEscritura = []
+const transacciones = []
+let fallarEscritura = false
 const load = Module._load
 Module._load = function (request, ...args) {
-  if (request === "@/lib/db") return { sql: async (parts, ...values) => {
-    const query = parts.join("?")
-    consultas.push(query)
-    if (query.includes("chat_ia_mensajes")) {
-      valoresHistorial.push(values)
-      if (sinTablaHistorial) throw new Error('relation "chat_ia_mensajes" does not exist')
-      return filasHistorial
+  if (request === "@/lib/db") {
+    const sql = async (parts, ...values) => {
+      const query = parts.join("?")
+      consultas.push(query)
+      if (query.includes("chat_ia_mensajes")) {
+        valoresHistorial.push(values)
+        if (sinTablaHistorial) throw new Error('relation "chat_ia_mensajes" does not exist')
+        return filasHistorial
+      }
+      if (query.includes("costos_operativos") || query.includes("activity_log")) {
+        valoresEscritura.push({ query, values })
+        if (fallarEscritura) throw new Error("se cortó la conexión")
+        return []
+      }
+      if (query.includes("FROM historial_ipc")) return []
+      if (query.includes("FROM movimientos_caja")) return []
+      return filasEventos
     }
-    if (query.includes("FROM historial_ipc")) return []
-    if (query.includes("FROM movimientos_caja")) return []
-    return filasEventos
-  } }
+    // Transacción simulada: corre con la misma base y avisa si terminó bien.
+    sql.begin = async (fn) => {
+      transacciones.push("begin")
+      const r = await fn(sql)
+      transacciones.push("commit")
+      return r
+    }
+    return { sql }
+  }
   if (request === "@/lib/auth/server") return { SESSION_COOKIE: "lj_session", SESSION_HEADER: "x-lj-session", verifyToken: async () => sesion }
   if (request === "ai") {
     const real = load.call(this, request, ...args)
@@ -44,11 +62,12 @@ Module._load = function (request, ...args) {
   }
   return load.call(this, request, ...args)
 }
-let datos, POST, GET_HISTORIAL, historial
+let datos, POST, GET_HISTORIAL, POST_GASTO, historial
 try {
   datos = require("../lib/chat-ia-datos.ts")
   ;({ POST } = require("../app/api/chat/route.ts"))
   ;({ GET: GET_HISTORIAL } = require("../app/api/chat/historial/route.ts"))
+  ;({ POST: POST_GASTO } = require("../app/api/chat/gasto/route.ts"))
   historial = require("../lib/chat-ia-historial.ts")
 } finally { Module._load = load }
 const { resumenEventoChat, filtrarEventosChat, accesosEvento, sumarAcciones, MAX_ACCIONES_CHAT, normalizarTexto } = datos
@@ -153,7 +172,7 @@ test("ruta: la IA busca el evento del 6/10 y deja los tres botones; sin escritur
   const res = await pedir([{ role: "user", content: "quiero ver el evento del 6 de octubre de 2026" }])
   assert.equal(res.status, 200)
   const data = await res.json()
-  assert.deepEqual(toolsRecibidas, ["buscarEventos", "mostrarAccesosEvento", "mostrarPantalla", "mostrarResumenEventos", "resumenDelDia", "vienenAPagar"])
+  assert.deepEqual(toolsRecibidas, ["buscarEventos", "consultarCobroCuota", "mostrarAccesosEvento", "mostrarPantalla", "mostrarResumenEventos", "proponerCobroCuota", "proponerGasto", "resumenDelDia", "vienenAPagar"])
   assert.deepEqual(data.acciones.map((a) => a.href), [
     "/eventos/lista?evento=ev-prueba",
     "/eventos/pagos?evento=ev-prueba",
@@ -377,4 +396,204 @@ test("tarjetas: el historial lee el formato nuevo y el viejo (solo botones)", ()
   assert.deepEqual(viejo.acciones, [{ etiqueta: "Lista", href: "/eventos/lista" }])
   assert.deepEqual(viejo.tarjetas, [])
   assert.equal(historial.adjuntosAGuardar([], []), null)
+})
+
+// ── Cargar un gasto desde el chat ──────────────────────────────────────────
+const { armarPropuestaGasto } = require("../lib/chat-ia-gasto.ts")
+
+test("gasto: la IA solo propone; no escribe nada en la base", async () => {
+  sesion = { perfilId: "administracion" }
+  sinTablaHistorial = false
+  valoresEscritura.length = 0
+  valoresHistorial.length = 0
+  simularIA = async (opts) => {
+    const r = await opts.tools.proponerGasto.execute({ concepto: "PRUEBA Pepo - luces", monto: 50000, salon: "Salon" })
+    assert.equal(r.ok, true)
+    assert.match(r.aviso, /NO está cargado/)
+    // Un gasto por respuesta.
+    const otro = await opts.tools.proponerGasto.execute({ concepto: "Otro", monto: 1, salon: "Quinta" })
+    assert.equal(otro.ok, false)
+    return { text: "¿Seguro que querés cargar un gasto variable en Salón a nombre de Pepo por $50.000?" }
+  }
+  const data = await (await pedirConId("abc12345-gasto", [{ role: "user", content: "cargá un gasto de 50 mil en salón a nombre de pepo" }], "Leila")).json()
+  assert.equal(data.gasto.concepto, "PRUEBA Pepo - luces")
+  assert.equal(data.gasto.monto, 50000)
+  assert.equal(data.gasto.salon, "Salon")
+  assert.equal(data.gasto.estado, "pendiente")
+  // Vencimiento por defecto: hoy, en fecha de Argentina.
+  assert.match(data.gasto.vencimiento, /^\d{4}-\d{2}-\d{2}$/)
+  assert.equal(valoresEscritura.length, 0)
+  // Queda guardada en el mensaje de la respuesta, para confirmarla desde ahí.
+  const v = valoresHistorial[valoresHistorial.length - 1]
+  assert.equal(JSON.parse(v[8]).gasto.id, data.gasto.id)
+  sesion = { perfilId: "soporte" }
+})
+
+test("gasto: sin historial guardado no hay botón para cargarlo", async () => {
+  sesion = { perfilId: "administracion" }
+  sinTablaHistorial = true
+  simularIA = async (opts) => {
+    await opts.tools.proponerGasto.execute({ concepto: "PRUEBA Pepo", monto: 50000, salon: "Salon" })
+    return { text: "¿Seguro?" }
+  }
+  const data = await (await pedirConId("abc12345-gasto2", [{ role: "user", content: "cargá un gasto" }], "Leila")).json()
+  assert.equal(data.gasto, null)
+  assert.equal(data.gastoSinGuardar, true)
+  sinTablaHistorial = false
+  sesion = { perfilId: "soporte" }
+})
+
+test("gasto: armarPropuestaGasto pide lo que falta y redondea a centavos", () => {
+  const base = { id: "g1", hoy: "2026-10-13" }
+  assert.equal(armarPropuestaGasto({ monto: 1, salon: "Salon" }, base).ok, false)
+  assert.equal(armarPropuestaGasto({ concepto: "Pepo", monto: 0, salon: "Salon" }, base).ok, false)
+  assert.equal(armarPropuestaGasto({ concepto: "Pepo", monto: 100, salon: "Salón" }, base).ok, false)
+  assert.equal(armarPropuestaGasto({ concepto: "Pepo", monto: 100, salon: "Salon", vencimiento: "2026-02-30" }, base).ok, false)
+  assert.equal(armarPropuestaGasto({ concepto: "Pepo", monto: 500000000, salon: "Salon" }, base).ok, false)
+  const r = armarPropuestaGasto({ concepto: "  Pepo   - luces ", monto: 1234.567, salon: "Casona" }, base)
+  assert.deepEqual(r, { ok: true, propuesta: { id: "g1", concepto: "Pepo - luces", monto: 1234.57, salon: "Casona", vencimiento: "2026-10-13", estado: "pendiente" } })
+})
+
+const propuestaGuardada = (estado = "pendiente") => ({
+  acciones: { botones: [], tarjetas: [], gasto: { id: "gasto-prueba-1", concepto: "PRUEBA Pepo - luces", monto: 50000, salon: "Salon", vencimiento: "2026-10-13", estado } },
+})
+const confirmarGasto = (perfilId, usuario, body) => {
+  sesion = { perfilId }
+  return POST_GASTO(new Request("http://localhost/api/chat/gasto", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: `lj_session=x; lj_usuario=${encodeURIComponent(usuario)}` },
+    body: JSON.stringify(body),
+  }))
+}
+
+test("gasto: al confirmar se agenda como gasto variable, en una transacción y sin mover caja", async () => {
+  filasHistorial = [propuestaGuardada()]
+  valoresEscritura.length = 0
+  valoresHistorial.length = 0
+  transacciones.length = 0
+  consultas.length = 0
+  const res = await confirmarGasto("administracion", "Leila", { mensajeId: "abc12345-gasto-r", accion: "confirmar" })
+  assert.equal(res.status, 200)
+  const { gasto } = await res.json()
+  assert.equal(gasto.estado, "cargado")
+  assert.equal(gasto.resueltoPor, "Leila")
+  assert.deepEqual(transacciones, ["begin", "commit"])
+  // Lee la propuesta del chat de Leila, bloqueando la fila.
+  const lectura = consultas.find((q) => q.includes("FROM chat_ia_mensajes"))
+  assert.match(lectura, /FOR UPDATE/)
+  assert.deepEqual(valoresHistorial[0], ["abc12345-gasto-r", "Leila"])
+  // Gasto variable: el id de la propuesta (no duplica), carpeta varios, sin pagar.
+  const insert = valoresEscritura.find((e) => e.query.includes("INSERT INTO costos_operativos"))
+  assert.match(insert.query, /ON CONFLICT \(id\) DO NOTHING/)
+  assert.deepEqual(insert.values, ["gasto-prueba-1", "PRUEBA Pepo - luces", 50000, "Salon", "2026-10-13", "Leila"])
+  assert.match(insert.query, /'Por Evento', true, 'varios'/)
+  assert.match(insert.query, /true, false, false/)
+  // No toca la caja.
+  assert.equal(consultas.some((q) => q.includes("movimientos_caja")), false)
+  // Queda en Actividad y el mensaje pasa a "cargado".
+  assert.ok(valoresEscritura.some((e) => e.query.includes("activity_log")))
+  const update = valoresHistorial.find((v) => typeof v[0] === "string" && v[0].includes('"cargado"'))
+  assert.ok(update)
+  sesion = { perfilId: "soporte" }
+})
+
+test("gasto: un segundo toque no lo carga de nuevo, y cancelar no escribe el gasto", async () => {
+  filasHistorial = [propuestaGuardada("cargado")]
+  valoresEscritura.length = 0
+  const otraVez = await (await confirmarGasto("administracion", "Leila", { mensajeId: "abc12345-gasto-r", accion: "confirmar" })).json()
+  assert.equal(otraVez.gasto.estado, "cargado")
+  assert.equal(valoresEscritura.length, 0)
+  filasHistorial = [propuestaGuardada()]
+  const cancelado = await (await confirmarGasto("administracion", "Leila", { mensajeId: "abc12345-gasto-r", accion: "cancelar" })).json()
+  assert.equal(cancelado.gasto.estado, "cancelado")
+  assert.equal(valoresEscritura.length, 0)
+  filasHistorial = []
+  sesion = { perfilId: "soporte" }
+})
+
+test("gasto: solo en el chat propio, solo Administración y Soporte, y con datos válidos", async () => {
+  // El chat de otra persona no aparece (la consulta filtra por usuario): 404.
+  filasHistorial = []
+  assert.equal((await confirmarGasto("soporte", "Soporte", { mensajeId: "abc12345-gasto-r", accion: "confirmar" })).status, 404)
+  assert.equal((await confirmarGasto("cobro", "Aylin", { mensajeId: "abc12345-gasto-r", accion: "confirmar" })).status, 403)
+  assert.equal((await confirmarGasto("administracion", "Leila", { mensajeId: "abc12345-gasto-r", accion: "borrar" })).status, 400)
+  // Un mensaje sin gasto: 404.
+  filasHistorial = [{ acciones: [{ etiqueta: "IPC", href: "/finanzas/ipc" }] }]
+  assert.equal((await confirmarGasto("administracion", "Leila", { mensajeId: "abc12345-gasto-r", accion: "confirmar" })).status, 404)
+  // Si la escritura falla, avisa con error (y la transacción no se confirma).
+  filasHistorial = [propuestaGuardada()]
+  fallarEscritura = true
+  transacciones.length = 0
+  assert.equal((await confirmarGasto("administracion", "Leila", { mensajeId: "abc12345-gasto-r", accion: "confirmar" })).status, 500)
+  assert.deepEqual(transacciones, ["begin"])
+  fallarEscritura = false
+  filasHistorial = []
+  sesion = { perfilId: "soporte" }
+})
+
+test("cobro: la IA consulta y propone el cobro de una cuota; no escribe nada y no ve el DNI", async () => {
+  sesion = { perfilId: "administracion" }
+  sinTablaHistorial = false
+  filasEventos = [PRUEBA]
+  valoresEscritura.length = 0
+  valoresHistorial.length = 0
+  consultas.length = 0
+  let consulta
+  simularIA = async (opts) => {
+    consulta = await opts.tools.consultarCobroCuota.execute({ eventoId: "ev-prueba" })
+    const noExiste = await opts.tools.consultarCobroCuota.execute({ eventoId: "no-existe" })
+    assert.equal(noExiste.ok, false)
+    const falta = await opts.tools.proponerCobroCuota.execute({ eventoId: "ev-prueba", numeroCuota: 3, cobrarRecargo: true, pagaCompleto: true, pagadoPor: "Marta", recibidoPor: "Leila" })
+    assert.equal(falta.ok, false)
+    assert.match(falta.motivo, /primero va la cuota 2/)
+    const r = await opts.tools.proponerCobroCuota.execute({ eventoId: "ev-prueba", numeroCuota: 2, cobrarRecargo: true, pagaCompleto: true, pagadoPor: "Marta", recibidoPor: "Leila" })
+    assert.equal(r.ok, true)
+    assert.match(r.aviso, /NO está cobrado/)
+    // Un cobro por respuesta.
+    const otro = await opts.tools.proponerCobroCuota.execute({ eventoId: "ev-prueba", numeroCuota: 2, cobrarRecargo: false, pagaCompleto: true, pagadoPor: "Marta", recibidoPor: "Leila" })
+    assert.equal(otro.ok, false)
+    return { text: "¿Seguro que querés cobrar la cuota 2 de 4 de PRUEBA Ana y Juan, que paga Marta y recibe Leila?" }
+  }
+  const data = await (await pedirConId("abc12345-cobro", [{ role: "user", content: "quiero cobrar la cuota de ana y juan" }], "Leila")).json()
+  assert.equal(consulta.ok, true)
+  assert.equal(consulta.quienUsaElChat, "Leila")
+  assert.equal(consulta.cuotas[0].numeroCuota, 2)
+  assert.doesNotMatch(JSON.stringify(consulta), /12345678|dni/i)
+  assert.equal(data.cobro.eventoId, "ev-prueba")
+  assert.equal(data.cobro.numeroCuota, 2)
+  assert.equal(data.cobro.neto, 175000)
+  assert.equal(data.cobro.estado, "pendiente")
+  assert.equal(data.cobroSinGuardar, false)
+  // Nada escrito fuera del historial del chat; los eventos, solo con SELECT.
+  assert.equal(valoresEscritura.length, 0)
+  for (const q of consultas.filter((q) => !q.includes("chat_ia_mensajes"))) assert.match(q.trim(), /^SELECT/i)
+  const v = valoresHistorial[valoresHistorial.length - 1]
+  assert.equal(JSON.parse(v[8]).cobro.id, data.cobro.id)
+  sesion = { perfilId: "soporte" }
+})
+
+test("cobro: sin historial guardado no hay botón para cobrar", async () => {
+  sesion = { perfilId: "administracion" }
+  sinTablaHistorial = true
+  filasEventos = [PRUEBA]
+  simularIA = async (opts) => {
+    await opts.tools.proponerCobroCuota.execute({ eventoId: "ev-prueba", numeroCuota: 2, cobrarRecargo: true, pagaCompleto: true, pagadoPor: "Marta", recibidoPor: "Leila" })
+    return { text: "¿Seguro?" }
+  }
+  const data = await (await pedirConId("abc12345-cobro2", [{ role: "user", content: "cobrá la cuota" }], "Leila")).json()
+  assert.equal(data.cobro, null)
+  assert.equal(data.cobroSinGuardar, true)
+  sinTablaHistorial = false
+  sesion = { perfilId: "soporte" }
+})
+
+test("cobro: el historial lee la propuesta guardada junto con los botones", () => {
+  const cobro = { id: "c1", eventoId: "e", evento: "E", salon: "Casona", fechaEvento: "2026-12-05", vencimiento: "2026-09-10", pagadoPor: "Marta", recibidoPor: "Leila", calculadoEl: "2026-10-13",
+    numeroCuota: 2, totalCuotas: 4, diasAtraso: 0, recargo: 0, recargoPerdonado: 0, montoCuota: 175000, yaPagado: 0, neto: 175000, monto: 175000, saldoQueQueda: 0,
+    esPagoUnico: false, esSaldoDeCuota: false, quedaCompleta: true, estado: "pendiente" }
+  const guardado = historial.adjuntosAGuardar([{ etiqueta: "Lista", href: "/eventos/lista" }], [], null, cobro)
+  const leido = historial.leerAdjuntos(guardado)
+  assert.equal(leido.cobro.id, "c1")
+  assert.equal(leido.acciones.length, 1)
+  assert.equal(historial.leerAdjuntos(JSON.stringify({ botones: [], tarjetas: [], cobro: { id: 1 } })).cobro, null)
 })

@@ -1,8 +1,11 @@
-// Herramientas que el chat de ayuda (solo perfil Soporte) le ofrece a la IA:
-// buscar eventos con su plata, ver quién viene a pagar, el resumen del día y
-// poner botones a pantallas. TODAS son de solo lectura: ninguna escribe en
-// la base. Los botones se arman acá, con direcciones fijas: la IA solo elige
-// el evento o la pantalla, nunca escribe una dirección.
+// Herramientas que el chat de ayuda (Administración y Soporte) le ofrece a la IA:
+// buscar eventos con su plata, ver quién viene a pagar, el resumen del día,
+// poner botones a pantallas y preparar un gasto o el cobro de una cuota.
+// TODAS son de solo lectura: ninguna escribe en la base (proponerGasto y
+// proponerCobroCuota solo arman la propuesta; la carga o el cobro los hace la
+// persona con el botón: /api/chat/gasto, o Cobrar cuota por el store). Los botones se
+// arman acá, con direcciones fijas: la IA solo elige el evento o la
+// pantalla, nunca escribe una dirección.
 //
 // Corre SOLO en el servidor (lo usa app/api/chat/route.ts).
 import { tool } from "ai"
@@ -24,6 +27,9 @@ import {
   type PantallaChat,
 } from "@/lib/chat-ia-datos"
 import { MAX_TARJETAS_CHAT, sumarTarjetas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
+import { SALONES_GASTO_CHAT, armarPropuestaGasto, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
+import { armarPropuestaCobro, eventoCobroDesdeFila, opcionesCobroChat, type PropuestaCobroChat } from "@/lib/chat-ia-cobro"
+import { proyectarIPC } from "@/lib/ipc-cuotas"
 
 /** Máximo de eventos que se le pasan a la IA por búsqueda. */
 export const MAX_EVENTOS_POR_BUSQUEDA = 10
@@ -37,10 +43,19 @@ export function crearHerramientasChat({
   hoy,
   acciones,
   tarjetas = [],
+  gasto = { propuesta: null },
+  cobro = { propuesta: null },
+  usuario = "",
 }: {
   hoy: string
   acciones: AccionChat[]
   tarjetas?: TarjetaEventoChat[]
+  /** Dónde queda la propuesta de gasto de esta respuesta (una sola). */
+  gasto?: { propuesta: PropuestaGastoChat | null }
+  /** Dónde queda la propuesta de cobro de esta respuesta (una sola). */
+  cobro?: { propuesta: PropuestaCobroChat | null }
+  /** Quién usa el chat (Diego, Leila, Ricky…): se sugiere como quien recibe la plata. */
+  usuario?: string
 }) {
   // Se lee una sola vez por pregunta, y solo si la IA lo necesita.
   let eventos: Promise<FilaEventoChat[]> | null = null
@@ -54,6 +69,12 @@ export function crearHerramientasChat({
       WHERE deleted_at IS NULL
     ` as unknown as Promise<FilaEventoChat[]>)
   const cargarHistorial = () => (historial ??= historialIPCServidor())
+  // El evento para cobrar, con el IPC proyectado como lo ve Cobrar cuota.
+  const eventoParaCobro = async (eventoId: string) => {
+    const [filas, hist] = await Promise.all([cargarEventos(), cargarHistorial()])
+    const fila = filas.find((f) => String(f.id) === eventoId)
+    return fila ? { evento: proyectarIPC(eventoCobroDesdeFila(fila), hist, hoy), hist } : null
+  }
 
   return {
     buscarEventos: tool({
@@ -152,6 +173,107 @@ export function crearHerramientasChat({
         sumarTarjetas(tarjetas, encontrados.map((f) => tarjetaEventoChat(resumenEventoChat(f, hist, hoy))))
         if (encontrados.length === 0) return { ok: false, motivo: "Ningún id coincide. Buscalos primero con buscarEventos." }
         return { ok: true, tarjetas: encontrados.length }
+      },
+    }),
+
+    proponerGasto: tool({
+      description:
+        "Prepara un gasto variable para Caja Jazmines (agendado, sin pagar), como 'Cargar gastos' de Inicio. NO lo carga: " +
+        "pone en el chat una tarjeta con los datos y los botones 'Sí, cargar' y 'Cancelar'; solo la persona, con el botón, lo carga. " +
+        "Usala solo cuando pidan cargar o agendar un gasto, y solo con concepto, monto y salón claros (si falta alguno, preguntalo antes). " +
+        "El concepto incluye a nombre de quién es, por ejemplo 'Pepo - arreglo de luces'. Un gasto por respuesta. " +
+        "Gastos repartidos entre varios salones, retiros o ya pagados no: para eso está 'Cargar gastos' en Inicio.",
+      inputSchema: z.object({
+        concepto: z.string().min(2).max(120).describe("Qué es el gasto y a nombre de quién"),
+        monto: z.number().positive().describe("Monto en pesos, sin puntos de miles"),
+        salon: z.enum(SALONES_GASTO_CHAT).describe('Clave del salón. "Salon" es el que se muestra como "Salón"'),
+        vencimiento: fechaISO.optional().describe("Vencimiento; si no lo dicen, hoy"),
+      }),
+      execute: async (entrada) => {
+        if (gasto.propuesta) return { ok: false, motivo: "Ya hay un gasto preparado en esta respuesta: uno por vez." }
+        const r = armarPropuestaGasto(entrada, { id: crypto.randomUUID(), hoy })
+        if (!r.ok) return r
+        gasto.propuesta = r.propuesta
+        return {
+          ok: true,
+          aviso: "Todavía NO está cargado: la persona tiene que tocar 'Sí, cargar' en la tarjeta. Preguntale si está seguro.",
+          gasto: { concepto: r.propuesta.concepto, monto: r.propuesta.monto, salon: r.propuesta.salon, vencimiento: r.propuesta.vencimiento },
+        }
+      },
+    }),
+
+    consultarCobroCuota: tool({
+      description:
+        "Antes de cobrar una cuota: dice qué cuotas de un evento se pueden cobrar hoy (en orden: la que sigue y las que quedaron con un pago parcial), " +
+        "cuánto vale cada una (con IPC si corresponde), lo que ya se pagó, los días de atraso y el recargo por atraso ($3.000 por día). " +
+        "Usala con el id que devolvió buscarEventos para saber qué preguntar. No cobra nada.",
+      inputSchema: z.object({ eventoId: z.string().min(1).max(100) }),
+      execute: async ({ eventoId }) => {
+        const datos = await eventoParaCobro(eventoId)
+        if (!datos) return { ok: false, motivo: "No existe un evento con ese id. Buscalo primero con buscarEventos." }
+        const { evento, hist } = datos
+        const r = opcionesCobroChat(evento, hist, hoy)
+        if (!r.ok) return r
+        return {
+          ok: true,
+          evento: evento.nombrePareja || evento.nombre,
+          salon: evento.salon,
+          fechaEvento: evento.fecha,
+          ajustaPorIPC: evento.planDeCuotas?.ajustaPorIPC === true,
+          quienUsaElChat: usuario || null,
+          cuotas: r.opciones,
+        }
+      },
+    }),
+
+    proponerCobroCuota: tool({
+      description:
+        "Prepara el cobro de UNA cuota de un evento, como 'Cobrar cuota'. NO cobra: pone en el chat una tarjeta con todo el detalle y los botones " +
+        "'Sí, cobrar' y 'Cancelar'; solo la persona, con el botón, lo cobra. Usala solo después de consultarCobroCuota y de haber preguntado y " +
+        "tenido respuesta de TODO: qué cuota, si se cobra el recargo por atraso (si hay atraso), si paga la cuota completa o cuánto, " +
+        "qué pasa con lo que queda (si paga una parte), quién paga y quién recibe la plata. Un cobro por respuesta.",
+      inputSchema: z.object({
+        eventoId: z.string().min(1).max(100),
+        numeroCuota: z.number().int().positive(),
+        cobrarRecargo: z.boolean().describe("true: se cobra el recargo por atraso; false: se perdona. Si no hay atraso, true."),
+        pagaCompleto: z.boolean().describe("true: paga todo lo que falta de la cuota"),
+        monto: z.number().positive().optional().describe("Solo si NO paga completo: lo que entrega, recargo incluido, en pesos sin puntos de miles"),
+        saldoRestante: z
+          .enum(["acumular", "aparte"])
+          .optional()
+          .describe("Solo si paga una parte: lo que queda se suma a la cuota siguiente (acumular) o queda aparte"),
+        ipcDelSaldo: z
+          .enum(["acumula", "congelado"])
+          .optional()
+          .describe("Solo si paga una parte: lo que queda sigue generando IPC (acumula) o queda congelado"),
+        pagadoPor: z.string().min(2).max(80).describe("Nombre de quien paga"),
+        recibidoPor: z.string().min(2).max(80).describe("Nombre de quien recibe la plata"),
+        pagaCon: z.number().positive().optional().describe("Con cuánto paga, si quiere saber el vuelto"),
+      }),
+      execute: async ({ eventoId, ...entrada }) => {
+        if (cobro.propuesta) return { ok: false, motivo: "Ya hay un cobro preparado en esta respuesta: uno por vez." }
+        const datos = await eventoParaCobro(eventoId)
+        if (!datos) return { ok: false, motivo: "No existe un evento con ese id. Buscalo primero con buscarEventos." }
+        const r = armarPropuestaCobro(datos.evento, datos.hist, hoy, entrada, crypto.randomUUID())
+        if (!r.ok) return r
+        cobro.propuesta = r.propuesta
+        const p = r.propuesta
+        return {
+          ok: true,
+          aviso: "Todavía NO está cobrado: la persona tiene que tocar 'Sí, cobrar' en la tarjeta. Preguntale si está seguro.",
+          cobro: {
+            evento: p.evento,
+            cuota: p.numeroCuota,
+            de: p.totalCuotas,
+            totalACobrar: p.monto,
+            recargo: p.recargo,
+            quedaCompleta: p.quedaCompleta,
+            saldoQueQueda: p.saldoQueQueda,
+            pagadoPor: p.pagadoPor,
+            recibidoPor: p.recibidoPor,
+            vuelto: p.vuelto ?? 0,
+          },
+        }
       },
     }),
 
