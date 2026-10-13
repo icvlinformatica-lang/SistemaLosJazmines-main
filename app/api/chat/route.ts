@@ -1,6 +1,7 @@
 // Chat con IA — SOLO para Administración y Soporte (botón flotante en todo
 // el sistema). Cada pregunta y su respuesta se guardan en chat_ia_mensajes
-// (lib/chat-ia-historial.ts): una sola conversación compartida que no se borra.
+// (lib/chat-ia-historial.ts), en el chat de quien pregunta (Diego, Leila,
+// Ricky o Soporte), y no se borran.
 // Responde cómo usar el sistema (guía embebida, lib/guia-sistema.ts) y
 // consulta eventos, cuotas y cajas con herramientas de SOLO LECTURA
 // (lib/chat-ia-herramientas.ts). Puede devolver botones a pantallas.
@@ -12,11 +13,12 @@ import { mensajeErrorChatIA } from "@/lib/chat-ia-errores"
 import { crearHerramientasChat } from "@/lib/chat-ia-herramientas"
 import type { AccionChat } from "@/lib/chat-ia-datos"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
-import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido } from "@/lib/chat-ia-historial"
+import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
+import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 
 export const maxDuration = 60
 
-// Rate limit simple en memoria: máx 20 preguntas por sesión cada 10 minutos
+// Rate limit simple en memoria: máx 20 preguntas por persona cada 10 minutos
 const ventanas = new Map<string, { count: number; reset: number }>()
 function permitido(clave: string): boolean {
   const ahora = Date.now()
@@ -44,7 +46,8 @@ export async function POST(req: Request) {
     return Response.json({ error: "Disponible solo para Administración y Soporte" }, { status: 403 })
   }
 
-  if (!permitido(session.perfilId)) {
+  const usuario = usuarioChat(session.perfilId, usuarioDesdeCookie(req, ""))
+  if (!permitido(usuario)) {
     return Response.json({ error: "Demasiadas preguntas seguidas. Esperá unos minutos." }, { status: 429 })
   }
 
@@ -100,6 +103,7 @@ ${GUIA_SISTEMA}`,
       ? await guardarIntercambio({
           id: body.id,
           perfil: session.perfilId,
+          usuario,
           pregunta: messages[messages.length - 1].content,
           respuesta: text,
           acciones,

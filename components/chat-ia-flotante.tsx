@@ -2,8 +2,9 @@
 
 // Botón flotante del chat con IA, abajo a la derecha en todas las pantallas.
 // Solo Administración y Soporte (lo decide app-shell; el servidor lo vuelve
-// a chequear). Al abrirlo carga el historial guardado: es una sola
-// conversación compartida entre los dos perfiles y no se borra.
+// a chequear). Al abrirlo carga el historial guardado de quien entró: cada
+// persona (Diego, Leila, Ricky, Soporte) tiene su chat, que no se borra.
+// Soporte puede elegir y leer el chat de los demás, sin escribir en él.
 // La IA responde cómo usar el sistema y consulta eventos, cuotas y cajas en
 // solo lectura (/api/chat); puede devolver botones a pantallas.
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -29,7 +30,6 @@ interface MensajeChat {
 /** Perfiles con el botón (el mismo corte que PERFILES_CHAT_IA en lib/chat-ia-historial.ts, del servidor). */
 export const PERFILES_CON_CHAT_IA = ["administracion", "soporte"]
 
-const NOMBRE_PERFIL: Record<string, string> = { administracion: "Administración", soporte: "Soporte" }
 
 // Solo direcciones internas del sistema ("/eventos/..."), nunca externas.
 function accionesValidas(valor: unknown): AccionChat[] {
@@ -70,18 +70,39 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
   const [historialDisponible, setHistorialDisponible] = useState(true)
   const [input, setInput] = useState("")
   const [enviando, setEnviando] = useState(false)
+  // De quién es el chat que se ve, si es el propio y (solo Soporte) cuáles hay.
+  const [usuario, setUsuario] = useState("")
+  const [propio, setPropio] = useState(true)
+  const [chats, setChats] = useState<string[]>([])
   const listaRef = useRef<HTMLDivElement>(null)
   const cargadoRef = useRef(false)
+  // Chat elegido en el selector de Soporte ("" = el propio).
+  const verDeRef = useRef("")
+  // De quién son los mensajes que hay en pantalla.
+  const usuarioRef = useRef("")
 
   const bajarAlFinal = () =>
     setTimeout(() => listaRef.current?.scrollTo({ top: listaRef.current.scrollHeight, behavior: "smooth" }), 50)
 
   const cargarHistorial = useCallback(async (antes?: string) => {
     setCargandoHistorial(true)
+    const de = verDeRef.current
     try {
-      const res = await fetch(`/api/chat/historial${antes ? `?antes=${encodeURIComponent(antes)}` : ""}`)
+      const params = new URLSearchParams()
+      if (antes) params.set("antes", antes)
+      if (de) params.set("de", de)
+      const res = await fetch(`/api/chat/historial${params.size > 0 ? `?${params}` : ""}`)
       if (!res.ok) throw new Error(String(res.status))
       const data = await res.json()
+      // Si mientras tanto se eligió otro chat, esta respuesta ya no sirve.
+      if (verDeRef.current !== de) return
+      const deQuien = typeof data.usuario === "string" ? data.usuario : ""
+      // Si cambió la persona (otro entró en este navegador), no se mezclan los chats.
+      const otraPersona = usuarioRef.current !== "" && deQuien !== usuarioRef.current
+      usuarioRef.current = deQuien
+      setUsuario(deQuien)
+      setPropio(data.propio !== false)
+      if (Array.isArray(data.chats)) setChats(data.chats.filter((c: unknown): c is string => typeof c === "string"))
       const traidos: MensajeChat[] = (Array.isArray(data.mensajes) ? data.mensajes : []).map(
         (m: Record<string, unknown>) => ({
           id: String(m.id),
@@ -94,12 +115,13 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
       )
       setHistorialDisponible(data.disponible !== false)
       // "Ver anteriores" depende de la primera carga o de la última página pedida.
-      setHayMas((prev) => (antes || !cargadoRef.current ? data.hayMas === true : prev))
+      setHayMas((prev) => (antes || !cargadoRef.current || otraPersona ? data.hayMas === true : prev))
       setMensajes((prev) => {
+        if (otraPersona) return traidos
         // Los anteriores van arriba; sin repetir los que ya están.
         const ids = new Set(prev.map((m) => m.id))
         const nuevos = traidos.filter((m) => !ids.has(m.id))
-        // Al reabrir, los que escribió el otro perfil mientras tanto van al final.
+        // Al reabrir, lo nuevo (por ejemplo, desde otra pestaña) va al final.
         return antes ? [...nuevos, ...prev] : [...prev, ...nuevos]
       })
       if (!antes) bajarAlFinal()
@@ -112,14 +134,24 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
     }
   }, [])
 
-  // Cada vez que se abre, trae lo último (puede haber escrito el otro perfil).
+  // Cada vez que se abre, trae lo último.
   useEffect(() => {
     if (abierto) cargarHistorial()
   }, [abierto, cargarHistorial])
 
+  // Soporte cambia de chat: se vacía la pantalla y se carga el elegido.
+  const elegirChat = (nombre: string) => {
+    verDeRef.current = nombre
+    cargadoRef.current = false
+    setCargado(false)
+    setMensajes([])
+    setHayMas(false)
+    cargarHistorial()
+  }
+
   const enviar = async () => {
     const pregunta = input.trim()
-    if (!pregunta || enviando) return
+    if (!pregunta || enviando || !propio) return
     const id = nuevoId()
     const pendiente: MensajeChat = { id, rol: "user", contenido: pregunta, perfil: perfilId, fecha: new Date().toISOString() }
     // La IA recibe los últimos mensajes de la charla (sin los errores locales).
@@ -181,7 +213,25 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
             <Sparkles className="h-4 w-4 text-[#d4a533]" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold leading-tight">Asistente IA</p>
-              <p className="text-[11px] leading-tight text-[#f5f0e8]/70">Historial compartido de Administración y Soporte</p>
+              {chats.length > 1 ? (
+                <select
+                  value={usuario}
+                  onChange={(e) => elegirChat(e.target.value)}
+                  disabled={cargandoHistorial || enviando}
+                  className="mt-0.5 max-w-full rounded bg-white/10 px-1 py-0.5 text-[11px] text-[#f5f0e8] outline-none"
+                  aria-label="Elegir de quién es el chat"
+                >
+                  {chats.map((c) => (
+                    <option key={c} value={c} className="text-gray-900">
+                      {c === "Soporte" ? "Mi chat (Soporte)" : `Chat de ${c}`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="truncate text-[11px] leading-tight text-[#f5f0e8]/70">
+                  {usuario ? `Chat de ${usuario}` : "Tu chat"}
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -208,7 +258,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
             )}
             {!historialDisponible && (
               <p className="mb-2 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900">
-                El historial todavía no se está guardando: falta crear su tabla en la base. El chat responde igual.
+                El historial todavía no se está guardando: falta preparar su tabla en la base. El chat responde igual.
               </p>
             )}
             {cargandoHistorial && mensajes.length === 0 && (
@@ -218,16 +268,16 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
             )}
             {cargado && mensajes.length === 0 && (
               <p className="py-6 text-center text-sm text-gray-500">
-                Preguntale cómo usar el sistema o por un evento, por ejemplo: "¿cuánto debe el evento del 6/10?"
+                {propio
+                  ? 'Preguntale cómo usar el sistema o por un evento, por ejemplo: "¿cuánto debe el evento del 6/10?"'
+                  : `${usuario} todavía no usó el asistente.`}
               </p>
             )}
             <div className="flex flex-col gap-2">
               {mensajes.map((m) => (
                 <div key={m.id} className={m.rol === "user" ? "self-end max-w-[85%]" : "self-start max-w-[90%]"}>
-                  {m.rol === "user" && (m.perfil || m.fecha) && (
-                    <p className="mb-0.5 text-right text-[10px] text-gray-500">
-                      {[NOMBRE_PERFIL[m.perfil ?? ""] ?? m.perfil, horaCorta(m.fecha)].filter(Boolean).join(" · ")}
-                    </p>
+                  {m.rol === "user" && m.fecha && (
+                    <p className="mb-0.5 text-right text-[10px] text-gray-500">{horaCorta(m.fecha)}</p>
                   )}
                   <div
                     className={
@@ -270,6 +320,11 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
             </div>
           </div>
 
+          {!propio ? (
+            <p className="border-t border-[#2d5a3d]/15 bg-white px-3 py-2.5 text-center text-xs text-gray-500">
+              Estás viendo el chat de {usuario}: solo lectura.
+            </p>
+          ) : (
           <div className="flex items-center gap-2 border-t border-[#2d5a3d]/15 bg-white px-3 py-2">
             <input
               type="text"
@@ -293,6 +348,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
               <Send className="h-4 w-4" />
             </button>
           </div>
+          )}
         </div>
       )}
 

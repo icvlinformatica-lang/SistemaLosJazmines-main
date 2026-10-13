@@ -198,13 +198,13 @@ test("herramientas de semana y del día responden con la base simulada", async (
 })
 
 
-const pedirConId = (id, messages) => POST(new Request("http://localhost/api/chat", {
+const pedirConId = (id, messages, usuario = "Leila") => POST(new Request("http://localhost/api/chat", {
   method: "POST",
-  headers: { "content-type": "application/json", cookie: "lj_session=x" },
+  headers: { "content-type": "application/json", cookie: `lj_session=x; lj_usuario=${encodeURIComponent(usuario)}` },
   body: JSON.stringify({ id, messages }),
 }))
 
-test("historial: guarda pregunta y respuesta con el perfil, sin duplicar en un reintento", async () => {
+test("historial: guarda pregunta y respuesta en el chat de la persona, sin duplicar en un reintento", async () => {
   sesion = { perfilId: "administracion" }
   sinTablaHistorial = false
   consultas.length = 0
@@ -219,10 +219,9 @@ test("historial: guarda pregunta y respuesta con el perfil, sin duplicar en un r
   const insert = consultas.find((q) => q.includes("INSERT INTO chat_ia_mensajes"))
   assert.match(insert, /ON CONFLICT \(id\) DO NOTHING/)
   const v = valoresHistorial[valoresHistorial.length - 1]
-  assert.deepEqual(v.slice(0, 3), ["abc12345-pregunta", "administracion", "¿dónde cargo el IPC?"])
-  assert.equal(v[3], "abc12345-pregunta-r")
-  assert.equal(v[5], "Respuesta")
-  assert.deepEqual(JSON.parse(v[6]), [{ etiqueta: "IPC", href: "/finanzas/ipc" }])
+  assert.deepEqual(v.slice(0, 4), ["abc12345-pregunta", "administracion", "Leila", "¿dónde cargo el IPC?"])
+  assert.deepEqual(v.slice(4, 8), ["abc12345-pregunta-r", "administracion", "Leila", "Respuesta"])
+  assert.deepEqual(JSON.parse(v[8]), [{ etiqueta: "IPC", href: "/finanzas/ipc" }])
   // Sin id (o con uno raro) responde igual y no guarda.
   consultas.length = 0
   const sinId = await (await pedirConId("x", [{ role: "user", content: "hola" }])).json()
@@ -238,7 +237,10 @@ test("historial: si falta la tabla el chat responde igual y avisa", async () => 
   assert.equal(res.status, 200)
   assert.equal((await res.json()).guardado, false)
   const hist = await (await GET_HISTORIAL(new Request("http://localhost/api/chat/historial", { headers: { cookie: "lj_session=x" } }))).json()
-  assert.deepEqual(hist, { disponible: false, mensajes: [], hayMas: false })
+  assert.deepEqual(hist, {
+    disponible: false, mensajes: [], hayMas: false, usuario: "Soporte", propio: true,
+    chats: ["Soporte", "Diego", "Leila", "Ricky", "Administración"],
+  })
   sinTablaHistorial = false
 })
 
@@ -259,7 +261,69 @@ test("historial: del más viejo al más nuevo, con página anterior y fecha vali
   assert.deepEqual(data.mensajes.find((m) => m.id === "m1").acciones, [{ etiqueta: "Lista", href: "/eventos/lista" }])
   valoresHistorial.length = 0
   await pedirHist("?antes=2026-10-13T12:00:00.000Z")
-  assert.deepEqual(valoresHistorial[0][0], "2026-10-13T12:00:00.000Z")
+  assert.deepEqual(valoresHistorial[0].slice(0, 2), ["Soporte", "2026-10-13T12:00:00.000Z"])
   assert.equal((await pedirHist("?antes=cualquiera")).status, 400)
   filasHistorial = []
+})
+
+const pedirHistDe = (perfilId, usuario, q = "") => {
+  sesion = { perfilId }
+  return GET_HISTORIAL(new Request(`http://localhost/api/chat/historial${q}`, {
+    headers: { cookie: `lj_session=x${usuario ? `; lj_usuario=${encodeURIComponent(usuario)}` : ""}` },
+  }))
+}
+
+test("historial por persona: cada uno de Administración lee solo su chat", async () => {
+  filasHistorial = []
+  consultas.length = 0
+  valoresHistorial.length = 0
+  const diego = await (await pedirHistDe("administracion", "Diego")).json()
+  assert.equal(diego.usuario, "Diego")
+  assert.equal(diego.propio, true)
+  // Administración no recibe la lista de chats de los demás.
+  assert.equal("chats" in diego, false)
+  const lectura = consultas.find((q) => q.includes("FROM chat_ia_mensajes"))
+  assert.match(lectura, /WHERE usuario = \?/)
+  assert.equal(valoresHistorial[0][0], "Diego")
+  // Pedir el chat de otra persona desde Administración: no.
+  assert.equal((await pedirHistDe("administracion", "Diego", "?de=Leila")).status, 403)
+  // Pedir el propio con ?de= está bien.
+  assert.equal((await pedirHistDe("administracion", "Ricky", "?de=Ricky")).status, 200)
+  // Sin nombre elegido (o uno que no es de Administración) cae en "Administración", nunca en el de otro.
+  assert.equal((await (await pedirHistDe("administracion", "")).json()).usuario, "Administración")
+  assert.equal((await (await pedirHistDe("administracion", "Soporte")).json()).usuario, "Administración")
+  sesion = { perfilId: "soporte" }
+})
+
+test("historial por persona: Soporte elige y lee el chat de los demás, solo lectura", async () => {
+  // Un nombre que ya tiene mensajes guardados también aparece en la lista.
+  filasHistorial = [{ usuario: "Leila" }, { usuario: "Otro" }]
+  valoresHistorial.length = 0
+  const propio = await (await pedirHistDe("soporte", "Soporte")).json()
+  assert.equal(propio.usuario, "Soporte")
+  assert.deepEqual(propio.chats, ["Soporte", "Diego", "Leila", "Ricky", "Administración", "Otro"])
+  const deLeila = await (await pedirHistDe("soporte", "Soporte", "?de=Leila")).json()
+  assert.equal(deLeila.usuario, "Leila")
+  assert.equal(deLeila.propio, false)
+  assert.ok(valoresHistorial.some((v) => v[0] === "Leila"))
+  filasHistorial = []
+})
+
+test("historial por persona: Soporte pregunta en su chat aunque la cookie diga otro nombre", async () => {
+  sesion = { perfilId: "soporte" }
+  valoresHistorial.length = 0
+  simularIA = async () => ({ text: "Ok" })
+  await pedirConId("abc12345-soporte", [{ role: "user", content: "hola" }], "Diego")
+  const v = valoresHistorial[valoresHistorial.length - 1]
+  assert.deepEqual(v.slice(0, 3), ["abc12345-soporte", "soporte", "Soporte"])
+})
+
+test("usuarioChat: Diego, Leila y Ricky por separado; el resto no se cuela", () => {
+  const { usuarioChat } = historial
+  assert.equal(usuarioChat("administracion", "Diego"), "Diego")
+  assert.equal(usuarioChat("administracion", " Leila "), "Leila")
+  assert.equal(usuarioChat("administracion", "Ricky"), "Ricky")
+  assert.equal(usuarioChat("administracion", "Aylin"), "Administración")
+  assert.equal(usuarioChat("administracion", null), "Administración")
+  assert.equal(usuarioChat("soporte", "Diego"), "Soporte")
 })
