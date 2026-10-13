@@ -91,7 +91,12 @@ export async function POST(req: Request) {
                   ${`${propuesta.concepto} · Vence ${propuesta.vencimiento} · Cargado desde el asistente con IA · Por ${usuario}`})
         `
       }
-      const nuevosAdjuntos = JSON.stringify({ botones: adjuntos.acciones, tarjetas: adjuntos.tarjetas, gasto: resuelto })
+      const nuevosAdjuntos = JSON.stringify({
+        botones: adjuntos.acciones,
+        tarjetas: adjuntos.tarjetas,
+        gasto: resuelto,
+        ...(adjuntos.cobro ? { cobro: adjuntos.cobro } : {}),
+      })
       await tx`UPDATE chat_ia_mensajes SET acciones = ${nuevosAdjuntos}::jsonb WHERE id = ${mensajeId}`
       return resuelto
     })

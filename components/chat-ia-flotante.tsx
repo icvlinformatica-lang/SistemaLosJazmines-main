@@ -25,6 +25,8 @@ import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import { TarjetaEventoChatIA } from "@/components/chat-ia-tarjeta-evento"
 import { propuestaGastoValida, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import { TarjetaGastoChatIA } from "@/components/chat-ia-tarjeta-gasto"
+import { propuestaCobroValida, type PropuestaCobroChat } from "@/lib/chat-ia-cobro"
+import { TarjetaCobroChatIA } from "@/components/chat-ia-tarjeta-cobro"
 
 interface AccionChat {
   etiqueta: string
@@ -41,6 +43,8 @@ interface MensajeChat {
   tarjetas?: TarjetaEventoChat[]
   /** Gasto propuesto por la IA, a confirmar con el botón. */
   gasto?: PropuestaGastoChat | null
+  /** Cobro de cuota propuesto por la IA, a confirmar con el botón. */
+  cobro?: PropuestaCobroChat | null
   fecha?: string
   /** Error que se muestra solo en esta pantalla (no se guarda). */
   error?: boolean
@@ -143,6 +147,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
           acciones: accionesValidas(m.acciones),
           tarjetas: tarjetasValidas(m.tarjetas),
           gasto: propuestaGastoValida(m.gasto),
+          cobro: propuestaCobroValida(m.cobro),
           fecha: typeof m.fecha === "string" ? m.fecha : undefined,
         }),
       )
@@ -154,6 +159,9 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
         // Un gasto confirmado o cancelado en otra pestaña: se toma el estado guardado.
         const gastoGuardado = new Map(traidos.filter((m) => m.gasto).map((m) => [m.id, m.gasto]))
         prev = prev.map((m) => (gastoGuardado.has(m.id) ? { ...m, gasto: gastoGuardado.get(m.id) } : m))
+        // Lo mismo con un cobro.
+        const cobroGuardado = new Map(traidos.filter((m) => m.cobro).map((m) => [m.id, m.cobro]))
+        prev = prev.map((m) => (cobroGuardado.has(m.id) ? { ...m, cobro: cobroGuardado.get(m.id) } : m))
         // Los anteriores van arriba; sin repetir los que ya están.
         const ids = new Set(prev.map((m) => m.id))
         const nuevos = traidos.filter((m) => !ids.has(m.id))
@@ -250,7 +258,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
     const pendiente: MensajeChat = { id, rol: "user", contenido: pregunta, perfil: perfilId, fecha: new Date().toISOString() }
     // La IA recibe los últimos mensajes de la charla (sin los errores locales).
     const contexto = [...mensajes.filter((m) => !m.error), pendiente]
-      .slice(-10)
+      .slice(-20)
       .map((m) => ({ role: m.rol, content: m.contenido }))
     setMensajes((prev) => [...prev, pendiente])
     setInput("")
@@ -279,10 +287,14 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
               String(data.text ?? "") +
               (data.gastoSinGuardar
                 ? "\n\nOjo: no pude dejar listo el botón para cargar el gasto porque el chat no se guardó. Cargalo desde \"Cargar gastos\" en Inicio."
+                : "") +
+              (data.cobroSinGuardar
+                ? "\n\nOjo: no pude dejar listo el botón para cobrar porque el chat no se guardó. Cobralo desde Cobrar cuota."
                 : ""),
             acciones: accionesValidas(data.acciones),
             tarjetas: tarjetasValidas(data.tarjetas),
             gasto: propuestaGastoValida(data.gasto),
+            cobro: propuestaCobroValida(data.cobro),
             perfil: perfilId,
             fecha: new Date().toISOString(),
           },
@@ -381,7 +393,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   className={
                     m.rol === "user"
                       ? "self-end max-w-[85%]"
-                      : (m.tarjetas && m.tarjetas.length > 0) || m.gasto
+                      : (m.tarjetas && m.tarjetas.length > 0) || m.gasto || m.cobro
                         ? "self-stretch"
                         : "self-start max-w-[90%]"
                   }
@@ -408,6 +420,21 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                         propio={propio}
                         onResuelto={(g) =>
                           setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, gasto: g } : x)))
+                        }
+                        onIr={() => {
+                          if (window.innerWidth < 640) setAbierto(false)
+                        }}
+                      />
+                    </div>
+                  )}
+                  {m.cobro && (
+                    <div className="mt-1.5">
+                      <TarjetaCobroChatIA
+                        cobro={m.cobro}
+                        mensajeId={m.id}
+                        propio={propio}
+                        onResuelto={(c) =>
+                          setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, cobro: c } : x)))
                         }
                         onIr={() => {
                           if (window.innerWidth < 640) setAbierto(false)
