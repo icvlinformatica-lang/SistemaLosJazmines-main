@@ -91,3 +91,20 @@ export function revertirServicioPagadoComoSueldo(srv: ServicioEvento): ServicioE
     saldoPendiente: pagoSueldo.saldoPendientePrevio,
   }
 }
+
+/**
+ * ¿El saldo de este servicio tiene que esperar a que se pague la seña?
+ * Decisión del dueño (13/10/2026): no se paga el saldo de un proveedor sin
+ * haber pagado antes su seña; si no, el servicio queda "pagado_total" y la
+ * seña desaparece de lo que hay que pagar sin haber salido nunca de la caja.
+ * No aplica a los que se pagan como sueldo (un único pago) ni a los servicios
+ * sin seña (porcentaje 0 o costo 0).
+ */
+export function saldoEsperaSeña(
+  srv: ServicioEvento,
+  state: Pick<AppState, "servicios">,
+): boolean {
+  if (estadoPagoDe(srv) !== "sin_seña") return false
+  if (sePagaComoSueldo(srv, state.servicios ?? [])) return false
+  return calcularSeñaSaldoServicio(srv, state).montoSeña > 0
+}

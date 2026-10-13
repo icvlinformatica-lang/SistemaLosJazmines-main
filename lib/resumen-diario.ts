@@ -286,6 +286,82 @@ export interface VienenAPagarResumen {
   vienenAPagar: VieneAPagar[]
 }
 
+/** Índices de IPC cargados (los mismos para "Vienen a pagar" y el chat de ayuda). */
+export async function historialIPCServidor(): Promise<HistorialIPCEntry[]> {
+  const ipcRows = await sql`SELECT mes, anio, porcentaje, coalesce((to_jsonb(historial_ipc) ->> 'provisorio') = 'true', false) AS provisorio FROM historial_ipc`
+  return ipcRows.map(h => ({ mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0, provisorio: h.provisorio === true }))
+}
+
+/**
+ * Cuotas sin pagar de un evento que vencen hasta `finSemana` (incluida),
+ * con su monto (IPC del período si ya está listo) y el recargo por atraso.
+ * "Atrasada" = vencida antes de `inicioSemana`. Es la cuenta de "Vienen a
+ * pagar"; el chat de ayuda la usa con inicioSemana = hoy y sin límite de
+ * fecha para mostrar todo lo que falta cobrar de un evento.
+ */
+export function cuotasPendientesEvento(
+  ev: { estado: string; pagos: unknown; plan: Record<string, unknown> },
+  historialIPC: HistorialIPCEntry[],
+  { hoy, inicioSemana, finSemana }: { hoy: string; inicioSemana: string; finSemana: string },
+): Pick<VieneAPagar, "cuotasPendientes" | "cuotaSemana" | "montoAtrasado" | "cuotasAtrasadas"> {
+  const plan = ev.plan
+  const resultadoIPC = calcularIPCPeriodo({ estado: ev.estado, planDeCuotas: plan as EventoGuardado["planDeCuotas"], pagos: parseJson(ev.pagos, []) }, historialIPC, hoy)
+  const numeroCuotas = Number(plan.numeroCuotas) || 0
+  const montoCuotaBase = Number(plan.montoCuota) || (Number(plan.montoTotal) || 0) / (numeroCuotas || 1)
+  const cuotasPagadas = parseJson<number[]>(plan.cuotasPagadas, [])
+  const detalle = parseJson<Array<Record<string, unknown>>>(plan.cuotas, [])
+  const fechaInicioPlan = String(plan.fechaInicioPlan || "")
+  const diaVencimiento = Number(plan.diaVencimiento) || 10
+
+  // Fecha y monto por cuota: el detalle guardado en el contrato es la
+  // fuente de verdad; si falta, se calcula desde fechaInicioPlan.
+  const fechaDeCuota = (n: number): string => {
+    const d = detalle.find((c) => Number(c.numero) === n)
+    const guardada = String(d?.fechaVencimiento || "")
+    if (/^\d{4}-\d{2}-\d{2}$/.test(guardada)) return guardada
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaInicioPlan)) return ""
+    const [y, mo] = fechaInicioPlan.split("-").map(Number)
+    const mesTotal = mo - 1 + (n - 1)
+    const año = y + Math.floor(mesTotal / 12)
+    const mes = mesTotal % 12
+    const ultimoDia = new Date(año, mes + 1, 0).getDate()
+    return `${año}-${String(mes + 1).padStart(2, "0")}-${String(Math.min(diaVencimiento, ultimoDia)).padStart(2, "0")}`
+  }
+  const montoDeCuota = (n: number): number => {
+    if (resultadoIPC.estado === "listo") return resultadoIPC.calculo.monto
+    const d = detalle.find((c) => Number(c.numero) === n)
+    const m = Number(d?.montoCuota)
+    return m > 0 ? m : montoCuotaBase
+  }
+
+  let cuotaSemana: VieneAPagar["cuotaSemana"] = null
+  const cuotasPendientes: VieneAPagar["cuotasPendientes"] = []
+  let montoAtrasado = 0
+  let cuotasAtrasadas = 0
+
+  for (let n = 1; n <= numeroCuotas; n++) {
+    if (cuotasPagadas.includes(n) || detalle.some((c) => Number(c.numero) === n && c.pagada === true)) continue
+    const venc = fechaDeCuota(n)
+    if (!venc || venc > finSemana) continue
+    // Recargo por atraso: $3.000 fijos por cada día vencido (mismo criterio que Cobrar Cuota).
+    // Va POR SEPARADO del monto de la cuota; solo aplica a cuotas ya vencidas.
+    const RECARGO_POR_DIA_ATRASO = 3000
+    const diasAtraso = Math.max(0, Math.floor((new Date(hoy + "T00:00:00").getTime() - new Date(venc + "T00:00:00").getTime()) / 86400000))
+    const recargo = diasAtraso * RECARGO_POR_DIA_ATRASO
+    const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana, diasAtraso, recargo, ipcPendiente: resultadoIPC.estado === "pendiente" ? resultadoIPC.motivo : undefined }
+    cuotasPendientes.push(cuota)
+    if (cuota.atrasada) {
+      // Vencida antes de esta semana y sin pagar => atrasada
+      montoAtrasado += cuota.monto
+      cuotasAtrasadas++
+    } else if (!cuotaSemana || venc < cuotaSemana.fechaVencimiento) {
+      cuotaSemana = { numero: n, fechaVencimiento: venc, monto: cuota.monto }
+    }
+  }
+
+  return { cuotasPendientes, cuotaSemana, montoAtrasado, cuotasAtrasadas }
+}
+
 /**
  * Quiénes tienen una cuota que vence en la semana de `referencia` (lunes a
  * domingo), más la deuda atrasada de cuotas vencidas antes de esa semana.
@@ -314,8 +390,7 @@ export async function buildVienenAPagar(referencia: string): Promise<VienenAPaga
   const finSemana = toYmd(domingo)
   const hoy = referencia
 
-  const ipcRows = await sql`SELECT mes, anio, porcentaje, coalesce((to_jsonb(historial_ipc) ->> 'provisorio') = 'true', false) AS provisorio FROM historial_ipc`
-  const historialIPC: HistorialIPCEntry[] = ipcRows.map(h => ({ mes: h.mes, anio: h.anio, porcentaje: Number(h.porcentaje), fechaAplicacion: "", eventosActualizados: 0, provisorio: h.provisorio === true }))
+  const historialIPC = await historialIPCServidor()
   const vienenAPagar: VieneAPagar[] = []
   for (const ev of evRows) {
     // Solo eventos activos (no archivados ni cancelados)
@@ -325,59 +400,11 @@ export async function buildVienenAPagar(referencia: string): Promise<VienenAPaga
     const plan = parseJson<Record<string, unknown> | null>(ev.plan_de_cuotas, null)
     if (!plan || !Number(plan.numeroCuotas)) continue
 
-    const resultadoIPC = calcularIPCPeriodo({ estado, planDeCuotas: plan as EventoGuardado["planDeCuotas"], pagos: parseJson(ev.pagos, []) }, historialIPC, hoy)
-    const numeroCuotas = Number(plan.numeroCuotas) || 0
-    const montoCuotaBase = Number(plan.montoCuota) || (Number(plan.montoTotal) || 0) / (numeroCuotas || 1)
-    const cuotasPagadas = parseJson<number[]>(plan.cuotasPagadas, [])
-    const detalle = parseJson<Array<Record<string, unknown>>>(plan.cuotas, [])
-    const fechaInicioPlan = String(plan.fechaInicioPlan || "")
-    const diaVencimiento = Number(plan.diaVencimiento) || 10
-
-    // Fecha y monto por cuota: el detalle guardado en el contrato es la
-    // fuente de verdad; si falta, se calcula desde fechaInicioPlan.
-    const fechaDeCuota = (n: number): string => {
-      const d = detalle.find((c) => Number(c.numero) === n)
-      const guardada = String(d?.fechaVencimiento || "")
-      if (/^\d{4}-\d{2}-\d{2}$/.test(guardada)) return guardada
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaInicioPlan)) return ""
-      const [y, mo] = fechaInicioPlan.split("-").map(Number)
-      const mesTotal = mo - 1 + (n - 1)
-      const año = y + Math.floor(mesTotal / 12)
-      const mes = mesTotal % 12
-      const ultimoDia = new Date(año, mes + 1, 0).getDate()
-      return `${año}-${String(mes + 1).padStart(2, "0")}-${String(Math.min(diaVencimiento, ultimoDia)).padStart(2, "0")}`
-    }
-    const montoDeCuota = (n: number): number => {
-      if (resultadoIPC.estado === "listo") return resultadoIPC.calculo.monto
-      const d = detalle.find((c) => Number(c.numero) === n)
-      const m = Number(d?.montoCuota)
-      return m > 0 ? m : montoCuotaBase
-    }
-
-    let cuotaSemana: VieneAPagar["cuotaSemana"] = null
-    const cuotasPendientes: VieneAPagar["cuotasPendientes"] = []
-    let montoAtrasado = 0
-    let cuotasAtrasadas = 0
-
-    for (let n = 1; n <= numeroCuotas; n++) {
-      if (cuotasPagadas.includes(n) || detalle.some((c) => Number(c.numero) === n && c.pagada === true)) continue
-      const venc = fechaDeCuota(n)
-      if (!venc || venc > finSemana) continue
-      // Recargo por atraso: $3.000 fijos por cada día vencido (mismo criterio que Cobrar Cuota).
-      // Va POR SEPARADO del monto de la cuota; solo aplica a cuotas ya vencidas.
-      const RECARGO_POR_DIA_ATRASO = 3000
-      const diasAtraso = Math.max(0, Math.floor((new Date(hoy + "T00:00:00").getTime() - new Date(venc + "T00:00:00").getTime()) / 86400000))
-      const recargo = diasAtraso * RECARGO_POR_DIA_ATRASO
-      const cuota = { numero: n, fechaVencimiento: venc, monto: montoDeCuota(n), atrasada: venc < inicioSemana, diasAtraso, recargo, ipcPendiente: resultadoIPC.estado === "pendiente" ? resultadoIPC.motivo : undefined }
-      cuotasPendientes.push(cuota)
-      if (cuota.atrasada) {
-        // Vencida antes de esta semana y sin pagar => atrasada
-        montoAtrasado += cuota.monto
-        cuotasAtrasadas++
-      } else if (!cuotaSemana || venc < cuotaSemana.fechaVencimiento) {
-        cuotaSemana = { numero: n, fechaVencimiento: venc, monto: cuota.monto }
-      }
-    }
+    const { cuotasPendientes, cuotaSemana, montoAtrasado, cuotasAtrasadas } = cuotasPendientesEvento(
+      { estado, pagos: ev.pagos, plan },
+      historialIPC,
+      { hoy, inicioSemana, finSemana },
+    )
 
     if (cuotasPendientes.length > 0) {
       vienenAPagar.push({

@@ -164,3 +164,14 @@ test("resumenCobroCliente: seña + cuotas (con pagos parciales) y el recargo con
   assert.equal(r.ajuste, 0)
   assert.equal(r.progreso, 50)
 })
+
+test("saldoEsperaSeña: el saldo de un proveedor espera a que se pague la seña", () => {
+  const { saldoEsperaSeña } = require("../lib/servicio-sueldo.ts")
+  const cat = { servicios: [FOTO, DECO, { ...FOTO, id: "sinsena", porcentajeSeña: 0 }, { ...FOTO, id: "dj", sePagaComoSueldo: true }] }
+  assert.equal(saldoEsperaSeña(srv(FOTO), cat), true) // sin seña pagada
+  assert.equal(saldoEsperaSeña(srv(FOTO, { estadoPago: "señado", montoSeña: 300000 }), cat), false)
+  assert.equal(saldoEsperaSeña(srv(FOTO, { estadoPago: "pagado_total", pagado: true }), cat), false)
+  assert.equal(saldoEsperaSeña(srv({ id: "sinsena", nombre: "Sin seña" }), cat), false) // 0 % de seña
+  assert.equal(saldoEsperaSeña(srv({ id: "dj", nombre: "DJ" }), cat), false) // se paga como sueldo
+  assert.equal(saldoEsperaSeña(srv(FOTO, { pagado: true }), cat), false) // viejo, sin estadoPago
+})

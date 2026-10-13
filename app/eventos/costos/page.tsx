@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { useStore } from "@/lib/store-context"
+import { saldoEsperaSeña } from "@/lib/servicio-sueldo"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import {
   calcularCostoEventoCajaEventos,
@@ -432,6 +433,10 @@ function CostosEventoContent() {
     if (bloquearPorArchivo()) return
     const srv = servicios.find((s) => s.servicioId === servicioId)
     if (!srv) return
+    if (checked && saldoEsperaSeña(srv, { servicios: state.servicios ?? [] })) {
+      toast({ title: "Primero la seña", description: `Pagá la seña de ${srv.nombre} antes que el saldo.` })
+      return
+    }
     if (checked) {
       // Saldo EN VIVO desde el catálogo (costo actual − seña pagada).
       const { saldoPendiente: saldoLive } = calcularSeñaSaldoServicio(srv, { servicios: state.servicios ?? [] })
@@ -901,8 +906,9 @@ function CostosEventoContent() {
                         checked={saldoPagado}
                         onChange={(v) => toggleSaldo(srv.servicioId, v)}
                         // Como sueldo se paga solo desde Caja Eventos → Sueldos
-                        // (un único pago), para no pagarlo por dos caminos.
-                        disabled={comoSueldo}
+                        // (un único pago), para no pagarlo por dos caminos. El
+                        // saldo de un proveedor espera a que se pague la seña.
+                        disabled={comoSueldo || (!saldoPagado && saldoEsperaSeña(srv, { servicios: state.servicios ?? [] }))}
                         ariaLabel={`Marcar ${comoSueldo ? "sueldo" : "saldo"} de ${srv.nombre} como pagado`}
                         titulo={comoSueldo ? "Sueldo" : "Saldo"}
                         detalle={
@@ -910,7 +916,9 @@ function CostosEventoContent() {
                             ? srv.fechaPagoSaldo
                               ? `pagado el ${formatFechaCorta(srv.fechaPagoSaldo)}`
                               : "pagado"
-                            : comoSueldo
+                            : !comoSueldo && saldoEsperaSeña(srv, { servicios: state.servicios ?? [] })
+                              ? `se paga después de la seña${srv.fechaLimitePago ? ` · vence ${formatFechaCorta(srv.fechaLimitePago)}` : ""}`
+                              : comoSueldo
                               ? `se paga en Caja Eventos → Sueldos${(srv.fechaSueldoManual || evento.fecha) ? ` · vence ${formatFechaCorta(srv.fechaSueldoManual || evento.fecha)}` : ""}`
                               : srv.fechaLimitePago
                                 ? `vence ${formatFechaCorta(srv.fechaLimitePago)}`

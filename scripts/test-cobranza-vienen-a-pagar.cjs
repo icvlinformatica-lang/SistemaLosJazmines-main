@@ -64,23 +64,33 @@ test("el número del botón de Inicio sale de la misma agrupación que el modal"
   assert.ok(grupos.find((g) => g.salon === "Quinta").cuotas.every((c) => c.telefono === "011 4444-5555"))
 })
 
-test("el modal muestra el recuadro de atrasadas, la etiqueta ATRASADA, el filtro y WhatsApp", () => {
+test("el modal muestra las tarjetas por salón, el botón de recargo, la etiqueta ATRASADA y WhatsApp", () => {
   const React = require("react")
   const { renderToStaticMarkup } = require("react-dom/server")
   const load = Module._load
   Module._load = function (request, ...args) {
     if (request === "swr") return { __esModule: true, default: () => ({ data: { vienenAPagar: lista }, isLoading: false, mutate: () => {} }) }
     if (request === "@/lib/store-context") return { useStore: () => ({ state: { eventos: [] }, configuracionCajas: { salones: {} } }) }
+    if (request === "@/lib/profile-context") return { useProfile: () => ({ perfilActivo: { id: "administracion" } }) }
     return load.call(this, request, ...args)
   }
   try {
     const { VienenAPagarModal } = require("../components/vienen-a-pagar-modal.tsx")
     const html = renderToStaticMarkup(React.createElement(VienenAPagarModal, { open: true, onOpenChange: () => {} }))
-    assert.match(html, /Atrasado · 2 cuotas/)
-    assert.match(html, /\$300/)
+    // La tarjeta roja de atrasado y el selector de salón se sacaron: se filtra tocando las tarjetas por salón.
+    assert.doesNotMatch(html, /Atrasado · /)
+    assert.doesNotMatch(html, /Filtrar por salón/)
+    assert.match(html, /Falta entrar si se pagan todas las cuotas de/)
+    assert.equal((html.match(/aria-pressed=/g) || []).length, 8) // "Todos" + los 5 salones + Sin/Con recargo
+    // Al abrir, todas las tarjetas están plegadas: no se ve el desglose por caja.
+    assert.equal((html.match(/aria-expanded="false"/g) || []).length, 6)
+    assert.doesNotMatch(html, /Caja Eventos|Caja Jazmines/)
     assert.match(html, /Por cobrar esta semana · 2 cuotas/)
     assert.equal((html.match(/>ATRASADA</g) || []).length, 2)
-    assert.match(html, /Solo atrasadas/)
+    // "Solo atrasadas" se sacó a pedido del dueño.
+    assert.doesNotMatch(html, /Solo atrasadas/)
+    assert.match(html, />Sin recargo</)
+    assert.match(html, />Con recargo</)
     // Ana tiene teléfono: tel: y WhatsApp en sus 3 filas; Beto no tiene, no lleva botón.
     assert.equal((html.match(/href="tel:01144445555"/g) || []).length, 3)
     assert.equal((html.match(/href="https:\/\/wa\.me\/5491144445555\?text=/g) || []).length, 3)
@@ -115,4 +125,82 @@ test("el teléfono sale del contrato (aunque venga como texto dentro del jsonb) 
     // Solo se agrega el teléfono: el DNI del contrato no viaja.
     assert.ok(!JSON.stringify(vienenAPagar).includes("no se usa"))
   } finally { Module._load = load }
+})
+
+test("por entrar del mes: suma por salón hasta fin de mes (con atrasadas) y reparte entre cajas", () => {
+  const { porEntrarDelMesPorSalon, finDeMes } = require("../lib/vienen-a-pagar.ts")
+  assert.equal(finDeMes("2026-10-13"), "2026-10-31")
+  assert.equal(finDeMes("2028-02-05"), "2028-02-29")
+  const ingresos = [
+    // Atrasada de septiembre: suma. Saldo $100.000, a Caja Eventos $40.000.
+    { salon: "Casona", fechaVencimiento: "2026-09-10", monto: 40000, saldoRestante: 100000 },
+    // Vence el último día del mes: suma.
+    { salon: "Casona", fechaVencimiento: "2026-10-31", monto: 33333.333, saldoRestante: 50000 },
+    // Noviembre: no suma.
+    { salon: "Casona", fechaVencimiento: "2026-11-01", monto: 1, saldoRestante: 1 },
+    // Evento con costo 0: todo a Jazmines.
+    { salon: "Quinta", fechaVencimiento: "2026-10-10", monto: 0, saldoRestante: 75000 },
+    // Salón que no está en la lista: se ignora.
+    { salon: "", fechaVencimiento: "2026-10-10", monto: 5, saldoRestante: 10 },
+  ]
+  assert.deepEqual(porEntrarDelMesPorSalon(ingresos, "2026-10-13", ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"]), [
+    { salon: "Quinta", cajaEventos: 0, cajaJazmines: 75000 },
+    { salon: "Casona", cajaEventos: 73333.33, cajaJazmines: 76666.67 },
+    { salon: "Salon", cajaEventos: 0, cajaJazmines: 0 },
+    { salon: "Salon 4", cajaEventos: 0, cajaJazmines: 0 },
+    { salon: "Salon 5", cajaEventos: 0, cajaJazmines: 0 },
+  ])
+})
+
+test("tarjeta desplegada: Administración ve el reparto entre cajas; Cobrar cuota solo el total", () => {
+  const React = require("react")
+  const { renderToStaticMarkup } = require("react-dom/server")
+  const { TarjetaPorEntrar } = require("../components/vienen-a-pagar-modal.tsx")
+  const fila = { salon: "Casona", cajaEventos: 1000, cajaJazmines: 2000 }
+  const props = { fila, color: "#2563eb", elegida: true, desplegada: true, onClick: () => {} }
+  const admin = renderToStaticMarkup(React.createElement(TarjetaPorEntrar, { ...props, veCajas: true }))
+  assert.match(admin, /aria-expanded="true"/)
+  assert.match(admin, /Caja Eventos/)
+  assert.match(admin, /Caja Jazmines/)
+  assert.match(admin, /\$3\.?000/)
+  const cobro = renderToStaticMarkup(React.createElement(TarjetaPorEntrar, { ...props, veCajas: false }))
+  assert.match(cobro, /\$3\.?000/)
+  assert.doesNotMatch(cobro, /Caja Eventos|Caja Jazmines/)
+  // Plegada: una sola línea, sin desglose aunque sea Administración.
+  const plegada = renderToStaticMarkup(React.createElement(TarjetaPorEntrar, { ...props, desplegada: false, veCajas: true }))
+  assert.match(plegada, /inline-flex/)
+  assert.doesNotMatch(plegada, /Caja Eventos/)
+})
+
+test("Cobrar cuota ve el total de cada salón pero no el reparto entre cajas", () => {
+  const React = require("react")
+  const { renderToStaticMarkup } = require("react-dom/server")
+  const load = Module._load
+  Module._load = function (request, ...args) {
+    if (request === "swr") return { __esModule: true, default: () => ({ data: { vienenAPagar: [] }, isLoading: false, mutate: () => {} }) }
+    if (request === "@/lib/store-context") return { useStore: () => ({ state: { eventos: [] }, configuracionCajas: { salones: {} } }) }
+    if (request === "@/lib/profile-context") return { useProfile: () => ({ perfilActivo: { id: "cobro" } }) }
+    return load.call(this, request, ...args)
+  }
+  try {
+    delete require.cache[require.resolve("../components/vienen-a-pagar-modal.tsx")]
+    const { VienenAPagarModal } = require("../components/vienen-a-pagar-modal.tsx")
+    const html = renderToStaticMarkup(React.createElement(VienenAPagarModal, { open: true, onOpenChange: () => {} }))
+    assert.equal((html.match(/aria-pressed=/g) || []).length, 8)
+    assert.doesNotMatch(html, /Caja Eventos|Caja Jazmines/)
+  } finally { Module._load = load }
+})
+
+test("por entrar con recargo: $3.000 por día de atraso, repartido entre cajas con la misma proporción", () => {
+  const { porEntrarDelMesPorSalon } = require("../lib/vienen-a-pagar.ts")
+  const ingresos = [
+    // Vencida hace 3 días: recargo $9.000. Proporción a Eventos 40 % → $3.600 más a Eventos y $5.400 a Jazmines.
+    { salon: "Casona", fechaVencimiento: "2026-10-10", monto: 40000, saldoRestante: 100000 },
+    // Todavía no venció: sin recargo.
+    { salon: "Casona", fechaVencimiento: "2026-10-20", monto: 10000, saldoRestante: 20000 },
+  ]
+  const sin = porEntrarDelMesPorSalon(ingresos, "2026-10-13", ["Casona"])
+  const con = porEntrarDelMesPorSalon(ingresos, "2026-10-13", ["Casona"], true)
+  assert.deepEqual(sin, [{ salon: "Casona", cajaEventos: 50000, cajaJazmines: 70000 }])
+  assert.deepEqual(con, [{ salon: "Casona", cajaEventos: 53600, cajaJazmines: 75400 }])
 })

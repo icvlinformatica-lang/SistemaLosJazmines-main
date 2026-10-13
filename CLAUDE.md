@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 56 archivos y 469 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 59 archivos y 496 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -84,7 +84,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 **Poco acoplado** (riesgo bajo):
 - Vistas de solo lectura del staff externo (`/eventos/staff`).
 - Cambios puramente visuales.
-- El chat de ayuda: no toca la base, responde con `lib/guia-sistema.ts`.
+- El chat con IA (Administración y Soporte; botón flotante en todas las pantallas, `components/chat-ia-flotante.tsx`, montado en `app-shell`; ruta `app/api/chat/route.ts`): responde con `lib/guia-sistema.ts` y además **lee** eventos, cuotas y cajas con herramientas de solo lectura (`lib/chat-ia-herramientas.ts`, `lib/chat-ia-datos.ts`). Las cuotas por cobrar salen de `cuotasPendientesEvento` (`lib/resumen-diario.ts`), la misma cuenta de "Vienen a pagar": cambiarla cambia las dos. Lo que leen las herramientas se le manda a la IA (AI Gateway de Vercel, sin DNI, teléfonos ni contrato). Los botones que devuelve son direcciones fijas armadas en el servidor; la Lista abre y resalta un evento con `?evento=<id>`. La conversación se guarda en `chat_ia_mensajes` (migración 023, `lib/chat-ia-historial.ts`): una por persona (columna `usuario`: Diego, Leila o Ricky según la cookie `lj_usuario` del login, que no está firmada, o "Soporte"), sin borrado; Soporte puede leer la de cada uno (`?de=`), solo lectura; es lo único que escribe el chat. Sin la tabla, el chat responde igual y avisa que no guarda.
 - Novedades.
 - La configuración vieja del cotizador (`tarifario_salon`, `precios_base_salones`, `salon_incluye_*`, `cotizador_config`, `cotizador_servicio_oculto`) ya no la usa el cotizador. Está escondida con `MOSTRAR_* = false` y su limpieza queda pendiente. En cambio `precios_venta` (Calendario de Precios) **sigue en el código** del planificador, aunque hoy la tabla está vacía.
 
@@ -162,7 +162,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Comentarios en español que expliquen el porqué, como en el resto del código.
 - UI: seguir `DESIGN.md` (íconos solo de `lucide-react`, un color por categoría o estado) y probar a 390 px sin scroll horizontal.
 
-**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 020)
+**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 023; la 021 y la 022 están en ramas de otros PRs)
 - Encabezado con qué hace y por qué, "SOLO ADITIVA" si lo es, y "Aplicada el <fecha>" cuando se aplique.
 - Idempotente (`if not exists`) y aditiva por defecto, con defaults que no cambien el comportamiento.
 - Si tiene varios pasos, va en `begin`/`commit`. Si borra, lleva un freno que verifique que no esté en uso y aborte.
@@ -216,7 +216,7 @@ No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
   - El conector de Supabase cancela solo las escrituras en las sesiones en la nube (no puede mostrar la confirmación). Lo que modifique datos lo corre el dueño en el SQL Editor.
   - El ajuste "Aporte a Administración" de Configuración de Cajas solo actuaba en esa seña sin caja, así que desde el arreglo no hace nada. Nunca generó movimientos: en la base no hay ninguno de tipo `aporte_admin`.
 - **Seña de los eventos que vienen de una cotización** (detectado y arreglado el 8/10/2026): aprobar crea el evento sin plan de cuotas. Ahora, al cargarle "Seña + Cuotas" por primera vez en el planificador, la seña se anota en las cajas con la misma regla que al crear (`senaAAnotarAlEditar` en `lib/cobrar-cuota.ts`): solo eventos con `cotizacionId`, solo si el plan guardado no tenía seña y si el evento no tiene ya un movimiento "Seña …".
-- **Saldos de servicios pagados sin la seña** (detectado el 13/10/2026, solo lectura): Caja Eventos y Costos del evento dejan pagar el saldo de un servicio sin haber pagado la seña; el servicio queda "pagado_total" y la seña ya no figura para pagar, aunque nunca salió de la caja. En la base hay 21 servicios así en eventos pendientes (señas por $3.200.000) y 11 con el saldo marcado pagado sin ningún egreso. Costos del evento los marca con "Marcado pagado, sin pago en Caja Eventos" (`señaSinEgreso`/`saldoSinEgreso` en `lib/costo-evento.ts`); qué hacer con ellos y si se exige pagar la seña primero lo decide el dueño.
+- **Saldos de servicios pagados sin la seña** (detectado y frenado el 13/10/2026): Caja Eventos y Costos del evento dejan pagar el saldo de un servicio sin haber pagado la seña; el servicio queda "pagado_total" y la seña ya no figura para pagar, aunque nunca salió de la caja. En la base hay 21 servicios así en eventos pendientes (señas por $3.200.000) y 11 con el saldo marcado pagado sin ningún egreso. Costos del evento los marca con "Marcado pagado, sin pago en Caja Eventos" (`señaSinEgreso`/`saldoSinEgreso` en `lib/costo-evento.ts`). **Decisión del dueño (13/10/2026): primero la seña.** Desde entonces Caja Eventos y Costos no dejan pagar el saldo de un proveedor con la seña sin pagar (`saldoEsperaSeña` en `lib/servicio-sueldo.ts`); los casos viejos quedan como están, con el aviso.
 - En data-service, una seña guardada en 0 % se lee como 30 % (`Number(...) || 30`). Lo mismo pasa con los días de anticipación de seña y de saldo (`|| 30`, `|| 7`). Hoy ningún servicio tiene 0, así que no afecta a los datos actuales.
 - `fetchPersonal` y `fetchCostosOperativos` devuelven `[]` ante un error (ver "Estado del cliente").
 - Los años de evento válidos van de 2026 a 2032 (ver "Valores guardados"). Hay 1 evento activo de 2025, ya completado: si se guarda mandando la fecha, el servidor lo rechaza.
