@@ -57,6 +57,9 @@ export function FindeModal({ open, onOpenChange }: Props) {
   // entrar a esa pantalla. A Cobrar cuota, que ve Inicio pero no Costos, la
   // tarjeta no lo lleva a ningún lado: si no, lo rebotaría de vuelta.
   const puedeVerCostos = puedeEntrarARuta(perfilActivo, "/eventos/costos")
+  // "Ver cuotas pagadas" abre el evento en Pagos, donde están las cuotas
+  // pagas y las que faltan. Cobrar cuota sí entra ahí.
+  const puedeVerCuotas = puedeEntrarARuta(perfilActivo, "/eventos/pagos")
 
   const [fechaElegida, setFechaElegida] = useState<string | null>(null)
   const fecha = fechaElegida ?? fechaArgentina()
@@ -172,15 +175,17 @@ export function FindeModal({ open, onOpenChange }: Props) {
             eventosFinde.map(({ evento, costoCocina, costoBarra, totalPersonal, totalServicios, total, invitados }) => {
               const pendiente = pendientePorEvento.get(evento.id) ?? 0
               return (
-              <TarjetaEvento
+              <div
                 key={evento.id}
-                href={puedeVerCostos ? `/eventos/costos?id=${evento.id}` : undefined}
-                onIr={() => onOpenChange(false)}
                 className="rounded-lg border border-t-4 bg-card p-4 text-card-foreground"
                 style={{
                   borderColor: salonColor(evento.salon, configuracionCajas),
                   backgroundColor: `color-mix(in srgb, ${salonColor(evento.salon, configuracionCajas)} 10%, var(--card))`,
                 }}
+              >
+              <TarjetaEvento
+                href={puedeVerCostos ? `/eventos/costos?id=${evento.id}` : undefined}
+                onIr={() => onOpenChange(false)}
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -247,6 +252,20 @@ export function FindeModal({ open, onOpenChange }: Props) {
                   </p>
                 )}
               </TarjetaEvento>
+
+              {/* Va afuera del link de costos: un link no puede ir dentro de otro. */}
+              {puedeVerCuotas && (
+                <div className="mt-1 flex justify-end">
+                  <Link
+                    href={`/eventos/pagos?evento=${encodeURIComponent(evento.id)}`}
+                    onClick={() => onOpenChange(false)}
+                    className="flex items-center gap-0.5 rounded text-xs font-medium text-[#2d5a3d] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]"
+                  >
+                    Ver cuotas pagadas <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              )}
+              </div>
               )
             })
           )}
@@ -256,28 +275,23 @@ export function FindeModal({ open, onOpenChange }: Props) {
   )
 }
 
-// Tarjeta de un evento: si hay adónde ir, es un link a sus costos (y cierra
-// el modal al tocarla); si no, un recuadro común.
+// Cuerpo de la tarjeta de un evento: si hay adónde ir, es un link a sus
+// costos (y cierra el modal al tocarla); si no, un recuadro común.
 function TarjetaEvento({
   href,
   onIr,
-  className,
-  style,
   children,
 }: {
   href?: string
   onIr: () => void
-  className: string
-  style: React.CSSProperties
   children: React.ReactNode
 }) {
-  if (!href) return <div className={className} style={style}>{children}</div>
+  if (!href) return <div>{children}</div>
   return (
     <Link
       href={href}
       onClick={onIr}
-      className={`${className} block transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]`}
-      style={style}
+      className="block rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]"
     >
       {children}
     </Link>

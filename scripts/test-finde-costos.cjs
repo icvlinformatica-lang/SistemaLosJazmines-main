@@ -1,5 +1,6 @@
 // "Este finde" (Inicio): tocar la tarjeta de un evento lleva a sus costos,
-// solo para los perfiles que pueden entrar a esa pantalla.
+// y su botón "Ver cuotas pagadas" a Pagos, cada uno solo para los perfiles
+// que pueden entrar a esa pantalla.
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
@@ -56,6 +57,9 @@ test("Administración: la tarjeta es un link a los costos del evento", () => {
   assert.match(html, /PRUEBA Finde/)
   assert.match(html, /href="\/eventos\/costos\?id=ev&amp;1"/)
   assert.match(html, /Ver costos del evento/)
+  assert.match(html, /href="\/eventos\/pagos\?evento=ev%261"[^>]*>.*Ver cuotas pagadas/)
+  // El botón de cuotas no queda adentro del link de costos.
+  assert.doesNotMatch(html, /href="\/eventos\/costos[^"]*"(?:(?!<\/a>).)*Ver cuotas pagadas/)
 })
 
 test("Cobrar cuota: la tarjeta se ve igual pero no lleva a Costos", () => {
@@ -63,4 +67,11 @@ test("Cobrar cuota: la tarjeta se ve igual pero no lleva a Costos", () => {
   assert.match(html, /PRUEBA Finde/)
   assert.doesNotMatch(html, /\/eventos\/costos/)
   assert.doesNotMatch(html, /Ver costos del evento/)
+  // Cobrar cuota sí entra a Pagos: ve el botón de cuotas.
+  assert.match(html, /href="\/eventos\/pagos\?evento=ev%261"[^>]*>.*Ver cuotas pagadas/)
+})
+
+test("un perfil sin Pagos no ve el botón de cuotas", () => {
+  const html = renderFinde({ id: "cocina", rutas: ["/eventos/produccion", "/stock"] })
+  assert.doesNotMatch(html, /Ver cuotas pagadas/)
 })
