@@ -551,6 +551,30 @@ export default function EventosListaPage() {
     }
   }, [eventoResaltado, selectorAbierto])
 
+  // Llegada con ?evento=<id> (botón del chat de ayuda): abre directo el salón
+  // del evento y lo resalta, igual que elegirlo en el buscador del selector.
+  // Corre después de recuperar los filtros guardados, para no ser pisado.
+  const [eventoDeLaUrlAplicado, setEventoDeLaUrlAplicado] = useState(false)
+  useEffect(() => {
+    if (eventoDeLaUrlAplicado || !filtrosRecuperados || loadingEventos) return
+    const id = new URLSearchParams(window.location.search).get("evento")
+    if (!id) {
+      setEventoDeLaUrlAplicado(true)
+      return
+    }
+    const evento = (eventos || []).find((e) => e.id === id)
+    if (!evento) {
+      if ((eventos || []).length > 0) setEventoDeLaUrlAplicado(true)
+      return
+    }
+    setFiltroSalon(evento.salon || "todos")
+    setFiltroEstado(esPasadoSinFinalizar(evento, hoy) ? FILTRO_YA_PASARON : "todos")
+    setSearchQuery("")
+    setEventoResaltado(evento.id)
+    setSelectorAbierto(false)
+    setEventoDeLaUrlAplicado(true)
+  }, [eventoDeLaUrlAplicado, filtrosRecuperados, loadingEventos, eventos, hoy])
+
   // Consolidar compras
   const [modoConsolidar, setModoConsolidar] = useState(false)
   const [syncing, setSyncing] = useState(false)

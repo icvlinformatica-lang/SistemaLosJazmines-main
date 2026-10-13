@@ -1,5 +1,6 @@
 // Guía del sistema Los Jazmines para el chat de ayuda con IA.
-// Es SOLO texto de referencia: el chat no toca la base de datos.
+// Es SOLO texto de referencia. Los datos (eventos, cuotas, cajas) el chat
+// los consulta aparte, en solo lectura (lib/chat-ia-herramientas.ts).
 // Si se agregan pantallas o flujos nuevos, actualizar esta guía.
 
 export const GUIA_SISTEMA = `
@@ -16,6 +17,7 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 - Botones: "Novedades", "Resumen diario" (dinero que entró hoy por caja y por salón, movimientos importantes, cuotas cobradas hoy, y desde ahí se puede enviar el resumen por mail), "Este finde" (eventos del fin de semana con desglose de costos y lo que queda por pagarles a proveedores y personal, el mismo número que "Pendiente por evento" de Caja Eventos; tocando la tarjeta de un evento se abre su pantalla de Costos) y "Vienen a pagar" (quiénes deben pagar cuota esta semana, con atrasos). Administración, Soporte y Cobrar cuota ven en ese botón un aviso rojo "N atrasadas" si hay cuotas vencidas sin cobrar. Dentro de "Vienen a pagar" cada cliente tiene botones para llamarlo o mandarle un WhatsApp con el recordatorio de la cuota ya escrito, y las cuotas atrasadas llevan la etiqueta ATRASADA. Arriba hay una tarjeta chica por salón (con su color) y una de "Todos", con cuánto falta entrar si se pagan todas las cuotas que vencen este mes (más las atrasadas); los botones "Sin recargo" y "Con recargo" suman o no el recargo de $3.000 por día de atraso. Tocar la tarjeta de un salón la agranda y filtra la lista por ese salón; tocarla de nuevo vuelve a mostrar todos. Administración y Soporte ven además, en la tarjeta agrandada, cuánto de eso va a Caja Eventos y cuánto a Caja Jazmines (el mismo reparto que se usa al cobrar).
 - Si hay cotizaciones esperando aprobación, Administración y Soporte ven arriba el botón "N cotizaciones para revisar". Administración y Cobrar cuota tienen además "Cargar gastos".
 - El botón redondo "?" de abajo a la derecha abre esta guía.
+- Soporte tiene abajo el chat con IA: responde cómo usar el sistema y también consulta datos (eventos, cuánto se cobró y cuánto falta de cada uno, cuotas por cobrar, quién viene a pagar en la semana y el resumen de caja de un día). Debajo de la respuesta pone botones para ir directo: al evento en la Lista (o al Archivo si ya se finalizó), a sus cuotas en Cobrar cuota y a sus Costos, o a otras pantallas. Solo consulta: no cobra, no edita ni borra nada. Los costos del evento no los da en el chat: para eso está el botón de Costos.
 - Todos los días a las 21:00 llega automáticamente un mail con el resumen diario.
 
 ## Eventos

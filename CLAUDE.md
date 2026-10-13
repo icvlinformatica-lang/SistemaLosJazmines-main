@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 57 archivos y 470 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 58 archivos y 477 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -83,7 +83,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 **Poco acoplado** (riesgo bajo):
 - Vistas de solo lectura del staff externo (`/eventos/staff`).
 - Cambios puramente visuales.
-- El chat de ayuda: no toca la base, responde con `lib/guia-sistema.ts`.
+- El chat de ayuda (solo Soporte, `app/api/chat/route.ts`): responde con `lib/guia-sistema.ts` y además **lee** eventos, cuotas y cajas con herramientas de solo lectura (`lib/chat-ia-herramientas.ts`, `lib/chat-ia-datos.ts`). Las cuotas por cobrar salen de `cuotasPendientesEvento` (`lib/resumen-diario.ts`), la misma cuenta de "Vienen a pagar": cambiarla cambia las dos. Lo que leen las herramientas se le manda a la IA (AI Gateway de Vercel, sin DNI, teléfonos ni contrato). Los botones que devuelve son direcciones fijas armadas en el servidor; la Lista abre y resalta un evento con `?evento=<id>`.
 - Novedades.
 - La configuración vieja del cotizador (`tarifario_salon`, `precios_base_salones`, `salon_incluye_*`, `cotizador_config`, `cotizador_servicio_oculto`) ya no la usa el cotizador. Está escondida con `MOSTRAR_* = false` y su limpieza queda pendiente. En cambio `precios_venta` (Calendario de Precios) **sigue en el código** del planificador, aunque hoy la tabla está vacía.
 

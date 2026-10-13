@@ -1,12 +1,17 @@
 // Chat de ayuda con IA — SOLO para el perfil Soporte.
-// Responde preguntas sobre cómo usar el sistema basándose en la guía
-// embebida (lib/guia-sistema.ts). NO consulta ni modifica la base de datos.
-import { generateText } from "ai"
+// Responde cómo usar el sistema (guía embebida, lib/guia-sistema.ts) y
+// consulta eventos, cuotas y cajas con herramientas de SOLO LECTURA
+// (lib/chat-ia-herramientas.ts). Puede devolver botones a pantallas.
+// NUNCA modifica la base de datos.
+import { generateText, stepCountIs } from "ai"
 import { verifyToken, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
 import { GUIA_SISTEMA } from "@/lib/guia-sistema"
 import { mensajeErrorChatIA } from "@/lib/chat-ia-errores"
+import { crearHerramientasChat } from "@/lib/chat-ia-herramientas"
+import type { AccionChat } from "@/lib/chat-ia-datos"
+import { fechaNegocio } from "@/lib/ipc-cuotas"
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 // Rate limit simple en memoria: máx 20 preguntas por sesión cada 10 minutos
 const ventanas = new Map<string, { count: number; reset: number }>()
@@ -57,13 +62,37 @@ export async function POST(req: Request) {
     return Response.json({ error: "Falta la pregunta" }, { status: 400 })
   }
 
+  const hoy = fechaNegocio()
+  // Los botones los agregan las herramientas mientras la IA responde.
+  const acciones: AccionChat[] = []
   try {
     const { text } = await generateText({
       model: "openai/gpt-5-mini",
-      system: `Sos el asistente de ayuda del sistema Los Jazmines. Respondés SIEMPRE en español rioplatense, de forma breve y práctica (2-5 oraciones), indicando en qué pantalla se hace cada cosa y los pasos. Si la pregunta pide datos concretos del negocio (montos, eventos, nombres), aclarás que por ahora solo ayudás con el USO del sistema, no con datos. Si no sabés algo, lo decís sin inventar. Esta es la guía del sistema:\n\n${GUIA_SISTEMA}`,
+      system: `Sos el asistente del sistema Los Jazmines (salones de eventos). Hoy es ${hoy}. Respondés SIEMPRE en español rioplatense, breve y práctico.
+
+Podés hacer dos cosas:
+1. Explicar cómo se usa el sistema, con la guía de abajo (en qué pantalla se hace cada cosa y los pasos).
+2. Consultar datos con tus herramientas: eventos y su plata (total, seña, cobrado, saldo, cuotas por cobrar), quién viene a pagar en la semana y el resumen de caja de un día.
+
+Reglas:
+- Los montos y datos salen SIEMPRE de las herramientas. Nunca inventes ni calcules un monto que no te dieron; si algo no está, decilo.
+- Texto plano, sin markdown ni asteriscos; para listas usá un renglón por ítem con guion.
+- Montos en pesos con punto de miles, por ejemplo $1.250.000. Fechas como 6/10/2026.
+- Si el usuario nombra una fecha ("6 de octubre", "el sábado"), pasala a AAAA-MM-DD tomando hoy (${hoy}) como referencia.
+- Cuando quiera ver, abrir o ir a un evento, o pregunte por un evento puntual, buscalo y llamá a mostrarAccesosEvento con su id: eso pone los botones a la Lista, las cuotas y los costos. Si hay varios eventos posibles, mostrá la lista y preguntá cuál.
+- Si te pide ir a una pantalla, usá mostrarPantalla. No escribas direcciones web: los botones aparecen solos debajo de tu respuesta.
+- Los costos del evento (menú, barra, servicios, personal) no los tenés: para eso está el botón de costos.
+- Si una cuota tiene ipcPendiente, aclarás que el monto puede cambiar porque falta el IPC.
+- No podés modificar nada (cobrar, borrar, editar): si te lo piden, indicá la pantalla y poné el botón.
+
+Esta es la guía del sistema:
+
+${GUIA_SISTEMA}`,
       messages,
+      tools: crearHerramientasChat({ hoy, acciones }),
+      stopWhen: stepCountIs(6),
     })
-    return Response.json({ text })
+    return Response.json({ text, acciones })
   } catch (error) {
     console.error("[chat-ia] Error generando respuesta:", error)
     const { mensaje, status } = mensajeErrorChatIA(error)
