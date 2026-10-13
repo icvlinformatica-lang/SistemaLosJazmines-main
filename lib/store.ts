@@ -2,6 +2,7 @@
 
 import { fechaNegocio, proyectarIPC } from "./ipc-cuotas"
 import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota, type DecisionSaldoCuota, type RecargoSaldoCuota } from "./estado-cuotas"
+import { prefijoPagoBarra, prefijoPagoMenu, prefijoPagoSaldo, ultimoEgresoEvento } from "./egresos-evento"
 
 // Data Store for Los Jazmines Catering System
 // Uses localStorage for persistence
@@ -2557,6 +2558,12 @@ export interface ArchivoCongelado {
   }>
   costoCocina: number
   costoBarra: number
+  /**
+   * Lo que salió de Caja Eventos para pagar la cocina y la barra, si estaban
+   * pagadas al archivar. Las fotos viejas no lo tienen.
+   */
+  montoPagadoCocina?: number
+  montoPagadoBarra?: number
   totalServicios: number
   totalPersonal: number
 }
@@ -2574,8 +2581,6 @@ export function congelarCostosEvento(
   const costoCocina = comprasCocina.reduce((s, c) => s + c.costoMateriaPrima, 0)
   const costoBarra = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
 
-  const nombreEvento = evento.nombre || evento.nombrePareja || "Evento sin nombre"
-
   // Personal con sueldo vigente resuelto (igual que la pantalla de costos)
   const personal = (evento.personalEvento || [])
     .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, ctx.personal) }))
@@ -2583,30 +2588,29 @@ export function congelarCostosEvento(
   const totalPersonal = personal.reduce((s, pe) => s + (pe.monto || 0), 0)
 
   // Servicios: seña/saldo en vivo; los saldos ya pagados conservan el monto
-  // real que movió Caja Eventos
-  const montoSaldoPagado = (nombreServicio: string): number => {
-    const mov = [...(ctx.movimientosCaja ?? [])]
-      .reverse()
-      .find(
-        (m) =>
-          m.tipo === "egreso" &&
-          m.cajaDestino === "caja_eventos" &&
-          m.eventoId === evento.id &&
-          m.concepto === `Pago saldo ${nombreServicio} - ${nombreEvento}`,
-      )
-    return mov?.monto || 0
-  }
+  // real que movió Caja Eventos (sin egreso, lo que falta para el costo).
   const serviciosCalc = (evento.servicios || []).map((srv) => {
     const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
-    const { montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(srv, { servicios: ctx.servicios ?? [] })
+    const { costoTotal, montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(srv, { servicios: ctx.servicios ?? [] })
+    const egresoSaldo = ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoSaldo(srv.nombre))
     return {
       servicioId: srv.servicioId,
       montoSeña,
       // Pagado como sueldo (lib/servicio-sueldo.ts): el monto pagado queda en el
       // propio servicio; no hay un movimiento "Pago saldo" que buscar.
-      saldo: srv.pagoSueldo ? srv.pagoSueldo.monto : saldoPagado ? montoSaldoPagado(srv.nombre) : saldoPendiente,
+      saldo: srv.pagoSueldo
+        ? srv.pagoSueldo.monto
+        : saldoPagado
+          ? (egresoSaldo?.monto ?? Math.max(0, costoTotal - montoSeña))
+          : saldoPendiente,
     }
   })
+  const montoPagadoCocina = evento.cocinaPagada
+    ? ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoMenu)?.monto
+    : undefined
+  const montoPagadoBarra = evento.barraPagada
+    ? ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoBarra)?.monto
+    : undefined
   const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)
 
   // Menú elegido con costo por plato (por segmento de invitados)
@@ -2639,6 +2643,8 @@ export function congelarCostosEvento(
     menuPorSegmento,
     costoCocina,
     costoBarra,
+    ...(montoPagadoCocina !== undefined ? { montoPagadoCocina } : {}),
+    ...(montoPagadoBarra !== undefined ? { montoPagadoBarra } : {}),
     totalServicios,
     totalPersonal,
   }
