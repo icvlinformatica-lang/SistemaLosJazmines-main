@@ -4,6 +4,7 @@
 import { generateText } from "ai"
 import { verifyToken, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
 import { GUIA_SISTEMA } from "@/lib/guia-sistema"
+import { mensajeErrorChatIA } from "@/lib/chat-ia-errores"
 
 export const maxDuration = 30
 
@@ -65,14 +66,7 @@ export async function POST(req: Request) {
     return Response.json({ text })
   } catch (error) {
     console.error("[chat-ia] Error generando respuesta:", error)
-    // Caso especial: la cuenta de Vercel todavía no habilitó el AI Gateway
-    const msg = error instanceof Error ? error.message : ""
-    if (msg.includes("credit card") || msg.includes("customer_verification")) {
-      return Response.json(
-        { error: "La IA todavía no está habilitada: hay que agregar una tarjeta en la cuenta de Vercel (vercel.com → AI Gateway) para activar los créditos gratuitos." },
-        { status: 503 },
-      )
-    }
-    return Response.json({ error: "No pude generar la respuesta. Probá de nuevo." }, { status: 500 })
+    const { mensaje, status } = mensajeErrorChatIA(error)
+    return Response.json({ error: mensaje }, { status })
   }
 }
