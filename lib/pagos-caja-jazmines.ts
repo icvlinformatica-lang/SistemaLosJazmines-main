@@ -22,6 +22,7 @@
  */
 
 import type { CostoOperativo, RegistroMonto } from "./store"
+import { registroMarcadoPagado } from "./pago-gasto-fijo"
 
 export interface UnidadPagada {
   /** Identifica el pago: gf:<gasto>:<mes>:<salón> o gv:<gasto>:<salón>. */
@@ -79,12 +80,12 @@ function unidadesFijoDelMes(gasto: GastoPago, mes: string): UnidadPagada[] {
   const dist = partes(gasto)
   const concepto = `Pago gasto fijo - ${gasto.concepto} (${nombreMes(mes)})`
   if (dist.length === 0) {
-    if (registro.pagado === false) return []
+    if (!registroMarcadoPagado(registro)) return []
     return [{ ref: refFijo(gasto.id, mes, gasto.salon || ""), monto: aCentavos(registro.monto), salon: gasto.salon || "", concepto, mes }]
   }
   // Repartido: en el período vigente manda la parte de cada salón; en los
   // demás meses, el registro del mes (igual que la tira de meses).
-  const pagadas = mes === vigente ? dist.filter((d) => d.pagado === true) : registro.pagado === false ? [] : dist
+  const pagadas = mes === vigente ? dist.filter((d) => d.pagado === true) : !registroMarcadoPagado(registro) ? [] : dist
   return pagadas.map((d) => ({
     ref: refFijo(gasto.id, mes, d.salon),
     monto: aCentavos((registro.monto * d.porcentaje) / 100),

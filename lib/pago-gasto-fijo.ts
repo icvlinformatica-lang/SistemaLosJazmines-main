@@ -9,7 +9,9 @@
  *
  * - Un gasto fijo está pagado en el mes M solo si su historial tiene un
  *   registro de M con `pagado !== false` (los registros viejos sin ese dato
- *   cuentan como pagados, como los leyó siempre la tira).
+ *   cuentan como pagados, como los leyó siempre la tira). Excepción: el
+ *   registro "Alta del gasto" sin ese dato NO es un pago, es solo el alta
+ *   (antes del 13/10/2026 el alta no anotaba `pagado: false`).
  * - Gasto repartido visto desde UN salón: en el período vigente (el último
  *   registro del historial) manda la parte de ese salón (`distribucion`).
  * - Gastos anuales: pagados si hay un registro pagado en el año.
@@ -62,6 +64,18 @@ export function parteDelSalon(
 }
 
 /**
+ * ¿El registro del mes dice que se pagó? Los registros viejos sin el dato
+ * `pagado` cuentan como pagados, salvo el de "Alta del gasto": hasta el
+ * 13/10/2026 dar de alta un gasto fijo dejaba el primer mes sin ese dato, y la
+ * tira lo mostraba en verde sin que nadie lo hubiera pagado (pasó con
+ * "alquiler salon", septiembre 2026). Un alta no es un pago.
+ */
+export function registroMarcadoPagado(registro: Pick<RegistroMonto, "pagado" | "nota">): boolean {
+  if (registro.pagado === undefined || registro.pagado === null) return registro.nota !== "Alta del gasto"
+  return registro.pagado !== false
+}
+
+/**
  * ¿Está pagado este registro? Con `parte`, en el período vigente manda la
  * parte de ese salón; para el resto, el dato del registro.
  */
@@ -75,7 +89,7 @@ function registroPagado(
     const d = gasto.distribucion?.find((x) => x.salon === parte.salon)
     if (d) return d.pagado === true
   }
-  return registro.pagado !== false
+  return registroMarcadoPagado(registro)
 }
 
 /**

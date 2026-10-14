@@ -32,7 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { generateId, type CostoOperativo, type RegistroMonto } from "@/lib/store"
-import { cambiosPagoDelMes } from "@/lib/pago-gasto-fijo"
+import { cambiosPagoDelMes, registroMarcadoPagado } from "@/lib/pago-gasto-fijo"
 import { COLUMNAS_FILA_FIJO } from "./tira-meses-mini"
 import {
   Check,
@@ -159,7 +159,7 @@ export function MesesFijo({
       const d = gasto.distribucion?.find((x) => x.salon === parte.salon)
       if (d) return d.pagado === true
     }
-    return registro.pagado !== false
+    return registroMarcadoPagado(registro)
   }
 
   const estadoDeMes = (mesISO: string, registro: RegistroMonto | undefined): EstadoMes => {
