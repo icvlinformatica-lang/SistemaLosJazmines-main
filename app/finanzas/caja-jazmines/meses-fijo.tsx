@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { generateId, type CostoOperativo, type RegistroMonto } from "@/lib/store"
 import { cambiosPagoDelMes } from "@/lib/pago-gasto-fijo"
+import { COLUMNAS_FILA_FIJO } from "./tira-meses-mini"
 import {
   Check,
   ChevronLeft,
@@ -216,26 +217,48 @@ export function MesesFijo({
     }
   }
 
+  // Desde pantallas medianas, la tira usa las mismas "columnas invisibles"
+  // que la fila de meses y cada gasto plegado: cada mes queda justo debajo
+  // de su rayita. En el celular sigue siendo una fila que se desliza.
   return (
-    <div className="flex w-full items-center gap-1.5" aria-label={`Meses de ${gasto.concepto}${parte ? ` (${parte.salon})` : ""}`}>
-      <button
-        type="button"
-        onClick={() => {
-          setDeslizar("izq")
-          setAnioVer((a) => Math.max(anioMin, a - 1))
-        }}
-        disabled={anioVer <= anioMin}
-        className="h-10 w-7 shrink-0 rounded-xl border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
-        title="Año anterior"
-      >
-        <ChevronLeft className="mx-auto h-3.5 w-3.5" />
-        <span className="sr-only">Ver año anterior</span>
-      </button>
-      <span className="w-9 shrink-0 text-center text-xs font-semibold tabular-nums text-foreground">{anioVer}</span>
+    <div
+      className={`flex w-full items-center gap-1.5 md:grid ${COLUMNAS_FILA_FIJO} md:gap-x-3`}
+      aria-label={`Meses de ${gasto.concepto}${parte ? ` (${parte.salon})` : ""}`}
+    >
+      <div className="flex shrink-0 items-center gap-1.5 md:col-span-2 md:justify-start">
+        <button
+          type="button"
+          onClick={() => {
+            setDeslizar("izq")
+            setAnioVer((a) => Math.max(anioMin, a - 1))
+          }}
+          disabled={anioVer <= anioMin}
+          className="h-9 w-7 shrink-0 rounded-lg border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+          title="Año anterior"
+        >
+          <ChevronLeft className="mx-auto h-3.5 w-3.5" />
+          <span className="sr-only">Ver año anterior</span>
+        </button>
+        <span className="w-9 shrink-0 text-center text-xs font-semibold tabular-nums text-foreground">{anioVer}</span>
+        <button
+          type="button"
+          onClick={() => {
+            setDeslizar("der")
+            setAnioVer((a) => Math.min(anioMax, a + 1))
+          }}
+          disabled={anioVer >= anioMax}
+          className="h-9 w-7 shrink-0 rounded-lg border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+          title="Año siguiente"
+        >
+          <ChevronRight className="mx-auto h-3.5 w-3.5" />
+          <span className="sr-only">Ver año siguiente</span>
+        </button>
+        <span className="hidden md:inline min-w-0 truncate text-[11px] text-muted-foreground">Tocá un mes para pagar</span>
+      </div>
       {/* key={anioVer} re-monta la fila y dispara el deslizamiento */}
       <div
         key={anioVer}
-        className={`flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1 animate-in fade-in duration-300 ${
+        className={`flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1 md:grid md:grid-cols-12 md:gap-1 md:overflow-visible md:p-0 animate-in fade-in duration-300 ${
           deslizar === "der" ? "slide-in-from-right-8" : "slide-in-from-left-8"
         }`}
       >
@@ -248,7 +271,7 @@ export function MesesFijo({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className={`relative h-10 min-w-[2.6rem] flex-1 rounded-xl border text-xs font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]} ${
+                  className={`relative h-9 min-w-[2.6rem] flex-1 rounded-lg border text-xs font-semibold leading-none transition-colors md:min-w-0 md:w-full ${ESTILO_CHIP[estado]} ${
                     mesISO === hoyISO ? "ring-2 ring-purple-400 ring-offset-1" : ""
                   }`}
                   title={`${nombre} ${anioVer} · ${
@@ -475,19 +498,8 @@ export function MesesFijo({
           )
         })}
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          setDeslizar("der")
-          setAnioVer((a) => Math.min(anioMax, a + 1))
-        }}
-        disabled={anioVer >= anioMax}
-        className="h-10 w-7 shrink-0 rounded-xl border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
-        title="Año siguiente"
-      >
-        <ChevronRight className="mx-auto h-3.5 w-3.5" />
-        <span className="sr-only">Ver año siguiente</span>
-      </button>
+      {/* Columna del monto: vacía, para que los meses queden alineados */}
+      <span className="hidden md:block" aria-hidden="true" />
     </div>
   )
 }

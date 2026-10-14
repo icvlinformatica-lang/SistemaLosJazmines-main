@@ -21,11 +21,20 @@ import { pagoDelMesActual } from "@/lib/pago-gasto-fijo"
 export const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
 /**
- * Columnas compartidas por la fila de meses y por cada gasto, para que las
- * rayitas queden justo debajo de su mes: símbolo · nombre · 12 meses · monto.
- * Solo desde pantallas medianas; en el celular la tira va debajo del nombre.
+ * "Columnas invisibles" de Gastos fijos: la fila de meses, cada gasto plegado
+ * y la tira grande de un gasto abierto usan EXACTAMENTE estas columnas, así
+ * cada mes, el nombre y el monto caen siempre en el mismo lugar:
+ * símbolo · nombre · 12 meses · monto y menú.
+ * Solo desde pantallas medianas; en el celular cada gasto se acomoda solo.
  */
-export const COLUMNAS_FILA_FIJO = "md:grid-cols-[2.25rem_minmax(8rem,13rem)_minmax(0,1fr)_8.5rem]"
+export const COLUMNAS_FILA_FIJO = "md:grid-cols-[2.25rem_minmax(8rem,13rem)_minmax(0,1fr)_9rem]"
+
+/**
+ * Márgenes que alinean las columnas con las de cada gasto: el gasto tiene
+ * borde de 1px, 0,75rem de margen y a la derecha la flecha de desplegar
+ * (2rem + 0,5rem). La fila de meses y la tira grande usan los mismos.
+ */
+export const MARGEN_FILA_FIJO = "pl-3 pr-3 md:pr-[3.25rem]"
 
 type EstadoMini = "pagado" | "debe" | "vacio"
 
@@ -49,8 +58,11 @@ const COLOR_RAYITA: Record<EstadoMini, string> = {
 /** Fila con los nombres de los meses, alineada con las rayitas de cada gasto. */
 export function EncabezadoMeses({ anio, mesHoy }: { anio: number; mesHoy: string }) {
   return (
-    // pr-10: deja el lugar de la flecha de desplegar de cada gasto.
-    <div className={`hidden md:grid ${COLUMNAS_FILA_FIJO} items-end gap-x-3 px-3 pr-10 pb-0.5`} aria-hidden="true">
+    // Borde transparente de 1px + los mismos márgenes que cada gasto.
+    <div
+      className={`hidden md:grid ${COLUMNAS_FILA_FIJO} ${MARGEN_FILA_FIJO} items-end gap-x-3 border border-transparent pb-0.5`}
+      aria-hidden="true"
+    >
       <span className="col-span-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {`Pagos ${anio}`}
       </span>

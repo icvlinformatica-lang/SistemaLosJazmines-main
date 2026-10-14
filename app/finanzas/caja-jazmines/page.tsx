@@ -112,7 +112,7 @@ import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo, pagoDelMesActual } from "./meses-fijo"
 import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
-import { COLUMNAS_FILA_FIJO, EncabezadoMeses, TiraMesesMini } from "./tira-meses-mini"
+import { COLUMNAS_FILA_FIJO, EncabezadoMeses, MARGEN_FILA_FIJO, TiraMesesMini } from "./tira-meses-mini"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
 import { almacenDelNavegador, guardarSalonRecordado, leerSalonRecordado } from "@/lib/salon-recordado"
@@ -424,7 +424,7 @@ function IconoGastoBoton({
 function MontoPagoPill({ monto, pagado }: { monto: number; pagado: boolean }) {
   return (
     <span
-      className={`shrink-0 rounded-md border px-2 py-1 text-xs font-bold tabular-nums ${
+      className={`w-[6.5rem] shrink-0 rounded-md border px-2 py-1 text-center text-xs font-bold tabular-nums ${
         pagado
           ? "border-teal-200 bg-teal-50 text-teal-700"
           : "border-amber-200 bg-amber-50 text-amber-700"
@@ -475,6 +475,49 @@ function MenuGastoFijo({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/**
+ * Línea chica debajo del nombre de un gasto fijo, corta para que entre en una
+ * sola línea: "Paga Sep · vence 10/10 · 33%". En los anuales dice "Anual".
+ */
+function MetaGastoFijo({
+  frecuencia,
+  fechaVencimiento,
+  porcentaje,
+}: {
+  frecuencia?: string
+  fechaVencimiento?: string | null
+  porcentaje?: number
+}) {
+  const partes: React.ReactNode[] = []
+  if (frecuencia === "Anual") partes.push("Anual")
+  if (fechaVencimiento && frecuencia !== "Anual") {
+    const periodo = periodoQueSePaga(fechaVencimiento).slice(0, 3)
+    if (periodo) {
+      partes.push(
+        <span key="p" className="font-semibold text-purple-600" title="Mes que se paga">
+          {`Paga ${periodo}`}
+        </span>,
+      )
+    }
+  }
+  if (fechaVencimiento) {
+    const [, m, d] = fechaVencimiento.split("-")
+    partes.push(`vence ${d}/${m}`)
+  }
+  if (porcentaje !== undefined) partes.push(`${porcentaje}%`)
+  if (partes.length === 0 && frecuencia) partes.push(frecuencia)
+  return (
+    <p className="mt-0.5 text-xs text-muted-foreground md:truncate">
+      {partes.map((p, i) => (
+        <span key={i}>
+          {i > 0 ? " · " : ""}
+          {p}
+        </span>
+      ))}
+    </p>
   )
 }
 
@@ -2603,18 +2646,13 @@ export default function CajaJazminePage() {
                               onSelect={(nombre) => updateCostoOperativo(cuota.id, { icono: nombre })}
                             />
                             {/* Tocar el nombre abre o cierra los meses del gasto */}
-                            <div className="min-w-[11rem] flex-1 text-left md:min-w-0">
-                              <p className="text-sm font-medium break-words">{cuota.concepto}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {gastoRef?.frecuencia || "Mensual"}
-                                {cuota.fechaVencimiento && (gastoRef?.frecuencia || "Mensual") === "Mensual" ? (
-                                  <span className="font-semibold text-purple-600">
-                                    {` · ${periodoQueSePaga(cuota.fechaVencimiento)}`}
-                                  </span>
-                                ) : null}
-                                {cuota.fechaVencimiento ? ` · vence ${formatFecha(cuota.fechaVencimiento)}` : ""}
-                                {` · ${cuota.porcentaje}%`}
-                              </p>
+                            <div className="min-w-[11rem] flex-1 text-left md:min-w-0" title={cuota.concepto}>
+                              <p className="text-sm font-medium break-words md:truncate">{cuota.concepto}</p>
+                              <MetaGastoFijo
+                                frecuencia={gastoRef?.frecuencia || "Mensual"}
+                                fechaVencimiento={cuota.fechaVencimiento}
+                                porcentaje={cuota.porcentaje}
+                              />
                             </div>
                             <TiraMesesMini
                               gasto={origPill}
@@ -2641,7 +2679,7 @@ export default function CajaJazminePage() {
                         {(() => {
                           const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
                           return origCuota ? (
-                            <div className="rounded-b-lg border-t border-border bg-muted/40 px-3 py-2.5">
+                            <div className={`rounded-b-lg border-t border-border bg-muted/40 py-2.5 ${MARGEN_FILA_FIJO}`}>
                               <MesesFijo
                                 gasto={origCuota}
                                 updateCostoOperativo={updateCostoOperativo}
@@ -2694,17 +2732,9 @@ export default function CajaJazminePage() {
                             onSelect={(nombre) => updateCostoOperativo(gasto.id, { icono: nombre })}
                           />
                           {/* Tocar el nombre abre o cierra los meses del gasto */}
-                          <div className="min-w-[11rem] flex-1 text-left md:min-w-0">
-                            <p className="text-sm font-medium break-words">{gasto.concepto}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {gasto.frecuencia}
-                              {gasto.fechaVencimiento && gasto.frecuencia === "Mensual" ? (
-                                <span className="font-semibold text-purple-600">
-                                  {` · ${periodoQueSePaga(gasto.fechaVencimiento)}`}
-                                </span>
-                              ) : null}
-                              {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
-                            </p>
+                          <div className="min-w-[11rem] flex-1 text-left md:min-w-0" title={gasto.concepto}>
+                            <p className="text-sm font-medium break-words md:truncate">{gasto.concepto}</p>
+                            <MetaGastoFijo frecuencia={gasto.frecuencia} fechaVencimiento={gasto.fechaVencimiento} />
                           </div>
                           {/* Pagos del año de un vistazo (los sueldos no tienen tira) */}
                           <TiraMesesMini
@@ -2782,7 +2812,7 @@ export default function CajaJazminePage() {
                     {!gasto.esSueldoVendedor && (() => {
                       const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
                       return origFijo ? (
-                        <div className="rounded-b-lg border-t border-border bg-muted/40 px-3 py-2.5">
+                        <div className={`rounded-b-lg border-t border-border bg-muted/40 py-2.5 ${MARGEN_FILA_FIJO}`}>
                           <MesesFijo
                             gasto={origFijo}
                             updateCostoOperativo={updateCostoOperativo}
