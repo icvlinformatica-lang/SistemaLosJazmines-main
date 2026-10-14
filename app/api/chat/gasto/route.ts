@@ -9,7 +9,7 @@
 // pagar y sin movimiento de caja. Todo en una transacción con FOR UPDATE; el
 // id del gasto es el de la propuesta, así que confirmar dos veces no lo duplica.
 import { verifyToken, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
-import { PERFILES_CHAT_IA, leerAdjuntos, usuarioChat } from "@/lib/chat-ia-historial"
+import { PERFILES_CHAT_IA, adjuntosConPropuesta, leerAdjuntos, usuarioChat } from "@/lib/chat-ia-historial"
 import type { PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { sql } from "@/lib/db"
@@ -91,12 +91,7 @@ export async function POST(req: Request) {
                   ${`${propuesta.concepto} · Vence ${propuesta.vencimiento} · Cargado desde el asistente con IA · Por ${usuario}`})
         `
       }
-      const nuevosAdjuntos = JSON.stringify({
-        botones: adjuntos.acciones,
-        tarjetas: adjuntos.tarjetas,
-        gasto: resuelto,
-        ...(adjuntos.cobro ? { cobro: adjuntos.cobro } : {}),
-      })
+      const nuevosAdjuntos = adjuntosConPropuesta(adjuntos, { gasto: resuelto })
       await tx`UPDATE chat_ia_mensajes SET acciones = ${nuevosAdjuntos}::jsonb WHERE id = ${mensajeId}`
       return resuelto
     })
