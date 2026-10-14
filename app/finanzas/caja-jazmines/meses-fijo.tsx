@@ -235,7 +235,7 @@ export function MesesFijo({
       {/* key={anioVer} re-monta la fila y dispara el deslizamiento */}
       <div
         key={anioVer}
-        className={`flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden animate-in fade-in duration-300 ${
+        className={`flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1 animate-in fade-in duration-300 ${
           deslizar === "der" ? "slide-in-from-right-8" : "slide-in-from-left-8"
         }`}
       >
@@ -248,7 +248,9 @@ export function MesesFijo({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className={`relative h-10 min-w-0 flex-1 rounded-xl border text-xs font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]}`}
+                  className={`relative h-10 min-w-[2.6rem] flex-1 rounded-xl border text-xs font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]} ${
+                    mesISO === hoyISO ? "ring-2 ring-purple-400 ring-offset-1" : ""
+                  }`}
                   title={`${nombre} ${anioVer} · ${
                     estado === "pagado"
                       ? `pagado ${formatCurrency(aParte(registro!.monto))}`
