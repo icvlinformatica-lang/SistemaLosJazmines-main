@@ -92,8 +92,8 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
   const [modoVariable, setModoVariable] = useState<"gasto" | "retiro">("gasto")
   // "Ya está pagado": el gasto nuevo se agenda ya marcado como pagado. Es el
   // mismo dato que deja el círculo "Marcar como pagado" de Caja Jazmines
-  // (pagado: true en el gasto): no genera movimiento de caja ni elige caja o
-  // medio de pago, igual que ese botón.
+  // (pagado: true en el gasto) y, como ese botón, descuenta el monto del
+  // saldo de Caja Jazmines (el store deja el egreso; desde el 14/10/2026).
   const [yaPagado, setYaPagado] = useState(false)
   // Se vuelve true al tocar "Agendar"/"Registrar retiro" con datos faltantes:
   // desde ahí se marcan en rojo los campos que faltan, con un texto corto.
@@ -681,8 +681,8 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
                 <Switch id="gv-ya-pagado" checked={yaPagado} onCheckedChange={setYaPagado} />
               </div>
               <p className="text-xs text-muted-foreground">
-                Se agenda ya marcado como pagado, igual que tocar el círculo de pagado en Caja Jazmines. No registra un
-                movimiento de caja.
+                Se agenda ya marcado como pagado, igual que tocar el círculo de pagado en Caja Jazmines: el monto se
+                descuenta del saldo de Caja Jazmines.
               </p>
             </div>
           )}

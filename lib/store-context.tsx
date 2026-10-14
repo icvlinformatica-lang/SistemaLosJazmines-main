@@ -124,8 +124,13 @@ interface StoreContextType {
   recargarServicios: () => Promise<boolean>
   // Costos Operativos
   addCostoOperativo: (costo: Omit<CostoOperativo, "id">) => void
-  updateCostoOperativo: (id: string, updates: Partial<CostoOperativo>) => void
-  deleteCostoOperativo: (id: string) => void
+  /**
+   * `mesesPago`: en un gasto fijo, los meses cuyo pago se tocó (pagar o
+   * deshacer). Con eso se crea o borra el egreso en Caja Jazmines.
+   */
+  updateCostoOperativo: (id: string, updates: Partial<CostoOperativo>, opciones?: { mesesPago?: string[] }) => void
+  /** `conservarPagos`: archivar un gasto variable no devuelve su pago a la caja. */
+  deleteCostoOperativo: (id: string, opciones?: { conservarPagos?: boolean }) => void
   // Precios Venta
   setPrecioVenta: (salon: string, fecha: string, precio: number) => void
   deletePrecioVenta: (salon: string, fecha: string) => void
@@ -245,6 +250,10 @@ function aplicarSoloLectura<T extends Record<string, any>>(
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState())
+  // Último estado conocido, para leerlo dentro de funciones async (pagos de
+  // Caja Jazmines: qué egresos ya existen).
+  const estadoRef = useRef(state)
+  estadoRef.current = state
   const syncGuard = useRef(new StoreSyncGuard()).current
   // Lista de servicios más nueva, para que updateServicio arme el registro a
   // guardar sin depender de cuándo React ejecuta el setState. Se sincroniza
@@ -1087,9 +1096,73 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // === Pagos de gastos de Caja Jazmines → egresos de la caja ===
+  // Pagar un gasto descuenta la plata del saldo de Caja Jazmines: deja un
+  // egreso con refId (ver lib/pagos-caja-jazmines.ts). Deshacer el pago borra
+  // ese egreso. Lo usan los mutadores de costos de abajo.
+  const sincronizarPagosGasto = async (
+    antes: CostoOperativo | undefined,
+    despues: CostoOperativo | undefined,
+    meses: string[] = [],
+  ) => {
+    const { diferenciaPagos } = await import("./pagos-caja-jazmines")
+    const movs = estadoRef.current.movimientosCaja || []
+    const refsConEgreso = new Set(movs.filter((m) => m.refId).map((m) => m.refId as string))
+    const { altas, bajas } = diferenciaPagos(antes, despues, meses, refsConEgreso)
+    if (altas.length === 0 && bajas.length === 0) return
+
+    for (const ref of bajas) {
+      for (const m of movs.filter((x) => x.refId === ref)) {
+        await deleteMovimientoCaja(m.id)
+      }
+    }
+    if (altas.length > 0) {
+      const fecha = new Date().toISOString()
+      let saldo = movs
+        .filter((m) => m.cajaDestino === "caja_jazmines")
+        .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : m.tipo === "egreso" ? sum - m.monto : sum), 0)
+      const nuevos: MovimientoCaja[] = altas.map((u) => {
+        saldo -= u.monto
+        return {
+          id: generateId(),
+          fecha,
+          tipo: "egreso",
+          concepto: u.concepto,
+          monto: u.monto,
+          salon: u.salon,
+          cajaDestino: "caja_jazmines",
+          saldoResultante: saldo,
+          refId: u.ref,
+          costoOperativoId: (despues ?? antes)?.id,
+        }
+      })
+      await addMovimientosCaja(nuevos)
+    }
+    // Configuración > Actividad: queda quién descontó o devolvió plata.
+    const nombre = (despues ?? antes)?.concepto || "Gasto"
+    const totalAltas = altas.reduce((s, u) => s + u.monto, 0)
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "caja",
+        accion: altas.length > 0 ? "pago de gasto (egreso)" : "pago de gasto deshecho",
+        nombre: `Caja Jazmines · ${nombre}`,
+        detalle: [
+          altas.length > 0 ? `Se descontaron ${altas.length} egreso(s) por $${Math.round(totalAltas).toLocaleString("es-AR")}` : "",
+          bajas.length > 0 ? `Se borraron ${bajas.length} egreso(s) y la plata volvió a la caja` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      }),
+    }).catch(() => {})
+  }
+
   // === Costos Operativos - Synced with Supabase ===
   const addCostoOperativo = async (costo: Omit<CostoOperativo, "id">) => {
     const newCosto = { ...costo, id: generateId() }
+    // Gasto variable cargado "Ya está pagado": descuenta de la caja.
+    if (newCosto.esVariable && newCosto.pagado) void sincronizarPagosGasto(undefined, newCosto)
     setState((prev) => ({
       ...prev,
       costosOperativos: [...(prev.costosOperativos || []), newCosto],
@@ -1104,7 +1177,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const updateCostoOperativo = async (id: string, updates: Partial<CostoOperativo>) => {
+  const updateCostoOperativo = async (
+    id: string,
+    updates: Partial<CostoOperativo>,
+    opciones?: { mesesPago?: string[] },
+  ) => {
+    // Pagos: gasto variable (pagado sí/no, monto, reparto) o meses de un fijo.
+    const previo = estadoRef.current.costosOperativos?.find((c) => c.id === id)
+    if (previo && (previo.esVariable || (opciones?.mesesPago?.length ?? 0) > 0)) {
+      void sincronizarPagosGasto(previo, { ...previo, ...updates }, opciones?.mesesPago ?? [])
+    }
     setState((prev) => ({
       ...prev,
       costosOperativos: (prev.costosOperativos || []).map((c) => (c.id === id ? { ...c, ...updates } : c)),
@@ -1122,7 +1204,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const deleteCostoOperativo = async (id: string) => {
+  const deleteCostoOperativo = async (id: string, opciones?: { conservarPagos?: boolean }) => {
+    // Eliminar un gasto variable pagado devuelve su plata a la caja (fue un
+    // error de carga); archivarlo la conserva. Los pagos de un gasto fijo
+    // quedan siempre: esa plata ya salió.
+    const previo = estadoRef.current.costosOperativos?.find((c) => c.id === id)
+    if (previo?.esVariable && !opciones?.conservarPagos) void sincronizarPagosGasto(previo, undefined)
     setState((prev) => ({
       ...prev,
       costosOperativos: (prev.costosOperativos || []).filter((c) => c.id !== id),

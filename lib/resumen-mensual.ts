@@ -1,4 +1,5 @@
 import { calcularProporcionCajaEventos, repartirEntreCajas } from "./cobrar-cuota"
+import { leerRef } from "./pagos-caja-jazmines"
 import { calcularCajaEventos } from "./hooks/use-caja-eventos"
 import {
   calcularCostoServiciosContratados, PORCENTAJE_COMISION_VENDEDOR, SALONES,
@@ -116,6 +117,9 @@ export function calcularResumenMensual(state: AppState, mes: string, ahora = new
 
   const pagos: PagoConciliable[] = movimientos.filter((m) => m.tipo === "egreso" && m.cajaDestino).map((m) => ({
     id: m.id, ref: m.id, costoId: m.costoOperativoId, eventoId: m.eventoId,
+    // Pago de un gasto fijo de Caja Jazmines: el mes pagado sale del ref (puede
+    // pagarse en otro mes calendario, por ejemplo septiembre pagado en octubre).
+    ...(leerRef(m.refId)?.mes ? { periodo: leerRef(m.refId)?.mes } : {}),
     caja: m.cajaDestino!, salon: salonDe(m.salon), fecha: m.fecha, monto: m.monto,
     concepto: m.concepto, confirmado: true,
   }))
@@ -132,7 +136,7 @@ export function calcularResumenMensual(state: AppState, mes: string, ahora = new
   for (const costo of state.costosOperativos || []) {
     for (const h of costo.historialMontos || []) {
       if (h.pagado !== true) continue
-      const existe = pagos.some((p) => (p.ref === costo.id || p.costoId === costo.id) && mesCalendario(p.fecha) === h.mes)
+      const existe = pagos.some((p) => (p.ref === costo.id || p.costoId === costo.id) && (p.periodo || mesCalendario(p.fecha)) === h.mes)
       if (!existe) pagos.push({ id: `historial-${costo.id}-${h.id}`, ref: costo.id, periodo: h.mes, fecha: h.fecha, monto: h.monto, caja: "caja_jazmines", salon: salonDe(costo.distribucion?.length ? null : costo.salon), concepto: costo.concepto, confirmado: true })
     }
   }
