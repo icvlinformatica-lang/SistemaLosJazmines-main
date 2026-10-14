@@ -90,7 +90,12 @@ export function verifyPin(perfilId: string, pin: string): boolean {
  * que los PINs de los perfiles. La clave maestra (PIN_MAESTRO) también la abre.
  */
 export function verifyPinStockExtra(pin: string): boolean {
-  return coincide(process.env.PIN_STOCK_EXTRA || "9999", pin) || esPinMaestro(pin)
+  return coincide(getPinStockExtra(), pin) || esPinMaestro(pin)
+}
+
+/** PIN vigente de la carga extraordinaria de stock: el de reserva si falta PIN_STOCK_EXTRA. */
+export function getPinStockExtra(): string {
+  return process.env.PIN_STOCK_EXTRA || "9999"
 }
 
 /**

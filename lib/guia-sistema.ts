@@ -70,6 +70,7 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 
 ## Configuración (/configuracion)
 - Ajustes generales del sistema.
+- Contraseñas (solo Administración y Soporte): muestra el PIN de cada perfil y el PIN de carga extraordinaria de stock. Si el de stock es el de reserva del código, lo avisa. Se cambian en Vercel, no desde la pantalla.
 
 ## Conceptos clave
 - **Plan de cuotas**: cada evento puede tener un plan (cantidad de cuotas, día de vencimiento, montos). Las cuotas se cobran en "Cobrar cuota" y aparecen en el resumen diario y en "Vienen a pagar".
