@@ -29,12 +29,20 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
-import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
+import { SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, generateId, type CostoOperativo, type EventoGuardado, type DistribucionSalon, type RegistroMonto } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salones-editor"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
-import type { EstadoAlerta, GastoFijoMes, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
+import type { AlertaVencimiento, EstadoAlerta, GastoFijoMes, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
+import { fechaArgentina } from "@/lib/resumen-fecha"
+import {
+  cambiosPagoDelMes,
+  descripcionPagoFijo,
+  deudaDelPeriodo,
+  nombreMesLargo,
+  parteDelSalon,
+} from "@/lib/pago-gasto-fijo"
 import {
   Building,
   TrendingDown,
@@ -104,6 +112,8 @@ import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo, pagoDelMesActual } from "./meses-fijo"
 import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
+import { DetalleDashboardDialog, type FilaDetalle } from "./detalle-dashboard"
+import { COLUMNAS_FILA_FIJO, EncabezadoMeses, MARGEN_FILA_FIJO, TiraMesesMini } from "./tira-meses-mini"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
 import { almacenDelNavegador, guardarSalonRecordado, leerSalonRecordado } from "@/lib/salon-recordado"
@@ -250,10 +260,15 @@ function puntoPrioridad(estado: EstadoAlerta) {
   return <span className="h-2.5 w-2.5 rounded-full bg-teal-500 shrink-0 mt-0.5" />
 }
 
+/** "vence en 3 días" → "Vence en 3 días" (solo la primera letra). */
+function mayusculaInicial(t: string): string {
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : t
+}
+
 function descripcionAlerta(diasRestantes: number, estado: EstadoAlerta): string {
   if (estado === "vencido") return `venció hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? "s" : ""}`
   if (diasRestantes === 0) return "vence hoy"
-  if (diasRestantes === 1) return "vence ma�����������ana"
+  if (diasRestantes === 1) return "vence mañana"
   return `vence en ${diasRestantes} días`
 }
 
@@ -361,7 +376,7 @@ function IconoGastoBoton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex h-9 min-h-9 w-9 min-w-9 shrink-0 grow-0 basis-9 self-center items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
+          className="hidden sm:flex h-9 min-h-9 w-9 min-w-9 shrink-0 grow-0 basis-9 self-center items-center justify-center rounded-lg border transition-opacity hover:opacity-75"
           style={{
             color,
             borderColor: `color-mix(in srgb, ${color} 35%, white)`,
@@ -410,7 +425,7 @@ function IconoGastoBoton({
 function MontoPagoPill({ monto, pagado }: { monto: number; pagado: boolean }) {
   return (
     <span
-      className={`shrink-0 rounded-md border px-2 py-1 text-xs font-bold tabular-nums ${
+      className={`w-[6.5rem] shrink-0 rounded-md border px-2 py-1 text-center text-xs font-bold tabular-nums ${
         pagado
           ? "border-teal-200 bg-teal-50 text-teal-700"
           : "border-amber-200 bg-amber-50 text-amber-700"
@@ -419,6 +434,91 @@ function MontoPagoPill({ monto, pagado }: { monto: number; pagado: boolean }) {
     >
       {formatCurrency(monto)}
     </span>
+  )
+}
+
+/**
+ * Menú "⋯" visible en cada gasto fijo: Editar y Eliminar a mano, sin tener
+ * que abrir un mes de la tira (antes estaban escondidos ahí). Usan los mismos
+ * diálogos de siempre, con su confirmación.
+ */
+function MenuGastoFijo({
+  concepto,
+  onEditar,
+  onEliminar,
+}: {
+  concepto: string
+  onEditar: () => void
+  onEliminar: () => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+          title="Editar o eliminar"
+        >
+          <MoreVertical className="h-4 w-4" />
+          <span className="sr-only">{`Más acciones para ${concepto}`}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onSelect={onEditar}>
+          <Pencil className="h-3.5 w-3.5" />
+          Editar gasto
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onSelect={onEliminar}>
+          <Trash2 className="h-3.5 w-3.5" />
+          Eliminar
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/**
+ * Línea chica debajo del nombre de un gasto fijo, corta para que entre en una
+ * sola línea: "Paga Sep · vence 10/10 · 33%". En los anuales dice "Anual".
+ */
+function MetaGastoFijo({
+  frecuencia,
+  fechaVencimiento,
+  porcentaje,
+}: {
+  frecuencia?: string
+  fechaVencimiento?: string | null
+  porcentaje?: number
+}) {
+  const partes: React.ReactNode[] = []
+  if (frecuencia === "Anual") partes.push("Anual")
+  if (fechaVencimiento && frecuencia !== "Anual") {
+    const periodo = periodoQueSePaga(fechaVencimiento).slice(0, 3)
+    if (periodo) {
+      partes.push(
+        <span key="p" className="font-semibold text-purple-600" title="Mes que se paga">
+          {`Paga ${periodo}`}
+        </span>,
+      )
+    }
+  }
+  if (fechaVencimiento) {
+    const [, m, d] = fechaVencimiento.split("-")
+    partes.push(`vence ${d}/${m}`)
+  }
+  if (porcentaje !== undefined) partes.push(`${porcentaje}%`)
+  if (partes.length === 0 && frecuencia) partes.push(frecuencia)
+  return (
+    <p className="mt-0.5 text-xs text-muted-foreground md:truncate">
+      {partes.map((p, i) => (
+        <span key={i}>
+          {i > 0 ? " · " : ""}
+          {p}
+        </span>
+      ))}
+    </p>
   )
 }
 
@@ -432,6 +532,8 @@ function CarpetaGastos({
   plano = false,
   etiqueta,
   colorCustom,
+  inicialAbierta = false,
+  encabezado,
   children,
 }: {
   salon: string
@@ -448,15 +550,18 @@ function CarpetaGastos({
   etiqueta?: string
   /** Color custom para carpetas que no son de un salón. */
   colorCustom?: string
+  /** Si arranca abierta (por ejemplo, cuando tiene algo pendiente). */
+  inicialAbierta?: boolean
+  /** Fila fija arriba de los ítems (no cuenta para "Ver más"), ej. los meses. */
+  encabezado?: React.ReactNode
   children: React.ReactNode
 }) {
-  // Las carpetas arrancan cerradas: se abren con click (fijas) o dejando el
-  // mouse encima 0,5s, y se repliegan 2s después de salir (useHoverPlegado).
-  const [fijaAbierta, setFijaAbierta] = useState(false)
+  // Las carpetas se abren y cierran solo con click (antes también con el
+  // mouse encima, y se cerraban solas: molestaba al operar).
+  const [fijaAbierta, setFijaAbierta] = useState(inicialAbierta)
   // La lista se despliega hasta ITEMS_VISIBLES_LISTA; "Ver más" muestra el resto.
   const [verTodos, setVerTodos] = useState(false)
-  const hov = useHoverPlegado()
-  const abierta = fijaAbierta || hov.abierto
+  const abierta = fijaAbierta
   const { configuracionCajas } = useStore()
   const color =
     colorCustom ?? (salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL)
@@ -466,6 +571,7 @@ function CarpetaGastos({
   const ocultos = nodos.length - ITEMS_VISIBLES_LISTA
   const lista = (
     <>
+      {encabezado}
       {visibles}
       {ocultos > 0 && (
         <Button
@@ -497,7 +603,7 @@ function CarpetaGastos({
     return <div className="space-y-2">{lista}</div>
   }
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }} {...hov.props}>
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }}>
       <button
         type="button"
         onClick={() => setFijaAbierta((v) => !v)}
@@ -1011,6 +1117,146 @@ function CuerpoColapsable({ colapsado, children }: { colapsado: boolean; childre
   )
 }
 
+// ============================================================
+// Botón de plegar/desplegar de las tarjetas grandes
+// ============================================================
+function BotonPlegar({ abierta, onClick, etiqueta }: { abierta: boolean; onClick: () => void; etiqueta: string }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+      onClick={onClick}
+      aria-expanded={abierta}
+      aria-label={abierta ? `Plegar ${etiqueta}` : `Desplegar ${etiqueta}`}
+      title={abierta ? "Plegar" : "Desplegar"}
+    >
+      <ChevronDown className={`h-4 w-4 transition-transform ${abierta ? "rotate-180" : ""}`} />
+    </Button>
+  )
+}
+
+// ============================================================
+// Resumen del mes: cuatro datos clave debajo del dashboard
+// ============================================================
+function irASeccion(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+}
+
+function ChipResumen({
+  seccion,
+  icono: Icono,
+  color,
+  titulo,
+  valor,
+  detalle,
+  progreso,
+}: {
+  seccion: string
+  icono: LucideIcon
+  color: string
+  titulo: string
+  valor: string
+  detalle: string
+  /** 0 a 1: barra de avance (solo gastos fijos). */
+  progreso?: number
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => irASeccion(seccion)}
+      className="flex min-w-0 items-start gap-2 sm:gap-3 rounded-xl border bg-white p-2.5 sm:p-3 text-left shadow-sm transition-shadow hover:shadow-md"
+      style={{ borderColor: `color-mix(in srgb, ${color} 25%, white)` }}
+    >
+      <span
+        className="hidden sm:flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+        style={{ backgroundColor: `color-mix(in srgb, ${color} 12%, white)`, color }}
+      >
+        <Icono className="h-4 w-4" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-muted-foreground leading-tight">{titulo}</span>
+        <span className="truncate text-sm sm:text-base font-bold tabular-nums" style={{ color }}>
+          {valor}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">{detalle}</span>
+        {progreso !== undefined && (
+          <span className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <span
+              className="block h-full rounded-full"
+              style={{ width: `${Math.round(Math.min(1, Math.max(0, progreso)) * 100)}%`, backgroundColor: color }}
+            />
+          </span>
+        )}
+      </span>
+    </button>
+  )
+}
+
+function ResumenDelMes(p: {
+  fijosPagados: number
+  fijosTotal: number
+  fijosFalta: number
+  variablesPendientes: number
+  variablesMonto: number
+  vencidos: number
+  vencidosMonto: number
+  cuotasMes: number
+  cuotasMesMonto: number
+  nombreMes: string
+}) {
+  return (
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+      <ChipResumen
+        seccion="seccion-fijos"
+        icono={CalendarCheck}
+        color="#7e22ce"
+        titulo={`Gastos fijos de ${p.nombreMes}`}
+        valor={p.fijosFalta > 0 ? `Falta ${formatCurrency(p.fijosFalta)}` : "Todo pagado"}
+        detalle={`${p.fijosPagados} de ${p.fijosTotal} pagados`}
+        progreso={p.fijosTotal > 0 ? p.fijosPagados / p.fijosTotal : 0}
+      />
+      <ChipResumen
+        seccion="seccion-vencimientos"
+        icono={AlertCircle}
+        color={p.vencidos > 0 ? "#dc2626" : "#0d9488"}
+        titulo="Vencidos sin pagar"
+        valor={p.vencidos > 0 ? formatCurrency(p.vencidosMonto) : "Ninguno"}
+        detalle={p.vencidos > 0 ? `${p.vencidos} ${p.vencidos === 1 ? "gasto vencido" : "gastos vencidos"}` : "Estás al día"}
+      />
+      <ChipResumen
+        seccion="seccion-variables"
+        icono={Receipt}
+        color="#b45309"
+        titulo="Gastos variables pendientes"
+        valor={p.variablesPendientes > 0 ? formatCurrency(p.variablesMonto) : "Ninguno"}
+        detalle={`${p.variablesPendientes} sin pagar (sin comisiones)`}
+      />
+      <ChipResumen
+        seccion="seccion-cuotas"
+        icono={HandCoins}
+        color="#047857"
+        titulo={`A cobrar hasta fin de ${p.nombreMes}`}
+        valor={`+${formatCurrency(p.cuotasMesMonto)}`}
+        detalle={`${p.cuotasMes} ${p.cuotasMes === 1 ? "cuota" : "cuotas"} · parte Jazmines, con atrasadas`}
+      />
+    </div>
+  )
+}
+
+/** Estado inicial de las tarjetas grandes (true = plegada). */
+const PANELES_INICIALES: Record<string, boolean> = {
+  fijos: false,
+  variables: false,
+  alertas: false,
+  cuotas: false,
+  servicios: true,
+  proyeccion: true,
+  proyeccion12: false,
+}
+/** Dónde se recuerda qué tarjetas dejó abiertas cada uno (solo este navegador). */
+const CLAVE_PANELES = "lj:caja-jazmines:paneles"
+
 export default function CajaJazminePage() {
   // Tarjetas de métricas: el monto principal se ve siempre; lo que se pliega
   // es solo el detalle de abajo. Se despliega con el mouse encima del grupo
@@ -1047,36 +1293,38 @@ export default function CajaJazminePage() {
 
   const data = useCajaJazmines(state, salonFiltro, ahora)
 
-  const hoyStr = ahora.toISOString().slice(0, 10)
+  // "Hoy" en hora argentina: toISOString() da el día UTC y desde las 21 hs ya
+  // es mañana. El mes de los pagos de gastos fijos sale de este mismo "hoy".
+  const hoyStr = fechaArgentina(ahora)
+  const mesHoy = hoyStr.slice(0, 7)
+  const anioHoy = Number(mesHoy.slice(0, 4))
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
   // Todas arrancan plegadas: se despliegan solas al dejar el mouse encima
   // 0,5s (useHoverPlegado) o quedan fijas abiertas con el botón de chevron.
-  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({
-    alertas: true,
-    cuotas: true,
-    fijos: true,
-    // Gastos variables permanece abierta (sus carpetas internas arrancan
-    // cerradas igual); se puede plegar manualmente con el chevron.
-    variables: false,
-    proyeccion: true,
-  })
-
-  // Hover que despliega cada tarjeta grande (mismos tiempos que los gastos:
-  // 0,5s para abrir, 2s para volver a plegarse). El dashboard de métricas
-  // (saldo, gastos, cobros, balance) queda afuera a pedido del usuario.
-  const hovProyeccion = useHoverPlegado()
-  const hovProyeccion12 = useHoverPlegado()
-  const hovServicios = useHoverPlegado()
-  const hovAlertas = useHoverPlegado()
-  const hovCuotas = useHoverPlegado()
-  const hovFijos = useHoverPlegado()
-  const hovVariables = useHoverPlegado()
-  const abiertaProyeccion = !colapsadas.proyeccion || hovProyeccion.abierto
-  const abiertaAlertas = !colapsadas.alertas || hovAlertas.abierto
-  const abiertaCuotas = !colapsadas.cuotas || hovCuotas.abierto
-  const abiertaFijos = !colapsadas.fijos || hovFijos.abierto
-  const abiertaVariables = !colapsadas.variables || hovVariables.abierto
+  // Tarjetas grandes: se abren y cierran SOLO con click (antes se abrían
+  // dejando el mouse encima y se cerraban solas a los 2s, lo que molestaba al
+  // copiar un monto y no andaba en el celular). Arrancan abiertas las que se
+  // usan todos los días; lo que cada uno abre o cierra se recuerda en este
+  // navegador. El dashboard de métricas de arriba no cambia.
+  const [colapsadas, setColapsadas] = useState<Record<string, boolean>>(PANELES_INICIALES)
+  useEffect(() => {
+    try {
+      const guardado = JSON.parse(localStorage.getItem(CLAVE_PANELES) || "null")
+      if (guardado && typeof guardado === "object") setColapsadas((p) => ({ ...p, ...guardado }))
+    } catch {
+      // Sin almacenamiento (modo privado): se usan los valores iniciales.
+    }
+  }, [])
+  const abiertaProyeccion = !colapsadas.proyeccion
+  const abiertaProyeccion12 = !colapsadas.proyeccion12
+  const abiertaServicios = !colapsadas.servicios
+  const abiertaAlertas = !colapsadas.alertas
+  const abiertaCuotas = !colapsadas.cuotas
+  const abiertaFijos = !colapsadas.fijos
+  const abiertaVariables = !colapsadas.variables
+  // Filtro de la lista de gastos fijos (solo cambia qué se muestra).
+  const [filtroFijos, setFiltroFijos] = useState<"todos" | "pendientes" | "pagados">("todos")
 
   // Proyección: se muestran 3 meses y "Ver más" agrega de a 3 hasta los 12.
   // Siempre parte del mes corriente, así se va actualizando mes a mes solo.
@@ -1087,11 +1335,20 @@ export default function CajaJazminePage() {
   const [alertasVisibles, setAlertasVisibles] = useState(5)
 
   const toggleColapsada = (key: string) =>
-    setColapsadas((p) => ({ ...p, [key]: !p[key] }))
+    setColapsadas((p) => {
+      const next = { ...p, [key]: !p[key] }
+      try {
+        localStorage.setItem(CLAVE_PANELES, JSON.stringify(next))
+      } catch {
+        // Sin almacenamiento: el cambio vale solo para esta visita.
+      }
+      return next
+    })
 
   // Archivar un gasto FIJO: registra el pago del período en el archivo y avanza
   // el vencimiento al próximo mes/año. El gasto sale de la lista activa (queda el
   // tilde verde de "cubierto") y reaparece automáticamente en el próximo período.
+  // Próximos vencimientos ya no lo usa: paga el mes con pagarFijoDelMes.
   function archivarFijo(gasto: GastoFijoMes) {
     const costo = state.costosOperativos?.find((c) => c.id === gasto.id)
     archivarGasto({
@@ -1107,7 +1364,7 @@ export default function CajaJazminePage() {
     // El historial de evolución se genera solo: cada pago archivado deja
     // registrado cuánto se pagó ese mes (si el mes aún no tiene registro).
     const historial = costo?.historialMontos || []
-    const mes = mesActualISO()
+    const mes = mesHoy
     const yaRegistrado = historial.some((r) => r.mes === mes)
     const ultimo = historial.length > 0 ? historial[historial.length - 1] : null
     updateCostoOperativo(gasto.id, {
@@ -1212,9 +1469,53 @@ export default function CajaJazminePage() {
   }
 
   // ── Pagar directo desde la tarjeta de alertas ─���────────────────���───────
-  // Dispara la animación de desvanecido y, al terminar, archiva el gasto en
-  // el Archivo Histórico (fijo: avanza vencimiento / variable: se elimina).
+  // Dispara la animación de desvanecido y, al terminar, registra el pago.
+  // Fijo: anota el mes como pagado en su historial, igual que el botón
+  // "Pagar" de la tira de meses. Variable: se archiva en el Archivo Histórico.
   const [alertasPagando, setAlertasPagando] = useState<Set<string>>(new Set())
+
+  /**
+   * Parte del salón elegido si el gasto es repartido (paga solo esa parte).
+   * En "Todos los salones" no hay parte: se pagan todas las que faltan.
+   */
+  function parteAlPagar(costo: CostoOperativo) {
+    return salonFiltro !== "todos" ? parteDelSalon(costo, salonFiltro) : undefined
+  }
+
+  /** Texto de la confirmación de pago de una alerta, según el tipo de gasto. */
+  function descripcionPagoAlerta(alerta: AlertaVencimiento): string {
+    const costo = state.costosOperativos?.find((c) => c.id === alerta.id)
+    if (costo && !costo.esVariable) {
+      const parte = parteAlPagar(costo)
+      return descripcionPagoFijo(costo.concepto, deudaDelPeriodo(costo, mesHoy, parte), parte)
+    }
+    return `Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`
+  }
+
+  /**
+   * Pago de un gasto FIJO desde Próximos vencimientos: anota el mes en el
+   * historial con la misma cuenta que el botón "Pagar" de la tira de meses
+   * (cambiosPagoDelMes). No archiva ni adelanta el vencimiento: el mes queda
+   * en verde en la tira y el gasto vuelve a deberse el mes que viene.
+   */
+  function pagarFijoDelMes(costo: CostoOperativo) {
+    const parte = parteAlPagar(costo)
+    const deuda = deudaDelPeriodo(costo, mesHoy, parte)
+    const cambios = cambiosPagoDelMes(costo, {
+      mes: deuda.mes,
+      montoGeneral: deuda.montoGeneral,
+      pagado: true,
+      parte,
+      fechaISO: new Date().toISOString(),
+      nuevoId: generateId(),
+    })
+    if (!cambios) return
+    updateCostoOperativo(costo.id, cambios)
+    toast({
+      title: "Pago registrado",
+      description: `${costo.concepto}${parte ? ` (${salonLabel(parte.salon)})` : ""} · ${nombreMesLargo(deuda.mes)} · ${formatCurrency(deuda.monto)}`,
+    })
+  }
 
   function pagarDesdeAlerta(alerta: { id: string; concepto: string; monto: number }) {
     const costo = state.costosOperativos?.find((c) => c.id === alerta.id)
@@ -1229,27 +1530,21 @@ export default function CajaJazminePage() {
           fecha: costo.fechaVencimiento || hoyStr,
           monto: costo.monto,
         })
+        toast({
+          title: "Pago registrado",
+          description: (
+            <span>
+              {`"${costo.concepto}" se movió al `}
+              <Link href="/finanzas/archivo" className="font-medium underline underline-offset-2">
+                Archivo Histórico
+              </Link>
+              .
+            </span>
+          ),
+        })
       } else {
-        archivarFijo({
-          id: costo.id,
-          concepto: costo.concepto,
-          monto: costo.monto,
-          salon: costo.salon,
-          frecuencia: costo.frecuencia,
-        } as GastoFijoMes)
+        pagarFijoDelMes(costo)
       }
-      toast({
-        title: "Pago registrado",
-        description: (
-          <span>
-            {`"${costo.concepto}" se movió al `}
-            <Link href="/finanzas/archivo" className="font-medium underline underline-offset-2">
-              Archivo Histórico
-            </Link>
-            .
-          </span>
-        ),
-      })
       setAlertasPagando((prev) => {
         const next = new Set(prev)
         next.delete(alerta.id)
@@ -1276,7 +1571,7 @@ export default function CajaJazminePage() {
   // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = 30 días, 1 = semana
 
-  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel } = useMemo(() => {
+  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel, semanaListas } = useMemo(() => {
     const diaSemana = ahora.getDay() // 0 = domingo
     const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
     const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
@@ -1304,7 +1599,11 @@ export default function CajaJazminePage() {
     const variablesSemana = data.gastosVariables.filter(
       (g) => g.fecha && g.fecha >= desde && g.fecha <= hasta && g.estado !== "pagado",
     )
-    const gastos = fijosSemana.reduce((s, g) => s + g.monto, 0) + variablesSemana.reduce((s, g) => s + g.monto, 0)
+    // De los fijos cuenta lo que falta pagar del mes, como en Próximos
+    // vencimientos (de un repartido con partes ya pagadas, solo el resto).
+    const gastos =
+      fijosSemana.reduce((s, g) => s + (g.montoPendiente ?? g.monto), 0) +
+      variablesSemana.reduce((s, g) => s + g.monto, 0)
 
     const partes: string[] = []
     if (fijosSemana.length > 0) partes.push(`${fijosSemana.length} ${fijosSemana.length === 1 ? "fijo" : "fijos"}`)
@@ -1321,8 +1620,268 @@ export default function CajaJazminePage() {
       gastosSemanaJazDetalle: partes.join(" · "),
       saldoFinSemanaJaz: data.saldoActual + cobro - gastos,
       rangoSemanaJazLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
+      // Los mismos ítems que suman en las tarjetas, para la ventana de detalle.
+      semanaListas: { cuotasSemana, cuotasVencidas, fijosSemana, variablesSemana },
     }
   }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora])
+
+  // ── Detalle de las tarjetas del dashboard (ventana al tocarlas) ─────────
+  // Solo lectura. Cada ventana usa los MISMOS ítems que suman en su tarjeta,
+  // así el total de la ventana es exactamente el número de la tarjeta.
+  type TipoDetalle = "saldo" | "gastos30" | "saldo30" | "cobroSemana" | "gastosSemana" | "balance"
+  const [detalleAbierto, setDetalleAbierto] = useState<TipoDetalle | null>(null)
+
+  function venceTexto(fecha: string, dias?: number): string {
+    const [, m, d] = fecha.split("-")
+    const dd = `${d}/${m}`
+    if (dias === undefined) return `vence ${dd}`
+    if (dias < 0) return `venció el ${dd} (hace ${Math.abs(dias)} día${Math.abs(dias) === 1 ? "" : "s"})`
+    if (dias === 0) return `vence hoy (${dd})`
+    return `vence el ${dd} (en ${dias} día${dias === 1 ? "" : "s"})`
+  }
+  function diasHasta(fecha: string): number {
+    const [y, m, d] = fecha.split("-").map(Number)
+    const f = new Date(y, m - 1, d)
+    const h = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())
+    return Math.round((f.getTime() - h.getTime()) / 86400000)
+  }
+  const filaCuota = (c: (typeof cuotasPorCobrar)[number]): FilaDetalle => ({
+    id: c.id,
+    titulo: c.eventoNombre,
+    detalle: `Cuota ${c.numeroCuota}/${c.totalCuotas} · ${venceTexto(c.fechaVencimiento, diasHasta(c.fechaVencimiento))}`,
+    salon: c.salon || null,
+    monto: c.montoJazmines,
+    alerta: c.fechaVencimiento < hoyStr,
+  })
+  const etiquetaTipo = { fijo: "Gasto fijo", sueldo: "Sueldo", variable: "Gasto variable" } as const
+
+  function armarDetalle(tipo: TipoDetalle) {
+    const nombreSalon = salonFiltro === "todos" ? "todos los salones" : salonLabel(salonFiltro)
+    if (tipo === "saldo") {
+      // Movimientos de Caja Jazmines (mismo filtro que el saldo del hook).
+      const movs = (state.movimientosCaja || []).filter(
+        (m) => m.cajaDestino === "caja_jazmines" && (salonFiltro === "todos" || m.salon === salonFiltro),
+      )
+      const eventosPorId = new Map((state.eventos || []).map((e) => [e.id, e]))
+      const porEvento = new Map<string, { titulo: string; salon: string | null; monto: number; n: number }>()
+      const otrosIngresos: FilaDetalle[] = []
+      const egresos: FilaDetalle[] = []
+      for (const m of movs) {
+        const fecha = m.fecha ? formatFecha(String(m.fecha).slice(0, 10)) : ""
+        if (m.tipo === "ingreso" && m.eventoId) {
+          const ev = eventosPorId.get(m.eventoId)
+          const prev = porEvento.get(m.eventoId) ?? {
+            titulo: ev?.nombrePareja || ev?.nombre || ev?.tipoEvento || "Evento eliminado",
+            salon: ev?.salon ?? m.salon ?? null,
+            monto: 0,
+            n: 0,
+          }
+          prev.monto += m.monto
+          prev.n += 1
+          porEvento.set(m.eventoId, prev)
+        } else if (m.tipo === "ingreso") {
+          otrosIngresos.push({ id: m.id, titulo: m.concepto || "Ingreso", detalle: fecha, salon: m.salon, monto: m.monto })
+        } else if (m.tipo === "egreso") {
+          egresos.push({ id: m.id, titulo: m.concepto || "Egreso", detalle: fecha, salon: m.salon, monto: m.monto })
+        }
+      }
+      const filasEventos: FilaDetalle[] = [...porEvento.entries()]
+        .map(([id, e]) => ({
+          id,
+          titulo: e.titulo,
+          detalle: `${e.n} cobro${e.n === 1 ? "" : "s"} (cuotas y señas, parte Jazmines)`,
+          salon: e.salon,
+          monto: e.monto,
+        }))
+        .sort((a, b) => b.monto - a.monto)
+      return {
+        titulo: "Saldo actual",
+        descripcion: `La plata que hay hoy en Caja Jazmines (${nombreSalon}): todo lo que entró menos todo lo que salió.`,
+        secciones: [
+          { titulo: "Entró por eventos", signo: 1 as const, filas: filasEventos, vacio: "Sin cobros de eventos." },
+          ...(otrosIngresos.length > 0 ? [{ titulo: "Otros ingresos y ajustes", signo: 1 as const, filas: otrosIngresos }] : []),
+          {
+            titulo: "Salió (retiros, gastos y ajustes)",
+            signo: -1 as const,
+            filas: egresos.sort((a, b) => b.monto - a.monto),
+            vacio: "No salió plata de la caja.",
+            nota: "Marcar un gasto como pagado no descuenta de acá: solo los retiros y ajustes.",
+          },
+        ],
+        totalEtiqueta: "Saldo actual",
+        total: saldoActual,
+        colorTotal: "#3c4ce8",
+      }
+    }
+    const filasGastos30 = (tipoG: "fijo" | "sueldo" | "variable"): FilaDetalle[] =>
+      data.gastos30DiasDetalle
+        .filter((g) => g.tipo === tipoG)
+        .map((g) => ({
+          id: `${g.tipo}-${g.id}`,
+          titulo: g.concepto,
+          // Días contados por fecha calendario (el hook redondea para arriba
+          // y en fechas pasadas da un día menos: "hace 3" en vez de "hace 4").
+          detalle: venceTexto(g.fecha, diasHasta(g.fecha)),
+          salon: g.salon ?? null,
+          monto: g.monto,
+          alerta: g.fecha < hoyStr,
+        }))
+    const seccionesGastos30 = [
+      { titulo: "Gastos fijos", signo: -1 as const, filas: filasGastos30("fijo"), vacio: "Ningún gasto fijo pendiente.", nota: "Lo que falta pagar de cada uno este mes." },
+      { titulo: "Gastos variables", signo: -1 as const, filas: filasGastos30("variable"), vacio: "Ningún gasto variable pendiente." },
+      ...(filasGastos30("sueldo").length > 0
+        ? [{ titulo: "Sueldos de vendedores", signo: -1 as const, filas: filasGastos30("sueldo") }]
+        : []),
+    ]
+    if (tipo === "gastos30") {
+      return {
+        titulo: "Gastos a 30 días",
+        descripcion: `Lo que falta pagar y vence de acá a 30 días, incluidos los ya vencidos (${nombreSalon}).`,
+        secciones: seccionesGastos30,
+        totalEtiqueta: "Gastos a 30 días",
+        total: gastosPróximos30Dias,
+        colorTotal: "#dc2626",
+      }
+    }
+    if (tipo === "saldo30") {
+      return {
+        titulo: "Saldo a 30 días",
+        descripcion: "Cuánto quedaría en 30 días: el saldo de hoy, más las cuotas que vencen en ese plazo, menos los gastos que vencen.",
+        secciones: [
+          {
+            titulo: "Saldo actual",
+            signo: 1 as const,
+            filas: [{ id: "saldo", titulo: "Plata en Caja Jazmines hoy", detalle: "Tocá para ver de dónde sale", monto: saldoActual, onClick: () => setDetalleAbierto("saldo") }],
+          },
+          {
+            titulo: "Cuotas que vencen en 30 días",
+            signo: 1 as const,
+            filas: data.cuotas30Dias.map(filaCuota),
+            vacio: "No vence ninguna cuota en los próximos 30 días.",
+            nota: "Parte que entra a Caja Jazmines (el resto va a Caja Eventos). No incluye las cuotas ya vencidas.",
+          },
+          ...seccionesGastos30,
+        ],
+        totalEtiqueta: "Saldo a 30 días",
+        total: saldoProyectado30Dias,
+      }
+    }
+    const { cuotasSemana, cuotasVencidas, fijosSemana, variablesSemana } = semanaListas
+    const seccionesCobro = [
+      {
+        titulo: "Cuotas que vencen esta semana",
+        signo: 1 as const,
+        filas: cuotasSemana.map(filaCuota),
+        vacio: "Ninguna cuota vence esta semana.",
+        nota: `Del ${rangoSemanaJazLabel}. Parte que entra a Caja Jazmines.`,
+      },
+      {
+        titulo: "Cuotas vencidas sin cobrar",
+        signo: 1 as const,
+        filas: cuotasVencidas.map(filaCuota),
+        vacio: "No hay cuotas atrasadas.",
+        nota: "De semanas anteriores: se pueden cobrar ya.",
+      },
+    ]
+    const seccionesGastosSemana = [
+      {
+        titulo: "Gastos fijos",
+        signo: -1 as const,
+        filas: fijosSemana.map((g) => ({
+          id: `f-${g.id}`,
+          titulo: g.concepto,
+          detalle: g.fechaVencimiento ? venceTexto(g.fechaVencimiento, diasHasta(g.fechaVencimiento)) : undefined,
+          salon: g.salon ?? null,
+          monto: g.montoPendiente ?? g.monto,
+          alerta: !!g.fechaVencimiento && g.fechaVencimiento < hoyStr,
+        })),
+        vacio: "Ningún gasto fijo vence esta semana.",
+      },
+      {
+        titulo: "Gastos variables y comisiones",
+        signo: -1 as const,
+        filas: variablesSemana.map((g) => ({
+          id: `v-${g.id}`,
+          titulo: g.nombre,
+          detalle: g.fecha ? venceTexto(g.fecha, diasHasta(g.fecha)) : undefined,
+          salon: g.salon || null,
+          monto: g.monto,
+          alerta: !!g.fecha && g.fecha < hoyStr,
+        })),
+        vacio: "Ningún gasto variable vence esta semana.",
+      },
+    ]
+    if (tipo === "cobroSemana") {
+      return {
+        titulo: "Cobro esta semana",
+        descripcion: `Lo que se puede cobrar esta semana (${rangoSemanaJazLabel}): las cuotas que vencen más las atrasadas.`,
+        secciones: seccionesCobro,
+        totalEtiqueta: "Cobro esta semana",
+        total: cobroSemanaJaz,
+        colorTotal: "#059669",
+      }
+    }
+    if (tipo === "gastosSemana") {
+      return {
+        titulo: "Gastos esta semana",
+        descripcion: `Gastos sin pagar que vencen entre el ${rangoSemanaJazLabel}.`,
+        secciones: seccionesGastosSemana,
+        totalEtiqueta: "Gastos esta semana",
+        total: gastosSemanaJaz,
+        colorTotal: "#dc2626",
+      }
+    }
+    return {
+      titulo: "Balance semanal",
+      descripcion: "Cuánto quedaría al terminar la semana: saldo de hoy + lo que se cobra − lo que se paga. Tocá cada fila para ver su detalle.",
+      secciones: [
+        {
+          titulo: "Suma",
+          signo: 1 as const,
+          filas: [
+            { id: "saldo", titulo: "Saldo actual", detalle: "Plata en Caja Jazmines hoy", monto: saldoActual, onClick: () => setDetalleAbierto("saldo") },
+            {
+              id: "cobro",
+              titulo: "Cobro esta semana",
+              detalle: `${cuotasSemana.length + cuotasVencidas.length} cuotas (incluye atrasadas)`,
+              monto: cobroSemanaJaz,
+              onClick: () => setDetalleAbierto("cobroSemana"),
+            },
+          ],
+        },
+        {
+          titulo: "Resta",
+          signo: -1 as const,
+          filas: [
+            {
+              id: "gastos",
+              titulo: "Gastos esta semana",
+              detalle: `${fijosSemana.length + variablesSemana.length} gastos`,
+              monto: gastosSemanaJaz,
+              onClick: () => setDetalleAbierto("gastosSemana"),
+            },
+          ],
+        },
+      ],
+      totalEtiqueta: "Balance semanal",
+      total: saldoFinSemanaJaz,
+    }
+  }
+  const detalle = detalleAbierto ? armarDetalle(detalleAbierto) : null
+
+  /** Props para que una tarjeta del dashboard abra su detalle (clic o Enter). */
+  const abrirDetalleProps = (tipo: TipoDetalle) => ({
+    role: "button" as const,
+    tabIndex: 0,
+    title: "Tocá para ver de qué se compone",
+    onClick: () => setDetalleAbierto(tipo),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        setDetalleAbierto(tipo)
+      }
+    },
+  })
 
   // ── Proyección: gastos fijos del 1 al 10 del mes siguiente ──────────────
   // Los gastos fijos agendados se repiten el mes que viene; acá se proyecta
@@ -1356,38 +1915,13 @@ export default function CajaJazminePage() {
 
   const totalProximoMes1al10 = gastosProximoMes1al10.reduce((s, g) => s + g.monto, 0)
 
-  // ── Revelado progresivo de cuotas por cobrar (de 5 en 5 con la rueda) ────
+  // ── Cuotas por cobrar: se muestran de a 5 con un botón "Ver más" ────────
+  // (antes había que girar la rueda del mouse encima de la lista, y eso
+  // frenaba el scroll de la página).
   const CUOTAS_POR_PAGINA = 5
   const [cuotasVisibles, setCuotasVisibles] = useState(CUOTAS_POR_PAGINA)
-  const cuotasListaRef = useRef<HTMLDivElement>(null)
-  const ultimoWheelRef = useRef(0)
   const totalCuotas = cuotasPorCobrar.length
 
-  useEffect(() => {
-    const el = cuotasListaRef.current
-    if (!el) return
-
-    const onWheel = (e: WheelEvent) => {
-      const haciaAbajo = e.deltaY > 0
-      const puedeRevelar = haciaAbajo && cuotasVisibles < totalCuotas
-      const puedeOcultar = !haciaAbajo && cuotasVisibles > CUOTAS_POR_PAGINA
-      if (!puedeRevelar && !puedeOcultar) return
-
-      e.preventDefault()
-      const ahora = Date.now()
-      if (ahora - ultimoWheelRef.current < 250) return
-      ultimoWheelRef.current = ahora
-
-      setCuotasVisibles((v) =>
-        haciaAbajo
-          ? Math.min(v + CUOTAS_POR_PAGINA, totalCuotas)
-          : Math.max(v - CUOTAS_POR_PAGINA, CUOTAS_POR_PAGINA),
-      )
-    }
-
-    el.addEventListener("wheel", onWheel, { passive: false })
-    return () => el.removeEventListener("wheel", onWheel)
-  }, [cuotasVisibles, totalCuotas])
 
   // ── Edición de fecha de pago de sueldos de vendedores ───────────────────
   // Solo se edita la fecha acá: los montos se manejan desde Eventos > Vendedores.
@@ -1501,7 +2035,7 @@ export default function CajaJazminePage() {
       } else {
         historial.push({
           id: generateId(),
-          mes: mesActualISO(),
+          mes: mesHoy,
           monto: original.monto,
           montoAnterior: original.monto,
           fecha: new Date().toISOString(),
@@ -1648,12 +2182,8 @@ export default function CajaJazminePage() {
     if (!nuevoFijo.concepto || !nuevoFijo.monto) return
     if (fijoRepartoInvalido) return
     const mesInicial = nuevoFijo.mesCorresponde || mesActualISO()
-    if (
-      !confirm(
-        `¿Agendar el gasto fijo "${nuevoFijo.concepto}" por ${formatCurrency(Number(nuevoFijo.monto))}, correspondiente a ${formatMes(mesInicial)}?`,
-      )
-    )
-      return
+    // La confirmación la hace el botón "Agregar" (ConfirmAction), con el
+    // mismo diálogo que el resto de la pantalla.
     const dist = nuevoFijo.repartir
       ? nuevoFijo.distribucion.filter((d) => d.salon && d.porcentaje > 0)
       : []
@@ -1672,6 +2202,7 @@ export default function CajaJazminePage() {
       distribucion: dist.length > 0 ? dist : undefined,
       // El mes indicado queda como primer período del historial: desde ahí
       // el gasto figura pendiente y "Cargar nuevo monto" ofrece el siguiente.
+      // pagado: false explícito: un registro sin ese dato se lee como pagado.
       historialMontos: [
         {
           id: generateId(),
@@ -1680,6 +2211,7 @@ export default function CajaJazminePage() {
           montoAnterior: Number(nuevoFijo.monto),
           fecha: new Date().toISOString(),
           nota: "Alta del gasto",
+          pagado: false,
         },
       ],
     })
@@ -1702,6 +2234,35 @@ export default function CajaJazminePage() {
   function abrirEdicionVariable(gasto: GastoVariable) {
     setCostoAEditarVariable(gasto)
     setModalVariableAbierto(true)
+  }
+
+  // ── Resumen del mes (solo lectura: no cambia ningún dato) ──────────────
+  // Gastos fijos del mes en curso, sin los sueldos de vendedores (se pagan
+  // desde Eventos › Vendedores). "Falta" usa lo que queda por pagar del mes,
+  // igual que Próximos vencimientos.
+  const fijosDelResumen = gastosFijosMes.filter((g) => !g.esSueldoVendedor)
+  const resumenFijos = {
+    total: fijosDelResumen.length + gastosFijosCubiertos.length,
+    pagados: fijosDelResumen.filter((g) => g.estado === "pagado").length + gastosFijosCubiertos.length,
+    falta: fijosDelResumen
+      .filter((g) => g.estado !== "pagado")
+      .reduce((s, g) => s + (g.montoPendiente ?? g.monto), 0),
+  }
+  const variablesSinPagar = gastosVariablesCombinados.filter((g) => !g.esComision && g.estado !== "pagado")
+  const resumenVariables = {
+    cantidad: variablesSinPagar.length,
+    monto: variablesSinPagar.reduce((s, g) => s + g.monto, 0),
+  }
+  const alertasVencidas = alertasVencimiento.filter((a) => a.estado === "vencido")
+  const resumenVencidos = {
+    cantidad: alertasVencidas.length,
+    monto: alertasVencidas.reduce((s, a) => s + a.monto, 0),
+  }
+  const finDeMes = `${mesHoy}-31`
+  const cuotasHastaFinDeMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento <= finDeMes)
+  const resumenCuotasMes = {
+    cantidad: cuotasHastaFinDeMes.length,
+    monto: cuotasHastaFinDeMes.reduce((s, c) => s + c.montoJazmines, 0),
   }
 
   // Color del salón activo: tiñe el icono del header y el fondo del body.
@@ -1749,55 +2310,81 @@ export default function CajaJazminePage() {
             : `color-mix(in srgb, ${colorSalonActivo} 7%, transparent)`,
       }}
     >
-      {/* Header: barra blanca redondeada fija arriba mientras se scrollea */}
+      {/* Header fijo arriba: a la izquierda el título con el salón (tocándolo
+          se cambia de salón); a la derecha buscar, desglose, conciliar y el
+          botón principal para cargar. */}
       <div
-        className="sticky top-0 z-30 w-full rounded-xl border border-border shadow-sm px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0"
-        style={{ backgroundColor: "#ffffff" }}
+        className="sticky top-0 z-30 w-full rounded-xl border border-border bg-white shadow-sm px-3 py-2 flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 shrink-0"
       >
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
           <div
             className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-500"
             style={{ backgroundColor: `color-mix(in srgb, ${colorSalonActivo} 16%, white)` }}
           >
             <Building className="h-5 w-5 transition-colors duration-500" style={{ color: colorSalonActivo }} />
           </div>
-          <h1 className="text-lg xl:text-2xl font-bold tracking-tight truncate" style={{ color: "#000000" }}>
-            Caja Jazmines
-            <span style={{ color: colorSalonActivo }}>
-              {` · ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}`}
-            </span>
-          </h1>
-        </div>
-        <BuscadorGastos
-          fijos={gastosFijosMes}
-          cubiertos={gastosFijosCubiertos}
-          variables={gastosVariablesCombinados}
-        />
-        <SaldoHerramientas salonFiltro={salonFiltro} />
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
-            Cambiar salón
-            <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
-          </span>
+          <h1 className="text-base sm:text-lg xl:text-2xl font-bold tracking-tight text-black shrink-0">Caja Jazmines</h1>
           <button
             type="button"
             onClick={() => setSelectorAbierto(true)}
-            className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
-            aria-label="Cambiar salón: volver al selector de salones"
+            className="group flex h-9 min-w-0 items-center gap-2 rounded-full border bg-white pl-3 pr-3 text-sm font-semibold shadow-sm transition-colors hover:bg-muted"
+            style={{ borderColor: `color-mix(in srgb, ${colorSalonActivo} 45%, white)`, color: colorSalonActivo }}
+            title="Cambiar de salón"
+            aria-label={`Salón: ${salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}. Tocá para cambiar de salón`}
           >
-            <RefreshCw
-              className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
-              aria-hidden="true"
-            />
             {salonFiltro === "todos" ? (
-              <span>Todos los salones</span>
+              <span className="truncate">Todos los salones</span>
             ) : (
-              <span className="flex items-center gap-2">
+              <span className="flex min-w-0 items-center gap-2">
                 <SalonDot salon={salonFiltro} size={8} />
-                {salonLabel(salonFiltro)}
+                <span className="truncate">{salonLabel(salonFiltro)}</span>
               </span>
             )}
+            <RefreshCw
+              className="h-3.5 w-3.5 shrink-0 opacity-70 transition-transform duration-500 group-hover:rotate-180"
+              aria-hidden="true"
+            />
           </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex-1 min-w-[180px] lg:flex-none">
+            <BuscadorGastos
+              fijos={gastosFijosMes}
+              cubiertos={gastosFijosCubiertos}
+              variables={gastosVariablesCombinados}
+            />
+          </div>
+          <SaldoHerramientas salonFiltro={salonFiltro} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="h-9 gap-1.5 bg-purple-700 text-white hover:bg-purple-800">
+                <Plus className="h-4 w-4" />
+                Cargar
+                <ChevronDown className="h-3.5 w-3.5 opacity-80" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuItem onSelect={() => setModalFijoAbierto(true)}>
+                <CalendarCheck className="h-4 w-4" />
+                <span className="flex flex-col">
+                  <span className="font-medium">Gasto fijo</span>
+                  <span className="text-xs text-muted-foreground">Se repite cada mes o cada año</span>
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setCostoAEditarVariable(null)
+                  setModalVariableAbierto(true)
+                }}
+              >
+                <Receipt className="h-4 w-4" />
+                <span className="flex flex-col">
+                  <span className="font-medium">Gasto variable o retiro</span>
+                  <span className="text-xs text-muted-foreground">Un gasto único o sacar plata de la caja</span>
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -1811,8 +2398,9 @@ export default function CajaJazminePage() {
             {/* ── Slide 1: A 30 DÍAS ──────────────────────���─────���───── */}
             <div className="contents">
               <Card
+                {...abrirDetalleProps("saldo")}
                 style={{ backgroundColor: "#ffffff" }}
-                className="rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
+                className="cursor-pointer rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
@@ -1857,7 +2445,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("gastos30")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -1894,7 +2483,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("saldo30")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -1944,7 +2534,8 @@ export default function CajaJazminePage() {
             {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
             <div className="contents">
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("cobroSemana")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -1993,7 +2584,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("gastosSemana")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -2030,7 +2622,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("balance")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -2070,725 +2663,51 @@ export default function CajaJazminePage() {
             </div>
       </div>
 
-      {/* Última fila: proyección a 12 meses (izquierda) + servicios a pagar
-          (derecha). Mismo grid de 2 columnas que las tarjetas de arriba para
-          que queden exactamente alineadas con Gastos variables y Cuotas. */}
-      <div className="order-last grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-      <div className="space-y-4 md:col-start-2 md:order-2">
-      {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos.
-          Plegada muestra solo título y monto; se despliega con hover (0,5s / 2s). */}
-      <Card
-        className={hovServicios.abierto ? "" : "gap-0 py-3"}
-        style={{
-          borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)`,
-          backgroundColor: `color-mix(in srgb, ${colorServicios} 7%, white)`,
-        }}
-        {...hovServicios.props}
-      >
-        <CardContent className={hovServicios.abierto ? "p-4 py-0" : "px-4 py-0"}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <Receipt className="h-4 w-4 shrink-0" style={{ color: colorServicios }} />
-              <p
-                className="truncate text-sm font-semibold"
-                style={{ color: `color-mix(in srgb, ${colorServicios} 75%, black)` }}
-              >
-                {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
-              </p>
-            </div>
-            <p
-              className={`shrink-0 font-bold ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}
-              style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
-            >
-              {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
-            </p>
-          </div>
-          <CuerpoTarjeta abierto={hovServicios.abierto}>
-          <p
-            className="mt-1 text-xs text-pretty"
-            style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
-          >
-            {estimacionEsProxMes
-              ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
-              : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
-          </p>
-          {(estimacionesProximoMes.length > 0 || candidatosServicio.length > 0) && (
-            <div className="mt-3">
-              <div className="flex items-center gap-4">
-              {estimacionesProximoMes.length > 0 && (
+
+      {/* Resumen del mes: de un vistazo, cuánto falta pagar y cobrar. Cada
+          chip lleva a su sección. */}
+      <ResumenDelMes
+        fijosPagados={resumenFijos.pagados}
+        fijosTotal={resumenFijos.total}
+        fijosFalta={resumenFijos.falta}
+        variablesPendientes={resumenVariables.cantidad}
+        variablesMonto={resumenVariables.monto}
+        vencidos={resumenVencidos.cantidad}
+        vencidosMonto={resumenVencidos.monto}
+        cuotasMes={resumenCuotasMes.cantidad}
+        cuotasMesMonto={resumenCuotasMes.monto}
+        nombreMes={nombreDeMes(mesHoy)}
+      />
+
+      {/* Cuerpo: a la izquierda (2/3) lo que se carga — gastos fijos y
+          variables —; a la derecha (1/3) lo que hay que mirar — vencimientos,
+          cuotas por cobrar y servicios. En el celular va todo en una columna. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+      <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
+      <div id="seccion-fijos" className="scroll-mt-24">
+        {/* Gastos fijos del mes: compacta al plegarse (el Card base trae gap-6/py-6) */}
+        <Card className={`bg-white ${abiertaFijos ? "gap-3 py-4" : "gap-0 py-3"}`}>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
-                style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
-                onClick={() => setDetalleProxAbierto((v) => !v)}
-                aria-expanded={detalleProxAbierto}
+                onClick={() => toggleColapsada("fijos")}
+                className="min-w-0 flex-1 text-left"
+                aria-expanded={abiertaFijos}
               >
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detalleProxAbierto ? "rotate-180" : ""}`} />
-                {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CalendarCheck className="h-4 w-4 text-purple-700" />
+                  Gastos fijos
+                </CardTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {resumenFijos.total === 0
+                    ? "Sin gastos fijos cargados"
+                    : `${nombreDeMes(mesHoy).charAt(0).toUpperCase()}${nombreDeMes(mesHoy).slice(1)}: ${resumenFijos.pagados} de ${resumenFijos.total} pagados`}
+                  {resumenFijos.falta > 0 && (
+                    <span className="font-semibold text-amber-700">{` · falta ${formatCurrency(resumenFijos.falta)}`}</span>
+                  )}
+                </p>
               </button>
-              )}
-              {candidatosServicio.length > 0 && (
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
-                  style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
-                  onClick={() => setAgregandoServicioProx((v) => !v)}
-                  aria-expanded={agregandoServicioProx}
-                >
-                  <Plus className={`h-3.5 w-3.5 transition-transform ${agregandoServicioProx ? "rotate-45" : ""}`} />
-                  {agregandoServicioProx ? "Cerrar" : "Agregar gasto fijo a servicios"}
-                </button>
-              )}
-              </div>
-              {/* Panel: gastos fijos existentes del salón activo que aún no están
-                  en la tarjeta. Un click los marca como "Servicio" y se suman. */}
-              {agregandoServicioProx &&
-                (candidatosServicio.length === 0 ? (
-                  <p
-                    className="mt-2 text-xs"
-                    style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
-                  >
-                    Todos los gastos fijos de este salón ya están incluidos.
-                  </p>
-                ) : (
-                  <div
-                    className="mt-2 rounded-lg border bg-white/60"
-                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
-                  >
-                    <p
-                      className="px-3 pt-2 pb-1 text-xs font-medium"
-                      style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
-                    >
-                      {salonFiltro === "todos"
-                        ? "Elegí un gasto fijo existente para sumarlo acá:"
-                        : `Elegí un gasto fijo de ${salonLabel(salonFiltro)} para sumarlo acá:`}
-                    </p>
-                    <div className="max-h-48 overflow-y-auto divide-y divide-black/5">
-                      {candidatosServicio.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5"
-                          onClick={() => updateCostoOperativo(c.id, { esServicio: true })}
-                        >
-                          <Plus className="h-3.5 w-3.5 shrink-0" style={{ color: colorServicios }} />
-                          <span className="flex-1 min-w-0 truncate text-sm">{c.concepto}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                            {c.frecuencia === "Anual" ? "Anual · " : ""}
-                            {formatCurrency(c.monto)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              {detalleProxAbierto && (() => {
-                const renderEstimacion = (est: (typeof estimacionesProximoMes)[number]) => (
-                  <div key={est.id} className="flex items-center gap-3 px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{est.concepto}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {est.tipo === "sueldos"
-                          ? "Sueldos del equipo de ventas"
-                          : est.tipo === "anual"
-                            ? estimacionEsProxMes
-                              ? "Vence el mes que viene"
-                              : "Vence este mes"
-                            : est.registros >= 2
-                              ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
-                              : est.registros === 1
-                                ? `Último pagado: ${formatCurrency(est.montoActual)} · 1 pago registrado`
-                                : "Sin historial: se usa el monto agendado"}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold tabular-nums">
-                        {`≈ ${formatCurrency(est.estimado)}`}
-                      </p>
-                    </div>
-                    {/* Quitar de la tarjeta (desmarca esServicio; el gasto fijo
-                        sigue existiendo). Repartidos: el id viene con sufijo
-                        "-salón", se recorta para editar el gasto original. */}
-                    {est.tipo !== "sueldos" && (
-                      <button
-                        type="button"
-                        className="shrink-0 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-black/5 hover:text-foreground"
-                        title="Quitar de esta tarjeta"
-                        aria-label={`Quitar ${est.concepto} de esta tarjeta`}
-                        onClick={() => {
-                          const baseId =
-                            est.salon && est.id.endsWith(`-${est.salon}`)
-                              ? est.id.slice(0, -(est.salon.length + 1))
-                              : est.id
-                          updateCostoOperativo(baseId, { esServicio: false })
-                        }}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )
-                // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
-                if (salonFiltro === "todos") {
-                  return (
-                    <div className="mt-2 space-y-2">
-                      {agruparPorSalon(
-                        estimacionesProximoMes.map((est) => ({ ...est, monto: est.estimado })),
-                      ).map((carpeta) => (
-                        <CarpetaGastos
-                          key={`serv-${carpeta.salon}`}
-                          salon={carpeta.salon}
-                          count={carpeta.items.length}
-                          subtotal={carpeta.subtotal}
-                          unidad="servicio"
-                        >
-                          <div
-                            className="divide-y divide-black/5 rounded-lg border bg-white/60"
-                            style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
-                          >
-                            {carpeta.items.map(renderEstimacion)}
-                          </div>
-                        </CarpetaGastos>
-                      ))}
-                    </div>
-                  )
-                }
-                // Vista de un salón: lista plana como siempre.
-                return (
-                  <div
-                    className="mt-2 divide-y divide-black/5 rounded-lg border bg-white/60"
-                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
-                  >
-                    {estimacionesProximoMes.map(renderEstimacion)}
-                  </div>
-                )
-              })()}
-            </div>
-          )}
-          </CuerpoTarjeta>
-        </CardContent>
-      </Card>
-
-      {/* Proyección visual del saldo a 30 d��as (columna lateral) — oculta temporalmente */}
-      {false && (
-      <Card {...hovProyeccion.props}>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-purple-600" />
-              Proyección del saldo a 30 días
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => toggleColapsada("proyeccion")}
-              aria-label={colapsadas.proyeccion ? "Expandir proyección" : "Minimizar proyección"}
-              title={colapsadas.proyeccion ? "Expandir" : "Minimizar"}
-            >
-              {colapsadas.proyeccion ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-        </CardHeader>
-        <CuerpoTarjeta abierto={abiertaProyeccion}>
-        <CardContent className="space-y-1">
-          {/* Resumen tipo cuenta: tengo + entra − sale = me queda */}
-          <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/50">
-            <span className="text-sm text-muted-foreground">Tengo hoy</span>
-            <span className="text-base font-semibold text-foreground">{formatCurrency(saldoActual)}</span>
-          </div>
-
-          <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-emerald-50">
-            <span className="text-sm font-medium text-emerald-800">Entra (cuotas parte Jazmines)</span>
-            <span className="text-base font-bold text-emerald-700">+ {formatCurrency(ingresosProyectados30Dias)}</span>
-          </div>
-
-          <div className="rounded-lg bg-red-50 px-3 py-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-red-800">Sale (gastos fijos + variables)</span>
-              <span className="text-base font-bold text-red-700">− {formatCurrency(gastosPróximos30Dias)}</span>
-            </div>
-            <div className="mt-1.5 flex flex-col gap-0.5 border-t border-red-100 pt-1.5">
-              <div className="flex items-center justify-between text-xs text-red-700/80">
-                <span>Fijos y sueldos pendientes</span>
-                <span>{formatCurrency(gastosFijosPendientes30)}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-red-700/80">
-                <span>Variables agendados</span>
-                <span>{formatCurrency(gastosVariablesPendientes30)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={`flex items-center justify-between rounded-lg px-3 py-3 border-2 ${
-              saldoProyectado30Dias >= 0 ? "border-teal-200 bg-teal-50" : "border-red-300 bg-red-50"
-            }`}
-          >
-            <span className={`text-sm font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-800"}`}>
-              Me queda
-            </span>
-            <span className={`text-2xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
-              {formatCurrency(saldoProyectado30Dias)}
-            </span>
-          </div>
-        </CardContent>
-        </CuerpoTarjeta>
-      </Card>
-      )}
-      </div>
-
-      {/* PROYECCIÓN MENSUAL — tabla a 12 meses. Plegada: se abre con hover. */}
-      <Card
-        className={`md:col-start-1 md:row-start-1 md:order-1 ${hovProyeccion12.abierto ? "" : "gap-0 py-3"}`}
-        {...hovProyeccion12.props}
-      >
-        <CardHeader className={hovProyeccion12.abierto ? "pb-3" : "pb-0"}>
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-teal-600" />
-            Proyección en 12 meses:
-          </CardTitle>
-          <CuerpoTarjeta abierto={hovProyeccion12.abierto}>
-            <p className="text-xs text-muted-foreground mt-1 text-pretty">
-              A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
-              El saldo parte del saldo actual de la caja.
-            </p>
-          </CuerpoTarjeta>
-        </CardHeader>
-        <CuerpoTarjeta abierto={hovProyeccion12.abierto}>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6 font-bold">Mes</TableHead>
-                <TableHead className="text-center font-bold">A cobrar</TableHead>
-                <TableHead className="text-center font-bold">A pagar</TableHead>
-                <TableHead className="text-center font-bold">Balance</TableHead>
-                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {proyeccionMensual.slice(0, mesesProyeccionVisibles).map((m) => (
-                <TableRow key={m.key} className={m.esActual ? "bg-teal-50/60" : ""}>
-                  <TableCell className="pl-6 capitalize font-medium">
-                    {m.label}
-                    {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
-                  </TableCell>
-                  <TableCell className="text-center text-emerald-700 font-medium">
-                    {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
-                  </TableCell>
-                  <TableCell className="text-center text-[var(--accent)] font-medium">
-                    {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
-                  </TableCell>
-                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
-                    {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
-                  </TableCell>
-                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
-                    {formatCurrency(m.saldoProyectado)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {(mesesProyeccionVisibles < proyeccionMensual.length || mesesProyeccionVisibles > 3) && (
-            <div className="flex items-center justify-center gap-2 px-6 pt-3">
-              {mesesProyeccionVisibles < proyeccionMensual.length && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-teal-700 border-teal-200 hover:bg-teal-50 bg-transparent"
-                  onClick={() =>
-                    setMesesProyeccionVisibles((v) => Math.min(v + 3, proyeccionMensual.length))
-                  }
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                  {`Ver 3 meses más (${Math.min(3, proyeccionMensual.length - mesesProyeccionVisibles)} de ${proyeccionMensual.length - mesesProyeccionVisibles} restantes)`}
-                </Button>
-              )}
-              {mesesProyeccionVisibles > 3 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                  onClick={() => setMesesProyeccionVisibles(3)}
-                >
-                  <ChevronUp className="h-3.5 w-3.5" />
-                  Ver menos
-                </Button>
-              )}
-            </div>
-          )}
-        </CardContent>
-        </CuerpoTarjeta>
-      </Card>
-      </div>
-
-      {/* Cuotas + Fijos (columna izquierda) y Vencimientos + Variables (columna derecha).
-          Columnas independientes ancladas ARRIBA: la fila 1 mide solo el alto de su
-          tarjeta (grid-rows auto) y cada tarjeta se alinea a su tope (items-start),
-          así al plegar una tarjeta la de abajo sube al instante y nada queda flotando. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-
-      {/* Columna derecha: vencimientos + cuotas apiladas sin huecos.
-          Van juntas en un flex para que la altura de una no afecte a la otra. */}
-      <div className="flex min-w-0 flex-col gap-4 md:col-start-2 md:row-start-2">
-      {/* Alertas de vencimiento */}
-      <Card
-        className={abiertaAlertas ? "" : "py-3 gap-0"}
-        style={{ backgroundColor: "#f5ffbd", color: "#000000" }}
-        {...hovAlertas.props}
-      >
-        <CardHeader className={abiertaAlertas ? "pb-3" : "pb-0"}>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-500" />
-              Proximos vencimientos
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => toggleColapsada("alertas")}
-              aria-label={colapsadas.alertas ? "Expandir alertas" : "Minimizar alertas"}
-              title={colapsadas.alertas ? "Expandir" : "Minimizar"}
-            >
-              {colapsadas.alertas ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-        </CardHeader>
-        <CuerpoTarjeta abierto={abiertaAlertas}>
-        <CardContent className="space-y-2">
-          {alertasVencimiento.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center text-pretty">
-              {gastosProximoMes1al10.length > 0
-                ? `No queda nada pendiente este mes. Los próximos vencimientos son de ${tituloProxMes}: están en la carpeta de abajo.`
-                : "No hay vencimientos pendientes."}
-            </p>
-          ) : (
-            <>
-              {(() => {
-                const renderAlerta = (alerta: (typeof alertasVencimiento)[number]) => (
-                  <div
-                    key={alerta.id}
-                    className={`flex items-start gap-3 rounded-lg border border-border bg-card p-3 ${
-                      alertasPagando.has(alerta.id) ? "fade-out-paid" : ""
-                    }`}
-                  >
-                    {puntoPrioridad(alerta.estado)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{alerta.concepto}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        <span className="capitalize">{descripcionAlerta(alerta.diasRestantes, alerta.estado)}</span>
-                        {alerta.salon && (
-                          <span className="inline-flex items-center gap-1 align-middle">
-                            {" · "}
-                            <SalonDot salon={alerta.salon} size={7} />
-                            {salonLabel(alerta.salon)}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <span className="text-sm font-bold text-red-600 shrink-0">
-                      {formatCurrency(alerta.monto)}
-                    </span>
-                    <ConfirmAction
-                      title="¿Marcar como pagado?"
-                      description={`Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`}
-                      confirmLabel="Sí, marcar pagado"
-                      onConfirm={() => pagarDesdeAlerta(alerta)}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
-                        title="Marcar como pagado"
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
-                      </Button>
-                    </ConfirmAction>
-                  </div>
-                )
-                // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
-                if (salonFiltro === "todos") {
-                  return agruparPorSalon(alertasVencimiento).map((carpeta) => {
-                    // Contadores por prioridad, visibles con la carpeta cerrada,
-                    // para saber a qué carpeta entrar primero.
-                    const rojos = carpeta.items.filter((a) => a.estado === "vencido" || a.estado === "urgente").length
-                    const ambar = carpeta.items.filter((a) => a.estado === "proximo").length
-                    const verdes = carpeta.items.length - rojos - ambar
-                    return (
-                      <CarpetaGastos
-                        key={`venc-${carpeta.salon}`}
-                        salon={carpeta.salon}
-                        count={carpeta.items.length}
-                        subtotal={carpeta.subtotal}
-                        unidad="vencimiento"
-                        plano={salonFiltro !== "todos"}
-                        resumen={
-                          <span className="flex items-center gap-2 shrink-0">
-                            {rojos > 0 && (
-                              <span
-                                className="flex items-center gap-1 text-[11px] font-bold text-red-600"
-                                title={`${rojos} urgente${rojos !== 1 ? "s" : ""} / vencido${rojos !== 1 ? "s" : ""}`}
-                              >
-                                <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
-                                {rojos}
-                                <span className="sr-only">urgentes o vencidos</span>
-                              </span>
-                            )}
-                            {ambar > 0 && (
-                              <span
-                                className="flex items-center gap-1 text-[11px] font-bold text-amber-600"
-                                title={`${ambar} con menos de 7 días`}
-                              >
-                                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
-                                {ambar}
-                                <span className="sr-only">con menos de 7 días</span>
-                              </span>
-                            )}
-                            {verdes > 0 && (
-                              <span
-                                className="flex items-center gap-1 text-[11px] font-bold text-teal-600"
-                                title={`${verdes} con más de 7 días`}
-                              >
-                                <span className="h-2.5 w-2.5 rounded-full bg-teal-500" aria-hidden="true" />
-                                {verdes}
-                                <span className="sr-only">con más de 7 días</span>
-                              </span>
-                            )}
-                          </span>
-                        }
-                      >
-                        {carpeta.items.map(renderAlerta)}
-                      </CarpetaGastos>
-                    )
-                  })
-                }
-                // Vista de un salón: lista plana con paginado de a 5.
-                return (
-                  <>
-                    {alertasVencimiento.slice(0, alertasVisibles).map(renderAlerta)}
-                    {(alertasVencimiento.length > alertasVisibles || alertasVisibles > 5) && (
-                      <div className="flex items-center justify-center gap-2 pt-1">
-                        {alertasVencimiento.length > alertasVisibles && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="bg-transparent text-amber-700 border-amber-300 hover:bg-amber-50"
-                            onClick={() => setAlertasVisibles((v) => v + 5)}
-                          >
-                            <ChevronDown className="h-3.5 w-3.5" />
-                            {`Ver 5 más (${alertasVencimiento.length - alertasVisibles} restantes)`}
-                          </Button>
-                        )}
-                        {alertasVisibles > 5 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-muted-foreground"
-                            onClick={() => setAlertasVisibles(5)}
-                          >
-                            <ChevronUp className="h-3.5 w-3.5" />
-                            Ver menos
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )
-              })()}
-              <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
-                  Urgente / vencido
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-400 inline-block" />
-                  Menos de 7 días
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-teal-500 inline-block" />
-                  Más de 7 días
-                </span>
-              </div>
-            </>
-          )}
-
-          {/* ── Subcarpeta: proyección del 1 al 10 del mes siguiente ───��── */}
-          <div className="mt-2 rounded-lg border border-border overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setSubcarpetaProximoMes((v) => !v)}
-              className="w-full flex items-center gap-2 bg-muted/50 hover:bg-muted px-3 py-2 text-left transition-colors"
-              aria-expanded={subcarpetaProximoMes}
-            >
-              {subcarpetaProximoMes
-                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-              <Calendar className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-              <span className="text-xs font-semibold text-foreground capitalize flex-1">
-                Del 1 al 10 de {tituloProxMes}
-              </span>
-              {gastosProximoMes1al10.length > 0 && (
-                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
-                  {gastosProximoMes1al10.length}
-                </Badge>
-              )}
-              <span className="text-xs font-bold text-red-600 tabular-nums">
-                {formatCurrency(totalProximoMes1al10)}
-              </span>
-            </button>
-            <CuerpoTarjeta abierto={subcarpetaProximoMes}>
-              <div className="space-y-2 bg-card p-2">
-                {gastosProximoMes1al10.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-3 text-center">
-                    No hay gastos fijos agendados del 1 al 10 del mes próximo.
-                  </p>
-                ) : (
-                  gastosProximoMes1al10.map((g) => (
-                    <div
-                      key={`prox-${g.id}`}
-                      className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
-                    >
-                      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{g.concepto}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Vence el {formatFecha(g.fechaProyectada)}
-                          {g.salon && (
-                            <span className="inline-flex items-center gap-1 align-middle">
-                              {" · "}
-                              <SalonDot salon={g.salon} size={7} />
-                              {salonLabel(g.salon)}
-                            </span>
-                          )}
-                          {" · "}
-                          {g.frecuencia}
-                        </p>
-                      </div>
-                      <span className="text-sm font-bold text-red-600 shrink-0">
-                        {formatCurrency(g.monto)}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CuerpoTarjeta>
-          </div>
-        </CardContent>
-        </CuerpoTarjeta>
-      </Card>
-
-      {/* Cuotas por cobrar: debajo de Próximos vencimientos */}
-      <Card
-        className={abiertaCuotas ? "" : "py-3 gap-0"}
-        style={{ backgroundColor: "#cdf7c6" }}
-        {...hovCuotas.props}
-      >
-        <CardHeader className={abiertaCuotas ? "pb-3" : "pb-0"}>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <HandCoins className="h-4 w-4 text-emerald-600" />
-              Cuotas por cobrar
-              {cuotasPorCobrar.length > 0 && (
-                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[11px]">
-                  {cuotasPorCobrar.length}
-                </Badge>
-              )}
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => toggleColapsada("cuotas")}
-              aria-label={colapsadas.cuotas ? "Expandir cuotas" : "Minimizar cuotas"}
-              title={colapsadas.cuotas ? "Expandir" : "Minimizar"}
-            >
-              {colapsadas.cuotas ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-        </CardHeader>
-        <CuerpoTarjeta abierto={abiertaCuotas}>
-          <CardContent>
-            {cuotasPorCobrar.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                No hay cuotas pendientes de cobro.
-              </p>
-            ) : (
-              <div ref={cuotasListaRef} className="space-y-2">
-                {(() => {
-                  const renderCuota = (cuota: (typeof cuotasPorCobrar)[number]) => (
-                    <div
-                      key={cuota.id}
-                      className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Cuota {cuota.numeroCuota}/{cuota.totalCuotas} · vence {formatFecha(cuota.fechaVencimiento)}
-                          {cuota.salon && (
-                            <span className="inline-flex items-center gap-1 align-middle">
-                              {" · "}
-                              <SalonDot salon={cuota.salon} size={7} />
-                              {salonLabel(cuota.salon)}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <span className="text-sm font-bold text-emerald-700 shrink-0">
-                        +{formatCurrency(cuota.montoJazmines)}
-                      </span>
-                    </div>
-                  )
-                  // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
-                  // El subtotal de cada carpeta es la parte Jazmines (lo que entra a esta caja).
-                  if (salonFiltro === "todos") {
-                    return agruparPorSalon(
-                      cuotasPorCobrar.map((c) => ({ ...c, monto: c.montoJazmines })),
-                    ).map((carpeta) => (
-                      <CarpetaGastos
-                        key={`cuota-${carpeta.salon}`}
-                        salon={carpeta.salon}
-                        count={carpeta.items.length}
-                        subtotal={carpeta.subtotal}
-                        unidad="cuota"
-                      >
-                        {carpeta.items.map(renderCuota)}
-                      </CarpetaGastos>
-                    ))
-                  }
-                  // Vista de un salón: lista plana con revelado por scroll.
-                  return (
-                    <>
-                      {cuotasPorCobrar.slice(0, cuotasVisibles).map(renderCuota)}
-                      {totalCuotas > CUOTAS_POR_PAGINA && (
-                        <p className="text-[11px] text-emerald-700/70 text-center pt-1 select-none">
-                          Mostrando {Math.min(cuotasVisibles, totalCuotas)} de {totalCuotas}
-                          {cuotasVisibles < totalCuotas
-                            ? " · usá la rueda del mouse para ver más"
-                            : " · rueda hacia arriba para ocultar"}
-                        </p>
-                      )}
-                    </>
-                  )
-                })()}
-              </div>
-            )}
-          </CardContent>
-        </CuerpoTarjeta>
-      </Card>
-      </div>
-
-      {/* ── Columna izquierda: gastos fijos ── */}
-      <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
-        {/* Gastos fijos del mes: compacta al plegarse (el Card base trae gap-6/py-6) */}
-        <Card className={abiertaFijos ? "gap-3 py-4" : "gap-0 py-3"} style={{ backgroundColor: "#ffffff" }} {...hovFijos.props}>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                Gastos fijos
-              </CardTitle>
               <div className="flex items-center gap-1">
                     {CIERRE_MES_ACTIVO && (
                       <Button
@@ -2819,28 +2738,45 @@ export default function CajaJazminePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  style={{ color: "#000000", backgroundColor: "#ffffff" }}
-                  className="h-7 gap-1.5 text-xs"
+                  className="h-8 gap-1.5 bg-white text-xs text-black"
                   onClick={() => setModalFijoAbierto(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Agregar
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                  onClick={() => toggleColapsada("fijos")}
-                  aria-label={colapsadas.fijos ? "Expandir gastos fijos" : "Minimizar gastos fijos"}
-                  title={colapsadas.fijos ? "Expandir" : "Minimizar"}
-                >
-                  {colapsadas.fijos ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                </Button>
+                <BotonPlegar abierta={abiertaFijos} onClick={() => toggleColapsada("fijos")} etiqueta="gastos fijos" />
               </div>
             </div>
           </CardHeader>
           <CuerpoTarjeta abierto={abiertaFijos}>
           <CardContent className="space-y-2">
+            {/* Filtro rápido: ver todo, solo lo que falta pagar del mes o solo lo pagado */}
+            {resumenFijos.total > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pb-1" role="group" aria-label="Filtrar gastos fijos">
+                {(
+                  [
+                    { id: "todos", label: "Todos", n: resumenFijos.total },
+                    { id: "pendientes", label: "Falta pagar", n: resumenFijos.total - resumenFijos.pagados },
+                    { id: "pagados", label: "Pagados", n: resumenFijos.pagados },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFiltroFijos(f.id)}
+                    aria-pressed={filtroFijos === f.id}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      filtroFijos === f.id
+                        ? "border-purple-700 bg-purple-700 text-white"
+                        : "border-border bg-white text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {f.label}
+                    <span className={`ml-1.5 tabular-nums ${filtroFijos === f.id ? "text-white/80" : ""}`}>{f.n}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {/* Aviso de gastos sin cargar: oculto junto con el Cierre de mes
                 (CIERRE_MES_ACTIVO). Reactivar la bandera lo vuelve a mostrar. */}
             {CIERRE_MES_ACTIVO && fijosSinCargarMesActual.length > 0 && (
@@ -2907,16 +2843,52 @@ export default function CajaJazminePage() {
                   carpetas.sort(
                     (a, b) => ordenCarpetas.indexOf(a.salon as any) - ordenCarpetas.indexOf(b.salon as any),
                   )
-                  return carpetas.map((carpeta) => {
-                    const cuotasReparto =
+                  const carpetasRender = carpetas.map((carpeta) => {
+                    const cuotasRepartoTodas =
                       carpeta.salon === "General" ? [] : cuotasRepartoFijos.get(carpeta.salon) || []
+                    // Pagado del mes en curso con la misma regla de la pastilla
+                    // (verde/amarillo) de cada fila. Solo se usa para filtrar y
+                    // contar: no cambia ningún dato.
+                    const pagadaCuota = (cuota: (typeof cuotasRepartoTodas)[number]) => {
+                      const o = state.costosOperativos?.find((c) => c.id === cuota.id)
+                      return o
+                        ? pagoDelMesActual(o, { salon: carpeta.salon, porcentaje: cuota.porcentaje }, mesHoy).pagado
+                        : cuota.pagado
+                    }
+                    const pagadoGasto = (g: GastoFijoMes) => g.estado === "pagado"
+                    const pasaFiltro = (pagado: boolean) =>
+                      filtroFijos === "todos" || (filtroFijos === "pagados" ? pagado : !pagado)
+                    const totalCarpeta = cuotasRepartoTodas.length + carpeta.items.length
+                    const pagadosCarpeta =
+                      cuotasRepartoTodas.filter(pagadaCuota).length + carpeta.items.filter(pagadoGasto).length
+                    const cuotasReparto = cuotasRepartoTodas.filter((c) => pasaFiltro(pagadaCuota(c)))
+                    const itemsCarpeta = carpeta.items.filter((g) => pasaFiltro(pagadoGasto(g)))
+                    // Carpetas vacías (por ejemplo Salon 4 y 5 sin gastos) no se muestran.
+                    if (totalCarpeta === 0) return null
+                    if (filtroFijos !== "todos" && cuotasReparto.length + itemsCarpeta.length === 0) return null
                     return (
                   <CarpetaGastos
                     key={`fijo-${carpeta.salon}`}
                     salon={carpeta.salon}
-                    count={carpeta.items.length + cuotasReparto.length}
-                    subtotal={carpeta.subtotal + cuotasReparto.reduce((s, c) => s + c.monto, 0)}
+                    count={itemsCarpeta.length + cuotasReparto.length}
+                    subtotal={
+                      itemsCarpeta.reduce((s, g) => s + g.monto, 0) + cuotasReparto.reduce((s, c) => s + c.monto, 0)
+                    }
                     plano={salonFiltro !== "todos"}
+                    inicialAbierta={pagadosCarpeta < totalCarpeta}
+                    encabezado={<EncabezadoMeses anio={anioHoy} mesHoy={mesHoy} />}
+                    resumen={
+                      totalCarpeta > 0 ? (
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            pagadosCarpeta === totalCarpeta ? "bg-teal-100 text-teal-700" : "bg-amber-100 text-amber-800"
+                          }`}
+                          title={`${pagadosCarpeta} de ${totalCarpeta} pagados este mes`}
+                        >
+                          {pagadosCarpeta === totalCarpeta ? "Todo pagado" : `${pagadosCarpeta}/${totalCarpeta} pagados`}
+                        </span>
+                      ) : null
+                    }
                   >
                     {/* Cuotas de gastos repartidos: misma tarjeta y acciones que
                         un gasto normal; el check paga la parte de este salón. */}
@@ -2928,37 +2900,43 @@ export default function CajaJazminePage() {
                       // período anterior esté saldado.
                       const origPill = state.costosOperativos?.find((c) => c.id === cuota.id)
                       const pagoMes = origPill
-                        ? pagoDelMesActual(origPill, { salon: carpeta.salon, porcentaje: cuota.porcentaje })
+                        ? pagoDelMesActual(origPill, { salon: carpeta.salon, porcentaje: cuota.porcentaje }, mesHoy)
                         : { monto: cuota.monto, pagado: cuota.pagado }
                       return (
                       <GastoPlegable
                         key={`reparto-${cuota.id}`}
                         header={
-                          <div className="flex items-center gap-3 p-3">
+                          <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3 md:grid ${COLUMNAS_FILA_FIJO}`}>
                             <IconoGastoBoton
                               icono={origPill?.icono}
                               color={salonColor(carpeta.salon, configuracionCajas)}
                               onSelect={(nombre) => updateCostoOperativo(cuota.id, { icono: nombre })}
                             />
-                            <button
-                              type="button"
-                              className="flex-1 min-w-0 text-left"
-                              onClick={() => abrirEvolucion(cuota.id)}
-                              title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
-                            >
-                              <p className="text-sm font-medium truncate">{cuota.concepto}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {gastoRef?.frecuencia || "Mensual"}
-                                {cuota.fechaVencimiento && (gastoRef?.frecuencia || "Mensual") === "Mensual" ? (
-                                  <span className="font-semibold text-purple-600">
-                                    {` · ${periodoQueSePaga(cuota.fechaVencimiento)}`}
-                                  </span>
-                                ) : null}
-                                {cuota.fechaVencimiento ? ` · vence ${formatFecha(cuota.fechaVencimiento)}` : ""}
-                                {` · ${cuota.porcentaje}%`}
-                              </p>
-                            </button>
-                            <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
+                            {/* Tocar el nombre abre o cierra los meses del gasto */}
+                            <div className="min-w-[11rem] flex-1 text-left md:min-w-0" title={cuota.concepto}>
+                              <p className="text-sm font-medium break-words md:truncate">{cuota.concepto}</p>
+                              <MetaGastoFijo
+                                frecuencia={gastoRef?.frecuencia || "Mensual"}
+                                fechaVencimiento={cuota.fechaVencimiento}
+                                porcentaje={cuota.porcentaje}
+                              />
+                            </div>
+                            <TiraMesesMini
+                              gasto={origPill}
+                              anio={anioHoy}
+                              mesHoy={mesHoy}
+                              parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
+                            />
+                            <div className="ml-auto flex items-center justify-end gap-1">
+                              <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
+                              {gastoRef && (
+                                <MenuGastoFijo
+                                  concepto={cuota.concepto}
+                                  onEditar={() => abrirEditFijo(gastoRef)}
+                                  onEliminar={() => setAccionMenu({ tipo: "eliminar", gasto: gastoRef })}
+                                />
+                              )}
+                            </div>
                           </div>
                         }
                       >
@@ -2968,7 +2946,7 @@ export default function CajaJazminePage() {
                         {(() => {
                           const origCuota = state.costosOperativos?.find((c) => c.id === cuota.id)
                           return origCuota ? (
-                            <div className="rounded-b-lg border-t border-border bg-muted/40 px-3 py-2.5">
+                            <div className={`rounded-b-lg border-t border-border bg-muted/40 py-2.5 ${MARGEN_FILA_FIJO}`}>
                               <MesesFijo
                                 gasto={origCuota}
                                 updateCostoOperativo={updateCostoOperativo}
@@ -2982,7 +2960,7 @@ export default function CajaJazminePage() {
                       </GastoPlegable>
                       )
                     })}
-                    {carpeta.items.map((gasto) => {
+                    {itemsCarpeta.map((gasto) => {
                   const esPagado = gasto.estado === "pagado"
                   const hist = gasto.historialMontos || []
                   const ultimoRegistro = hist.length > 0 ? hist[hist.length - 1] : null
@@ -3014,30 +2992,26 @@ export default function CajaJazminePage() {
                     <GastoPlegable
                       key={gasto.id}
                       header={
-                        <div className="flex items-center gap-3 p-3">
+                        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3 md:grid ${COLUMNAS_FILA_FIJO}`}>
                           <IconoGastoBoton
                             icono={state.costosOperativos?.find((c) => c.id === gasto.id)?.icono}
                             color={salonColor(carpeta.salon, configuracionCajas)}
                             onSelect={(nombre) => updateCostoOperativo(gasto.id, { icono: nombre })}
                           />
-                          {/* Un click sobre el gasto abre su historial automático */}
-                          <button
-                            type="button"
-                            className="flex-1 min-w-0 text-left"
-                            onClick={() => abrirEvolucion(gasto.id)}
-                            title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
-                          >
-                            <p className="text-sm font-medium truncate">{gasto.concepto}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {gasto.frecuencia}
-                              {gasto.fechaVencimiento && gasto.frecuencia === "Mensual" ? (
-                                <span className="font-semibold text-purple-600">
-                                  {` · ${periodoQueSePaga(gasto.fechaVencimiento)}`}
-                                </span>
-                              ) : null}
-                              {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
-                            </p>
-                          </button>
+                          {/* Tocar el nombre abre o cierra los meses del gasto */}
+                          <div className="min-w-[11rem] flex-1 text-left md:min-w-0" title={gasto.concepto}>
+                            <p className="text-sm font-medium break-words md:truncate">{gasto.concepto}</p>
+                            <MetaGastoFijo frecuencia={gasto.frecuencia} fechaVencimiento={gasto.fechaVencimiento} />
+                          </div>
+                          {/* Pagos del año de un vistazo (los sueldos no tienen tira) */}
+                          <TiraMesesMini
+                            gasto={gasto.esSueldoVendedor ? undefined : state.costosOperativos?.find((c) => c.id === gasto.id)}
+                            anio={anioHoy}
+                            mesHoy={mesHoy}
+                            parte={
+                              parteSalon ? { salon: parteSalon.salon, porcentaje: parteSalon.porcentaje } : undefined
+                            }
+                          />
                           {/* Monto del MES CALENDARIO actual, visible con el ítem
                               plegado: verde si el mes en curso está pagado según
                               la tira de meses, amarillo si falta pagar (sin
@@ -3052,13 +3026,23 @@ export default function CajaJazminePage() {
                                 parteSalon
                                   ? { salon: parteSalon.salon, porcentaje: parteSalon.porcentaje }
                                   : undefined,
+                                mesHoy,
                               )
-                              return <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
+                              return (
+                                <div className="ml-auto flex items-center justify-end gap-1">
+                                  <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
+                                  <MenuGastoFijo
+                                    concepto={gasto.concepto}
+                                    onEditar={() => abrirEditFijo(gasto)}
+                                    onEliminar={() => setAccionMenu({ tipo: "eliminar", gasto })}
+                                  />
+                                </div>
+                              )
                             })()}
                           {/* Sueldos de vendedores: sin tira de meses, conservan
                               sus controles (monto, estado y edición de fecha). */}
                           {gasto.esSueldoVendedor && (
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className="ml-auto flex items-center justify-end gap-1 shrink-0">
                               <div className="flex flex-col items-end gap-1 mr-1">
                                 <span className="text-sm font-bold text-foreground">
                                   {formatCurrency(gasto.monto)}
@@ -3095,7 +3079,7 @@ export default function CajaJazminePage() {
                     {!gasto.esSueldoVendedor && (() => {
                       const origFijo = state.costosOperativos?.find((c) => c.id === gasto.id)
                       return origFijo ? (
-                        <div className="rounded-b-lg border-t border-border bg-muted/40 px-3 py-2.5">
+                        <div className={`rounded-b-lg border-t border-border bg-muted/40 py-2.5 ${MARGEN_FILA_FIJO}`}>
                           <MesesFijo
                             gasto={origFijo}
                             updateCostoOperativo={updateCostoOperativo}
@@ -3147,6 +3131,16 @@ export default function CajaJazminePage() {
                   </CarpetaGastos>
                     )
                   })
+                  if (filtroFijos !== "todos" && carpetasRender.every((c) => c === null)) {
+                    return (
+                      <p className="py-4 text-center text-sm text-muted-foreground">
+                        {filtroFijos === "pendientes"
+                          ? `No queda nada por pagar de ${nombreDeMes(mesHoy)}.`
+                          : `Todavía no hay gastos fijos pagados en ${nombreDeMes(mesHoy)}.`}
+                      </p>
+                    )
+                  }
+                  return carpetasRender
                 })()}
 
                 {/* Cubiertos este mes: tilde verde */}
@@ -3173,10 +3167,12 @@ export default function CajaJazminePage() {
                 ))}
 
                 {gastosFijosMes.length > 0 && (
-                  <div className="pt-2 border-t border-border flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Total pendiente</span>
-                    <span className="text-base font-bold text-foreground">
-                      {formatCurrency(totalGastosFijos)}
+                  <div className="pt-2 border-t border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                    <span className="text-sm text-muted-foreground">
+                      {`Falta pagar en ${nombreDeMes(mesHoy)}`}
+                    </span>
+                    <span className="text-base font-bold text-foreground tabular-nums">
+                      {formatCurrency(resumenFijos.falta)}
                     </span>
                   </div>
                 )}
@@ -3186,24 +3182,32 @@ export default function CajaJazminePage() {
           </CuerpoTarjeta>
         </Card>
       </div>
-
-        {/* Gastos variables (columna izquierda, fila 2): compacta al plegarse */}
-        <Card
-        className={`md:col-start-1 md:row-start-2 ${abiertaVariables ? "" : "gap-0 py-3"}`}
-        style={{ backgroundColor: "#ffffff", color: "#000000" }}
-        {...hovVariables.props}
-      >
+      <div id="seccion-variables" className="scroll-mt-24">
+        {/* Gastos variables: debajo de los fijos, en la columna ancha */}
+        <Card className={`bg-white text-black ${abiertaVariables ? "gap-3 py-4" : "gap-0 py-3"}`}>
           <CardHeader className={abiertaVariables ? "pb-3" : "pb-0"}>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                Gastos variables
-              </CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => toggleColapsada("variables")}
+                className="min-w-0 flex-1 text-left"
+                aria-expanded={abiertaVariables}
+              >
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Receipt className="h-4 w-4 text-amber-700" />
+                  Gastos variables
+                </CardTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {resumenVariables.cantidad === 0
+                    ? "Nada pendiente de pagar (sin contar comisiones)"
+                    : `${resumenVariables.cantidad} sin pagar · ${formatCurrency(resumenVariables.monto)} (sin contar comisiones)`}
+                </p>
+              </button>
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
                   size="sm"
-                  style={{ color: "#000000", backgroundColor: "#ffffff" }}
-                  className="h-7 gap-1.5 text-xs"
+                  className="h-8 gap-1.5 bg-white text-xs text-black"
                   onClick={() => {
                     setCostoAEditarVariable(null)
                     setModalVariableAbierto(true)
@@ -3212,16 +3216,11 @@ export default function CajaJazminePage() {
                   <Plus className="h-3.5 w-3.5" />
                   Agendar gasto
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                <BotonPlegar
+                  abierta={abiertaVariables}
                   onClick={() => toggleColapsada("variables")}
-                  aria-label={colapsadas.variables ? "Expandir gastos variables" : "Minimizar gastos variables"}
-                  title={colapsadas.variables ? "Expandir" : "Minimizar"}
-                >
-                  {colapsadas.variables ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                </Button>
+                  etiqueta="gastos variables"
+                />
               </div>
             </div>
           </CardHeader>
@@ -3279,6 +3278,7 @@ export default function CajaJazminePage() {
                   colorCustom={carpeta.color}
                   count={carpeta.items.length}
                   subtotal={carpeta.subtotal}
+                  inicialAbierta={carpeta.clave !== "comisiones" && carpeta.items.some((g) => g.estado !== "pagado")}
                 >
                   {(() => {
                   const renderGastoVar = (gasto: GastoVariable) => {
@@ -3579,6 +3579,754 @@ export default function CajaJazminePage() {
           </CuerpoTarjeta>
         </Card>
       </div>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-4">
+      <div id="seccion-vencimientos" className="scroll-mt-24">
+      {/* Alertas de vencimiento */}
+      <Card className={`border-amber-200 bg-amber-50/60 text-black ${abiertaAlertas ? "" : "py-3 gap-0"}`}>
+        <CardHeader className={abiertaAlertas ? "pb-3" : "pb-0"}>
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => toggleColapsada("alertas")}
+              className="min-w-0 flex-1 text-left"
+              aria-expanded={abiertaAlertas}
+            >
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                Próximos vencimientos
+                {alertasVencimiento.length > 0 && (
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[11px]">
+                    {alertasVencimiento.length}
+                  </Badge>
+                )}
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {alertasVencimiento.length === 0
+                  ? "Nada pendiente en los próximos 30 días"
+                  : `${formatCurrency(alertasVencimiento.reduce((s, a) => s + a.monto, 0))} en los próximos 30 días`}
+                {resumenVencidos.cantidad > 0 && (
+                  <span className="font-semibold text-red-600">{` · ${resumenVencidos.cantidad} vencido${resumenVencidos.cantidad === 1 ? "" : "s"}`}</span>
+                )}
+              </p>
+            </button>
+            <BotonPlegar abierta={abiertaAlertas} onClick={() => toggleColapsada("alertas")} etiqueta="próximos vencimientos" />
+          </div>
+        </CardHeader>
+        <CuerpoTarjeta abierto={abiertaAlertas}>
+        <CardContent className="space-y-2">
+          {alertasVencimiento.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center text-pretty">
+              {gastosProximoMes1al10.length > 0
+                ? `No queda nada pendiente este mes. Los próximos vencimientos son de ${tituloProxMes}: están en la carpeta de abajo.`
+                : "No hay vencimientos pendientes."}
+            </p>
+          ) : (
+            <>
+              {(() => {
+                const renderAlerta = (alerta: (typeof alertasVencimiento)[number]) => (
+                  <div
+                    key={alerta.id}
+                    className={`flex items-start gap-3 rounded-lg border border-border bg-card p-3 ${
+                      alertasPagando.has(alerta.id) ? "fade-out-paid" : ""
+                    }`}
+                  >
+                    {puntoPrioridad(alerta.estado)}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{alerta.concepto}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        <span>{mayusculaInicial(descripcionAlerta(alerta.diasRestantes, alerta.estado))}</span>
+                        {alerta.salon && (
+                          <span className="inline-flex items-center gap-1 align-middle">
+                            <span className="ml-1" aria-hidden="true">·</span>
+                            <SalonDot salon={alerta.salon} size={7} />
+                            {salonLabel(alerta.salon)}
+                          </span>
+                        )}
+                      </p>
+                      {/* Los sueldos de vendedores no se pagan desde acá: el ✓
+                          abría la confirmación y no registraba nada. El aviso
+                          va debajo para no apretar la fila en pantallas chicas. */}
+                      {alerta.esSueldoVendedor && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">Se paga desde Eventos › Vendedores</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-bold text-red-600 shrink-0">
+                      {formatCurrency(alerta.monto)}
+                    </span>
+                    {!alerta.esSueldoVendedor && (
+                      <ConfirmAction
+                        title="¿Marcar como pagado?"
+                        description={descripcionPagoAlerta(alerta)}
+                        confirmLabel="Sí, marcar pagado"
+                        onConfirm={() => pagarDesdeAlerta(alerta)}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-teal-600"
+                          title="Marcar como pagado"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span className="sr-only">Marcar {alerta.concepto} como pagado</span>
+                        </Button>
+                      </ConfirmAction>
+                    )}
+                  </div>
+                )
+                // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
+                if (salonFiltro === "todos") {
+                  return agruparPorSalon(alertasVencimiento).map((carpeta) => {
+                    // Contadores por prioridad, visibles con la carpeta cerrada,
+                    // para saber a qué carpeta entrar primero.
+                    const rojos = carpeta.items.filter((a) => a.estado === "vencido" || a.estado === "urgente").length
+                    const ambar = carpeta.items.filter((a) => a.estado === "proximo").length
+                    const verdes = carpeta.items.length - rojos - ambar
+                    return (
+                      <CarpetaGastos
+                        key={`venc-${carpeta.salon}`}
+                        salon={carpeta.salon}
+                        count={carpeta.items.length}
+                        subtotal={carpeta.subtotal}
+                        unidad="vencimiento"
+                        plano={salonFiltro !== "todos"}
+                        inicialAbierta={rojos > 0}
+                        resumen={
+                          <span className="flex items-center gap-2 shrink-0">
+                            {rojos > 0 && (
+                              <span
+                                className="flex items-center gap-1 text-[11px] font-bold text-red-600"
+                                title={`${rojos} urgente${rojos !== 1 ? "s" : ""} / vencido${rojos !== 1 ? "s" : ""}`}
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
+                                {rojos}
+                                <span className="sr-only">urgentes o vencidos</span>
+                              </span>
+                            )}
+                            {ambar > 0 && (
+                              <span
+                                className="flex items-center gap-1 text-[11px] font-bold text-amber-600"
+                                title={`${ambar} con menos de 7 días`}
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+                                {ambar}
+                                <span className="sr-only">con menos de 7 días</span>
+                              </span>
+                            )}
+                            {verdes > 0 && (
+                              <span
+                                className="flex items-center gap-1 text-[11px] font-bold text-teal-600"
+                                title={`${verdes} con más de 7 días`}
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full bg-teal-500" aria-hidden="true" />
+                                {verdes}
+                                <span className="sr-only">con más de 7 días</span>
+                              </span>
+                            )}
+                          </span>
+                        }
+                      >
+                        {carpeta.items.map(renderAlerta)}
+                      </CarpetaGastos>
+                    )
+                  })
+                }
+                // Vista de un salón: lista plana con paginado de a 5.
+                return (
+                  <>
+                    {alertasVencimiento.slice(0, alertasVisibles).map(renderAlerta)}
+                    {(alertasVencimiento.length > alertasVisibles || alertasVisibles > 5) && (
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        {alertasVencimiento.length > alertasVisibles && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-transparent text-amber-700 border-amber-300 hover:bg-amber-50"
+                            onClick={() => setAlertasVisibles((v) => v + 5)}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                            {`Ver 5 más (${alertasVencimiento.length - alertasVisibles} restantes)`}
+                          </Button>
+                        )}
+                        {alertasVisibles > 5 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground"
+                            onClick={() => setAlertasVisibles(5)}
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                            Ver menos
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+              <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground pt-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
+                  Urgente / vencido
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-400 inline-block" />
+                  Menos de 7 días
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-teal-500 inline-block" />
+                  Más de 7 días
+                </span>
+              </div>
+            </>
+          )}
+
+          {/* ── Subcarpeta: proyección del 1 al 10 del mes siguiente ───��── */}
+          <div className="mt-2 rounded-lg border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSubcarpetaProximoMes((v) => !v)}
+              className="w-full flex items-center gap-2 bg-muted/50 hover:bg-muted px-3 py-2 text-left transition-colors"
+              aria-expanded={subcarpetaProximoMes}
+            >
+              {subcarpetaProximoMes
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+              <Calendar className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span className="text-xs font-semibold text-foreground flex-1">
+                Del 1 al 10 de {tituloProxMes}
+              </span>
+              {gastosProximoMes1al10.length > 0 && (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+                  {gastosProximoMes1al10.length}
+                </Badge>
+              )}
+              <span className="text-xs font-bold text-red-600 tabular-nums">
+                {formatCurrency(totalProximoMes1al10)}
+              </span>
+            </button>
+            <CuerpoTarjeta abierto={subcarpetaProximoMes}>
+              <div className="space-y-2 bg-card p-2">
+                {gastosProximoMes1al10.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-3 text-center">
+                    No hay gastos fijos agendados del 1 al 10 del mes próximo.
+                  </p>
+                ) : (
+                  gastosProximoMes1al10.map((g) => (
+                    <div
+                      key={`prox-${g.id}`}
+                      className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+                    >
+                      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{g.concepto}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Vence el {formatFecha(g.fechaProyectada)}
+                          {g.salon && (
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              <span className="ml-1" aria-hidden="true">·</span>
+                              <SalonDot salon={g.salon} size={7} />
+                              {salonLabel(g.salon)}
+                            </span>
+                          )}
+                          {" · "}
+                          {g.frecuencia}
+                        </p>
+                      </div>
+                      <span className="text-sm font-bold text-red-600 shrink-0">
+                        {formatCurrency(g.monto)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CuerpoTarjeta>
+          </div>
+        </CardContent>
+        </CuerpoTarjeta>
+      </Card>
+
+      </div>
+      <div id="seccion-cuotas" className="scroll-mt-24">
+      {/* Cuotas por cobrar: debajo de Próximos vencimientos */}
+      <Card className={`border-emerald-200 bg-emerald-50/60 ${abiertaCuotas ? "" : "py-3 gap-0"}`}>
+        <CardHeader className={abiertaCuotas ? "pb-3" : "pb-0"}>
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => toggleColapsada("cuotas")}
+              className="min-w-0 flex-1 text-left"
+              aria-expanded={abiertaCuotas}
+            >
+              <CardTitle className="text-base flex items-center gap-2">
+                <HandCoins className="h-4 w-4 text-emerald-600" />
+                Cuotas por cobrar
+                {cuotasPorCobrar.length > 0 && (
+                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[11px]">
+                    {cuotasPorCobrar.length}
+                  </Badge>
+                )}
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {cuotasPorCobrar.length === 0
+                  ? "No hay cuotas pendientes"
+                  : `Parte Jazmines: ${formatCurrency(cuotasPorCobrar.reduce((s, c) => s + c.montoJazmines, 0))} en total`}
+              </p>
+            </button>
+            <BotonPlegar abierta={abiertaCuotas} onClick={() => toggleColapsada("cuotas")} etiqueta="cuotas por cobrar" />
+          </div>
+        </CardHeader>
+        <CuerpoTarjeta abierto={abiertaCuotas}>
+          <CardContent>
+            {cuotasPorCobrar.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No hay cuotas pendientes de cobro.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {(() => {
+                  const renderCuota = (cuota: (typeof cuotasPorCobrar)[number]) => (
+                    <div
+                      key={cuota.id}
+                      className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{cuota.eventoNombre}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Cuota {cuota.numeroCuota}/{cuota.totalCuotas} ·{" "}
+                          <span className={cuota.diasRestantes < 0 ? "font-semibold text-red-600" : ""}>
+                            {cuota.diasRestantes < 0 ? "venció" : "vence"} {formatFecha(cuota.fechaVencimiento)}
+                          </span>
+                          {cuota.salon && (
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              <span className="ml-1" aria-hidden="true">·</span>
+                              <SalonDot salon={cuota.salon} size={7} />
+                              {salonLabel(cuota.salon)}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <span className="text-sm font-bold text-emerald-700 shrink-0">
+                        +{formatCurrency(cuota.montoJazmines)}
+                      </span>
+                    </div>
+                  )
+                  // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
+                  // El subtotal de cada carpeta es la parte Jazmines (lo que entra a esta caja).
+                  if (salonFiltro === "todos") {
+                    return agruparPorSalon(
+                      cuotasPorCobrar.map((c) => ({ ...c, monto: c.montoJazmines })),
+                    ).map((carpeta) => (
+                      <CarpetaGastos
+                        key={`cuota-${carpeta.salon}`}
+                        salon={carpeta.salon}
+                        count={carpeta.items.length}
+                        subtotal={carpeta.subtotal}
+                        unidad="cuota"
+                      >
+                        {carpeta.items.map(renderCuota)}
+                      </CarpetaGastos>
+                    ))
+                  }
+                  // Vista de un salón: lista plana con revelado por scroll.
+                  return (
+                    <>
+                      {cuotasPorCobrar.slice(0, cuotasVisibles).map(renderCuota)}
+                      {totalCuotas > CUOTAS_POR_PAGINA && (
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                          {cuotasVisibles < totalCuotas && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                              onClick={() => setCuotasVisibles((v) => Math.min(v + CUOTAS_POR_PAGINA, totalCuotas))}
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" />
+                              {`Ver 5 más (${totalCuotas - cuotasVisibles} restantes)`}
+                            </Button>
+                          )}
+                          {cuotasVisibles > CUOTAS_POR_PAGINA && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground"
+                              onClick={() => setCuotasVisibles(CUOTAS_POR_PAGINA)}
+                            >
+                              <ChevronUp className="h-3.5 w-3.5" />
+                              Ver menos
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+          </CardContent>
+        </CuerpoTarjeta>
+      </Card>
+      </div>
+      {/* SERVICIOS A PAGAR — estimado según historial de montos.
+          Plegada muestra solo título y monto; se abre tocando el encabezado. */}
+      <Card
+        className={abiertaServicios ? "" : "gap-0 py-3"}
+        style={{
+          borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)`,
+          backgroundColor: `color-mix(in srgb, ${colorServicios} 7%, white)`,
+        }}
+      >
+        <CardContent className={abiertaServicios ? "p-4 py-0" : "px-4 py-0"}>
+          <button
+            type="button"
+            onClick={() => toggleColapsada("servicios")}
+            aria-expanded={abiertaServicios}
+            className="flex w-full items-center justify-between gap-3 text-left"
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <Receipt className="h-4 w-4 shrink-0" style={{ color: colorServicios }} />
+              <p
+                className="truncate text-sm font-semibold"
+                style={{ color: `color-mix(in srgb, ${colorServicios} 75%, black)` }}
+              >
+                {estimacionEsProxMes ? "Servicios a pagar el mes que viene" : "Servicios a pagar este mes"}
+              </p>
+            </div>
+            <p
+              className={`shrink-0 font-bold ${abiertaServicios ? "text-2xl" : "text-sm"}`}
+              style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+            >
+              {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
+            </p>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 transition-transform ${abiertaServicios ? "rotate-180" : ""}`}
+              style={{ color: colorServicios }}
+              aria-hidden="true"
+            />
+          </button>
+          <CuerpoTarjeta abierto={abiertaServicios}>
+          <p
+            className="mt-1 text-xs text-pretty"
+            style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
+          >
+            {estimacionEsProxMes
+              ? `Estimado para ${tituloMesEstimacion} según los últimos montos pagados y su tendencia.`
+              : `Servicios de ${tituloMesEstimacion} según los montos agendados. A partir del día 20 se estima el mes siguiente.`}
+          </p>
+          {(estimacionesProximoMes.length > 0 || candidatosServicio.length > 0) && (
+            <div className="mt-3">
+              <div className="flex items-center gap-4">
+              {estimacionesProximoMes.length > 0 && (
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
+                style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+                onClick={() => setDetalleProxAbierto((v) => !v)}
+                aria-expanded={detalleProxAbierto}
+              >
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detalleProxAbierto ? "rotate-180" : ""}`} />
+                {detalleProxAbierto ? "Ocultar detalle" : `Ver detalle (${estimacionesProximoMes.length})`}
+              </button>
+              )}
+              {candidatosServicio.length > 0 && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-75"
+                  style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+                  onClick={() => setAgregandoServicioProx((v) => !v)}
+                  aria-expanded={agregandoServicioProx}
+                >
+                  <Plus className={`h-3.5 w-3.5 transition-transform ${agregandoServicioProx ? "rotate-45" : ""}`} />
+                  {agregandoServicioProx ? "Cerrar" : "Agregar gasto fijo a servicios"}
+                </button>
+              )}
+              </div>
+              {/* Panel: gastos fijos existentes del salón activo que aún no están
+                  en la tarjeta. Un click los marca como "Servicio" y se suman. */}
+              {agregandoServicioProx &&
+                (candidatosServicio.length === 0 ? (
+                  <p
+                    className="mt-2 text-xs"
+                    style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
+                  >
+                    Todos los gastos fijos de este salón ya están incluidos.
+                  </p>
+                ) : (
+                  <div
+                    className="mt-2 rounded-lg border bg-white/60"
+                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                  >
+                    <p
+                      className="px-3 pt-2 pb-1 text-xs font-medium"
+                      style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
+                    >
+                      {salonFiltro === "todos"
+                        ? "Elegí un gasto fijo existente para sumarlo acá:"
+                        : `Elegí un gasto fijo de ${salonLabel(salonFiltro)} para sumarlo acá:`}
+                    </p>
+                    <div className="max-h-48 overflow-y-auto divide-y divide-black/5">
+                      {candidatosServicio.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5"
+                          onClick={() => updateCostoOperativo(c.id, { esServicio: true })}
+                        >
+                          <Plus className="h-3.5 w-3.5 shrink-0" style={{ color: colorServicios }} />
+                          <span className="flex-1 min-w-0 truncate text-sm">{c.concepto}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                            {c.frecuencia === "Anual" ? "Anual · " : ""}
+                            {formatCurrency(c.monto)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              {detalleProxAbierto && (() => {
+                const renderEstimacion = (est: (typeof estimacionesProximoMes)[number]) => (
+                  <div key={est.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{est.concepto}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {est.tipo === "sueldos"
+                          ? "Sueldos del equipo de ventas"
+                          : est.tipo === "anual"
+                            ? estimacionEsProxMes
+                              ? "Vence el mes que viene"
+                              : "Vence este mes"
+                            : est.registros >= 2
+                              ? `Último pagado: ${formatCurrency(est.montoActual)} · ${est.registros} pagos registrados`
+                              : est.registros === 1
+                                ? `Último pagado: ${formatCurrency(est.montoActual)} · 1 pago registrado`
+                                : "Sin historial: se usa el monto agendado"}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold tabular-nums">
+                        {`≈ ${formatCurrency(est.estimado)}`}
+                      </p>
+                    </div>
+                    {/* Quitar de la tarjeta (desmarca esServicio; el gasto fijo
+                        sigue existiendo). Repartidos: el id viene con sufijo
+                        "-salón", se recorta para editar el gasto original. */}
+                    {est.tipo !== "sueldos" && (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-black/5 hover:text-foreground"
+                        title="Quitar de esta tarjeta"
+                        aria-label={`Quitar ${est.concepto} de esta tarjeta`}
+                        onClick={() => {
+                          const baseId =
+                            est.salon && est.id.endsWith(`-${est.salon}`)
+                              ? est.id.slice(0, -(est.salon.length + 1))
+                              : est.id
+                          updateCostoOperativo(baseId, { esServicio: false })
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )
+                // Vista "Todos los salones": carpetas por salón, como en Gastos fijos.
+                if (salonFiltro === "todos") {
+                  return (
+                    <div className="mt-2 space-y-2">
+                      {agruparPorSalon(
+                        estimacionesProximoMes.map((est) => ({ ...est, monto: est.estimado })),
+                      ).map((carpeta) => (
+                        <CarpetaGastos
+                          key={`serv-${carpeta.salon}`}
+                          salon={carpeta.salon}
+                          count={carpeta.items.length}
+                          subtotal={carpeta.subtotal}
+                          unidad="servicio"
+                        >
+                          <div
+                            className="divide-y divide-black/5 rounded-lg border bg-white/60"
+                            style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                          >
+                            {carpeta.items.map(renderEstimacion)}
+                          </div>
+                        </CarpetaGastos>
+                      ))}
+                    </div>
+                  )
+                }
+                // Vista de un salón: lista plana como siempre.
+                return (
+                  <div
+                    className="mt-2 divide-y divide-black/5 rounded-lg border bg-white/60"
+                    style={{ borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)` }}
+                  >
+                    {estimacionesProximoMes.map(renderEstimacion)}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+          </CuerpoTarjeta>
+        </CardContent>
+      </Card>
+      {/* Proyección visual del saldo a 30 d��as (columna lateral) — oculta temporalmente */}
+      {false && (
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-purple-600" />
+              Proyección del saldo a 30 días
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => toggleColapsada("proyeccion")}
+              aria-label={colapsadas.proyeccion ? "Expandir proyección" : "Minimizar proyección"}
+              title={colapsadas.proyeccion ? "Expandir" : "Minimizar"}
+            >
+              {colapsadas.proyeccion ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+        </CardHeader>
+        <CuerpoTarjeta abierto={abiertaProyeccion}>
+        <CardContent className="space-y-1">
+          {/* Resumen tipo cuenta: tengo + entra − sale = me queda */}
+          <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/50">
+            <span className="text-sm text-muted-foreground">Tengo hoy</span>
+            <span className="text-base font-semibold text-foreground">{formatCurrency(saldoActual)}</span>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-emerald-50">
+            <span className="text-sm font-medium text-emerald-800">Entra (cuotas parte Jazmines)</span>
+            <span className="text-base font-bold text-emerald-700">+ {formatCurrency(ingresosProyectados30Dias)}</span>
+          </div>
+
+          <div className="rounded-lg bg-red-50 px-3 py-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-red-800">Sale (gastos fijos + variables)</span>
+              <span className="text-base font-bold text-red-700">− {formatCurrency(gastosPróximos30Dias)}</span>
+            </div>
+            <div className="mt-1.5 flex flex-col gap-0.5 border-t border-red-100 pt-1.5">
+              <div className="flex items-center justify-between text-xs text-red-700/80">
+                <span>Fijos y sueldos pendientes</span>
+                <span>{formatCurrency(gastosFijosPendientes30)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-red-700/80">
+                <span>Variables agendados</span>
+                <span>{formatCurrency(gastosVariablesPendientes30)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className={`flex items-center justify-between rounded-lg px-3 py-3 border-2 ${
+              saldoProyectado30Dias >= 0 ? "border-teal-200 bg-teal-50" : "border-red-300 bg-red-50"
+            }`}
+          >
+            <span className={`text-sm font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-800" : "text-red-800"}`}>
+              Me queda
+            </span>
+            <span className={`text-2xl font-bold ${saldoProyectado30Dias >= 0 ? "text-teal-700" : "text-red-600"}`}>
+              {formatCurrency(saldoProyectado30Dias)}
+            </span>
+          </div>
+        </CardContent>
+        </CuerpoTarjeta>
+      </Card>
+      )}
+      </div>
+      </div>
+
+      {/* PROYECCIÓN MENSUAL — tabla a 12 meses, a todo el ancho. */}
+      <Card className={abiertaProyeccion12 ? "" : "gap-0 py-3"}>
+        <CardHeader className={abiertaProyeccion12 ? "pb-3" : "pb-0"}>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-teal-600" />
+              Proyección a 12 meses
+            </CardTitle>
+            <BotonPlegar
+              abierta={abiertaProyeccion12}
+              onClick={() => toggleColapsada("proyeccion12")}
+              etiqueta="la proyección"
+            />
+          </div>
+          <CuerpoTarjeta abierto={abiertaProyeccion12}>
+            <p className="text-xs text-muted-foreground mt-1 text-pretty">
+              A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
+              El saldo parte del saldo actual de la caja.
+            </p>
+          </CuerpoTarjeta>
+        </CardHeader>
+        <CuerpoTarjeta abierto={abiertaProyeccion12}>
+        <CardContent className="px-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-6 font-bold">Mes</TableHead>
+                <TableHead className="text-center font-bold">A cobrar</TableHead>
+                <TableHead className="text-center font-bold">A pagar</TableHead>
+                <TableHead className="text-center font-bold">Balance</TableHead>
+                <TableHead className="text-right pr-6 font-bold">Saldo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {proyeccionMensual.slice(0, mesesProyeccionVisibles).map((m) => (
+                <TableRow key={m.key} className={m.esActual ? "bg-teal-50/60" : ""}>
+                  <TableCell className="pl-6 font-medium">
+                    {mayusculaInicial(m.label)}
+                    {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
+                  </TableCell>
+                  <TableCell className="text-center text-emerald-700 font-medium">
+                    {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-center text-[var(--accent)] font-medium">
+                    {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
+                  </TableCell>
+                  <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
+                    {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
+                  </TableCell>
+                  <TableCell className={`text-right pr-6 font-bold ${m.saldoProyectado >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                    {formatCurrency(m.saldoProyectado)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {(mesesProyeccionVisibles < proyeccionMensual.length || mesesProyeccionVisibles > 3) && (
+            <div className="flex items-center justify-center gap-2 px-6 pt-3">
+              {mesesProyeccionVisibles < proyeccionMensual.length && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-teal-700 border-teal-200 hover:bg-teal-50 bg-transparent"
+                  onClick={() =>
+                    setMesesProyeccionVisibles((v) => Math.min(v + 3, proyeccionMensual.length))
+                  }
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  {`Ver 3 meses más (${Math.min(3, proyeccionMensual.length - mesesProyeccionVisibles)} de ${proyeccionMensual.length - mesesProyeccionVisibles} restantes)`}
+                </Button>
+              )}
+              {mesesProyeccionVisibles > 3 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => setMesesProyeccionVisibles(3)}
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  Ver menos
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+        </CuerpoTarjeta>
+      </Card>
 
       {/* ── Calendario de gastos por salón — oculto temporalmente ─────────────── */}
       {false && (
@@ -3588,6 +4336,15 @@ export default function CajaJazminePage() {
         variables={gastosVariablesCombinados}
         ahora={ahora}
       />
+      )}
+
+      {/* ── Detalle de una tarjeta del dashboard ── */}
+      {detalle && (
+        <DetalleDashboardDialog
+          abierto={!!detalleAbierto}
+          onOpenChange={(o) => !o && setDetalleAbierto(null)}
+          {...detalle}
+        />
       )}
 
       {/* ── Dialog: Agregar gasto fijo ─────────────────────────────���──────── */}
@@ -3715,13 +4472,19 @@ export default function CajaJazminePage() {
             <Button variant="outline" onClick={() => setModalFijoAbierto(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={handleAgregarFijo}
-              disabled={!nuevoFijo.concepto || !nuevoFijo.monto || fijoRepartoInvalido}
-              className="bg-red-600 hover:bg-red-700 text-white"
+            <ConfirmAction
+              title="¿Agendar este gasto fijo?"
+              description={`"${nuevoFijo.concepto}" por ${formatCurrency(Number(nuevoFijo.monto) || 0)}, correspondiente a ${formatMes(nuevoFijo.mesCorresponde || mesHoy)}.`}
+              confirmLabel="Sí, agendar"
+              onConfirm={handleAgregarFijo}
             >
-              Agregar
-            </Button>
+              <Button
+                disabled={!nuevoFijo.concepto || !nuevoFijo.monto || fijoRepartoInvalido}
+                className="bg-purple-700 hover:bg-purple-800 text-white"
+              >
+                Agregar
+              </Button>
+            </ConfirmAction>
           </DialogFooter>
         </DialogContent>
       </Dialog>

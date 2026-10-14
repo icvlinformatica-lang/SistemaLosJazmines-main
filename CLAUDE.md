@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 69 archivos y 594 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 70 archivos y 610 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -121,6 +121,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
   - Tests que lo cubren: `test-cobro-ipc-api`, `test-ipc-provisorio`, `test-candado-senas`, `test-caja-eventos`, `test-desglose-ipc`.
 - Los pagos anulados no se borran: pasan a `planDeCuotas.pagosAnulados`.
 - El chat con IA cobra cuotas con las mismas reglas que Cobrar cuota, copiadas en `lib/chat-ia-cobro.ts` (de `opcionesCobro`, `construirProximoCobro` y `handleAddPago` de `app/eventos/pagos/page.tsx`, sin modo histórico ni base manual). Si cambia cómo se cobra en esa pantalla, hay que cambiarlo también ahí (test: `test-chat-ia-cobro`). `generarCalendarioCuotas` vive en `lib/calendario-cuotas.ts` (sin "use client", para el servidor) y `lib/store.ts` lo reexporta.
+- Gastos fijos de Caja Jazmines: un mes está pagado solo si `historialMontos` tiene su registro con `pagado !== false` (en un repartido visto desde un salón, en el período vigente manda `distribucion[salón].pagado`). Es la regla de la tira de meses y la usan también Próximos vencimientos y "Gastos a 30 días" (`lib/pago-gasto-fijo.ts`, desde el 13/10/2026). El campo `pagado` del gasto no se reinicia al cambiar de mes: no leerlo para saber si un mes está pago. Pagar o deshacer un mes pasa por `cambiosPagoDelMes`, la misma cuenta en la tira y en la alerta.
 - El IPC aplica solo con `ajustaPorIPC === true`. En `historial_ipc.mes` los meses van de 0 a 11; en un `periodo` "YYYY-MM" van de 1 a 12.
 - Para "hoy" se usa la fecha de negocio de Argentina, `fechaNegocio()` en `lib/ipc-cuotas.ts`. `toISOString().slice(0,10)` da el día UTC: desde las 21:00 ya es "mañana". Quedan usos viejos (los pagos a proveedores y personal y la fecha de alta ya se pasaron el 9/10/2026); no sumar más.
 - Pesos con centavos: redondear a 2 decimales y comparar con tolerancia (0,005 / 0,01), como hace el código.
