@@ -15,6 +15,9 @@ import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
 
+// El chat de Inicio quedó reemplazado por el botón flotante con historial.
+const MOSTRAR_CHAT_INICIO = false
+
 export default function HomePage() {
   const [novedadesOpen, setNovedadesOpen] = useState(false)
   const [resumenOpen, setResumenOpen] = useState(false)
@@ -150,15 +153,17 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Chat de ayuda con IA - solo perfil Soporte, centrado abajo */}
-      {perfilActivo?.id === "soporte" && (
+      {/* Chat de ayuda con IA de Inicio: reemplazado por el botón flotante de
+          components/chat-ia-flotante.tsx (todas las pantallas, con historial). */}
+      {MOSTRAR_CHAT_INICIO && perfilActivo?.id === "soporte" && (
         <div className="absolute bottom-8 left-1/2 z-10 w-[calc(100%-2.5rem)] max-w-xl -translate-x-1/2 flex justify-center">
           <ChatAyuda />
         </div>
       )}
 
       {/* Botón de ayuda, abajo a la derecha: abre la guía de uso */}
-      <div className="absolute bottom-5 right-5 z-10">
+      {/* Con el botón flotante de la IA (abajo a la derecha), este va a su izquierda. */}
+      <div className="absolute bottom-6 right-5 z-10">
         <button
           type="button"
           onClick={() => setGuiaOpen(true)}

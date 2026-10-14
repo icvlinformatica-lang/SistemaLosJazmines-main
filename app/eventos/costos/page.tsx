@@ -18,8 +18,23 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { useStore } from "@/lib/store-context"
+import { saldoEsperaSeña } from "@/lib/servicio-sueldo"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
-import { calcularCostoEventoCajaEventos, congeladoValido } from "@/lib/costo-evento"
+import {
+  calcularCostoEventoCajaEventos,
+  congeladoValido,
+  porcentajeEntero,
+  resumenCobroCliente,
+} from "@/lib/costo-evento"
+import {
+  nombreEventoEnCaja,
+  prefijoPagoBarra,
+  prefijoPagoMenu,
+  prefijoPagoSaldo,
+  prefijoPagoSeña,
+  prefijoPagoSueldoPersonal,
+  ultimoEgresoEvento,
+} from "@/lib/egresos-evento"
 import { useToast } from "@/hooks/use-toast"
 import { fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
@@ -67,6 +82,15 @@ function formatFecha(dateStr?: string): string {
     month: "short",
     year: "numeric",
   })
+}
+
+// "2026-09-01" → "01/09/2026": para los detalles debajo de cada pago, donde
+// la fecha larga no entra en una línea.
+function formatFechaCorta(dateStr?: string): string {
+  if (!dateStr) return "—"
+  const [y, m, d] = dateStr.slice(0, 10).split("-")
+  if (!y || !m || !d) return dateStr
+  return `${d}/${m}/${y}`
 }
 
 function CostosEventoContent() {
@@ -162,6 +186,8 @@ function CostosEventoContent() {
   }
 
   const nombreEvento = evento.nombre || evento.nombrePareja || "Evento sin nombre"
+  // En los conceptos de caja va el mismo nombre que usa Caja Eventos.
+  const nombreEnCaja = nombreEventoEnCaja(evento)
   const servicios = evento.servicios || []
   // Todo el costo sale de lib/costo-evento.ts (ver ahí el criterio: servicios
   // en vivo con lo pagado a su monto real, personal en vivo, congelado si está
@@ -171,6 +197,10 @@ function CostosEventoContent() {
     comprasBarra,
     costoCocina,
     costoBarra,
+    costoCocinaHoy,
+    costoBarraHoy,
+    fechaPagoCocina,
+    fechaPagoBarra,
     personal,
     serviciosCalc,
     totalServicios,
@@ -228,31 +258,31 @@ function CostosEventoContent() {
     }))
     .filter((s) => s.platos.length > 0)
 
-  // --- Progreso de cuotas del cliente ---
-  // La seña se cobra al firmar el contrato y cubre un porcentaje del total, pero
-  // no figura como cuota. Para que la barra refleje lo realmente cobrado, se suma
-  // como monto ya cubierto (misma lógica que en la página de pagos del evento).
+  // --- Lo cobrado al cliente ---
+  // Seña + lo cobrado de cada cuota (también pagos parciales), frente a lo que
+  // el cliente va a pagar en total. La diferencia con el precio del contrato es
+  // el recargo por financiación o el ajuste por IPC de las cuotas.
+  const cobro = resumenCobroCliente(evento.planDeCuotas, cuotas)
   const cuotasPagadas = cuotas.filter((c) => c.pagada)
-  const montoSenaCobrada =
-    evento.planDeCuotas?.modalidadPago === "sena" ? evento.planDeCuotas.montoSena || 0 : 0
-  const montoTotalCuotas = cuotas.reduce((s, c) => s + c.monto, 0) + montoSenaCobrada
-  const montoCobrado = cuotasPagadas.reduce((s, c) => s + c.monto, 0) + montoSenaCobrada
-  const progresoCuotas = montoTotalCuotas > 0 ? Math.round((montoCobrado / montoTotalCuotas) * 100) : 0
+  const cuotasParciales = cuotas.filter((c) => !c.pagada && c.montoAcumulado > 0)
 
-  // --- Totales por tarjeta para el gráfico circular ---
-  const porcentajeCubierto = costoTotalEvento > 0 ? Math.round((totalCubierto / costoTotalEvento) * 100) : 0
+  // --- Porcentaje cubierto (dice 100% solo si no falta pagar nada) ---
+  const porcentajeCubierto = porcentajeEntero(totalCubierto, costoTotalEvento)
+  const pendienteTotal = Math.max(0, costoTotalEvento - totalCubierto)
 
-  // Precio de venta del evento (monto total del plan de pago) y proporción
-  // del costo del evento frente a ese precio de venta.
-  const precioVentaEvento = evento.planDeCuotas?.montoTotal ?? 0
+  // Precio de venta del evento (el del contrato) y proporción del costo.
+  const precioVentaEvento = cobro.precioContrato
   const proporcionCostoVenta = precioVentaEvento > 0 ? (costoTotalEvento / precioVentaEvento) * 100 : null
 
-  const datosGrafico = [
+  // Desglose por rubro: la tabla del resumen muestra los cuatro (aunque estén
+  // en 0) para que se vea que suman el costo total; el anillo, los que tienen costo.
+  const rubros = [
     { key: "cocina", nombre: "Cocina", total: costoCocina, pagado: pagadoCocina },
     { key: "barra", nombre: "Barra", total: costoBarra, pagado: pagadoBarra },
     { key: "servicios", nombre: "Servicios", total: totalServicios, pagado: pagadoServicios },
     { key: "personal", nombre: "Personal", total: totalPersonal, pagado: pagadoPersonal },
-  ].filter((d) => d.total > 0)
+  ]
+  const datosGrafico = rubros.filter((d) => d.total > 0)
 
   // Cada categoría se divide en dos porciones: lo pagado (color pleno) y lo
   // pendiente (mismo color atenuado). Así el anillo solo se "llena" de color
@@ -294,17 +324,11 @@ function CostosEventoContent() {
     addMovimientosCaja([movimiento])
   }
 
-  // Busca y elimina el último egreso que coincide (para revertir un pago)
-  const quitarEgreso = (concepto: string): MovimientoCaja | undefined => {
-    const mov = [...(state.movimientosCaja ?? [])]
-      .reverse()
-      .find(
-        (m) =>
-          m.tipo === "egreso" &&
-          m.cajaDestino === "caja_eventos" &&
-          m.eventoId === evento.id &&
-          m.concepto === concepto,
-      )
+  // Busca y elimina el egreso más reciente de este evento que empieza con el
+  // prefijo (para revertir un pago). Se busca sin el nombre del evento porque
+  // Caja Eventos y esta pantalla no siempre lo escribieron igual.
+  const quitarEgreso = (prefijo: string): MovimientoCaja | undefined => {
+    const mov = ultimoEgresoEvento(state.movimientosCaja, evento.id, prefijo)
     if (mov) deleteMovimientoCaja(mov.id)
     return mov
   }
@@ -326,12 +350,11 @@ function CostosEventoContent() {
   const toggleCocina = (checked: boolean) => {
     if (bloquearPorArchivo()) return
     updateEvento(evento.id, { cocinaPagada: checked })
-    const concepto = `Pago menú - ${nombreEvento}`
     if (checked) {
-      registrarEgreso(concepto, costoCocina)
-      toast({ title: "Cocina marcada como pagada", description: formatCurrency(costoCocina) })
+      registrarEgreso(`${prefijoPagoMenu}${nombreEnCaja}`, costoCocinaHoy)
+      toast({ title: "Cocina marcada como pagada", description: formatCurrency(costoCocinaHoy) })
     } else {
-      quitarEgreso(concepto)
+      quitarEgreso(prefijoPagoMenu)
       toast({ title: "Pago de cocina revertido" })
     }
   }
@@ -340,12 +363,11 @@ function CostosEventoContent() {
   const toggleBarra = (checked: boolean) => {
     if (bloquearPorArchivo()) return
     updateEvento(evento.id, { barraPagada: checked })
-    const concepto = `Pago barra - ${nombreEvento}`
     if (checked) {
-      registrarEgreso(concepto, costoBarra)
-      toast({ title: "Barra marcada como pagada", description: formatCurrency(costoBarra) })
+      registrarEgreso(`${prefijoPagoBarra}${nombreEnCaja}`, costoBarraHoy)
+      toast({ title: "Barra marcada como pagada", description: formatCurrency(costoBarraHoy) })
     } else {
-      quitarEgreso(concepto)
+      quitarEgreso(prefijoPagoBarra)
       toast({ title: "Pago de barra revertido" })
     }
   }
@@ -384,7 +406,6 @@ function CostosEventoContent() {
     if (bloquearPorArchivo()) return
     const srv = servicios.find((s) => s.servicioId === servicioId)
     if (!srv) return
-    const concepto = `Pago seña ${srv.nombre} - ${nombreEvento}`
     // Monto EN VIVO desde el catálogo: lo que se registra en caja es lo que
     // se está mostrando en pantalla, no la foto guardada al contratar.
     const { montoSeña: montoSeñaLive } = calcularSeñaSaldoServicio(
@@ -399,10 +420,10 @@ function CostosEventoContent() {
     })
     updateEvento(evento.id, { servicios: nuevosServicios })
     if (checked) {
-      registrarEgreso(concepto, montoSeñaLive)
+      registrarEgreso(`${prefijoPagoSeña(srv.nombre)}${nombreEnCaja}`, montoSeñaLive)
       toast({ title: `Seña de ${srv.nombre} pagada`, description: formatCurrency(montoSeñaLive) })
     } else {
-      quitarEgreso(concepto)
+      quitarEgreso(prefijoPagoSeña(srv.nombre))
       toast({ title: `Seña de ${srv.nombre} revertida` })
     }
   }
@@ -412,7 +433,10 @@ function CostosEventoContent() {
     if (bloquearPorArchivo()) return
     const srv = servicios.find((s) => s.servicioId === servicioId)
     if (!srv) return
-    const concepto = `Pago saldo ${srv.nombre} - ${nombreEvento}`
+    if (checked && saldoEsperaSeña(srv, { servicios: state.servicios ?? [] })) {
+      toast({ title: "Primero la seña", description: `Pagá la seña de ${srv.nombre} antes que el saldo.` })
+      return
+    }
     if (checked) {
       // Saldo EN VIVO desde el catálogo (costo actual − seña pagada).
       const { saldoPendiente: saldoLive } = calcularSeñaSaldoServicio(srv, { servicios: state.servicios ?? [] })
@@ -423,10 +447,10 @@ function CostosEventoContent() {
           : s,
       )
       updateEvento(evento.id, { servicios: nuevosServicios })
-      registrarEgreso(concepto, monto)
+      registrarEgreso(`${prefijoPagoSaldo(srv.nombre)}${nombreEnCaja}`, monto)
       toast({ title: `Saldo de ${srv.nombre} pagado`, description: formatCurrency(monto) })
     } else {
-      const mov = quitarEgreso(concepto)
+      const mov = quitarEgreso(prefijoPagoSaldo(srv.nombre))
       const montoRestaurado = mov?.monto || 0
       const nuevosServicios = servicios.map((s) =>
         s.servicioId === servicioId
@@ -449,7 +473,7 @@ function CostosEventoContent() {
     if (bloquearPorArchivo()) return
     const pe = (evento.personalEvento || []).find((p) => p.id === peId)
     if (!pe) return
-    const concepto = `Pago sueldo ${pe.nombre} (${pe.funcion}) - ${nombreEvento}`
+    const prefijo = prefijoPagoSueldoPersonal(pe.nombre, pe.funcion)
     // Monto EN VIVO desde el roster: lo que se registra en caja es lo que se
     // muestra en pantalla. Al pagar, ese monto queda fijado como histórico.
     const montoLive = calcularMontoPersonalDelEvento(pe, state.personal)
@@ -458,10 +482,10 @@ function CostosEventoContent() {
     )
     updateEvento(evento.id, { personalEvento: nuevoPersonal })
     if (checked) {
-      registrarEgreso(concepto, montoLive)
+      registrarEgreso(`${prefijo}${nombreEnCaja}`, montoLive)
       toast({ title: `Sueldo de ${pe.nombre} pagado`, description: formatCurrency(montoLive) })
     } else {
-      quitarEgreso(concepto)
+      quitarEgreso(prefijo)
       toast({ title: `Sueldo de ${pe.nombre} revertido` })
     }
   }
@@ -478,8 +502,10 @@ function CostosEventoContent() {
     toast({ title: "Observación guardada" })
   }
 
+  const fmtPorcentaje = (n: number) => n.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
   return (
-    <main className="mx-auto w-full max-w-none px-4 py-6 space-y-5 xl:px-6">
+    <div className="mx-auto w-full max-w-none px-4 py-6 space-y-5 xl:px-6">
       <PinSeñaExtraordinariaDialog
         seña={señaPidiendoPin?.seña ?? null}
         montoTexto={señaPidiendoPin ? formatCurrency(señaPidiendoPin.seña.monto) : ""}
@@ -494,13 +520,13 @@ function CostosEventoContent() {
       />
       {/* Encabezado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="icon" className="h-9 w-9">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button asChild variant="ghost" size="icon" className="h-9 w-9 shrink-0">
             <LinkVolverCostos href={volver.href} aria-label={volver.etiqueta} title={volver.etiqueta}>
               <ArrowLeft className="h-4 w-4" />
             </LinkVolverCostos>
           </Button>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl font-semibold text-balance">Costos del evento</h1>
             <p className="text-sm text-muted-foreground">
               {nombreEvento} · {salonLabel(evento.salon)} · {formatFecha(evento.fecha)}
@@ -511,7 +537,7 @@ function CostosEventoContent() {
           <span className="flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
             <Lock className="h-3 w-3" />
             {congelado
-              ? `Evento archivado — datos congelados al ${formatFecha(congelado.fechaArchivado.slice(0, 10))}`
+              ? `Evento archivado — datos congelados al ${formatFecha(fechaNegocio(new Date(congelado.fechaArchivado)))}`
               : "Evento archivado — datos congelados"}
           </span>
         ) : (
@@ -526,9 +552,150 @@ function CostosEventoContent() {
         )}
       </div>
 
-      {/* En PC: las 4 tarjetas + gráfico una al lado de la otra; en pantallas medianas 2x2 + gráfico */}
-      <div className="grid gap-4 items-start xl:grid-cols-5 xl:items-stretch">
-      <div className="grid gap-4 items-start md:grid-cols-2 xl:col-span-4 xl:grid-cols-4 xl:items-stretch">
+      {/* Resumen: anillo de lo pagado, desglose por rubro que suma el costo
+          total y la relación con el precio del contrato. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <PieChartIcon className="h-4 w-4 text-teal-600" />
+            Resumen de costos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {datosGrafico.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Este evento no tiene costos calculados.</p>
+          ) : (
+            <div className="grid items-center gap-6 lg:grid-cols-[200px_minmax(0,1fr)_minmax(220px,280px)]">
+              <div className="flex flex-col items-center gap-2">
+                <ChartContainer config={chartConfig} className="aspect-square w-full max-w-[200px]">
+                  <PieChart>
+                    <ChartTooltip
+                      cursor={false}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null
+                        const d = payload[0].payload as (typeof datosAnillo)[number]
+                        return (
+                          <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+                            <p className="font-semibold">{d.nombre}</p>
+                            <p>
+                              Costo: <span className="font-medium">{formatCurrency(d.total)}</span>
+                            </p>
+                            <p className="text-emerald-700">
+                              Pagado: <span className="font-medium">{formatCurrency(d.pagado)}</span>
+                            </p>
+                            <p className="text-muted-foreground">
+                              Falta pagar: {formatCurrency(d.total - d.pagado)}
+                            </p>
+                          </div>
+                        )
+                      }}
+                    />
+                    <Pie
+                      data={datosAnillo}
+                      dataKey="valor"
+                      nameKey="nombre"
+                      innerRadius={62}
+                      outerRadius={90}
+                      strokeWidth={2}
+                    >
+                      {datosAnillo.map((d) => (
+                        <Cell
+                          key={d.sliceKey}
+                          fill={`var(--color-${d.key})`}
+                          fillOpacity={d.esPagado ? 1 : 0.18}
+                        />
+                      ))}
+                      <Label
+                        content={({ viewBox }) => {
+                          if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null
+                          const { cx, cy } = viewBox as { cx: number; cy: number }
+                          return (
+                            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
+                              <tspan x={cx} y={cy - 8} className="fill-foreground text-2xl font-bold">
+                                {porcentajeCubierto}%
+                              </tspan>
+                              <tspan x={cx} y={cy + 14} className="fill-muted-foreground text-xs">
+                                pagado
+                              </tspan>
+                            </text>
+                          )
+                        }}
+                      />
+                    </Pie>
+                  </PieChart>
+                </ChartContainer>
+                <p className="text-center text-xs text-muted-foreground/70">
+                  Color pleno = pagado · tenue = falta pagar
+                </p>
+              </div>
+
+              {/* Desglose: las cuatro filas suman la fila Total */}
+              <div className="min-w-0 text-xs sm:text-sm lg:max-w-2xl">
+                <div className="grid grid-cols-[minmax(4.25rem,1fr)_repeat(3,auto)] gap-x-2 gap-y-1.5 sm:gap-x-6">
+                  <span className="text-xs text-muted-foreground">Rubro</span>
+                  <span className="text-right text-xs text-muted-foreground">Costo</span>
+                  <span className="text-right text-xs text-muted-foreground">Pagado</span>
+                  <span className="text-right text-xs text-muted-foreground">Falta pagar</span>
+                  {rubros.map((d) => (
+                    <div key={d.key} className="contents">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                          style={{ backgroundColor: chartConfig[d.key as keyof typeof chartConfig].color }}
+                        />
+                        <span>{d.nombre}</span>
+                      </span>
+                      <span className="text-right tabular-nums">{formatCurrency(d.total)}</span>
+                      <span className="text-right tabular-nums text-emerald-700">{formatCurrency(d.pagado)}</span>
+                      <span className={`text-right tabular-nums ${d.total - d.pagado > 0.005 ? "text-red-600" : "text-muted-foreground"}`}>
+                        {formatCurrency(Math.max(0, d.total - d.pagado))}
+                      </span>
+                    </div>
+                  ))}
+                  <span className="border-t pt-1.5 font-semibold">Total</span>
+                  <span className="border-t pt-1.5 text-right font-semibold tabular-nums">{formatCurrency(costoTotalEvento)}</span>
+                  <span className="border-t pt-1.5 text-right font-semibold tabular-nums text-emerald-700">
+                    {formatCurrency(totalCubierto)}
+                  </span>
+                  <span className={`border-t pt-1.5 text-right font-semibold tabular-nums ${pendienteTotal > 0.005 ? "text-red-600" : "text-muted-foreground"}`}>
+                    {formatCurrency(pendienteTotal)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 rounded-lg bg-muted/40 p-3 text-sm">
+                {precioVentaEvento > 0 ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Precio del contrato</span>
+                      <span className="font-semibold tabular-nums text-teal-700">{formatCurrency(precioVentaEvento)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Costo del evento</span>
+                      <span className="font-semibold tabular-nums">{formatCurrency(costoTotalEvento)}</span>
+                    </div>
+                    <p className="border-t pt-1.5 text-xs text-muted-foreground">
+                      El costo es el{" "}
+                      <span className="font-semibold text-foreground">
+                        {proporcionCostoVenta !== null ? `${fmtPorcentaje(proporcionCostoVenta)}%` : "—"}
+                      </span>{" "}
+                      del precio del contrato.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    El evento no tiene precio de contrato cargado: no se puede comparar con el costo.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Las cuatro tarjetas: una al lado de la otra en PC grande, de a dos en
+          notebook y tablet, y una debajo de la otra en celular. */}
+      <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-4">
       {/* Cocina */}
       <Card className="flex flex-col">
         <CardHeader className="pb-3">
@@ -543,41 +710,39 @@ function CostosEventoContent() {
               <Checkbox
                 checked={!!evento.cocinaPagada}
                 onCheckedChange={(v) => toggleCocina(v === true)}
-                disabled={costoCocina <= 0}
+                // Si ya está pagada se puede revertir aunque hoy dé $0.
+                disabled={costoCocinaHoy <= 0 && !evento.cocinaPagada}
                 aria-label="Marcar cocina como pagada"
               />
-              {evento.cocinaPagada ? (
-                <span className="text-emerald-700">Pagado</span>
-              ) : (
-                <span className="text-muted-foreground">Pagado</span>
-              )}
+              <span className={evento.cocinaPagada ? "text-emerald-700" : "text-muted-foreground"}>Pagado</span>
             </label>
           </div>
         </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
+        <CardContent className="flex flex-col gap-2">
           {comprasCocina.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin menú/insumos calculados para este evento.</p>
           ) : (
             <>
-              <div className="max-h-48 min-h-0 space-y-1 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
+              <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
                 {comprasCocina.map((c) => (
-                  <div key={c.insumoId} className="flex items-center justify-between gap-2 text-sm">
+                  <div key={c.insumoId} className="flex items-start justify-between gap-2 text-sm">
                     <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-muted-foreground">{c.insumo?.descripcion || c.insumoId}</span>
+                      <span className="break-words text-muted-foreground">{c.insumo?.descripcion || c.insumoId}</span>
                       <span className="text-xs text-muted-foreground/60">
                         {Number(c.cantidadNecesaria.toFixed(2))} {c.insumo?.unidad || ""}
                       </span>
                     </span>
-                    <span className="shrink-0 font-medium">{formatCurrency(c.costoMateriaPrima)}</span>
+                    <span className="shrink-0 font-medium tabular-nums">{formatCurrency(c.costoMateriaPrima)}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
-                <span>Total cocina</span>
-                <span className={evento.cocinaPagada ? "text-emerald-700" : "text-red-600"}>
-                  {formatCurrency(costoCocina)}
-                </span>
-              </div>
+              <TotalRubro
+                etiqueta="Total cocina"
+                total={costoCocina}
+                hoy={costoCocinaHoy}
+                pagado={!!evento.cocinaPagada}
+                fechaPago={fechaPagoCocina}
+              />
               {menuPorSegmento.length > 0 && (
                 <Dialog>
                   <DialogTrigger asChild>
@@ -606,19 +771,21 @@ function CostosEventoContent() {
                             {seg.platos.map((plato) => (
                               <li key={plato.id} className="flex items-center justify-between gap-2 text-sm">
                                 <span className="min-w-0 truncate text-muted-foreground">{plato.nombre}</span>
-                                <span className="shrink-0 font-medium">{formatCurrency(plato.costo)}</span>
+                                <span className="shrink-0 font-medium tabular-nums">{formatCurrency(plato.costo)}</span>
                               </li>
                             ))}
                             <li className="flex items-center justify-between gap-2 border-t pt-1.5 text-sm font-semibold">
                               <span>Subtotal {seg.segmento.toLowerCase()}</span>
-                              <span>{formatCurrency(seg.platos.reduce((s, p) => s + p.costo, 0))}</span>
+                              <span className="tabular-nums">{formatCurrency(seg.platos.reduce((s, p) => s + p.costo, 0))}</span>
                             </li>
                           </ul>
                         </div>
                       ))}
                       <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
-                        <span>Total cocina</span>
-                        <span>{formatCurrency(costoCocina)}</span>
+                        <span>{congelado ? "Total cocina" : "Total cocina a precios de hoy"}</span>
+                        <span className="tabular-nums">
+                          {formatCurrency(menuPorSegmento.reduce((s, seg) => s + seg.platos.reduce((t, p) => t + p.costo, 0), 0))}
+                        </span>
                       </div>
                     </div>
                   </DialogContent>
@@ -643,78 +810,40 @@ function CostosEventoContent() {
               <Checkbox
                 checked={!!evento.barraPagada}
                 onCheckedChange={(v) => toggleBarra(v === true)}
-                disabled={costoBarra <= 0}
+                disabled={costoBarraHoy <= 0 && !evento.barraPagada}
                 aria-label="Marcar barra como pagada"
               />
-              {evento.barraPagada ? (
-                <span className="text-emerald-700">Pagado</span>
-              ) : (
-                <span className="text-muted-foreground">Pagado</span>
-              )}
+              <span className={evento.barraPagada ? "text-emerald-700" : "text-muted-foreground"}>Pagado</span>
             </label>
           </div>
         </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
+        <CardContent className="flex flex-col gap-2">
           {comprasBarra.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin barra configurada para este evento.</p>
           ) : (
             <>
-              <div className="max-h-48 min-h-0 space-y-1 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
+              <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
                 {comprasBarra.map((c) => (
-                  <div key={c.insumoBarraId} className="flex items-center justify-between gap-2 text-sm">
+                  <div key={c.insumoBarraId} className="flex items-start justify-between gap-2 text-sm">
                     <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-muted-foreground">
+                      <span className="break-words text-muted-foreground">
                         {c.insumoBarra?.descripcion || c.insumoBarraId}
                       </span>
                       <span className="text-xs text-muted-foreground/60">
                         {Number(c.cantidadNecesaria.toFixed(2))} {c.insumoBarra?.unidad || ""}
                       </span>
                     </span>
-                    <span className="shrink-0 font-medium">{formatCurrency(c.costoMateriaPrima)}</span>
+                    <span className="shrink-0 font-medium tabular-nums">{formatCurrency(c.costoMateriaPrima)}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
-                <span>Total barra</span>
-                <span className={evento.barraPagada ? "text-emerald-700" : "text-red-600"}>
-                  {formatCurrency(costoBarra)}
-                </span>
-              </div>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full bg-transparent">
-                    <Wine className="h-4 w-4 mr-2" />
-                    Ver barra completa
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Wine className="h-4 w-4 text-teal-600" />
-                      Barra completa — {nombreEvento}
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-1">
-                    {comprasBarra.map((c) => (
-                      <div key={c.insumoBarraId} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="flex min-w-0 flex-col">
-                          <span className="truncate text-muted-foreground">
-                            {c.insumoBarra?.descripcion || c.insumoBarraId}
-                          </span>
-                          <span className="text-xs text-muted-foreground/60">
-                            {Number(c.cantidadNecesaria.toFixed(2))} {c.insumoBarra?.unidad || ""}
-                          </span>
-                        </span>
-                        <span className="shrink-0 font-medium">{formatCurrency(c.costoMateriaPrima)}</span>
-                      </div>
-                    ))}
-                    <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
-                      <span>Total barra</span>
-                      <span>{formatCurrency(costoBarra)}</span>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <TotalRubro
+                etiqueta="Total barra"
+                total={costoBarra}
+                hoy={costoBarraHoy}
+                pagado={!!evento.barraPagada}
+                fechaPago={fechaPagoBarra}
+              />
             </>
           )}
         </CardContent>
@@ -730,125 +859,84 @@ function CostosEventoContent() {
             </span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
-          <div className="max-h-[300px] min-h-0 space-y-3 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
+        <CardContent className="flex flex-col gap-2">
           {servicios.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin servicios contratados.</p>
           ) : (
-            serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo }) => {
-              return (
-                <div key={srv.servicioId} className="rounded-lg border border-border p-3">
-                  <p className="mb-2 text-sm font-semibold">{srv.nombre}</p>
-                  <div className="flex flex-col gap-2">
-                    {montoSeña > 0 && (
-                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Checkbox
-                            checked={senaPagada}
-                            onCheckedChange={(v) => toggleSena(srv.servicioId, v === true)}
-                            disabled={saldoPagado || comoSueldo}
-                            aria-label={`Marcar seña de ${srv.nombre} como pagada`}
-                          />
-                          <span className="shrink-0">Seña</span>
-                          {srv.fechaSeña && !senaPagada && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              vence {formatFecha(srv.fechaSeña)}
-                            </span>
-                          )}
-                          {habilitacionSeña && !senaPagada && !saldoPagado && !comoSueldo && (
-                            <AvisoSeñaBloqueada fechaHabilitacion={habilitacionSeña} />
-                          )}
-                        </span>
-                        <span
-                          className={`shrink-0 font-medium ${senaPagada ? "text-emerald-700" : "text-red-600"}`}
-                        >
-                          {formatCurrency(montoSeña)}
-                        </span>
-                      </label>
-                    )}
-                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <Checkbox
-                          checked={saldoPagado}
-                          onCheckedChange={(v) => toggleSaldo(srv.servicioId, v === true)}
-                          // Como sueldo se paga solo desde Caja Eventos → Sueldos
-                          // (un único pago), para no pagarlo por dos caminos.
-                          disabled={comoSueldo}
-                          aria-label={`Marcar ${comoSueldo ? "sueldo" : "saldo"} de ${srv.nombre} como pagado`}
+            <>
+              <div className="space-y-3">
+                {serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo, señaSinEgreso, saldoSinEgreso }) => (
+                  <div key={srv.servicioId} className="rounded-lg border border-border p-3">
+                    <p className="mb-2 flex items-start justify-between gap-2 text-sm font-semibold">
+                      <span className="min-w-0 break-words">{srv.nombre}</span>
+                      <span className="shrink-0 tabular-nums">{formatCurrency(montoSeña + saldo)}</span>
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      {montoSeña > 0 && (
+                        <FilaPago
+                          className="bg-muted/40"
+                          checked={senaPagada}
+                          onChange={(v) => toggleSena(srv.servicioId, v)}
+                          disabled={saldoPagado || comoSueldo}
+                          ariaLabel={`Marcar seña de ${srv.nombre} como pagada`}
+                          titulo="Seña"
+                          detalle={
+                            senaPagada
+                              ? srv.fechaPagoSeña
+                                ? `pagada el ${formatFechaCorta(srv.fechaPagoSeña)}`
+                                : "pagada"
+                              : srv.fechaSeña
+                                ? `vence ${formatFechaCorta(srv.fechaSeña)}`
+                                : undefined
+                          }
+                          aviso={
+                            <>
+                              {señaSinEgreso && <AvisoSinEgreso />}
+                              {habilitacionSeña && !senaPagada && !saldoPagado && !comoSueldo && (
+                                <AvisoSeñaBloqueada fechaHabilitacion={habilitacionSeña} />
+                              )}
+                            </>
+                          }
+                          monto={montoSeña}
+                          pagado={senaPagada}
                         />
-                        <span className="shrink-0">{comoSueldo ? "Sueldo" : "Saldo"}</span>
-                        {comoSueldo
-                          ? !saldoPagado && (
-                              <span className="truncate text-xs text-muted-foreground">
-                                se paga en Caja Eventos → Sueldos
-                                {(srv.fechaSueldoManual || evento.fecha) && ` · vence ${formatFecha(srv.fechaSueldoManual || evento.fecha)}`}
-                              </span>
-                            )
-                          : srv.fechaLimitePago && !saldoPagado && (
-                              <span className="truncate text-xs text-muted-foreground">
-                                vence {formatFecha(srv.fechaLimitePago)}
-                              </span>
-                            )}
-                      </span>
-                      <span
-                        className={`shrink-0 font-medium ${saldoPagado ? "text-emerald-700" : "text-red-600"}`}
-                      >
-                        {saldoPagado ? "Pagado" : formatCurrency(saldo)}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              )
-            })
-          )}
-          </div>
-          {servicios.length > 0 && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="w-full bg-transparent">
-                  <ConciergeBell className="h-4 w-4 mr-2" />
-                  Ver servicios completos
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <ConciergeBell className="h-4 w-4 text-teal-600" />
-                    Servicios contratados — {nombreEvento}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3">
-                  {serviciosCalc.map(({ srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo }) => (
-                    <div key={srv.servicioId} className="rounded-lg border border-border p-3">
-                      <p className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold">
-                        <span className="min-w-0 truncate">{srv.nombre}</span>
-                        <span className="shrink-0">{formatCurrency(montoSeña + saldo)}</span>
-                      </p>
-                      <div className="space-y-1 text-sm">
-                        {montoSeña > 0 && (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-muted-foreground">Seña</span>
-                            <span className={senaPagada ? "font-medium text-emerald-700" : "font-medium text-red-600"}>
-                              {formatCurrency(montoSeña)} {senaPagada ? "(pagada)" : "(pendiente)"}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-muted-foreground">{comoSueldo ? "Sueldo" : "Saldo"}</span>
-                          <span className={saldoPagado ? "font-medium text-emerald-700" : "font-medium text-red-600"}>
-                            {formatCurrency(saldo)} {saldoPagado ? "(pagado)" : "(pendiente)"}
-                          </span>
-                        </div>
-                      </div>
+                      )}
+                      <FilaPago
+                        className="bg-muted/40"
+                        checked={saldoPagado}
+                        onChange={(v) => toggleSaldo(srv.servicioId, v)}
+                        // Como sueldo se paga solo desde Caja Eventos → Sueldos
+                        // (un único pago), para no pagarlo por dos caminos. El
+                        // saldo de un proveedor espera a que se pague la seña.
+                        disabled={comoSueldo || (!saldoPagado && saldoEsperaSeña(srv, { servicios: state.servicios ?? [] }))}
+                        ariaLabel={`Marcar ${comoSueldo ? "sueldo" : "saldo"} de ${srv.nombre} como pagado`}
+                        titulo={comoSueldo ? "Sueldo" : "Saldo"}
+                        detalle={
+                          saldoPagado
+                            ? srv.fechaPagoSaldo
+                              ? `pagado el ${formatFechaCorta(srv.fechaPagoSaldo)}`
+                              : "pagado"
+                            : !comoSueldo && saldoEsperaSeña(srv, { servicios: state.servicios ?? [] })
+                              ? `se paga después de la seña${srv.fechaLimitePago ? ` · vence ${formatFechaCorta(srv.fechaLimitePago)}` : ""}`
+                              : comoSueldo
+                              ? `se paga en Caja Eventos → Sueldos${(srv.fechaSueldoManual || evento.fecha) ? ` · vence ${formatFechaCorta(srv.fechaSueldoManual || evento.fecha)}` : ""}`
+                              : srv.fechaLimitePago
+                                ? `vence ${formatFechaCorta(srv.fechaLimitePago)}`
+                                : undefined
+                        }
+                        aviso={saldoSinEgreso ? <AvisoSinEgreso /> : undefined}
+                        monto={saldo}
+                        pagado={saldoPagado}
+                      />
                     </div>
-                  ))}
-                  <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
-                    <span>Total servicios</span>
-                    <span>{formatCurrency(totalServicios)}</span>
                   </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+                ))}
+              </div>
+              <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                <span>Total servicios</span>
+                <span className="tabular-nums">{formatCurrency(totalServicios)}</span>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -861,206 +949,41 @@ function CostosEventoContent() {
             Personal del evento
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
-          <div className="max-h-[300px] min-h-0 space-y-2 overflow-y-auto pr-1 xl:max-h-none xl:flex-1 xl:basis-0">
+        <CardContent className="flex flex-col gap-2">
           {personal.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin personal asignado con costo.</p>
           ) : (
-            personal.map((pe) => (
-              <label
-                key={pe.id}
-                className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <Checkbox
-                    checked={!!pe.pagado}
-                    onCheckedChange={(v) => togglePersonal(pe.id, v === true)}
-                    aria-label={`Marcar sueldo de ${pe.nombre} como pagado`}
-                  />
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate font-medium">{pe.nombre}</span>
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="truncate">{pe.funcion}</span>
-                      {pe.fechaPago && !pe.pagado && (
-                        <span className="flex shrink-0 items-center gap-1">
-                          <CalendarDays className="h-3 w-3" /> {formatFecha(pe.fechaPago)}
-                        </span>
-                      )}
-                    </span>
-                  </span>
-                </span>
-                <span className={`shrink-0 font-medium ${pe.pagado ? "text-emerald-700" : "text-red-600"}`}>
-                  {formatCurrency(pe.monto || 0)}
-                </span>
-              </label>
-            ))
-          )}
-          </div>
-          {personal.length > 0 && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="w-full bg-transparent">
-                  <Users className="h-4 w-4 mr-2" />
-                  Ver personal completo
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-teal-600" />
-                    Personal del evento — {nombreEvento}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-1">
-                  {personal.map((pe) => (
-                    <div
-                      key={pe.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-medium">{pe.nombre}</span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          {pe.funcion}
-                          {pe.pagado ? " · pagado" : pe.fechaPago ? ` · paga el ${formatFecha(pe.fechaPago)}` : ""}
-                        </span>
-                      </span>
-                      <span
-                        className={`shrink-0 font-medium ${pe.pagado ? "text-emerald-700" : "text-red-600"}`}
-                      >
-                        {formatCurrency(pe.monto || 0)}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
-                    <span>Total personal</span>
-                    <span>{formatCurrency(totalPersonal)}</span>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
-        </CardContent>
-      </Card>
-      </div>
-
-      {/* Gráfico circular: porcentaje cubierto y costo total del evento */}
-      <Card className="xl:sticky xl:top-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <PieChartIcon className="h-4 w-4 text-teal-600" />
-            Cobertura de costos
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center gap-3">
-          {datosGrafico.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Este evento no tiene costos calculados.</p>
-          ) : (
             <>
-              <ChartContainer config={chartConfig} className="aspect-square w-full max-w-[220px]">
-                <PieChart>
-                  <ChartTooltip
-                    cursor={false}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null
-                      const d = payload[0].payload as (typeof datosAnillo)[number]
-                      return (
-                        <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
-                          <p className="font-semibold">{d.nombre}</p>
-                          <p>
-                            Costo total: <span className="font-medium">{formatCurrency(d.total)}</span>
-                          </p>
-                          <p className="text-emerald-700">
-                            Pagado: <span className="font-medium">{formatCurrency(d.pagado)}</span>
-                          </p>
-                          <p className="text-muted-foreground">
-                            Pendiente: {formatCurrency(d.total - d.pagado)}
-                          </p>
-                        </div>
-                      )
-                    }}
-                  />
-                  <Pie
-                    data={datosAnillo}
-                    dataKey="valor"
-                    nameKey="nombre"
-                    innerRadius={62}
-                    outerRadius={90}
-                    strokeWidth={2}
-                  >
-                    {datosAnillo.map((d) => (
-                      <Cell
-                        key={d.sliceKey}
-                        fill={`var(--color-${d.key})`}
-                        fillOpacity={d.esPagado ? 1 : 0.18}
-                      />
-                    ))}
-                    <Label
-                      content={({ viewBox }) => {
-                        if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null
-                        const { cx, cy } = viewBox as { cx: number; cy: number }
-                        return (
-                          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
-                            <tspan x={cx} y={cy - 8} className="fill-foreground text-2xl font-bold">
-                              {porcentajeCubierto}%
-                            </tspan>
-                            <tspan x={cx} y={cy + 14} className="fill-muted-foreground text-xs">
-                              cubierto
-                            </tspan>
-                          </text>
-                        )
-                      }}
-                    />
-                  </Pie>
-                </PieChart>
-              </ChartContainer>
-              <div className="w-full space-y-1.5 text-sm">
-                <div className="flex items-center justify-between border-t pt-2">
-                  <span className="text-muted-foreground">Costo total del evento</span>
-                  <span className="font-semibold">{formatCurrency(costoTotalEvento)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Cubierto</span>
-                  <span className="font-semibold text-emerald-700">{formatCurrency(totalCubierto)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Pendiente</span>
-                  <span className="font-semibold text-red-600">
-                    {formatCurrency(costoTotalEvento - totalCubierto)}
-                  </span>
-                </div>
-                {precioVentaEvento > 0 && (
-                  <>
-                    <div className="flex items-center justify-between border-t pt-2">
-                      <span className="text-muted-foreground">Vendido en</span>
-                      <span className="font-semibold text-teal-700">{formatCurrency(precioVentaEvento)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Costo / venta</span>
-                      <span className="font-semibold">
-                        {proporcionCostoVenta !== null ? `${proporcionCostoVenta.toFixed(1)}%` : "—"}
+              <div className="space-y-2">
+                {personal.map((pe) => (
+                  <FilaPago
+                    key={pe.id}
+                    className="border border-border"
+                    checked={!!pe.pagado}
+                    onChange={(v) => togglePersonal(pe.id, v)}
+                    ariaLabel={`Marcar sueldo de ${pe.nombre} como pagado`}
+                    titulo={<span className="font-medium">{pe.nombre}</span>}
+                    detalle={
+                      <span className="flex flex-wrap items-center gap-x-1.5">
+                        <span>{pe.funcion}</span>
+                        {!pe.pagado && (
+                          <span className="flex items-center gap-1">
+                            <CalendarDays className="h-3 w-3" />
+                            {/* Sin fecha, el sueldo vence el día del evento */}
+                            {formatFechaCorta(pe.fechaPago || evento.fecha)}
+                          </span>
+                        )}
+                        {pe.pagado && <span>· pagado</span>}
                       </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground/70">
-                      El costo del evento representa el {proporcionCostoVenta?.toFixed(1)}% del precio de venta.
-                    </p>
-                  </>
-                )}
+                    }
+                    monto={pe.monto || 0}
+                    pagado={!!pe.pagado}
+                  />
+                ))}
               </div>
-              <div className="w-full space-y-1.5 border-t pt-2">
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {datosGrafico.map((d) => (
-                    <span key={d.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span
-                        className="h-2.5 w-2.5 rounded-sm"
-                        style={{ backgroundColor: chartConfig[d.key as keyof typeof chartConfig].color }}
-                      />
-                      {d.nombre}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground/70">
-                  Color pleno = pagado · color tenue = pendiente de pago
-                </p>
+              <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                <span>Total personal</span>
+                <span className="tabular-nums">{formatCurrency(totalPersonal)}</span>
               </div>
             </>
           )}
@@ -1068,12 +991,12 @@ function CostosEventoContent() {
       </Card>
       </div>
 
-      {/* Progreso de cuotas del cliente: ancho completo, barra verde */}
+      {/* Lo cobrado al cliente */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <CreditCard className="h-4 w-4 text-emerald-600" />
-            Cuotas cobradas al cliente
+            Cobrado al cliente
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -1081,45 +1004,75 @@ function CostosEventoContent() {
             <p className="text-sm text-muted-foreground">Este evento no tiene plan de cuotas.</p>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="font-medium">
-                  {cuotasPagadas.length}/{cuotas.length} cuotas pagadas
-                  {montoSenaCobrada > 0 && (
-                    <span className="ml-2 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                      Seña cobrada: {formatCurrency(montoSenaCobrada)}
-                    </span>
-                  )}
+              <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                <span>
+                  <span className="text-lg font-semibold tabular-nums text-emerald-700">{formatCurrency(cobro.cobrado)}</span>
+                  <span className="text-muted-foreground"> de {formatCurrency(cobro.totalACobrar)}</span>
                 </span>
                 <span className="text-muted-foreground">
-                  <span className="font-semibold text-emerald-700">{formatCurrency(montoCobrado)}</span>
-                  {" de "}
-                  {formatCurrency(montoTotalCuotas)}
-                  {montoSenaCobrada > 0 && (
-                    <span className="ml-1 text-xs text-muted-foreground/70">(incluye seña)</span>
-                  )}
+                  {cuotasPagadas.length} de {cuotas.length} cuotas pagadas
+                  {cuotasParciales.length > 0 &&
+                    ` · ${cuotasParciales.length} con pago parcial`}
                 </span>
               </div>
               <Progress
-                value={progresoCuotas}
+                value={cobro.progreso}
                 className="h-4 bg-emerald-100 [&>div]:bg-emerald-600"
-                aria-label={`${progresoCuotas}% de las cuotas cobradas`}
+                aria-label={`${cobro.progreso}% cobrado`}
               />
               <div className="flex flex-wrap gap-1.5">
-                {cuotas.map((c) => (
-                  <span
-                    key={c.numeroCuota}
-                    title={`Cuota ${c.numeroCuota} · vence ${c.fechaVencimiento} · ${formatCurrency(c.monto)}`}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold ${
-                      c.pagada
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                        : "border-border bg-muted/40 text-muted-foreground"
-                    }`}
-                  >
-                    {c.numeroCuota}
-                  </span>
-                ))}
+                {cuotas.map((c) => {
+                  const parcial = !c.pagada && c.montoAcumulado > 0
+                  return (
+                    <span
+                      key={c.numeroCuota}
+                      title={`Cuota ${c.numeroCuota} · vence ${formatFecha(c.fechaVencimiento)} · ${formatCurrency(c.monto)}${parcial ? ` · cobrado ${formatCurrency(c.montoAcumulado)}` : ""}`}
+                      className={`flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold ${
+                        c.pagada
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : parcial
+                            ? "border-amber-300 bg-amber-50 text-amber-700"
+                            : "border-border bg-muted/40 text-muted-foreground"
+                      }`}
+                    >
+                      {c.numeroCuota}
+                    </span>
+                  )
+                })}
               </div>
-              {progresoCuotas === 100 && (
+              {/* Cómo se llega al total: precio + recargo/IPC = seña + cuotas */}
+              <div className="grid gap-x-6 gap-y-1 border-t pt-3 text-sm sm:grid-cols-2">
+                {cobro.precioContrato > 0 && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Precio del contrato</span>
+                    <span className="tabular-nums">{formatCurrency(cobro.precioContrato)}</span>
+                  </div>
+                )}
+                {Math.abs(cobro.ajuste) >= 1 && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">
+                      {evento.planDeCuotas?.ajustaPorIPC ? "Ajuste por IPC y financiación" : "Recargo por financiación"}
+                    </span>
+                    <span className="tabular-nums">
+                      {cobro.ajuste > 0 ? "+ " : "− "}
+                      {formatCurrency(Math.abs(cobro.ajuste))}
+                    </span>
+                  </div>
+                )}
+                {cobro.seña > 0 && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Seña (cobrada al firmar)</span>
+                    <span className="tabular-nums text-emerald-700">{formatCurrency(cobro.seña)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Falta cobrar</span>
+                  <span className={`font-semibold tabular-nums ${cobro.faltaCobrar > 0.005 ? "text-red-600" : "text-emerald-700"}`}>
+                    {formatCurrency(cobro.faltaCobrar)}
+                  </span>
+                </div>
+              </div>
+              {cobro.faltaCobrar <= 0.005 && (
                 <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
                   <CheckCircle2 className="h-4 w-4" /> El cliente pagó todas las cuotas.
                 </p>
@@ -1156,8 +1109,103 @@ function CostosEventoContent() {
           </div>
         </CardContent>
       </Card>
-    </main>
+    </div>
   )
+}
+
+/**
+ * Total de cocina o barra. Ya pagado, muestra lo que salió de Caja Eventos; si
+ * los precios cambiaron desde entonces, aclara cuánto daría hoy la lista de
+ * arriba, para que la lista y el total no parezcan no cerrar.
+ */
+function TotalRubro({
+  etiqueta,
+  total,
+  hoy,
+  pagado,
+  fechaPago,
+}: {
+  etiqueta: string
+  total: number
+  hoy: number
+  pagado: boolean
+  fechaPago?: string
+}) {
+  const difiere = pagado && Math.abs(total - hoy) >= 0.01
+  return (
+    <div className="space-y-1 border-t pt-2 text-sm">
+      {difiere && (
+        <div className="flex items-center justify-between gap-2 text-muted-foreground">
+          <span>A precios de hoy</span>
+          <span className="tabular-nums">{formatCurrency(hoy)}</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2 font-semibold">
+        <span>{difiere ? `${etiqueta} (pagado)` : etiqueta}</span>
+        <span className={`tabular-nums ${pagado ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(total)}</span>
+      </div>
+      {pagado && fechaPago && (
+        <p className="text-xs text-muted-foreground">
+          Pagado el {formatFechaCorta(fechaNegocio(new Date(fechaPago)))} desde Caja Eventos
+        </p>
+      )}
+    </div>
+  )
+}
+
+// Fila de pago (seña, saldo, sueldo): casilla, nombre con un detalle debajo
+// y el monto a la derecha. El detalle va en su propia línea para que no se
+// pise con el monto cuando la tarjeta es angosta.
+function FilaPago({
+  checked,
+  onChange,
+  disabled,
+  ariaLabel,
+  titulo,
+  detalle,
+  aviso,
+  monto,
+  pagado,
+  className = "",
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+  ariaLabel: string
+  titulo: React.ReactNode
+  detalle?: React.ReactNode
+  aviso?: React.ReactNode
+  monto: number
+  pagado: boolean
+  className?: string
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-2 rounded-md px-3 py-2 text-sm ${disabled ? "cursor-default" : ""} ${className}`}
+    >
+      <Checkbox
+        className="mt-0.5"
+        checked={checked}
+        onCheckedChange={(v) => onChange(v === true)}
+        disabled={disabled}
+        aria-label={ariaLabel}
+      />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="break-words">{titulo}</span>
+        {detalle && <span className="text-xs text-muted-foreground">{detalle}</span>}
+        {aviso}
+      </span>
+      <span className={`shrink-0 font-medium tabular-nums ${pagado ? "text-emerald-700" : "text-red-600"}`}>
+        {formatCurrency(monto)}
+      </span>
+    </label>
+  )
+}
+
+// Pagos marcados en el evento que no tienen su egreso en Caja Eventos (datos
+// viejos, o un saldo pagado sin haber pagado la seña): se avisa sin cambiar montos.
+function AvisoSinEgreso() {
+  return <span className="text-xs text-amber-700 dark:text-amber-400">Marcado pagado, sin pago en Caja Eventos</span>
 }
 
 export default function CostosEventoPage() {

@@ -7,6 +7,7 @@
 // con la misma cuenta que el panel "Pendiente por evento" de Caja Eventos.
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { X, CalendarDays, MapPin, ChefHat, Martini, Briefcase, Users, PartyPopper, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +15,8 @@ import { Label } from "@/components/ui/label"
 import { cambiarDiaResumen, fechaArgentina, fechaResumenValida, rangoFinde } from "@/lib/resumen-fecha"
 import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
+import { useProfile } from "@/lib/profile-context"
+import { puedeEntrarARuta } from "@/lib/acceso-ruta"
 import { calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import {
   calcularComprasSegmentadas,
@@ -49,6 +52,14 @@ interface Props {
 export function FindeModal({ open, onOpenChange }: Props) {
   const { state, configuracionCajas } = useStore()
   const { ahora } = useClock()
+  const { perfilActivo } = useProfile()
+  // Tocar la tarjeta lleva a los costos del evento, pero solo a quien puede
+  // entrar a esa pantalla. A Cobrar cuota, que ve Inicio pero no Costos, la
+  // tarjeta no lo lleva a ningún lado: si no, lo rebotaría de vuelta.
+  const puedeVerCostos = puedeEntrarARuta(perfilActivo, "/eventos/costos")
+  // "Ver cuotas pagadas" abre el evento en Pagos, donde están las cuotas
+  // pagas y las que faltan. Cobrar cuota sí entra ahí.
+  const puedeVerCuotas = puedeEntrarARuta(perfilActivo, "/eventos/pagos")
 
   const [fechaElegida, setFechaElegida] = useState<string | null>(null)
   const fecha = fechaElegida ?? fechaArgentina()
@@ -172,6 +183,10 @@ export function FindeModal({ open, onOpenChange }: Props) {
                   backgroundColor: `color-mix(in srgb, ${salonColor(evento.salon, configuracionCajas)} 10%, var(--card))`,
                 }}
               >
+              <TarjetaEvento
+                href={puedeVerCostos ? `/eventos/costos?id=${evento.id}` : undefined}
+                onIr={() => onOpenChange(false)}
+              >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-card-foreground">
@@ -230,6 +245,26 @@ export function FindeModal({ open, onOpenChange }: Props) {
                     <span className="text-sm font-semibold text-emerald-700">Todo pagado</span>
                   )}
                 </div>
+
+                {puedeVerCostos && (
+                  <p className="mt-2 flex items-center justify-end gap-0.5 text-xs font-medium text-[#2d5a3d]">
+                    Ver costos del evento <ChevronRight className="h-3.5 w-3.5" />
+                  </p>
+                )}
+              </TarjetaEvento>
+
+              {/* Va afuera del link de costos: un link no puede ir dentro de otro. */}
+              {puedeVerCuotas && (
+                <div className="mt-1 flex justify-end">
+                  <Link
+                    href={`/eventos/pagos?evento=${encodeURIComponent(evento.id)}`}
+                    onClick={() => onOpenChange(false)}
+                    className="flex items-center gap-0.5 rounded text-xs font-medium text-[#2d5a3d] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]"
+                  >
+                    Ver cuotas pagadas <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              )}
               </div>
               )
             })
@@ -237,5 +272,28 @@ export function FindeModal({ open, onOpenChange }: Props) {
         </div>
       </div>
     </div>
+  )
+}
+
+// Cuerpo de la tarjeta de un evento: si hay adónde ir, es un link a sus
+// costos (y cierra el modal al tocarla); si no, un recuadro común.
+function TarjetaEvento({
+  href,
+  onIr,
+  children,
+}: {
+  href?: string
+  onIr: () => void
+  children: React.ReactNode
+}) {
+  if (!href) return <div>{children}</div>
+  return (
+    <Link
+      href={href}
+      onClick={onIr}
+      className="block rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d5a3d]"
+    >
+      {children}
+    </Link>
   )
 }

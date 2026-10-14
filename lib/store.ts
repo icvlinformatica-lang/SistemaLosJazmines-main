@@ -2,6 +2,7 @@
 
 import { fechaNegocio, proyectarIPC } from "./ipc-cuotas"
 import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota, type DecisionSaldoCuota, type RecargoSaldoCuota } from "./estado-cuotas"
+import { prefijoPagoBarra, prefijoPagoMenu, prefijoPagoSaldo, ultimoEgresoEvento } from "./egresos-evento"
 
 // Data Store for Los Jazmines Catering System
 // Uses localStorage for persistence
@@ -81,39 +82,7 @@ export type RecetaCategoria =
   | "Sin Sal"
   | "Mesa Dulce"
 
-// Prefijo de código automático por categoría de receta (respeta la convención existente: R, E, P, K...)
-export const RECETA_CODIGO_PREFIX: Record<RecetaCategoria, string> = {
-  "Recepción": "R",
-  "Entrada": "E",
-  "Plato Principal": "P",
-  "Guarnición": "G",
-  "Postre": "PS",
-  "Menú para Niños": "K",
-  "Menú Adolescente": "AD",
-  "Celiaco": "CL",
-  "Vegano": "VG",
-  "Vegetariano": "VT",
-  "Sin Sal": "SS",
-  "Mesa Dulce": "MD",
-}
-
-/**
- * Genera el próximo código secuencial disponible para un prefijo dado.
- * Escanea los códigos existentes con formato `<PREFIJO><número>` (ej: INS001),
- * toma el número más alto y devuelve el siguiente con relleno de ceros.
- */
-export function generateNextCodigo(existingCodigos: (string | undefined | null)[], prefix: string, pad = 3): string {
-  const re = new RegExp(`^${prefix}(\\d+)$`, "i")
-  let max = 0
-  for (const c of existingCodigos) {
-    const m = re.exec((c || "").trim())
-    if (m) {
-      const n = Number.parseInt(m[1], 10)
-      if (Number.isFinite(n) && n > max) max = n
-    }
-  }
-  return `${prefix}${String(max + 1).padStart(pad, "0")}`
-}
+export { RECETA_CODIGO_PREFIX, generateNextCodigo } from "./codigos"
 
 export interface Insumo {
   id: string
@@ -2495,40 +2464,7 @@ export function calcularCostoInsumosEvento(
 
 // ==================== CUOTAS HELPER FUNCTIONS ====================
 
-/**
- * Calcula la fecha de vencimiento de una cuota especifica
- * @param fechaInicio - Fecha de la primera cuota (YYYY-MM-DD)
- * @param numeroCuota - Numero de cuota (1, 2, 3...)
- * @param diaVencimiento - Dia del mes para vencimiento (1-31)
- * @returns Fecha en formato "DD/MM/YYYY"
- */
-export function calcularFechaCuota(
-  fechaInicio: string,
-  numeroCuota: number,
-  diaVencimiento: number
-): string {
-  if (!fechaInicio) return ""
-
-  const [year, month, day] = fechaInicio.split("-").map(Number)
-  const inicio = new Date(year, month - 1, day)
-
-  // Sumar meses (numeroCuota - 1) porque la cuota 1 es el mes inicial
-  const mesVencimiento = inicio.getMonth() + (numeroCuota - 1)
-  const añoVencimiento = inicio.getFullYear() + Math.floor(mesVencimiento / 12)
-  const mesAjustado = mesVencimiento % 12
-
-  // Ajustar dia si el mes no tiene suficientes dias (ej: 31 en febrero -> 28/29)
-  const ultimoDia = new Date(añoVencimiento, mesAjustado + 1, 0).getDate()
-  const diaAjustado = Math.min(diaVencimiento, ultimoDia)
-
-  const fechaVencimiento = new Date(añoVencimiento, mesAjustado, diaAjustado)
-
-  return fechaVencimiento.toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  })
-}
+export { calcularFechaCuota } from "./calendario-cuotas"
 
 // ==========================================
 // ARCHIVO DE EVENTOS — CONGELADO DE COSTOS
@@ -2557,6 +2493,12 @@ export interface ArchivoCongelado {
   }>
   costoCocina: number
   costoBarra: number
+  /**
+   * Lo que salió de Caja Eventos para pagar la cocina y la barra, si estaban
+   * pagadas al archivar. Las fotos viejas no lo tienen.
+   */
+  montoPagadoCocina?: number
+  montoPagadoBarra?: number
   totalServicios: number
   totalPersonal: number
 }
@@ -2574,8 +2516,6 @@ export function congelarCostosEvento(
   const costoCocina = comprasCocina.reduce((s, c) => s + c.costoMateriaPrima, 0)
   const costoBarra = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
 
-  const nombreEvento = evento.nombre || evento.nombrePareja || "Evento sin nombre"
-
   // Personal con sueldo vigente resuelto (igual que la pantalla de costos)
   const personal = (evento.personalEvento || [])
     .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, ctx.personal) }))
@@ -2583,30 +2523,29 @@ export function congelarCostosEvento(
   const totalPersonal = personal.reduce((s, pe) => s + (pe.monto || 0), 0)
 
   // Servicios: seña/saldo en vivo; los saldos ya pagados conservan el monto
-  // real que movió Caja Eventos
-  const montoSaldoPagado = (nombreServicio: string): number => {
-    const mov = [...(ctx.movimientosCaja ?? [])]
-      .reverse()
-      .find(
-        (m) =>
-          m.tipo === "egreso" &&
-          m.cajaDestino === "caja_eventos" &&
-          m.eventoId === evento.id &&
-          m.concepto === `Pago saldo ${nombreServicio} - ${nombreEvento}`,
-      )
-    return mov?.monto || 0
-  }
+  // real que movió Caja Eventos (sin egreso, lo que falta para el costo).
   const serviciosCalc = (evento.servicios || []).map((srv) => {
     const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
-    const { montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(srv, { servicios: ctx.servicios ?? [] })
+    const { costoTotal, montoSeña, saldoPendiente } = calcularSeñaSaldoServicio(srv, { servicios: ctx.servicios ?? [] })
+    const egresoSaldo = ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoSaldo(srv.nombre))
     return {
       servicioId: srv.servicioId,
       montoSeña,
       // Pagado como sueldo (lib/servicio-sueldo.ts): el monto pagado queda en el
       // propio servicio; no hay un movimiento "Pago saldo" que buscar.
-      saldo: srv.pagoSueldo ? srv.pagoSueldo.monto : saldoPagado ? montoSaldoPagado(srv.nombre) : saldoPendiente,
+      saldo: srv.pagoSueldo
+        ? srv.pagoSueldo.monto
+        : saldoPagado
+          ? (egresoSaldo?.monto ?? Math.max(0, costoTotal - montoSeña))
+          : saldoPendiente,
     }
   })
+  const montoPagadoCocina = evento.cocinaPagada
+    ? ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoMenu)?.monto
+    : undefined
+  const montoPagadoBarra = evento.barraPagada
+    ? ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoBarra)?.monto
+    : undefined
   const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)
 
   // Menú elegido con costo por plato (por segmento de invitados)
@@ -2639,94 +2578,14 @@ export function congelarCostosEvento(
     menuPorSegmento,
     costoCocina,
     costoBarra,
+    ...(montoPagadoCocina !== undefined ? { montoPagadoCocina } : {}),
+    ...(montoPagadoBarra !== undefined ? { montoPagadoBarra } : {}),
     totalServicios,
     totalPersonal,
   }
 }
 
-/**
- * Genera array con todas las fechas de cuotas de un evento
- */
-export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
-  numeroCuota: number
-  fechaVencimiento: string // YYYY-MM-DD
-  monto: number
-  pagada: boolean
-  estado: EstadoCuota
-  montoAcumulado: number
-  saldoRestante: number
-  saldoDecision?: DecisionSaldoCuota
-  recargoSaldo?: RecargoSaldoCuota
-}> {
-  if (!evento.planDeCuotas || !evento.planDeCuotas.numeroCuotas || evento.planDeCuotas.numeroCuotas <= 0) {
-    return []
-  }
-
-  // fechaInicioPlan puede venir vacía (p. ej. pago completo generado desde el
-  // contrato). Si el detalle de cuotas[] trae sus propias fechas pactadas,
-  // igual podemos generar el calendario a partir de ese detalle.
-  const tieneFechasEnDetalle = (evento.planDeCuotas.cuotas || []).some(
-    (c) => typeof c.fechaVencimiento === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.fechaVencimiento),
-  )
-  if (!evento.planDeCuotas.fechaInicioPlan && !tieneFechasEnDetalle) {
-    return []
-  }
-
-  const { numeroCuotas, montoCuota, montoTotal, fechaInicioPlan, diaVencimiento, cuotasPagadas = [], cuotas = [] } = evento.planDeCuotas
-
-  // Fallback: if montoCuota is 0 but montoTotal exists, calculate it
-  const montoReal = montoCuota > 0 ? montoCuota : (montoTotal > 0 && numeroCuotas > 0 ? montoTotal / numeroCuotas : 0)
-
-  // Mapa de montos y fechas por cuota provenientes de planDeCuotas.cuotas[].
-  // Ese detalle es el que se guardó al generar el contrato (fuente de verdad):
-  // los montos reflejan financiación/IPC y las fechas son las pactadas.
-  const montoPorCuota = new Map<number, number>()
-  const fechaPorCuota = new Map<number, string>()
-  for (const c of cuotas) {
-    if (typeof c.montoCuota === "number" && c.montoCuota > 0) {
-      montoPorCuota.set(c.numero, c.montoCuota)
-    }
-    if (typeof c.fechaVencimiento === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.fechaVencimiento)) {
-      fechaPorCuota.set(c.numero, c.fechaVencimiento)
-    }
-  }
-
-  const resolverMonto = (cuotaNum: number) => montoPorCuota.get(cuotaNum) ?? montoReal
-
-  const resolverFecha = (cuotaNum: number): string => {
-    // Preferir la fecha guardada en el contrato; recalcular solo como fallback
-    const guardada = fechaPorCuota.get(cuotaNum)
-    if (guardada) return guardada
-    const fechaStr = calcularFechaCuota(fechaInicioPlan, cuotaNum, diaVencimiento || 10)
-    if (!fechaStr) return ""
-    const [dia, mes, año] = fechaStr.split("/")
-    return `${año}-${mes}-${dia}`
-  }
-
-  const detallePorCuota = new Map(cuotas.map(c => [c.numero, c]))
-
-  return Array.from({ length: numeroCuotas }).map((_, idx) => {
-    const cuotaNum = idx + 1
-    const monto = resolverMonto(cuotaNum)
-    const detalle = detallePorCuota.get(cuotaNum)
-    const pagadaLegado = cuotasPagadas.includes(cuotaNum) || detalle?.pagada === true
-    // Compat: eventos viejos sin detalle.montoPagadoNeto (solo cuotasPagadas
-    // legado) se tratan como completamente pagados sin pasar por "parcial".
-    const montoAcumulado = detalle?.montoPagadoNeto ?? (pagadaLegado ? monto : 0)
-    const estado = estadoDeCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado })
-    return {
-      numeroCuota: cuotaNum,
-      fechaVencimiento: resolverFecha(cuotaNum),
-      monto,
-      pagada: pagadaLegado || estado === "pagada",
-      estado,
-      montoAcumulado,
-      saldoRestante: saldoRestanteCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado }),
-      saldoDecision: detalle?.saldoDecision,
-      recargoSaldo: detalle?.recargoSaldo,
-    }
-  })
-}
+export { generarCalendarioCuotas } from "./calendario-cuotas"
 
 // ==================== EVENTO MANAGEMENT FUNCTIONS ====================
 

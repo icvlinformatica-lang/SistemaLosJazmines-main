@@ -5,10 +5,9 @@
 // servicios + personal. Todo lo demás (ej. el costo operativo / gastos fijos)
 // es de Caja Jazmines.
 //
-// Es el cálculo que antes vivía dentro de app/eventos/costos/page.tsx, movido
-// tal cual para que esa pantalla y el panel "Gastos del mes por evento" de
-// Caja Eventos usen la misma cuenta:
-// - cocina y barra en vivo con los precios actuales del almacén;
+// Es el cálculo de la pantalla app/eventos/costos/page.tsx:
+// - cocina y barra en vivo con los precios actuales del almacén; ya pagadas,
+//   cuentan lo que salió de Caja Eventos (el precio de hoy se muestra aparte);
 // - servicios en vivo desde el catálogo, pero lo YA PAGADO conserva el monto
 //   real que movió la caja;
 // - personal en vivo desde el roster (salvo pagado o monto personalizado);
@@ -28,6 +27,13 @@ import {
   type ServicioEvento,
 } from "./store"
 import { montoSueldoServicio, sePagaComoSueldo, señaPagadaPorSeparado } from "./servicio-sueldo"
+import {
+  prefijoPagoBarra,
+  prefijoPagoMenu,
+  prefijoPagoSaldo,
+  prefijoPagoSeña,
+  ultimoEgresoEvento,
+} from "./egresos-evento"
 
 export type DatosCostoEvento = Pick<
   AppState,
@@ -42,6 +48,10 @@ export interface ServicioCostoEvento {
   saldo: number
   /** Se paga como sueldo (lib/servicio-sueldo.ts): un único pago, no seña y saldo. */
   comoSueldo: boolean
+  /** Seña marcada como pagada sin un egreso "Pago seña …" en Caja Eventos. */
+  señaSinEgreso: boolean
+  /** Saldo marcado como pagado sin un egreso "Pago saldo …" en Caja Eventos. */
+  saldoSinEgreso: boolean
 }
 
 export interface CostoEventoCajaEventos {
@@ -49,8 +59,15 @@ export interface CostoEventoCajaEventos {
   congelado: ArchivoCongelado | undefined
   comprasCocina: ArchivoCongelado["comprasCocina"]
   comprasBarra: ArchivoCongelado["comprasBarra"]
+  /** Costo de cocina: lo pagado si ya se pagó; si no, a precios de hoy. */
   costoCocina: number
   costoBarra: number
+  /** Cocina y barra a precios de hoy (la suma de la lista de insumos). */
+  costoCocinaHoy: number
+  costoBarraHoy: number
+  /** Fecha (ISO) del egreso con que se pagó la cocina o la barra, si se encontró. */
+  fechaPagoCocina?: string
+  fechaPagoBarra?: string
   /** Personal con el sueldo resuelto (en vivo o congelado), sin los de monto 0. */
   personal: PersonalDelEvento[]
   serviciosCalc: ServicioCostoEvento[]
@@ -86,8 +103,21 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
 
   const comprasCocina = congelado?.comprasCocina ?? calcularComprasSegmentadas(evento, datos.recetas || [], datos.insumos || [])
   const comprasBarra = congelado?.comprasBarra ?? calcularComprasBarras(evento, datos.cocteles || [], datos.insumosBarra || [])
-  const costoCocina = comprasCocina.reduce((s, c) => s + c.costoMateriaPrima, 0)
-  const costoBarra = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
+  const costoCocinaHoy = comprasCocina.reduce((s, c) => s + c.costoMateriaPrima, 0)
+  const costoBarraHoy = comprasBarra.reduce((s, c) => s + c.costoMateriaPrima, 0)
+
+  // Cocina y barra ya pagadas: cuenta lo que salió de Caja Eventos (como los
+  // servicios y el personal pagados), no el precio de hoy de los insumos. Sin
+  // egreso encontrado (datos viejos), sigue el precio de hoy. Archivado: lo
+  // guardado al archivar (las fotos viejas no lo tienen y quedan como antes).
+  const egresoMenu = evento.cocinaPagada ? ultimoEgresoEvento(datos.movimientosCaja, evento.id, prefijoPagoMenu) : undefined
+  const egresoBarra = evento.barraPagada ? ultimoEgresoEvento(datos.movimientosCaja, evento.id, prefijoPagoBarra) : undefined
+  const costoCocina = congelado
+    ? (congelado.montoPagadoCocina ?? costoCocinaHoy)
+    : (egresoMenu?.monto ?? costoCocinaHoy)
+  const costoBarra = congelado
+    ? (congelado.montoPagadoBarra ?? costoBarraHoy)
+    : (egresoBarra?.monto ?? costoBarraHoy)
 
   // Sueldos EN VIVO desde el roster (Finanzas → Personal): siguen la tarifa
   // vigente salvo que estén pagados o con monto personalizado por evento.
@@ -97,20 +127,6 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
     (evento.personalEvento || [])
       .map((pe) => ({ ...pe, monto: calcularMontoPersonalDelEvento(pe, datos.personal) }))
       .filter((pe) => (pe.monto || 0) > 0)
-
-  // Monto de saldo pagado: se recupera del movimiento registrado en Caja Eventos
-  const montoSaldoPagado = (nombreServicio: string): number => {
-    const mov = [...(datos.movimientosCaja ?? [])]
-      .reverse()
-      .find(
-        (m) =>
-          m.tipo === "egreso" &&
-          m.cajaDestino === "caja_eventos" &&
-          m.eventoId === evento.id &&
-          m.concepto === `Pago saldo ${nombreServicio} - ${evento.nombre || evento.nombrePareja || "Evento sin nombre"}`,
-      )
-    return mov?.monto || 0
-  }
 
   // Cada servicio contratado recalcula su seña y saldo EN VIVO a partir del
   // catálogo global: si en Finanzas → Servicios se edita el costo o el % de
@@ -124,9 +140,13 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
     const saldoPagado = srv.estadoPago === "pagado_total" || srv.pagado === true
 
     // Cálculo centralizado en vivo (mismo criterio que Caja Eventos, Cashflow y Balance).
-    const { montoSeña: montoSeñaCalc, saldoPendiente: saldoCalc } = calcularSeñaSaldoServicio(srv, {
-      servicios: datos.servicios ?? [],
-    })
+    const {
+      costoTotal,
+      montoSeña: montoSeñaCalc,
+      saldoPendiente: saldoCalc,
+    } = calcularSeñaSaldoServicio(srv, { servicios: datos.servicios ?? [] })
+    const egresoSeña = ultimoEgresoEvento(datos.movimientosCaja, evento.id, prefijoPagoSeña(srv.nombre))
+    const egresoSaldo = ultimoEgresoEvento(datos.movimientosCaja, evento.id, prefijoPagoSaldo(srv.nombre))
 
     // Si el evento está archivado, usar los montos congelados al archivar.
     const frozen = congelado?.serviciosCalc?.find((f) => f.servicioId === srv.servicioId)
@@ -143,14 +163,31 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
         montoSeña: señaViejaPagada ? montoSeñaCalc : 0,
         saldo: montoSueldoServicio(srv, { servicios: datos.servicios ?? [] }),
         comoSueldo: true,
+        señaSinEgreso: señaViejaPagada && !egresoSeña,
+        saldoSinEgreso: false,
       }
     }
 
-    // Preservar lo ya pagado; recalcular en vivo lo pendiente.
+    // Preservar lo ya pagado; recalcular en vivo lo pendiente. Un saldo pagado
+    // sin egreso en la caja (datos viejos) no se cuenta como $0: se toma lo que
+    // falta para completar el costo del servicio, así el total no se achica.
     const montoSeña = frozen ? frozen.montoSeña : montoSeñaCalc
-    const saldo = frozen ? frozen.saldo : saldoPagado ? montoSaldoPagado(srv.nombre) : saldoCalc
+    const saldo = frozen
+      ? frozen.saldo
+      : saldoPagado
+        ? (egresoSaldo?.monto ?? Math.max(0, costoTotal - montoSeñaCalc))
+        : saldoCalc
 
-    return { srv, senaPagada, saldoPagado, montoSeña, saldo, comoSueldo: false }
+    return {
+      srv,
+      senaPagada,
+      saldoPagado,
+      montoSeña,
+      saldo,
+      comoSueldo: false,
+      señaSinEgreso: senaPagada && montoSeña > 0 && !egresoSeña,
+      saldoSinEgreso: saldoPagado && saldo > 0 && !egresoSaldo,
+    }
   })
 
   const totalServicios = serviciosCalc.reduce((s, c) => s + c.montoSeña + c.saldo, 0)
@@ -169,6 +206,10 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
     comprasBarra,
     costoCocina,
     costoBarra,
+    costoCocinaHoy,
+    costoBarraHoy,
+    fechaPagoCocina: congelado ? undefined : egresoMenu?.fecha,
+    fechaPagoBarra: congelado ? undefined : egresoBarra?.fecha,
     personal,
     serviciosCalc,
     totalServicios,
@@ -179,5 +220,63 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
     pagadoPersonal,
     costoTotalEvento: costoCocina + costoBarra + totalServicios + totalPersonal,
     totalCubierto: pagadoCocina + pagadoBarra + pagadoServicios + pagadoPersonal,
+  }
+}
+
+/**
+ * Porcentaje entero de `parte` sobre `total` para mostrar ("40% cubierto").
+ * Redondea para abajo: dice 100% solo cuando no falta nada (con la tolerancia
+ * de centavos de siempre), y no muestra 0% si ya hay algo.
+ */
+export function porcentajeEntero(parte: number, total: number): number {
+  if (!(total > 0) || !(parte > 0)) return 0
+  if (parte >= total - 0.005) return 100
+  return Math.min(99, Math.max(1, Math.floor((parte / total) * 100)))
+}
+
+export interface CuotaResumen {
+  monto: number
+  montoAcumulado: number
+}
+
+export interface ResumenCobroCliente {
+  /** Precio del contrato (planDeCuotas.montoTotal). */
+  precioContrato: number
+  /** Seña (modalidad "Seña + Cuotas"); se cobra al firmar y no es una cuota. */
+  seña: number
+  /** Seña + todas las cuotas, con lo que suman la financiación y el IPC. */
+  totalACobrar: number
+  /** totalACobrar − precioContrato (recargo por financiación o ajuste por IPC). */
+  ajuste: number
+  /** Seña + lo cobrado de cada cuota, incluidos los pagos parciales. */
+  cobrado: number
+  faltaCobrar: number
+  progreso: number
+}
+
+/**
+ * Lo cobrado al cliente, con el criterio de la pantalla de pagos del evento:
+ * la seña cuenta como cobrada y cada cuota suma lo que ya se cobró de ella
+ * (también si es un pago parcial; sin la mora). Recibe el calendario de
+ * generarCalendarioCuotas.
+ */
+export function resumenCobroCliente(
+  plan: { montoTotal?: number; modalidadPago?: string; montoSena?: number } | undefined,
+  cuotas: CuotaResumen[],
+): ResumenCobroCliente {
+  const seña = plan?.modalidadPago === "sena" ? (plan.montoSena ?? 0) : 0
+  const totalCuotas = cuotas.reduce((s, c) => s + c.monto, 0)
+  const cobradoCuotas = cuotas.reduce((s, c) => s + Math.min(c.montoAcumulado ?? 0, c.monto), 0)
+  const precioContrato = plan?.montoTotal ?? 0
+  const totalACobrar = totalCuotas + seña
+  const cobrado = cobradoCuotas + seña
+  return {
+    precioContrato,
+    seña,
+    totalACobrar,
+    ajuste: precioContrato > 0 ? totalACobrar - precioContrato : 0,
+    cobrado,
+    faltaCobrar: Math.max(0, totalACobrar - cobrado),
+    progreso: porcentajeEntero(cobrado, totalACobrar),
   }
 }

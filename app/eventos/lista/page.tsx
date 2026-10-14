@@ -122,9 +122,10 @@ import {
 import { estadoPagosEvento, textoEstadoPagos } from "@/lib/estado-pagos-evento"
 import { ConfirmarFinalizarEventoDialog } from "@/components/confirmar-finalizar-evento"
 
-// Filtro de estado, orden y búsqueda de la Lista: se recuerdan mientras dure
-// la pestaña (sessionStorage), para que al volver de un evento la lista siga
-// como estaba. Puede fallar (modo privado, almacenamiento bloqueado): en ese
+// Filtro de estado y búsqueda de la Lista: se recuerdan mientras dure la
+// pestaña (sessionStorage), para que al volver de un evento la lista siga
+// como estaba. El orden NO se recuerda: al entrar siempre arranca del evento
+// más próximo al más lejano (pedido del dueño, 13/10/2026). Puede fallar (modo privado, almacenamiento bloqueado): en ese
 // caso la pantalla arranca con los valores de siempre.
 const CLAVE_FILTROS_LISTA = "lista-eventos:filtros"
 
@@ -477,7 +478,7 @@ export default function EventosListaPage() {
   // "Hoy" del negocio (hora argentina), no el día UTC.
   const hoy = fechaNegocio()
 
-  // Recuperar filtro, orden y búsqueda al volver a la pantalla.
+  // Recuperar filtro y búsqueda al volver a la pantalla.
   const [filtrosRecuperados, setFiltrosRecuperados] = useState(false)
   useEffect(() => {
     try {
@@ -485,7 +486,6 @@ export default function EventosListaPage() {
       if (guardado && typeof guardado === "object") {
         const estadosValidos = [...ESTADOS_FILTRO.map((e) => e.valor), FILTRO_YA_PASARON]
         if (estadosValidos.includes(guardado.filtroEstado)) setFiltroEstado(guardado.filtroEstado)
-        if (guardado.ordenFecha === "asc" || guardado.ordenFecha === "desc") setOrdenFecha(guardado.ordenFecha)
         if (typeof guardado.searchQuery === "string") setSearchQuery(guardado.searchQuery)
       }
     } catch {
@@ -497,11 +497,11 @@ export default function EventosListaPage() {
     // No guardar antes de recuperar: pisaría lo guardado con los valores por defecto.
     if (!filtrosRecuperados) return
     try {
-      sessionStorage.setItem(CLAVE_FILTROS_LISTA, JSON.stringify({ filtroEstado, ordenFecha, searchQuery }))
+      sessionStorage.setItem(CLAVE_FILTROS_LISTA, JSON.stringify({ filtroEstado, searchQuery }))
     } catch {
       // Sin almacenamiento: no se recuerda, la lista funciona igual.
     }
-  }, [filtrosRecuperados, filtroEstado, ordenFecha, searchQuery])
+  }, [filtrosRecuperados, filtroEstado, searchQuery])
   const [finalizandoId, setFinalizandoId] = useState<string | null>(null)
   const [finalizadoAnimacion, setFinalizadoAnimacion] = useState<string | null>(null)
   const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false)
@@ -550,6 +550,30 @@ export default function EventosListaPage() {
       clearTimeout(off)
     }
   }, [eventoResaltado, selectorAbierto])
+
+  // Llegada con ?evento=<id> (botón del chat de ayuda): abre directo el salón
+  // del evento y lo resalta, igual que elegirlo en el buscador del selector.
+  // Corre después de recuperar los filtros guardados, para no ser pisado.
+  const [eventoDeLaUrlAplicado, setEventoDeLaUrlAplicado] = useState(false)
+  useEffect(() => {
+    if (eventoDeLaUrlAplicado || !filtrosRecuperados || loadingEventos) return
+    const id = new URLSearchParams(window.location.search).get("evento")
+    if (!id) {
+      setEventoDeLaUrlAplicado(true)
+      return
+    }
+    const evento = (eventos || []).find((e) => e.id === id)
+    if (!evento) {
+      if ((eventos || []).length > 0) setEventoDeLaUrlAplicado(true)
+      return
+    }
+    setFiltroSalon(evento.salon || "todos")
+    setFiltroEstado(esPasadoSinFinalizar(evento, hoy) ? FILTRO_YA_PASARON : "todos")
+    setSearchQuery("")
+    setEventoResaltado(evento.id)
+    setSelectorAbierto(false)
+    setEventoDeLaUrlAplicado(true)
+  }, [eventoDeLaUrlAplicado, filtrosRecuperados, loadingEventos, eventos, hoy])
 
   // Consolidar compras
   const [modoConsolidar, setModoConsolidar] = useState(false)
