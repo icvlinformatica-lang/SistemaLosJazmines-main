@@ -56,7 +56,7 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 - **Guías Producción** (/eventos/produccion): guía de producción de cocina de cada evento (cantidades a producir según cantidad de invitados). Es solo para Cocina y Administración; Barra no entra acá.
 
 ## Próximos eventos del staff (/eventos/staff)
-- Calendario de solo lectura para Coordinación, Barra y el staff externo (DJ, Fotógrafo, Vestido y Pantalla). Al tocar un evento se ve la fecha, los festejados, el teléfono de contacto y los servicios contratados, con el del perfil resaltado.
+- Calendario de solo lectura para Coordinación, Barra y el staff externo (DJ, Fotógrafo, Vestido y Pantalla). Al tocar un evento se ve la fecha, los festejados, el teléfono de contacto y los servicios contratados, con el del perfil resaltado. Barra, Fotógrafo, Vestido y Pantalla ven solo los eventos donde su servicio está contratado (Barra: con alguna barra cargada); Coordinación y DJ ven todos.
 - Barra elige primero un salón y ve además las barras contratadas de cada evento (qué barra y cuántos tragos por persona). Barra también consulta de qué está hecho cada cóctel en Cocteles, sin precios.
 
 ## Finanzas
