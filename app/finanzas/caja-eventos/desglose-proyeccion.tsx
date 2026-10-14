@@ -1,13 +1,13 @@
 "use client"
 
 // Montos de la "Proyección en 12 meses" de Caja Eventos: al tocarlos se abre,
-// en el lugar, el desglose del mes (lib/desglose-proyeccion.ts): de lo que
+// en una ventana centrada en la pantalla, el desglose del mes (lib/desglose-proyeccion.ts): de lo que
 // vence ese mes, cuánto ya entró o ya se pagó, cuánto falta y de quién.
 // Solo muestra: no cobra, no paga y no guarda nada.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowDownToLine, ArrowUpFromLine, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { salonLabel } from "@/lib/store"
@@ -46,8 +46,8 @@ export function MontoProyeccion({ tipo, mesLabel, monto, desglose }: MontoProyec
 
   const etiqueta = tipo === "cobrar" ? "a cobrar" : "a pagar"
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <Dialog>
+      <DialogTrigger asChild>
         <button
           type="button"
           aria-label={`Ver el detalle de lo ${etiqueta} en ${mesLabel}`}
@@ -63,21 +63,25 @@ export function MontoProyeccion({ tipo, mesLabel, monto, desglose }: MontoProyec
             </span>
           )}
         </button>
-      </PopoverTrigger>
-      <PopoverContent align="center" collisionPadding={12} className="w-[min(380px,calc(100vw-1.5rem))] p-0">
+      </DialogTrigger>
+      {/* Ventana centrada y no un globito pegado al monto: la tabla está al
+          final de la página y el globito quedaba cortado. El alto se ajusta a
+          la pantalla y solo la lista de personas hace scroll; en el celular
+          ocupa casi toda la pantalla. */}
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-h-[min(calc(100dvh-4rem),760px)] sm:max-w-lg">
         {tipo === "cobrar" ? (
           <DetalleCobrar mesLabel={mesLabel} d={desglose.cobrar} />
         ) : (
           <DetallePagar mesLabel={mesLabel} d={desglose.pagar} />
         )}
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 function DetalleCobrar({ mesLabel, d }: { mesLabel: string; d: DesgloseCobrarMes }) {
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <Encabezado
         icono={<ArrowDownToLine className="h-4 w-4 text-emerald-600" />}
         titulo={`A cobrar · ${mesLabel}`}
@@ -142,7 +146,7 @@ function DetalleCobrar({ mesLabel, d }: { mesLabel: string; d: DesgloseCobrarMes
 
 function DetallePagar({ mesLabel, d }: { mesLabel: string; d: DesglosePagarMes }) {
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <Encabezado
         icono={<ArrowUpFromLine className="h-4 w-4 text-[var(--accent)]" />}
         titulo={`A pagar · ${mesLabel}`}
@@ -192,12 +196,13 @@ function DetallePagar({ mesLabel, d }: { mesLabel: string; d: DesglosePagarMes }
 
 function Encabezado({ icono, titulo, ayuda }: { icono: ReactNode; titulo: string; ayuda: string }) {
   return (
-    <div className="border-b px-4 pb-2 pt-3">
-      <p className="flex items-center gap-2 text-sm font-semibold">
+    // pr-12: deja lugar a la cruz de cerrar de la ventana.
+    <div className="shrink-0 border-b py-3 pl-4 pr-12">
+      <DialogTitle className="flex items-center gap-2 text-base font-semibold">
         {icono}
         {titulo}
-      </p>
-      <p className="mt-0.5 text-[11px] text-muted-foreground">{ayuda}</p>
+      </DialogTitle>
+      <DialogDescription className="mt-0.5 text-xs">{ayuda}</DialogDescription>
     </div>
   )
 }
@@ -224,7 +229,7 @@ function Resumen({
 }) {
   const porcentaje = total > 0 ? Math.min(100, Math.round((hecho / total) * 100)) : 0
   return (
-    <div className="space-y-1.5 border-b px-4 py-3">
+    <div className="shrink-0 space-y-1.5 border-b px-4 py-3">
       {filas.map((f) => (
         <div key={f.label} className="flex items-baseline justify-between gap-3 text-sm">
           <span className="text-muted-foreground">{f.label}</span>
@@ -315,9 +320,9 @@ function ListaConFlechas({ children }: { children: ReactNode }) {
     if (el) el.scrollBy({ top: direccion * el.clientHeight * 0.7, behavior: "smooth" })
   }
   return (
-    <div className="relative">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <Flecha visible={hayArriba} arriba onClick={() => mover(-1)} />
-      <div ref={ref} onScroll={actualizar} className="no-scrollbar max-h-[min(50vh,340px)] overflow-y-auto px-4 py-1">
+      <div ref={ref} onScroll={actualizar} className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-1 pb-3">
         {children}
       </div>
       <Flecha visible={hayAbajo} onClick={() => mover(1)} />
@@ -330,7 +335,7 @@ function ListaConFlechas({ children }: { children: ReactNode }) {
 function Flecha({ visible, arriba = false, onClick }: { visible: boolean; arriba?: boolean; onClick: () => void }) {
   return (
     <div
-      className={`pointer-events-none absolute inset-x-0 z-10 flex h-9 justify-center from-popover to-transparent transition-opacity ${
+      className={`pointer-events-none absolute inset-x-0 z-10 flex h-9 justify-center from-background to-transparent transition-opacity ${
         arriba ? "top-0 items-start bg-gradient-to-b pt-1" : "bottom-0 items-end bg-gradient-to-t pb-1"
       } ${visible ? "opacity-100" : "opacity-0"}`}
     >
