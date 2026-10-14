@@ -34,6 +34,7 @@ import { enlaceWhatsApp } from "@/lib/recordatorio-cuota"
 import { salonColor, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
+import { AnotacionEvento } from "@/components/anotacion-evento"
 import { esServicioDelPerfil, eventoVisibleParaPerfil, filtraPorContratacion } from "@/lib/staff-eventos-perfil"
 
 function formatFecha(fecha: string): string {
@@ -487,6 +488,9 @@ export default function StaffPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Anotación propia del perfil, con guardado automático. */}
+                <AnotacionEvento key={selectedEvento.id} eventoId={selectedEvento.id} />
               </div>
             </>
           )}

@@ -75,6 +75,7 @@ import {
 } from "lucide-react"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { ConfirmarFinalizarEventoDialog } from "@/components/confirmar-finalizar-evento"
+import { AnotacionEvento } from "@/components/anotacion-evento"
 import { AvisoFechaEvento } from "@/components/aviso-fecha-evento"
 
 // --- Helpers ---
@@ -1679,6 +1680,9 @@ export default function CalendarioPage() {
                       </div>
                     )
                   })()}
+
+                  {/* Anotación propia del perfil, con guardado automático. */}
+                  <AnotacionEvento key={selectedEvento.id} eventoId={selectedEvento.id} />
 
                   {/* Notes */}
                   {selectedEvento.notasInternas && (

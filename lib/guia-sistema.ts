@@ -57,6 +57,7 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 
 ## Próximos eventos del staff (/eventos/staff)
 - Calendario de solo lectura para Coordinación, Barra y el staff externo (DJ, Fotógrafo, Vestido y Pantalla). Al tocar un evento se ve la fecha, los festejados, el teléfono de contacto y los servicios contratados, con el del perfil resaltado. Barra, Fotógrafo, Vestido y Pantalla ven solo los eventos donde su servicio está contratado (Barra: con alguna barra cargada); Coordinación y DJ ven todos.
+- Anotaciones: en la ventana de cada evento (acá, en Guías de producción y en el Calendario) hay un cuadro "Anotaciones" donde cada perfil escribe lo suyo; se guarda solo mientras se escribe y cada perfil ve solo su propia anotación.
 - Barra elige primero un salón y ve además las barras contratadas de cada evento (qué barra y cuántos tragos por persona). Barra también consulta de qué está hecho cada cóctel en Cocteles, sin precios.
 
 ## Finanzas
