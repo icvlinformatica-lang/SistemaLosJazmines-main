@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 63 archivos y 555 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 64 archivos y 559 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -248,6 +248,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
 
 - **Perfiles** (login por PIN, sesión firmada en `lib/auth/server.ts`, cookie `lj_session` o header `x-lj-session`):
   - La firma de la sesión incluye el PIN vigente del perfil (`datosFirmados`): cambiar una variable `PIN_*` (y volver a publicar) cierra las sesiones y los accesos rápidos de ese perfil. Al publicar ese cambio, el 8/10/2026, todos tuvieron que volver a entrar una vez.
+  - Pase de Administración (desde el 14/10/2026): cuando Administración entra con su PIN o su acceso rápido, recibe un pase firmado (`signPaseAdmin`) que guarda la pestaña en sessionStorage. Con él, `/api/auth/login` deja entrar a cualquier perfil sin su PIN, sin dar acceso rápido ni otro pase. Dura 12 horas o hasta cerrar la pestaña o tocar "Bloquear", y cambiar `PIN_ADMINISTRACION` lo anula.
   - Gestión: administracion, soporte, cobro, coordinacion, vendedor.
   - Evento: cocina, barra, dj, fotografo, vestido, pantalla.
   - `middleware.ts` solo exige sesión en `/api/*`; las páginas redirigen solas a `/login`.

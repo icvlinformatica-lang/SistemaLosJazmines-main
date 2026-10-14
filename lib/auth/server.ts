@@ -138,6 +138,36 @@ export async function verifyToken(token: string | undefined | null): Promise<Ses
   return { perfilId, exp }
 }
 
+/**
+ * Pase de Administración (pedido del dueño, 14/10/2026): cuando Administración
+ * entra con su PIN (o su acceso rápido), recibe este pase y, mientras dure,
+ * puede pasar a cualquier otro perfil sin poner el PIN de ese perfil.
+ *
+ * - Dura lo mismo que una sesión (12 horas). En el navegador vive en
+ *   sessionStorage: se pierde al cerrar la pestaña o con "Bloquear perfiles".
+ * - La firma incluye el PIN vigente de Administración: si se cambia
+ *   PIN_ADMINISTRACION, todos los pases dejan de valer.
+ * - Se firma con un texto distinto al de las sesiones ("pase-admin:…"), así
+ *   que un pase no sirve como sesión ni una sesión como pase.
+ */
+function datosPase(exp: number): string {
+  return `pase-admin:${exp}:${getPins().administracion ?? ""}`
+}
+
+export async function signPaseAdmin(durationMs: number = SESSION_DURATION_MS): Promise<string> {
+  const exp = Date.now() + durationMs
+  return `pase-admin.${exp}.${await hmac(datosPase(exp))}`
+}
+
+export async function verifyPaseAdmin(pase: string | undefined | null): Promise<boolean> {
+  if (!pase) return false
+  const parts = pase.split(".")
+  if (parts.length !== 3 || parts[0] !== "pase-admin") return false
+  const exp = Number(parts[1])
+  if (!Number.isFinite(exp) || Date.now() > exp) return false
+  return coincide(await hmac(datosPase(exp)), parts[2])
+}
+
 export function sessionCookieOptions(maxAgeSeconds: number = SESSION_DURATION_MS / 1000) {
   return {
     httpOnly: true,
