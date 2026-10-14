@@ -1,10 +1,13 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
-import { verifyToken, getPins, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
+import { verifyToken, getPins, getPinStockExtra, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
 
 // Devuelve los PINs actualmente activos (ya resueltos desde las variables
 // de entorno si están seteadas) — SOLO para administración y soporte.
 // Se usa en la carpeta "Contraseñas" de Configuración.
+// Además del PIN de cada perfil, va el de carga extraordinaria de stock
+// (pedido del dueño, 14/10/2026), con un aviso si es el de reserva del
+// código porque falta PIN_STOCK_EXTRA. La clave maestra nunca va acá.
 export async function GET(req: Request) {
   const cookieHeader = req.headers.get("cookie") || ""
   const cookieToken = cookieHeader
@@ -17,5 +20,8 @@ export async function GET(req: Request) {
   if (!session || !["administracion", "soporte"].includes(session.perfilId)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 })
   }
-  return NextResponse.json(getPins())
+  return NextResponse.json({
+    perfiles: getPins(),
+    stockExtra: { pin: getPinStockExtra(), deReserva: !process.env.PIN_STOCK_EXTRA },
+  })
 }
