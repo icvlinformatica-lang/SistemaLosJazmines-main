@@ -1,6 +1,7 @@
 -- 024 — Anotaciones de cada perfil en cada evento.
 --
 -- SOLO ADITIVA: crea una tabla nueva. No toca ninguna tabla existente.
+-- Aplicada el 14/10/2026 (SQL Editor de Supabase, verificada en information_schema).
 --
 -- En la ventana de un evento del calendario (Próximos eventos del staff,
 -- Guías de producción de Cocina y el Calendario de Administración) cada

@@ -164,7 +164,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Comentarios en español que expliquen el porqué, como en el resto del código.
 - UI: seguir `DESIGN.md` (íconos solo de `lucide-react`, un color por categoría o estado) y probar a 390 px sin scroll horizontal.
 
-**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 024 (`024_anotaciones_evento.sql`, sin aplicar al 14/10/2026); la 021 (`021_limpiar_politicas_viejas.sql`) todavía no está aplicada y la corre el dueño en el SQL Editor; la 022 está en la rama de otro PR)
+**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 024 (`024_anotaciones_evento.sql`, aplicada el 14/10/2026); la 021 (`021_limpiar_politicas_viejas.sql`) todavía no está aplicada y la corre el dueño en el SQL Editor; la 022 está en la rama de otro PR)
 - Encabezado con qué hace y por qué, "SOLO ADITIVA" si lo es, y "Aplicada el <fecha>" cuando se aplique.
 - Idempotente (`if not exists`) y aditiva por defecto, con defaults que no cambien el comportamiento.
 - Si tiene varios pasos, va en `begin`/`commit`. Si borra, lleva un freno que verifique que no esté en uso y aborte.
