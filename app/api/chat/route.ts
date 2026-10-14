@@ -5,8 +5,9 @@
 // Responde cómo usar el sistema (guía embebida, lib/guia-sistema.ts) y
 // consulta eventos, cuotas y cajas con herramientas de SOLO LECTURA
 // (lib/chat-ia-herramientas.ts). Puede devolver botones a pantallas y
-// proponer un gasto o el cobro de una cuota, que solo se hacen cuando la
-// persona toca el botón de la tarjeta. Esta ruta NUNCA modifica datos (solo
+// proponer un gasto, el cobro de una cuota o el alta de un insumo o una
+// receta de cocina, que solo se hacen cuando la persona toca el botón de la
+// tarjeta. Esta ruta NUNCA modifica datos (solo
 // guarda el historial del chat).
 import { generateText, stepCountIs } from "ai"
 import { verifyToken, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
@@ -17,6 +18,7 @@ import type { AccionChat } from "@/lib/chat-ia-datos"
 import type { TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import type { PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import type { PropuestaCobroChat } from "@/lib/chat-ia-cobro"
+import type { PropuestaInsumoChat, PropuestaRecetaChat } from "@/lib/chat-ia-catalogo"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
@@ -82,6 +84,9 @@ export async function POST(req: Request) {
   const gasto: { propuesta: PropuestaGastoChat | null } = { propuesta: null }
   // Un cobro de cuota propuesto (no cobrado): lo cobra la persona con el botón, como en Cobrar cuota.
   const cobro: { propuesta: PropuestaCobroChat | null } = { propuesta: null }
+  // Un insumo y una receta nuevos propuestos (no cargados): los carga la persona con el botón (/api/chat/catalogo).
+  const insumo: { propuesta: PropuestaInsumoChat | null } = { propuesta: null }
+  const receta: { propuesta: PropuestaRecetaChat | null } = { propuesta: null }
   try {
     const { text } = await generateText({
       model: "openai/gpt-5-mini",
@@ -111,14 +116,28 @@ Reglas:
   6. Preguntá quién recibe la plata; si quienUsaElChat tiene un nombre, ofrecelo ("¿La recibís vos, Leila?").
   7. Opcional: si paga en efectivo y quiere el vuelto, con cuánto paga.
   Con todo respondido, llamá a proponerCobroCuota y preguntá en una frase si está seguro, por ejemplo: "¿Seguro que querés cobrar $350.000 de la cuota 3 de 10 de Lucía y Tomás, que paga Marta y recibe Leila?". Si proponerCobroCuota devuelve un motivo, preguntá lo que falta. Nunca digas que ya está cobrado. Si la persona responde "sí" escribiendo, recordale que lo confirme con el botón de la tarjeta. Cargar pagos viejos (modo histórico), cambiar la base de la cuota a mano o cobrar sin IPC se hace en la pantalla Cobrar cuota: poné el botón.
-- Fuera de eso no podés modificar nada (borrar, editar, anular pagos, retiros, gastos repartidos entre salones): si te lo piden, indicá la pantalla y poné el botón.
+- También podés dar de alta un insumo de cocina nuevo en Almacén, con proponerInsumo. Nunca lo cargás vos: aparece una tarjeta y la persona lo carga con "Sí, cargar". De eso salen los costos de todas las recetas, así que preguntá con cuidado, de a una o dos preguntas por mensaje, y no supongas unidades ni cantidades. Los pasos:
+  1. El nombre. Buscalo con buscarInsumos: si ya existe uno igual o muy parecido, mostralo y preguntá si es ese (cambiar uno que ya existe se hace en Almacén: poné el botón).
+  2. Cómo se mide y se cuenta: por peso (KG; GR solo para cosas muy chicas como especias), líquido (LT o CC) o por unidad (UN: latas, paquetes, huevos). Si dice "gramos" o "mililitros", aclará: los mililitros son cc.
+  3. Si es por unidad: cuánto trae cada unidad (por ejemplo, la lata trae 400 gramos o la botella 900 cc), así las recetas pueden pedirlo en gramos o cc. Si en las recetas se usa entero (como un huevo), confirmalo y pasá seUsaPorUnidad.
+  4. Cuánto se pagó y por qué cantidad (por ejemplo, $12.000 la bolsa de 5 kg). Pasá esa cantidad en la unidad elegida y el monto: el precio por unidad lo calcula la herramienta. Si la cantidad no está clara ("un paquete", "una caja"), preguntá cuánto trae.
+  5. El proveedor. Si no tiene uno fijo, confirmalo y pasá sinProveedor.
+  Con todo respondido, llamá a proponerInsumo y preguntá en una frase si está seguro, con el precio que devolvió, por ejemplo: "¿Seguro que querés cargar Harina 0000 a $2.400 por kg, de Distribuidora Sur?". Los insumos de barra (bebidas) no se cargan desde acá: van en Insumos Bebidas (poné el botón).
+- También podés dar de alta una receta nueva en el Recetario, con proponerReceta. Nunca la cargás vos: aparece una tarjeta y la persona la carga con "Sí, cargar". Los pasos, de a una o dos preguntas por mensaje:
+  1. El nombre y la categoría (entrada, plato principal, postre, etc.: cambia en qué paso del menú suma en el cotizador).
+  2. Para cuántas porciones son las cantidades (1 si son por persona).
+  3. Los ingredientes con la cantidad y la unidad de cada uno (gramos, kg, cc, litros o unidades). Buscalos con buscarInsumos. Si uno tiene varias opciones, preguntá cuál. Si falta en Almacén, ofrecé darlo de alta primero con proponerInsumo; la receta se arma cuando esté cargado.
+  4. Opcional: una descripción corta.
+  Con todo respondido, llamá a proponerReceta y preguntá si está seguro, con el costo por porción que devolvió. Si proponerReceta devuelve un motivo (por ejemplo una unidad que no se puede convertir), explicalo y preguntá lo que falta.
+- Si proponerInsumo o proponerReceta devuelven un motivo, preguntá lo que falta. Nunca digas que ya está cargado. Si la persona responde "sí" escribiendo, recordale que lo confirme con el botón de la tarjeta.
+- Fuera de eso no podés modificar nada (borrar, editar, anular pagos, retiros, gastos repartidos entre salones, cambiar insumos o recetas que ya existen): si te lo piden, indicá la pantalla y poné el botón.
 
 Esta es la guía del sistema:
 
 ${GUIA_SISTEMA}`,
       messages,
-      tools: crearHerramientasChat({ hoy, acciones, tarjetas, gasto, cobro, usuario: usuario === "Soporte" || usuario === "Administración" ? "" : usuario }),
-      stopWhen: stepCountIs(8),
+      tools: crearHerramientasChat({ hoy, acciones, tarjetas, gasto, cobro, insumo, receta, usuario: usuario === "Soporte" || usuario === "Administración" ? "" : usuario }),
+      stopWhen: stepCountIs(10),
     })
     // Sin id válido (pantalla vieja abierta) responde igual, sin guardar.
     const guardado = idMensajeValido(body.id)
@@ -132,6 +151,8 @@ ${GUIA_SISTEMA}`,
           tarjetas,
           gasto: gasto.propuesta,
           cobro: cobro.propuesta,
+          insumo: insumo.propuesta,
+          receta: receta.propuesta,
         })
       : false
     // Sin historial no hay de dónde confirmar el gasto: se avisa en vez de mostrar el botón.
@@ -146,6 +167,11 @@ ${GUIA_SISTEMA}`,
       gastoSinGuardar: !!gasto.propuesta && !guardado,
       cobro: propuestaCobro,
       cobroSinGuardar: !!cobro.propuesta && !guardado,
+      // Lo mismo con el insumo y la receta.
+      insumo: insumo.propuesta && guardado ? insumo.propuesta : null,
+      insumoSinGuardar: !!insumo.propuesta && !guardado,
+      receta: receta.propuesta && guardado ? receta.propuesta : null,
+      recetaSinGuardar: !!receta.propuesta && !guardado,
       guardado,
     })
   } catch (error) {

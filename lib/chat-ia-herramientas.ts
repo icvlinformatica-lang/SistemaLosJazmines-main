@@ -30,6 +30,23 @@ import { MAX_TARJETAS_CHAT, sumarTarjetas, type TarjetaEventoChat } from "@/lib/
 import { SALONES_GASTO_CHAT, armarPropuestaGasto, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import { armarPropuestaCobro, eventoCobroDesdeFila, opcionesCobroChat, type PropuestaCobroChat } from "@/lib/chat-ia-cobro"
 import { proyectarIPC } from "@/lib/ipc-cuotas"
+import {
+  CATEGORIAS_RECETA_CHAT,
+  UNIDADES_INSUMO_CHAT,
+  UNIDADES_RECETA_CHAT,
+  armarPropuestaInsumo,
+  armarPropuestaReceta,
+  insumoDesdeFila,
+  nombreComparable,
+  porUnidad,
+  type InsumoCatalogo,
+  type PropuestaInsumoChat,
+  type PropuestaRecetaChat,
+} from "@/lib/chat-ia-catalogo"
+
+/** "$2.450,5" → "$2.450,50": la IA copia el precio tal cual, ya con punto de miles. */
+const precioTexto = (n: number) =>
+  `$${n.toLocaleString("es-AR", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`
 
 /** Máximo de eventos que se le pasan a la IA por búsqueda. */
 export const MAX_EVENTOS_POR_BUSQUEDA = 10
@@ -45,6 +62,8 @@ export function crearHerramientasChat({
   tarjetas = [],
   gasto = { propuesta: null },
   cobro = { propuesta: null },
+  insumo = { propuesta: null },
+  receta = { propuesta: null },
   usuario = "",
 }: {
   hoy: string
@@ -54,6 +73,9 @@ export function crearHerramientasChat({
   gasto?: { propuesta: PropuestaGastoChat | null }
   /** Dónde queda la propuesta de cobro de esta respuesta (una sola). */
   cobro?: { propuesta: PropuestaCobroChat | null }
+  /** Dónde quedan el insumo y la receta nuevos propuestos en esta respuesta (uno de cada uno). */
+  insumo?: { propuesta: PropuestaInsumoChat | null }
+  receta?: { propuesta: PropuestaRecetaChat | null }
   /** Quién usa el chat (Diego, Leila, Ricky…): se sugiere como quien recibe la plata. */
   usuario?: string
 }) {
@@ -69,6 +91,16 @@ export function crearHerramientasChat({
       WHERE deleted_at IS NULL
     ` as unknown as Promise<FilaEventoChat[]>)
   const cargarHistorial = () => (historial ??= historialIPCServidor())
+  // Catálogo de cocina (Almacén y Recetario), leído una vez por pregunta.
+  let insumosCatalogo: Promise<InsumoCatalogo[]> | null = null
+  const cargarInsumos = () =>
+    (insumosCatalogo ??= (
+      sql`
+        SELECT id, codigo, descripcion, unidad, precio_unitario, proveedor, contenido_cantidad, contenido_unidad
+        FROM insumos
+      ` as unknown as Promise<Record<string, unknown>[]>
+    ).then((filas) => filas.map(insumoDesdeFila)))
+  const cargarRecetas = () => sql`SELECT nombre FROM recetas` as unknown as Promise<{ nombre: string }[]>
   // El evento para cobrar, con el IPC proyectado como lo ve Cobrar cuota.
   const eventoParaCobro = async (eventoId: string) => {
     const [filas, hist] = await Promise.all([cargarEventos(), cargarHistorial()])
@@ -273,6 +305,109 @@ export function crearHerramientasChat({
             recibidoPor: p.recibidoPor,
             vuelto: p.vuelto ?? 0,
           },
+        }
+      },
+    }),
+
+    buscarInsumos: tool({
+      description:
+        "Busca insumos de cocina en Almacén por nombre (varios a la vez). Devuelve id, unidad en que se compra y se cuenta (KG, GR, LT, CC o UN), " +
+        "precio por esa unidad, cuánto trae cada unidad (si se compra por unidad) y proveedor. Usala antes de dar de alta un insumo (para no repetirlo) " +
+        "y para armar los ingredientes de una receta.",
+      inputSchema: z.object({ textos: z.array(z.string().min(1).max(60)).min(1).max(15).describe("Nombres a buscar, uno por ingrediente") }),
+      execute: async ({ textos }) => {
+        const insumos = await cargarInsumos()
+        return {
+          resultados: textos.map((t) => {
+            const buscado = nombreComparable(t)
+            const encontrados = insumos.filter((i) => nombreComparable(i.descripcion).includes(buscado)).slice(0, 8)
+            return {
+              buscado: t,
+              insumos: encontrados.map((i) => ({
+                id: i.id,
+                descripcion: i.descripcion,
+                unidad: i.unidad,
+                precio: `${precioTexto(i.precioUnitario)} ${porUnidad(i.unidad)}`,
+                ...(i.contenidoCantidad ? { traeCadaUnidad: `${i.contenidoCantidad} ${i.contenidoUnidad === "CC" ? "cc" : "gramos"}` } : {}),
+                proveedor: i.proveedor || null,
+              })),
+            }
+          }),
+        }
+      },
+    }),
+
+    proponerInsumo: tool({
+      description:
+        "Prepara el alta de UN insumo de cocina nuevo en Almacén. NO lo carga: pone en el chat una tarjeta con los datos y los botones 'Sí, cargar' y 'Cancelar'. " +
+        "Usala solo después de haber preguntado y tenido respuesta de todo: nombre, cómo se mide (unidad), cuánto se pagó y por qué cantidad, " +
+        "cuánto trae cada unidad si se compra por unidad, y el proveedor. El precio por unidad lo calcula la herramienta: no lo calcules vos. " +
+        "Insumos de barra (bebidas) no: esos van en Insumos Bebidas.",
+      inputSchema: z.object({
+        descripcion: z.string().min(2).max(80).describe("Nombre del insumo, con la presentación si importa (ej. 'Harina 0000', 'Arvejas en lata')"),
+        unidad: z
+          .enum(UNIDADES_INSUMO_CHAT)
+          .describe("En qué se mide y se cuenta: KG (peso), GR (gramos, solo para cosas muy chicas como especias), LT (líquidos), CC, o UN (por unidad: lata, paquete, huevo)"),
+        cantidadComprada: z.number().positive().describe("Por cuánta cantidad se pagó el monto, EN LA UNIDAD elegida. Ej: bolsa de 5 kg con unidad KG → 5; 500 g con unidad KG → 0.5; una lata con unidad UN → 1; maple de 30 huevos con UN → 30"),
+        montoPagado: z.number().positive().describe("Cuánto se pagó por esa cantidad, en pesos sin puntos de miles"),
+        contenidoCantidad: z.number().positive().optional().describe("Solo si la unidad es UN: cuánto trae cada unidad (ej. lata de 400 gramos → 400)"),
+        contenidoUnidad: z.enum(["GRS", "CC"]).optional().describe("Solo si la unidad es UN: GRS (gramos) o CC"),
+        seUsaPorUnidad: z.boolean().optional().describe("Solo si la unidad es UN y no tiene contenido: true si en las recetas se usa por unidad (como los huevos)"),
+        proveedor: z.string().max(80).optional(),
+        sinProveedor: z.boolean().optional().describe("true si confirmaron que no tiene un proveedor fijo"),
+      }),
+      execute: async (entrada) => {
+        if (insumo.propuesta) return { ok: false, motivo: "Ya hay un insumo preparado en esta respuesta: uno por vez." }
+        const r = armarPropuestaInsumo(entrada, { id: crypto.randomUUID(), existentes: await cargarInsumos() })
+        if (!r.ok) return r
+        insumo.propuesta = r.propuesta
+        const p = r.propuesta
+        return {
+          ok: true,
+          aviso: "Todavía NO está cargado: la persona tiene que tocar 'Sí, cargar' en la tarjeta. Preguntale si está seguro.",
+          insumo: {
+            descripcion: p.descripcion,
+            unidad: p.unidad,
+            precio: `${precioTexto(p.precioUnitario)} ${porUnidad(p.unidad)}`,
+            ...(p.contenidoCantidad ? { traeCadaUnidad: `${p.contenidoCantidad} ${p.contenidoUnidad === "CC" ? "cc" : "gramos"}` } : {}),
+            proveedor: p.proveedor || "sin proveedor fijo",
+          },
+        }
+      },
+    }),
+
+    proponerReceta: tool({
+      description:
+        "Prepara el alta de UNA receta nueva en el Recetario, con sus ingredientes de Almacén. NO la carga: pone en el chat una tarjeta con los ingredientes, " +
+        "el costo por porción y los botones 'Sí, cargar' y 'Cancelar'. Usala solo después de haber preguntado y tenido respuesta de todo: nombre, categoría, " +
+        "para cuántas porciones son las cantidades, y cada ingrediente con su cantidad y unidad (buscados con buscarInsumos: necesita sus ids).",
+      inputSchema: z.object({
+        nombre: z.string().min(2).max(80),
+        categoria: z.enum(CATEGORIAS_RECETA_CHAT as [string, ...string[]]),
+        rindePara: z.number().int().min(1).max(1000).describe("Para cuántas porciones son las cantidades: 1 si son por persona"),
+        descripcion: z.string().max(300).optional(),
+        ingredientes: z
+          .array(
+            z.object({
+              insumoId: z.string().min(1).max(100).describe("Id que devolvió buscarInsumos"),
+              cantidad: z.number().positive(),
+              unidad: z.enum(UNIDADES_RECETA_CHAT).describe("GRS (gramos), KG, CC, L (litros) o UN (unidades)"),
+              detalleCorte: z.string().max(60).optional().describe("Opcional: corte o preparación (ej. 'en cubos')"),
+            }),
+          )
+          .min(1)
+          .max(40),
+      }),
+      execute: async (entrada) => {
+        if (receta.propuesta) return { ok: false, motivo: "Ya hay una receta preparada en esta respuesta: una por vez." }
+        const [insumos, recetas] = await Promise.all([cargarInsumos(), cargarRecetas()])
+        const r = armarPropuestaReceta(entrada, { id: crypto.randomUUID(), insumos, recetasExistentes: recetas })
+        if (!r.ok) return r
+        receta.propuesta = r.propuesta
+        return {
+          ok: true,
+          aviso: "Todavía NO está cargada: la persona tiene que tocar 'Sí, cargar' en la tarjeta. Preguntale si está segura.",
+          receta: { nombre: r.propuesta.nombre, categoria: r.propuesta.categoria, ingredientes: r.propuesta.ingredientes.length, costoPorPorcion: r.propuesta.costoPorPorcion },
         }
       },
     }),

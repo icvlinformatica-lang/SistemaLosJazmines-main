@@ -9,7 +9,7 @@
 // propuesta) esté de verdad en el evento antes de marcarlo como cobrado.
 // También deja el rastro en activity_log, como Cobrar cuota.
 import { verifyToken, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
-import { PERFILES_CHAT_IA, leerAdjuntos, usuarioChat } from "@/lib/chat-ia-historial"
+import { PERFILES_CHAT_IA, adjuntosConPropuesta, leerAdjuntos, usuarioChat } from "@/lib/chat-ia-historial"
 import type { PropuestaCobroChat } from "@/lib/chat-ia-cobro"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { sql } from "@/lib/db"
@@ -111,12 +111,7 @@ export async function POST(req: Request) {
           `
         }
       }
-      const nuevosAdjuntos = JSON.stringify({
-        botones: adjuntos.acciones,
-        tarjetas: adjuntos.tarjetas,
-        ...(adjuntos.gasto ? { gasto: adjuntos.gasto } : {}),
-        cobro: resuelto,
-      })
+      const nuevosAdjuntos = adjuntosConPropuesta(adjuntos, { cobro: resuelto })
       await tx`UPDATE chat_ia_mensajes SET acciones = ${nuevosAdjuntos}::jsonb WHERE id = ${mensajeId}`
       return resuelto
     })
