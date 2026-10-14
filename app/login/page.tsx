@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronDown, ChevronUp, LogIn } from "lucide-react"
+import { ChevronDown, ChevronUp, LockOpen, LogIn } from "lucide-react"
 import {
   PERFILES,
   useProfile,
   tieneAccesoRapido,
   olvidarAccesosRapidos,
   huboSesionVencida,
+  tienePaseAdmin,
+  bloquearPerfiles,
   type Perfil,
 } from "@/lib/profile-context"
 
@@ -30,7 +32,7 @@ const PERFILES_CON_SELECCION_USUARIO = new Set([...Object.keys(NOMBRES_POR_PERFI
 
 export default function LoginPage() {
   const router = useRouter()
-  const { seleccionarPerfil, seleccionarPerfilRapido } = useProfile()
+  const { seleccionarPerfil, seleccionarPerfilRapido, seleccionarPerfilConPase } = useProfile()
 
   const [pinsGuardados, setPinsGuardados] = useState<Record<string, boolean>>({})
   const [perfilSeleccionado, setPerfilSeleccionado] = useState<string | null>(null)
@@ -60,6 +62,29 @@ export default function LoginPage() {
   useEffect(() => {
     setSesionVencida(huboSesionVencida())
   }, [])
+
+  // Perfiles desbloqueados: Administración entró en esta pestaña y puede
+  // pasar a cualquier perfil sin su PIN (ver signPaseAdmin en lib/auth/server.ts).
+  const [perfilesDesbloqueados, setPerfilesDesbloqueados] = useState(false)
+
+  useEffect(() => {
+    setPerfilesDesbloqueados(tienePaseAdmin())
+  }, [])
+
+  // Entra con el pase de Administración. Si el pase ya no vale, sigue el
+  // flujo de siempre (acceso rápido o PIN).
+  const entrarConPase = async (id: string): Promise<boolean> => {
+    if (!perfilesDesbloqueados) return false
+    setCargando(true)
+    const ok = await seleccionarPerfilConPase(id)
+    setCargando(false)
+    if (ok) {
+      router.push("/")
+      return true
+    }
+    setPerfilesDesbloqueados(tienePaseAdmin())
+    return false
+  }
 
   useEffect(() => {
     fetch("/api/auth/vendedores-nombres")
@@ -140,6 +165,7 @@ export default function LoginPage() {
         document.cookie = "lj_usuario=; path=/; max-age=0"
       }
     }
+    if (await entrarConPase(id)) return
     if (pinsGuardados[id]) {
       setCargando(true)
       const ok = await seleccionarPerfilRapido(id)
@@ -171,6 +197,7 @@ export default function LoginPage() {
     // Cookie que el servidor lee para atribuir cada registro de actividad
     // a la persona que ingresó. Dura 30 días.
     document.cookie = `lj_usuario=${encodeURIComponent(nombre)}; path=/; max-age=${60 * 60 * 24 * 30}`
+    if (await entrarConPase(perfilId)) return
     if (pinsGuardados[perfilId]) {
       setCargando(true)
       const ok = await seleccionarPerfilRapido(perfilId)
@@ -197,8 +224,14 @@ export default function LoginPage() {
     }
   }
 
+  const handleBloquearPerfiles = () => {
+    bloquearPerfiles()
+    setPerfilesDesbloqueados(false)
+  }
+
   const handleOlvidarPins = () => {
     olvidarAccesosRapidos()
+    handleBloquearPerfiles()
     setPinsGuardados({})
     setPerfilSeleccionado(null)
     setPinInput("")
@@ -525,17 +558,36 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Pie - solo si hay al menos un PIN guardado. shrink-0: altura fija,
-          nunca se recorta ni empuja el resto fuera de la pantalla. */}
-      {Object.values(pinsGuardados).some(Boolean) && (
-        <div className="shrink-0 mt-4" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={handleOlvidarPins}
-            className="text-white/30 text-xs hover:text-white/60 transition-colors"
-          >
-            Olvidar todos los PINs
-          </button>
+      {/* Pie - solo si hay al menos un PIN guardado o los perfiles están
+          desbloqueados. shrink-0: altura fija, nunca se recorta ni empuja el
+          resto fuera de la pantalla. */}
+      {(perfilesDesbloqueados || Object.values(pinsGuardados).some(Boolean)) && (
+        <div
+          className="shrink-0 mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {perfilesDesbloqueados && (
+            <span className="inline-flex items-center gap-1.5 text-white/70 text-xs">
+              <LockOpen className="w-3.5 h-3.5" />
+              Perfiles desbloqueados por Administración
+              <button
+                type="button"
+                onClick={handleBloquearPerfiles}
+                className="underline text-white/50 hover:text-white/80 transition-colors"
+              >
+                Bloquear
+              </button>
+            </span>
+          )}
+          {Object.values(pinsGuardados).some(Boolean) && (
+            <button
+              type="button"
+              onClick={handleOlvidarPins}
+              className="text-white/30 text-xs hover:text-white/60 transition-colors"
+            >
+              Olvidar todos los PINs
+            </button>
+          )}
         </div>
       )}
       </div>

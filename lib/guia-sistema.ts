@@ -11,6 +11,7 @@ Perfiles de acceso (con PIN):
 - Gestión: Administración, Soporte, Cobrar cuota, Coordinación y Vendedor.
 - Del evento: Cocina, Barra y el staff externo (DJ, Fotógrafo, Vestido y Pantalla).
 Cada perfil ve solo las pantallas de su trabajo en el menú.
+Cuando Administración entra con su PIN, en esa pestaña quedan desbloqueados todos los perfiles: con "Cambiar perfil" se puede pasar a cualquiera sin poner su PIN. Dura hasta cerrar la pestaña o 12 horas, y en la pantalla de ingreso se puede cortar antes con "Bloquear".
 La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "atrás" del navegador). Si se entró directo a una pantalla, lleva a su pantalla de siempre (por ejemplo, la lista de eventos).
 
 ## Pantalla de Inicio (/)
