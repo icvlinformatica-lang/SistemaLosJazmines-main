@@ -5,6 +5,7 @@
 process.env.AUTH_SECRET = "secreto-solo-para-esta-prueba"
 process.env.PIN_ADMINISTRACION = "222222"
 process.env.PIN_COBRO = "4444"
+delete process.env.PIN_MAESTRO
 
 const test = require("node:test")
 const assert = require("node:assert/strict")
@@ -51,6 +52,32 @@ test("con el pase se entra a cualquier perfil sin su PIN, sin acceso rápido ni 
     assert.equal((await auth.verifyToken(r.data.sessionToken))?.perfilId, perfilId)
     assert.equal(r.data.quickToken, undefined, "no deja acceso rápido de 30 días")
     assert.equal(r.data.paseAdmin, undefined, "un pase no estira otro pase")
+  }
+})
+
+test("con el pase, tocar \"Diego\" no da los accesos rápidos de 30 días a todos los perfiles", async () => {
+  const pase = await auth.signPaseAdmin()
+  const r = await entrar({ perfilId: "administracion", paseAdmin: pase, quien: "Diego" })
+  assert.equal(r.status, 200)
+  assert.equal(r.data.accesosRapidos, undefined)
+  assert.equal(r.data.quickToken, undefined)
+  // Con el PIN de Administración, Diego sí los recibe (y también el pase).
+  const conPin = await entrar({ perfilId: "administracion", pin: "222222", quien: "Diego" })
+  assert.ok(conPin.data.accesosRapidos?.cobro)
+  assert.ok(await auth.verifyPaseAdmin(conPin.data.paseAdmin))
+})
+
+test("con la clave maestra se entra y, si es a Administración, también da el pase", async () => {
+  process.env.PIN_MAESTRO = "48151623"
+  try {
+    const cobro = await entrar({ perfilId: "cobro", pin: "48151623" })
+    assert.equal(cobro.status, 200)
+    assert.equal(cobro.data.paseAdmin, undefined)
+    const admin = await entrar({ perfilId: "administracion", pin: "48151623" })
+    assert.equal(admin.status, 200)
+    assert.ok(await auth.verifyPaseAdmin(admin.data.paseAdmin))
+  } finally {
+    delete process.env.PIN_MAESTRO
   }
 })
 
