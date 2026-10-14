@@ -102,7 +102,7 @@ import { ConfirmAction } from "@/components/confirm-action"
 import { EvolucionGastosFijosDialog } from "./evolucion-gastos-fijos"
 import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo, pagoDelMesActual } from "./meses-fijo"
-import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
+import { CuerpoTarjeta, GastoPlegable, esClicEnControl, usePlegadoConClick } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
@@ -450,13 +450,11 @@ function CarpetaGastos({
   colorCustom?: string
   children: React.ReactNode
 }) {
-  // Las carpetas arrancan cerradas: se abren con click (fijas) o dejando el
-  // mouse encima 0,5s, y se repliegan 2s después de salir (useHoverPlegado).
-  const [fijaAbierta, setFijaAbierta] = useState(false)
+  // Las carpetas arrancan cerradas y se abren o cierran con un clic en su
+  // encabezado. Pasar el mouse no las abre (solo el dashboard de arriba).
+  const [abierta, setAbierta] = useState(false)
   // La lista se despliega hasta ITEMS_VISIBLES_LISTA; "Ver más" muestra el resto.
   const [verTodos, setVerTodos] = useState(false)
-  const hov = useHoverPlegado()
-  const abierta = fijaAbierta || hov.abierto
   const { configuracionCajas } = useStore()
   const color =
     colorCustom ?? (salon && salon !== "General" ? salonColor(salon, configuracionCajas) : SALON_COLOR_GENERAL)
@@ -497,10 +495,10 @@ function CarpetaGastos({
     return <div className="space-y-2">{lista}</div>
   }
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }} {...hov.props}>
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: `${color}40` }}>
       <button
         type="button"
-        onClick={() => setFijaAbierta((v) => !v)}
+        onClick={() => setAbierta((v) => !v)}
         className="flex w-full items-center gap-2 px-3 py-2 transition-colors hover:brightness-95"
         style={{ backgroundColor: `${color}1f`, color }}
         aria-expanded={abierta}
@@ -605,8 +603,8 @@ function CalendarioGastosSalones({
   const { configuracionCajas } = useStore()
   const [mesVista, setMesVista] = useState(() => new Date(ahora.getFullYear(), ahora.getMonth(), 1))
   const [diaSel, setDiaSel] = useState<string | null>(null)
-  // La tarjeta arranca plegada y se despliega dejando el mouse encima 0,5s
-  const hovCalendario = useHoverPlegado()
+  // La tarjeta arranca plegada y se abre o cierra con un clic en el encabezado
+  const plegCalendario = usePlegadoConClick()
 
   // Unificar todos los gastos con fecha en una sola lista
   const items: ItemCalendario[] = [
@@ -702,8 +700,8 @@ function CalendarioGastosSalones({
   }
 
   return (
-    <Card {...hovCalendario.props}>
-      <CardHeader className={hovCalendario.abierto ? "pb-3" : "pb-0"}>
+    <Card>
+      <CardHeader className={`cursor-pointer ${plegCalendario.abierto ? "pb-3" : "pb-0"}`} {...plegCalendario.props}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Calendar className="h-4 w-4 text-purple-600" />
@@ -743,7 +741,7 @@ function CalendarioGastosSalones({
           </div>
         )}
       </CardHeader>
-      <CuerpoTarjeta abierto={hovCalendario.abierto}>
+      <CuerpoTarjeta abierto={plegCalendario.abierto}>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-7 gap-1">
           {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
@@ -1050,8 +1048,9 @@ export default function CajaJazminePage() {
   const hoyStr = ahora.toISOString().slice(0, 10)
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
-  // Todas arrancan plegadas: se despliegan solas al dejar el mouse encima
-  // 0,5s (useHoverPlegado) o quedan fijas abiertas con el botón de chevron.
+  // Arrancan plegadas (menos Gastos variables) y se abren o cierran con un clic en su encabezado
+  // o en el chevron. Pasar el mouse por encima no las abre: eso queda solo
+  // para el dashboard de métricas de arriba (pedido del dueño, 13/10/2026).
   const [colapsadas, setColapsadas] = useState<Record<string, boolean>>({
     alertas: true,
     cuotas: true,
@@ -1062,21 +1061,15 @@ export default function CajaJazminePage() {
     proyeccion: true,
   })
 
-  // Hover que despliega cada tarjeta grande (mismos tiempos que los gastos:
-  // 0,5s para abrir, 2s para volver a plegarse). El dashboard de métricas
-  // (saldo, gastos, cobros, balance) queda afuera a pedido del usuario.
-  const hovProyeccion = useHoverPlegado()
-  const hovProyeccion12 = useHoverPlegado()
-  const hovServicios = useHoverPlegado()
-  const hovAlertas = useHoverPlegado()
-  const hovCuotas = useHoverPlegado()
-  const hovFijos = useHoverPlegado()
-  const hovVariables = useHoverPlegado()
-  const abiertaProyeccion = !colapsadas.proyeccion || hovProyeccion.abierto
-  const abiertaAlertas = !colapsadas.alertas || hovAlertas.abierto
-  const abiertaCuotas = !colapsadas.cuotas || hovCuotas.abierto
-  const abiertaFijos = !colapsadas.fijos || hovFijos.abierto
-  const abiertaVariables = !colapsadas.variables || hovVariables.abierto
+  // Las tarjetas sin chevron (servicios y proyección a 12 meses) se abren o
+  // cierran con un clic en su encabezado.
+  const plegProyeccion12 = usePlegadoConClick()
+  const plegServicios = usePlegadoConClick()
+  const abiertaProyeccion = !colapsadas.proyeccion
+  const abiertaAlertas = !colapsadas.alertas
+  const abiertaCuotas = !colapsadas.cuotas
+  const abiertaFijos = !colapsadas.fijos
+  const abiertaVariables = !colapsadas.variables
 
   // Proyección: se muestran 3 meses y "Ver más" agrega de a 3 hasta los 12.
   // Siempre parte del mes corriente, así se va actualizando mes a mes solo.
@@ -1088,6 +1081,14 @@ export default function CajaJazminePage() {
 
   const toggleColapsada = (key: string) =>
     setColapsadas((p) => ({ ...p, [key]: !p[key] }))
+
+  /**
+   * Clic en el encabezado de una tarjeta con chevron: la abre o la cierra,
+   * igual que el chevron (los botones del encabezado hacen lo suyo).
+   */
+  const alClicEncabezado = (key: string) => (e: React.MouseEvent) => {
+    if (!esClicEnControl(e)) toggleColapsada(key)
+  }
 
   // Archivar un gasto FIJO: registra el pago del período en el archivo y avanza
   // el vencimiento al próximo mes/año. El gasto sale de la lista activa (queda el
@@ -2076,17 +2077,16 @@ export default function CajaJazminePage() {
       <div className="order-last grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
       <div className="space-y-4 md:col-start-2 md:order-2">
       {/* SERVICIOS A PAGAR EL MES QUE VIENE — estimado según historial de montos.
-          Plegada muestra solo título y monto; se despliega con hover (0,5s / 2s). */}
+          Plegada muestra solo título y monto; se abre con un clic en el título. */}
       <Card
-        className={hovServicios.abierto ? "" : "gap-0 py-3"}
+        className={plegServicios.abierto ? "" : "gap-0 py-3"}
         style={{
           borderColor: `color-mix(in srgb, ${colorServicios} 30%, white)`,
           backgroundColor: `color-mix(in srgb, ${colorServicios} 7%, white)`,
         }}
-        {...hovServicios.props}
       >
-        <CardContent className={hovServicios.abierto ? "p-4 py-0" : "px-4 py-0"}>
-          <div className="flex items-center justify-between gap-3">
+        <CardContent className={plegServicios.abierto ? "p-4 py-0" : "px-4 py-0"}>
+          <div className="flex cursor-pointer items-center justify-between gap-3" {...plegServicios.props}>
             <div className="flex min-w-0 items-center gap-2">
               <Receipt className="h-4 w-4 shrink-0" style={{ color: colorServicios }} />
               <p
@@ -2097,13 +2097,13 @@ export default function CajaJazminePage() {
               </p>
             </div>
             <p
-              className={`shrink-0 font-bold ${hovServicios.abierto ? "text-2xl" : "text-sm"}`}
+              className={`shrink-0 font-bold ${plegServicios.abierto ? "text-2xl" : "text-sm"}`}
               style={{ color: `color-mix(in srgb, ${colorServicios} 85%, black)` }}
             >
               {`≈ ${formatCurrency(gastosFijosProximoMes)}`}
             </p>
           </div>
-          <CuerpoTarjeta abierto={hovServicios.abierto}>
+          <CuerpoTarjeta abierto={plegServicios.abierto}>
           <p
             className="mt-1 text-xs text-pretty"
             style={{ color: `color-mix(in srgb, ${colorServicios} 70%, transparent)` }}
@@ -2271,8 +2271,8 @@ export default function CajaJazminePage() {
 
       {/* Proyección visual del saldo a 30 d��as (columna lateral) — oculta temporalmente */}
       {false && (
-      <Card {...hovProyeccion.props}>
-        <CardHeader className="pb-3">
+      <Card>
+        <CardHeader className="cursor-pointer pb-3" onClick={alClicEncabezado("proyeccion")}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-purple-600" />
@@ -2338,24 +2338,26 @@ export default function CajaJazminePage() {
       )}
       </div>
 
-      {/* PROYECCIÓN MENSUAL — tabla a 12 meses. Plegada: se abre con hover. */}
+      {/* PROYECCIÓN MENSUAL — tabla a 12 meses. Plegada: se abre con un clic en el título. */}
       <Card
-        className={`md:col-start-1 md:row-start-1 md:order-1 ${hovProyeccion12.abierto ? "" : "gap-0 py-3"}`}
-        {...hovProyeccion12.props}
+        className={`md:col-start-1 md:row-start-1 md:order-1 ${plegProyeccion12.abierto ? "" : "gap-0 py-3"}`}
       >
-        <CardHeader className={hovProyeccion12.abierto ? "pb-3" : "pb-0"}>
+        <CardHeader
+          className={`cursor-pointer ${plegProyeccion12.abierto ? "pb-3" : "pb-0"}`}
+          {...plegProyeccion12.props}
+        >
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-teal-600" />
             Proyección en 12 meses:
           </CardTitle>
-          <CuerpoTarjeta abierto={hovProyeccion12.abierto}>
+          <CuerpoTarjeta abierto={plegProyeccion12.abierto}>
             <p className="text-xs text-muted-foreground mt-1 text-pretty">
               A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
               El saldo parte del saldo actual de la caja.
             </p>
           </CuerpoTarjeta>
         </CardHeader>
-        <CuerpoTarjeta abierto={hovProyeccion12.abierto}>
+        <CuerpoTarjeta abierto={plegProyeccion12.abierto}>
         <CardContent className="px-0">
           <Table>
             <TableHeader>
@@ -2436,9 +2438,11 @@ export default function CajaJazminePage() {
       <Card
         className={abiertaAlertas ? "" : "py-3 gap-0"}
         style={{ backgroundColor: "#f5ffbd", color: "#000000" }}
-        {...hovAlertas.props}
       >
-        <CardHeader className={abiertaAlertas ? "pb-3" : "pb-0"}>
+        <CardHeader
+          className={`cursor-pointer ${abiertaAlertas ? "pb-3" : "pb-0"}`}
+          onClick={alClicEncabezado("alertas")}
+        >
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-amber-500" />
@@ -2684,9 +2688,11 @@ export default function CajaJazminePage() {
       <Card
         className={abiertaCuotas ? "" : "py-3 gap-0"}
         style={{ backgroundColor: "#cdf7c6" }}
-        {...hovCuotas.props}
       >
-        <CardHeader className={abiertaCuotas ? "pb-3" : "pb-0"}>
+        <CardHeader
+          className={`cursor-pointer ${abiertaCuotas ? "pb-3" : "pb-0"}`}
+          onClick={alClicEncabezado("cuotas")}
+        >
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <HandCoins className="h-4 w-4 text-emerald-600" />
@@ -2783,8 +2789,8 @@ export default function CajaJazminePage() {
       {/* ── Columna izquierda: gastos fijos ── */}
       <div className="flex min-w-0 flex-col gap-4 md:col-span-2 md:col-start-1 md:row-start-1 md:order-first">
         {/* Gastos fijos del mes: compacta al plegarse (el Card base trae gap-6/py-6) */}
-        <Card className={abiertaFijos ? "gap-3 py-4" : "gap-0 py-3"} style={{ backgroundColor: "#ffffff" }} {...hovFijos.props}>
-          <CardHeader>
+        <Card className={abiertaFijos ? "gap-3 py-4" : "gap-0 py-3"} style={{ backgroundColor: "#ffffff" }}>
+          <CardHeader className="cursor-pointer" onClick={alClicEncabezado("fijos")}>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 Gastos fijos
@@ -2945,6 +2951,8 @@ export default function CajaJazminePage() {
                               className="flex-1 min-w-0 text-left"
                               onClick={() => abrirEvolucion(cuota.id)}
                               title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
+                              // Sin la evolución, el nombre abre y cierra la tira de meses.
+                              data-alterna-plegado={EVOLUCION_ACTIVA ? undefined : true}
                             >
                               <p className="text-sm font-medium truncate">{cuota.concepto}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">
@@ -3026,6 +3034,8 @@ export default function CajaJazminePage() {
                             className="flex-1 min-w-0 text-left"
                             onClick={() => abrirEvolucion(gasto.id)}
                             title={EVOLUCION_ACTIVA ? "Ver evolución mes a mes" : undefined}
+                            // Sin la evolución, el nombre abre y cierra la tira de meses.
+                            data-alterna-plegado={EVOLUCION_ACTIVA ? undefined : true}
                           >
                             <p className="text-sm font-medium truncate">{gasto.concepto}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
@@ -3191,9 +3201,11 @@ export default function CajaJazminePage() {
         <Card
         className={`md:col-start-1 md:row-start-2 ${abiertaVariables ? "" : "gap-0 py-3"}`}
         style={{ backgroundColor: "#ffffff", color: "#000000" }}
-        {...hovVariables.props}
       >
-          <CardHeader className={abiertaVariables ? "pb-3" : "pb-0"}>
+          <CardHeader
+            className={`cursor-pointer ${abiertaVariables ? "pb-3" : "pb-0"}`}
+            onClick={alClicEncabezado("variables")}
+          >
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 Gastos variables

@@ -1,106 +1,42 @@
 "use client"
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 
 /**
- * Lógica de plegado por hover, compartida por los gastos individuales y
- * por las tarjetas grandes de Caja Jazmines.
+ * Plegado con un clic, compartido por los gastos individuales y por las
+ * tarjetas de Caja Jazmines que no tienen flechita propia.
  *
- * Comportamiento pedido por el usuario:
+ * Comportamiento pedido por el dueño:
  * - El contenido arranca PLEGADO.
- * - Se despliega automáticamente si el mouse queda encima al menos
- *   0,5 segundos. Pasadas rápidas (menos de 0,5s) no lo despliegan.
- * - Al sacar el mouse, espera 2 segundos antes de volver a plegarse.
- * - Un click en cualquier parte "vacía" de la tarjeta la abre o la cierra al
- *   instante (los clicks sobre botones, links o inputs internos no cuentan).
- * - No se pliega mientras haya un popover, menú o diálogo abierto (se está
- *   operando adentro); reintenta cada segundo hasta que cierre.
- * - También se despliega si el teclado enfoca algo adentro (accesibilidad).
+ * - Se abre o se cierra con un clic sobre una parte "vacía" (los clics sobre
+ *   botones, links, inputs o menús internos hacen lo suyo y no cuentan).
+ * - Pasar el mouse por encima NO lo abre (pedido del 13/10/2026): eso queda
+ *   solo para el dashboard de arriba (useTarjetasPlegables).
  */
-export function useHoverPlegado() {
+
+/**
+ * Controles con acción propia: un clic sobre ellos no abre ni cierra la
+ * tarjeta. Un botón marcado con data-alterna-plegado (por ejemplo el nombre
+ * de un gasto cuando no abre nada) sí cuenta como parte de la tarjeta.
+ */
+const CONTROLES =
+  "button:not([data-alterna-plegado]), a, input, select, textarea, label, [role=menu], [data-slot=popover-content]"
+
+/** true si el clic fue sobre un control con acción propia (no abre ni cierra). */
+export function esClicEnControl(e: ReactMouseEvent): boolean {
+  return (e.target as HTMLElement).closest(CONTROLES) !== null
+}
+
+export function usePlegadoConClick() {
   const [abierto, setAbierto] = useState(false)
-  const timerAbrir = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const timerCerrar = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Limpia los timers al desmontar para no setear estado en un componente muerto
-  useEffect(
-    () => () => {
-      if (timerAbrir.current) clearTimeout(timerAbrir.current)
-      if (timerCerrar.current) clearTimeout(timerCerrar.current)
-    },
-    [],
-  )
-
-  function programarCierre(ms: number) {
-    if (timerCerrar.current) clearTimeout(timerCerrar.current)
-    timerCerrar.current = setTimeout(() => {
-      timerCerrar.current = null
-      // Con un popover/menú/diálogo abierto el usuario sigue operando:
-      // esperar a que lo cierre antes de plegar.
-      if (document.querySelector("[data-slot=popover-content], [role=menu], [role=dialog]")) {
-        programarCierre(1000)
-        return
-      }
-      setAbierto(false)
-    }, ms)
-  }
-
-  function alEntrar() {
-    if (timerCerrar.current) {
-      clearTimeout(timerCerrar.current)
-      timerCerrar.current = null
-    }
-    if (!abierto && !timerAbrir.current) {
-      timerAbrir.current = setTimeout(() => {
-        timerAbrir.current = null
-        setAbierto(true)
-      }, 500)
-    }
-  }
-
-  function alSalir() {
-    if (timerAbrir.current) {
-      clearTimeout(timerAbrir.current)
-      timerAbrir.current = null
-    }
-    if (abierto) programarCierre(2000)
-  }
-
-  function alEnfocar() {
-    if (timerCerrar.current) {
-      clearTimeout(timerCerrar.current)
-      timerCerrar.current = null
-    }
-    setAbierto(true)
-  }
 
   function alClick(e: ReactMouseEvent) {
-    // Los controles internos (botones, links, inputs, menús) conservan su
-    // acción propia: solo el click sobre zona "vacía" alterna la tarjeta.
-    const objetivo = e.target as HTMLElement
-    if (objetivo.closest("button, a, input, select, textarea, label, [role=menu], [data-slot=popover-content]")) {
-      return
-    }
-    if (timerAbrir.current) {
-      clearTimeout(timerAbrir.current)
-      timerAbrir.current = null
-    }
-    if (timerCerrar.current) {
-      clearTimeout(timerCerrar.current)
-      timerCerrar.current = null
-    }
+    if (esClicEnControl(e)) return
     setAbierto((v) => !v)
   }
 
-  /** Props para esparcir en el contenedor que dispara el hover. */
-  const props = {
-    onMouseEnter: alEntrar,
-    onMouseLeave: alSalir,
-    onFocusCapture: alEnfocar,
-    onClick: alClick,
-  }
-
-  return { abierto, props }
+  /** Props para esparcir en la zona que abre y cierra con un clic. */
+  return { abierto, props: { onClick: alClick } }
 }
 
 /**
@@ -136,14 +72,14 @@ export function CuerpoTarjeta({ abierto, children }: { abierto: boolean; childre
 }
 
 /**
- * Tarjeta de gasto fijo con contenido plegable por hover: solo se ve el
- * encabezado hasta que el mouse queda encima (ver useHoverPlegado).
+ * Tarjeta de gasto fijo con contenido plegable: solo se ve el encabezado
+ * hasta que se le hace clic (ver usePlegadoConClick).
  */
 export function GastoPlegable({ header, children }: { header: ReactNode; children?: ReactNode }) {
-  const { abierto, props } = useHoverPlegado()
+  const { abierto, props } = usePlegadoConClick()
 
   return (
-    <div className="rounded-lg border border-border bg-card" {...props}>
+    <div className="cursor-pointer rounded-lg border border-border bg-card" {...props}>
       {header}
       <CuerpoTarjeta abierto={abierto}>{children}</CuerpoTarjeta>
     </div>
