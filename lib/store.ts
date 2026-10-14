@@ -596,6 +596,12 @@ export interface MovimientoCaja {
   salon: string // nombre del salón o "admin"
   eventoId?: string
   costoOperativoId?: string
+  /**
+   * Pago de un gasto de Caja Jazmines que generó este egreso (ver
+   * lib/pagos-caja-jazmines.ts): gf:<gasto>:<mes>:<salón> o gv:<gasto>:<salón>.
+   * Al deshacer el pago se borra el egreso con este ref.
+   */
+  refId?: string
   origenAporte?: string // el salón que generó el aporte (solo para tipo aporte_admin)
   saldoResultante: number
   cajaDestino?: CajaDestino // opcional — ausente en movimientos históricos previos a esta extensión

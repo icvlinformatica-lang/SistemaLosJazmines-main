@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
+import { Children, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 import { ChevronDown } from "lucide-react"
 
 /**
@@ -155,7 +155,7 @@ export function GastoPlegable({ header, children }: { header: ReactNode; childre
       {/* Solo la fila de arriba abre/cierra: tocar dentro de los meses no lo pliega. */}
       <div className="flex items-center" {...props}>
         <div className="min-w-0 flex-1 cursor-pointer">{header}</div>
-        {children ? (
+        {Children.toArray(children).length > 0 ? (
           <button
             type="button"
             onClick={alternar}

@@ -2,6 +2,7 @@
 
 import { createClient } from "./client"
 import { fetchAllPages } from "../fetch-all-pages"
+import { leerRef } from "../pagos-caja-jazmines"
 import type { 
   Evento, 
   Servicio, 
@@ -769,6 +770,9 @@ export async function fetchMovimientosCaja(): Promise<MovimientoCaja[]> {
     cajaDestino: m.caja_destino ?? undefined,
     saldoAnterior: m.saldo_anterior ? Number(m.saldo_anterior) : undefined,
     saldoPosterior: m.saldo_posterior ? Number(m.saldo_posterior) : undefined,
+    // Pago de un gasto de Caja Jazmines: el ref dice qué gasto se pagó.
+    refId: m.ref_id ?? undefined,
+    costoOperativoId: leerRef(m.ref_id)?.gastoId,
   }))
 }
 
@@ -786,6 +790,8 @@ export async function insertMovimientosCaja(movimientos: MovimientoCaja[]): Prom
     caja_destino: mov.cajaDestino ?? null,
     saldo_anterior: "saldoAnterior" in mov ? mov.saldoAnterior ?? null : null,
     saldo_posterior: "saldoPosterior" in mov ? mov.saldoPosterior ?? null : null,
+    // Solo se manda si viene: así un movimiento común no depende de la columna.
+    ...(mov.refId ? { ref_id: mov.refId } : {}),
   })))
   // PostgREST inserta el lote en una transacción: nunca queda medio reparto.
   if (error) throw error

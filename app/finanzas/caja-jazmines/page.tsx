@@ -1404,7 +1404,11 @@ export default function CajaJazminePage() {
       categoria: "Gasto variable",
       refId: gasto.id,
     })
-    deleteCostoOperativo(gasto.id)
+    // Archivar = pagado: si todavía no estaba pagado, se descuenta de la caja.
+    // Al sacarlo de la lista se conserva el egreso (conservarPagos).
+    const costo = state.costosOperativos?.find((c) => c.id === gasto.id)
+    if (costo && !costo.pagado) updateCostoOperativo(gasto.id, { pagado: true })
+    deleteCostoOperativo(gasto.id, { conservarPagos: true })
   }
 
   // Archivar una COMISIÓN: la registra en el archivo histórico y la oculta de
@@ -1487,9 +1491,9 @@ export default function CajaJazminePage() {
     const costo = state.costosOperativos?.find((c) => c.id === alerta.id)
     if (costo && !costo.esVariable) {
       const parte = parteAlPagar(costo)
-      return descripcionPagoFijo(costo.concepto, deudaDelPeriodo(costo, mesHoy, parte), parte)
+      return `${descripcionPagoFijo(costo.concepto, deudaDelPeriodo(costo, mesHoy, parte), parte)} Se descuenta del saldo de Caja Jazmines.`
     }
-    return `Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}) y se mueve al Archivo Histórico.`
+    return `Se registra el pago de "${alerta.concepto}" (${formatCurrency(alerta.monto)}), se descuenta del saldo de Caja Jazmines y se mueve al Archivo Histórico.`
   }
 
   /**
@@ -1510,7 +1514,8 @@ export default function CajaJazminePage() {
       nuevoId: generateId(),
     })
     if (!cambios) return
-    updateCostoOperativo(costo.id, cambios)
+    // mesesPago: el pago descuenta la plata de Caja Jazmines.
+    updateCostoOperativo(costo.id, cambios, { mesesPago: [deuda.mes] })
     toast({
       title: "Pago registrado",
       description: `${costo.concepto}${parte ? ` (${salonLabel(parte.salon)})` : ""} · ${nombreMesLargo(deuda.mes)} · ${formatCurrency(deuda.monto)}`,
@@ -1701,11 +1706,11 @@ export default function CajaJazminePage() {
           { titulo: "Entró por eventos", signo: 1 as const, filas: filasEventos, vacio: "Sin cobros de eventos." },
           ...(otrosIngresos.length > 0 ? [{ titulo: "Otros ingresos y ajustes", signo: 1 as const, filas: otrosIngresos }] : []),
           {
-            titulo: "Salió (retiros, gastos y ajustes)",
+            titulo: "Salió (gastos pagados, retiros y ajustes)",
             signo: -1 as const,
             filas: egresos.sort((a, b) => b.monto - a.monto),
             vacio: "No salió plata de la caja.",
-            nota: "Marcar un gasto como pagado no descuenta de acá: solo los retiros y ajustes.",
+            nota: "Incluye los pagos de gastos fijos y variables: al marcarlos pagados se descuentan de acá.",
           },
         ],
         totalEtiqueta: "Saldo actual",
@@ -2077,7 +2082,8 @@ export default function CajaJazminePage() {
     const historial = (original.historialMontos || []).map((r) =>
       r.id === registroId ? { ...r, pagado } : r,
     )
-    updateCostoOperativo(gastoId, { historialMontos: historial })
+    const mes = (original.historialMontos || []).find((r) => r.id === registroId)?.mes
+    updateCostoOperativo(gastoId, { historialMontos: historial }, mes ? { mesesPago: [mes] } : undefined)
   }
 
   // ── Cierre de mes en un paso (carga de montos en lote) ──────────────────
@@ -3399,7 +3405,11 @@ export default function CajaJazminePage() {
                       {/* Toggle pagado */}
                       <ConfirmAction
                         title={esPagado ? "¿Marcar como pendiente?" : "¿Marcar como pagado?"}
-                        description={`${gasto.nombre} · ${formatCurrency(gasto.monto)}`}
+                        description={`${gasto.nombre} · ${formatCurrency(gasto.monto)}. ${
+                          esPagado
+                            ? "Vuelve a figurar como pendiente y la plata vuelve al saldo de Caja Jazmines."
+                            : "Se descuenta del saldo de Caja Jazmines."
+                        }`}
                         confirmLabel={esPagado ? "Sí, marcar pendiente" : "Sí, marcar pagado"}
                         onConfirm={() => updateCostoOperativo(gasto.id, { pagado: !esPagado })}
                       >
@@ -4668,7 +4678,7 @@ export default function CajaJazminePage() {
             <AlertDialogTitle>¿Eliminar gasto fijo?</AlertDialogTitle>
             <AlertDialogDescription>
               {accionMenu
-                ? `Se elimina "${accionMenu.gasto.concepto}" de forma permanente. Esta acción no se puede deshacer.`
+                ? `Se elimina "${accionMenu.gasto.concepto}" de forma permanente. Los meses que ya se pagaron siguen descontados de Caja Jazmines. Esta acción no se puede deshacer.`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -4708,8 +4718,8 @@ export default function CajaJazminePage() {
                     ? `Se registra "${accionVariable.gasto.nombre}" (${formatCurrency(accionVariable.gasto.monto)}) en el archivo y se quita de esta lista.`
                     : `Se quita "${accionVariable.gasto.nombre}" de esta lista. No afecta al evento ni al vendedor.`
                   : accionVariable.tipo === "archivar"
-                    ? `Se registra el pago de "${accionVariable.gasto.nombre}" (${formatCurrency(accionVariable.gasto.monto)}) en el archivo.`
-                    : `Se elimina "${accionVariable.gasto.nombre}" de forma permanente. Esta acción no se puede deshacer.`
+                    ? `Se registra el pago de "${accionVariable.gasto.nombre}" (${formatCurrency(accionVariable.gasto.monto)}) en el archivo${accionVariable.gasto.estado === "pagado" ? "" : " y se descuenta del saldo de Caja Jazmines"}.`
+                    : `Se elimina "${accionVariable.gasto.nombre}" de forma permanente${accionVariable.gasto.estado === "pagado" ? " y lo que se había descontado vuelve al saldo de Caja Jazmines" : ""}. Esta acción no se puede deshacer.`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

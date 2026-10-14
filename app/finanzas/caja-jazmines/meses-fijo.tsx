@@ -115,7 +115,11 @@ export function MesesFijo({
   onEliminar,
 }: {
   gasto: CostoOperativo
-  updateCostoOperativo: (id: string, cambios: Partial<CostoOperativo>) => void
+  updateCostoOperativo: (
+    id: string,
+    cambios: Partial<CostoOperativo>,
+    opciones?: { mesesPago?: string[] },
+  ) => void
   /** Gasto repartido visto desde un salón: porción que le corresponde. */
   parte?: { salon: string; porcentaje: number }
   /** Abre el formulario de edición del gasto (reemplaza al menú "⋯"). */
@@ -206,7 +210,8 @@ export function MesesFijo({
     })
     if (!cambios) return
 
-    updateCostoOperativo(gasto.id, cambios)
+    // mesesPago: pagar descuenta de Caja Jazmines y deshacer lo devuelve.
+    updateCostoOperativo(gasto.id, cambios, { mesesPago: [mesAbierto] })
     setMesAbierto(null)
     setEditando(false)
     if (aviso) {
