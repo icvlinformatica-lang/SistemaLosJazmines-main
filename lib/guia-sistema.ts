@@ -12,6 +12,8 @@ Perfiles de acceso (con PIN):
 - Del evento: Cocina, Barra y el staff externo (DJ, Fotógrafo, Vestido y Pantalla).
 Cada perfil ve solo las pantallas de su trabajo en el menú.
 Cuando Administración entra con su PIN, en esa pestaña quedan desbloqueados todos los perfiles: con "Cambiar perfil" se puede pasar a cualquiera sin poner su PIN. Dura hasta cerrar la pestaña o 12 horas, y en la pantalla de ingreso se puede cortar antes con "Bloquear".
+Si en Administración se elige "Diego", esa compu además queda con el acceso rápido de todos los perfiles por 30 días, aunque se cierre la pestaña. Se borra con "Olvidar todos los PINs", al pie de la pantalla de ingreso.
+El dueño puede tener además una clave maestra, de 8 números o más, que entra a cualquier perfil y también sirve donde se pide el PIN de Administración o el de carga extraordinaria de stock. No se muestra en Configuración.
 La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "atrás" del navegador). Si se entró directo a una pantalla, lleva a su pantalla de siempre (por ejemplo, la lista de eventos).
 
 ## Pantalla de Inicio (/)

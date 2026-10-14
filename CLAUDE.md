@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 64 archivos y 559 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 66 archivos y 575 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -251,6 +251,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
   - Pase de Administración (desde el 14/10/2026): cuando Administración entra con su PIN o su acceso rápido, recibe un pase firmado (`signPaseAdmin`) que guarda la pestaña en sessionStorage. Con él, `/api/auth/login` deja entrar a cualquier perfil sin su PIN, sin dar acceso rápido ni otro pase. Dura 12 horas o hasta cerrar la pestaña o tocar "Bloquear", y cambiar `PIN_ADMINISTRACION` lo anula.
   - Gestión: administracion, soporte, cobro, coordinacion, vendedor.
   - Evento: cocina, barra, dj, fotografo, vestido, pantalla.
+  - Diego, al entrar a Administración eligiendo su nombre, recibe el acceso rápido (30 días) de **todos** los perfiles en ese navegador (`desbloqueaTodosLosPerfiles` en `lib/auth/server.ts`, `accesosRapidos` en la respuesta del login). "Olvidar todos los PINs", al pie del login, los borra; "Bloquear" corta solo el pase. Nunca se dan cuando se entra con el pase. "Diego" es el botón que se toca en el login, no una identidad verificada: lo recibe cualquiera que tenga el PIN de Administración y toque "Diego" (no abre nada nuevo, porque Administración y Soporte ven todos los PINs en Configuración).
   - `middleware.ts` solo exige sesión en `/api/*`; las páginas redirigen solas a `/login`.
 - **Variables de entorno**:
   - `POSTGRES_URL`: pooler de Supabase en modo transacción, por eso `prepare: false`.
@@ -258,6 +259,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
   - Sesiones y cron: `AUTH_SECRET`, `CRON_SECRET`. Sin `CRON_SECRET` los resúmenes por mail no salen (`lib/cron-auth.ts`, desde el 9/10/2026).
   - Mails: `RESEND_API_KEY`, `NOTIFICATION_EMAIL`.
   - PINs: `PIN_*` por perfil, más `PIN_STOCK_EXTRA`.
+  - `PIN_MAESTRO`: clave general del dueño: solo números y 8 o más, porque el campo del login filtra todo lo que no sea número. Entra a cualquier perfil y abre los PINs de acción (administración y stock extraordinario). No tiene valor de reserva: sin la variable no existe. No se muestra en Configuración y cada ingreso con ella queda en los logs de Vercel (`esPinMaestro` en `lib/auth/server.ts`). Las sesiones y accesos rápidos que se abren con ella se firman con el PIN del perfil, así que cambiar `PIN_MAESTRO` no los cierra: si la clave se filtra, además hay que cambiar los `PIN_*` de los perfiles.
 - **Rutas**:
   - `app/admin/*`: catálogos y administración.
   - `app/eventos/*`: lista, calendario, pagos, costos, producción, staff, cotizaciones y papeleras.
