@@ -112,6 +112,7 @@ import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo, pagoDelMesActual } from "./meses-fijo"
 import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
+import { DetalleDashboardDialog, type FilaDetalle } from "./detalle-dashboard"
 import { COLUMNAS_FILA_FIJO, EncabezadoMeses, MARGEN_FILA_FIJO, TiraMesesMini } from "./tira-meses-mini"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
@@ -1570,7 +1571,7 @@ export default function CajaJazminePage() {
   // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = 30 días, 1 = semana
 
-  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel } = useMemo(() => {
+  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel, semanaListas } = useMemo(() => {
     const diaSemana = ahora.getDay() // 0 = domingo
     const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
     const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
@@ -1619,8 +1620,268 @@ export default function CajaJazminePage() {
       gastosSemanaJazDetalle: partes.join(" · "),
       saldoFinSemanaJaz: data.saldoActual + cobro - gastos,
       rangoSemanaJazLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
+      // Los mismos ítems que suman en las tarjetas, para la ventana de detalle.
+      semanaListas: { cuotasSemana, cuotasVencidas, fijosSemana, variablesSemana },
     }
   }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora])
+
+  // ── Detalle de las tarjetas del dashboard (ventana al tocarlas) ─────────
+  // Solo lectura. Cada ventana usa los MISMOS ítems que suman en su tarjeta,
+  // así el total de la ventana es exactamente el número de la tarjeta.
+  type TipoDetalle = "saldo" | "gastos30" | "saldo30" | "cobroSemana" | "gastosSemana" | "balance"
+  const [detalleAbierto, setDetalleAbierto] = useState<TipoDetalle | null>(null)
+
+  function venceTexto(fecha: string, dias?: number): string {
+    const [, m, d] = fecha.split("-")
+    const dd = `${d}/${m}`
+    if (dias === undefined) return `vence ${dd}`
+    if (dias < 0) return `venció el ${dd} (hace ${Math.abs(dias)} día${Math.abs(dias) === 1 ? "" : "s"})`
+    if (dias === 0) return `vence hoy (${dd})`
+    return `vence el ${dd} (en ${dias} día${dias === 1 ? "" : "s"})`
+  }
+  function diasHasta(fecha: string): number {
+    const [y, m, d] = fecha.split("-").map(Number)
+    const f = new Date(y, m - 1, d)
+    const h = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())
+    return Math.round((f.getTime() - h.getTime()) / 86400000)
+  }
+  const filaCuota = (c: (typeof cuotasPorCobrar)[number]): FilaDetalle => ({
+    id: c.id,
+    titulo: c.eventoNombre,
+    detalle: `Cuota ${c.numeroCuota}/${c.totalCuotas} · ${venceTexto(c.fechaVencimiento, diasHasta(c.fechaVencimiento))}`,
+    salon: c.salon || null,
+    monto: c.montoJazmines,
+    alerta: c.fechaVencimiento < hoyStr,
+  })
+  const etiquetaTipo = { fijo: "Gasto fijo", sueldo: "Sueldo", variable: "Gasto variable" } as const
+
+  function armarDetalle(tipo: TipoDetalle) {
+    const nombreSalon = salonFiltro === "todos" ? "todos los salones" : salonLabel(salonFiltro)
+    if (tipo === "saldo") {
+      // Movimientos de Caja Jazmines (mismo filtro que el saldo del hook).
+      const movs = (state.movimientosCaja || []).filter(
+        (m) => m.cajaDestino === "caja_jazmines" && (salonFiltro === "todos" || m.salon === salonFiltro),
+      )
+      const eventosPorId = new Map((state.eventos || []).map((e) => [e.id, e]))
+      const porEvento = new Map<string, { titulo: string; salon: string | null; monto: number; n: number }>()
+      const otrosIngresos: FilaDetalle[] = []
+      const egresos: FilaDetalle[] = []
+      for (const m of movs) {
+        const fecha = m.fecha ? formatFecha(String(m.fecha).slice(0, 10)) : ""
+        if (m.tipo === "ingreso" && m.eventoId) {
+          const ev = eventosPorId.get(m.eventoId)
+          const prev = porEvento.get(m.eventoId) ?? {
+            titulo: ev?.nombrePareja || ev?.nombre || ev?.tipoEvento || "Evento eliminado",
+            salon: ev?.salon ?? m.salon ?? null,
+            monto: 0,
+            n: 0,
+          }
+          prev.monto += m.monto
+          prev.n += 1
+          porEvento.set(m.eventoId, prev)
+        } else if (m.tipo === "ingreso") {
+          otrosIngresos.push({ id: m.id, titulo: m.concepto || "Ingreso", detalle: fecha, salon: m.salon, monto: m.monto })
+        } else if (m.tipo === "egreso") {
+          egresos.push({ id: m.id, titulo: m.concepto || "Egreso", detalle: fecha, salon: m.salon, monto: m.monto })
+        }
+      }
+      const filasEventos: FilaDetalle[] = [...porEvento.entries()]
+        .map(([id, e]) => ({
+          id,
+          titulo: e.titulo,
+          detalle: `${e.n} cobro${e.n === 1 ? "" : "s"} (cuotas y señas, parte Jazmines)`,
+          salon: e.salon,
+          monto: e.monto,
+        }))
+        .sort((a, b) => b.monto - a.monto)
+      return {
+        titulo: "Saldo actual",
+        descripcion: `La plata que hay hoy en Caja Jazmines (${nombreSalon}): todo lo que entró menos todo lo que salió.`,
+        secciones: [
+          { titulo: "Entró por eventos", signo: 1 as const, filas: filasEventos, vacio: "Sin cobros de eventos." },
+          ...(otrosIngresos.length > 0 ? [{ titulo: "Otros ingresos y ajustes", signo: 1 as const, filas: otrosIngresos }] : []),
+          {
+            titulo: "Salió (retiros, gastos y ajustes)",
+            signo: -1 as const,
+            filas: egresos.sort((a, b) => b.monto - a.monto),
+            vacio: "No salió plata de la caja.",
+            nota: "Marcar un gasto como pagado no descuenta de acá: solo los retiros y ajustes.",
+          },
+        ],
+        totalEtiqueta: "Saldo actual",
+        total: saldoActual,
+        colorTotal: "#3c4ce8",
+      }
+    }
+    const filasGastos30 = (tipoG: "fijo" | "sueldo" | "variable"): FilaDetalle[] =>
+      data.gastos30DiasDetalle
+        .filter((g) => g.tipo === tipoG)
+        .map((g) => ({
+          id: `${g.tipo}-${g.id}`,
+          titulo: g.concepto,
+          // Días contados por fecha calendario (el hook redondea para arriba
+          // y en fechas pasadas da un día menos: "hace 3" en vez de "hace 4").
+          detalle: venceTexto(g.fecha, diasHasta(g.fecha)),
+          salon: g.salon ?? null,
+          monto: g.monto,
+          alerta: g.fecha < hoyStr,
+        }))
+    const seccionesGastos30 = [
+      { titulo: "Gastos fijos", signo: -1 as const, filas: filasGastos30("fijo"), vacio: "Ningún gasto fijo pendiente.", nota: "Lo que falta pagar de cada uno este mes." },
+      { titulo: "Gastos variables", signo: -1 as const, filas: filasGastos30("variable"), vacio: "Ningún gasto variable pendiente." },
+      ...(filasGastos30("sueldo").length > 0
+        ? [{ titulo: "Sueldos de vendedores", signo: -1 as const, filas: filasGastos30("sueldo") }]
+        : []),
+    ]
+    if (tipo === "gastos30") {
+      return {
+        titulo: "Gastos a 30 días",
+        descripcion: `Lo que falta pagar y vence de acá a 30 días, incluidos los ya vencidos (${nombreSalon}).`,
+        secciones: seccionesGastos30,
+        totalEtiqueta: "Gastos a 30 días",
+        total: gastosPróximos30Dias,
+        colorTotal: "#dc2626",
+      }
+    }
+    if (tipo === "saldo30") {
+      return {
+        titulo: "Saldo a 30 días",
+        descripcion: "Cuánto quedaría en 30 días: el saldo de hoy, más las cuotas que vencen en ese plazo, menos los gastos que vencen.",
+        secciones: [
+          {
+            titulo: "Saldo actual",
+            signo: 1 as const,
+            filas: [{ id: "saldo", titulo: "Plata en Caja Jazmines hoy", detalle: "Tocá para ver de dónde sale", monto: saldoActual, onClick: () => setDetalleAbierto("saldo") }],
+          },
+          {
+            titulo: "Cuotas que vencen en 30 días",
+            signo: 1 as const,
+            filas: data.cuotas30Dias.map(filaCuota),
+            vacio: "No vence ninguna cuota en los próximos 30 días.",
+            nota: "Parte que entra a Caja Jazmines (el resto va a Caja Eventos). No incluye las cuotas ya vencidas.",
+          },
+          ...seccionesGastos30,
+        ],
+        totalEtiqueta: "Saldo a 30 días",
+        total: saldoProyectado30Dias,
+      }
+    }
+    const { cuotasSemana, cuotasVencidas, fijosSemana, variablesSemana } = semanaListas
+    const seccionesCobro = [
+      {
+        titulo: "Cuotas que vencen esta semana",
+        signo: 1 as const,
+        filas: cuotasSemana.map(filaCuota),
+        vacio: "Ninguna cuota vence esta semana.",
+        nota: `Del ${rangoSemanaJazLabel}. Parte que entra a Caja Jazmines.`,
+      },
+      {
+        titulo: "Cuotas vencidas sin cobrar",
+        signo: 1 as const,
+        filas: cuotasVencidas.map(filaCuota),
+        vacio: "No hay cuotas atrasadas.",
+        nota: "De semanas anteriores: se pueden cobrar ya.",
+      },
+    ]
+    const seccionesGastosSemana = [
+      {
+        titulo: "Gastos fijos",
+        signo: -1 as const,
+        filas: fijosSemana.map((g) => ({
+          id: `f-${g.id}`,
+          titulo: g.concepto,
+          detalle: g.fechaVencimiento ? venceTexto(g.fechaVencimiento, diasHasta(g.fechaVencimiento)) : undefined,
+          salon: g.salon ?? null,
+          monto: g.montoPendiente ?? g.monto,
+          alerta: !!g.fechaVencimiento && g.fechaVencimiento < hoyStr,
+        })),
+        vacio: "Ningún gasto fijo vence esta semana.",
+      },
+      {
+        titulo: "Gastos variables y comisiones",
+        signo: -1 as const,
+        filas: variablesSemana.map((g) => ({
+          id: `v-${g.id}`,
+          titulo: g.nombre,
+          detalle: g.fecha ? venceTexto(g.fecha, diasHasta(g.fecha)) : undefined,
+          salon: g.salon || null,
+          monto: g.monto,
+          alerta: !!g.fecha && g.fecha < hoyStr,
+        })),
+        vacio: "Ningún gasto variable vence esta semana.",
+      },
+    ]
+    if (tipo === "cobroSemana") {
+      return {
+        titulo: "Cobro esta semana",
+        descripcion: `Lo que se puede cobrar esta semana (${rangoSemanaJazLabel}): las cuotas que vencen más las atrasadas.`,
+        secciones: seccionesCobro,
+        totalEtiqueta: "Cobro esta semana",
+        total: cobroSemanaJaz,
+        colorTotal: "#059669",
+      }
+    }
+    if (tipo === "gastosSemana") {
+      return {
+        titulo: "Gastos esta semana",
+        descripcion: `Gastos sin pagar que vencen entre el ${rangoSemanaJazLabel}.`,
+        secciones: seccionesGastosSemana,
+        totalEtiqueta: "Gastos esta semana",
+        total: gastosSemanaJaz,
+        colorTotal: "#dc2626",
+      }
+    }
+    return {
+      titulo: "Balance semanal",
+      descripcion: "Cuánto quedaría al terminar la semana: saldo de hoy + lo que se cobra − lo que se paga. Tocá cada fila para ver su detalle.",
+      secciones: [
+        {
+          titulo: "Suma",
+          signo: 1 as const,
+          filas: [
+            { id: "saldo", titulo: "Saldo actual", detalle: "Plata en Caja Jazmines hoy", monto: saldoActual, onClick: () => setDetalleAbierto("saldo") },
+            {
+              id: "cobro",
+              titulo: "Cobro esta semana",
+              detalle: `${cuotasSemana.length + cuotasVencidas.length} cuotas (incluye atrasadas)`,
+              monto: cobroSemanaJaz,
+              onClick: () => setDetalleAbierto("cobroSemana"),
+            },
+          ],
+        },
+        {
+          titulo: "Resta",
+          signo: -1 as const,
+          filas: [
+            {
+              id: "gastos",
+              titulo: "Gastos esta semana",
+              detalle: `${fijosSemana.length + variablesSemana.length} gastos`,
+              monto: gastosSemanaJaz,
+              onClick: () => setDetalleAbierto("gastosSemana"),
+            },
+          ],
+        },
+      ],
+      totalEtiqueta: "Balance semanal",
+      total: saldoFinSemanaJaz,
+    }
+  }
+  const detalle = detalleAbierto ? armarDetalle(detalleAbierto) : null
+
+  /** Props para que una tarjeta del dashboard abra su detalle (clic o Enter). */
+  const abrirDetalleProps = (tipo: TipoDetalle) => ({
+    role: "button" as const,
+    tabIndex: 0,
+    title: "Tocá para ver de qué se compone",
+    onClick: () => setDetalleAbierto(tipo),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        setDetalleAbierto(tipo)
+      }
+    },
+  })
 
   // ── Proyección: gastos fijos del 1 al 10 del mes siguiente ──────────────
   // Los gastos fijos agendados se repiten el mes que viene; acá se proyecta
@@ -2137,8 +2398,9 @@ export default function CajaJazminePage() {
             {/* ── Slide 1: A 30 DÍAS ──────────────────────���─────���───── */}
             <div className="contents">
               <Card
+                {...abrirDetalleProps("saldo")}
                 style={{ backgroundColor: "#ffffff" }}
-                className="rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
+                className="cursor-pointer rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
                   <div className="flex items-center justify-between mb-2">
@@ -2183,7 +2445,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("gastos30")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -2220,7 +2483,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("saldo30")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -2270,7 +2534,8 @@ export default function CajaJazminePage() {
             {/* ── Slide 2: ESTA SEMANA ──────────────────────────────── */}
             <div className="contents">
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("cobroSemana")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -2319,7 +2584,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("gastosSemana")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -2356,7 +2622,8 @@ export default function CajaJazminePage() {
               </Card>
 
               <Card
-                className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+                {...abrirDetalleProps("balance")}
+                className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
                 style={{ backgroundColor: "#ffffff" }}
               >
                 <CardContent className="relative p-3 flex h-full flex-col">
@@ -4069,6 +4336,15 @@ export default function CajaJazminePage() {
         variables={gastosVariablesCombinados}
         ahora={ahora}
       />
+      )}
+
+      {/* ── Detalle de una tarjeta del dashboard ── */}
+      {detalle && (
+        <DetalleDashboardDialog
+          abierto={!!detalleAbierto}
+          onOpenChange={(o) => !o && setDetalleAbierto(null)}
+          {...detalle}
+        />
       )}
 
       {/* ── Dialog: Agregar gasto fijo ─────────────────────────────���──────── */}

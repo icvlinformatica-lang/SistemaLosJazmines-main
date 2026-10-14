@@ -123,9 +123,27 @@ export interface MesProyeccionJaz {
   esActual: boolean
 }
 
+/**
+ * Un ítem que suma en "Gastos a 30 días": sirve para mostrar de qué se
+ * compone el número cuando se toca la tarjeta. Solo lectura.
+ */
+export interface ItemGasto30Dias {
+  id: string
+  concepto: string
+  salon: string | null | undefined
+  monto: number
+  fecha: string
+  diasRestantes: number
+  tipo: "fijo" | "sueldo" | "variable"
+}
+
 export interface CajaJazminData {
   saldoActual: number
   gastosPróximos30Dias: number
+  /** Ítems que componen gastosPróximos30Dias (la suma da exactamente ese número). */
+  gastos30DiasDetalle: ItemGasto30Dias[]
+  /** Cuotas que componen ingresosProyectados30Dias (suma de montoJazmines). */
+  cuotas30Dias: CuotaPorCobrar[]
   saldoProyectado30Dias: number
   alertasVencimiento: AlertaVencimiento[]
   gastosFijosMes: GastoFijoMes[]
@@ -279,6 +297,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     // 2. GASTOS PRÓXIMOS 30 DÍAS (costos operativos activos no por evento)
     // ----------------------------------------------------------
     let gastosPróximos30Dias = 0
+    const gastos30DiasDetalle: ItemGasto30Dias[] = []
+    const cuotas30Dias: CuotaPorCobrar[] = []
     const alertasVencimiento: AlertaVencimiento[] = []
     const gastosFijosMes: GastoFijoMes[] = []
     const gastosFijosCubiertos: GastoFijoMes[] = []
@@ -366,6 +386,15 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
             estado: estado as EstadoAlerta,
           })
           gastosPróximos30Dias += deudaMes.monto
+          gastos30DiasDetalle.push({
+            id: costo.id,
+            concepto: costo.concepto,
+            salon: costo.salon,
+            monto: deudaMes.monto,
+            fecha: fechaVencStr,
+            diasRestantes,
+            tipo: "fijo",
+          })
         }
 
         if (costo.frecuencia === "Mensual" || costo.frecuencia === "Anual") {
@@ -419,6 +448,15 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
               esSueldoVendedor: true,
             })
             gastosPróximos30Dias += v.sueldo
+            gastos30DiasDetalle.push({
+              id: `sueldo-vendedor-${v.id}`,
+              concepto: `Sueldo vendedor · ${v.emoji ? `${v.emoji} ` : ""}${v.nombre}`,
+              salon: null,
+              monto: v.sueldo,
+              fecha: fechaPagoVigente,
+              diasRestantes,
+              tipo: "sueldo",
+            })
           }
         }
 
@@ -449,6 +487,15 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       )
       if (diasRestantes <= 30) {
         gastosPróximos30Dias += costo.monto
+        gastos30DiasDetalle.push({
+          id: costo.id,
+          concepto: costo.concepto,
+          salon: costo.salon,
+          monto: costo.monto,
+          fecha: costo.fechaVencimiento,
+          diasRestantes,
+          tipo: "variable",
+        })
       }
       // Alerta si vence en 15 días o menos (o ya venció)
       if (diasRestantes <= 15) {
@@ -510,7 +557,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           ingresosProyectados30Dias += saldoRestante * propJazmines
         }
 
-        cuotasPorCobrar.push({
+        const cuotaItem: CuotaPorCobrar = {
           id: `${evento.id}-cuota-${cuota.numero}`,
           eventoId: evento.id,
           eventoNombre,
@@ -521,9 +568,14 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           diasRestantes: Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)),
           montoCuota: cuota.montoCuota,
           montoJazmines: saldoRestante * propJazmines,
-        })
+        }
+        cuotasPorCobrar.push(cuotaItem)
+        // Misma condición que ingresosProyectados30Dias: es su detalle.
+        if (fechaVenc >= hoy && fechaVenc <= en30Dias) cuotas30Dias.push(cuotaItem)
       }
     }
+    cuotas30Dias.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))
+    gastos30DiasDetalle.sort((a, b) => a.diasRestantes - b.diasRestantes)
 
     cuotasPorCobrar.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))
 
@@ -822,6 +874,8 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     return {
       saldoActual,
       gastosPróximos30Dias,
+      gastos30DiasDetalle,
+      cuotas30Dias,
       saldoProyectado30Dias,
       alertasVencimiento,
       gastosFijosMes,
