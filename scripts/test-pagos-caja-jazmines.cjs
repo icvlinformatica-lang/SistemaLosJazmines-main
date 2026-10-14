@@ -168,3 +168,27 @@ test("leerRef devuelve el gasto y el mes", () => {
   assert.equal(leerRef(null), null)
   assert.equal(leerRef("otra-cosa"), null)
 })
+
+test("un alta sin marcar no es un pago; un registro viejo sin el dato sí", () => {
+  const { registroMarcadoPagado, pagoDelMesActual } = require(path.join(root, "lib/pago-gasto-fijo.ts"))
+  assert.equal(registroMarcadoPagado({ nota: "Alta del gasto" }), false)
+  assert.equal(registroMarcadoPagado({ nota: "Alta del gasto", pagado: true }), true)
+  assert.equal(registroMarcadoPagado({ nota: "Carga histórica" }), true)
+  assert.equal(registroMarcadoPagado({}), true)
+  assert.equal(registroMarcadoPagado({ pagado: false }), false)
+  // Caso real: "alquiler salon" dado de alta en septiembre, nunca pagado.
+  const alquiler = fijo({
+    id: "alq-1",
+    salon: null,
+    monto: 2603333,
+    pagado: false,
+    historialMontos: [{ id: "r-alta", mes: "2026-09", monto: 2603333, montoAnterior: 2603333, fecha: FECHA, nota: "Alta del gasto" }],
+  })
+  assert.equal(pagoDelMesActual(alquiler, undefined, "2026-09").pagado, false)
+  assert.equal(unidadesPagadas(alquiler, ["2026-09"]).length, 0)
+  // Pagarlo después sí descuenta (no estaba contado como pagado).
+  const pagado = pagar(alquiler, "2026-09")
+  const { altas } = diferenciaPagos(alquiler, pagado, ["2026-09"], sinEgresos)
+  assert.equal(altas.length, 1)
+  assert.equal(altas[0].monto, 2603333)
+})
