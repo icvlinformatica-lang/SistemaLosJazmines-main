@@ -112,6 +112,7 @@ import { CierreMesDialog } from "./cierre-mes-dialog"
 import { MesesFijo, pagoDelMesActual } from "./meses-fijo"
 import { CuerpoTarjeta, GastoPlegable, useHoverPlegado } from "./gasto-plegable"
 import { SaldoHerramientas } from "./saldo-herramientas"
+import { COLUMNAS_FILA_FIJO, EncabezadoMeses, TiraMesesMini } from "./tira-meses-mini"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useTarjetasPlegables } from "@/lib/hooks/use-tarjetas-plegables"
 import { almacenDelNavegador, guardarSalonRecordado, leerSalonRecordado } from "@/lib/salon-recordado"
@@ -488,6 +489,7 @@ function CarpetaGastos({
   etiqueta,
   colorCustom,
   inicialAbierta = false,
+  encabezado,
   children,
 }: {
   salon: string
@@ -506,6 +508,8 @@ function CarpetaGastos({
   colorCustom?: string
   /** Si arranca abierta (por ejemplo, cuando tiene algo pendiente). */
   inicialAbierta?: boolean
+  /** Fila fija arriba de los ítems (no cuenta para "Ver más"), ej. los meses. */
+  encabezado?: React.ReactNode
   children: React.ReactNode
 }) {
   // Las carpetas se abren y cierran solo con click (antes también con el
@@ -523,6 +527,7 @@ function CarpetaGastos({
   const ocultos = nodos.length - ITEMS_VISIBLES_LISTA
   const lista = (
     <>
+      {encabezado}
       {visibles}
       {ocultos > 0 && (
         <Button
@@ -1248,6 +1253,7 @@ export default function CajaJazminePage() {
   // es mañana. El mes de los pagos de gastos fijos sale de este mismo "hoy".
   const hoyStr = fechaArgentina(ahora)
   const mesHoy = hoyStr.slice(0, 7)
+  const anioHoy = Number(mesHoy.slice(0, 4))
 
   // Colapsar tarjetas (alertas, fijos, proyección) y ocultar montos de métricas.
   // Todas arrancan plegadas: se despliegan solas al dejar el mouse encima
@@ -2560,6 +2566,7 @@ export default function CajaJazminePage() {
                     }
                     plano={salonFiltro !== "todos"}
                     inicialAbierta={pagadosCarpeta < totalCarpeta}
+                    encabezado={<EncabezadoMeses anio={anioHoy} mesHoy={mesHoy} />}
                     resumen={
                       totalCarpeta > 0 ? (
                         <span
@@ -2589,14 +2596,14 @@ export default function CajaJazminePage() {
                       <GastoPlegable
                         key={`reparto-${cuota.id}`}
                         header={
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3">
+                          <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3 md:grid ${COLUMNAS_FILA_FIJO}`}>
                             <IconoGastoBoton
                               icono={origPill?.icono}
                               color={salonColor(carpeta.salon, configuracionCajas)}
                               onSelect={(nombre) => updateCostoOperativo(cuota.id, { icono: nombre })}
                             />
                             {/* Tocar el nombre abre o cierra los meses del gasto */}
-                            <div className="min-w-[11rem] flex-1 text-left">
+                            <div className="min-w-[11rem] flex-1 text-left md:min-w-0">
                               <p className="text-sm font-medium break-words">{cuota.concepto}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">
                                 {gastoRef?.frecuencia || "Mensual"}
@@ -2609,7 +2616,13 @@ export default function CajaJazminePage() {
                                 {` · ${cuota.porcentaje}%`}
                               </p>
                             </div>
-                            <div className="ml-auto flex items-center gap-1">
+                            <TiraMesesMini
+                              gasto={origPill}
+                              anio={anioHoy}
+                              mesHoy={mesHoy}
+                              parte={{ salon: carpeta.salon, porcentaje: cuota.porcentaje }}
+                            />
+                            <div className="ml-auto flex items-center justify-end gap-1">
                               <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
                               {gastoRef && (
                                 <MenuGastoFijo
@@ -2674,14 +2687,14 @@ export default function CajaJazminePage() {
                     <GastoPlegable
                       key={gasto.id}
                       header={
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3">
+                        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3 md:grid ${COLUMNAS_FILA_FIJO}`}>
                           <IconoGastoBoton
                             icono={state.costosOperativos?.find((c) => c.id === gasto.id)?.icono}
                             color={salonColor(carpeta.salon, configuracionCajas)}
                             onSelect={(nombre) => updateCostoOperativo(gasto.id, { icono: nombre })}
                           />
                           {/* Tocar el nombre abre o cierra los meses del gasto */}
-                          <div className="min-w-[11rem] flex-1 text-left">
+                          <div className="min-w-[11rem] flex-1 text-left md:min-w-0">
                             <p className="text-sm font-medium break-words">{gasto.concepto}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
                               {gasto.frecuencia}
@@ -2693,6 +2706,15 @@ export default function CajaJazminePage() {
                               {gasto.fechaVencimiento ? ` · vence ${formatFecha(gasto.fechaVencimiento)}` : ""}
                             </p>
                           </div>
+                          {/* Pagos del año de un vistazo (los sueldos no tienen tira) */}
+                          <TiraMesesMini
+                            gasto={gasto.esSueldoVendedor ? undefined : state.costosOperativos?.find((c) => c.id === gasto.id)}
+                            anio={anioHoy}
+                            mesHoy={mesHoy}
+                            parte={
+                              parteSalon ? { salon: parteSalon.salon, porcentaje: parteSalon.porcentaje } : undefined
+                            }
+                          />
                           {/* Monto del MES CALENDARIO actual, visible con el ítem
                               plegado: verde si el mes en curso está pagado según
                               la tira de meses, amarillo si falta pagar (sin
@@ -2710,7 +2732,7 @@ export default function CajaJazminePage() {
                                 mesHoy,
                               )
                               return (
-                                <div className="ml-auto flex items-center gap-1">
+                                <div className="ml-auto flex items-center justify-end gap-1">
                                   <MontoPagoPill monto={pagoMes.monto} pagado={pagoMes.pagado} />
                                   <MenuGastoFijo
                                     concepto={gasto.concepto}
@@ -2723,7 +2745,7 @@ export default function CajaJazminePage() {
                           {/* Sueldos de vendedores: sin tira de meses, conservan
                               sus controles (monto, estado y edición de fecha). */}
                           {gasto.esSueldoVendedor && (
-                            <div className="ml-auto flex items-center gap-1 shrink-0">
+                            <div className="ml-auto flex items-center justify-end gap-1 shrink-0">
                               <div className="flex flex-col items-end gap-1 mr-1">
                                 <span className="text-sm font-bold text-foreground">
                                   {formatCurrency(gasto.monto)}
