@@ -14,6 +14,9 @@
 // Barra primero elige un salón (el mismo selector que Stock por salón, sin
 // "Todos") y ve solo los eventos de ese salón, pintados con su color. El resto
 // del staff sigue viendo todos los salones juntos, como siempre.
+//
+// Barra, Fotógrafo, Vestido y Pantalla ven solo los eventos donde están
+// contratados (lib/staff-eventos-perfil.ts). Coordinación ve todos.
 
 import { useMemo, useState } from "react"
 import { useEventos } from "@/lib/use-eventos"
@@ -31,37 +34,8 @@ import { enlaceWhatsApp } from "@/lib/recordatorio-cuota"
 import { salonColor, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
-
-/**
- * Servicio a resaltar según el perfil activo (coincidencia por nombre del
- * catálogo). DJ y Coordinación todavía no tienen un servicio propio en el
- * catálogo: cuando se agregue, sumar su caso acá.
- *
- * El catálogo real tiene variantes versionadas por año para casi todos los
- * servicios (ej. "FOTOGRAFIA 2027", "VESTIDO 2028") y algo de inconsistencia
- * de formato ("FOTO  + VIDEO" con doble espacio, "FOTO-VIDEO 2027" con
- * guion en vez de "+"). Por eso se normaliza espacios/guiones/"+" antes de
- * comparar, y "empieza con" en vez de exacto también para Pantalla — el
- * mismo patrón de versionado por año probablemente le va a llegar tarde o
- * temprano, aunque hoy solo exista "PANTALLA LED" sin año.
- */
-function normalizarNombreServicio(s: string): string {
-  return (s || "").trim().toUpperCase().replace(/[+\-]/g, " ").replace(/\s+/g, " ")
-}
-
-function esServicioDestacado(perfilId: string | undefined, nombreServicio: string): boolean {
-  const n = normalizarNombreServicio(nombreServicio)
-  switch (perfilId) {
-    case "fotografo":
-      return n.startsWith("FOTOGRAFIA") || n.startsWith("FOTO VIDEO")
-    case "vestido":
-      return n.startsWith("VESTIDO")
-    case "pantalla":
-      return n.startsWith("PANTALLA LED")
-    default:
-      return false
-  }
-}
+import { AnotacionEvento } from "@/components/anotacion-evento"
+import { esServicioDelPerfil, eventoVisibleParaPerfil, filtraPorContratacion } from "@/lib/staff-eventos-perfil"
 
 function formatFecha(fecha: string): string {
   if (!fecha) return "Sin fecha"
@@ -109,8 +83,9 @@ export default function StaffPage() {
       eventos
         .filter((e) => !!e.fecha && e.estado !== "cancelado")
         .filter((e) => !esBarra || e.salon === salon)
+        .filter((e) => eventoVisibleParaPerfil(perfilActivo?.id, e))
         .sort((a, b) => a.fecha.localeCompare(b.fecha)),
-    [eventos, esBarra, salon],
+    [eventos, esBarra, salon, perfilActivo?.id],
   )
 
   const celdas = useMemo<CeldaDia[]>(() => {
@@ -204,7 +179,9 @@ export default function StaffPage() {
         </h1>
         )}
         <p className="text-sm text-muted-foreground mt-1">
-          Tocá un día para ver el detalle del evento y los servicios contratados.
+          {filtraPorContratacion(perfilActivo?.id)
+            ? "Solo los eventos donde estás contratado. Tocá un día para ver el detalle."
+            : "Tocá un día para ver el detalle del evento y los servicios contratados."}
         </p>
         {/* Qué quiere decir cada símbolo. Sin esto, los emojis del calendario
             hay que adivinarlos. */}
@@ -331,7 +308,9 @@ export default function StaffPage() {
         <CardContent className="p-4 space-y-2">
           <h3 className="text-sm font-semibold text-muted-foreground">Los próximos en la agenda</h3>
           {proximosEventos.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No hay eventos próximos.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {filtraPorContratacion(perfilActivo?.id) ? "No tenés eventos próximos contratados." : "No hay eventos próximos."}
+            </p>
           ) : (
             <div className="space-y-1.5">
               {proximosEventos.map((e) => (
@@ -485,7 +464,7 @@ export default function StaffPage() {
                   ) : (
                     <div className="space-y-1.5">
                       {(selectedEvento.servicios || []).map((s, i) => {
-                        const destacado = esServicioDestacado(perfilActivo?.id, s.nombre)
+                        const destacado = esServicioDelPerfil(perfilActivo?.id, s.nombre)
                         return (
                           <div
                             key={`${s.servicioId}-${i}`}
@@ -509,6 +488,9 @@ export default function StaffPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Anotación propia del perfil, con guardado automático. */}
+                <AnotacionEvento key={selectedEvento.id} eventoId={selectedEvento.id} />
               </div>
             </>
           )}

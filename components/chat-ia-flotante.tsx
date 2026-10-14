@@ -23,6 +23,17 @@ import {
 } from "@/lib/chat-ia-posicion"
 import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import { TarjetaEventoChatIA } from "@/components/chat-ia-tarjeta-evento"
+import { propuestaGastoValida, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
+import { TarjetaGastoChatIA } from "@/components/chat-ia-tarjeta-gasto"
+import { propuestaCobroValida, type PropuestaCobroChat } from "@/lib/chat-ia-cobro"
+import { TarjetaCobroChatIA } from "@/components/chat-ia-tarjeta-cobro"
+import {
+  propuestaInsumoValida,
+  propuestaRecetaValida,
+  type PropuestaInsumoChat,
+  type PropuestaRecetaChat,
+} from "@/lib/chat-ia-catalogo"
+import { TarjetaInsumoChatIA, TarjetaRecetaChatIA } from "@/components/chat-ia-tarjeta-catalogo"
 
 interface AccionChat {
   etiqueta: string
@@ -37,6 +48,13 @@ interface MensajeChat {
   acciones?: AccionChat[]
   /** Tarjetas de eventos con su plata (armadas en el servidor). */
   tarjetas?: TarjetaEventoChat[]
+  /** Gasto propuesto por la IA, a confirmar con el botón. */
+  gasto?: PropuestaGastoChat | null
+  /** Cobro de cuota propuesto por la IA, a confirmar con el botón. */
+  cobro?: PropuestaCobroChat | null
+  /** Insumo y receta nuevos propuestos por la IA, a confirmar con el botón. */
+  insumo?: PropuestaInsumoChat | null
+  receta?: PropuestaRecetaChat | null
   fecha?: string
   /** Error que se muestra solo en esta pantalla (no se guarda). */
   error?: boolean
@@ -138,6 +156,10 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
           perfil: typeof m.perfil === "string" ? m.perfil : undefined,
           acciones: accionesValidas(m.acciones),
           tarjetas: tarjetasValidas(m.tarjetas),
+          gasto: propuestaGastoValida(m.gasto),
+          cobro: propuestaCobroValida(m.cobro),
+          insumo: propuestaInsumoValida(m.insumo),
+          receta: propuestaRecetaValida(m.receta),
           fecha: typeof m.fecha === "string" ? m.fecha : undefined,
         }),
       )
@@ -146,6 +168,17 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
       setHayMas((prev) => (antes || !cargadoRef.current || otraPersona ? data.hayMas === true : prev))
       setMensajes((prev) => {
         if (otraPersona) return traidos
+        // Un gasto confirmado o cancelado en otra pestaña: se toma el estado guardado.
+        const gastoGuardado = new Map(traidos.filter((m) => m.gasto).map((m) => [m.id, m.gasto]))
+        prev = prev.map((m) => (gastoGuardado.has(m.id) ? { ...m, gasto: gastoGuardado.get(m.id) } : m))
+        // Lo mismo con un cobro.
+        const cobroGuardado = new Map(traidos.filter((m) => m.cobro).map((m) => [m.id, m.cobro]))
+        prev = prev.map((m) => (cobroGuardado.has(m.id) ? { ...m, cobro: cobroGuardado.get(m.id) } : m))
+        // Y con un insumo o una receta.
+        const insumoGuardado = new Map(traidos.filter((m) => m.insumo).map((m) => [m.id, m.insumo]))
+        prev = prev.map((m) => (insumoGuardado.has(m.id) ? { ...m, insumo: insumoGuardado.get(m.id) } : m))
+        const recetaGuardada = new Map(traidos.filter((m) => m.receta).map((m) => [m.id, m.receta]))
+        prev = prev.map((m) => (recetaGuardada.has(m.id) ? { ...m, receta: recetaGuardada.get(m.id) } : m))
         // Los anteriores van arriba; sin repetir los que ya están.
         const ids = new Set(prev.map((m) => m.id))
         const nuevos = traidos.filter((m) => !ids.has(m.id))
@@ -242,7 +275,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
     const pendiente: MensajeChat = { id, rol: "user", contenido: pregunta, perfil: perfilId, fecha: new Date().toISOString() }
     // La IA recibe los últimos mensajes de la charla (sin los errores locales).
     const contexto = [...mensajes.filter((m) => !m.error), pendiente]
-      .slice(-10)
+      .slice(-20)
       .map((m) => ({ role: m.rol, content: m.contenido }))
     setMensajes((prev) => [...prev, pendiente])
     setInput("")
@@ -267,9 +300,26 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
           {
             id: `${id}-r`,
             rol: "assistant",
-            contenido: String(data.text ?? ""),
+            contenido:
+              String(data.text ?? "") +
+              (data.gastoSinGuardar
+                ? "\n\nOjo: no pude dejar listo el botón para cargar el gasto porque el chat no se guardó. Cargalo desde \"Cargar gastos\" en Inicio."
+                : "") +
+              (data.cobroSinGuardar
+                ? "\n\nOjo: no pude dejar listo el botón para cobrar porque el chat no se guardó. Cobralo desde Cobrar cuota."
+                : "") +
+              (data.insumoSinGuardar
+                ? "\n\nOjo: no pude dejar listo el botón para cargar el insumo porque el chat no se guardó. Cargalo desde Almacén."
+                : "") +
+              (data.recetaSinGuardar
+                ? "\n\nOjo: no pude dejar listo el botón para cargar la receta porque el chat no se guardó. Cargala desde Recetario."
+                : ""),
             acciones: accionesValidas(data.acciones),
             tarjetas: tarjetasValidas(data.tarjetas),
+            gasto: propuestaGastoValida(data.gasto),
+            cobro: propuestaCobroValida(data.cobro),
+            insumo: propuestaInsumoValida(data.insumo),
+            receta: propuestaRecetaValida(data.receta),
             perfil: perfilId,
             fecha: new Date().toISOString(),
           },
@@ -368,7 +418,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   className={
                     m.rol === "user"
                       ? "self-end max-w-[85%]"
-                      : m.tarjetas && m.tarjetas.length > 0
+                      : (m.tarjetas && m.tarjetas.length > 0) || m.gasto || m.cobro || m.insumo || m.receta
                         ? "self-stretch"
                         : "self-start max-w-[90%]"
                   }
@@ -387,6 +437,66 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   >
                     {m.contenido}
                   </div>
+                  {m.gasto && (
+                    <div className="mt-1.5">
+                      <TarjetaGastoChatIA
+                        gasto={m.gasto}
+                        mensajeId={m.id}
+                        propio={propio}
+                        onResuelto={(g) =>
+                          setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, gasto: g } : x)))
+                        }
+                        onIr={() => {
+                          if (window.innerWidth < 640) setAbierto(false)
+                        }}
+                      />
+                    </div>
+                  )}
+                  {m.cobro && (
+                    <div className="mt-1.5">
+                      <TarjetaCobroChatIA
+                        cobro={m.cobro}
+                        mensajeId={m.id}
+                        propio={propio}
+                        onResuelto={(c) =>
+                          setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, cobro: c } : x)))
+                        }
+                        onIr={() => {
+                          if (window.innerWidth < 640) setAbierto(false)
+                        }}
+                      />
+                    </div>
+                  )}
+                  {m.insumo && (
+                    <div className="mt-1.5">
+                      <TarjetaInsumoChatIA
+                        insumo={m.insumo}
+                        mensajeId={m.id}
+                        propio={propio}
+                        onResuelto={(i) =>
+                          setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, insumo: i } : x)))
+                        }
+                        onIr={() => {
+                          if (window.innerWidth < 640) setAbierto(false)
+                        }}
+                      />
+                    </div>
+                  )}
+                  {m.receta && (
+                    <div className="mt-1.5">
+                      <TarjetaRecetaChatIA
+                        receta={m.receta}
+                        mensajeId={m.id}
+                        propio={propio}
+                        onResuelto={(r) =>
+                          setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, receta: r } : x)))
+                        }
+                        onIr={() => {
+                          if (window.innerWidth < 640) setAbierto(false)
+                        }}
+                      />
+                    </div>
+                  )}
                   {m.tarjetas && m.tarjetas.length > 0 && (
                     <div className="mt-1.5 flex flex-col gap-1.5">
                       {m.tarjetas.map((t) => (

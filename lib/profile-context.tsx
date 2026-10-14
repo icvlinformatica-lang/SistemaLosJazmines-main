@@ -171,6 +171,7 @@ interface ProfileContextType {
   hydrated: boolean
   seleccionarPerfil: (id: string, pin: string) => Promise<boolean>
   seleccionarPerfilRapido: (id: string) => Promise<boolean>
+  seleccionarPerfilConPase: (id: string) => Promise<boolean>
   cerrarSesion: () => void
 }
 
@@ -179,6 +180,10 @@ const ProfileContext = createContext<ProfileContextType | null>(null)
 const QUICK_TOKEN_KEY = (id: string) => `acceso_rapido_${id}`
 const SESSION_TOKEN_KEY = "lj_session_token"
 const PERFIL_ACTIVO_KEY = "perfil_activo"
+// Pase de Administración (ver signPaseAdmin en lib/auth/server.ts). Vive en
+// sessionStorage: dura lo que la pestaña (máximo 12 horas) y NO se borra al
+// "Cambiar perfil", que es justamente cuando se usa.
+const PASE_ADMIN_KEY = "lj_pase_admin"
 // Marca que lee el login para avisar "tu sesión venció" (ver app/login/page.tsx).
 const SESION_VENCIDA_KEY = "lj_sesion_vencida"
 
@@ -462,12 +467,26 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true)
   }, [])
 
-  const activar = (perfil: Perfil, quickToken?: string, sessionToken?: string) => {
+  const activar = (
+    perfil: Perfil,
+    quickToken?: string,
+    sessionToken?: string,
+    paseAdmin?: string,
+    accesosRapidos?: Record<string, string>,
+  ) => {
     setPerfilActivo(perfil)
     try {
       sessionStorage.setItem(PERFIL_ACTIVO_KEY, perfil.id)
+      // Quien desbloquea todo (ver desbloqueaTodosLosPerfiles en
+      // lib/auth/server.ts) recibe el acceso rápido de cada perfil.
+      if (accesosRapidos) {
+        for (const [id, token] of Object.entries(accesosRapidos)) {
+          if (typeof token === "string" && token) localStorage.setItem(QUICK_TOKEN_KEY(id), token)
+        }
+      }
       if (quickToken) localStorage.setItem(QUICK_TOKEN_KEY(perfil.id), quickToken)
       if (sessionToken) sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken)
+      if (paseAdmin) sessionStorage.setItem(PASE_ADMIN_KEY, paseAdmin)
     } catch {}
   }
 
@@ -478,12 +497,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ perfilId: id, pin }),
+        body: JSON.stringify({ perfilId: id, pin, quien: quienIngresoGuardado() }),
       })
       if (!res.ok) return false
       const data = await res.json()
       if (!data.ok) return false
-      activar(perfil, data.quickToken, data.sessionToken)
+      activar(perfil, data.quickToken, data.sessionToken, data.paseAdmin, data.accesosRapidos)
       return true
     } catch {
       return false
@@ -502,7 +521,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ perfilId: id, quickToken }),
+        body: JSON.stringify({ perfilId: id, quickToken, quien: quienIngresoGuardado() }),
       })
       if (!res.ok) {
         // Token vencido o inválido: limpiar para pedir PIN de nuevo
@@ -513,7 +532,33 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       }
       const data = await res.json()
       if (!data.ok) return false
-      activar(perfil, data.quickToken, data.sessionToken)
+      activar(perfil, data.quickToken, data.sessionToken, data.paseAdmin, data.accesosRapidos)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Entrar a un perfil con el pase de Administración, sin su PIN. Si el pase
+  // venció (o cambió el PIN de Administración), se borra y devuelve false para
+  // que la pantalla de ingreso pida el PIN como siempre.
+  const seleccionarPerfilConPase = async (id: string): Promise<boolean> => {
+    const perfil = PERFILES.find((p) => p.id === id)
+    const paseAdmin = paseAdminGuardado()
+    if (!perfil || !paseAdmin) return false
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ perfilId: id, paseAdmin }),
+      })
+      if (!res.ok) {
+        if (res.status === 401) bloquearPerfiles()
+        return false
+      }
+      const data = await res.json()
+      if (!data.ok) return false
+      activar(perfil, undefined, data.sessionToken)
       return true
     } catch {
       return false
@@ -528,7 +573,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ProfileContext.Provider
-      value={{ perfilActivo, hydrated, seleccionarPerfil, seleccionarPerfilRapido, cerrarSesion }}
+      value={{
+        perfilActivo,
+        hydrated,
+        seleccionarPerfil,
+        seleccionarPerfilRapido,
+        seleccionarPerfilConPase,
+        cerrarSesion,
+      }}
     >
       {children}
     </ProfileContext.Provider>
@@ -541,12 +593,41 @@ export function useProfile() {
   return ctx
 }
 
+/** Quién eligió ingresar en el login (lo guarda app/login en sessionStorage). */
+function quienIngresoGuardado(): string | undefined {
+  try {
+    return sessionStorage.getItem("admin_usuario") || undefined
+  } catch {
+    return undefined
+  }
+}
+
 export function tieneAccesoRapido(id: string): boolean {
   try {
     return !!localStorage.getItem(QUICK_TOKEN_KEY(id))
   } catch {
     return false
   }
+}
+
+function paseAdminGuardado(): string | null {
+  try {
+    return sessionStorage.getItem(PASE_ADMIN_KEY)
+  } catch {
+    return null
+  }
+}
+
+/** ¿Esta pestaña tiene los perfiles desbloqueados por Administración? */
+export function tienePaseAdmin(): boolean {
+  return !!paseAdminGuardado()
+}
+
+/** Vuelve a pedir el PIN de cada perfil en esta pestaña. */
+export function bloquearPerfiles() {
+  try {
+    sessionStorage.removeItem(PASE_ADMIN_KEY)
+  } catch {}
 }
 
 export function olvidarAccesosRapidos() {

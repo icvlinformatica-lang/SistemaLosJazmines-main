@@ -8,6 +8,14 @@
 import { sql } from "@/lib/db"
 import type { AccionChat } from "@/lib/chat-ia-datos"
 import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
+import { propuestaGastoValida, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
+import { propuestaCobroValida, type PropuestaCobroChat } from "@/lib/chat-ia-cobro"
+import {
+  propuestaInsumoValida,
+  propuestaRecetaValida,
+  type PropuestaInsumoChat,
+  type PropuestaRecetaChat,
+} from "@/lib/chat-ia-catalogo"
 
 /** Perfiles que tienen el chat con IA. */
 export const PERFILES_CHAT_IA = ["administracion", "soporte"]
@@ -40,6 +48,13 @@ export interface MensajeHistorial {
   contenido: string
   acciones: AccionChat[]
   tarjetas: TarjetaEventoChat[]
+  /** Gasto que propuso la IA, con su estado (pendiente, cargado o cancelado). */
+  gasto: PropuestaGastoChat | null
+  /** Cobro de cuota que propuso la IA, con su estado (pendiente, cobrado o cancelado). */
+  cobro: PropuestaCobroChat | null
+  /** Insumo o receta nuevos que propuso la IA, con su estado. */
+  insumo: PropuestaInsumoChat | null
+  receta: PropuestaRecetaChat | null
   fecha: string
 }
 
@@ -53,31 +68,76 @@ export function idMensajeValido(id: unknown): id is string {
 
 /**
  * La columna `acciones` guarda los botones como lista ([{etiqueta, href}]),
- * o, si la respuesta trae tarjetas de eventos, { botones, tarjetas }. Los
- * mensajes viejos son siempre la lista: se leen los dos formatos.
+ * o, si la respuesta trae tarjetas de eventos o algo propuesto (un gasto, un
+ * cobro, un insumo o una receta), { botones, tarjetas, gasto, cobro, insumo, receta }. Los mensajes viejos son siempre la lista: se
+ * leen los dos formatos.
  */
-function leerAdjuntos(valor: unknown): { acciones: AccionChat[]; tarjetas: TarjetaEventoChat[] } {
+export function leerAdjuntos(valor: unknown): {
+  acciones: AccionChat[]
+  tarjetas: TarjetaEventoChat[]
+  gasto: PropuestaGastoChat | null
+  cobro: PropuestaCobroChat | null
+  insumo: PropuestaInsumoChat | null
+  receta: PropuestaRecetaChat | null
+} {
   let v = valor
   if (typeof v === "string") {
     try {
       v = JSON.parse(v)
     } catch {
-      return { acciones: [], tarjetas: [] }
+      return { acciones: [], tarjetas: [], gasto: null, cobro: null, insumo: null, receta: null }
     }
   }
-  const objeto = v && typeof v === "object" && !Array.isArray(v) ? (v as { botones?: unknown; tarjetas?: unknown }) : null
+  const objeto =
+    v && typeof v === "object" && !Array.isArray(v) ? (v as { botones?: unknown; tarjetas?: unknown; gasto?: unknown; cobro?: unknown; insumo?: unknown; receta?: unknown }) : null
   const botones = objeto ? objeto.botones : v
   const acciones = Array.isArray(botones)
     ? botones.filter(
         (a): a is AccionChat => !!a && typeof a.etiqueta === "string" && typeof a.href === "string" && a.href.startsWith("/"),
       )
     : []
-  return { acciones, tarjetas: objeto ? tarjetasValidas(objeto.tarjetas) : [] }
+  return {
+    acciones,
+    tarjetas: objeto ? tarjetasValidas(objeto.tarjetas) : [],
+    gasto: objeto ? propuestaGastoValida(objeto.gasto) : null,
+    cobro: objeto ? propuestaCobroValida(objeto.cobro) : null,
+    insumo: objeto ? propuestaInsumoValida(objeto.insumo) : null,
+    receta: objeto ? propuestaRecetaValida(objeto.receta) : null,
+  }
+}
+
+/**
+ * Los adjuntos de un mensaje con una propuesta ya resuelta (cargada, cobrada
+ * o cancelada), sin perder lo demás que tenía el mensaje.
+ */
+export function adjuntosConPropuesta(
+  adjuntos: ReturnType<typeof leerAdjuntos>,
+  cambio: Partial<Pick<ReturnType<typeof leerAdjuntos>, "gasto" | "cobro" | "insumo" | "receta">>,
+): string {
+  const { acciones, tarjetas, ...propuestas } = { ...adjuntos, ...cambio }
+  const presentes = Object.fromEntries(Object.entries(propuestas).filter(([, v]) => v))
+  return JSON.stringify({ botones: acciones, tarjetas, ...presentes })
 }
 
 /** Lo que se guarda en `acciones` (null si no hay nada). */
-export function adjuntosAGuardar(acciones: AccionChat[], tarjetas: TarjetaEventoChat[]): string | null {
-  if (tarjetas.length > 0) return JSON.stringify({ botones: acciones, tarjetas })
+export function adjuntosAGuardar(
+  acciones: AccionChat[],
+  tarjetas: TarjetaEventoChat[],
+  gasto: PropuestaGastoChat | null = null,
+  cobro: PropuestaCobroChat | null = null,
+  insumo: PropuestaInsumoChat | null = null,
+  receta: PropuestaRecetaChat | null = null,
+): string | null {
+  if (tarjetas.length > 0 || gasto || cobro || insumo || receta) {
+    return JSON.stringify({
+      botones: acciones,
+      tarjetas,
+      ...(gasto ? { gasto } : {}),
+      ...(cobro ? { cobro } : {}),
+      ...(insumo ? { insumo } : {}),
+      ...(receta ? { receta } : {}),
+    })
+  }
   return acciones.length > 0 ? JSON.stringify(acciones) : null
 }
 
@@ -106,13 +166,17 @@ export async function guardarIntercambio(p: {
   respuesta: string
   acciones: AccionChat[]
   tarjetas?: TarjetaEventoChat[]
+  gasto?: PropuestaGastoChat | null
+  cobro?: PropuestaCobroChat | null
+  insumo?: PropuestaInsumoChat | null
+  receta?: PropuestaRecetaChat | null
 }): Promise<boolean> {
   try {
     await sql`
       INSERT INTO chat_ia_mensajes (id, perfil, usuario, rol, contenido, acciones, created_at)
       VALUES
         (${p.id}, ${p.perfil}, ${p.usuario}, 'user', ${p.pregunta}, NULL, now()),
-        (${`${p.id}-r`}, ${p.perfil}, ${p.usuario}, 'assistant', ${p.respuesta}, ${adjuntosAGuardar(p.acciones, p.tarjetas ?? [])}::jsonb, now() + interval '1 millisecond')
+        (${`${p.id}-r`}, ${p.perfil}, ${p.usuario}, 'assistant', ${p.respuesta}, ${adjuntosAGuardar(p.acciones, p.tarjetas ?? [], p.gasto ?? null, p.cobro ?? null, p.insumo ?? null, p.receta ?? null)}::jsonb, now() + interval '1 millisecond')
       ON CONFLICT (id) DO NOTHING
     `
     return true
