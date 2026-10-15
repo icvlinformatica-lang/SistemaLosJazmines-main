@@ -192,3 +192,21 @@ test("un alta sin marcar no es un pago; un registro viejo sin el dato sí", () =
   assert.equal(altas.length, 1)
   assert.equal(altas[0].monto, 2603333)
 })
+
+test("pagar o deshacer un mes ya conciliado (hasta agosto 2026) no toca la caja", () => {
+  const { mesYaConciliado } = require(path.join(root, "lib/pagos-caja-jazmines.ts"))
+  assert.equal(mesYaConciliado("2026-08"), true)
+  assert.equal(mesYaConciliado("2026-01"), true)
+  assert.equal(mesYaConciliado("2026-09"), false)
+  const antes = fijo({ historialMontos: [] })
+  const pagadoJulio = pagar(antes, "2026-07")
+  const alta = diferenciaPagos(antes, pagadoJulio, ["2026-07"], sinEgresos)
+  assert.equal(alta.altas.length + alta.bajas.length, 0)
+  // Aunque tuviera un egreso viejo, deshacer julio no lo borra.
+  const deshecho = pagar(pagadoJulio, "2026-07", false)
+  const baja = diferenciaPagos(pagadoJulio, deshecho, ["2026-07"], new Set([refFijo("fijo-1", "2026-07", "Casona")]))
+  assert.equal(baja.altas.length + baja.bajas.length, 0)
+  // Septiembre sí descuenta.
+  const sep = diferenciaPagos(antes, pagar(antes, "2026-09"), ["2026-09"], sinEgresos)
+  assert.equal(sep.altas.length, 1)
+})

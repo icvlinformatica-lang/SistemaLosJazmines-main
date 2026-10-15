@@ -19,6 +19,7 @@
  *   viejos.
  * - Gasto variable: pagado = una unidad (o una por salón si está repartido).
  * Las comisiones y los sueldos de vendedores no pasan por acá.
+ * Los meses de gastos fijos hasta ULTIMO_MES_CONCILIADO no generan egresos.
  */
 
 import type { CostoOperativo, RegistroMonto } from "./store"
@@ -71,8 +72,23 @@ export function leerRef(ref: string | null | undefined): { gastoId: string; mes?
   return null
 }
 
+/**
+ * Último mes ya conciliado: la caja se puso a la realidad contando la plata
+ * (agosto 2026), así que los gastos fijos de ese mes o anteriores ya están
+ * reflejados en el saldo. Marcarlos pagados (o deshacerlos) acomoda la tira
+ * pero NO descuenta ni devuelve plata. Decisión del dueño, 15/10/2026.
+ */
+export const ULTIMO_MES_CONCILIADO = "2026-08"
+
+/** true si pagar ese mes de un gasto fijo no toca el saldo (ya conciliado). */
+export function mesYaConciliado(mes: string): boolean {
+  return mes <= ULTIMO_MES_CONCILIADO
+}
+
 /** Unidades pagadas de UN mes de un gasto fijo. */
 function unidadesFijoDelMes(gasto: GastoPago, mes: string): UnidadPagada[] {
+  // Meses ya conciliados: su plata ya está en el saldo, no generan egresos.
+  if (mesYaConciliado(mes)) return []
   const hist: RegistroMonto[] = gasto.historialMontos || []
   const registro = hist.find((r) => r.mes === mes)
   if (!registro) return []

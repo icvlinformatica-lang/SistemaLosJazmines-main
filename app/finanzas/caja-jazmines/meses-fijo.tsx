@@ -34,6 +34,7 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { generateId, type CostoOperativo, type RegistroMonto } from "@/lib/store"
 import { cambiosPagoDelMes, registroMarcadoPagado } from "@/lib/pago-gasto-fijo"
 import { COLUMNAS_FILA_FIJO } from "./tira-meses-mini"
+import { mesYaConciliado } from "@/lib/pagos-caja-jazmines"
 import {
   Check,
   ChevronLeft,
@@ -395,6 +396,12 @@ export function MesesFijo({
                           {estadoPago === "pagado" ? "Pagado" : estadoPago === "debe" ? "Debe" : "A pagar"}
                         </span>
                       </div>
+                      {/* Meses ya conciliados: pagar o deshacer no toca el saldo */}
+                      {mesYaConciliado(mesISO) && (
+                        <p className="mt-1 rounded-md bg-muted px-2 py-1 text-[10px] leading-snug text-muted-foreground">
+                          Mes ya conciliado: marcarlo pagado no descuenta de Caja Jazmines.
+                        </p>
+                      )}
                       {parte && (
                         <p className="mt-0.5 text-[10px] text-muted-foreground">
                           {`General ${formatCurrency(montoGeneralMes)}`}
