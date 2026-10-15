@@ -2,17 +2,18 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { perfilDesdeRequest, salonesConfigurados } from "@/lib/stock-salones-server"
-import { puedeVerConsolidado } from "@/lib/stock-salones"
+import { puedeVerConsolidado, sectoresPermitidos } from "@/lib/stock-salones"
 
 /**
  * GET — detalle de una sesión de carga de stock (se abre desde
  * Configuración → Actividad; el id del renglón de actividad es el mismo que
- * el de la sesión). Solo Administración / Soporte.
+ * el de la sesión) y desde el historial de cargas de /stock. Administración
+ * y Soporte ven cualquiera; Cocina y Barra, solo las de su sector.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const perfil = await perfilDesdeRequest(req)
-    if (!puedeVerConsolidado(perfil)) {
+    if (!puedeVerConsolidado(perfil) && sectoresPermitidos(perfil).length === 0) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 })
     }
     const { id } = await params
@@ -41,6 +42,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ ok: false, error: "No se encontró la sesión" }, { status: 404 })
     }
     const s = sesiones[0]
+    if (!puedeVerConsolidado(perfil) && !sectoresPermitidos(perfil).includes(s.sector as "cocina" | "barra")) {
+      return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 })
+    }
 
     const items = (await sql`
       SELECT insumo_id, descripcion, unidad, cantidad_anterior, cantidad_nueva

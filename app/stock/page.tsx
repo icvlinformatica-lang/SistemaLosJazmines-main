@@ -6,13 +6,14 @@
 // dos), de madrugada y desde el celular. El servidor vuelve a controlar el
 // perfil real al guardar.
 //
-// Flujo: elegir salón → menú ("Cargar stock disponible luego del evento X"
-// si hay uno terminado sin cargar, los próximos 3 eventos del salón con
-// candado y, al final, el botón chico "Carga extraordinaria" con PIN) → carga. Sin
-// acceso al calendario desde acá. La carga muestra TODOS los insumos del
-// sector con su casillero: se escribe el número y listo (1 paso por
-// insumo). Al confirmar se envían SOLO los que tienen un número escrito
-// (ver itemsParaEnviar en lib/stock-carga.ts): vacío = no contado, nunca 0.
+// Flujo: elegir salón → menú (un botón por sector "Contar stock" y, debajo,
+// el historial de cargas de ese salón) → carga. Se puede cargar en
+// cualquier momento, sin PIN: cada carga es una sesión con fecha y hora y
+// queda en el historial (pedido del dueño, 15/10/2026). La carga muestra
+// TODOS los insumos del sector con su casillero: se escribe el número y
+// listo (1 paso por insumo). Al enviar se mandan SOLO los que tienen un
+// número escrito (ver itemsParaEnviar en lib/stock-carga.ts): vacío = no
+// contado, nunca 0.
 // El nombre de quien carga se pide en el diálogo de confirmación.
 // La sesión se confirma TODA junta (ver /api/stock-salones/sesiones). Al
 // guardar, el stock de Administración (stock_actual de /admin/almacen y
@@ -25,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useStore } from "@/lib/store-context"
 import { useProfile, usuarioActivo } from "@/lib/profile-context"
 import { salonLabel } from "@/lib/store"
-import { proximosEventosDelSalon, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 import { insumosVisibles, itemsParaEnviar, type InsumoCarga } from "@/lib/stock-carga"
 import {
   armarBorradorStock,
@@ -37,6 +38,7 @@ import {
 } from "@/lib/stock-borrador"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
+import { StockSesionDetalleDialog } from "@/components/stock-sesion-detalle-dialog"
 import { ConfirmAction } from "@/components/confirm-action"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -51,7 +53,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, ChefHat, ChevronDown, History, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
+import { ArrowLeft, ChefHat, ChevronDown, ChevronRight, ClipboardList, History, Loader2, Search, Send, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -62,8 +64,15 @@ interface SaldoSalon {
 }
 
 interface EstadoSector {
-  eventoPendiente: { id: string; nombre: string; fin: string } | null
   saldos: Record<string, SaldoSalon>
+}
+
+interface CargaHistorial {
+  id: string
+  sector: SectorStock
+  cargadoPor: string
+  fecha: string
+  cantidadItems: number
 }
 
 const SECTOR_LABEL: Record<SectorStock, string> = { cocina: "cocina", barra: "barra" }
@@ -102,20 +111,20 @@ function fmtFechaHora(iso: string): string {
   })
 }
 
-/** "sáb 03/10 · 21:00" a partir de la fecha (YYYY-MM-DD) y el horario del evento. */
-function fmtFechaEvento(fecha: string | null, horario: string | null): string {
-  if (!fecha) return ""
-  const dia = new Date(`${fecha}T12:00:00-03:00`).toLocaleDateString("es-AR", {
+/** "jueves 15/10" en hora argentina, para decir con qué fecha se envía. */
+function fmtHoy(d: Date): string {
+  const partes = new Intl.DateTimeFormat("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
-    weekday: "short",
+    weekday: "long",
     day: "2-digit",
     month: "2-digit",
-  })
-  return horario ? `${dia} · ${horario}` : dia
+  }).formatToParts(d)
+  const parte = (t: string) => partes.find((x) => x.type === t)?.value ?? ""
+  return `${parte("weekday")} ${parte("day")}/${parte("month")}`
 }
 
 export default function StockPorSalonPage() {
-  const { state, eventos } = useStore()
+  const { state } = useStore()
   const { perfilActivo } = useProfile()
   const { toast } = useToast()
   const sectores = sectoresPermitidos(perfilActivo?.id)
@@ -137,15 +146,10 @@ export default function StockPorSalonPage() {
   const [plegadas, setPlegadas] = useState<Set<string>>(new Set())
   const [confirmando, setConfirmando] = useState(false)
   const [guardando, setGuardando] = useState(false)
-  // Carga extraordinaria: la de un salón sin evento terminado pendiente.
-  // Pide PIN_STOCK_EXTRA antes de abrir la lista. El PIN queda en memoria
-  // durante la carga porque el servidor lo vuelve a pedir al guardar (la
-  // pantalla sola no habilita nada).
-  const [pidiendoPin, setPidiendoPin] = useState<SectorStock | null>(null)
-  const [pinTipeado, setPinTipeado] = useState("")
-  const [pinError, setPinError] = useState("")
-  const [verificandoPin, setVerificandoPin] = useState(false)
-  const [pinExtra, setPinExtra] = useState("")
+  // Historial de cargas del salón (de los sectores del perfil) y la que
+  // está abierta en detalle.
+  const [historial, setHistorial] = useState<CargaHistorial[]>([])
+  const [cargaAbierta, setCargaAbierta] = useState<string | null>(null)
   const inputsRef = useRef<Map<string, HTMLInputElement>>(new Map())
   // Borrador en el celular de la carga en curso (clave por salón, sector y
   // tipo de carga). Mientras se ofrece uno viejo ("¿Seguir con ese
@@ -164,12 +168,26 @@ export default function StockPorSalonPage() {
           sectores.map(async (s) => {
             const res = await fetch(`/api/stock-salones/estado?salon=${encodeURIComponent(salonElegido)}&sector=${s}`)
             const data = await res.json().catch(() => ({}))
-            return [s, data?.ok ? { eventoPendiente: data.eventoPendiente, saldos: data.saldos || {} } : null] as const
+            return [s, data?.ok ? { saldos: data.saldos || {} } : null] as const
           }),
         )
         const nuevo: Partial<Record<SectorStock, EstadoSector>> = {}
         for (const [s, e] of resultados) if (e) nuevo[s] = e
         setEstados(nuevo)
+        // El historial es aparte: si falla, la carga sigue andando igual.
+        const listas = await Promise.all(
+          sectores.map(async (s) => {
+            try {
+              const res = await fetch(`/api/stock-salones/sesiones?salon=${encodeURIComponent(salonElegido)}&sector=${s}`)
+              const data = await res.json().catch(() => ({}))
+              const filas: Array<Omit<CargaHistorial, "sector">> = data?.ok ? data.sesiones || [] : []
+              return filas.map((f) => ({ ...f, sector: s }))
+            } catch {
+              return []
+            }
+          }),
+        )
+        setHistorial(listas.flat().sort((a, b) => b.fecha.localeCompare(a.fecha)))
       } finally {
         setCargandoEstado(false)
       }
@@ -266,10 +284,7 @@ export default function StockPorSalonPage() {
     )
   }
 
-  const estadoSector = sector ? estados[sector] : undefined
-
-  const empezarCarga = (s: SectorStock, pin = "") => {
-    setPinExtra(pin)
+  const empezarCarga = (s: SectorStock) => {
     setSector(s)
     setNombre((prev) => prev || usuarioActivo())
     setSesion({ id: crypto.randomUUID(), iniciadaEn: new Date().toISOString() })
@@ -279,9 +294,8 @@ export default function StockPorSalonPage() {
     // Cocina: si el salón ya tiene conteos, arranca mostrando solo esos; si
     // no, "Todos" (si no, la lista aparecería vacía).
     setSoloContados(Object.keys(estados[s]?.saldos || {}).length > 0)
-    // Borrador: con PIN es la carga extraordinaria; sin PIN, la de "luego
-    // del evento X" (cada evento tiene el suyo).
-    const clave = claveBorradorStock(salon, s, pin ? null : (estados[s]?.eventoPendiente?.id ?? null))
+    // Borrador: uno por salón y sector.
+    const clave = claveBorradorStock(salon, s, null)
     const previo = leerBorradorStock(leerLocal(clave), new Date())
     if (!previo) escribirLocal(clave, null) // vencido o roto: se descarta solo
     setClaveBorrador(clave)
@@ -318,45 +332,7 @@ export default function StockPorSalonPage() {
     setBorradorOfrecido(null)
     setValores({})
     setSesion(null)
-    setPinExtra("")
     setPaso("menu")
-  }
-
-  /**
-   * Botón "Carga extraordinaria" (fuera de un evento terminado). Pide el
-   * PIN antes de abrir la lista; si el perfil carga los dos sectores, se
-   * elige cuál adentro del diálogo.
-   */
-  const pedirExtraordinaria = (s: SectorStock) => {
-    setPinTipeado("")
-    setPinError("")
-    setPidiendoPin(s)
-  }
-
-  const confirmarPin = async () => {
-    if (!pidiendoPin || verificandoPin || !pinTipeado.trim()) return
-    setVerificandoPin(true)
-    setPinError("")
-    try {
-      const res = await fetch("/api/stock-salones/pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: pinTipeado.trim() }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data?.ok) {
-        setPinError(data?.error === "PIN incorrecto" ? "El PIN no es correcto." : data?.error || "No se pudo verificar el PIN.")
-        return
-      }
-      const sectorElegido = pidiendoPin
-      setPidiendoPin(null)
-      empezarCarga(sectorElegido, pinTipeado.trim())
-      setPinTipeado("")
-    } catch {
-      setPinError("Se cortó la conexión. Volvé a intentar.")
-    } finally {
-      setVerificandoPin(false)
-    }
   }
 
   const confirmarSesion = async () => {
@@ -371,9 +347,6 @@ export default function StockPorSalonPage() {
           salon,
           sector,
           cargadoPor: nombre.trim(),
-          // El servidor decide solo si la carga es por evento o
-          // extraordinaria; el PIN solo hace falta en el segundo caso.
-          pin: pinExtra || undefined,
           iniciadaEn: sesion.iniciadaEn,
           // SOLO lo que tiene un número escrito (vacío = no contado).
           items: itemsValidos,
@@ -383,14 +356,14 @@ export default function StockPorSalonPage() {
       if (!res.ok || !data?.ok) {
         // Lo escrito queda intacto y el mismo sesionId permite reintentar sin duplicar.
         toast({
-          title: "No se guardó la carga",
+          title: "No se envió el stock",
           description: data?.error || "Revisá la conexión y volvé a intentar. No se guardó nada.",
           variant: "destructive",
         })
         return
       }
       toast({
-        title: "Carga guardada",
+        title: "Stock enviado",
         description: `${itemsValidos.length} ${itemsValidos.length === 1 ? "insumo" : "insumos"} de ${SECTOR_LABEL[sector]} en ${salonLabel(salon)}.`,
       })
       setConfirmando(false)
@@ -398,7 +371,7 @@ export default function StockPorSalonPage() {
       cargarEstados(salon)
     } catch {
       toast({
-        title: "No se guardó la carga",
+        title: "No se envió el stock",
         description: "Se cortó la conexión. Lo que escribiste sigue acá: volvé a intentar.",
         variant: "destructive",
       })
@@ -445,184 +418,94 @@ export default function StockPorSalonPage() {
           {salonLabel(salon)}
         </h1>
         <p className="text-xs text-muted-foreground">
-          {paso === "carga" && sector ? `Carga de ${SECTOR_LABEL[sector]}` : "Stock por salón"}
+          {paso === "carga" && sector ? `Stock de ${SECTOR_LABEL[sector]} · ${fmtHoy(new Date())}` : "Stock por salón"}
         </p>
       </div>
     </div>
   )
 
   // ── Paso 2: menú del salón ──────────────────────────────────────────────
-  // Una tarjeta por sector: si hay un evento terminado sin cargar, se entra
-  // derecho a contar; si no, queda deshabilitada. Debajo, los próximos 3
-  // eventos del salón con candado (se habilitan solos cuando terminan). La
-  // carga extraordinaria (con PIN) se abre desde un botón chico al final.
+  // Un botón por sector para contar el stock (en cualquier momento) y,
+  // debajo, el historial de cargas de este salón. Tocar una carga abre su
+  // detalle (antes → ahora de cada insumo).
   if (paso === "menu") {
-    const proximos = proximosEventosDelSalon(
-      eventos.map((e) => ({
-        id: e.id,
-        nombre: e.nombre || e.nombrePareja || "Evento",
-        fecha: e.fecha,
-        horario: e.horario ?? null,
-        horarioFin: e.horarioFin ?? null,
-        salon: e.salon ?? null,
-        estado: e.estado ?? null,
-      })),
-      salon,
-    )
     return (
       <div className="mx-auto max-w-2xl space-y-5 p-4 sm:p-6">
         {encabezado}
 
-        {cargandoEstado ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Buscando eventos terminados...
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {sectores.map((s) => {
-              const Icon = SECTOR_ICON[s]
-              const pendiente = estados[s]?.eventoPendiente
-              const sufijo = sectores.length > 1 ? ` · ${SECTOR_LABEL[s]}` : ""
-              return pendiente ? (
-                <button key={s} type="button" onClick={() => empezarCarga(s)} className="block w-full text-left">
-                  <Card className="border-emerald-400 transition-colors hover:border-emerald-600 hover:bg-emerald-50/50">
-                    <CardContent className="flex items-center gap-3 p-4">
-                      <Icon className="h-6 w-6 shrink-0 text-emerald-600" />
-                      <div className="min-w-0">
-                        <p className="font-semibold">
-                          Cargar stock disponible luego del evento {pendiente.nombre}
-                          {sufijo}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Contá lo que quedó en {salonLabel(salon)}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </button>
-              ) : (
-                <Card key={s} className="border-dashed bg-muted/30">
-                  <CardContent className="flex items-center gap-3 p-4 text-muted-foreground">
-                    <Icon className="h-6 w-6 shrink-0" />
-                    <p className="text-sm">
-                      No hay ningún evento terminado para cargar{sufijo}.
-                    </p>
+        <div className="space-y-3">
+          {sectores.map((s) => {
+            const Icon = SECTOR_ICON[s]
+            const sufijo = sectores.length > 1 ? ` de ${SECTOR_LABEL[s]}` : ""
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => empezarCarga(s)}
+                disabled={cargandoEstado}
+                className="block w-full text-left disabled:opacity-60"
+              >
+                <Card className="border-emerald-400 transition-colors hover:border-emerald-600 hover:bg-emerald-50/50">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <Icon className="h-6 w-6 shrink-0 text-emerald-600" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">Contar stock{sufijo}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Se envía con la fecha de hoy ({fmtHoy(new Date())}) y queda en el historial
+                      </p>
+                    </div>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-emerald-600" />
                   </CardContent>
                 </Card>
-              )
-            })}
-          </div>
-        )}
+              </button>
+            )
+          })}
+        </div>
 
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próximos eventos en este salón</p>
-          {proximos.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay eventos próximos cargados.</p>
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <History className="h-3.5 w-3.5" /> Historial de cargas en este salón
+          </p>
+          {cargandoEstado ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Buscando cargas...
+            </p>
+          ) : historial.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Todavía no hay cargas en este salón.</p>
           ) : (
-            proximos.map(({ evento }) => (
-              <div
-                key={evento.id}
-                className="flex items-center gap-3 rounded-lg border bg-muted/20 p-3 text-muted-foreground"
-                aria-disabled="true"
-              >
-                <Lock className="h-4 w-4 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground/70">{evento.nombre}</p>
-                  <p className="text-xs">{fmtFechaEvento(evento.fecha, evento.horario)}</p>
-                </div>
-              </div>
-            ))
-          )}
-          {proximos.length > 0 && (
-            <p className="text-xs text-muted-foreground">Se habilitan para cargar cuando termina cada evento.</p>
-          )}
-        </div>
-
-        {/* Carga extraordinaria: contar el stock cuando no hay un evento
-            terminado (o para corregir un conteo). Pide el PIN. Va chica y al
-            final a propósito: es ocasional, lo normal es cargar después de
-            cada evento. */}
-        <div className="flex justify-center pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 border-amber-300 text-xs text-amber-700 hover:bg-amber-50 hover:text-amber-800"
-            onClick={() => pedirExtraordinaria(sectores[0])}
-            disabled={cargandoEstado}
-          >
-            <KeyRound className="h-3.5 w-3.5" />
-            Carga extraordinaria
-          </Button>
-        </div>
-
-        {/* Puerta de la carga extraordinaria. El PIN acá solo abre la lista:
-            el servidor lo vuelve a pedir al guardar. */}
-        <Dialog
-          open={pidiendoPin !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setPidiendoPin(null)
-              setPinTipeado("")
-              setPinError("")
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-amber-600" />
-                Carga extraordinaria
-              </DialogTitle>
-              <DialogDescription>
-                Contar el stock de {salonLabel(salon)} sin esperar a que termine un evento. Hace falta el PIN.
-              </DialogDescription>
-            </DialogHeader>
-            {sectores.length > 1 && (
-              <div className="flex gap-2">
-                {sectores.map((s) => {
-                  const Icon = SECTOR_ICON[s]
-                  return (
-                    <Button
-                      key={s}
-                      type="button"
-                      variant={pidiendoPin === s ? "default" : "outline"}
-                      className="flex-1 gap-2 capitalize"
-                      onClick={() => setPidiendoPin(s)}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {SECTOR_LABEL[s]}
-                    </Button>
-                  )
-                })}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="pin-stock">PIN de carga extraordinaria</Label>
-              <Input
-                id="pin-stock"
-                type="password"
-                inputMode="numeric"
-                autoFocus
-                value={pinTipeado}
-                onChange={(e) => {
-                  setPinTipeado(e.target.value)
-                  setPinError("")
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") confirmarPin()
-                }}
-                placeholder="PIN"
-              />
-              {pinError && <p className="text-sm text-destructive">{pinError}</p>}
+            <div className="divide-y rounded-lg border bg-card">
+              {historial.map((h) => {
+                const Icon = SECTOR_ICON[h.sector]
+                return (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => setCargaAbierta(h.id)}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40"
+                  >
+                    <ClipboardList className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {fmtFechaHora(h.fecha)} · {h.cargadoPor}
+                      </p>
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        {sectores.length > 1 && <Icon className="h-3 w-3" />}
+                        {h.cantidadItems} {h.cantidadItems === 1 ? "insumo" : "insumos"}
+                        {sectores.length > 1 ? ` de ${SECTOR_LABEL[h.sector]}` : ""}
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
+                )
+              })}
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setPidiendoPin(null)}>
-                Cancelar
-              </Button>
-              <Button onClick={confirmarPin} disabled={verificandoPin || !pinTipeado.trim()}>
-                {verificandoPin ? "Verificando..." : "Empezar la carga"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          )}
+          <p className="text-xs text-muted-foreground">
+            El stock de cada insumo en este salón es lo último que se contó.
+          </p>
+        </div>
+
+        <StockSesionDetalleDialog sesionId={cargaAbierta} onClose={() => setCargaAbierta(null)} />
       </div>
     )
   }
@@ -633,18 +516,6 @@ export default function StockPorSalonPage() {
     <div className="mx-auto max-w-2xl p-4 pb-0 sm:p-6 sm:pb-0">
       <div className="space-y-4 pb-4">
         {encabezado}
-
-        {estadoSector?.eventoPendiente ? (
-          <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-            <PartyPopper className="h-4 w-4 shrink-0 text-emerald-700" />
-            Después del evento de {estadoSector.eventoPendiente.nombre}
-          </p>
-        ) : (
-          <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-            <KeyRound className="h-4 w-4 shrink-0 text-amber-700" />
-            Carga extraordinaria — este salón no tiene ningún evento pendiente de carga.
-          </p>
-        )}
 
         <p className="text-xs text-muted-foreground">
           Escribí cuánto quedó de cada insumo que contaste. Lo que dejes vacío no se guarda (no es cero). Si contaste y no
@@ -787,7 +658,8 @@ export default function StockPorSalonPage() {
             )}
           </p>
           <Button disabled={itemsValidos.length === 0 || invalidos.length > 0 || guardando} onClick={() => setConfirmando(true)}>
-            Confirmar carga
+            <Send className="h-4 w-4" />
+            Enviar stock contado
           </Button>
         </div>
       </div>
@@ -821,9 +693,9 @@ export default function StockPorSalonPage() {
       <Dialog open={confirmando} onOpenChange={(o) => !guardando && setConfirmando(o)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>¿Confirmar la carga?</DialogTitle>
+            <DialogTitle>¿Enviar el stock contado?</DialogTitle>
             <DialogDescription>
-              Se guardan {itemsValidos.length} {itemsValidos.length === 1 ? "insumo" : "insumos"} de{" "}
+              Se envían con fecha de hoy ({fmtHoy(new Date())}) {itemsValidos.length} {itemsValidos.length === 1 ? "insumo" : "insumos"} de{" "}
               {sector ? SECTOR_LABEL[sector] : ""} en {salonLabel(salon)}. Lo que escribiste reemplaza lo que había contado
               en este salón y actualiza el stock de Administración.
             </DialogDescription>
@@ -847,7 +719,7 @@ export default function StockPorSalonPage() {
             </Button>
             <Button onClick={confirmarSesion} disabled={!nombre.trim() || guardando}>
               {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {guardando ? "Guardando..." : "Sí, guardar"}
+              {guardando ? "Enviando..." : "Sí, enviar"}
             </Button>
           </DialogFooter>
         </DialogContent>

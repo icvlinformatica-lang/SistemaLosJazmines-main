@@ -13,7 +13,7 @@ Perfiles de acceso (con PIN):
 Cada perfil ve solo las pantallas de su trabajo en el menú.
 Cuando Administración entra con su PIN, en esa pestaña quedan desbloqueados todos los perfiles: con "Cambiar perfil" se puede pasar a cualquiera sin poner su PIN. Dura hasta cerrar la pestaña o 12 horas, y en la pantalla de ingreso se puede cortar antes con "Bloquear".
 Si en Administración se elige "Diego", esa compu además queda con el acceso rápido de todos los perfiles por 30 días, aunque se cierre la pestaña. Se borra con "Olvidar todos los PINs", al pie de la pantalla de ingreso.
-El dueño puede tener además una clave maestra, de 8 números o más, que entra a cualquier perfil y también sirve donde se pide el PIN de Administración o el de carga extraordinaria de stock. No se muestra en Configuración.
+El dueño puede tener además una clave maestra, de 8 números o más, que entra a cualquier perfil y también sirve donde se pide el PIN de Administración. No se muestra en Configuración.
 La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "atrás" del navegador). Si se entró directo a una pantalla, lleva a su pantalla de siempre (por ejemplo, la lista de eventos).
 
 ## Pantalla de Inicio (/)
@@ -47,8 +47,8 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 ## Almacén
 - **Insumos Cocina** (/admin/almacen): insumos de cocina con precio y unidad (KG, GR, LT, CC, UN...). Acá se actualizan los precios que alimentan el costo de las recetas.
 - **Insumos Bebidas** (/admin/barra): lo mismo para la barra.
-- Desde Administración o Soporte, el lapicito de un insumo (en Insumos Cocina o Bebidas) muestra un campo de stock por cada salón: se cambia el número del salón que haga falta (vacío = no se toca) y al guardar el Stock total pasa a ser la suma de los salones. Cada cambio queda en Actividad como "Ajuste desde Almacén", con el número de antes y el de ahora. No pide el PIN de carga extraordinaria.
-- **Stock por salón** (/stock): Cocina y Barra cuentan lo que quedó en un salón. Se elige el salón y aparece "Cargar stock disponible luego del evento X" cuando un evento de ese salón ya terminó (sin PIN). Para contar en cualquier otro momento está el botón chico "Carga extraordinaria", al final de la pantalla, que pide el PIN de carga extraordinaria. Se escribe la cantidad de cada insumo que se contó (vacío = no contado; si no queda nada, 0) y se confirma con el nombre de quien carga. Lo que se va escribiendo queda guardado en ese celular hasta confirmarlo (por 3 días): si se cierra la pantalla, al volver sigue ahí, y si se quiere salir avisa que hay un conteo sin confirmar. Al guardar, el stock de Insumos Cocina y Bebidas pasa a ser la suma de lo contado en todos los salones. Al imprimir el documento de un evento, lo que usa la cocina se descuenta del stock de su salón.
+- Desde Administración o Soporte, el lapicito de un insumo (en Insumos Cocina o Bebidas) muestra un campo de stock por cada salón: se cambia el número del salón que haga falta (vacío = no se toca) y al guardar el Stock total pasa a ser la suma de los salones. Cada cambio queda en Actividad como "Ajuste desde Almacén", con el número de antes y el de ahora.
+- **Stock por salón** (/stock): Cocina y Barra cuentan lo que quedó en un salón. Se elige el salón y se toca "Contar stock": se puede en cualquier momento y sin PIN (Cocina solo cocina, Barra solo barra, Administración y Soporte los dos). Se escribe la cantidad de cada insumo que se contó (vacío = no contado; si no queda nada, 0) y se toca "Enviar stock contado", con el nombre de quien carga: se envía con la fecha y hora de ese momento. Debajo del botón está el historial de cargas de ese salón (fecha, quién y cuántos insumos); tocando una se ve qué había antes y qué quedó en cada insumo. El stock de cada insumo en el salón es lo último que se contó. Lo que se va escribiendo queda guardado en ese celular hasta confirmarlo (por 3 días): si se cierra la pantalla, al volver sigue ahí, y si se quiere salir avisa que hay un conteo sin confirmar. Al guardar, el stock de Insumos Cocina y Bebidas pasa a ser la suma de lo contado en todos los salones. Al imprimir el documento de un evento, lo que usa la cocina se descuenta del stock de su salón.
 
 ## Producción
 - **Recetas** (/admin/recetario): recetas de cocina con ingredientes, cantidades y "rinde para X personas". El costo por persona de un evento sale de acá.
@@ -70,7 +70,7 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 
 ## Configuración (/configuracion)
 - Ajustes generales del sistema.
-- Contraseñas (solo Administración y Soporte): muestra el PIN de cada perfil y el PIN de carga extraordinaria de stock. Si el de stock es el de reserva del código, lo avisa. Se cambian en Vercel, no desde la pantalla.
+- Contraseñas (solo Administración y Soporte): muestra el PIN de cada perfil. Se cambian en Vercel, no desde la pantalla.
 
 ## Conceptos clave
 - **Plan de cuotas**: cada evento puede tener un plan (cantidad de cuotas, día de vencimiento, montos). Las cuotas se cobran en "Cobrar cuota" y aparecen en el resumen diario y en "Vienen a pagar".
