@@ -1,8 +1,7 @@
-// Carga extraordinaria de stock (/stock, sin evento terminado pendiente):
-// Cocina con su stock y Barra con el suyo cargan sin el PIN de stock.
-// Administración y Soporte siguen necesitándolo, y nadie carga sin PIN el
-// sector de otro. Se prueba la regla pura y la ruta que la aplica
-// (app/api/stock-salones/sesiones), con la base y la sesión simuladas.
+// Carga de stock de /stock (app/api/stock-salones/sesiones): se carga en
+// cualquier momento y sin PIN, cada perfil solo su sector (Cocina cocina,
+// Barra barra, Administración y Soporte los dos), y el historial de cargas
+// (GET) respeta lo mismo. La base y la sesión están simuladas.
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
@@ -17,28 +16,15 @@ require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(f
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText, filename)
 
-const { extraordinariaSinPin } = require("../lib/stock-salones.ts")
-
-test("Cocina y Barra cargan su propio stock sin PIN", () => {
-  assert.equal(extraordinariaSinPin("cocina", "cocina"), true)
-  assert.equal(extraordinariaSinPin("barra", "barra"), true)
-})
-
-test("nadie carga sin PIN el sector de otro, y Administración sigue con PIN", () => {
-  assert.equal(extraordinariaSinPin("cocina", "barra"), false)
-  assert.equal(extraordinariaSinPin("barra", "cocina"), false)
-  for (const perfil of ["administracion", "soporte", "dj", "vendedor", null, undefined, ""]) {
-    assert.equal(extraordinariaSinPin(perfil, "cocina"), false)
-    assert.equal(extraordinariaSinPin(perfil, "barra"), false)
-  }
-  assert.equal(extraordinariaSinPin("barra", null), false)
-})
-
 // ── La ruta ─────────────────────────────────────────────────────────────
-let perfil, pendiente, guardadas
+let perfil, pendiente, guardadas, consultasHistorial
 const PIN_OK = "4321"
-const db = async (parts) => {
+const db = async (parts, ...values) => {
   const q = parts.join("?")
+  if (q.includes("FROM stock_sesiones")) {
+    consultasHistorial.push(values)
+    return [{ id: "s1", cargado_por: "PRUEBA", cerrada_en: new Date("2026-10-15T23:00:00Z"), iniciada_en: new Date("2026-10-15T22:50:00Z"), cantidad_items: 4 }]
+  }
   if (q.includes("FROM insumos_barra")) return [{ id: "fernet", descripcion: "FERNET", unidad: "UN" }]
   if (q.includes("FROM insumos")) return [{ id: "harina", descripcion: "HARINA", unidad: "KG" }]
   throw new Error(`Consulta inesperada: ${q}`)
@@ -59,7 +45,6 @@ db.begin = async (fn) => {
 const load = Module._load
 Module._load = function (request, ...args) {
   if (request === "@/lib/db") return { sql: db }
-  if (request === "@/lib/auth/server") return { verifyPinStockExtra: (pin) => pin === PIN_OK }
   if (request === "@/lib/stock-salones-server") {
     return {
       perfilDesdeRequest: async () => perfil,
@@ -70,7 +55,7 @@ Module._load = function (request, ...args) {
   }
   return load.call(this, request, ...args)
 }
-const { POST } = require("../app/api/stock-salones/sesiones/route.ts")
+const { GET, POST } = require("../app/api/stock-salones/sesiones/route.ts")
 Module._load = load
 
 let n = 0
@@ -90,9 +75,11 @@ const cargar = (sector, pin) => {
     }),
   }))
 }
-const reset = (p) => { perfil = p; pendiente = null; guardadas = [] }
+const reset = (p) => { perfil = p; pendiente = null; guardadas = []; consultasHistorial = [] }
+const historial = (sector, salon = "Casona") =>
+  GET(new Request(`http://localhost/api/stock-salones/sesiones?salon=${salon}&sector=${sector}`))
 
-test("Barra guarda una carga extraordinaria de barra sin PIN", async () => {
+test("Barra guarda su stock sin PIN, en cualquier momento", async () => {
   reset("barra")
   const res = await cargar("barra")
   assert.equal(res.status, 200)
@@ -101,7 +88,7 @@ test("Barra guarda una carga extraordinaria de barra sin PIN", async () => {
   assert.deepEqual(guardadas, [{ motivo: "extraordinaria", eventoId: null }])
 })
 
-test("Cocina guarda una carga extraordinaria de cocina sin PIN", async () => {
+test("Cocina guarda su stock sin PIN, en cualquier momento", async () => {
   reset("cocina")
   const res = await cargar("cocina")
   assert.equal(res.status, 200)
@@ -116,14 +103,36 @@ test("Barra no puede cargar cocina (ni con PIN), ni Cocina barra", async () => {
   assert.equal(guardadas.length, 0)
 })
 
-test("Administración sigue necesitando el PIN para la carga extraordinaria", async () => {
+test("Administración y Soporte también cargan sin PIN", async () => {
   reset("administracion")
-  const sinPin = await cargar("barra")
-  assert.equal(sinPin.status, 403)
-  assert.equal((await sinPin.json()).necesitaPin, true)
-  assert.equal((await cargar("cocina", "9999")).status, 403)
+  assert.equal((await cargar("barra")).status, 200)
+  reset("soporte")
+  assert.equal((await cargar("cocina")).status, 200)
+})
+
+test("un perfil que no carga stock no puede cargar", async () => {
+  reset("dj")
+  assert.equal((await cargar("barra", PIN_OK)).status, 403)
   assert.equal(guardadas.length, 0)
-  assert.equal((await cargar("barra", PIN_OK)).status, 200)
+})
+
+test("historial: Barra ve las cargas de barra del salón, con fecha", async () => {
+  reset("barra")
+  const res = await historial("barra")
+  assert.equal(res.status, 200)
+  const data = await res.json()
+  assert.deepEqual(data.sesiones, [{ id: "s1", cargadoPor: "PRUEBA", fecha: "2026-10-15T23:00:00.000Z", cantidadItems: 4 }])
+  assert.deepEqual(consultasHistorial, [["Casona", "barra"]])
+})
+
+test("historial: nadie ve el de otro sector, ni un salón inválido", async () => {
+  reset("barra")
+  assert.equal((await historial("cocina")).status, 403)
+  reset("dj")
+  assert.equal((await historial("barra")).status, 403)
+  reset("cocina")
+  assert.equal((await historial("cocina", "Inventado")).status, 400)
+  assert.equal(consultasHistorial.length, 0)
 })
 
 test("con un evento terminado pendiente sigue siendo carga por evento", async () => {

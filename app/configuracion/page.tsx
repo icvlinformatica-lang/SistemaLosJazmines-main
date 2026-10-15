@@ -85,6 +85,10 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   stock_sesion: <ClipboardList className="h-4 w-4 text-emerald-600" />,
 }
 
+// Stock por salón ya no pide el PIN de stock (15/10/2026): se esconde de
+// Contraseñas. La variable y su ruta quedan; la limpieza va aparte.
+const MOSTRAR_PIN_STOCK = false
+
 // Lo que devuelve /api/auth/pins: el PIN de cada perfil y el de carga
 // extraordinaria de stock (deReserva: falta PIN_STOCK_EXTRA y se usa el del código).
 interface PinsVigentes {
@@ -600,7 +604,7 @@ export default function ConfiguracionPage() {
                       Contraseñas
                     </CardTitle>
                     <CardDescription className="text-base mt-1">
-                      PIN de acceso de cada perfil y el de stock
+                      PIN de acceso de cada perfil
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-3">
@@ -647,7 +651,7 @@ export default function ConfiguracionPage() {
                 ))}
               </div>
             )}
-            {pins?.stockExtra && (
+            {MOSTRAR_PIN_STOCK && pins?.stockExtra && (
               <div className="flex items-center gap-3 p-3 border rounded-lg">
                 <div className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center bg-muted">
                   <Package className="w-4 h-4 text-muted-foreground" />
@@ -665,7 +669,7 @@ export default function ConfiguracionPage() {
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Se pueden cambiar por variable de entorno (PIN_COCINA, PIN_BARRA, etc.; el de stock es PIN_STOCK_EXTRA) sin tocar código.
+              Se pueden cambiar por variable de entorno (PIN_COCINA, PIN_BARRA, etc.) sin tocar código.
               La clave maestra (PIN_MAESTRO, de 8 números o más) entra a cualquier perfil y no se muestra acá.
             </p>
           </CardContent>

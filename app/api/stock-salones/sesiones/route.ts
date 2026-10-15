@@ -7,8 +7,47 @@ import {
   salonesConfigurados,
   fechaHoraCortaArgentina,
 } from "@/lib/stock-salones-server"
-import { verifyPinStockExtra } from "@/lib/auth/server"
-import { extraordinariaSinPin, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+
+/**
+ * GET ?salon=Casona&sector=barra — historial de cargas de ese salón y sector
+ * (las últimas 30, la más nueva primero), para la pantalla de Stock. Solo
+ * quien puede cargar ese sector. Sin plata: quién, cuándo y cuántos insumos.
+ */
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const salon = searchParams.get("salon") || ""
+    const sector = searchParams.get("sector") as SectorStock
+    const perfil = await perfilDesdeRequest(req)
+    if (!sectoresPermitidos(perfil).includes(sector)) {
+      return NextResponse.json({ ok: false, error: "Este perfil no puede ver ese sector" }, { status: 403 })
+    }
+    const salones = await salonesConfigurados()
+    if (!salones.has(salon)) {
+      return NextResponse.json({ ok: false, error: "Salón inválido" }, { status: 400 })
+    }
+    const filas = (await sql`
+      SELECT id, cargado_por, cerrada_en, iniciada_en, cantidad_items
+      FROM stock_sesiones
+      WHERE salon = ${salon} AND sector = ${sector}
+      ORDER BY COALESCE(cerrada_en, iniciada_en) DESC
+      LIMIT 30
+    `) as unknown as Array<{ id: string; cargado_por: string; cerrada_en: Date | null; iniciada_en: Date; cantidad_items: number }>
+    return NextResponse.json({
+      ok: true,
+      sesiones: filas.map((f) => ({
+        id: f.id,
+        cargadoPor: f.cargado_por,
+        fecha: new Date(f.cerrada_en ?? f.iniciada_en).toISOString(),
+        cantidadItems: Number(f.cantidad_items),
+      })),
+    })
+  } catch (err) {
+    console.error("[API] Error en stock-salones/sesiones GET:", err)
+    return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })
+  }
+}
 
 /**
  * POST — confirma una sesión de carga de stock de un salón.
@@ -18,23 +57,20 @@ import { extraordinariaSinPin, sectoresPermitidos, type SectorStock } from "@/li
  *   salon: string
  *   sector: "cocina" | "barra"
  *   cargadoPor: string (nombre tipeado al iniciar, obligatorio)
- *   pin?: string (solo para la carga extraordinaria, ver abajo)
  *   iniciadaEn?: string (ISO)
  *   items: { insumoId: string, cantidad: number }[]
  * }
  *
- * DOS PUERTAS para poder cargar:
- *   1. Por evento — hay un evento terminado pendiente de carga en ese salón y
- *      sector. Sin PIN. La sesión queda atada a ese evento (motivo 'evento').
- *   2. Extraordinaria — no hay evento. Hace falta PIN_STOCK_EXTRA y la sesión
- *      queda rotulada 'extraordinaria', con evento_id en null. Cocina (con su
- *      stock) y Barra (con el suyo) no necesitan el PIN: ver
- *      extraordinariaSinPin en lib/stock-salones.ts.
- * Sin evento y sin PIN correcto (cuando hace falta): 403.
+ * Se puede cargar en cualquier momento y sin PIN (pedido del dueño,
+ * 15/10/2026: cada carga es una sesión con fecha y el historial se ve en
+ * /stock). Solo el perfil que carga ese sector: Cocina cocina, Barra barra,
+ * Administración y Soporte los dos.
  *
- * Cuál de las dos es lo decide el SERVIDOR: vuelve a calcular si hay evento
- * pendiente en vez de creerle al cliente. El eventoId que mande la pantalla
- * se ignora — si la puerta la abre un evento, se usa ese; si no, ninguno.
+ * El rótulo de la sesión lo decide el SERVIDOR: si hay un evento terminado
+ * pendiente de carga en ese salón y sector, queda atada a ese evento
+ * (motivo 'evento'); si no, 'extraordinaria' con evento_id en null. Así lo
+ * que lee "pendiente de carga" sigue andando igual. El eventoId que mande la
+ * pantalla se ignora.
  *
  * Se guarda COMPLETA o no se guarda: una sola transacción que inserta
  * stock_sesiones + todos los stock_sesion_items + upsert en stock_salones +
@@ -71,7 +107,6 @@ export async function POST(req: Request) {
     const salon = typeof body.salon === "string" ? body.salon : ""
     const sector = body.sector as SectorStock
     const cargadoPor = typeof body.cargadoPor === "string" ? body.cargadoPor.trim().slice(0, 60) : ""
-    const pin = typeof body.pin === "string" ? body.pin : ""
     const itemsBody: ItemBody[] = Array.isArray(body.items) ? body.items : []
 
     // ── Permisos: perfil real de la sesión ────────────────────────────────
@@ -132,27 +167,11 @@ export async function POST(req: Request) {
       )
     }
 
-    // ── La puerta: por evento, o extraordinaria con PIN ───────────────────
-    // Se recalcula acá, no se confía en lo que diga la pantalla: si el
-    // endpoint aceptara una carga extraordinaria sin PIN, el candado no
-    // existiría.
+    // ── Rótulo: atada al evento terminado pendiente, si hay ─────────────
+    // Se recalcula acá, no se confía en lo que diga la pantalla.
     const pendiente = await eventoPendienteEnBase(salon, sector)
     const motivo: "evento" | "extraordinaria" = pendiente ? "evento" : "extraordinaria"
     const eventoId: string | null = pendiente ? pendiente.evento.id : null
-    if (!pendiente && !extraordinariaSinPin(perfil, sector) && !verifyPinStockExtra(pin)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          // El motivo se dice sin revelar si el PIN estuvo cerca: o hay
-          // evento, o hace falta el PIN.
-          error: pin
-            ? "El PIN de carga extraordinaria no es correcto."
-            : "No hay ningún evento terminado pendiente de carga en este salón. Para cargar igual hace falta el PIN de carga extraordinaria.",
-          necesitaPin: true,
-        },
-        { status: 403 },
-      )
-    }
 
     const ahora = new Date()
     const iniciadaRaw = typeof body.iniciadaEn === "string" ? new Date(body.iniciadaEn) : null
@@ -165,7 +184,7 @@ export async function POST(req: Request) {
 
     const salonNombre = salones.get(salon) || salon
     const encabezadoDetalle =
-      motivo === "extraordinaria" ? "Carga extraordinaria de stock" : "Actualización de insumos"
+      motivo === "extraordinaria" ? "Carga de stock" : "Actualización de insumos"
     const detalle = `${encabezadoDetalle} · ${fechaHoraCortaArgentina(ahora)} · ${cargadoPor} · ${itemsBody.length} ${
       itemsBody.length === 1 ? "insumo actualizado" : "insumos actualizados"
     }`
