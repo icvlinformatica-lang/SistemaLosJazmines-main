@@ -8,7 +8,8 @@
 //
 // Flujo: elegir salón → menú ("Cargar stock disponible luego del evento X"
 // si hay uno terminado sin cargar, los próximos 3 eventos del salón con
-// candado y, al final, el botón chico "Carga extraordinaria" con PIN) → carga. Sin
+// candado y, al final, el botón chico "Carga extraordinaria", con PIN salvo
+// para Cocina y Barra con su propio stock) → carga. Sin
 // acceso al calendario desde acá. La carga muestra TODOS los insumos del
 // sector con su casillero: se escribe el número y listo (1 paso por
 // insumo). Al confirmar se envían SOLO los que tienen un número escrito
@@ -25,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useStore } from "@/lib/store-context"
 import { useProfile, usuarioActivo } from "@/lib/profile-context"
 import { salonLabel } from "@/lib/store"
-import { proximosEventosDelSalon, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+import { extraordinariaSinPin, proximosEventosDelSalon, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 import { insumosVisibles, itemsParaEnviar, type InsumoCarga } from "@/lib/stock-carga"
 import {
   armarBorradorStock,
@@ -51,7 +52,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, ChefHat, ChevronDown, History, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
+import { ArrowLeft, ChefHat, ChevronDown, ClipboardList, History, KeyRound, Loader2, Lock, PartyPopper, Search, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -325,9 +326,14 @@ export default function StockPorSalonPage() {
   /**
    * Botón "Carga extraordinaria" (fuera de un evento terminado). Pide el
    * PIN antes de abrir la lista; si el perfil carga los dos sectores, se
-   * elige cuál adentro del diálogo.
+   * elige cuál adentro del diálogo. Cocina y Barra entran directo a contar
+   * su stock, sin PIN (el servidor lo controla igual al guardar).
    */
   const pedirExtraordinaria = (s: SectorStock) => {
+    if (extraordinariaSinPin(perfilActivo?.id, s)) {
+      empezarCarga(s)
+      return
+    }
     setPinTipeado("")
     setPinError("")
     setPidiendoPin(s)
@@ -457,6 +463,7 @@ export default function StockPorSalonPage() {
   // eventos del salón con candado (se habilitan solos cuando terminan). La
   // carga extraordinaria (con PIN) se abre desde un botón chico al final.
   if (paso === "menu") {
+    const sinPin = extraordinariaSinPin(perfilActivo?.id, sectores[0])
     const proximos = proximosEventosDelSalon(
       eventos.map((e) => ({
         id: e.id,
@@ -537,7 +544,8 @@ export default function StockPorSalonPage() {
         </div>
 
         {/* Carga extraordinaria: contar el stock cuando no hay un evento
-            terminado (o para corregir un conteo). Pide el PIN. Va chica y al
+            terminado (o para corregir un conteo). Pide el PIN, salvo a
+            Cocina y Barra con su propio stock. Va chica y al
             final a propósito: es ocasional, lo normal es cargar después de
             cada evento. */}
         <div className="flex justify-center pt-2">
@@ -548,7 +556,7 @@ export default function StockPorSalonPage() {
             onClick={() => pedirExtraordinaria(sectores[0])}
             disabled={cargandoEstado}
           >
-            <KeyRound className="h-3.5 w-3.5" />
+            {sinPin ? <ClipboardList className="h-3.5 w-3.5" /> : <KeyRound className="h-3.5 w-3.5" />}
             Carga extraordinaria
           </Button>
         </div>

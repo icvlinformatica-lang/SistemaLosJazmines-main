@@ -144,6 +144,18 @@ export function sectoresPermitidos(perfilId: string | null | undefined): SectorS
   return []
 }
 
+/**
+ * ¿Este perfil puede hacer la carga extraordinaria (sin evento terminado
+ * pendiente) de este sector SIN el PIN de stock? Cocina con el stock de
+ * cocina y Barra con el de barra: lo cuentan ellos, en cualquier momento
+ * (pedido del dueño, 15/10/2026). Administración y Soporte siguen con el PIN
+ * en /stock (tienen además el lapicito de Almacén, que no lo pide), y nadie
+ * carga sin PIN el sector de otro.
+ */
+export function extraordinariaSinPin(perfilId: string | null | undefined, sector: SectorStock | null | undefined): boolean {
+  return (perfilId === "cocina" && sector === "cocina") || (perfilId === "barra" && sector === "barra")
+}
+
 /** Perfiles que pueden ver la vista consolidada y el detalle de las sesiones. */
 export function puedeVerConsolidado(perfilId: string | null | undefined): boolean {
   return perfilId === "administracion" || perfilId === "soporte"

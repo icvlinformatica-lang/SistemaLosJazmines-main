@@ -8,7 +8,7 @@ import {
   fechaHoraCortaArgentina,
 } from "@/lib/stock-salones-server"
 import { verifyPinStockExtra } from "@/lib/auth/server"
-import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+import { extraordinariaSinPin, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 
 /**
  * POST — confirma una sesión de carga de stock de un salón.
@@ -27,8 +27,10 @@ import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
  *   1. Por evento — hay un evento terminado pendiente de carga en ese salón y
  *      sector. Sin PIN. La sesión queda atada a ese evento (motivo 'evento').
  *   2. Extraordinaria — no hay evento. Hace falta PIN_STOCK_EXTRA y la sesión
- *      queda rotulada 'extraordinaria', con evento_id en null.
- * Sin evento y sin PIN correcto: 403.
+ *      queda rotulada 'extraordinaria', con evento_id en null. Cocina (con su
+ *      stock) y Barra (con el suyo) no necesitan el PIN: ver
+ *      extraordinariaSinPin en lib/stock-salones.ts.
+ * Sin evento y sin PIN correcto (cuando hace falta): 403.
  *
  * Cuál de las dos es lo decide el SERVIDOR: vuelve a calcular si hay evento
  * pendiente en vez de creerle al cliente. El eventoId que mande la pantalla
@@ -137,7 +139,7 @@ export async function POST(req: Request) {
     const pendiente = await eventoPendienteEnBase(salon, sector)
     const motivo: "evento" | "extraordinaria" = pendiente ? "evento" : "extraordinaria"
     const eventoId: string | null = pendiente ? pendiente.evento.id : null
-    if (!pendiente && !verifyPinStockExtra(pin)) {
+    if (!pendiente && !extraordinariaSinPin(perfil, sector) && !verifyPinStockExtra(pin)) {
       return NextResponse.json(
         {
           ok: false,
