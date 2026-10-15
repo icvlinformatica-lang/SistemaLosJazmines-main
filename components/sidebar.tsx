@@ -128,14 +128,12 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
       children: [
         { href: "/admin/almacen", label: "Insumos Cocina", icon: Warehouse },
         { href: "/admin/barra", label: "Insumos Bebidas", icon: GlassWater },
-        // Carga del conteo físico por salón. Este mismo menú es el que usa
-        // Barra (no tiene menú propio): para Barra es su acceso de carga. Se
-        // oculta solo para Administración/Soporte, que ven todo en "Stock";
-        // /stock sigue accesible por URL (sirve para corregir una carga).
-        // Cocina tiene menú propio con su acceso a /stock. Administración/Soporte la ven en la pestaña de
-        // Insumos, así que se les oculta. Barra ya no pasa por acá: tiene menú
-        // propio (más arriba).
-        ...(tieneAccesoTotal ? [] : [{ href: "/stock", label: "Stock por salón", icon: ClipboardList }]),
+        // Carga del conteo físico por salón (contar y enviar, con el
+        // historial de cargas). Desde el 15/10/2026 también para
+        // Administración y Soporte, para que puedan cargar un salón entero de
+        // una vez sin ir insumo por insumo con el lapicito. Cocina y Barra
+        // tienen su propio acceso en su menú (más arriba).
+        { href: "/stock", label: "Contar stock", icon: ClipboardList },
         // La vista consolidada dejó de ser una entrada propia: ahora es la
         // pestaña "Stock por salón" adentro de Insumos Cocina e Insumos
         // Bebidas, al lado del catálogo que le corresponde.
