@@ -258,12 +258,6 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
               </div>
 
               {/* Lista */}
-              {cantidadParaMasTarde > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground" aria-live="polite">
-                  <span className="inline-flex items-center gap-1.5"><Clock className="size-4" />{cantidadParaMasTarde} {cantidadParaMasTarde === 1 ? "cuota dejada" : "cuotas dejadas"} para más tarde. Vuelven al cerrar y abrir la ventana.</span>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setParaMasTarde(new Set())}>Mostrarlas</Button>
-                </div>
-              )}
               {cuotas.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{cantidadParaMasTarde > 0 && !textoBusqueda ? "No quedan cuotas a la vista: las demás quedaron para más tarde." : <>No hay cuotas por pagar esta semana ni atrasadas{salonFiltro !== "todos" ? " para este salón" : ""}.</>}</p> : (
                 <div className="flex flex-col gap-3">
                   <p className="text-sm text-muted-foreground">Ordenadas por evento más próximo a más lejano</p>
