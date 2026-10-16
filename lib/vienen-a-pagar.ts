@@ -13,6 +13,23 @@ export function limiteCuotasVisibles(ampliaciones: number): number {
   return ampliaciones >= 3 ? Infinity : 5 * (ampliaciones + 1)
 }
 
+/**
+ * Clave de una cuota en "Vienen a pagar", para el botón "Ver más tarde".
+ * Evento + número de cuota; sin id de evento se usa el nombre.
+ */
+export function claveCuotaVienenAPagar(cuota: { eventoId?: string; evento: string; numero: number; salon?: string }): string {
+  return `${cuota.eventoId || `${cuota.evento}|${cuota.salon ?? ""}`}#${cuota.numero}`
+}
+
+/**
+ * Saca de la lista las cuotas que se dejaron "para más tarde". Es solo de la
+ * pantalla: no se guarda en ningún lado y al cerrar la ventana vuelven todas.
+ */
+export function sinCuotasParaMasTarde<T extends { eventoId?: string; evento: string; numero: number; salon?: string }>(cuotas: T[], paraMasTarde: ReadonlySet<string>): T[] {
+  if (paraMasTarde.size === 0) return cuotas
+  return cuotas.filter((cuota) => !paraMasTarde.has(claveCuotaVienenAPagar(cuota)))
+}
+
 export function ordenarCuotasPorEvento(grupos: ReturnType<typeof agruparCuotasPorSalon>) {
   return grupos.flatMap((grupo) => grupo.cuotas.map((cuota) => ({ ...cuota, salon: grupo.salon })))
     .sort((a, b) => (a.fechaEvento || "9999-12-31").localeCompare(b.fechaEvento || "9999-12-31")

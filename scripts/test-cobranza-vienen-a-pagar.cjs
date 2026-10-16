@@ -18,7 +18,7 @@ require.extensions[".ts"] = compilar(false)
 require.extensions[".tsx"] = compilar(true)
 
 const { mensajeRecordatorioCuota, enlaceWhatsApp } = require("../lib/recordatorio-cuota.ts")
-const { contarCuotasAtrasadas, agruparCuotasPorSalon } = require("../lib/vienen-a-pagar.ts")
+const { contarCuotasAtrasadas, agruparCuotasPorSalon, claveCuotaVienenAPagar, sinCuotasParaMasTarde } = require("../lib/vienen-a-pagar.ts")
 
 test("mensaje de recordatorio: vence / venció, con monto y fecha día/mes/año", () => {
   assert.equal(
@@ -203,4 +203,22 @@ test("por entrar con recargo: $3.000 por día de atraso, repartido entre cajas c
   const con = porEntrarDelMesPorSalon(ingresos, "2026-10-13", ["Casona"], true)
   assert.deepEqual(sin, [{ salon: "Casona", cajaEventos: 50000, cajaJazmines: 70000 }])
   assert.deepEqual(con, [{ salon: "Casona", cajaEventos: 53600, cajaJazmines: 75400 }])
+})
+
+test("ver más tarde: saca solo esa cuota de ese evento y sin nada guardado no saca ninguna", () => {
+  const cuotas = [
+    { eventoId: "e1", evento: "Ana", numero: 2, salon: "Casona" },
+    { eventoId: "e1", evento: "Ana", numero: 3, salon: "Casona" },
+    { eventoId: "e2", evento: "Juan", numero: 2, salon: "Quinta" },
+    { eventoId: "", evento: "Sin id", numero: 1, salon: "Salon" },
+  ]
+  assert.equal(sinCuotasParaMasTarde(cuotas, new Set()), cuotas)
+  const paraMasTarde = new Set([claveCuotaVienenAPagar(cuotas[0]), claveCuotaVienenAPagar(cuotas[3])])
+  assert.deepEqual(sinCuotasParaMasTarde(cuotas, paraMasTarde).map((c) => `${c.evento} ${c.numero}`), ["Ana 3", "Juan 2"])
+})
+
+test("ver más tarde: se vacía al cerrar la ventana y no se guarda en ningún lado", () => {
+  const fuente = fs.readFileSync(path.join(__dirname, "..", "components", "vienen-a-pagar-modal.tsx"), "utf8")
+  assert.match(fuente, /if \(!open\) \{[^}]*setParaMasTarde\(new Set\(\)\)/)
+  assert.doesNotMatch(fuente, /localStorage|sessionStorage/)
 })
