@@ -553,7 +553,12 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         if (saldoRestante <= 0) continue
 
         const fechaVenc = parseLocalDate(cuota.fechaVencimiento)
-        if (fechaVenc >= hoy && fechaVenc <= en30Dias) {
+        // A 30 días entran las cuotas que vencen de acá a 30 días Y las
+        // atrasadas (se pueden cobrar ya), igual que "Cobro esta semana" y
+        // que "Gastos a 30 días", que incluye los gastos vencidos. Antes las
+        // atrasadas no entraban y el Balance semanal podía dar más que el
+        // Saldo a 30 días (16/10/2026).
+        if (fechaVenc <= en30Dias) {
           ingresosProyectados30Dias += saldoRestante * propJazmines
         }
 
@@ -571,7 +576,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
         }
         cuotasPorCobrar.push(cuotaItem)
         // Misma condición que ingresosProyectados30Dias: es su detalle.
-        if (fechaVenc >= hoy && fechaVenc <= en30Dias) cuotas30Dias.push(cuotaItem)
+        if (fechaVenc <= en30Dias) cuotas30Dias.push(cuotaItem)
       }
     }
     cuotas30Dias.sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))

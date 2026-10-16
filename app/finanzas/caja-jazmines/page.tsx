@@ -1206,7 +1206,10 @@ function ResumenDelMes(p: {
   nombreMes: string
 }) {
   return (
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+    // Solo lo que el dashboard de arriba no muestra: el avance de los gastos
+    // fijos del mes y los variables pendientes. Vencidos y cobros ya están
+    // en las tarjetas de arriba (no se repiten).
+    <div className="grid grid-cols-2 gap-2">
       <ChipResumen
         seccion="seccion-fijos"
         icono={CalendarCheck}
@@ -1217,28 +1220,12 @@ function ResumenDelMes(p: {
         progreso={p.fijosTotal > 0 ? p.fijosPagados / p.fijosTotal : 0}
       />
       <ChipResumen
-        seccion="seccion-vencimientos"
-        icono={AlertCircle}
-        color={p.vencidos > 0 ? "#dc2626" : "#0d9488"}
-        titulo="Vencidos sin pagar"
-        valor={p.vencidos > 0 ? formatCurrency(p.vencidosMonto) : "Ninguno"}
-        detalle={p.vencidos > 0 ? `${p.vencidos} ${p.vencidos === 1 ? "gasto vencido" : "gastos vencidos"}` : "Estás al día"}
-      />
-      <ChipResumen
         seccion="seccion-variables"
         icono={Receipt}
         color="#b45309"
         titulo="Gastos variables pendientes"
         valor={p.variablesPendientes > 0 ? formatCurrency(p.variablesMonto) : "Ninguno"}
         detalle={`${p.variablesPendientes} sin pagar (sin comisiones)`}
-      />
-      <ChipResumen
-        seccion="seccion-cuotas"
-        icono={HandCoins}
-        color="#047857"
-        titulo={`A cobrar hasta fin de ${p.nombreMes}`}
-        valor={`+${formatCurrency(p.cuotasMesMonto)}`}
-        detalle={`${p.cuotasMes} ${p.cuotasMes === 1 ? "cuota" : "cuotas"} · parte Jazmines, con atrasadas`}
       />
     </div>
   )
@@ -1263,8 +1250,10 @@ export default function CajaJazminePage() {
   // o tocando el chevron de cualquier tarjeta (celular y teclado).
   const tarjetas = useTarjetasPlegables()
   const tarjetasAbiertas = tarjetas.abiertas
-  const colapsado30 = !tarjetasAbiertas
-  const colapsadoSemana = !tarjetasAbiertas
+  // El detalle de cada tarjeta se ve siempre: dice de qué se compone el
+  // número (antes había que pasar el mouse). Tocando la tarjeta, el detalle.
+  const colapsado30 = false
+  const colapsadoSemana = false
   const {
     state,
     updateCostoOperativo,
@@ -1576,7 +1565,7 @@ export default function CajaJazminePage() {
   // ── Carrusel del dashboard: vista "A 30 días" / "Esta semana" ────────────
   const [vistaDashboard, setVistaDashboard] = useState(0) // 0 = 30 días, 1 = semana
 
-  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel, semanaListas } = useMemo(() => {
+  const { cobroSemanaJaz, cuotasSemanaJazCount, cuotasVencidasJazCount, cobroVencidasJaz, gastosSemanaJaz, gastosSemanaJazDetalle, saldoFinSemanaJaz, rangoSemanaJazLabel, semanaListas, gastosVencidosSemana } = useMemo(() => {
     const diaSemana = ahora.getDay() // 0 = domingo
     const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
     const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
@@ -1597,23 +1586,17 @@ export default function CajaJazminePage() {
     // El número principal incluye lo de esta semana + lo vencido pendiente.
     const cobro = cuotasSemana.reduce((s, c) => s + c.montoJazmines, 0) + cobroVencidas
 
-    // Gastos de la semana: fijos y variables pendientes que vencen entre lunes y domingo
-    const fijosSemana = data.gastosFijosMes.filter(
-      (g) => g.fechaVencimiento && g.fechaVencimiento >= desde && g.fechaVencimiento <= hasta && g.estado !== "pagado",
-    )
-    const variablesSemana = data.gastosVariables.filter(
-      (g) => g.fecha && g.fecha >= desde && g.fecha <= hasta && g.estado !== "pagado",
-    )
-    // De los fijos cuenta lo que falta pagar del mes, como en Próximos
-    // vencimientos (de un repartido con partes ya pagadas, solo el resto).
-    const gastos =
-      fijosSemana.reduce((s, g) => s + (g.montoPendiente ?? g.monto), 0) +
-      variablesSemana.reduce((s, g) => s + g.monto, 0)
+    // Gastos de la semana: lo que falta pagar y vence hasta el domingo,
+    // INCLUIDOS los vencidos (igual que el cobro incluye las cuotas
+    // atrasadas). Sale de la misma lista que "Gastos a 30 días", así esta
+    // semana es siempre una parte de esos 30 días (16/10/2026).
+    const hoyISO = toISO(ahora)
+    const gastosSemanaItems = data.gastos30DiasDetalle.filter((g) => g.fecha <= hasta)
+    const gastos = gastosSemanaItems.reduce((s, g) => s + g.monto, 0)
+    const gastosVencidos = gastosSemanaItems.filter((g) => g.fecha < hoyISO)
+    const montoGastosVencidos = gastosVencidos.reduce((s, g) => s + g.monto, 0)
 
-    const partes: string[] = []
-    if (fijosSemana.length > 0) partes.push(`${fijosSemana.length} ${fijosSemana.length === 1 ? "fijo" : "fijos"}`)
-    if (variablesSemana.length > 0)
-      partes.push(`${variablesSemana.length} ${variablesSemana.length === 1 ? "variable" : "variables"}`)
+    const partes: string[] = [`${gastosSemanaItems.length} ${gastosSemanaItems.length === 1 ? "gasto" : "gastos"}`]
 
     const fmt = (d: Date) => d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })
     return {
@@ -1626,9 +1609,10 @@ export default function CajaJazminePage() {
       saldoFinSemanaJaz: data.saldoActual + cobro - gastos,
       rangoSemanaJazLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
       // Los mismos ítems que suman en las tarjetas, para la ventana de detalle.
-      semanaListas: { cuotasSemana, cuotasVencidas, fijosSemana, variablesSemana },
+      semanaListas: { cuotasSemana, cuotasVencidas, gastosSemanaItems },
+      gastosVencidosSemana: { cantidad: gastosVencidos.length, monto: montoGastosVencidos },
     }
-  }, [data.cuotasPorCobrar, data.gastosFijosMes, data.gastosVariables, data.saldoActual, ahora])
+  }, [data.cuotasPorCobrar, data.gastos30DiasDetalle, data.saldoActual, ahora])
 
   // ── Detalle de las tarjetas del dashboard (ventana al tocarlas) ─────────
   // Solo lectura. Cada ventana usa los MISMOS ítems que suman en su tarjeta,
@@ -1718,26 +1702,36 @@ export default function CajaJazminePage() {
         colorTotal: "#3c4ce8",
       }
     }
-    const filasGastos30 = (tipoG: "fijo" | "sueldo" | "variable"): FilaDetalle[] =>
-      data.gastos30DiasDetalle
-        .filter((g) => g.tipo === tipoG)
-        .map((g) => ({
-          id: `${g.tipo}-${g.id}`,
-          titulo: g.concepto,
-          // Días contados por fecha calendario (el hook redondea para arriba
-          // y en fechas pasadas da un día menos: "hace 3" en vez de "hace 4").
-          detalle: venceTexto(g.fecha, diasHasta(g.fecha)),
-          salon: g.salon ?? null,
-          monto: g.monto,
-          alerta: g.fecha < hoyStr,
-        }))
-    const seccionesGastos30 = [
-      { titulo: "Gastos fijos", signo: -1 as const, filas: filasGastos30("fijo"), vacio: "Ningún gasto fijo pendiente.", nota: "Lo que falta pagar de cada uno este mes." },
-      { titulo: "Gastos variables", signo: -1 as const, filas: filasGastos30("variable"), vacio: "Ningún gasto variable pendiente." },
-      ...(filasGastos30("sueldo").length > 0
-        ? [{ titulo: "Sueldos de vendedores", signo: -1 as const, filas: filasGastos30("sueldo") }]
-        : []),
+    // Ítems de gastos (de la lista de "Gastos a 30 días") como filas de la
+    // ventana, separados en ya vencidos y por vencer: así se ve de dónde sale
+    // el "incluye $X vencidos" de las tarjetas.
+    const etiquetaGasto = { fijo: "Gasto fijo", sueldo: "Sueldo de vendedor", variable: "Gasto variable" } as const
+    const filaGasto = (g: (typeof data.gastos30DiasDetalle)[number]): FilaDetalle => ({
+      id: `${g.tipo}-${g.id}`,
+      titulo: g.concepto,
+      // Días contados por fecha calendario (el hook redondea para arriba
+      // y en fechas pasadas da un día menos: "hace 3" en vez de "hace 4").
+      detalle: `${etiquetaGasto[g.tipo]} · ${venceTexto(g.fecha, diasHasta(g.fecha))}`,
+      salon: g.salon ?? null,
+      monto: g.monto,
+      alerta: g.fecha < hoyStr,
+    })
+    const seccionesGastos = (items: typeof data.gastos30DiasDetalle, porVencer: string) => [
+      {
+        titulo: "Ya vencidos, sin pagar",
+        signo: -1 as const,
+        filas: items.filter((g) => g.fecha < hoyStr).map(filaGasto),
+        vacio: "Nada vencido.",
+      },
+      {
+        titulo: porVencer,
+        signo: -1 as const,
+        filas: items.filter((g) => g.fecha >= hoyStr).map(filaGasto),
+        vacio: "Nada por vencer en este plazo.",
+        nota: "De los gastos fijos cuenta lo que falta pagar del mes.",
+      },
     ]
+    const seccionesGastos30 = seccionesGastos(data.gastos30DiasDetalle, "Vencen en los próximos 30 días")
     if (tipo === "gastos30") {
       return {
         titulo: "Gastos a 30 días",
@@ -1751,7 +1745,7 @@ export default function CajaJazminePage() {
     if (tipo === "saldo30") {
       return {
         titulo: "Saldo a 30 días",
-        descripcion: "Cuánto quedaría en 30 días: el saldo de hoy, más las cuotas que vencen en ese plazo, menos los gastos que vencen.",
+        descripcion: "Cuánto quedaría en 30 días: el saldo de hoy, más las cuotas a cobrar (las que vencen en ese plazo y las atrasadas), menos los gastos a pagar (los que vencen y los ya vencidos).",
         secciones: [
           {
             titulo: "Saldo actual",
@@ -1759,11 +1753,11 @@ export default function CajaJazminePage() {
             filas: [{ id: "saldo", titulo: "Plata en Caja Jazmines hoy", detalle: "Tocá para ver de dónde sale", monto: saldoActual, onClick: () => setDetalleAbierto("saldo") }],
           },
           {
-            titulo: "Cuotas que vencen en 30 días",
+            titulo: "Cuotas a cobrar en 30 días (con atrasadas)",
             signo: 1 as const,
             filas: data.cuotas30Dias.map(filaCuota),
             vacio: "No vence ninguna cuota en los próximos 30 días.",
-            nota: "Parte que entra a Caja Jazmines (el resto va a Caja Eventos). No incluye las cuotas ya vencidas.",
+            nota: "Parte que entra a Caja Jazmines (el resto va a Caja Eventos). Las atrasadas, en rojo.",
           },
           ...seccionesGastos30,
         ],
@@ -1771,7 +1765,7 @@ export default function CajaJazminePage() {
         total: saldoProyectado30Dias,
       }
     }
-    const { cuotasSemana, cuotasVencidas, fijosSemana, variablesSemana } = semanaListas
+    const { cuotasSemana, cuotasVencidas, gastosSemanaItems } = semanaListas
     const seccionesCobro = [
       {
         titulo: "Cuotas que vencen esta semana",
@@ -1788,34 +1782,7 @@ export default function CajaJazminePage() {
         nota: "De semanas anteriores: se pueden cobrar ya.",
       },
     ]
-    const seccionesGastosSemana = [
-      {
-        titulo: "Gastos fijos",
-        signo: -1 as const,
-        filas: fijosSemana.map((g) => ({
-          id: `f-${g.id}`,
-          titulo: g.concepto,
-          detalle: g.fechaVencimiento ? venceTexto(g.fechaVencimiento, diasHasta(g.fechaVencimiento)) : undefined,
-          salon: g.salon ?? null,
-          monto: g.montoPendiente ?? g.monto,
-          alerta: !!g.fechaVencimiento && g.fechaVencimiento < hoyStr,
-        })),
-        vacio: "Ningún gasto fijo vence esta semana.",
-      },
-      {
-        titulo: "Gastos variables y comisiones",
-        signo: -1 as const,
-        filas: variablesSemana.map((g) => ({
-          id: `v-${g.id}`,
-          titulo: g.nombre,
-          detalle: g.fecha ? venceTexto(g.fecha, diasHasta(g.fecha)) : undefined,
-          salon: g.salon || null,
-          monto: g.monto,
-          alerta: !!g.fecha && g.fecha < hoyStr,
-        })),
-        vacio: "Ningún gasto variable vence esta semana.",
-      },
-    ]
+    const seccionesGastosSemana = seccionesGastos(gastosSemanaItems, "Vencen esta semana")
     if (tipo === "cobroSemana") {
       return {
         titulo: "Cobro esta semana",
@@ -1829,7 +1796,7 @@ export default function CajaJazminePage() {
     if (tipo === "gastosSemana") {
       return {
         titulo: "Gastos esta semana",
-        descripcion: `Gastos sin pagar que vencen entre el ${rangoSemanaJazLabel}.`,
+        descripcion: `Gastos sin pagar que vencen hasta el domingo (${rangoSemanaJazLabel}), incluidos los ya vencidos. Es una parte de "Gastos a 30 días".`,
         secciones: seccionesGastosSemana,
         totalEtiqueta: "Gastos esta semana",
         total: gastosSemanaJaz,
@@ -1861,7 +1828,7 @@ export default function CajaJazminePage() {
             {
               id: "gastos",
               titulo: "Gastos esta semana",
-              detalle: `${fijosSemana.length + variablesSemana.length} gastos`,
+              detalle: `${gastosSemanaItems.length} gastos (incluye vencidos)`,
               monto: gastosSemanaJaz,
               onClick: () => setDetalleAbierto("gastosSemana"),
             },
@@ -2259,6 +2226,10 @@ export default function CajaJazminePage() {
     cantidad: variablesSinPagar.length,
     monto: variablesSinPagar.reduce((s, g) => s + g.monto, 0),
   }
+  // Gastos ya vencidos dentro de "Gastos a 30 días" (para su texto chico).
+  const gastos30Vencidos = {
+    monto: data.gastos30DiasDetalle.filter((g) => g.fecha < hoyStr).reduce((s, g) => s + g.monto, 0),
+  }
   const alertasVencidas = alertasVencimiento.filter((a) => a.estado === "vencido")
   const resumenVencidos = {
     cantidad: alertasVencidas.length,
@@ -2413,22 +2384,6 @@ export default function CajaJazminePage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#0035db" }}>Saldo Actual</p>
                     <div className="flex items-center gap-1.5">
                       <Wallet className="h-4 w-4" style={{ color: "#0035db" }} />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          tarjetas.alternar()
-                        }}
-                        aria-expanded={tarjetasAbiertas}
-                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
-                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
-                          style={{ color: "#0035db" }}
-                          aria-hidden="true"
-                        />
-                      </button>
                     </div>
                   </div>
                   <p className="text-lg font-bold whitespace-nowrap" style={{ color: "#3c4ce8" }}>
@@ -2444,7 +2399,7 @@ export default function CajaJazminePage() {
                         style={{ backgroundColor: colorSalonActivo }}
                         aria-hidden="true"
                       />
-                      {salonFiltro === "todos" ? "Todos los salones" : salonLabel(salonFiltro)}
+                      {`En caja hoy · ${salonFiltro === "todos" ? "todos los salones" : salonLabel(salonFiltro)}`}
                     </p>
                   </CuerpoColapsable>
                 </CardContent>
@@ -2462,28 +2417,19 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <ArrowUpFromLine className="h-4 w-4 text-red-500" />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          tarjetas.alternar()
-                        }}
-                        aria-expanded={tarjetasAbiertas}
-                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
-                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
-                          aria-hidden="true"
-                        />
-                      </button>
                     </div>
                   </div>
                   <p className="text-lg font-bold whitespace-nowrap text-red-600">
                     {formatCurrency(gastosPróximos30Dias)}
                   </p>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    <p className="text-xs mt-auto pt-1 text-muted-foreground">Gastos pendientes</p>
+                    <p className="text-xs mt-auto pt-1 text-muted-foreground">
+                      {gastos30Vencidos.monto > 0 ? (
+                        <span className="font-semibold text-red-600">{`Incluye ${formatCurrency(gastos30Vencidos.monto)} ya vencidos`}</span>
+                      ) : (
+                        "Sin gastos vencidos"
+                      )}
+                    </p>
                   </CuerpoColapsable>
                 </CardContent>
               </Card>
@@ -2500,38 +2446,15 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          tarjetas.alternar()
-                        }}
-                        aria-expanded={tarjetasAbiertas}
-                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
-                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsado30 ? "" : "rotate-180"}`}
-                          aria-hidden="true"
-                        />
-                      </button>
                     </div>
                   </div>
                   <p className="text-lg font-bold whitespace-nowrap text-foreground">
                     {formatCurrency(saldoProyectado30Dias)}
                   </p>
                   <CuerpoColapsable colapsado={colapsado30}>
-                    {(() => {
-                      const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
-                      const cuotasMes = cuotasPorCobrar.filter((c) => c.fechaVencimiento.slice(0, 7) === mesKeyActual)
-                      return (
-                        <p className="text-xs mt-auto pt-1 text-muted-foreground">
-                          {cuotasMes.length > 0
-                            ? `${cuotasMes.length} ${cuotasMes.length === 1 ? "cuota" : "cuotas"}`
-                            : "Sin cuotas este mes"}
-                        </p>
-                      )
-                    })()}
+                    <p className="text-xs mt-auto pt-1 text-muted-foreground">
+                      {`Saldo + ${formatCurrency(ingresosProyectados30Dias)} a cobrar − gastos`}
+                    </p>
                   </CuerpoColapsable>
                 </CardContent>
               </Card>
@@ -2551,21 +2474,6 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          tarjetas.alternar()
-                        }}
-                        aria-expanded={tarjetasAbiertas}
-                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
-                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                          aria-hidden="true"
-                        />
-                      </button>
                     </div>
                   </div>
                   <p className="text-lg font-bold whitespace-nowrap text-emerald-600">
@@ -2576,12 +2484,12 @@ export default function CajaJazminePage() {
                       {(() => {
                         const total = cuotasSemanaJazCount + cuotasVencidasJazCount
                         return total > 0
-                          ? `${total} ${total === 1 ? "cuota a cobrar" : "cuotas a cobrar"} (parte Jazmines)`
+                          ? `${total} ${total === 1 ? "cuota" : "cuotas"}`
                           : "Nada por cobrar esta semana"
                       })()}
                       {cuotasVencidasJazCount > 0 && (
                         <span className="font-semibold text-red-600">
-                          {` · incluye ${cuotasVencidasJazCount} ${cuotasVencidasJazCount === 1 ? "vencida" : "vencidas"} (${formatCurrency(cobroVencidasJaz)})`}
+                          {` · incluye ${formatCurrency(cobroVencidasJaz)} atrasados`}
                         </span>
                       )}
                     </p>
@@ -2599,21 +2507,6 @@ export default function CajaJazminePage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Gastos esta semana</p>
                     <div className="flex items-center gap-1.5">
                       <ArrowUpFromLine className="h-4 w-4 text-red-500" />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          tarjetas.alternar()
-                        }}
-                        aria-expanded={tarjetasAbiertas}
-                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
-                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                          aria-hidden="true"
-                        />
-                      </button>
                     </div>
                   </div>
                   <p className="text-lg font-bold whitespace-nowrap text-red-600">
@@ -2621,7 +2514,12 @@ export default function CajaJazminePage() {
                   </p>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-xs mt-auto pt-1 text-muted-foreground">
-                      {gastosSemanaJazDetalle || "Sin gastos esta semana"}
+                      {gastosSemanaJaz > 0 ? gastosSemanaJazDetalle : "Sin gastos esta semana"}
+                      {gastosVencidosSemana.monto > 0 && (
+                        <span className="font-semibold text-red-600">
+                          {` · incluye ${formatCurrency(gastosVencidosSemana.monto)} vencidos`}
+                        </span>
+                      )}
                     </p>
                   </CuerpoColapsable>
                 </CardContent>
@@ -2639,21 +2537,6 @@ export default function CajaJazminePage() {
                     </p>
                     <div className="flex items-center gap-1.5">
                       <TrendingUp className="h-4 w-4" style={{ color: "#0035db" }} />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          tarjetas.alternar()
-                        }}
-                        aria-expanded={tarjetasAbiertas}
-                        aria-label={tarjetasAbiertas ? "Ocultar detalle de las tarjetas" : "Ver detalle de las tarjetas"}
-                        className="-m-1.5 rounded-md p-1.5 hover:bg-muted"
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${colapsadoSemana ? "" : "rotate-180"}`}
-                          aria-hidden="true"
-                        />
-                      </button>
                     </div>
                   </div>
                   <p className="text-lg font-bold whitespace-nowrap text-foreground">
@@ -2661,7 +2544,7 @@ export default function CajaJazminePage() {
                   </p>
                   <CuerpoColapsable colapsado={colapsadoSemana}>
                     <p className="text-xs mt-auto pt-1 text-muted-foreground">
-                      Saldo actual + cobros − gastos
+                      Saldo + cobros − gastos de la semana
                     </p>
                   </CuerpoColapsable>
                 </CardContent>
