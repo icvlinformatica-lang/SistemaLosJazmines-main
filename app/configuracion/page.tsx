@@ -784,8 +784,8 @@ export default function ConfiguracionPage() {
         </Card>
         </Collapsible>
 
-        {/* Section 1: Historial de Actividad */}
-        <Card>
+        {/* Section 1: Historial de Actividad (el chat con IA lleva acá con #historial-actividad) */}
+        <Card id="historial-actividad" className="scroll-mt-4">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>

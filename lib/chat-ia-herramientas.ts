@@ -16,6 +16,7 @@ import { cambiarDiaResumen, fechaResumenValida } from "@/lib/resumen-fecha"
 import type { HistorialIPCEntry } from "@/lib/store"
 import {
   PANTALLAS_CHAT,
+  botonesFuenteEventos,
   SALONES_CHAT,
   accesosEvento,
   filtrarEventosChat,
@@ -61,6 +62,13 @@ import {
 const precioTexto = (n: number) =>
   `$${n.toLocaleString("es-AR", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`
 
+/** Lo que necesita el botón a la pantalla de un evento. */
+const datosBoton = (f: FilaEventoChat) => ({
+  id: String(f.id),
+  nombre: String(f.nombre_pareja || f.nombre || "Evento"),
+  estado: String(f.estado ?? ""),
+})
+
 /** Máximo de eventos que se le pasan a la IA por búsqueda. */
 export const MAX_EVENTOS_POR_BUSQUEDA = 10
 
@@ -71,7 +79,7 @@ const fechaISO = z
 
 export function crearHerramientasChat({
   hoy,
-  acciones,
+  acciones = [],
   tarjetas = [],
   gasto = { propuesta: null },
   cobro = { propuesta: null },
@@ -81,7 +89,12 @@ export function crearHerramientasChat({
   usuario = "",
 }: {
   hoy: string
-  acciones: AccionChat[]
+  /**
+   * Botones que se muestran debajo de la respuesta. Cada herramienta que lee
+   * datos agrega sola el de la pantalla de donde salen, para que siempre se
+   * pueda ir a verlos en el sistema (no depende de que la IA se acuerde).
+   */
+  acciones?: AccionChat[]
   tarjetas?: TarjetaEventoChat[]
   /** Dónde queda la propuesta de gasto de esta respuesta (una sola). */
   gasto?: { propuesta: PropuestaGastoChat | null }
@@ -140,6 +153,7 @@ export function crearHerramientasChat({
       execute: async (filtro) => {
         const [filas, hist] = await Promise.all([cargarEventos(), cargarHistorial()])
         const encontrados = filtrarEventosChat(filas, filtro)
+        sumarAcciones(acciones, botonesFuenteEventos(encontrados.slice(0, MAX_EVENTOS_POR_BUSQUEDA).map(datosBoton)))
         return {
           hoy,
           cantidad: encontrados.length,
@@ -156,6 +170,7 @@ export function crearHerramientasChat({
       execute: async ({ semana }) => {
         const referencia = semana === "proxima" ? cambiarDiaResumen(hoy, 7) : hoy
         const r = await buildVienenAPagar(referencia)
+        sumarAcciones(acciones, [PANTALLAS_CHAT.vienen_a_pagar])
         return {
           desde: r.inicioSemana,
           hasta: r.finSemana,
@@ -180,6 +195,7 @@ export function crearHerramientasChat({
       execute: async ({ fecha }) => {
         const dia = fecha && fechaResumenValida(fecha) ? fecha : hoy
         const r = await buildResumenDiario(dia)
+        sumarAcciones(acciones, [PANTALLAS_CHAT.resumen_diario])
         return {
           fecha: r.fecha,
           ingresoCajaJazmines: r.ingresoCajaJazmines,
@@ -227,6 +243,7 @@ export function crearHerramientasChat({
         const eventos = enPeriodo.map((f) => eventoParaTabla(f, resumenEventoChat(f, hist, hoy)))
         const t = tablaEventos(eventos, { desde, hasta, filas, columnas: columnas === "ninguna" ? null : columnas, medida, salon })
         tablas.push(t)
+        sumarAcciones(acciones, botonesFuenteEventos(enPeriodo.map(datosBoton)))
         return {
           ok: true,
           aviso: "La tabla ya está en el chat con todos los números: escribí solo una o dos frases con lo importante (el total, qué fila o columna tiene más, o lo que llama la atención).",
@@ -273,6 +290,7 @@ export function crearHerramientasChat({
           LIMIT 3000
         `) as unknown as Record<string, unknown>[]
         const resumen = resumirActividad(filas, { desde, hasta: fin, quien: quien?.trim() || undefined })
+        sumarAcciones(acciones, [PANTALLAS_CHAT.historial_actividad])
         let tablaAgregada = false
         if (tabla && tabla.filas !== tabla.columnas && tablas.length < MAX_TABLAS_CHAT) {
           const dias = (new Date(`${fin}T12:00:00Z`).getTime() - new Date(`${desde}T12:00:00Z`).getTime()) / 86_400_000 + 1
@@ -326,6 +344,9 @@ export function crearHerramientasChat({
           .map((id) => filas.find((f) => String(f.id) === id))
           .filter((f): f is FilaEventoChat => !!f)
         sumarTarjetas(tarjetas, encontrados.map((f) => tarjetaEventoChat(resumenEventoChat(f, hist, hoy))))
+        // Un id repetido cuenta como un solo evento (va directo a él).
+        const distintos = encontrados.filter((f, i) => encontrados.indexOf(f) === i)
+        if (distintos.length > 0) sumarAcciones(acciones, botonesFuenteEventos(distintos.map(datosBoton)))
         if (encontrados.length === 0) return { ok: false, motivo: "Ningún id coincide. Buscalos primero con buscarEventos." }
         return { ok: true, tarjetas: encontrados.length }
       },
@@ -367,6 +388,7 @@ export function crearHerramientasChat({
         const datos = await eventoParaCobro(eventoId)
         if (!datos) return { ok: false, motivo: "No existe un evento con ese id. Buscalo primero con buscarEventos." }
         const { evento, hist } = datos
+        sumarAcciones(acciones, [{ etiqueta: `${evento.nombrePareja || evento.nombre}: cuotas por cobrar`, href: `/eventos/pagos?evento=${encodeURIComponent(eventoId)}` }])
         const r = opcionesCobroChat(evento, hist, hoy)
         if (!r.ok) return r
         return {
@@ -440,6 +462,7 @@ export function crearHerramientasChat({
       inputSchema: z.object({ textos: z.array(z.string().min(1).max(60)).min(1).max(15).describe("Nombres a buscar, uno por ingrediente") }),
       execute: async ({ textos }) => {
         const insumos = await cargarInsumos()
+        sumarAcciones(acciones, [PANTALLAS_CHAT.insumos_cocina])
         return {
           resultados: textos.map((t) => {
             const buscado = nombreComparable(t)

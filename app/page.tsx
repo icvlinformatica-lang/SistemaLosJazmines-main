@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import useSWR from "swr"
 import Link from "next/link"
 import { Bell, HelpCircle, FileBarChart, PartyPopper, HandCoins, Receipt, FileText } from "lucide-react"
@@ -15,6 +16,24 @@ import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
 import { AtajosRapidos } from "@/components/atajos-rapidos"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
+
+/**
+ * Abre una ventana de Inicio al llegar con ?ver=resumen, ?ver=vienen-a-pagar o
+ * ?ver=finde (los botones del asistente con IA llevan a de dónde sale lo que
+ * respondió). Después saca el parámetro, para que el mismo botón vuelva a
+ * abrirla. Va aparte y dentro de Suspense porque lee la dirección.
+ */
+function AbrirVentanaDeLaUrl({ abrir }: { abrir: (ver: string) => void }) {
+  const ver = useSearchParams().get("ver")
+  const router = useRouter()
+  useEffect(() => {
+    if (!ver) return
+    abrir(ver)
+    router.replace("/", { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ver])
+  return null
+}
 
 // El chat de Inicio quedó reemplazado por el botón flotante con historial.
 const MOSTRAR_CHAT_INICIO = false
@@ -95,6 +114,16 @@ export default function HomePage() {
       {/* Atajos rápidos a las pantallas que más usa el perfil: a la izquierda,
           debajo del botón de la IA (en el celular, abajo). Se pliegan. */}
       {perfilActivo && <AtajosRapidos perfil={perfilActivo} />}
+
+      <Suspense fallback={null}>
+        <AbrirVentanaDeLaUrl
+          abrir={(ver) => {
+            if (ver === "resumen") setResumenOpen(true)
+            else if (ver === "vienen-a-pagar") setPagarOpen(true)
+            else if (ver === "finde") setFindeOpen(true)
+          }}
+        />
+      </Suspense>
 
       {/* Novedades + Resumen diario + Este finde - top right */}
       <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2">
