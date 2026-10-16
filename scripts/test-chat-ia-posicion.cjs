@@ -32,6 +32,16 @@ test('al arrastrar no se sale de la pantalla', () => {
   assert.deepEqual(ajustarBoton({ x: 1200, y: 700 }, celu), { x: 390 - TAM_BOTON_IA - 12, y: 700 })
 })
 
+test('con el panel lateral abierto en la compu, el botón se corre y no queda tapado', () => {
+  // Arrastrado pegado al borde y después se despliega el panel (224 px): pasa al lado.
+  assert.deepEqual(ajustarBoton({ x: 12, y: 300 }, compu, 224), { x: 236, y: 300 })
+  assert.deepEqual(ajustarBoton({ x: 150, y: 12 }, compu, 224), { x: 236, y: 12 })
+  // Si ya estaba a la derecha del panel, no se mueve.
+  assert.deepEqual(ajustarBoton({ x: 600, y: 300 }, compu, 224), { x: 600, y: 300 })
+  // Panel plegado: vuelve a donde se lo dejó.
+  assert.deepEqual(ajustarBoton({ x: 12, y: 300 }, compu, 0), { x: 12, y: 300 })
+})
+
 test('el chat se abre debajo y a la derecha si el botón está arriba a la izquierda', () => {
   const p = posicionPanel({ x: 236, y: 12 }, compu)
   assert.equal(p.x, 236)

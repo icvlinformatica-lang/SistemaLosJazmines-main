@@ -25,12 +25,19 @@ export function posicionInicialBoton(bordeIzquierdoContenido: number): Punto {
   return { x: Math.max(0, bordeIzquierdoContenido) + MARGEN_IA, y: MARGEN_IA }
 }
 
-/** Mantiene el botón entero dentro de la pantalla (por ejemplo, al achicar la ventana). */
-export function ajustarBoton(p: Punto, pantalla: Pantalla): Punto {
+/**
+ * Mantiene el botón entero dentro de la pantalla (por ejemplo, al achicar la
+ * ventana) y fuera del panel lateral: si el panel se despliega en la compu y
+ * empuja el contenido, el botón se corre con él para no quedar tapado
+ * (bordeIzquierdoContenido es dónde empieza el contenido; 0 con el panel
+ * plegado o en el celular, donde el panel se abre por encima).
+ */
+export function ajustarBoton(p: Punto, pantalla: Pantalla, bordeIzquierdoContenido = 0): Punto {
   const maxX = Math.max(MARGEN_IA, pantalla.ancho - TAM_BOTON_IA - MARGEN_IA)
   const maxY = Math.max(MARGEN_IA, pantalla.alto - TAM_BOTON_IA - MARGEN_IA)
+  const minX = Math.min(Math.max(0, bordeIzquierdoContenido) + MARGEN_IA, maxX)
   return {
-    x: Math.min(Math.max(p.x, MARGEN_IA), maxX),
+    x: Math.min(Math.max(p.x, minX), maxX),
     y: Math.min(Math.max(p.y, MARGEN_IA), maxY),
   }
 }

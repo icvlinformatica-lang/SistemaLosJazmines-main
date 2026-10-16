@@ -223,7 +223,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
     }
   }, [])
 
-  const boton = ajustarBoton(movido ?? posicionInicialBoton(bordeContenido), pantalla)
+  const boton = ajustarBoton(movido ?? posicionInicialBoton(bordeContenido), pantalla, bordeContenido)
   const panel = posicionPanel(boton, pantalla)
 
   // Arrastrar: si el dedo o el mouse se mueve poco, cuenta como un toque (abre o cierra).
@@ -239,7 +239,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
     const dy = e.clientY - a.y
     if (!a.movio && Math.hypot(dx, dy) < UMBRAL_ARRASTRE_IA) return
     a.movio = true
-    setMovido(ajustarBoton({ x: a.origen.x + dx, y: a.origen.y + dy }, pantalla))
+    setMovido(ajustarBoton({ x: a.origen.x + dx, y: a.origen.y + dy }, pantalla, bordeContenido))
   }
   const alSoltar = () => {
     const a = arrastreRef.current
