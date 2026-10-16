@@ -88,6 +88,7 @@ import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-evento
 import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo, saldoEsperaSeña } from "@/lib/servicio-sueldo"
 import { fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
+import { DetalleDashboardDialog, type FilaDetalle, type SeccionDetalle } from "../caja-jazmines/detalle-dashboard"
 import {
   AvisoSeñaBloqueada,
   PinSeñaExtraordinariaDialog,
@@ -853,7 +854,7 @@ useStore()
   }
 
   // Semana actual: lunes a domingo
-  const { cobroSemana, cuotasSemanaCount, pagoSemana, pagoSemanaDetalle, saldoFinSemana, rangoSemanaLabel } = useMemo(() => {
+  const { cobroSemana, cuotasSemanaCount, pagoSemana, pagoSemanaDetalle, saldoFinSemana, rangoSemanaLabel, cuotasSemanaLista, egresosSemanaLista } = useMemo(() => {
     const diaSemana = ahora.getDay() // 0 = domingo
     const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - ((diaSemana + 6) % 7))
     const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)
@@ -878,6 +879,9 @@ useStore()
       pagoSemanaDetalle: componerEgresos(egresosSemana),
       saldoFinSemana: data.saldoActual + cobro - pago,
       rangoSemanaLabel: `${fmt(lunes)} — ${fmt(domingo)}`,
+      // Los mismos ítems que suman en las tarjetas, para la ventana de detalle.
+      cuotasSemanaLista: cuotasSemana,
+      egresosSemanaLista: egresosSemana,
     }
   }, [data.ingresosPendientes, data.egresosPendientes, data.saldoActual, ahora])
 
@@ -1026,6 +1030,167 @@ useStore()
   } = data
 
   const totalPatrimonio = saldoActual + valorStockCocina + valorStockBarra
+
+  // ── Detalle de las tarjetas del dashboard (ventana al tocarlas) ─────────
+  // Igual que en Caja Jazmines: solo lectura, y cada ventana usa los MISMOS
+  // ítems que suman en su tarjeta (su total es exactamente el de la tarjeta).
+  // Saldo actual sigue abriendo su desglose de siempre.
+  type TipoDetalleEv = "ingresoMes" | "egresoMes" | "balanceMes" | "ingresoSemana" | "egresoSemana" | "balanceSemana"
+  const [detalleEv, setDetalleEv] = useState<TipoDetalleEv | null>(null)
+  const mesKeyActual = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`
+  const fechaCorta = (f: string) => {
+    const [, m, d] = f.split("-")
+    return `${d}/${m}`
+  }
+  const filaIngreso = (i: (typeof ingresosPendientes)[number]): FilaDetalle => ({
+    id: i.id,
+    titulo: i.eventoNombre,
+    detalle: `Cuota ${i.numeroCuota}/${i.totalCuotas} · ${i.esVencida ? "venció" : "vence"} el ${fechaCorta(i.fechaVencimiento)}${
+      i.estado === "parcial" ? " · pagada en parte" : ""
+    }`,
+    salon: i.salon || null,
+    monto: i.monto,
+    alerta: i.esVencida,
+  })
+  const NOMBRE_TIPO_EGRESO: Record<EgresoPendienteServicio["tipo"], string> = {
+    menu: "Menú (cocina)",
+    barra: "Barra",
+    seña: "Señas a proveedores",
+    saldo: "Saldos a proveedores",
+    sueldo: "Sueldos del personal",
+  }
+  const filaEgreso = (e: EgresoPendienteServicio): FilaDetalle => ({
+    id: e.id,
+    titulo: e.tipo === "menu" || e.tipo === "barra" ? e.eventoNombre : `${e.servicioNombre}${e.persona ? ` · ${e.persona}` : ""}`,
+    detalle: `${e.tipo === "menu" || e.tipo === "barra" ? NOMBRE_TIPO_EGRESO[e.tipo] : e.eventoNombre} · ${
+      e.fechaVencimiento < hoyStr ? "venció" : "vence"
+    } el ${fechaCorta(e.fechaVencimiento)}`,
+    salon: e.salon || null,
+    monto: e.monto,
+    alerta: e.fechaVencimiento < hoyStr,
+  })
+  /** Egresos agrupados por tipo (menú, barra, señas, saldos, sueldos). */
+  const seccionesEgresos = (egresos: EgresoPendienteServicio[]): SeccionDetalle[] => {
+    const orden: EgresoPendienteServicio["tipo"][] = ["menu", "barra", "seña", "saldo", "sueldo"]
+    const secciones = orden
+      .map((t) => ({
+        titulo: NOMBRE_TIPO_EGRESO[t],
+        signo: -1 as const,
+        filas: egresos.filter((e) => e.tipo === t).map(filaEgreso),
+      }))
+      .filter((sec) => sec.filas.length > 0)
+    return secciones.length > 0 ? secciones : [{ titulo: "Pagos", signo: -1 as const, filas: [], vacio: "No hay pagos pendientes." }]
+  }
+
+  function armarDetalleEv(tipo: TipoDetalleEv) {
+    const ingresosMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKeyActual)
+    const egresosMes = egresosPendientes.filter((e) => e.fechaVencimiento.slice(0, 7) === mesKeyActual)
+    const nombreMes = mesActualLabel
+    if (tipo === "ingresoMes") {
+      return {
+        titulo: "Ingreso mensual",
+        descripcion: `Cuotas que vencen en ${nombreMes} y faltan cobrar: la parte que entra a Caja Eventos (costo del evento + 5 %).`,
+        secciones: [
+          { titulo: "Ya vencidas, sin cobrar", signo: 1 as const, filas: ingresosMes.filter((i) => i.esVencida).map(filaIngreso), vacio: "Ninguna vencida." },
+          { titulo: "Por vencer este mes", signo: 1 as const, filas: ingresosMes.filter((i) => !i.esVencida).map(filaIngreso), vacio: "Nada más por vencer este mes." },
+        ],
+        totalEtiqueta: "Ingreso mensual",
+        total: porCobrarEsteMes,
+        colorTotal: "#059669",
+      }
+    }
+    if (tipo === "egresoMes") {
+      return {
+        titulo: "Egreso mensual",
+        descripcion: `Pagos a proveedores, cocina, barra y personal que vencen en ${nombreMes} y faltan pagar. Los vencidos, en rojo.`,
+        secciones: seccionesEgresos(egresosMes),
+        totalEtiqueta: "Egreso mensual",
+        total: porPagarEsteMes,
+        colorTotal: "#dc2626",
+      }
+    }
+    if (tipo === "ingresoSemana") {
+      return {
+        titulo: "Ingreso semanal",
+        descripcion: `Cuotas que vencen esta semana (${rangoSemanaLabel}), parte de Caja Eventos.`,
+        secciones: [{ titulo: "Cuotas de la semana", signo: 1 as const, filas: cuotasSemanaLista.map(filaIngreso), vacio: "Nada por cobrar esta semana." }],
+        totalEtiqueta: "Ingreso semanal",
+        total: cobroSemana,
+        colorTotal: "#059669",
+      }
+    }
+    if (tipo === "egresoSemana") {
+      return {
+        titulo: "Egreso semanal",
+        descripcion: `Pagos que vencen esta semana (${rangoSemanaLabel}).`,
+        secciones: seccionesEgresos(egresosSemanaLista),
+        totalEtiqueta: "Egreso semanal",
+        total: pagoSemana,
+        colorTotal: "#dc2626",
+      }
+    }
+    const esMes = tipo === "balanceMes"
+    return {
+      titulo: esMes ? "Balance mensual" : "Balance semanal",
+      descripcion: esMes
+        ? `Cuánto quedaría a fin de ${nombreMes}: saldo de hoy + lo que entra − lo que sale este mes. Tocá cada fila para ver su detalle.`
+        : `Cuánto quedaría el domingo: saldo de hoy + lo que entra − lo que sale esta semana (${rangoSemanaLabel}). Tocá cada fila para ver su detalle.`,
+      secciones: [
+        {
+          titulo: "Suma",
+          signo: 1 as const,
+          filas: [
+            {
+              id: "saldo",
+              titulo: "Saldo actual",
+              detalle: "Plata en Caja Eventos hoy",
+              monto: saldoActual,
+              onClick: () => {
+                setDetalleEv(null)
+                setDesgloseOpen(true)
+              },
+            },
+            {
+              id: "ingreso",
+              titulo: esMes ? "Ingreso mensual" : "Ingreso semanal",
+              detalle: `${esMes ? ingresosMes.length : cuotasSemanaLista.length} cuotas`,
+              monto: esMes ? porCobrarEsteMes : cobroSemana,
+              onClick: () => setDetalleEv(esMes ? "ingresoMes" : "ingresoSemana"),
+            },
+          ],
+        },
+        {
+          titulo: "Resta",
+          signo: -1 as const,
+          filas: [
+            {
+              id: "egreso",
+              titulo: esMes ? "Egreso mensual" : "Egreso semanal",
+              detalle: `${esMes ? egresosMes.length : egresosSemanaLista.length} pagos`,
+              monto: esMes ? porPagarEsteMes : pagoSemana,
+              onClick: () => setDetalleEv(esMes ? "egresoMes" : "egresoSemana"),
+            },
+          ],
+        },
+      ],
+      totalEtiqueta: esMes ? "Balance mensual" : "Balance semanal",
+      total: esMes ? saldoFinMes : saldoFinSemana,
+    }
+  }
+  const detalleEvData = detalleEv ? armarDetalleEv(detalleEv) : null
+  /** Props para que una tarjeta del dashboard abra su detalle (clic o Enter). */
+  const abrirDetalleEvProps = (tipo: TipoDetalleEv) => ({
+    role: "button" as const,
+    tabIndex: 0,
+    title: "Tocá para ver de qué se compone",
+    onClick: () => setDetalleEv(tipo),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        setDetalleEv(tipo)
+      }
+    },
+  })
 
   // Cantidad de cuotas ya vencidas (que deberían haberse cobrado) para el aviso
   const vencidasCount = vienenEstaSemana.filter((i) => i.esVencida).length
@@ -1922,15 +2087,16 @@ useStore()
         <Card
           style={{ backgroundColor: "#ffffff" }}
           className="cursor-pointer rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
-          onClick={() => {
-            if (colapsadoMes) {
-              tarjetas.abrir()
-              return
+          onClick={() => setDesgloseOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              setDesgloseOpen(true)
             }
-            setDesgloseOpen(true)
           }}
           role="button"
           tabIndex={0}
+          title="Tocá para ver de qué se compone"
           aria-label="Ver desglose del saldo actual"
         >
           <CardContent className="relative p-3 flex h-full flex-col">
@@ -1979,7 +2145,8 @@ useStore()
 
         {/* Cobro este mes */}
         <Card
-          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          {...abrirDetalleEvProps("ingresoMes")}
+          className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
           style={{ backgroundColor: "#ffffff" }}
         >
           <CardContent className="relative p-3 flex h-full flex-col">
@@ -2025,7 +2192,8 @@ useStore()
 
         {/* Pago este mes */}
         <Card
-          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          {...abrirDetalleEvProps("egresoMes")}
+          className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
           style={{ backgroundColor: "#ffffff" }}
         >
           <CardContent className="relative p-3 flex h-full flex-col">
@@ -2065,7 +2233,8 @@ useStore()
 
         {/* Tengo a fin de mes */}
         <Card
-          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          {...abrirDetalleEvProps("balanceMes")}
+          className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
           style={{ backgroundColor: "#ffffff" }}
         >
           <CardContent className="relative p-3 flex h-full flex-col">
@@ -2105,7 +2274,8 @@ useStore()
 
         {/* Cobro esta semana */}
         <Card
-          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          {...abrirDetalleEvProps("ingresoSemana")}
+          className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
           style={{ backgroundColor: "#ffffff" }}
         >
           <CardContent className="relative p-3 flex h-full flex-col">
@@ -2147,7 +2317,8 @@ useStore()
 
         {/* Egreso semanal */}
         <Card
-          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          {...abrirDetalleEvProps("egresoSemana")}
+          className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
           style={{ backgroundColor: "#ffffff" }}
         >
           <CardContent className="relative p-3 flex h-full flex-col">
@@ -2187,7 +2358,8 @@ useStore()
 
         {/* Tengo a fin de semana */}
         <Card
-          className="rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
+          {...abrirDetalleEvProps("balanceSemana")}
+          className="cursor-pointer rounded-xl border-border shadow-sm transition-shadow hover:shadow-md"
           style={{ backgroundColor: "#ffffff" }}
         >
           <CardContent className="relative p-3 flex h-full flex-col">
@@ -3036,6 +3208,15 @@ useStore()
       </Dialog>
 
       {/* DIALOG: desglose "Tengo ahora" */}
+      {/* ── Detalle de una tarjeta del dashboard ── */}
+      {detalleEvData && (
+        <DetalleDashboardDialog
+          abierto={!!detalleEv}
+          onOpenChange={(o) => !o && setDetalleEv(null)}
+          {...detalleEvData}
+        />
+      )}
+
       <Dialog open={desgloseOpen} onOpenChange={setDesgloseOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
