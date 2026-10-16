@@ -43,6 +43,7 @@ import {
   type PropuestaInsumoChat,
   type PropuestaRecetaChat,
 } from "@/lib/chat-ia-catalogo"
+import { periodoActividadValido, resumirActividad } from "@/lib/chat-ia-actividad"
 
 /** "$2.450,5" → "$2.450,50": la IA copia el precio tal cual, ya con punto de miles. */
 const precioTexto = (n: number) =>
@@ -175,6 +176,33 @@ export function crearHerramientasChat({
           cuotasCobradas: r.cuotasDelDia.map((c) => ({ evento: c.evento, salon: c.salon, monto: c.monto })),
           totalCuotas: r.totalCuotas,
         }
+      },
+    }),
+
+    consultarActividad: tool({
+      description:
+        "Lee el Historial de Actividad (Configuración → Historial de Actividad): qué se hizo en el sistema en un período (eventos creados o cambiados, pagos, caja, insumos, recetas, stock…) " +
+        "y quién lo hizo. Sirve para 'qué se hizo ayer', 'qué hizo Leila esta semana' o 'qué cargó Barra'. Devuelve totales por persona y por tipo, y los registros más nuevos primero. " +
+        "El historial no guarda el perfil: quién lo hizo sale del nombre que quedó anotado (Diego, Leila, Ricky, Soporte) o, en las cargas de stock, del sector (Cocina, Barra).",
+      inputSchema: z.object({
+        desde: fechaISO.describe("Primer día, AAAA-MM-DD"),
+        hasta: fechaISO.optional().describe("Último día, AAAA-MM-DD; si falta, el mismo día que desde"),
+        quien: z.string().max(40).optional().describe("Opcional: persona o sector (Diego, Leila, Ricky, Soporte, Cocina, Barra) o 'sin dato' para lo que no dice quién"),
+      }),
+      execute: async ({ desde, hasta, quien }) => {
+        const fin = hasta ?? desde
+        const error = periodoActividadValido(desde, fin)
+        if (error) return { ok: false, motivo: error }
+        // Días de Argentina: de las 00:00 del primero a las 00:00 del día después del último.
+        const filas = (await sql`
+          SELECT id, tipo, accion, nombre, detalle, created_at
+          FROM activity_log
+          WHERE created_at >= (${desde}::date)::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires'
+            AND created_at < (${fin}::date + 1)::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires'
+          ORDER BY created_at DESC
+          LIMIT 3000
+        `) as unknown as Record<string, unknown>[]
+        return { ok: true, ...resumirActividad(filas, { desde, hasta: fin, quien: quien?.trim() || undefined }) }
       },
     }),
 

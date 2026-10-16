@@ -172,7 +172,7 @@ test("ruta: la IA busca el evento del 6/10 y deja los tres botones; sin escritur
   const res = await pedir([{ role: "user", content: "quiero ver el evento del 6 de octubre de 2026" }])
   assert.equal(res.status, 200)
   const data = await res.json()
-  assert.deepEqual(toolsRecibidas, ["buscarEventos", "buscarInsumos", "consultarCobroCuota", "mostrarAccesosEvento", "mostrarPantalla", "mostrarResumenEventos", "proponerCobroCuota", "proponerGasto", "proponerInsumo", "proponerReceta", "resumenDelDia", "vienenAPagar"])
+  assert.deepEqual(toolsRecibidas, ["buscarEventos", "buscarInsumos", "consultarActividad", "consultarCobroCuota", "mostrarAccesosEvento", "mostrarPantalla", "mostrarResumenEventos", "proponerCobroCuota", "proponerGasto", "proponerInsumo", "proponerReceta", "resumenDelDia", "vienenAPagar"])
   assert.deepEqual(data.acciones.map((a) => a.href), [
     "/eventos/lista?evento=ev-prueba",
     "/eventos/pagos?evento=ev-prueba",

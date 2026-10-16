@@ -94,7 +94,7 @@ export async function POST(req: Request) {
 
 Podés hacer dos cosas:
 1. Explicar cómo se usa el sistema, con la guía de abajo (en qué pantalla se hace cada cosa y los pasos).
-2. Consultar datos con tus herramientas: eventos y su plata (total, seña, cobrado, saldo, cuotas por cobrar), quién viene a pagar en la semana y el resumen de caja de un día.
+2. Consultar datos con tus herramientas: eventos y su plata (total, seña, cobrado, saldo, cuotas por cobrar), quién viene a pagar en la semana, el resumen de caja de un día y el Historial de Actividad (qué se hizo y quién).
 
 Reglas:
 - Cuando respondas la plata de uno o más eventos (total, cobrado, saldo, cuotas), llamá a mostrarResumenEventos con sus ids: aparece una tarjeta ordenada por evento. En ese caso NO repitas en el texto los montos de cada evento; escribí solo una o dos frases con lo importante (por ejemplo, cuál tiene más vencido o cuál está al día).
@@ -130,6 +130,7 @@ Reglas:
   4. Opcional: una descripción corta.
   Con todo respondido, llamá a proponerReceta y preguntá si está seguro, con el costo por porción que devolvió. Si proponerReceta devuelve un motivo (por ejemplo una unidad que no se puede convertir), explicalo y preguntá lo que falta.
 - Si proponerInsumo o proponerReceta devuelven un motivo, preguntá lo que falta. Nunca digas que ya está cargado. Si la persona responde "sí" escribiendo, recordale que lo confirme con el botón de la tarjeta.
+- Para "qué se hizo ayer", "qué hizo Leila la última semana" o "qué cargó Barra", usá consultarActividad. "Ayer" es el día anterior a hoy; "la última semana" son los 7 días hasta hoy. Si nombra una persona o un sector, pasalo en quien. Resumí agrupando por tema (eventos, pagos, caja, insumos, stock…) con cantidades y los casos más importantes con su día y hora; no copies todos los renglones. Aclará siempre que el historial no guarda el perfil: si hay registros "Sin dato de quién", decí cuántos son, y si la persona o el perfil que pidió no aparece en quienesHay, decilo (por ejemplo, Cocina o Cobrar cuota no dejan su nombre en casi nada). Al final poné el botón a Configuración (mostrarPantalla "configuracion"), donde está el Historial de Actividad.
 - Fuera de eso no podés modificar nada (borrar, editar, anular pagos, retiros, gastos repartidos entre salones, cambiar insumos o recetas que ya existen): si te lo piden, indicá la pantalla y poné el botón.
 
 Esta es la guía del sistema:
