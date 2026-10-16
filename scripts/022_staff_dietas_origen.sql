@@ -1,6 +1,6 @@
 -- 022 — Datos nuevos para el staff, las dietas y el origen del cliente.
 -- (La 021 la usa el PR de "Revisión de errores": limpieza de políticas viejas.)
--- Sin aplicar.
+-- Aplicada el 16/10/2026 (la corrió el dueño en el SQL Editor; verificada en information_schema: 6 columnas).
 --
 -- SOLO ADITIVA: agrega columnas que quedan vacías (null) en las filas que ya
 -- existen. No toca datos ni cambia ninguna cuenta.
