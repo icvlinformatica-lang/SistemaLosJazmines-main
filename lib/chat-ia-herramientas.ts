@@ -44,6 +44,7 @@ import {
   type PropuestaRecetaChat,
 } from "@/lib/chat-ia-catalogo"
 import { periodoActividadValido, resumirActividad } from "@/lib/chat-ia-actividad"
+import { MAX_TABLAS_CHAT, nombreMes, periodoTablaValido, tablaEventosPorSalonYMes, type TablaEventosChat } from "@/lib/chat-ia-tabla"
 
 /** "$2.450,5" → "$2.450,50": la IA copia el precio tal cual, ya con punto de miles. */
 const precioTexto = (n: number) =>
@@ -65,6 +66,7 @@ export function crearHerramientasChat({
   cobro = { propuesta: null },
   insumo = { propuesta: null },
   receta = { propuesta: null },
+  tablas = [],
   usuario = "",
 }: {
   hoy: string
@@ -77,6 +79,8 @@ export function crearHerramientasChat({
   /** Dónde quedan el insumo y la receta nuevos propuestos en esta respuesta (uno de cada uno). */
   insumo?: { propuesta: PropuestaInsumoChat | null }
   receta?: { propuesta: PropuestaRecetaChat | null }
+  /** Tablas de cantidad de eventos que se muestran debajo de la respuesta. */
+  tablas?: TablaEventosChat[]
   /** Quién usa el chat (Diego, Leila, Ricky…): se sugiere como quien recibe la plata. */
   usuario?: string
 }) {
@@ -175,6 +179,34 @@ export function crearHerramientasChat({
           saldoActualPorSalon: r.saldoPorSalon,
           cuotasCobradas: r.cuotasDelDia.map((c) => ({ evento: c.evento, salon: c.salon, monto: c.monto })),
           totalCuotas: r.totalCuotas,
+        }
+      },
+    }),
+
+    mostrarConteoEventos: tool({
+      description:
+        "Cuenta los eventos de un período por salón y por mes y pone en el chat una tabla ordenada (salones en filas, meses en columnas, con totales). " +
+        "Usala para '¿cuántos eventos hay hasta fin de año?', 'eventos por salón y mes', 'cuántos casamientos tenemos en noviembre por salón'. " +
+        "Cuenta los eventos no borrados (incluye borradores). Los números salen de la base: no los repitas en el texto.",
+      inputSchema: z.object({
+        desde: fechaISO.describe("Primer día, AAAA-MM-DD (por ejemplo hoy)"),
+        hasta: fechaISO.describe("Último día, AAAA-MM-DD (por ejemplo el 31/12)"),
+        salon: z.enum(SALONES_CHAT).optional().describe("Opcional: un solo salón"),
+      }),
+      execute: async ({ desde, hasta, salon }) => {
+        const error = periodoTablaValido(desde, hasta)
+        if (error) return { ok: false, motivo: error }
+        if (tablas.length >= MAX_TABLAS_CHAT) return { ok: false, motivo: "Ya hay dos tablas en esta respuesta." }
+        const t = tablaEventosPorSalonYMes(await cargarEventos(), { desde, hasta, salon })
+        tablas.push(t)
+        return {
+          ok: true,
+          aviso: "La tabla ya está en el chat con todos los números: escribí solo una o dos frases (por ejemplo, qué salón o qué mes tiene más).",
+          total: t.total,
+          borradores: t.borradores,
+          porSalon: Object.fromEntries(t.filas.map((f) => [f.salon, f.total])),
+          porMes: Object.fromEntries(t.meses.map((m, i) => [nombreMes(m), t.totalPorMes[i]])),
+          salonesSinEventos: SALONES_CHAT.filter((s) => (!salon || s === salon) && !t.filas.some((f) => f.salon === s)),
         }
       },
     }),

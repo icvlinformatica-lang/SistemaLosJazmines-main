@@ -34,6 +34,8 @@ import {
   type PropuestaRecetaChat,
 } from "@/lib/chat-ia-catalogo"
 import { TarjetaInsumoChatIA, TarjetaRecetaChatIA } from "@/components/chat-ia-tarjeta-catalogo"
+import { tablasValidas, type TablaEventosChat } from "@/lib/chat-ia-tabla"
+import { TablaEventosChatIA } from "@/components/chat-ia-tabla-eventos"
 
 interface AccionChat {
   etiqueta: string
@@ -48,6 +50,8 @@ interface MensajeChat {
   acciones?: AccionChat[]
   /** Tarjetas de eventos con su plata (armadas en el servidor). */
   tarjetas?: TarjetaEventoChat[]
+  /** Tablas de cantidad de eventos por salón y mes (armadas en el servidor). */
+  tablas?: TablaEventosChat[]
   /** Gasto propuesto por la IA, a confirmar con el botón. */
   gasto?: PropuestaGastoChat | null
   /** Cobro de cuota propuesto por la IA, a confirmar con el botón. */
@@ -156,6 +160,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
           perfil: typeof m.perfil === "string" ? m.perfil : undefined,
           acciones: accionesValidas(m.acciones),
           tarjetas: tarjetasValidas(m.tarjetas),
+          tablas: tablasValidas(m.tablas),
           gasto: propuestaGastoValida(m.gasto),
           cobro: propuestaCobroValida(m.cobro),
           insumo: propuestaInsumoValida(m.insumo),
@@ -316,6 +321,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                 : ""),
             acciones: accionesValidas(data.acciones),
             tarjetas: tarjetasValidas(data.tarjetas),
+            tablas: tablasValidas(data.tablas),
             gasto: propuestaGastoValida(data.gasto),
             cobro: propuestaCobroValida(data.cobro),
             insumo: propuestaInsumoValida(data.insumo),
@@ -418,7 +424,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   className={
                     m.rol === "user"
                       ? "self-end max-w-[85%]"
-                      : (m.tarjetas && m.tarjetas.length > 0) || m.gasto || m.cobro || m.insumo || m.receta
+                      : (m.tarjetas && m.tarjetas.length > 0) || (m.tablas && m.tablas.length > 0) || m.gasto || m.cobro || m.insumo || m.receta
                         ? "self-stretch"
                         : "self-start max-w-[90%]"
                   }
@@ -465,6 +471,13 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                           if (window.innerWidth < 640) setAbierto(false)
                         }}
                       />
+                    </div>
+                  )}
+                  {m.tablas && m.tablas.length > 0 && (
+                    <div className="mt-1.5 flex flex-col gap-1.5">
+                      {m.tablas.map((t, i) => (
+                        <TablaEventosChatIA key={`${t.desde}-${t.hasta}-${i}`} tabla={t} />
+                      ))}
                     </div>
                   )}
                   {m.insumo && (

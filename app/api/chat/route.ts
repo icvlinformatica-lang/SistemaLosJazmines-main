@@ -19,6 +19,7 @@ import type { TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import type { PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import type { PropuestaCobroChat } from "@/lib/chat-ia-cobro"
 import type { PropuestaInsumoChat, PropuestaRecetaChat } from "@/lib/chat-ia-catalogo"
+import type { TablaEventosChat } from "@/lib/chat-ia-tabla"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
@@ -80,6 +81,8 @@ export async function POST(req: Request) {
   const acciones: AccionChat[] = []
   // Las tarjetas de eventos también: los montos salen del servidor, no del texto de la IA.
   const tarjetas: TarjetaEventoChat[] = []
+  // Y las tablas de cantidad de eventos por salón y mes.
+  const tablas: TablaEventosChat[] = []
   // Un gasto propuesto (no cargado): lo carga la persona con el botón (/api/chat/gasto).
   const gasto: { propuesta: PropuestaGastoChat | null } = { propuesta: null }
   // Un cobro de cuota propuesto (no cobrado): lo cobra la persona con el botón, como en Cobrar cuota.
@@ -98,6 +101,7 @@ Podés hacer dos cosas:
 
 Reglas:
 - Cuando respondas la plata de uno o más eventos (total, cobrado, saldo, cuotas), llamá a mostrarResumenEventos con sus ids: aparece una tarjeta ordenada por evento. En ese caso NO repitas en el texto los montos de cada evento; escribí solo una o dos frases con lo importante (por ejemplo, cuál tiene más vencido o cuál está al día).
+- Cuando pregunte cuántos eventos hay en un período (por salón, por mes o los dos), llamá a mostrarConteoEventos: aparece una tabla con salones en filas, meses en columnas y los totales. En ese caso NO repitas los números en el texto: escribí una o dos frases con lo importante (el total, qué salón o qué mes tiene más, o que un salón no tiene eventos). "Hasta fin de año" es hasta el 31/12 de este año.
 - Los montos y datos salen SIEMPRE de las herramientas. Nunca inventes ni calcules un monto que no te dieron; si algo no está, decilo.
 - Texto plano, sin markdown ni asteriscos; para listas usá un renglón por ítem con guion.
 - Montos en pesos con punto de miles, por ejemplo $1.250.000. Fechas como 6/10/2026.
@@ -137,7 +141,7 @@ Esta es la guía del sistema:
 
 ${GUIA_SISTEMA}`,
       messages,
-      tools: crearHerramientasChat({ hoy, acciones, tarjetas, gasto, cobro, insumo, receta, usuario: usuario === "Soporte" || usuario === "Administración" ? "" : usuario }),
+      tools: crearHerramientasChat({ hoy, acciones, tarjetas, tablas, gasto, cobro, insumo, receta, usuario: usuario === "Soporte" || usuario === "Administración" ? "" : usuario }),
       stopWhen: stepCountIs(10),
     })
     // Sin id válido (pantalla vieja abierta) responde igual, sin guardar.
@@ -150,6 +154,7 @@ ${GUIA_SISTEMA}`,
           respuesta: text,
           acciones,
           tarjetas,
+          tablas,
           gasto: gasto.propuesta,
           cobro: cobro.propuesta,
           insumo: insumo.propuesta,
@@ -164,6 +169,7 @@ ${GUIA_SISTEMA}`,
       text,
       acciones,
       tarjetas,
+      tablas,
       gasto: propuesta,
       gastoSinGuardar: !!gasto.propuesta && !guardado,
       cobro: propuestaCobro,
