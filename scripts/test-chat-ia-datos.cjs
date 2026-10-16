@@ -217,6 +217,44 @@ test("herramientas de semana y del día responden con la base simulada", async (
 })
 
 
+test("botones de origen: cada herramienta que lee datos pone el botón a la pantalla de donde salen", async () => {
+  filasEventos = [PRUEBA, { ...PRUEBA, id: "ev-fin", nombre: "PRUEBA Fin", nombre_pareja: "PRUEBA Fin", fecha: "2026-08-01", estado: "completado" }]
+  const { crearHerramientasChat } = require("../lib/chat-ia-herramientas.ts")
+  const { botonesFuenteEventos } = require("../lib/chat-ia-datos.ts")
+  // Un evento: directo a él; varios: la Lista y/o el Archivo según dónde estén.
+  assert.deepEqual(botonesFuenteEventos([{ id: "a b", nombre: "Ana", estado: "pendiente" }]).map((b) => b.href), ["/eventos/lista?evento=a%20b"])
+  assert.deepEqual(botonesFuenteEventos([{ id: "x", nombre: "X", estado: "completado" }]).map((b) => b.href), ["/eventos/finalizados"])
+  assert.deepEqual(
+    botonesFuenteEventos([{ id: "a", nombre: "A", estado: "pendiente" }, { id: "x", nombre: "X", estado: "completado" }]).map((b) => b.href),
+    ["/eventos/lista", "/eventos/finalizados"],
+  )
+  assert.deepEqual(botonesFuenteEventos([]).map((b) => b.href), ["/eventos/lista"])
+
+  const conBotones = async (usar) => {
+    const acciones = []
+    await usar(crearHerramientasChat({ hoy: "2026-10-13", acciones }))
+    return acciones.map((a) => a.href)
+  }
+  assert.deepEqual(await conBotones((h) => h.buscarEventos.execute({ fecha: "2026-10-06" })), ["/eventos/lista?evento=ev-prueba"])
+  assert.deepEqual(await conBotones((h) => h.buscarEventos.execute({ texto: "prueba" })), ["/eventos/lista", "/eventos/finalizados"])
+  assert.deepEqual(await conBotones((h) => h.vienenAPagar.execute({ semana: "esta" })), ["/?ver=vienen-a-pagar"])
+  assert.deepEqual(await conBotones((h) => h.resumenDelDia.execute({})), ["/?ver=resumen"])
+  assert.deepEqual(await conBotones((h) => h.mostrarResumenEventos.execute({ eventoIds: ["ev-fin"] })), ["/eventos/finalizados"])
+  assert.deepEqual(
+    await conBotones((h) => h.mostrarTablaEventos.execute({ desde: "2026-01-01", hasta: "2026-12-31", filas: "salon", columnas: "ninguna", medida: "cantidad" })),
+    ["/eventos/lista", "/eventos/finalizados"],
+  )
+  assert.deepEqual(await conBotones((h) => h.consultarCobroCuota.execute({ eventoId: "ev-prueba" })), ["/eventos/pagos?evento=ev-prueba"])
+  // Sin repetir: buscar y después pedir los accesos deja cada dirección una vez.
+  assert.deepEqual(
+    await conBotones(async (h) => {
+      await h.buscarEventos.execute({ fecha: "2026-10-06" })
+      await h.mostrarAccesosEvento.execute({ eventoId: "ev-prueba" })
+    }),
+    ["/eventos/lista?evento=ev-prueba", "/eventos/pagos?evento=ev-prueba", "/eventos/costos?id=ev-prueba"],
+  )
+})
+
 const pedirConId = (id, messages, usuario = "Leila") => POST(new Request("http://localhost/api/chat", {
   method: "POST",
   headers: { "content-type": "application/json", cookie: `lj_session=x; lj_usuario=${encodeURIComponent(usuario)}` },
@@ -379,7 +417,11 @@ test("tarjetas: la plata del evento sale del servidor, ordenada, y se guarda con
   // Se guarda { botones, tarjetas } en la columna acciones.
   const v = valoresHistorial[valoresHistorial.length - 1]
   const guardado = JSON.parse(v[8])
-  assert.deepEqual(guardado.botones, [{ etiqueta: "Cobrar cuota", href: "/eventos/pagos" }])
+  // El botón al evento lo pone sola la tarjeta (de dónde sale la información).
+  assert.deepEqual(guardado.botones, [
+    { etiqueta: "PRUEBA Ana y Juan: ver en la Lista", href: "/eventos/lista?evento=ev-prueba" },
+    { etiqueta: "Cobrar cuota", href: "/eventos/pagos" },
+  ])
   assert.equal(guardado.tarjetas[0].saldoPendiente, 525000)
   sesion = { perfilId: "soporte" }
 })

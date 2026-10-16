@@ -233,9 +233,28 @@ export const PANTALLAS_CHAT = {
   guias_produccion: { etiqueta: "Guías de producción", href: "/eventos/produccion" },
   stock: { etiqueta: "Stock por salón", href: "/stock" },
   configuracion: { etiqueta: "Configuración", href: "/configuracion" },
+  // Ventanas de Inicio y secciones: se abren solas al llegar (app/page.tsx, app/configuracion).
+  resumen_diario: { etiqueta: "Resumen diario", href: "/?ver=resumen" },
+  vienen_a_pagar: { etiqueta: "Vienen a pagar", href: "/?ver=vienen-a-pagar" },
+  este_finde: { etiqueta: "Este finde", href: "/?ver=finde" },
+  historial_actividad: { etiqueta: "Historial de Actividad", href: "/configuracion#historial-actividad" },
 } as const
 
 export type PantallaChat = keyof typeof PANTALLAS_CHAT
+
+/**
+ * El botón a la pantalla de donde sale la información de unos eventos: el
+ * evento en la Lista (o en el Archivo, si está finalizado) cuando es uno
+ * solo; si son varios, la Lista y/o el Archivo según dónde estén.
+ */
+export function botonesFuenteEventos(eventos: { id: string; nombre: string; estado: string }[]): AccionChat[] {
+  if (eventos.length === 1) return accesosEvento(eventos[0].id, eventos[0].nombre, eventos[0].estado).slice(0, 1)
+  const finalizados = eventos.filter((e) => e.estado === "completado").length
+  const botones: AccionChat[] = []
+  if (finalizados < eventos.length || eventos.length === 0) botones.push(PANTALLAS_CHAT.lista_eventos)
+  if (finalizados > 0) botones.push(PANTALLAS_CHAT.archivo_eventos)
+  return botones
+}
 
 /** Máximo de botones por respuesta, para que el chat no se llene. */
 export const MAX_ACCIONES_CHAT = 9
