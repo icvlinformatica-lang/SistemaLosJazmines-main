@@ -43,8 +43,19 @@ import {
   type PropuestaInsumoChat,
   type PropuestaRecetaChat,
 } from "@/lib/chat-ia-catalogo"
-import { periodoActividadValido, resumirActividad } from "@/lib/chat-ia-actividad"
-import { MAX_TABLAS_CHAT, nombreMes, periodoTablaValido, tablaEventosPorSalonYMes, type TablaEventosChat } from "@/lib/chat-ia-tabla"
+import { diaArgentina, periodoActividadValido, registroDesdeFila, registroEsDe, resumirActividad } from "@/lib/chat-ia-actividad"
+import {
+  DIMENSIONES_ACTIVIDAD,
+  DIMENSIONES_EVENTOS,
+  MAX_COLUMNAS_TABLA,
+  MAX_TABLAS_CHAT,
+  MEDIDAS_EVENTOS,
+  eventoParaTabla,
+  periodoTablaValido,
+  tablaActividad,
+  tablaEventos,
+  type TablaChat,
+} from "@/lib/chat-ia-tabla"
 
 /** "$2.450,5" → "$2.450,50": la IA copia el precio tal cual, ya con punto de miles. */
 const precioTexto = (n: number) =>
@@ -79,8 +90,8 @@ export function crearHerramientasChat({
   /** Dónde quedan el insumo y la receta nuevos propuestos en esta respuesta (uno de cada uno). */
   insumo?: { propuesta: PropuestaInsumoChat | null }
   receta?: { propuesta: PropuestaRecetaChat | null }
-  /** Tablas de cantidad de eventos que se muestran debajo de la respuesta. */
-  tablas?: TablaEventosChat[]
+  /** Tablas ordenadas que se muestran debajo de la respuesta. */
+  tablas?: TablaChat[]
   /** Quién usa el chat (Diego, Leila, Ricky…): se sugiere como quien recibe la plata. */
   usuario?: string
 }) {
@@ -183,30 +194,50 @@ export function crearHerramientasChat({
       },
     }),
 
-    mostrarConteoEventos: tool({
+    mostrarTablaEventos: tool({
       description:
-        "Cuenta los eventos de un período por salón y por mes y pone en el chat una tabla ordenada (salones en filas, meses en columnas, con totales). " +
-        "Usala para '¿cuántos eventos hay hasta fin de año?', 'eventos por salón y mes', 'cuántos casamientos tenemos en noviembre por salón'. " +
-        "Cuenta los eventos no borrados (incluye borradores). Los números salen de la base: no los repitas en el texto.",
+        "Ordena los eventos de un período en una tabla que aparece en el chat: filas y columnas por salón, mes, estado o tipo de evento, con totales. " +
+        "Cada celda es la cantidad de eventos o una suma: invitados, total vendido, cobrado, lo que falta cobrar o lo atrasado en cuotas. " +
+        "Usala para cualquier pregunta de contar, agrupar u ordenar eventos: '¿cuántos eventos hay hasta fin de año por salón y mes?', " +
+        "'¿cuánto falta cobrar por salón?', 'eventos por tipo', 'invitados por mes'. Cuenta los eventos no borrados (incluye borradores). " +
+        "Los números salen de la base: no los repitas en el texto.",
       inputSchema: z.object({
         desde: fechaISO.describe("Primer día, AAAA-MM-DD (por ejemplo hoy)"),
         hasta: fechaISO.describe("Último día, AAAA-MM-DD (por ejemplo el 31/12)"),
-        salon: z.enum(SALONES_CHAT).optional().describe("Opcional: un solo salón"),
+        filas: z.enum(DIMENSIONES_EVENTOS).describe("Qué va en las filas: salon, mes, estado o tipo"),
+        columnas: z
+          .enum([...DIMENSIONES_EVENTOS, "ninguna"])
+          .describe("Qué va en las columnas (distinto de las filas), o 'ninguna' para una sola columna de totales"),
+        medida: z
+          .enum(MEDIDAS_EVENTOS)
+          .describe("cantidad (de eventos), invitados, total (vendido), cobrado, saldo (lo que falta cobrar) o atrasado (cuotas vencidas sin pagar)"),
+        salon: z.enum(SALONES_CHAT).optional().describe("Opcional: solo un salón"),
       }),
-      execute: async ({ desde, hasta, salon }) => {
+      execute: async ({ desde, hasta, filas, columnas, medida, salon }) => {
         const error = periodoTablaValido(desde, hasta)
         if (error) return { ok: false, motivo: error }
+        if (columnas === filas) return { ok: false, motivo: "Las filas y las columnas tienen que ser distintas (o columnas 'ninguna')." }
         if (tablas.length >= MAX_TABLAS_CHAT) return { ok: false, motivo: "Ya hay dos tablas en esta respuesta." }
-        const t = tablaEventosPorSalonYMes(await cargarEventos(), { desde, hasta, salon })
+        const [todas, hist] = await Promise.all([cargarEventos(), cargarHistorial()])
+        const enPeriodo = todas.filter((f) => {
+          const fecha = String(f.fecha ?? "").slice(0, 10)
+          return fecha >= desde && fecha <= hasta
+        })
+        // La plata sale de la misma cuenta que las tarjetas de eventos (resumenEventoChat).
+        const eventos = enPeriodo.map((f) => eventoParaTabla(f, resumenEventoChat(f, hist, hoy)))
+        const t = tablaEventos(eventos, { desde, hasta, filas, columnas: columnas === "ninguna" ? null : columnas, medida, salon })
         tablas.push(t)
         return {
           ok: true,
-          aviso: "La tabla ya está en el chat con todos los números: escribí solo una o dos frases (por ejemplo, qué salón o qué mes tiene más).",
+          aviso: "La tabla ya está en el chat con todos los números: escribí solo una o dos frases con lo importante (el total, qué fila o columna tiene más, o lo que llama la atención).",
+          titulo: t.titulo,
           total: t.total,
-          borradores: t.borradores,
-          porSalon: Object.fromEntries(t.filas.map((f) => [f.salon, f.total])),
-          porMes: Object.fromEntries(t.meses.map((m, i) => [nombreMes(m), t.totalPorMes[i]])),
-          salonesSinEventos: SALONES_CHAT.filter((s) => (!salon || s === salon) && !t.filas.some((f) => f.salon === s)),
+          porFila: Object.fromEntries(t.filas.map((f) => [f.etiqueta, f.total])),
+          ...(t.columnas.length > 0 ? { porColumna: Object.fromEntries(t.columnas.map((c, i) => [c.etiqueta, t.totalPorColumna[i]])) } : {}),
+          ...(filas === "salon" || columnas === "salon"
+            ? { salonesSinEventos: SALONES_CHAT.filter((s) => (!salon || s === salon) && !eventos.some((e) => e.salon === s)) }
+            : {}),
+          ...(t.nota ? { nota: t.nota } : {}),
         }
       },
     }),
@@ -220,8 +251,15 @@ export function crearHerramientasChat({
         desde: fechaISO.describe("Primer día, AAAA-MM-DD"),
         hasta: fechaISO.optional().describe("Último día, AAAA-MM-DD; si falta, el mismo día que desde"),
         quien: z.string().max(40).optional().describe("Opcional: persona o sector (Diego, Leila, Ricky, Soporte, Cocina, Barra) o 'sin dato' para lo que no dice quién"),
+        tabla: z
+          .object({
+            filas: z.enum(DIMENSIONES_ACTIVIDAD).describe("persona, tema o dia"),
+            columnas: z.enum([...DIMENSIONES_ACTIVIDAD, "ninguna"]),
+          })
+          .optional()
+          .describe("Opcional: además pone en el chat una tabla con la cantidad de registros, por ejemplo personas en filas y temas en columnas"),
       }),
-      execute: async ({ desde, hasta, quien }) => {
+      execute: async ({ desde, hasta, quien, tabla }) => {
         const fin = hasta ?? desde
         const error = periodoActividadValido(desde, fin)
         if (error) return { ok: false, motivo: error }
@@ -234,7 +272,32 @@ export function crearHerramientasChat({
           ORDER BY created_at DESC
           LIMIT 3000
         `) as unknown as Record<string, unknown>[]
-        return { ok: true, ...resumirActividad(filas, { desde, hasta: fin, quien: quien?.trim() || undefined }) }
+        const resumen = resumirActividad(filas, { desde, hasta: fin, quien: quien?.trim() || undefined })
+        let tablaAgregada = false
+        if (tabla && tabla.filas !== tabla.columnas && tablas.length < MAX_TABLAS_CHAT) {
+          const dias = (new Date(`${fin}T12:00:00Z`).getTime() - new Date(`${desde}T12:00:00Z`).getTime()) / 86_400_000 + 1
+          if (tabla.columnas !== "dia" || dias <= MAX_COLUMNAS_TABLA) {
+            const registros = filas
+              .map((f) => {
+                const r = registroDesdeFila(f)
+                return { dia: diaArgentina(f.created_at), quien: r.quien, tipo: r.tipo, sector: r.sector }
+              })
+              .filter((r) => !quien?.trim() || registroEsDe(r, quien))
+            tablas.push(tablaActividad(registros, { desde, hasta: fin, filas: tabla.filas, columnas: tabla.columnas === "ninguna" ? null : tabla.columnas }))
+            tablaAgregada = true
+          }
+        }
+        return {
+          ok: true,
+          ...resumen,
+          ...(tabla
+            ? {
+                tabla: tablaAgregada
+                  ? "La tabla ya está en el chat: no repitas sus números, resumí lo importante."
+                  : "No se pudo armar la tabla (con días en columnas van hasta 13 días: poné los días en filas).",
+              }
+            : {}),
+        }
       },
     }),
 

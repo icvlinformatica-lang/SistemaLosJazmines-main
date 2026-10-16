@@ -71,6 +71,14 @@ export function limpiarDetalle(texto: string): string {
     .replace(/(^|[^\d$.,])\d{7,8}(?![\d.,])/g, "$1[número]")
 }
 
+/** Día de Argentina (AAAA-MM-DD) de un momento guardado. */
+export function diaArgentina(valor: unknown): string {
+  const d = valor instanceof Date ? valor : new Date(String(valor ?? ""))
+  if (!Number.isFinite(d.getTime())) return ""
+  // en-CA escribe las fechas como AAAA-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(d)
+}
+
 /** Quién hizo el registro (y el sector, para las cargas de stock). */
 export function quienDeRegistro(f: FilaActividad): { quien: string; sector?: string } {
   const detalle = String(f.detalle ?? "")

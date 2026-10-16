@@ -10,7 +10,7 @@ import type { AccionChat } from "@/lib/chat-ia-datos"
 import { tarjetasValidas, type TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import { propuestaGastoValida, type PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import { propuestaCobroValida, type PropuestaCobroChat } from "@/lib/chat-ia-cobro"
-import { tablasValidas, type TablaEventosChat } from "@/lib/chat-ia-tabla"
+import { tablasValidas, type TablaChat } from "@/lib/chat-ia-tabla"
 import {
   propuestaInsumoValida,
   propuestaRecetaValida,
@@ -49,8 +49,8 @@ export interface MensajeHistorial {
   contenido: string
   acciones: AccionChat[]
   tarjetas: TarjetaEventoChat[]
-  /** Tablas de cantidad de eventos por salón y mes (armadas en el servidor). */
-  tablas: TablaEventosChat[]
+  /** Tablas ordenadas (eventos por salón, mes…, o actividad), armadas en el servidor. */
+  tablas: TablaChat[]
   /** Gasto que propuso la IA, con su estado (pendiente, cargado o cancelado). */
   gasto: PropuestaGastoChat | null
   /** Cobro de cuota que propuso la IA, con su estado (pendiente, cobrado o cancelado). */
@@ -78,7 +78,7 @@ export function idMensajeValido(id: unknown): id is string {
 export function leerAdjuntos(valor: unknown): {
   acciones: AccionChat[]
   tarjetas: TarjetaEventoChat[]
-  tablas: TablaEventosChat[]
+  tablas: TablaChat[]
   gasto: PropuestaGastoChat | null
   cobro: PropuestaCobroChat | null
   insumo: PropuestaInsumoChat | null
@@ -132,7 +132,7 @@ export function adjuntosAGuardar(
   cobro: PropuestaCobroChat | null = null,
   insumo: PropuestaInsumoChat | null = null,
   receta: PropuestaRecetaChat | null = null,
-  tablas: TablaEventosChat[] = [],
+  tablas: TablaChat[] = [],
 ): string | null {
   if (tarjetas.length > 0 || tablas.length > 0 || gasto || cobro || insumo || receta) {
     return JSON.stringify({
@@ -177,7 +177,7 @@ export async function guardarIntercambio(p: {
   cobro?: PropuestaCobroChat | null
   insumo?: PropuestaInsumoChat | null
   receta?: PropuestaRecetaChat | null
-  tablas?: TablaEventosChat[]
+  tablas?: TablaChat[]
 }): Promise<boolean> {
   try {
     await sql`

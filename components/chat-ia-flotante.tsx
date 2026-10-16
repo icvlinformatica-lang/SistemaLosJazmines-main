@@ -34,8 +34,8 @@ import {
   type PropuestaRecetaChat,
 } from "@/lib/chat-ia-catalogo"
 import { TarjetaInsumoChatIA, TarjetaRecetaChatIA } from "@/components/chat-ia-tarjeta-catalogo"
-import { tablasValidas, type TablaEventosChat } from "@/lib/chat-ia-tabla"
-import { TablaEventosChatIA } from "@/components/chat-ia-tabla-eventos"
+import { tablasValidas, type TablaChat } from "@/lib/chat-ia-tabla"
+import { TablaChatIA } from "@/components/chat-ia-tabla"
 
 interface AccionChat {
   etiqueta: string
@@ -50,8 +50,8 @@ interface MensajeChat {
   acciones?: AccionChat[]
   /** Tarjetas de eventos con su plata (armadas en el servidor). */
   tarjetas?: TarjetaEventoChat[]
-  /** Tablas de cantidad de eventos por salón y mes (armadas en el servidor). */
-  tablas?: TablaEventosChat[]
+  /** Tablas ordenadas (eventos por salón, mes…, o actividad), armadas en el servidor. */
+  tablas?: TablaChat[]
   /** Gasto propuesto por la IA, a confirmar con el botón. */
   gasto?: PropuestaGastoChat | null
   /** Cobro de cuota propuesto por la IA, a confirmar con el botón. */
@@ -476,7 +476,7 @@ export function ChatIAFlotante({ perfilId }: { perfilId: string }) {
                   {m.tablas && m.tablas.length > 0 && (
                     <div className="mt-1.5 flex flex-col gap-1.5">
                       {m.tablas.map((t, i) => (
-                        <TablaEventosChatIA key={`${t.desde}-${t.hasta}-${i}`} tabla={t} />
+                        <TablaChatIA key={`${t.titulo}-${i}`} tabla={t} />
                       ))}
                     </div>
                   )}

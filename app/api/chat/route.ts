@@ -19,7 +19,7 @@ import type { TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import type { PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import type { PropuestaCobroChat } from "@/lib/chat-ia-cobro"
 import type { PropuestaInsumoChat, PropuestaRecetaChat } from "@/lib/chat-ia-catalogo"
-import type { TablaEventosChat } from "@/lib/chat-ia-tabla"
+import type { TablaChat } from "@/lib/chat-ia-tabla"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
   // Las tarjetas de eventos también: los montos salen del servidor, no del texto de la IA.
   const tarjetas: TarjetaEventoChat[] = []
   // Y las tablas de cantidad de eventos por salón y mes.
-  const tablas: TablaEventosChat[] = []
+  const tablas: TablaChat[] = []
   // Un gasto propuesto (no cargado): lo carga la persona con el botón (/api/chat/gasto).
   const gasto: { propuesta: PropuestaGastoChat | null } = { propuesta: null }
   // Un cobro de cuota propuesto (no cobrado): lo cobra la persona con el botón, como en Cobrar cuota.
@@ -101,7 +101,8 @@ Podés hacer dos cosas:
 
 Reglas:
 - Cuando respondas la plata de uno o más eventos (total, cobrado, saldo, cuotas), llamá a mostrarResumenEventos con sus ids: aparece una tarjeta ordenada por evento. En ese caso NO repitas en el texto los montos de cada evento; escribí solo una o dos frases con lo importante (por ejemplo, cuál tiene más vencido o cuál está al día).
-- Cuando pregunte cuántos eventos hay en un período (por salón, por mes o los dos), llamá a mostrarConteoEventos: aparece una tabla con salones en filas, meses en columnas y los totales. En ese caso NO repitas los números en el texto: escribí una o dos frases con lo importante (el total, qué salón o qué mes tiene más, o que un salón no tiene eventos). "Hasta fin de año" es hasta el 31/12 de este año.
+- Cuando la pregunta sea de contar, agrupar, ordenar o comparar eventos ("cuántos eventos hay por salón y mes", "cuánto falta cobrar por salón", "eventos por tipo", "invitados por mes", "ordenalos por…"), llamá a mostrarTablaEventos: aparece una tabla ordenada con totales. Elegí filas y columnas según lo que pidió (por ejemplo, salón en filas y mes en columnas; si pide una sola cosa, columnas "ninguna") y la medida (cantidad, invitados, total vendido, cobrado, saldo o atrasado). Si pide dos cosas distintas (cantidad y plata), podés armar dos tablas. NO repitas los números de la tabla en el texto: escribí una o dos frases con lo importante. "Hasta fin de año" es hasta el 31/12 de este año; si no dice período, preguntá o usá de hoy al 31/12.
+- Para el Historial de Actividad, si pide verlo ordenado o comparado ("por persona", "por día", "qué hizo cada uno"), pasale a consultarActividad el parámetro tabla (por ejemplo persona en filas y tema en columnas, o día en filas) y no repitas los números en el texto.
 - Los montos y datos salen SIEMPRE de las herramientas. Nunca inventes ni calcules un monto que no te dieron; si algo no está, decilo.
 - Texto plano, sin markdown ni asteriscos; para listas usá un renglón por ítem con guion.
 - Montos en pesos con punto de miles, por ejemplo $1.250.000. Fechas como 6/10/2026.
