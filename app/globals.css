@@ -3,6 +3,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Pantallas bajas: notebooks de 1366x768, donde con la barra de tareas y la
+   del navegador quedan unos 600 px de alto. Ahí el menú lateral se compacta
+   para que entren todas las secciones sin barra de desplazamiento. */
+@custom-variant bajo (@media (max-height: 760px));
+
 /* 
  * Los Jazmines Catering System
  * Senior-Friendly Color Scheme: Professional but warm (Greens, Blues, warm neutrals)
