@@ -172,7 +172,7 @@ test("ruta: la IA busca el evento del 6/10 y deja los tres botones; sin escritur
   const res = await pedir([{ role: "user", content: "quiero ver el evento del 6 de octubre de 2026" }])
   assert.equal(res.status, 200)
   const data = await res.json()
-  assert.deepEqual(toolsRecibidas, ["buscarEventos", "buscarInsumos", "consultarCobroCuota", "mostrarAccesosEvento", "mostrarPantalla", "mostrarResumenEventos", "proponerCobroCuota", "proponerGasto", "proponerInsumo", "proponerReceta", "resumenDelDia", "vienenAPagar"])
+  assert.deepEqual(toolsRecibidas, ["buscarEventos", "buscarInsumos", "consultarActividad", "consultarCobroCuota", "mostrarAccesosEvento", "mostrarPantalla", "mostrarResumenEventos", "mostrarTablaEventos", "proponerCobroCuota", "proponerGasto", "proponerInsumo", "proponerReceta", "resumenDelDia", "vienenAPagar"])
   assert.deepEqual(data.acciones.map((a) => a.href), [
     "/eventos/lista?evento=ev-prueba",
     "/eventos/pagos?evento=ev-prueba",
@@ -596,4 +596,15 @@ test("cobro: el historial lee la propuesta guardada junto con los botones", () =
   assert.equal(leido.cobro.id, "c1")
   assert.equal(leido.acciones.length, 1)
   assert.equal(historial.leerAdjuntos(JSON.stringify({ botones: [], tarjetas: [], cobro: { id: 1 } })).cobro, null)
+})
+
+test("historial: las tablas de eventos se guardan y se leen, y resolver una propuesta no las pierde", () => {
+  const tabla = { titulo: "Cantidad de eventos por salón y mes", subtitulo: "Eventos del 16/10/2026 al 31/12/2026", formato: "numero", filasPor: "salon", columnasPor: "mes", columnas: [{ clave: "2026-10", etiqueta: "Oct" }], filas: [{ clave: "Casona", etiqueta: "Casona", valores: [2], total: 2 }], totalPorColumna: [2], total: 2 }
+  const guardado = historial.adjuntosAGuardar([], [], null, null, null, null, [tabla])
+  const leido = historial.leerAdjuntos(guardado)
+  assert.deepEqual(leido.tablas, [tabla])
+  const gasto = { id: "g1", concepto: "PRUEBA", monto: 1000, salon: "Salon", vencimiento: "2026-10-16", estado: "cargado" }
+  assert.deepEqual(historial.leerAdjuntos(historial.adjuntosConPropuesta(leido, { gasto })).tablas, [tabla])
+  // Sin tablas, el formato de antes no cambia.
+  assert.equal(historial.adjuntosAGuardar([{ etiqueta: "IPC", href: "/finanzas/ipc" }], []), JSON.stringify([{ etiqueta: "IPC", href: "/finanzas/ipc" }]))
 })

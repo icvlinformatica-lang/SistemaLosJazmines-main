@@ -19,6 +19,7 @@ import type { TarjetaEventoChat } from "@/lib/chat-ia-tarjetas"
 import type { PropuestaGastoChat } from "@/lib/chat-ia-gasto"
 import type { PropuestaCobroChat } from "@/lib/chat-ia-cobro"
 import type { PropuestaInsumoChat, PropuestaRecetaChat } from "@/lib/chat-ia-catalogo"
+import type { TablaChat } from "@/lib/chat-ia-tabla"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { PERFILES_CHAT_IA, guardarIntercambio, idMensajeValido, usuarioChat } from "@/lib/chat-ia-historial"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
@@ -80,6 +81,8 @@ export async function POST(req: Request) {
   const acciones: AccionChat[] = []
   // Las tarjetas de eventos también: los montos salen del servidor, no del texto de la IA.
   const tarjetas: TarjetaEventoChat[] = []
+  // Y las tablas de cantidad de eventos por salón y mes.
+  const tablas: TablaChat[] = []
   // Un gasto propuesto (no cargado): lo carga la persona con el botón (/api/chat/gasto).
   const gasto: { propuesta: PropuestaGastoChat | null } = { propuesta: null }
   // Un cobro de cuota propuesto (no cobrado): lo cobra la persona con el botón, como en Cobrar cuota.
@@ -94,10 +97,12 @@ export async function POST(req: Request) {
 
 Podés hacer dos cosas:
 1. Explicar cómo se usa el sistema, con la guía de abajo (en qué pantalla se hace cada cosa y los pasos).
-2. Consultar datos con tus herramientas: eventos y su plata (total, seña, cobrado, saldo, cuotas por cobrar), quién viene a pagar en la semana y el resumen de caja de un día.
+2. Consultar datos con tus herramientas: eventos y su plata (total, seña, cobrado, saldo, cuotas por cobrar), quién viene a pagar en la semana, el resumen de caja de un día y el Historial de Actividad (qué se hizo y quién).
 
 Reglas:
 - Cuando respondas la plata de uno o más eventos (total, cobrado, saldo, cuotas), llamá a mostrarResumenEventos con sus ids: aparece una tarjeta ordenada por evento. En ese caso NO repitas en el texto los montos de cada evento; escribí solo una o dos frases con lo importante (por ejemplo, cuál tiene más vencido o cuál está al día).
+- Cuando la pregunta sea de contar, agrupar, ordenar o comparar eventos ("cuántos eventos hay por salón y mes", "cuánto falta cobrar por salón", "eventos por tipo", "invitados por mes", "ordenalos por…"), llamá a mostrarTablaEventos: aparece una tabla ordenada con totales. Elegí filas y columnas según lo que pidió (por ejemplo, salón en filas y mes en columnas; si pide una sola cosa, columnas "ninguna") y la medida (cantidad, invitados, total vendido, cobrado, saldo o atrasado). Si pide dos cosas distintas (cantidad y plata), podés armar dos tablas. NO repitas los números de la tabla en el texto: escribí una o dos frases con lo importante. "Hasta fin de año" es hasta el 31/12 de este año; si no dice período, preguntá o usá de hoy al 31/12.
+- Para el Historial de Actividad, si pide verlo ordenado o comparado ("por persona", "por día", "qué hizo cada uno"), pasale a consultarActividad el parámetro tabla (por ejemplo persona en filas y tema en columnas, o día en filas) y no repitas los números en el texto.
 - Los montos y datos salen SIEMPRE de las herramientas. Nunca inventes ni calcules un monto que no te dieron; si algo no está, decilo.
 - Texto plano, sin markdown ni asteriscos; para listas usá un renglón por ítem con guion.
 - Montos en pesos con punto de miles, por ejemplo $1.250.000. Fechas como 6/10/2026.
@@ -130,13 +135,14 @@ Reglas:
   4. Opcional: una descripción corta.
   Con todo respondido, llamá a proponerReceta y preguntá si está seguro, con el costo por porción que devolvió. Si proponerReceta devuelve un motivo (por ejemplo una unidad que no se puede convertir), explicalo y preguntá lo que falta.
 - Si proponerInsumo o proponerReceta devuelven un motivo, preguntá lo que falta. Nunca digas que ya está cargado. Si la persona responde "sí" escribiendo, recordale que lo confirme con el botón de la tarjeta.
+- Para "qué se hizo ayer", "qué hizo Leila la última semana" o "qué cargó Barra", usá consultarActividad. "Ayer" es el día anterior a hoy; "la última semana" son los 7 días hasta hoy. Si nombra una persona o un sector, pasalo en quien. Resumí agrupando por tema (eventos, pagos, caja, insumos, stock…) con cantidades y los casos más importantes con su día y hora; no copies todos los renglones. Aclará siempre que el historial no guarda el perfil: si hay registros "Sin dato de quién", decí cuántos son, y si la persona o el perfil que pidió no aparece en quienesHay, decilo (por ejemplo, Cocina o Cobrar cuota no dejan su nombre en casi nada). Al final poné el botón a Configuración (mostrarPantalla "configuracion"), donde está el Historial de Actividad.
 - Fuera de eso no podés modificar nada (borrar, editar, anular pagos, retiros, gastos repartidos entre salones, cambiar insumos o recetas que ya existen): si te lo piden, indicá la pantalla y poné el botón.
 
 Esta es la guía del sistema:
 
 ${GUIA_SISTEMA}`,
       messages,
-      tools: crearHerramientasChat({ hoy, acciones, tarjetas, gasto, cobro, insumo, receta, usuario: usuario === "Soporte" || usuario === "Administración" ? "" : usuario }),
+      tools: crearHerramientasChat({ hoy, acciones, tarjetas, tablas, gasto, cobro, insumo, receta, usuario: usuario === "Soporte" || usuario === "Administración" ? "" : usuario }),
       stopWhen: stepCountIs(10),
     })
     // Sin id válido (pantalla vieja abierta) responde igual, sin guardar.
@@ -149,6 +155,7 @@ ${GUIA_SISTEMA}`,
           respuesta: text,
           acciones,
           tarjetas,
+          tablas,
           gasto: gasto.propuesta,
           cobro: cobro.propuesta,
           insumo: insumo.propuesta,
@@ -163,6 +170,7 @@ ${GUIA_SISTEMA}`,
       text,
       acciones,
       tarjetas,
+      tablas,
       gasto: propuesta,
       gastoSinGuardar: !!gasto.propuesta && !guardado,
       cobro: propuestaCobro,
