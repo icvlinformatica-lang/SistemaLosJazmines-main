@@ -10,6 +10,7 @@ import { TimeTravelBanner } from "@/components/time-travel-banner"
 import { Toaster } from "@/components/ui/toaster"
 import { ChatIAFlotante, ID_CONTENIDO_PRINCIPAL, PERFILES_CON_CHAT_IA } from "@/components/chat-ia-flotante"
 import { WelcomeModal } from "@/components/welcome-modal"
+import { RegistroVisitasAtajos } from "@/components/atajos-rapidos"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { perfilActivo, hydrated } = useProfile()
@@ -76,6 +77,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
           <Toaster />
           <WelcomeModal />
+          {/* Anota a qué pantallas entra el perfil para armar sus atajos de Inicio */}
+          <RegistroVisitasAtajos perfilId={perfilActivo.id} />
           {/* Asistente con IA flotante, en todas las pantallas (Administración y Soporte) */}
           {PERFILES_CON_CHAT_IA.includes(perfilActivo.id) && <ChatIAFlotante perfilId={perfilActivo.id} />}
         </div>
