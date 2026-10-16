@@ -12,6 +12,7 @@ import { contarCuotasAtrasadas } from "@/lib/vienen-a-pagar"
 import { ChatAyuda } from "@/components/chat-ayuda"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
+import { AtajosRapidos } from "@/components/atajos-rapidos"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
 
@@ -90,6 +91,10 @@ export default function HomePage() {
         onClick={handleBackgroundClick}
         className="absolute inset-0 bg-black/30 cursor-pointer"
       />
+
+      {/* Atajos rápidos a las pantallas que más usa el perfil: a la izquierda,
+          debajo del botón de la IA (en el celular, abajo). Se pliegan. */}
+      {perfilActivo && <AtajosRapidos perfil={perfilActivo} />}
 
       {/* Novedades + Resumen diario + Este finde - top right */}
       <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2">
