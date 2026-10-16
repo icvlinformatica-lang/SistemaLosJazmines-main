@@ -8,7 +8,9 @@ import { ClockProvider } from "@/lib/clock-context"
 import { Sidebar } from "@/components/sidebar"
 import { TimeTravelBanner } from "@/components/time-travel-banner"
 import { Toaster } from "@/components/ui/toaster"
+import { ChatIAFlotante, ID_CONTENIDO_PRINCIPAL, PERFILES_CON_CHAT_IA } from "@/components/chat-ia-flotante"
 import { WelcomeModal } from "@/components/welcome-modal"
+import { RegistroVisitasAtajos } from "@/components/atajos-rapidos"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { perfilActivo, hydrated } = useProfile()
@@ -69,12 +71,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <StoreProvider>
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
-          <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col">
+          <main id={ID_CONTENIDO_PRINCIPAL} className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col">
             <TimeTravelBanner />
             <div className="flex-1 min-w-0">{children}</div>
           </main>
           <Toaster />
           <WelcomeModal />
+          {/* Anota a qué pantallas entra el perfil para armar sus atajos de Inicio */}
+          <RegistroVisitasAtajos perfilId={perfilActivo.id} />
+          {/* Asistente con IA flotante, en todas las pantallas (Administración y Soporte) */}
+          {PERFILES_CON_CHAT_IA.includes(perfilActivo.id) && <ChatIAFlotante perfilId={perfilActivo.id} />}
         </div>
       </StoreProvider>
     </ClockProvider>

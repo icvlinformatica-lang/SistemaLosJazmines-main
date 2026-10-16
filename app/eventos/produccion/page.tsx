@@ -42,6 +42,7 @@ import { SALONES, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { lineasDietas, hayAlergias } from "@/lib/dietas-evento"
+import { AnotacionEvento } from "@/components/anotacion-evento"
 import { cn } from "@/lib/utils"
 import { useSyncTiempoReal } from "@/lib/hooks/use-sync-tiempo-real"
 import { iconoTipoEvento, referenciaTiposEvento } from "@/lib/icono-tipo-evento"
@@ -783,6 +784,12 @@ export default function ProduccionPage() {
                     <Printer className="h-4 w-4" />
                     Imprimir
                   </Button>
+                </div>
+
+                {/* Anotación de Cocina, con guardado automático. Va fuera
+                    del contenido imprimible. */}
+                <div className="mt-4 border-t pt-4">
+                  <AnotacionEvento key={selectedEvento.id} eventoId={selectedEvento.id} />
                 </div>
               </div>
             )

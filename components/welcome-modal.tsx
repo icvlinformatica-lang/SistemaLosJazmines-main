@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Sparkles } from "lucide-react"
 import { useProfile } from "@/lib/profile-context"
 
 const STORAGE_KEY = "jazmines_welcome_dismissed"
@@ -57,6 +58,22 @@ export function WelcomeModal() {
           <h2 className="text-2xl font-bold text-[#2d5a3d]">Hola {usuario},</h2>
           <p className="text-xl font-semibold text-gray-800">{saludo}</p>
           <p className="text-gray-500 text-sm mt-1">Que tengas una buena jornada.</p>
+        </div>
+        {/* Aviso del asistente con IA (botón flotante de components/chat-ia-flotante.tsx) */}
+        <div className="flex w-full items-start gap-3 rounded-xl border border-[#d4a533]/50 bg-[#d4a533]/10 px-4 py-3 text-left">
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#d4a533]"
+            style={{ backgroundColor: "#2d5a3d" }}
+            aria-hidden="true"
+          >
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-base font-bold text-[#2d5a3d]">¡Ahora tenemos IA!</p>
+            <p className="text-xs text-gray-600">
+              Tocá el botón verde con destellos, arriba a la izquierda, y preguntale por un evento, una cuota o cómo hacer algo.
+            </p>
+          </div>
         </div>
         <button
           onClick={handleDismiss}

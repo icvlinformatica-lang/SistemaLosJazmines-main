@@ -32,6 +32,8 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
 import { generateId, type CostoOperativo, type RegistroMonto } from "@/lib/store"
+import { cambiosPagoDelMes, registroMarcadoPagado } from "@/lib/pago-gasto-fijo"
+import { COLUMNAS_FILA_FIJO } from "./tira-meses-mini"
 import {
   Check,
   ChevronLeft,
@@ -86,35 +88,11 @@ const SUGERIDO_ACTIVO = false
 type EstadoMes = "pagado" | "cargado" | "actual" | "pasado" | "futuro"
 
 /**
- * Monto y estado de pago del MES CALENDARIO ACTUAL de un gasto fijo, con las
- * mismas reglas que la tira de meses: el mes está pagado solo si tiene
- * registro pagado en historialMontos (para el período vigente de un gasto
- * repartido visto desde un salón manda la cuota de ese salón). Sin registro
- * del mes en curso, el gasto está "a pagar" aunque el período anterior haya
- * quedado saldado. Con `parte`, el monto devuelto es la porción del salón.
+ * Monto y estado de pago de un mes de un gasto fijo (por defecto, el mes en
+ * curso), con las mismas reglas que la tira. Vive en lib/pago-gasto-fijo.ts
+ * porque Próximos vencimientos y "Gastos a 30 días" usan la misma regla.
  */
-export function pagoDelMesActual(
-  gasto: Pick<CostoOperativo, "monto"> & Partial<Pick<CostoOperativo, "historialMontos" | "distribucion">>,
-  parte?: { salon: string; porcentaje: number },
-): { monto: number; pagado: boolean } {
-  const hoyISO = mesActualISO()
-  const hist = gasto.historialMontos || []
-  const registro = hist.find((r) => r.mes === hoyISO)
-  const mesVigente = hist.length > 0 ? hist[hist.length - 1].mes : null
-  const factor = parte ? parte.porcentaje / 100 : 1
-  const montoGeneral = registro?.monto ?? gasto.monto
-
-  let pagado = false
-  if (registro) {
-    if (parte && registro.mes === mesVigente) {
-      const d = gasto.distribucion?.find((x) => x.salon === parte.salon)
-      pagado = d ? d.pagado === true : registro.pagado !== false
-    } else {
-      pagado = registro.pagado !== false
-    }
-  }
-  return { monto: Math.round(montoGeneral * factor), pagado }
-}
+export { pagoDelMesActual } from "@/lib/pago-gasto-fijo"
 
 /**
  * Estética limpia: chips grandes y redondeados. Gris uniforme para meses sin
@@ -137,7 +115,11 @@ export function MesesFijo({
   onEliminar,
 }: {
   gasto: CostoOperativo
-  updateCostoOperativo: (id: string, cambios: Partial<CostoOperativo>) => void
+  updateCostoOperativo: (
+    id: string,
+    cambios: Partial<CostoOperativo>,
+    opciones?: { mesesPago?: string[] },
+  ) => void
   /** Gasto repartido visto desde un salón: porción que le corresponde. */
   parte?: { salon: string; porcentaje: number }
   /** Abre el formulario de edición del gasto (reemplaza al menú "⋯"). */
@@ -177,7 +159,7 @@ export function MesesFijo({
       const d = gasto.distribucion?.find((x) => x.salon === parte.salon)
       if (d) return d.pagado === true
     }
-    return registro.pagado !== false
+    return registroMarcadoPagado(registro)
   }
 
   const estadoDeMes = (mesISO: string, registro: RegistroMonto | undefined): EstadoMes => {
@@ -204,66 +186,32 @@ export function MesesFijo({
   }
 
   /**
-   * Guarda el monto del mes elegido replicando las reglas existentes:
-   * - Si el mes ya tenía registro, se actualiza su monto y su estado de pago.
-   * - Si no lo tenía, se crea el registro (montoAnterior = monto vigente).
-   * - Si el mes es el período más reciente del historial, el monto pasa a ser
-   *   el vigente del gasto y la fila refleja el estado de pago.
-   * - Con `parte`, el monto ingresado es la porción del salón (se convierte al
-   *   general) y el pago marca la cuota de ese salón: el gasto completo queda
-   *   pagado solo si todos los salones pagaron (regla de pagarCuotaSalon).
+   * Guarda el monto del mes elegido con la cuenta compartida con Próximos
+   * vencimientos (cambiosPagoDelMes en lib/pago-gasto-fijo.ts). Con `parte`,
+   * el monto ingresado es la porción del salón (se convierte al general) y el
+   * pago marca la cuota de ese salón: el gasto completo queda pagado solo si
+   * todos los salones pagaron.
    */
   function guardarMes(monto: number, pagado: boolean, aviso?: string) {
     if (!mesAbierto || !monto || monto <= 0) return
     const mesGuardado = mesAbierto
-    const montoTotal = aGeneral(monto)
-    const registro = registroDe(mesAbierto)
-
-    // ¿El mes editado será el período más reciente? → pasa a ser el vigente.
-    const mesesOrdenados = [...new Set([...hist.map((r) => r.mes), mesAbierto])].sort()
-    const esVigente = mesesOrdenados[mesesOrdenados.length - 1] === mesAbierto
-
-    // Reparto por salón: el pago afecta solo la cuota de este salón.
-    let distActualizada = gasto.distribucion
-    let pagadoGasto = pagado
-    if (parte && gasto.distribucion && gasto.distribucion.length > 0) {
-      distActualizada = gasto.distribucion.map((d) => (d.salon === parte.salon ? { ...d, pagado } : d))
-      pagadoGasto = distActualizada.every((d) => d.pagado === true)
-    } else if (gasto.distribucion && gasto.distribucion.length > 0) {
-      distActualizada = gasto.distribucion.map((d) => ({ ...d, pagado }))
-    }
-
-    let historial: RegistroMonto[]
-    if (registro) {
-      historial = hist.map((r) =>
-        r.id === registro.id
-          ? { ...r, monto: montoTotal, pagado: parte ? pagadoGasto : pagado, fecha: new Date().toISOString() }
-          : r,
-      )
-    } else {
-      historial = [
-        ...hist,
-        {
-          id: generateId(),
-          mes: mesAbierto,
-          monto: montoTotal,
-          montoAnterior: gasto.monto,
-          fecha: new Date().toISOString(),
-          pagado: parte ? pagadoGasto : pagado,
-        },
-      ].sort((a, b) => a.mes.localeCompare(b.mes))
-    }
-
-    updateCostoOperativo(gasto.id, {
-      historialMontos: historial,
-      ...(esVigente
-        ? {
-            monto: montoTotal,
-            pagado: pagadoGasto,
-            ...(distActualizada ? { distribucion: distActualizada } : {}),
-          }
-        : {}),
+    // Si se paga (o deshace) el mismo monto que se mostraba, se guarda el
+    // general tal cual: pasarlo a la porción del salón y volver redondea y
+    // cambiaba el monto real (se perdían los centavos).
+    const montoBase = registroDe(mesAbierto)?.monto ?? gasto.monto
+    const montoTotal = monto === aParte(montoBase) ? montoBase : aGeneral(monto)
+    const cambios = cambiosPagoDelMes(gasto, {
+      mes: mesAbierto,
+      montoGeneral: montoTotal,
+      pagado,
+      parte,
+      fechaISO: new Date().toISOString(),
+      nuevoId: generateId(),
     })
+    if (!cambios) return
+
+    // mesesPago: pagar descuenta de Caja Jazmines y deshacer lo devuelve.
+    updateCostoOperativo(gasto.id, cambios, { mesesPago: [mesAbierto] })
     setMesAbierto(null)
     setEditando(false)
     if (aviso) {
@@ -274,26 +222,48 @@ export function MesesFijo({
     }
   }
 
+  // Desde pantallas medianas, la tira usa las mismas "columnas invisibles"
+  // que la fila de meses y cada gasto plegado: cada mes queda justo debajo
+  // de su rayita. En el celular sigue siendo una fila que se desliza.
   return (
-    <div className="flex w-full items-center gap-1.5" aria-label={`Meses de ${gasto.concepto}${parte ? ` (${parte.salon})` : ""}`}>
-      <button
-        type="button"
-        onClick={() => {
-          setDeslizar("izq")
-          setAnioVer((a) => Math.max(anioMin, a - 1))
-        }}
-        disabled={anioVer <= anioMin}
-        className="h-10 w-7 shrink-0 rounded-xl border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
-        title="Año anterior"
-      >
-        <ChevronLeft className="mx-auto h-3.5 w-3.5" />
-        <span className="sr-only">Ver año anterior</span>
-      </button>
-      <span className="w-9 shrink-0 text-center text-xs font-semibold tabular-nums text-foreground">{anioVer}</span>
+    <div
+      className={`flex w-full items-center gap-1.5 md:grid ${COLUMNAS_FILA_FIJO} md:gap-x-3`}
+      aria-label={`Meses de ${gasto.concepto}${parte ? ` (${parte.salon})` : ""}`}
+    >
+      <div className="flex shrink-0 items-center gap-1.5 md:col-span-2 md:justify-start">
+        <button
+          type="button"
+          onClick={() => {
+            setDeslizar("izq")
+            setAnioVer((a) => Math.max(anioMin, a - 1))
+          }}
+          disabled={anioVer <= anioMin}
+          className="h-9 w-7 shrink-0 rounded-lg border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+          title="Año anterior"
+        >
+          <ChevronLeft className="mx-auto h-3.5 w-3.5" />
+          <span className="sr-only">Ver año anterior</span>
+        </button>
+        <span className="w-9 shrink-0 text-center text-xs font-semibold tabular-nums text-foreground">{anioVer}</span>
+        <button
+          type="button"
+          onClick={() => {
+            setDeslizar("der")
+            setAnioVer((a) => Math.min(anioMax, a + 1))
+          }}
+          disabled={anioVer >= anioMax}
+          className="h-9 w-7 shrink-0 rounded-lg border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
+          title="Año siguiente"
+        >
+          <ChevronRight className="mx-auto h-3.5 w-3.5" />
+          <span className="sr-only">Ver año siguiente</span>
+        </button>
+        <span className="hidden md:inline min-w-0 truncate text-[11px] text-muted-foreground">Tocá un mes para pagar</span>
+      </div>
       {/* key={anioVer} re-monta la fila y dispara el deslizamiento */}
       <div
         key={anioVer}
-        className={`flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden animate-in fade-in duration-300 ${
+        className={`flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1 md:grid md:grid-cols-12 md:gap-1 md:overflow-visible md:p-0 animate-in fade-in duration-300 ${
           deslizar === "der" ? "slide-in-from-right-8" : "slide-in-from-left-8"
         }`}
       >
@@ -306,7 +276,9 @@ export function MesesFijo({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className={`relative h-10 min-w-0 flex-1 rounded-xl border text-xs font-semibold leading-none transition-colors ${ESTILO_CHIP[estado]}`}
+                  className={`relative h-9 min-w-[2.6rem] flex-1 rounded-lg border text-xs font-semibold leading-none transition-colors md:min-w-0 md:w-full ${ESTILO_CHIP[estado]} ${
+                    mesISO === hoyISO ? "ring-2 ring-purple-400 ring-offset-1" : ""
+                  }`}
                   title={`${nombre} ${anioVer} · ${
                     estado === "pagado"
                       ? `pagado ${formatCurrency(aParte(registro!.monto))}`
@@ -531,19 +503,8 @@ export function MesesFijo({
           )
         })}
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          setDeslizar("der")
-          setAnioVer((a) => Math.min(anioMax, a + 1))
-        }}
-        disabled={anioVer >= anioMax}
-        className="h-10 w-7 shrink-0 rounded-xl border border-border bg-white text-muted-foreground transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:opacity-30"
-        title="Año siguiente"
-      >
-        <ChevronRight className="mx-auto h-3.5 w-3.5" />
-        <span className="sr-only">Ver año siguiente</span>
-      </button>
+      {/* Columna del monto: vacía, para que los meses queden alineados */}
+      <span className="hidden md:block" aria-hidden="true" />
     </div>
   )
 }

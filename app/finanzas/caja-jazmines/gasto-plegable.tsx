@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
+import { Children, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
+import { ChevronDown } from "lucide-react"
 
 /**
  * Lógica de plegado por hover, compartida por los gastos individuales y
@@ -17,8 +18,8 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type R
  *   operando adentro); reintenta cada segundo hasta que cierre.
  * - También se despliega si el teclado enfoca algo adentro (accesibilidad).
  */
-export function useHoverPlegado() {
-  const [abierto, setAbierto] = useState(false)
+export function useHoverPlegado({ hover = true, inicial = false }: { hover?: boolean; inicial?: boolean } = {}) {
+  const [abierto, setAbierto] = useState(inicial)
   const timerAbrir = useRef<ReturnType<typeof setTimeout> | null>(null)
   const timerCerrar = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -92,15 +93,20 @@ export function useHoverPlegado() {
     setAbierto((v) => !v)
   }
 
-  /** Props para esparcir en el contenedor que dispara el hover. */
-  const props = {
-    onMouseEnter: alEntrar,
-    onMouseLeave: alSalir,
-    onFocusCapture: alEnfocar,
-    onClick: alClick,
-  }
+  /**
+   * Props para esparcir en el contenedor. Con `hover: false` (Caja Jazmines
+   * desde el 14/10/2026) solo el click abre y cierra: nada se pliega solo.
+   */
+  const props = hover
+    ? {
+        onMouseEnter: alEntrar,
+        onMouseLeave: alSalir,
+        onFocusCapture: alEnfocar,
+        onClick: alClick,
+      }
+    : { onClick: alClick }
 
-  return { abierto, props }
+  return { abierto, props, alternar: () => setAbierto((v) => !v) }
 }
 
 /**
@@ -136,15 +142,32 @@ export function CuerpoTarjeta({ abierto, children }: { abierto: boolean; childre
 }
 
 /**
- * Tarjeta de gasto fijo con contenido plegable por hover: solo se ve el
- * encabezado hasta que el mouse queda encima (ver useHoverPlegado).
+ * Tarjeta de gasto fijo con contenido plegable: se abre y cierra con un click
+ * en la fila o en la flecha de la derecha (no se pliega sola).
  */
 export function GastoPlegable({ header, children }: { header: ReactNode; children?: ReactNode }) {
-  const { abierto, props } = useHoverPlegado()
+  const { abierto, props, alternar } = useHoverPlegado({ hover: false })
 
   return (
-    <div className="rounded-lg border border-border bg-card" {...props}>
-      {header}
+    <div
+      className={`rounded-lg border bg-card transition-shadow ${abierto ? "border-purple-200 shadow-sm" : "border-border"}`}
+    >
+      {/* Solo la fila de arriba abre/cierra: tocar dentro de los meses no lo pliega. */}
+      <div className="flex items-center" {...props}>
+        <div className="min-w-0 flex-1 cursor-pointer">{header}</div>
+        {Children.toArray(children).length > 0 ? (
+          <button
+            type="button"
+            onClick={alternar}
+            aria-expanded={abierto}
+            className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={abierto ? "Ocultar meses" : "Ver meses y pagar"}
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform ${abierto ? "rotate-180" : ""}`} />
+            <span className="sr-only">{abierto ? "Ocultar meses" : "Ver meses y pagar"}</span>
+          </button>
+        ) : null}
+      </div>
       <CuerpoTarjeta abierto={abierto}>{children}</CuerpoTarjeta>
     </div>
   )

@@ -12,8 +12,12 @@ import { contarCuotasAtrasadas } from "@/lib/vienen-a-pagar"
 import { ChatAyuda } from "@/components/chat-ayuda"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
+import { AtajosRapidos } from "@/components/atajos-rapidos"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
+
+// El chat de Inicio quedó reemplazado por el botón flotante con historial.
+const MOSTRAR_CHAT_INICIO = false
 
 export default function HomePage() {
   const [novedadesOpen, setNovedadesOpen] = useState(false)
@@ -88,6 +92,10 @@ export default function HomePage() {
         className="absolute inset-0 bg-black/30 cursor-pointer"
       />
 
+      {/* Atajos rápidos a las pantallas que más usa el perfil: a la izquierda,
+          debajo del botón de la IA (en el celular, abajo). Se pliegan. */}
+      {perfilActivo && <AtajosRapidos perfil={perfilActivo} />}
+
       {/* Novedades + Resumen diario + Este finde - top right */}
       <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2">
         {puedeAprobarCotizaciones && cotizacionesPendientes > 0 && (
@@ -150,15 +158,17 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Chat de ayuda con IA - solo perfil Soporte, centrado abajo */}
-      {perfilActivo?.id === "soporte" && (
+      {/* Chat de ayuda con IA de Inicio: reemplazado por el botón flotante de
+          components/chat-ia-flotante.tsx (todas las pantallas, con historial). */}
+      {MOSTRAR_CHAT_INICIO && perfilActivo?.id === "soporte" && (
         <div className="absolute bottom-8 left-1/2 z-10 w-[calc(100%-2.5rem)] max-w-xl -translate-x-1/2 flex justify-center">
           <ChatAyuda />
         </div>
       )}
 
       {/* Botón de ayuda, abajo a la derecha: abre la guía de uso */}
-      <div className="absolute bottom-5 right-5 z-10">
+      {/* Con el botón flotante de la IA (abajo a la derecha), este va a su izquierda. */}
+      <div className="absolute bottom-6 right-5 z-10">
         <button
           type="button"
           onClick={() => setGuiaOpen(true)}

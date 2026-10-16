@@ -20,6 +20,9 @@
 // Barra primero elige un salón (el mismo selector que Stock por salón, sin
 // "Todos") y ve solo los eventos de ese salón, pintados con su color. El resto
 // del staff sigue viendo todos los salones juntos, como siempre.
+//
+// Barra, Fotógrafo, Vestido y Pantalla ven solo los eventos donde están
+// contratados (lib/staff-eventos-perfil.ts). Coordinación ve todos.
 
 import { useMemo, useState } from "react"
 import { useEventos } from "@/lib/use-eventos"
@@ -38,8 +41,10 @@ import { salonColor, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
 import { CronogramaEvento } from "@/components/cronograma-evento"
-import { esServicioDestacado, notasParaPerfil, textoHorario, PERFILES_EDITAN_CRONOGRAMA } from "@/lib/staff-evento"
+import { notasParaPerfil, textoHorario, PERFILES_EDITAN_CRONOGRAMA } from "@/lib/staff-evento"
 import { lineasDietas } from "@/lib/dietas-evento"
+import { AnotacionEvento } from "@/components/anotacion-evento"
+import { esServicioDelPerfil, eventoVisibleParaPerfil, filtraPorContratacion } from "@/lib/staff-eventos-perfil"
 
 function formatFecha(fecha: string): string {
   if (!fecha) return "Sin fecha"
@@ -87,8 +92,9 @@ export default function StaffPage() {
       eventos
         .filter((e) => !!e.fecha && e.estado !== "cancelado")
         .filter((e) => !esBarra || e.salon === salon)
+        .filter((e) => eventoVisibleParaPerfil(perfilActivo?.id, e))
         .sort((a, b) => a.fecha.localeCompare(b.fecha)),
-    [eventos, esBarra, salon],
+    [eventos, esBarra, salon, perfilActivo?.id],
   )
 
   const celdas = useMemo<CeldaDia[]>(() => {
@@ -191,7 +197,9 @@ export default function StaffPage() {
         </h1>
         )}
         <p className="text-sm text-muted-foreground mt-1">
-          Tocá un día para ver el detalle del evento y los servicios contratados.
+          {filtraPorContratacion(perfilActivo?.id)
+            ? "Solo los eventos donde estás contratado. Tocá un día para ver el detalle."
+            : "Tocá un día para ver el detalle del evento y los servicios contratados."}
         </p>
         {/* Qué quiere decir cada símbolo. Sin esto, los emojis del calendario
             hay que adivinarlos. */}
@@ -327,7 +335,9 @@ export default function StaffPage() {
         <CardContent className="p-4 space-y-2">
           <h3 className="text-sm font-semibold text-muted-foreground">Los próximos en la agenda</h3>
           {proximosEventos.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No hay eventos próximos.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {filtraPorContratacion(perfilActivo?.id) ? "No tenés eventos próximos contratados." : "No hay eventos próximos."}
+            </p>
           ) : (
             <div className="space-y-1.5">
               {proximosEventos.map((e) => (
@@ -610,7 +620,7 @@ export default function StaffPage() {
                   ) : (
                     <div className="space-y-1.5">
                       {(selectedEvento.servicios || []).map((s, i) => {
-                        const destacado = esServicioDestacado(perfilActivo?.id, s.nombre)
+                        const destacado = esServicioDelPerfil(perfilActivo?.id, s.nombre)
                         return (
                           <div
                             key={`${s.servicioId}-${i}`}
@@ -634,6 +644,9 @@ export default function StaffPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Anotación propia del perfil, con guardado automático. */}
+                <AnotacionEvento key={selectedEvento.id} eventoId={selectedEvento.id} />
               </div>
             </>
           )}

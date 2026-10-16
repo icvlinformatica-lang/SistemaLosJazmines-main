@@ -1,17 +1,16 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
+import { cronAutorizado } from "@/lib/cron-auth"
 import { buildResumenSemanal, sendResumenSemanalEmail } from "@/lib/resumen-semanal"
 
 // Cron de Vercel: corre los sábados 00:00 UTC = viernes 21:00 hora
 // argentina (ver vercel.json). Construye el resumen de la semana
 // (lunes a viernes) y lo envía por mail a NOTIFICATION_EMAIL.
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET
-  if (secret) {
-    const auth = request.headers.get("authorization")
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-    }
+  // Sin CRON_SECRET cargado no se manda nada (ver lib/cron-auth.ts).
+  if (!cronAutorizado(request.headers.get("authorization"), process.env.CRON_SECRET)) {
+    if (!process.env.CRON_SECRET) console.error("[cron] Falta CRON_SECRET: no se manda el resumen")
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
   }
 
   try {

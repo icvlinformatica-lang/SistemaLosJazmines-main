@@ -85,6 +85,17 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   stock_sesion: <ClipboardList className="h-4 w-4 text-emerald-600" />,
 }
 
+// Stock por salón ya no pide el PIN de stock (15/10/2026): se esconde de
+// Contraseñas. La variable y su ruta quedan; la limpieza va aparte.
+const MOSTRAR_PIN_STOCK = false
+
+// Lo que devuelve /api/auth/pins: el PIN de cada perfil y el de carga
+// extraordinaria de stock (deReserva: falta PIN_STOCK_EXTRA y se usa el del código).
+interface PinsVigentes {
+  perfiles: Record<string, string>
+  stockExtra: { pin: string; deReserva: boolean }
+}
+
 export default function ConfiguracionPage() {
   const { state, insumos, recetas, historial, setInsumos, setRecetas } = useStore()
   const { toast } = useToast()
@@ -92,7 +103,7 @@ export default function ConfiguracionPage() {
   const [isRespaldoOpen, setIsRespaldoOpen] = useState(false)
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [isPasswordsOpen, setIsPasswordsOpen] = useState(false)
-  const [pins, setPins] = useState<Record<string, string> | null>(null)
+  const [pins, setPins] = useState<PinsVigentes | null>(null)
   const [loadingPins, setLoadingPins] = useState(false)
 
   // Carga los PINs reales (ya resueltos desde variables de entorno) recién
@@ -634,14 +645,32 @@ export default function ConfiguracionPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{perfil.nombre}</p>
-                      <p className="text-lg font-mono font-bold tracking-wider">{pins[perfil.id] ?? "—"}</p>
+                      <p className="text-lg font-mono font-bold tracking-wider">{pins.perfiles?.[perfil.id] ?? "—"}</p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
+            {MOSTRAR_PIN_STOCK && pins?.stockExtra && (
+              <div className="flex items-center gap-3 p-3 border rounded-lg">
+                <div className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center bg-muted">
+                  <Package className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">PIN de carga extraordinaria de stock</p>
+                  <p className="text-xs text-muted-foreground">Lo pide Stock por salón para contar sin un evento terminado.</p>
+                  {pins.stockExtra.deReserva && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      Es el de reserva, que está en el código público. Conviene cargar PIN_STOCK_EXTRA en Vercel.
+                    </p>
+                  )}
+                </div>
+                <p className="text-lg font-mono font-bold tracking-wider shrink-0">{pins.stockExtra.pin}</p>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               Se pueden cambiar por variable de entorno (PIN_COCINA, PIN_BARRA, etc.) sin tocar código.
+              La clave maestra (PIN_MAESTRO, de 8 números o más) entra a cualquier perfil y no se muestra acá.
             </p>
           </CardContent>
           </CollapsibleContent>
