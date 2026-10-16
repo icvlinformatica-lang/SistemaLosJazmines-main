@@ -384,7 +384,7 @@ export function Sidebar() {
         )}
       >
         {/* Logo Section */}
-        <div className="flex items-start justify-between gap-2 px-5 pt-6 pb-3">
+        <div className="flex items-start justify-between gap-2 px-5 pt-6 pb-3 bajo:pt-3 bajo:pb-2">
           <Link href="/" className="block min-w-0">
             <h1 className="text-lg font-bold text-[#f5f0e8] leading-tight">
               Los Jazmines
@@ -406,14 +406,14 @@ export function Sidebar() {
         </div>
 
         {/* Fecha del sistema (solo lectura) */}
-        <div className="px-3 pb-3">
-          <div className="flex w-full items-center gap-2 rounded-lg bg-[#f5f0e8]/8 px-3 py-2 text-[#f5f0e8]/80">
+        <div className="px-3 pb-3 bajo:pb-1">
+          <div className="flex w-full items-center gap-2 rounded-lg bg-[#f5f0e8]/8 px-3 py-2 text-[#f5f0e8]/80 bajo:py-1.5">
             <CalendarClock className="h-4 w-4 shrink-0" />
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
               <span className="truncate text-xs font-semibold">
                 {fechaActual.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}
               </span>
-              <span className="text-[10px] opacity-60">Fecha del sistema</span>
+              <span className="text-[10px] opacity-60 bajo:hidden">Fecha del sistema</span>
             </span>
           </div>
         </div>
@@ -432,7 +432,7 @@ export function Sidebar() {
                 <div key={item.label}>
                   <div
                     className={cn(
-                      "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-left",
+                      "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-left bajo:py-2",
                       isLocked
                         ? "text-[#f5f0e8]/40 cursor-not-allowed"
                         : active
@@ -477,7 +477,7 @@ export function Sidebar() {
                             key={child.href}
                             href={child.href}
                             className={cn(
-                              "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 text-sm",
+                              "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 text-sm bajo:py-1.5",
                               childActive
                                 ? "bg-[#f5f0e8]/15 text-[#f5f0e8] font-medium"
                                 : "text-[#f5f0e8]/70 hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8]"
@@ -502,7 +502,7 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 bajo:py-2",
                   active
                     ? "bg-[#f5f0e8]/15 text-[#f5f0e8]"
                     : "text-[#f5f0e8]/80 hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8]"
@@ -517,14 +517,14 @@ export function Sidebar() {
 
         {/* Generar Contrato Button (y, solo para Administración, "Cotizar" arriba) */}
         {!["cocina", "barra", "cobro", "vendedor"].includes(perfilActivo?.id ?? "") && (
-          <div className="px-3 pb-3 -mt-[10px] space-y-2">
+          <div className="px-3 pb-3 -mt-[10px] space-y-2 bajo:mt-1 bajo:pb-2 bajo:space-y-1.5">
             {perfilActivo?.id === "administracion" && (
               // Abre el cotizador del vendedor. Mismo estilo que "Generar
               // Contrato", con el dorado un poco más naranja y 3 px más bajo
               // (41 px contra 44 px).
               <Link
                 href="/vendedor/cotizar"
-                className="flex items-center gap-2 w-full h-[41px] px-4 rounded-lg bg-[#d49133] hover:bg-[#e09d40] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
+                className="flex items-center gap-2 w-full h-[41px] bajo:h-9 px-4 rounded-lg bg-[#d49133] hover:bg-[#e09d40] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
               >
                 <Calculator className="h-5 w-5 shrink-0" />
                 <span className="flex-1 text-left">Cotizar</span>
@@ -533,7 +533,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={handlePlanificarFiesta}
-              className="flex items-center gap-2 w-full px-4 py-3 rounded-lg bg-[#d4a533] hover:bg-[#e0b040] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
+              className="flex items-center gap-2 w-full px-4 py-3 bajo:py-2 rounded-lg bg-[#d4a533] hover:bg-[#e0b040] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
             >
               <Sparkles className="h-5 w-5 shrink-0" />
               <span className="flex-1 text-left">Generar Contrato</span>
@@ -543,8 +543,8 @@ export function Sidebar() {
 
         {/* Perfil activo + cambiar perfil */}
         {perfilActivo && (
-          <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3">
-            <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[#f5f0e8]/8 hover:bg-[#f5f0e8]/12 transition-colors group">
+          <div className="px-3 pb-3 border-t border-[#f5f0e8]/10 pt-3 bajo:py-2">
+            <div className="flex items-center gap-3 px-2 py-2 bajo:py-1.5 rounded-xl bg-[#f5f0e8]/8 hover:bg-[#f5f0e8]/12 transition-colors group">
               {/* Avatar circular con color del perfil (blanco para "Cobrar cuota") */}
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm"
@@ -572,13 +572,14 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Collapse toggle */}
+        {/* Collapse toggle. En pantallas bajas se esconde: la flecha de
+            arriba, al lado de "Los Jazmines", hace lo mismo. */}
         <button
           onClick={() => {
             cancelarCierre()
             setSidebarOpen(false)
           }}
-          className="flex items-center gap-2 px-5 py-3 border-t border-[#f5f0e8]/10 text-[#f5f0e8]/60 hover:text-[#f5f0e8]/90 text-sm transition-colors"
+          className="flex items-center gap-2 px-5 py-3 border-t border-[#f5f0e8]/10 text-[#f5f0e8]/60 hover:text-[#f5f0e8]/90 text-sm transition-colors bajo:hidden"
         >
           <ChevronLeft className="h-4 w-4" />
           <span>Ocultar</span>
