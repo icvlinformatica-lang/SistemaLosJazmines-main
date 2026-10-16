@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
-import { X, Users, Loader2, Search, Phone, MessageCircle } from "lucide-react"
+import { X, Users, Loader2, Search, Phone, MessageCircle, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SalonDot } from "@/components/salon-badge"
@@ -16,7 +16,7 @@ import { SALONES, salonColor, salonLabel } from "@/lib/store"
 import { useProfile } from "@/lib/profile-context"
 import { calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
-import { agruparCuotasPorSalon, ordenarCuotasPorEvento, limiteCuotasVisibles, porEntrarDelMesPorSalon, type CuotaPorPagar, type PorEntrarSalon } from "@/lib/vienen-a-pagar"
+import { agruparCuotasPorSalon, ordenarCuotasPorEvento, claveCuotaVienenAPagar, sinCuotasParaMasTarde, limiteCuotasVisibles, porEntrarDelMesPorSalon, type CuotaPorPagar, type PorEntrarSalon } from "@/lib/vienen-a-pagar"
 import type { ResumenDiario } from "@/lib/resumen-diario"
 import { enlaceWhatsApp, mensajeRecordatorioCuota } from "@/lib/recordatorio-cuota"
 
@@ -43,7 +43,7 @@ function fechaCorta(ymd: string): string {
   return new Date(ymd + "T12:00:00Z").toLocaleDateString("es-AR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" })
 }
 
-function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: string }; onAbrirEvento: () => void }) {
+function CuotaFila({ cuota, onAbrirEvento, onVerMasTarde }: { cuota: CuotaPorPagar & { salon: string }; onAbrirEvento: () => void; onVerMasTarde: () => void }) {
   // Recordatorio por WhatsApp: solo si el teléfono del contrato da un número
   // usable. "venció" para las que ya pasaron su vencimiento (aunque sean de
   // esta semana), "vence" para las que todavía no.
@@ -96,6 +96,8 @@ function CuotaFila({ cuota, onAbrirEvento }: { cuota: CuotaPorPagar & { salon: s
             <Link href={`/eventos/pagos?evento=${encodeURIComponent(cuota.eventoId)}`} prefetch={false} onClick={onAbrirEvento} aria-label={`Ir al evento ${cuota.evento}, cuota ${cuota.numero}`}>Ir al evento</Link>
           </Button>
         ) : <Button variant="outline" size="sm" disabled title="No se pudo identificar el evento. Volvé a abrir la lista.">Ir al evento</Button>}
+        {/* Saca la cuota de la lista hasta que se cierre la ventana; no guarda nada. */}
+        <Button type="button" variant="ghost" size="sm" onClick={onVerMasTarde} aria-label={`Ver más tarde a ${cuota.evento}, cuota ${cuota.numero}`}><Clock />Ver más tarde</Button>
         </div>
       </div>
     </li>
@@ -162,8 +164,11 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
   const [desplegada, setDesplegada] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState("")
   const [ampliaciones, setAmpliaciones] = useState(0)
+  // Cuotas que se tocaron "Ver más tarde": salen de la lista y entra la
+  // siguiente. Vive solo mientras la ventana está abierta (se vacía al cerrar).
+  const [paraMasTarde, setParaMasTarde] = useState<Set<string>>(() => new Set())
   const { data, isLoading, error, mutate } = useSWR<ResumenDiario>(open ? CLAVE_VIENEN_A_PAGAR : null, cargarResumenVienenAPagar)
-  useEffect(() => { if (!open) { setSalonFiltro("todos"); setDesplegada(null); setBusqueda(""); setAmpliaciones(0); setConRecargo(false) } }, [open])
+  useEffect(() => { if (!open) { setSalonFiltro("todos"); setDesplegada(null); setBusqueda(""); setAmpliaciones(0); setConRecargo(false); setParaMasTarde(new Set()) } }, [open])
 
   if (!open) return null
 
@@ -171,13 +176,15 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
   const visibles = grupos.filter((g) => salonFiltro === "todos" || (g.salon || "general") === salonFiltro)
   const textoBusqueda = busqueda.trim().toLowerCase()
   const cuotasOrdenadas = ordenarCuotasPorEvento(visibles)
+  const cuotasALaVista = sinCuotasParaMasTarde(cuotasOrdenadas, paraMasTarde)
+  const cantidadParaMasTarde = cuotasOrdenadas.length - cuotasALaVista.length
   const cuotas = textoBusqueda
-    ? cuotasOrdenadas.filter((cuota) =>
+    ? cuotasALaVista.filter((cuota) =>
         cuota.evento.toLowerCase().includes(textoBusqueda) ||
         cuota.fechaEvento.toLowerCase().includes(textoBusqueda) ||
         fechaCorta(cuota.fechaEvento).toLowerCase().includes(textoBusqueda),
       )
-    : cuotasOrdenadas
+    : cuotasALaVista
   const cuotasMostradas = cuotas.slice(0, limiteCuotasVisibles(ampliaciones))
   const totalSemana = visibles.reduce((s, g) => s + g.totalSemana, 0)
   const cantidadSemana = visibles.reduce((s, g) => s + g.cantidadSemana, 0)
@@ -251,11 +258,17 @@ export function VienenAPagarModal({ open, onOpenChange }: Props) {
               </div>
 
               {/* Lista */}
-              {cuotas.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No hay cuotas por pagar esta semana ni atrasadas{salonFiltro !== "todos" ? " para este salón" : ""}.</p> : (
+              {cantidadParaMasTarde > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground" aria-live="polite">
+                  <span className="inline-flex items-center gap-1.5"><Clock className="size-4" />{cantidadParaMasTarde} {cantidadParaMasTarde === 1 ? "cuota dejada" : "cuotas dejadas"} para más tarde. Vuelven al cerrar y abrir la ventana.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setParaMasTarde(new Set())}>Mostrarlas</Button>
+                </div>
+              )}
+              {cuotas.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{cantidadParaMasTarde > 0 && !textoBusqueda ? "No quedan cuotas a la vista: las demás quedaron para más tarde." : <>No hay cuotas por pagar esta semana ni atrasadas{salonFiltro !== "todos" ? " para este salón" : ""}.</>}</p> : (
                 <div className="flex flex-col gap-3">
                   <p className="text-sm text-muted-foreground">Ordenadas por evento más próximo a más lejano</p>
                   <ul id="lista-cuotas-pendientes" className="rounded-lg border bg-card text-card-foreground" aria-label="Cuotas por fecha del evento">
-                    {cuotasMostradas.map((cuota, i) => <CuotaFila key={`${cuota.eventoId}-${cuota.numero}-${i}`} cuota={cuota} onAbrirEvento={() => onOpenChange(false)} />)}
+                    {cuotasMostradas.map((cuota, i) => <CuotaFila key={`${cuota.eventoId}-${cuota.numero}-${i}`} cuota={cuota} onAbrirEvento={() => onOpenChange(false)} onVerMasTarde={() => setParaMasTarde((actual) => new Set(actual).add(claveCuotaVienenAPagar(cuota)))} />)}
                   </ul>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-muted-foreground" aria-live="polite">Mostrando {cuotasMostradas.length} de {cuotas.length} cuotas</p>
