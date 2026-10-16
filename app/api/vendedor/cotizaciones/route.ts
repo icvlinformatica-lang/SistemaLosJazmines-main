@@ -4,6 +4,8 @@ import { sql } from "@/lib/db"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { cotizarEnServidor } from "@/lib/cotizacion-servidor"
 import { textoPasosFaltantes } from "@/lib/cotizador-salon"
+import { normalizarDietasDetalle } from "@/lib/dietas-evento"
+import { normalizarOrigen } from "@/lib/origen-cliente"
 
 /** jsonb de verdad (no texto). El tipo de sql.json no acepta objetos con
  *  campos opcionales/null anidados, así que se convierte en un solo lugar. */
@@ -31,7 +33,9 @@ const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[
  * body: {
  *   id?, accion?, clienteNombre, clienteDni?, clienteTelefono?, tipoEvento?, fechaEvento?,
  *   salon, adultos, ninos, recetas: string[], barraId: string | null,
- *   servicios: { servicioId, cantidad }[]
+ *   servicios: { servicioId, cantidad }[],
+ *   dietasDetalle?: DietaDetalle[],   // parte de los adultos; no cambia el precio
+ *   origenCliente?: string | null,    // "¿Cómo nos conoció?"; obligatorio para enviar
  * }
  *
  * Los JSON se guardan con sql.json (jsonb de verdad, no texto). Los que leen
@@ -39,6 +43,9 @@ const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[
  *
  * GET devuelve "Mis cotizaciones generadas" (sin costos).
  */
+/** Enviar una cotización guardada sin "¿Cómo nos conoció?": se deshace todo. */
+class FaltaOrigen extends Error {}
+
 export async function POST(req: Request) {
   try {
     const body = ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>
@@ -68,6 +75,22 @@ export async function POST(req: Request) {
       const aviso = r.avisos.find((a) => a.codigo === "capacidad")
       return NextResponse.json({ ok: false, error: aviso?.textoVendedor ?? "Supera la capacidad del salón" }, { status: 400 })
     }
+    // "¿Cómo nos conoció?" (lib/origen-cliente.ts, scripts/022): se pide para
+    // enviar. Si el pedido no lo trae (una pantalla abierta antes de este
+    // cambio), al editar se conserva el guardado.
+    const traeOrigen = "origenCliente" in body
+    const origen = normalizarOrigen(body.origenCliente)
+    if (enviar && traeOrigen && !origen) {
+      return NextResponse.json({ ok: false, error: "Para enviarla falta elegir cómo nos conoció" }, { status: 400 })
+    }
+    // Dietas especiales por tipo: son parte de los adultos y se cobran igual,
+    // así que no entran al cálculo. Viajan dentro de `invitados` hasta que se
+    // aprueba (ver separarDietasDeAdultos en el aprobar).
+    const dietasDetalle = normalizarDietasDetalle(body.dietasDetalle)
+    if (dietasDetalle.reduce((s, d) => s + d.cantidad, 0) > adultos) {
+      return NextResponse.json({ ok: false, error: "Las dietas especiales suman más que los adultos" }, { status: 400 })
+    }
+
     if (enviar && calculo.pasosMenuFaltantes.length > 0) {
       return NextResponse.json(
         { ok: false, error: `Para enviarla falta elegir ${textoPasosFaltantes(calculo.pasosMenuFaltantes)} del menú` },
@@ -85,7 +108,13 @@ export async function POST(req: Request) {
     const fecha = typeof fechaEvento === "string" && fechaEvento ? fechaEvento : null
     const tipo = typeof tipoEvento === "string" && tipoEvento ? tipoEvento : null
 
-    const invitados = { adultos, adolescentes: 0, ninos, personasDietasEspeciales: 0 }
+    const invitados = {
+      adultos,
+      adolescentes: 0,
+      ninos,
+      personasDietasEspeciales: 0,
+      ...(dietasDetalle.length ? { dietasDetalle } : {}),
+    }
 
     // Lo elegido, SIN costos (lo lee el vendedor al reabrir la cotización).
     const serviciosElegidos = {
@@ -182,7 +211,9 @@ export async function POST(req: Request) {
     if (typeof id === "string" && id) {
       // Festejados y horarios no están en la pantalla nueva: no se tocan (una
       // cotización vieja reabierta los conserva). El teléfono sí (ver arriba).
-      const filas = (await sql`
+      const filas = await sql.begin(async (tx) => {
+      const db = tx as unknown as typeof sql
+      const actualizadas = (await db`
         UPDATE cotizaciones SET
           cliente_nombre = ${clienteNombre.trim()},
           cliente_dni = ${dni},
@@ -204,6 +235,20 @@ export async function POST(req: Request) {
         WHERE id = ${id} AND estado IN ('borrador', 'rechazada')
         RETURNING id, estado
       `) as unknown as Array<{ id: string; estado: string }>
+      // Aparte y en la misma transacción: así guardar sin el dato no nombra la
+      // columna nueva. Enviar sin origen guardado no se permite (la fila
+      // vuelve atrás entera).
+      if (actualizadas.length && traeOrigen) {
+        await db`UPDATE cotizaciones SET origen_cliente = ${origen} WHERE id = ${id}`
+      }
+      if (actualizadas.length && enviar && !traeOrigen) {
+        const [fila] = (await db`
+          SELECT (to_jsonb(cotizaciones) ->> 'origen_cliente') AS origen FROM cotizaciones WHERE id = ${id}
+        `) as unknown as Array<{ origen: string | null }>
+        if (!normalizarOrigen(fila?.origen)) throw new FaltaOrigen()
+      }
+      return actualizadas
+      })
       if (!filas.length) {
         return NextResponse.json(
           { ok: false, error: "Esta cotización ya no se puede editar (Administración ya la está revisando o ya fue procesada)" },
@@ -213,8 +258,13 @@ export async function POST(req: Request) {
       return respuesta(filas[0])
     }
 
+    if (enviar && !origen) {
+      return NextResponse.json({ ok: false, error: "Para enviarla falta elegir cómo nos conoció" }, { status: 400 })
+    }
     const estado = enviar ? "lista_para_revisar" : "borrador"
-    const filas = (await sql`
+    const filas = await sql.begin(async (tx) => {
+    const db = tx as unknown as typeof sql
+    const nuevas = (await db`
       INSERT INTO cotizaciones (
         vendedor, cliente_nombre, cliente_dni, fecha_evento, salon, tipo_evento,
         invitados, servicios_elegidos, precio_venta_sugerido, costos_internos,
@@ -226,8 +276,14 @@ export async function POST(req: Request) {
       )
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>
+    if (origen) await db`UPDATE cotizaciones SET origen_cliente = ${origen} WHERE id = ${nuevas[0].id}`
+    return nuevas
+    })
     return respuesta(filas[0])
   } catch (err) {
+    if (err instanceof FaltaOrigen) {
+      return NextResponse.json({ ok: false, error: "Para enviarla falta elegir cómo nos conoció" }, { status: 400 })
+    }
     console.error("[API] Error en vendedor/cotizaciones:", err)
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 })
   }

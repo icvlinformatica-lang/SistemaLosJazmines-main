@@ -2,9 +2,15 @@
 
 // Pantalla de solo lectura para staff externo (DJ, Fotógrafo, Vestido,
 // Pantalla, Coordinación) y para BARRA: calendario de próximos eventos. Al
-// tocar un evento se abre un panel con fecha, festejados, tipo de evento,
-// teléfono de contacto y los servicios contratados, resaltando el que le
-// corresponde al perfil activo.
+// tocar un evento se abre un panel con fecha, salón, horario, festejados,
+// tipo de evento, teléfono de contacto, la nota para todos y la de su oficio,
+// el cronograma de la noche (con sus líneas resaltadas) y los servicios
+// contratados, resaltando el que le corresponde al perfil activo
+// (lib/staff-evento.ts).
+//
+// Coordinación ve además invitados por grupo, dietas, menú, quién trabaja y
+// las barras, sin montos, y es el único perfil del staff que puede cargar el
+// cronograma (lo controla /api/eventos/[id]/cronograma).
 //
 // Barra además ve las BARRAS CONTRATADAS de cada evento (qué barra y cuántos
 // tragos por persona), que es lo que necesita para saber qué preparar. Es su
@@ -28,12 +34,15 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye, Wine, MessageCircle } from "lucide-react"
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Users, Phone, Sparkles, Eye, Wine, MessageCircle, Clock, MapPin, UtensilsCrossed, UserCheck, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { enlaceWhatsApp } from "@/lib/recordatorio-cuota"
 import { salonColor, salonLabel, type EventoGuardado } from "@/lib/store"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
+import { CronogramaEvento } from "@/components/cronograma-evento"
+import { notasParaPerfil, textoHorario, PERFILES_EDITAN_CRONOGRAMA } from "@/lib/staff-evento"
+import { lineasDietas } from "@/lib/dietas-evento"
 import { AnotacionEvento } from "@/components/anotacion-evento"
 import { esServicioDelPerfil, eventoVisibleParaPerfil, filtraPorContratacion } from "@/lib/staff-eventos-perfil"
 
@@ -138,6 +147,15 @@ export default function StaffPage() {
 
   const totalInvitados = (e: EventoGuardado) =>
     (e.adultos || 0) + (e.adolescentes || 0) + (e.ninos || 0) + (e.personasDietasEspeciales || 0)
+
+  // "Casona · 21:00": lo primero que necesita el staff para ir a trabajar.
+  const salonYHora = (e: EventoGuardado) => [e.salon ? salonLabel(e.salon) : "", (e.horario || "").trim()].filter(Boolean).join(" · ")
+
+  // Coordinación maneja la noche: ve invitados por grupo, dietas, menú,
+  // personal y barras (sin montos). El resto del staff, lo de siempre.
+  const esCoordinacion = perfilActivo?.id === "coordinacion"
+  const puedeEditarCronograma = PERFILES_EDITAN_CRONOGRAMA.includes(perfilActivo?.id ?? "")
+  const nombreReceta = (id: string) => (state.recetas || []).find((r) => r.id === id)?.nombre || "Plato que ya no está en el recetario"
 
   if (loading) {
     return (
@@ -275,7 +293,7 @@ export default function StaffPage() {
                   title={
                     tiene
                       ? celda.eventos
-                          .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}${conBarra(e) ? " (con barra)" : ""}`)
+                          .map((e) => `${iconoTipoEvento(e.tipoEvento).etiqueta}: ${e.nombrePareja || e.nombre || "Sin nombre"}${salonYHora(e) ? ` (${salonYHora(e)})` : ""}${conBarra(e) ? " (con barra)" : ""}`)
                           .join(" · ")
                       : undefined
                   }
@@ -294,6 +312,15 @@ export default function StaffPage() {
                           ? `${celda.eventos.length} eventos`
                           : celda.eventos[0].nombrePareja || celda.eventos[0].nombre || "Evento"}
                       </span>
+                      {/* Un punto por evento con el color de su salón, para
+                          saber de un vistazo dónde es. Barra ya eligió uno. */}
+                      {!esBarra && (
+                        <span aria-hidden className="flex gap-0.5">
+                          {celda.eventos.map((e) => (
+                            <SalonDot key={e.id} salon={e.salon} size={6} />
+                          ))}
+                        </span>
+                      )}
                     </>
                   )}
                 </button>
@@ -327,6 +354,12 @@ export default function StaffPage() {
                       <span className="block text-xs text-muted-foreground">
                         {formatFecha(e.fecha)} · {iconoTipoEvento(e.tipoEvento).etiqueta}
                       </span>
+                      {salonYHora(e) && (
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <SalonDot salon={e.salon} size={8} />
+                          {salonYHora(e)}
+                        </span>
+                      )}
                     </span>
                   </span>
                   <Eye className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -362,6 +395,12 @@ export default function StaffPage() {
                   <span className="block text-xs text-muted-foreground">
                     {totalInvitados(e)} invitados{e.tipoEvento ? ` · ${e.tipoEvento}` : ""}
                   </span>
+                  {salonYHora(e) && (
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <SalonDot salon={e.salon} size={8} />
+                      {salonYHora(e)}
+                    </span>
+                  )}
                 </span>
                 <Eye className="h-4 w-4 shrink-0 text-muted-foreground" />
               </button>
@@ -392,6 +431,23 @@ export default function StaffPage() {
                     <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span>{selectedEvento.tipoEvento || "Sin tipo de evento"}</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    {selectedEvento.salon ? (
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <SalonDot salon={selectedEvento.salon} size={10} />
+                        {salonLabel(selectedEvento.salon)}
+                      </span>
+                    ) : (
+                      <span>Sin salón cargado</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="font-medium">
+                      {textoHorario(selectedEvento.horario, selectedEvento.horarioFin) || "Sin horario cargado"}
+                    </span>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
                     {selectedEvento.contrato?.telefono?.trim() ? (
@@ -411,14 +467,114 @@ export default function StaffPage() {
                   </div>
                 </div>
 
-                {selectedEvento.notaStaff && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                    <p className="mb-1 text-xs font-semibold text-sky-800">Nota</p>
-                    <p className="whitespace-pre-line text-sm text-sky-900">{selectedEvento.notaStaff}</p>
+                {/* La nota para todos y la de su oficio (Coordinación ve todas). */}
+                {notasParaPerfil(perfilActivo?.id, selectedEvento.notaStaff, selectedEvento.notasStaffPerfil).map((n) => (
+                  <div
+                    key={n.titulo}
+                    className={cn("rounded-lg border p-3", n.propia ? "border-primary bg-primary/10" : "border-sky-200 bg-sky-50")}
+                  >
+                    <p className={cn("mb-1 text-xs font-semibold", n.propia ? "text-primary" : "text-sky-800")}>Nota {n.titulo.replace(/^Para /, "para ")}</p>
+                    <p className={cn("whitespace-pre-line text-sm", n.propia ? "text-primary" : "text-sky-900")}>{n.texto}</p>
+                  </div>
+                ))}
+
+                <CronogramaEvento
+                  eventoId={selectedEvento.id}
+                  tipoEvento={selectedEvento.tipoEvento}
+                  horario={selectedEvento.horario}
+                  cronograma={selectedEvento.cronograma}
+                  perfilId={perfilActivo?.id}
+                  editable={puedeEditarCronograma}
+                  onGuardado={(cronograma) => setSelectedEvento({ ...selectedEvento, cronograma })}
+                />
+
+                {esCoordinacion && (
+                  <div className="space-y-3 rounded-lg border p-3">
+                    <div>
+                      <h4 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        Invitados: {totalInvitados(selectedEvento)}
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        {[
+                          `${selectedEvento.adultos || 0} adultos`,
+                          `${selectedEvento.adolescentes || 0} adolescentes`,
+                          `${selectedEvento.ninos || 0} niños`,
+                          `${selectedEvento.personasDietasEspeciales || 0} con dieta especial`,
+                        ].join(" · ")}
+                      </p>
+                      {lineasDietas(selectedEvento.personasDietasEspeciales, selectedEvento.dietasDetalle).length > 0 && (
+                        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                          {lineasDietas(selectedEvento.personasDietasEspeciales, selectedEvento.dietasDetalle).map((l) => (
+                            <li
+                              key={l.texto}
+                              className={cn(
+                                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
+                                l.alergia ? "border-red-300 bg-red-50 font-semibold text-red-700" : "border-border",
+                              )}
+                            >
+                              {l.alergia && <AlertTriangle className="h-3 w-3" />}
+                              {l.texto}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+                        <UtensilsCrossed className="h-4 w-4 text-muted-foreground" />
+                        Menú
+                      </h4>
+                      {(
+                        [
+                          ["Adultos", selectedEvento.recetasAdultos],
+                          ["Adolescentes", selectedEvento.recetasAdolescentes],
+                          ["Niños", selectedEvento.recetasNinos],
+                          ["Dietas especiales", selectedEvento.recetasDietasEspeciales],
+                        ] as const
+                      ).filter(([, ids]) => (ids || []).length > 0).length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sin menú cargado.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {(
+                            [
+                              ["Adultos", selectedEvento.recetasAdultos],
+                              ["Adolescentes", selectedEvento.recetasAdolescentes],
+                              ["Niños", selectedEvento.recetasNinos],
+                              ["Dietas especiales", selectedEvento.recetasDietasEspeciales],
+                            ] as const
+                          )
+                            .filter(([, ids]) => (ids || []).length > 0)
+                            .map(([grupo, ids]) => (
+                              <p key={grupo} className="text-sm">
+                                <span className="font-medium">{grupo}:</span>{" "}
+                                <span className="text-muted-foreground">{(ids || []).map(nombreReceta).join(", ")}</span>
+                              </p>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+                        <UserCheck className="h-4 w-4 text-muted-foreground" />
+                        Quién trabaja
+                      </h4>
+                      {(selectedEvento.personalEvento || []).length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Todavía no hay personal asignado.</p>
+                      ) : (
+                        <ul className="space-y-0.5">
+                          {(selectedEvento.personalEvento || []).map((p) => (
+                            <li key={p.id} className="text-sm">
+                              {p.nombre} <span className="text-muted-foreground">· {p.funcion}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {esBarra && (
+                {(esBarra || esCoordinacion) && (
                   <div>
                     <h4 className="mb-2 text-sm font-semibold">Barras contratadas</h4>
                     {(selectedEvento.barras || []).length === 0 ? (

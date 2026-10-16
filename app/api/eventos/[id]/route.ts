@@ -10,6 +10,7 @@ import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/li
 import { decidirFechaAlta } from "@/lib/fecha-alta"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 import { soloAdministracion } from "@/lib/solo-administracion"
+import { camposStaffDesdeFila, columnasStaffParaGuardar } from "@/lib/eventos-campos-staff"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -85,6 +86,8 @@ function fromRow(r: Record<string, any>) {
     // "YYYY-MM-DD" (leída vía to_jsonb: funciona aunque la columna todavía no exista)
     fechaAlta: r.fecha_alta || undefined,
     updatedAt: r.updated_at,
+    // Notas por oficio, cronograma, dietas con su tipo y origen (scripts/022)
+    ...camposStaffDesdeFila(r),
   }
 }
 
@@ -113,7 +116,8 @@ async function fetchEvento(id: string, db = sql) {
       precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
       notas_internas, nota_staff, pagos, asignaciones, costos_calculados,
       stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, fecha_pago_menu, fecha_pago_barra, comision_pagada, comision_pagada_fecha, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta, deleted_at,
-      versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
+      versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato,
+      (to_jsonb(eventos) -> 'notas_staff_perfil') AS notas_staff_perfil, (to_jsonb(eventos) -> 'cronograma') AS cronograma, (to_jsonb(eventos) -> 'dietas_detalle') AS dietas_detalle, (to_jsonb(eventos) ->> 'origen_cliente') AS origen_cliente
     FROM eventos WHERE id = ${id} AND deleted_at IS NULL
   `
   return rows[0] ?? null
@@ -255,6 +259,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
+    // El cronograma tiene su propia ruta (/api/eventos/[id]/cronograma): que
+    // guardar el evento entero no pise lo que cargó Coordinación mientras tanto.
+    delete updates.cronograma
+    // Notas por oficio, dietas con su tipo y origen (scripts/022): se validan
+    // acá y se escriben aparte, solo si vinieron en el pedido.
+    const columnasStaff = columnasStaffParaGuardar(updates)
+    delete updates.notasStaffPerfil
+    delete updates.dietasDetalle
+    delete updates.origenCliente
+
     const fieldMap: Record<string, string> = {
       fechaAlta: "fecha_alta",
       nombre: "nombre", fecha: "fecha", horario: "horario", horarioFin: "horario_fin",
@@ -300,6 +314,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const val = updates[camel]
       setClauses.push(`${snake} = $${idx}`)
       values.push(jsonFields.has(camel) ? JSON.stringify(val) : val)
+      idx++
+    }
+    for (const [columna, valor] of Object.entries(columnasStaff)) {
+      setClauses.push(`${columna} = $${idx}`)
+      values.push(valor)
       idx++
     }
 
@@ -451,7 +470,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         precio_venta, precio_venta_fijo, cotizacion_id, costo_personal, costo_insumos, costo_servicios, costo_operativo,
         notas_internas, pagos, asignaciones, costos_calculados,
         stock_descontado, fecha_impresion, cocina_pagada, barra_pagada, created_at, updated_at, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta, deleted_at,
-        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato
+        versiones_contrato, generaciones_contrato, servicios_contrato, servicios_libres_contrato,
+        (to_jsonb(eventos) -> 'notas_staff_perfil') AS notas_staff_perfil, (to_jsonb(eventos) -> 'cronograma') AS cronograma, (to_jsonb(eventos) -> 'dietas_detalle') AS dietas_detalle, (to_jsonb(eventos) ->> 'origen_cliente') AS origen_cliente
       FROM eventos WHERE id = ${id}
     `
     const row = rows[0]

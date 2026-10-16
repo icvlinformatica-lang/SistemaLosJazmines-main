@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { normalizarDietasDetalle } from "@/lib/dietas-evento"
+import { normalizarOrigen } from "@/lib/origen-cliente"
 import { soloAdministracion } from "@/lib/solo-administracion"
 import { faltantesCotizacion } from "@/lib/faltantes-evento"
 
@@ -44,6 +46,7 @@ interface CotizacionFila {
   desglose_venta: unknown
   avisos: unknown
   cliente_dni: string | null
+  origen_cliente?: string | null
   comentario_admin: string | null
   evento_id: string | null
   estado: string
@@ -61,7 +64,8 @@ export async function GET(req: Request) {
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin,
              salon, tipo_evento, nombre_festejados, paquete_id, invitados, servicios_elegidos,
              precio_venta_sugerido, costos_internos, desglose_venta, avisos, cliente_dni,
-             comentario_admin, evento_id, estado, created_at, updated_at
+             comentario_admin, evento_id, estado, created_at, updated_at,
+             (to_jsonb(cotizaciones) ->> 'origen_cliente') AS origen_cliente
       FROM cotizaciones
       WHERE estado IN ('convertida', 'rechazada')
       ORDER BY updated_at DESC
@@ -71,7 +75,8 @@ export async function GET(req: Request) {
       SELECT id, vendedor, cliente_nombre, cliente_telefono, fecha_evento, horario, horario_fin,
              salon, tipo_evento, nombre_festejados, paquete_id, invitados, servicios_elegidos,
              precio_venta_sugerido, costos_internos, desglose_venta, avisos, cliente_dni,
-             comentario_admin, evento_id, estado, created_at, updated_at
+             comentario_admin, evento_id, estado, created_at, updated_at,
+             (to_jsonb(cotizaciones) ->> 'origen_cliente') AS origen_cliente
       FROM cotizaciones
       WHERE estado = 'lista_para_revisar'
       ORDER BY updated_at ASC
@@ -120,7 +125,11 @@ export async function GET(req: Request) {
           adolescentes: Number(invitados.adolescentes) || 0,
           ninos: Number(invitados.ninos) || 0,
           personasDietasEspeciales: Number(invitados.personasDietasEspeciales) || 0,
+          // Dietas por tipo que cargó el vendedor (parte de los adultos), scripts/022.
+          dietasDetalle: normalizarDietasDetalle(invitados.dietasDetalle),
         },
+        // "¿Cómo nos conoció?" (scripts/022). null en las de antes.
+        origenCliente: normalizarOrigen(f.origen_cliente),
         totalPersonas,
         recetasElegidas: {
           adultos: Array.isArray(serviciosElegidos.recetas?.adultos) ? serviciosElegidos.recetas.adultos : [],

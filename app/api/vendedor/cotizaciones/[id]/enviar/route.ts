@@ -31,6 +31,8 @@ function listaDeTextos(valor: unknown): string[] {
  * Administración" en /vendedor/cotizar). Tampoco si tiene menú y le faltaba
  * un paso que el salón ofrece (desglose_venta.pasosMenuFaltantes, lo guarda
  * /api/vendedor/cotizaciones): hay que abrirla y completar el menú.
+ * Tampoco sin "¿Cómo nos conoció?" (origen_cliente, scripts/022), que se
+ * pide para enviar: hay que abrirla y elegirlo.
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -48,6 +50,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           END,
           false
         )
+        AND (to_jsonb(cotizaciones) ->> 'origen_cliente') IS NOT NULL
       RETURNING id, estado
     `) as unknown as Array<{ id: string; estado: string }>
 
@@ -56,9 +59,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         SELECT estado, (jsonb_typeof(desglose_venta) = 'object'
           AND coalesce((desglose_venta ->> 'superaCapacidad')::boolean, false)) AS supera,
           CASE WHEN jsonb_typeof(desglose_venta -> 'pasosMenuFaltantes') = 'array'
-            THEN desglose_venta -> 'pasosMenuFaltantes' END AS faltantes
+            THEN desglose_venta -> 'pasosMenuFaltantes' END AS faltantes,
+          (to_jsonb(cotizaciones) ->> 'origen_cliente') AS origen
         FROM cotizaciones WHERE id = ${id}
-      `) as unknown as Array<{ estado: string; supera: boolean | null; faltantes: unknown }>
+      `) as unknown as Array<{ estado: string; supera: boolean | null; faltantes: unknown; origen?: string | null }>
       if (fila?.supera && ["borrador", "rechazada"].includes(fila.estado)) {
         return NextResponse.json(
           { ok: false, error: "Supera la capacidad del salón: abrila y bajá la cantidad de invitados o cambiá de salón" },
@@ -69,6 +73,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       if (fila && faltantes.length > 0 && ["borrador", "rechazada"].includes(fila.estado)) {
         return NextResponse.json(
           { ok: false, error: `Falta elegir ${textoPasosFaltantes(faltantes)} del menú: abrila y completala` },
+          { status: 400 },
+        )
+      }
+      if (fila && !fila.origen && ["borrador", "rechazada"].includes(fila.estado)) {
+        return NextResponse.json(
+          { ok: false, error: "Falta elegir cómo nos conoció: abrila y completalo" },
           { status: 400 },
         )
       }
