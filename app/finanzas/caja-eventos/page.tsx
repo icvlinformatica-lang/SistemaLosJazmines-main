@@ -68,7 +68,21 @@ import {
   type EventoGuardado,
   type MovimientoCaja,
 } from "@/lib/store"
-import { comprasDeProveedor, etiquetasProveedores, proveedoresDeCompras } from "@/lib/compras-por-proveedor"
+import {
+  SIN_PROVEEDOR,
+  claveProveedor,
+  comprasDeProveedor,
+  etiquetasProveedores,
+  proveedoresDeCompras,
+  type CompraDeEvento,
+} from "@/lib/compras-por-proveedor"
+import {
+  conceptoPagoMenuProveedor,
+  pagosMenuProveedor,
+  proveedoresSinPagar,
+  refPagoMenuProveedor,
+} from "@/lib/pago-menu-proveedor"
+import { nombreEventoEnCaja } from "@/lib/egresos-evento"
 import { ComprasProveedor } from "./compras-proveedor"
 import {
   BarraFiltrosEgresos,
@@ -1248,8 +1262,9 @@ useStore()
         eventoFecha: e.eventoFecha,
         compras: comprasMenuPorEvento.get(e.eventoId) ?? [],
       }))
-    return comprasDeProveedor(menus, filtroPagar.sub)
-  }, [filtroPagar.tipo, filtroPagar.sub, egresosProximosFiltrados, comprasMenuPorEvento])
+    const clave = filtroPagar.sub
+    return comprasDeProveedor(menus, clave, (eventoId) => pagosMenuProveedor(state.movimientosCaja, eventoId).get(clave))
+  }, [filtroPagar.tipo, filtroPagar.sub, egresosProximosFiltrados, comprasMenuPorEvento, state.movimientosCaja])
   // Catálogo completo de servicios activos (Finanzas → Servicios), para que
   // el sub-filtro "Servicios" de la barra de filtros muestre todo lo que
   // ofrecemos y no solo lo que tiene un pago pendiente en este momento.
@@ -1469,6 +1484,66 @@ useStore()
       saldoResultante: saldoPrev - egreso.monto,
     }
     return await guardarOperacion(guardarEstado, [movimiento])
+  }
+
+  // Paga lo de un proveedor en el menú de un evento (filtro Menú → Proveedor):
+  // un egreso de Caja Eventos por lo suyo, con refId para saber qué proveedor
+  // quedó pago (lib/pago-menu-proveedor.ts). El monto se vuelve a calcular con
+  // el Almacén de este momento; si no es el que se mostró, no paga. Si con
+  // este pago quedan todos los proveedores pagos, el menú queda pagado.
+  const handlePagarProveedorMenu = async (compra: CompraDeEvento): Promise<boolean> => {
+    const clave = filtroPagar.tipo === "menu" ? filtroPagar.sub : null
+    if (!clave || clave === SIN_PROVEEDOR) return false
+    const evento = state.eventos.find((e) => e.id === compra.eventoId)
+    if (!evento || evento.cocinaPagada) return false
+    const pagos = pagosMenuProveedor(state.movimientosCaja, evento.id)
+    const nombreProv = etiquetasProveedor.get(clave) ?? clave
+    if (pagos.has(clave)) {
+      toast({ title: "Ya estaba pagado", description: `${nombreProv} ya figura pagado en este evento.` })
+      return false
+    }
+    const compras = calcularComprasSegmentadas(evento, state.recetas || [], state.insumos || [])
+    const monto =
+      Math.round(
+        compras.filter((c) => claveProveedor(c.insumo.proveedor) === clave).reduce((s, c) => s + c.costoMateriaPrima, 0) * 100,
+      ) / 100
+    if (monto <= 0 || Math.abs(monto - compra.costo) > 0.01) {
+      toast({
+        title: "Cambió el monto",
+        description: "El menú o los precios cambiaron recién. Revisá la lista y volvé a intentar.",
+        variant: "destructive",
+      })
+      return false
+    }
+    const fechaISO = new Date().toISOString()
+    const saldoPrev = (state.movimientosCaja ?? [])
+      .filter((m) => m.cajaDestino === "caja_eventos")
+      .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+    const movimiento: MovimientoCaja = {
+      id: generateId(),
+      fecha: fechaISO,
+      tipo: "egreso",
+      concepto: conceptoPagoMenuProveedor(nombreProv, nombreEventoEnCaja(evento)),
+      monto,
+      salon: evento.salon || "",
+      eventoId: evento.id,
+      cajaDestino: "caja_eventos",
+      saldoResultante: saldoPrev - monto,
+      refId: refPagoMenuProveedor(evento.id, clave),
+    }
+    const pagosDespues = new Map(pagos).set(clave, { movimientoId: movimiento.id, monto, fecha: fechaISO })
+    const menuCompleto = proveedoresSinPagar(compras, pagosDespues).length === 0
+    const ok = await guardarOperacion(
+      menuCompleto ? () => updateEvento(evento.id, { cocinaPagada: true }) : async () => true,
+      [movimiento],
+    )
+    if (ok) {
+      toast({
+        title: menuCompleto ? "Menú pagado completo" : `${nombreProv} pagado`,
+        description: `${formatCurrency(monto)} · ${nombreEventoEnCaja(evento)}`,
+      })
+    }
+    return ok
   }
 
   // Corrige solo la fecha de una seña YA pagada (servicio.fechaPagoSeña y, si existe,
@@ -2746,6 +2821,8 @@ useStore()
                   clave={filtroPagar.sub}
                   nombre={etiquetasProveedor.get(filtroPagar.sub) ?? filtroPagar.sub}
                   compras={comprasProveedorElegido}
+                  onPagar={handlePagarProveedorMenu}
+                  guardando={guardandoOperacion}
                 />
               )}
               {egresosProximos.length === 0 && serviciosPagados.length === 0 ? (

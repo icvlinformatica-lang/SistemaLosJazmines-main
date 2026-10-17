@@ -94,3 +94,59 @@ test("filtrarEgresos: Menú + proveedor deja solo los menús que llevan algo de 
   // Sin el mapa (llamadas viejas), un proveedor elegido no deja pasar nada en vez de mostrar todo.
   assert.deepEqual(filtrarEgresos(egresos, { ...FILTRO_EGRESOS_INICIAL, tipo: "menu", sub: "JOSE" }).length, 0)
 })
+
+// --- Pagar el menú por proveedor (lib/pago-menu-proveedor.ts) ---
+const { pagosMenuProveedor, pendienteMenuSinProveedoresPagos, proveedoresSinPagar, refPagoMenuProveedor, conceptoPagoMenuProveedor, totalPagosMenuProveedor } = require("../lib/pago-menu-proveedor.ts")
+const { calcularCostoEventoCajaEventos } = require("../lib/costo-evento.ts")
+
+// Pago a Grido del menú del evento A (egreso de Caja Eventos con refId).
+const pagoGrido = (monto, extra = {}) => ({ id: "mov-grido", tipo: "egreso", monto, fecha: "2026-10-17T15:00:00.000Z", eventoId: "a", cajaDestino: "caja_eventos", salon: "Quinta", concepto: conceptoPagoMenuProveedor("Grido", "Evento a"), refId: refPagoMenuProveedor("a", "GRIDO"), ...extra })
+const stateCon = (movs, patchA = {}) => ({ eventos: [{ ...A, ...patchA }], movimientosCaja: movs, pagosPersonal: [], personal: [], servicios: [], recetas, insumos, insumosBarra: [], cocteles: [] })
+const hoyCaja = new Date("2026-10-01T12:00:00")
+const menuDe = (st, incluirPagados = false) => calcularCajaEventos(st, undefined, hoyCaja, incluirPagados).egresosPendientes.find((e) => e.tipo === "menu")
+
+test("el pago por proveedor se lee por refId, no por el concepto", () => {
+  const pagos = pagosMenuProveedor([pagoGrido(450000), pagoGrido(1, { eventoId: "b", refId: refPagoMenuProveedor("b", "GRIDO") }), pagoGrido(5, { refId: null })], "a")
+  assert.deepEqual([...pagos.keys()], ["GRIDO"])
+  assert.equal(totalPagosMenuProveedor(pagos), 450000)
+  assert.equal(conceptoPagoMenuProveedor("Grido", "Ana y Luis"), "Pago menú (Grido) - Ana y Luis")
+})
+
+test("Caja Eventos: pagado Grido, el menú queda debiendo el resto; con incluirPagados va entero", () => {
+  // Menú de A hoy: Grido 100×0,3×10.000 + 100×0,1×15.000 = $450.000; JOSE $20.000; sal $500.
+  assert.equal(menuDe(stateCon([])).monto, 470500)
+  const st = stateCon([pagoGrido(440000)]) // se pagó un poco menos (precio de ese día): queda fijo
+  assert.equal(menuDe(st).monto, 20500)
+  assert.equal(menuDe(st, true).monto, 460500)
+  const compras = calcularComprasSegmentadas(A, recetas, insumos)
+  const pagos = pagosMenuProveedor(st.movimientosCaja, "a")
+  assert.equal(pendienteMenuSinProveedoresPagos(compras, pagos), 20500)
+  assert.deepEqual(proveedoresSinPagar(compras, pagos).sort(), ["JOSE", SIN_PROVEEDOR])
+})
+
+test("Costos del evento: pagado en parte cuenta lo pagado fijo y el resto al precio de hoy", () => {
+  const datos = { recetas, insumos, cocteles: [], insumosBarra: [], servicios: [], personal: [], movimientosCaja: [pagoGrido(440000)] }
+  const c = calcularCostoEventoCajaEventos(A, datos)
+  assert.equal(c.costoCocina, 460500)
+  assert.equal(c.pagadoCocina, 440000)
+  // Después se pagó el resto entero desde Caja Eventos ("Pago menú - "): se suman los dos.
+  const resto = { id: "mov-resto", tipo: "egreso", monto: 20500, fecha: "2026-10-18T15:00:00.000Z", eventoId: "a", cajaDestino: "caja_eventos", concepto: "Pago menú - Evento a" }
+  const pagado = calcularCostoEventoCajaEventos({ ...A, cocinaPagada: true }, { ...datos, movimientosCaja: [pagoGrido(440000), resto] })
+  assert.equal(pagado.costoCocina, 460500)
+  assert.equal(pagado.pagadoCocina, 460500)
+  // Sin pagos por proveedor, igual que siempre.
+  assert.equal(calcularCostoEventoCajaEventos(A, { ...datos, movimientosCaja: [] }).pagadoCocina, 0)
+})
+
+test("lista del proveedor: el evento ya pagado sale de lo que falta comprar y muestra lo pagado", () => {
+  const r = comprasDeProveedor([menu(A), menu(B), menu(C)], "GRIDO", (id) => (id === "a" ? { monto: 440000, fecha: "2026-10-17" } : undefined))
+  // Falta: vacío de B 15 kg ($150.000) y entraña de C 8 kg ($120.000).
+  assert.deepEqual(r.insumos.map((i) => [i.descripcion, i.cantidad, i.costo, i.eventos]), [["VACIO", 15, 150000, 1], ["ENTRAÑA", 8, 120000, 1]])
+  assert.equal(r.total, 270000)
+  assert.equal(r.pagado, 440000)
+  // Cada evento con sus cantidades.
+  const a = r.porEvento.find((e) => e.eventoId === "a")
+  assert.deepEqual(a.pago, { monto: 440000, fecha: "2026-10-17" })
+  assert.deepEqual(a.insumos.map((i) => [i.descripcion, i.cantidad, i.unidad, i.costo]), [["VACIO", 30, "KG", 300000], ["ENTRAÑA", 10, "KG", 150000]])
+  assert.deepEqual(r.porEvento.find((e) => e.eventoId === "c").insumos.map((i) => [i.descripcion, i.cantidad]), [["ENTRAÑA", 8]])
+})

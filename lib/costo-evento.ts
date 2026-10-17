@@ -27,6 +27,7 @@ import {
   type ServicioEvento,
 } from "./store"
 import { montoSueldoServicio, sePagaComoSueldo, señaPagadaPorSeparado } from "./servicio-sueldo"
+import { pagosMenuProveedor, pendienteMenuSinProveedoresPagos, totalPagosMenuProveedor } from "./pago-menu-proveedor"
 import {
   prefijoPagoBarra,
   prefijoPagoMenu,
@@ -112,9 +113,16 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
   // guardado al archivar (las fotos viejas no lo tienen y quedan como antes).
   const egresoMenu = evento.cocinaPagada ? ultimoEgresoEvento(datos.movimientosCaja, evento.id, prefijoPagoMenu) : undefined
   const egresoBarra = evento.barraPagada ? ultimoEgresoEvento(datos.movimientosCaja, evento.id, prefijoPagoBarra) : undefined
+  // Menú pagado en parte, por proveedor (lib/pago-menu-proveedor.ts): lo
+  // pagado a cada proveedor queda fijo y el resto va al precio de hoy. Si
+  // después se pagó el resto entero ("Pago menú - "), se suman los dos.
+  const pagosProv: ReturnType<typeof pagosMenuProveedor> = congelado ? new Map() : pagosMenuProveedor(datos.movimientosCaja, evento.id)
+  const pagadoProveedores = totalPagosMenuProveedor(pagosProv)
   const costoCocina = congelado
     ? (congelado.montoPagadoCocina ?? costoCocinaHoy)
-    : (egresoMenu?.monto ?? costoCocinaHoy)
+    : pagosProv.size === 0
+      ? (egresoMenu?.monto ?? costoCocinaHoy)
+      : pagadoProveedores + (egresoMenu?.monto ?? pendienteMenuSinProveedoresPagos(comprasCocina, pagosProv))
   const costoBarra = congelado
     ? (congelado.montoPagadoBarra ?? costoBarraHoy)
     : (egresoBarra?.monto ?? costoBarraHoy)
@@ -197,7 +205,7 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
   )
   const totalPersonal = personal.reduce((s, pe) => s + (pe.monto || 0), 0)
   const pagadoPersonal = personal.filter((pe) => pe.pagado).reduce((s, pe) => s + (pe.monto || 0), 0)
-  const pagadoCocina = evento.cocinaPagada ? costoCocina : 0
+  const pagadoCocina = evento.cocinaPagada ? costoCocina : pagadoProveedores
   const pagadoBarra = evento.barraPagada ? costoBarra : 0
 
   return {
@@ -208,7 +216,9 @@ export function calcularCostoEventoCajaEventos(evento: EventoGuardado, datos: Da
     costoBarra,
     costoCocinaHoy,
     costoBarraHoy,
-    fechaPagoCocina: congelado ? undefined : egresoMenu?.fecha,
+    fechaPagoCocina: congelado
+      ? undefined
+      : (egresoMenu?.fecha ?? (evento.cocinaPagada ? [...pagosProv.values()].map((p) => p.fecha).sort().pop() : undefined)),
     fechaPagoBarra: congelado ? undefined : egresoBarra?.fecha,
     personal,
     serviciosCalc,

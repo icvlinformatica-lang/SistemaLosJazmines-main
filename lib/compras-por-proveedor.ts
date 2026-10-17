@@ -81,50 +81,100 @@ export interface MenuEvento {
   compras: CompraInsumo[]
 }
 
+export interface InsumoDeEvento {
+  insumoId: string
+  descripcion: string
+  unidad: string
+  cantidad: number
+  costo: number
+}
+
+export interface CompraDeEvento {
+  eventoId: string
+  eventoNombre: string
+  eventoFecha?: string
+  /** Costo de hoy de lo de este proveedor en el menú del evento. */
+  costo: number
+  insumos: InsumoDeEvento[]
+  /** Si ya se le pagó a este proveedor en este evento (lib/pago-menu-proveedor.ts). */
+  pago?: { monto: number; fecha: string }
+}
+
 export interface ComprasDeProveedor {
+  /** Lo que falta comprar: insumos sumados de los eventos todavía sin pagar. */
   insumos: InsumoAComprar[]
-  porEvento: { eventoId: string; eventoNombre: string; eventoFecha?: string; costo: number }[]
+  porEvento: CompraDeEvento[]
+  /** Costo de hoy de los eventos sin pagar. */
   total: number
+  /** Lo que ya se le pagó, en los eventos de la lista. */
+  pagado: number
 }
 
 const redondear = (n: number) => Math.round(n * 100) / 100
 
 /**
  * Suma, entre los menús dados, lo que hay que comprarle a un proveedor:
- * cada insumo una sola vez con la cantidad y el costo de todos los eventos,
- * y cuánto le toca a cada evento. Los eventos sin nada de ese proveedor no
- * aparecen en `porEvento`.
+ * cada insumo una sola vez con la cantidad y el costo de todos los eventos
+ * que todavía no se le pagaron, y el detalle de cada evento (con sus
+ * cantidades). Los eventos sin nada de ese proveedor no aparecen.
+ * `pagoDe` dice si a ese proveedor ya se le pagó el menú de un evento.
  */
-export function comprasDeProveedor(menus: MenuEvento[], clave: string): ComprasDeProveedor {
+export function comprasDeProveedor(
+  menus: MenuEvento[],
+  clave: string,
+  pagoDe?: (eventoId: string) => { monto: number; fecha: string } | undefined,
+): ComprasDeProveedor {
   const insumos = new Map<string, InsumoAComprar>()
-  const porEvento: ComprasDeProveedor["porEvento"] = []
+  const porEvento: CompraDeEvento[] = []
+  let pagado = 0
   for (const m of menus) {
-    let costoEvento = 0
-    let tiene = false
+    const deEvento = new Map<string, InsumoDeEvento>()
     for (const c of m.compras) {
       if (c.cantidadNecesaria <= 0 || claveProveedor(c.insumo.proveedor) !== clave) continue
-      tiene = true
-      costoEvento += c.costoMateriaPrima
-      const prev = insumos.get(c.insumoId)
+      const prev = deEvento.get(c.insumoId)
       if (prev) {
         prev.cantidad += c.cantidadNecesaria
         prev.costo += c.costoMateriaPrima
-        prev.eventos += 1
       } else {
-        insumos.set(c.insumoId, {
+        deEvento.set(c.insumoId, {
           insumoId: c.insumoId,
           descripcion: c.insumo.descripcion,
           unidad: c.insumo.unidad,
           cantidad: c.cantidadNecesaria,
           costo: c.costoMateriaPrima,
-          eventos: 1,
         })
       }
     }
-    if (tiene) porEvento.push({ eventoId: m.eventoId, eventoNombre: m.eventoNombre, eventoFecha: m.eventoFecha, costo: redondear(costoEvento) })
+    if (deEvento.size === 0) continue
+    const pago = pagoDe?.(m.eventoId)
+    const lista = [...deEvento.values()]
+      .map((i) => ({ ...i, cantidad: redondear(i.cantidad), costo: redondear(i.costo) }))
+      .sort((a, b) => b.costo - a.costo || a.descripcion.localeCompare(b.descripcion, "es"))
+    porEvento.push({
+      eventoId: m.eventoId,
+      eventoNombre: m.eventoNombre,
+      eventoFecha: m.eventoFecha,
+      costo: redondear(lista.reduce((s, i) => s + i.costo, 0)),
+      insumos: lista,
+      ...(pago ? { pago: { monto: pago.monto, fecha: pago.fecha } } : {}),
+    })
+    if (pago) {
+      pagado += pago.monto
+      continue
+    }
+    for (const i of deEvento.values()) {
+      const prev = insumos.get(i.insumoId)
+      if (prev) {
+        prev.cantidad += i.cantidad
+        prev.costo += i.costo
+        prev.eventos += 1
+      } else {
+        insumos.set(i.insumoId, { ...i, eventos: 1 })
+      }
+    }
   }
   const lista = [...insumos.values()]
     .map((i) => ({ ...i, cantidad: redondear(i.cantidad), costo: redondear(i.costo) }))
     .sort((a, b) => b.costo - a.costo || a.descripcion.localeCompare(b.descripcion, "es"))
-  return { insumos: lista, porEvento, total: redondear(lista.reduce((s, i) => s + i.costo, 0)) }
+  return { insumos: lista, porEvento, total: redondear(lista.reduce((s, i) => s + i.costo, 0)), pagado: redondear(pagado) }
 }

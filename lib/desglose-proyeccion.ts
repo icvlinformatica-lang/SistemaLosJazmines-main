@@ -126,7 +126,9 @@ function ultimoDia(movs: MovimientoCaja[]): string | undefined {
  * app/eventos/costos al pagar.
  */
 function prefijoPago(g: EgresoPendienteServicio): string {
-  if (g.tipo === "menu") return "Pago menú - "
+  // Sin " - ": también cuenta los pagos por proveedor ("Pago menú (Grido) - …",
+  // lib/pago-menu-proveedor.ts).
+  if (g.tipo === "menu") return "Pago menú"
   if (g.tipo === "barra") return "Pago barra - "
   return `Pago ${g.tipo} ${g.servicioNombre} - `
 }
