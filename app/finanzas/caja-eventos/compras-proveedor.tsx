@@ -34,6 +34,30 @@ function fechaCorta(fecha?: string) {
   return d && m ? `${d}/${m}${a ? `/${a.slice(2)}` : ""}` : fecha
 }
 
+/** Lo dado a cuenta: monto con tilde y fecha, o una raya. */
+function ACuenta({ e }: { e: CompraDeEvento }) {
+  if (e.aCuenta <= 0) return <p className="text-xs text-muted-foreground">—</p>
+  return (
+    <p className="flex flex-wrap items-center gap-1 text-xs font-semibold text-emerald-700">
+      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+      <span className="tabular-nums">{formatCurrency(e.aCuenta)}</span>
+      {e.fechaACuenta && <span className="font-normal">el {fechaCorta(e.fechaACuenta)}</span>}
+    </p>
+  )
+}
+
+/** Lo que resta (en rojo) o, ya saldado, lo pagado al final con tilde. */
+function Resta({ e }: { e: CompraDeEvento }) {
+  if (!e.saldado) return <p className="tabular-nums text-xs font-semibold text-red-600">−{formatCurrency(e.resta)}</p>
+  return (
+    <p className="flex flex-wrap items-center gap-1 text-xs font-semibold text-emerald-700">
+      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+      <span className="tabular-nums">{formatCurrency(Math.max(0, e.pagado - e.aCuenta))}</span>
+      {e.fechaPago && <span className="font-normal">el {fechaCorta(e.fechaPago)}</span>}
+    </p>
+  )
+}
+
 export function ComprasProveedor({
   clave,
   nombre,
@@ -55,42 +79,63 @@ export function ComprasProveedor({
   const [porEventoAbierto, setPorEventoAbierto] = useState(false)
   const sinPagar = compras.porEvento.filter((e) => !e.saldado).length
 
+  const pedirACuenta = (e: CompraDeEvento) => {
+    setMontoACuenta(0)
+    setAPagar({ compra: e, modo: "cuenta" })
+  }
+  const pedirResto = (e: CompraDeEvento) => setAPagar({ compra: e, modo: "resto" })
+  const puedePagar = (e: CompraDeEvento) => !!onPagar && !sinProveedor && !e.saldado && e.resta > 0
+
   return (
-    <div className="mx-4 sm:mx-6 mb-3 rounded-lg border border-sky-200 bg-sky-50/50 px-3 py-3 text-sm">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="flex items-center gap-1.5 font-semibold text-sky-900">
-          <ShoppingCart className="h-4 w-4 shrink-0" />
-          {sinProveedor ? "Insumos sin proveedor cargado" : `Para comprarle a ${nombre}`}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Falta pagar <span className="text-sm font-bold text-red-600">−{formatCurrency(compras.total)}</span>
-        </p>
+    <div className="mx-4 sm:mx-6 mb-3 rounded-lg border border-sky-200 bg-sky-50/50 px-3 py-3 text-sm md:px-4 md:py-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 font-semibold text-sky-900 md:text-base">
+            <ShoppingCart className="h-4 w-4 shrink-0" />
+            {sinProveedor ? "Insumos sin proveedor cargado" : `Para comprarle a ${nombre}`}
+          </p>
+          <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">
+            {sinPagar} {sinPagar === 1 ? "evento" : "eventos"} sin pagar de la lista. Cantidad que pide el menú y precio de
+            hoy del Almacén, sin descontar stock.
+            {sinProveedor && " El proveedor se carga en cada insumo del Almacén."}
+          </p>
+        </div>
+        {/* Totales: en la compu, dos recuadros a la derecha; en el celu, una línea. */}
+        <div className="flex gap-2">
+          <div className="rounded-md border border-red-100 bg-card px-3 py-1.5 text-right">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Falta pagar</p>
+            <p className="tabular-nums text-sm font-bold text-red-600 md:text-base">−{formatCurrency(compras.total)}</p>
+          </div>
+          {compras.pagado > 0 && (
+            <div className="rounded-md border border-emerald-100 bg-card px-3 py-1.5 text-right">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Ya pagado</p>
+              <p className="tabular-nums text-sm font-bold text-emerald-700 md:text-base">{formatCurrency(compras.pagado)}</p>
+            </div>
+          )}
+        </div>
       </div>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        {sinPagar} {sinPagar === 1 ? "evento" : "eventos"} sin pagar de la lista
-        {compras.pagado > 0 && <> · ya pagado {formatCurrency(compras.pagado)}</>}. Cantidad que pide el menú y precio de
-        hoy del Almacén, sin descontar stock.
-        {sinProveedor && " El proveedor se carga en cada insumo del Almacén."}
-      </p>
 
       {compras.insumos.length > 0 && (
-        <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-sky-800">Para comprar (eventos sin ningún pago)</p>
-      )}
-      {compras.insumos.length > 0 && (
-        <ul className="mt-1 divide-y divide-sky-100 rounded-md border border-sky-100 bg-card">
-          {compras.insumos.map((i) => (
-            <li key={i.insumoId} className="flex items-baseline justify-between gap-3 px-3 py-1.5">
-              <span className="min-w-0">
-                <span className="font-medium">{i.descripcion}</span>
-                <span className="ml-1.5 whitespace-nowrap text-xs text-muted-foreground">
-                  {formatoCantidad.format(i.cantidad)} {i.unidad}
-                  {i.eventos > 1 && ` · ${i.eventos} eventos`}
+        <>
+          <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-sky-800">
+            Para comprar (eventos sin ningún pago)
+          </p>
+          {/* En pantalla ancha, en columnas para no dejar media pantalla vacía. */}
+          <ul className="mt-1 grid gap-px overflow-hidden rounded-md border border-sky-100 bg-sky-100 md:grid-cols-2 xl:grid-cols-3">
+            {compras.insumos.map((i) => (
+              <li key={i.insumoId} className="flex items-baseline justify-between gap-3 bg-card px-3 py-1.5">
+                <span className="min-w-0">
+                  <span className="font-medium">{i.descripcion}</span>
+                  <span className="ml-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                    {formatoCantidad.format(i.cantidad)} {i.unidad}
+                    {i.eventos > 1 && ` · ${i.eventos} eventos`}
+                  </span>
                 </span>
-              </span>
-              <span className="shrink-0 tabular-nums text-xs">{formatCurrency(i.costo)}</span>
-            </li>
-          ))}
-        </ul>
+                <span className="shrink-0 tabular-nums text-xs">{formatCurrency(i.costo)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {compras.porEvento.length === 0 ? (
@@ -110,10 +155,71 @@ export function ComprasProveedor({
             <ChevronDown className={`h-4 w-4 transition-transform ${porEventoAbierto ? "rotate-180" : ""}`} />
           </button>
           {porEventoAbierto && (
-            <div className="mt-1.5 space-y-2">
-              {compras.porEvento.map((e) => {
-                const puedePagar = !!onPagar && !sinProveedor && !e.saldado && e.resta > 0
-                return (
+            <>
+              {/* Compu: una tabla, una fila por evento, con a cuenta y resta en dos columnas. Los
+                  botones son chicos (min-h-0): el mínimo de 44 px de globals.css es para el dedo. */}
+              <div className="mt-1.5 hidden overflow-hidden rounded-md border border-sky-100 bg-card md:block">
+                <table className="w-full text-xs">
+                  <thead className="bg-sky-50 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Evento</th>
+                      <th className="px-3 py-2 text-left font-medium">Qué pide</th>
+                      <th className="px-3 py-2 text-right font-medium">Total</th>
+                      <th className="w-44 px-3 py-2 text-left font-medium">A cuenta</th>
+                      <th className="w-44 px-3 py-2 text-left font-medium">Resta</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-sky-100">
+                    {compras.porEvento.map((e) => (
+                      <tr key={e.eventoId} className={`align-top ${e.saldado ? "bg-emerald-50/60" : ""}`}>
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-foreground">{e.eventoNombre}</p>
+                          {e.eventoFecha && <p className="text-muted-foreground">{fechaCorta(e.eventoFecha)}</p>}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          <ul className="space-y-0.5">
+                            {e.insumos.map((i) => (
+                              <li key={i.insumoId}>
+                                {i.descripcion}{" "}
+                                <span className="whitespace-nowrap font-medium text-foreground">
+                                  {formatoCantidad.format(i.cantidad)} {i.unidad}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(e.costo)}</td>
+                        <td className="px-3 py-2">
+                          <ACuenta e={e} />
+                          {puedePagar(e) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-1 h-7 min-h-0 px-2.5 text-xs"
+                              disabled={guardando}
+                              onClick={() => pedirACuenta(e)}
+                            >
+                              Pagar a cuenta
+                            </Button>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Resta e={e} />
+                          {puedePagar(e) && (
+                            <Button size="sm" className="mt-1 h-7 min-h-0 px-2.5 text-xs" disabled={guardando} onClick={() => pedirResto(e)}>
+                              {e.aCuenta > 0 ? "Pagar resto" : "Pagar todo"}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Celu: una tarjeta por evento. */}
+              <div className="mt-1.5 space-y-2 md:hidden">
+                {compras.porEvento.map((e) => (
                   <div
                     key={e.eventoId}
                     className={`rounded-md border px-3 py-2 ${e.saldado ? "border-emerald-200 bg-emerald-50/60" : "border-sky-100 bg-card"}`}
@@ -132,25 +238,14 @@ export function ComprasProveedor({
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <div className="rounded border border-border/60 bg-background/60 px-2 py-1.5">
                         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">A cuenta</p>
-                        {e.aCuenta > 0 ? (
-                          <p className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            <span className="tabular-nums">{formatCurrency(e.aCuenta)}</span>
-                            {e.fechaACuenta && <span className="font-normal">el {fechaCorta(e.fechaACuenta)}</span>}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">—</p>
-                        )}
-                        {puedePagar && (
+                        <ACuenta e={e} />
+                        {puedePagar(e) && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="mt-1 h-7 w-full px-2 text-xs"
                             disabled={guardando}
-                            onClick={() => {
-                              setMontoACuenta(0)
-                              setAPagar({ compra: e, modo: "cuenta" })
-                            }}
+                            onClick={() => pedirACuenta(e)}
                           >
                             Pagar a cuenta
                           </Button>
@@ -160,22 +255,9 @@ export function ComprasProveedor({
                         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                           {e.aCuenta > 0 ? "Resta" : "Total a pagar"}
                         </p>
-                        {e.saldado ? (
-                          <p className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            <span className="tabular-nums">{formatCurrency(Math.max(0, e.pagado - e.aCuenta))}</span>
-                            {e.fechaPago && <span className="font-normal">el {fechaCorta(e.fechaPago)}</span>}
-                          </p>
-                        ) : (
-                          <p className="tabular-nums text-xs font-semibold text-red-600">−{formatCurrency(e.resta)}</p>
-                        )}
-                        {puedePagar && (
-                          <Button
-                            size="sm"
-                            className="mt-1 h-7 w-full px-2 text-xs"
-                            disabled={guardando}
-                            onClick={() => setAPagar({ compra: e, modo: "resto" })}
-                          >
+                        <Resta e={e} />
+                        {puedePagar(e) && (
+                          <Button size="sm" className="mt-1 h-7 w-full px-2 text-xs" disabled={guardando} onClick={() => pedirResto(e)}>
                             {e.aCuenta > 0 ? "Pagar resto" : "Pagar todo"}
                           </Button>
                         )}
@@ -196,9 +278,9 @@ export function ComprasProveedor({
                       ))}
                     </ul>
                   </div>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
