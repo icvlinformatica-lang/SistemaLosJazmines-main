@@ -57,7 +57,19 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { generateId, SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import {
+  generateId,
+  SALONES,
+  salonLabel,
+  salonColor,
+  SALON_COLOR_GENERAL,
+  calcularComprasSegmentadas,
+  type CalculoCompraSegmentado,
+  type EventoGuardado,
+  type MovimientoCaja,
+} from "@/lib/store"
+import { comprasDeProveedor, etiquetasProveedores, proveedoresDeCompras } from "@/lib/compras-por-proveedor"
+import { ComprasProveedor } from "./compras-proveedor"
 import {
   BarraFiltrosEgresos,
   FILTRO_EGRESOS_INICIAL,
@@ -1203,10 +1215,41 @@ useStore()
   // Filtros combinables en "Por pagar": salón (madre) + tipo de pasivo +
   // sub-filtro (tipo de servicio o evento) + búsqueda (lupa).
   const [filtroPagar, setFiltroPagar] = useState<FiltroEgresos>(FILTRO_EGRESOS_INICIAL)
-  const egresosProximosFiltrados = useMemo(
-    () => filtrarEgresos(egresosProximos, filtroPagar),
-    [egresosProximos, filtroPagar],
+  // Insumos de cocina de cada menú por pagar, para el filtro Menú → Proveedor.
+  // Es la misma cuenta que arma el monto del menú (calcularComprasSegmentadas
+  // en use-caja-eventos), así que lo del proveedor sale de esos mismos números.
+  const comprasMenuPorEvento = useMemo(() => {
+    const eventosPorId = new Map((state.eventos || []).map((ev) => [ev.id, ev]))
+    const m = new Map<string, CalculoCompraSegmentado[]>()
+    for (const e of egresosProximos) {
+      if (e.tipo !== "menu" || m.has(e.eventoId)) continue
+      const ev = eventosPorId.get(e.eventoId)
+      if (ev) m.set(e.eventoId, calcularComprasSegmentadas(ev, state.recetas || [], state.insumos || []))
+    }
+    return m
+  }, [egresosProximos, state.eventos, state.recetas, state.insumos])
+  const proveedoresMenu = useMemo(
+    () => new Map([...comprasMenuPorEvento].map(([id, compras]) => [id, proveedoresDeCompras(compras)])),
+    [comprasMenuPorEvento],
   )
+  const etiquetasProveedor = useMemo(() => etiquetasProveedores(state.insumos || []), [state.insumos])
+  const egresosProximosFiltrados = useMemo(
+    () => filtrarEgresos(egresosProximos, filtroPagar, proveedoresMenu),
+    [egresosProximos, filtroPagar, proveedoresMenu],
+  )
+  // Con un proveedor elegido: qué comprarle, sumando los menús que se ven.
+  const comprasProveedorElegido = useMemo(() => {
+    if (filtroPagar.tipo !== "menu" || !filtroPagar.sub) return null
+    const menus = egresosProximosFiltrados
+      .filter((e) => e.tipo === "menu")
+      .map((e) => ({
+        eventoId: e.eventoId,
+        eventoNombre: e.eventoNombre,
+        eventoFecha: e.eventoFecha,
+        compras: comprasMenuPorEvento.get(e.eventoId) ?? [],
+      }))
+    return comprasDeProveedor(menus, filtroPagar.sub)
+  }, [filtroPagar.tipo, filtroPagar.sub, egresosProximosFiltrados, comprasMenuPorEvento])
   // Catálogo completo de servicios activos (Finanzas → Servicios), para que
   // el sub-filtro "Servicios" de la barra de filtros muestre todo lo que
   // ofrecemos y no solo lo que tiene un pago pendiente en este momento.
@@ -1312,8 +1355,8 @@ useStore()
     [dataConHistorialServicios],
   )
   const serviciosPagadosFiltrados = useMemo(
-    () => filtrarEgresos(serviciosPagados, filtroPagar),
-    [serviciosPagados, filtroPagar],
+    () => filtrarEgresos(serviciosPagados, filtroPagar, proveedoresMenu),
+    [serviciosPagados, filtroPagar, proveedoresMenu],
   )
   // Total combinado (pendientes + ya pagados) para la paginación de "Ver
   // más" en la tabla plana de "Por pagar" (solo aplica con un salón elegido).
@@ -2690,10 +2733,19 @@ useStore()
                   egresos={egresosProximos}
                   filtro={filtroPagar}
                   catalogoServicios={catalogoServiciosActivos}
+                  proveedoresMenu={proveedoresMenu}
+                  etiquetasProveedor={etiquetasProveedor}
                   onChange={(f) => {
                     setFiltroPagar(f)
                     setFilasPagar(LIMITE_FILAS)
                   }}
+                />
+              )}
+              {comprasProveedorElegido && filtroPagar.sub && (
+                <ComprasProveedor
+                  clave={filtroPagar.sub}
+                  nombre={etiquetasProveedor.get(filtroPagar.sub) ?? filtroPagar.sub}
+                  compras={comprasProveedorElegido}
                 />
               )}
               {egresosProximos.length === 0 && serviciosPagados.length === 0 ? (

@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 79 archivos y 688 tests, todos pasan (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 80 archivos y 697 tests, todos pasan (17/10/2026) (~8 s). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -74,7 +74,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - El Vendedor **nunca** recibe costos, ganancias ni márgenes, tampoco en respuestas de la API.
 
 **Cadenas de impacto**: cambiar algo arriba mueve todo lo de abajo.
-- Insumos (precio, unidad, contenido por unidad) → recetas y cócteles → costo **en vivo** de cada evento no archivado → Costos del evento, Caja Eventos (Por pagar menú/barra) y resúmenes.
+- Insumos (precio, unidad, contenido por unidad) → recetas y cócteles → costo **en vivo** de cada evento no archivado → Costos del evento, Caja Eventos (Por pagar menú/barra) y resúmenes. El proveedor del insumo (texto libre, agrupado sin mayúsculas ni tildes) arma el filtro Menú → Proveedor de "Por pagar" (`lib/compras-por-proveedor.ts`), con la misma cuenta del monto del menú.
 - Servicios → `eventos.servicios`, que guarda una **foto** de precios (borrar un servicio primero la guarda en cada evento) → señas y saldos a proveedores (candado de señas según fecha de alta) → Caja Eventos.
 - Personal → asignaciones → pagos y sueldos (los pendientes se generan en el cliente al cargar) → Caja Eventos.
 - Plan de cuotas y pagos del evento (JSON dentro de la fila) → `movimientos_caja` (Caja Eventos / Caja Jazmines, por salón) → resumen diario y semanal (mails), planilla de cuotas, "Vienen a pagar". La seña que se cobra al crear el evento se reparte entre las dos cajas con la misma regla que las cuotas (`construirSenaInicial` en `lib/cobrar-cuota.ts`). Las filas de seña (concepto "Seña …") las suma también el control de comisiones de vendedores (`lib/hooks/use-caja-jazmines.ts`).
