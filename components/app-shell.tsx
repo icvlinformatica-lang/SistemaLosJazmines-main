@@ -11,6 +11,8 @@ import { Toaster } from "@/components/ui/toaster"
 import { ChatIAFlotante, ID_CONTENIDO_PRINCIPAL, PERFILES_CON_CHAT_IA } from "@/components/chat-ia-flotante"
 import { WelcomeModal } from "@/components/welcome-modal"
 import { RegistroVisitasAtajos } from "@/components/atajos-rapidos"
+// Escucha desde el arranque el aviso de Chrome para instalar la app (lo usa el botón de Inicio).
+import "@/components/instalar-app"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { perfilActivo, hydrated } = useProfile()
