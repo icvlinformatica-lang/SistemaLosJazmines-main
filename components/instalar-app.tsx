@@ -45,8 +45,11 @@ function suscribir(f: () => void) {
   }
 }
 
-/** Botón de Inicio, abajo al centro. No aparece si la app ya está abierta instalada. */
-export function InstalarAppBoton() {
+/**
+ * Botón de la pantalla de elegir perfil (/login), abajo. No aparece si la app
+ * ya está abierta instalada. className va en el contenedor, para ubicarlo.
+ */
+export function InstalarAppBoton({ className }: { className?: string }) {
   const evento = useSyncExternalStore(suscribir, () => eventoGuardado, () => null)
   const recien = useSyncExternalStore(suscribir, () => instaladaRecien, () => false)
   const [plataforma, setPlataforma] = useState<PlataformaInstalacion | null>(null)
@@ -80,18 +83,18 @@ export function InstalarAppBoton() {
     setPasosOpen(true)
   }
 
+  // stopPropagation: en /login tocar el fondo hace otra cosa, y los clics de
+  // la ventanita de pasos también suben por acá (portal de React).
   return (
-    <>
-      <div className="absolute bottom-6 left-1/2 z-10 -translate-x-1/2">
-        <button
-          type="button"
-          onClick={instalar}
-          className="flex items-center gap-2 whitespace-nowrap rounded-full bg-[#f5f0e8] px-4 py-2.5 text-sm font-medium text-[#2d5a3d] shadow-lg transition-colors hover:bg-[#e8e0d0]"
-        >
-          <Download className="h-4 w-4" />
-          <span>Instalar app</span>
-        </button>
-      </div>
+    <div className={className} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={instalar}
+        className="flex items-center gap-2 whitespace-nowrap rounded-full bg-[#f5f0e8] px-4 py-2.5 text-sm font-medium text-[#2d5a3d] shadow-lg transition-colors hover:bg-[#e8e0d0]"
+      >
+        <Download className="h-4 w-4" />
+        <span>Instalar app</span>
+      </button>
 
       <Dialog open={pasosOpen} onOpenChange={setPasosOpen}>
         <DialogContent className="max-w-sm">
@@ -121,6 +124,6 @@ export function InstalarAppBoton() {
           </p>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
