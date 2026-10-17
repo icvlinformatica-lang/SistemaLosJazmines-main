@@ -81,6 +81,8 @@ import {
   pagosMenuProveedor,
   proveedoresSinPagar,
   refPagoMenuProveedor,
+  refPagoMenuProveedorACuenta,
+  restaProveedor,
 } from "@/lib/pago-menu-proveedor"
 import { nombreEventoEnCaja } from "@/lib/egresos-evento"
 import { ComprasProveedor } from "./compras-proveedor"
@@ -1486,31 +1488,47 @@ useStore()
     return await guardarOperacion(guardarEstado, [movimiento])
   }
 
-  // Paga lo de un proveedor en el menú de un evento (filtro Menú → Proveedor):
-  // un egreso de Caja Eventos por lo suyo, con refId para saber qué proveedor
-  // quedó pago (lib/pago-menu-proveedor.ts). El monto se vuelve a calcular con
-  // el Almacén de este momento; si no es el que se mostró, no paga. Si con
-  // este pago quedan todos los proveedores pagos, el menú queda pagado.
-  const handlePagarProveedorMenu = async (compra: CompraDeEvento): Promise<boolean> => {
+  // Paga lo de un proveedor en el menú de un evento (filtro Menú → Proveedor),
+  // como la seña y el saldo de un servicio: "a cuenta" (un monto que se elige;
+  // el resto queda fiado) o "resto" (lo que falta: lo salda). Cada pago es un
+  // egreso de Caja Eventos con refId para saber de qué proveedor es
+  // (lib/pago-menu-proveedor.ts). Lo que falta se vuelve a calcular con el
+  // Almacén de este momento; si no es lo que se mostró, no paga. Si con el
+  // resto quedan todos los proveedores saldados, el menú queda pagado.
+  const handlePagarProveedorMenu = async (
+    compra: CompraDeEvento,
+    modo: "cuenta" | "resto",
+    montoACuenta = 0,
+  ): Promise<boolean> => {
     const clave = filtroPagar.tipo === "menu" ? filtroPagar.sub : null
     if (!clave || clave === SIN_PROVEEDOR) return false
     const evento = state.eventos.find((e) => e.id === compra.eventoId)
     if (!evento || evento.cocinaPagada) return false
     const pagos = pagosMenuProveedor(state.movimientosCaja, evento.id)
     const nombreProv = etiquetasProveedor.get(clave) ?? clave
-    if (pagos.has(clave)) {
+    if (pagos.get(clave)?.saldado) {
       toast({ title: "Ya estaba pagado", description: `${nombreProv} ya figura pagado en este evento.` })
       return false
     }
     const compras = calcularComprasSegmentadas(evento, state.recetas || [], state.insumos || [])
-    const monto =
-      Math.round(
-        compras.filter((c) => claveProveedor(c.insumo.proveedor) === clave).reduce((s, c) => s + c.costoMateriaPrima, 0) * 100,
-      ) / 100
-    if (monto <= 0 || Math.abs(monto - compra.costo) > 0.01) {
+    const costoHoy = compras
+      .filter((c) => c.cantidadNecesaria > 0 && claveProveedor(c.insumo.proveedor) === clave)
+      .reduce((s, c) => s + c.costoMateriaPrima, 0)
+    const resta = restaProveedor(costoHoy, pagos.get(clave))
+    if (resta <= 0 || Math.abs(resta - compra.resta) > 0.01) {
       toast({
         title: "Cambió el monto",
-        description: "El menú o los precios cambiaron recién. Revisá la lista y volvé a intentar.",
+        description: "El menú, los precios o los pagos cambiaron recién. Revisá la lista y volvé a intentar.",
+        variant: "destructive",
+      })
+      return false
+    }
+    const aCuenta = modo === "cuenta"
+    const monto = aCuenta ? Math.round(montoACuenta * 100) / 100 : resta
+    if (aCuenta && (!(monto > 0) || monto >= resta - 0.005)) {
+      toast({
+        title: "Revisá el monto",
+        description: `A cuenta tiene que ser más de $0 y menos de lo que resta (${formatCurrency(resta)}). Para pagar todo, usá "Pagar resto".`,
         variant: "destructive",
       })
       return false
@@ -1523,24 +1541,32 @@ useStore()
       id: generateId(),
       fecha: fechaISO,
       tipo: "egreso",
-      concepto: conceptoPagoMenuProveedor(nombreProv, nombreEventoEnCaja(evento)),
+      concepto: conceptoPagoMenuProveedor(nombreProv, nombreEventoEnCaja(evento), aCuenta),
       monto,
       salon: evento.salon || "",
       eventoId: evento.id,
       cajaDestino: "caja_eventos",
       saldoResultante: saldoPrev - monto,
-      refId: refPagoMenuProveedor(evento.id, clave),
+      refId: aCuenta ? refPagoMenuProveedorACuenta(evento.id, clave) : refPagoMenuProveedor(evento.id, clave),
     }
-    const pagosDespues = new Map(pagos).set(clave, { movimientoId: movimiento.id, monto, fecha: fechaISO })
-    const menuCompleto = proveedoresSinPagar(compras, pagosDespues).length === 0
+    const previo = pagos.get(clave)
+    const pagosDespues = new Map(pagos).set(clave, {
+      monto: (previo?.monto ?? 0) + monto,
+      aCuenta: (previo?.aCuenta ?? 0) + (aCuenta ? monto : 0),
+      fecha: fechaISO,
+      saldado: !aCuenta,
+    })
+    const menuCompleto = !aCuenta && proveedoresSinPagar(compras, pagosDespues).length === 0
     const ok = await guardarOperacion(
       menuCompleto ? () => updateEvento(evento.id, { cocinaPagada: true }) : async () => true,
       [movimiento],
     )
     if (ok) {
       toast({
-        title: menuCompleto ? "Menú pagado completo" : `${nombreProv} pagado`,
-        description: `${formatCurrency(monto)} · ${nombreEventoEnCaja(evento)}`,
+        title: menuCompleto ? "Menú pagado completo" : aCuenta ? `${nombreProv}: pagado a cuenta` : `${nombreProv} pagado`,
+        description: aCuenta
+          ? `${formatCurrency(monto)} · resta ${formatCurrency(Math.max(0, resta - monto))} · ${nombreEventoEnCaja(evento)}`
+          : `${formatCurrency(monto)} · ${nombreEventoEnCaja(evento)}`,
       })
     }
     return ok

@@ -96,7 +96,7 @@ test("filtrarEgresos: Menú + proveedor deja solo los menús que llevan algo de 
 })
 
 // --- Pagar el menú por proveedor (lib/pago-menu-proveedor.ts) ---
-const { pagosMenuProveedor, pendienteMenuSinProveedoresPagos, proveedoresSinPagar, refPagoMenuProveedor, conceptoPagoMenuProveedor, totalPagosMenuProveedor } = require("../lib/pago-menu-proveedor.ts")
+const { pagosMenuProveedor, pendienteMenuSinProveedoresPagos, proveedoresSinPagar, refPagoMenuProveedor, refPagoMenuProveedorACuenta, conceptoPagoMenuProveedor, totalPagosMenuProveedor, restaProveedor } = require("../lib/pago-menu-proveedor.ts")
 const { calcularCostoEventoCajaEventos } = require("../lib/costo-evento.ts")
 
 // Pago a Grido del menú del evento A (egreso de Caja Eventos con refId).
@@ -139,14 +139,50 @@ test("Costos del evento: pagado en parte cuenta lo pagado fijo y el resto al pre
 })
 
 test("lista del proveedor: el evento ya pagado sale de lo que falta comprar y muestra lo pagado", () => {
-  const r = comprasDeProveedor([menu(A), menu(B), menu(C)], "GRIDO", (id) => (id === "a" ? { monto: 440000, fecha: "2026-10-17" } : undefined))
+  const pagoA = { monto: 440000, aCuenta: 0, fecha: "2026-10-17", saldado: true }
+  const r = comprasDeProveedor([menu(A), menu(B), menu(C)], "GRIDO", (id) => (id === "a" ? pagoA : undefined))
   // Falta: vacío de B 15 kg ($150.000) y entraña de C 8 kg ($120.000).
   assert.deepEqual(r.insumos.map((i) => [i.descripcion, i.cantidad, i.costo, i.eventos]), [["VACIO", 15, 150000, 1], ["ENTRAÑA", 8, 120000, 1]])
   assert.equal(r.total, 270000)
   assert.equal(r.pagado, 440000)
   // Cada evento con sus cantidades.
   const a = r.porEvento.find((e) => e.eventoId === "a")
-  assert.deepEqual(a.pago, { monto: 440000, fecha: "2026-10-17" })
+  assert.deepEqual([a.saldado, a.pagado, a.resta, a.fechaPago], [true, 440000, 0, "2026-10-17"])
   assert.deepEqual(a.insumos.map((i) => [i.descripcion, i.cantidad, i.unidad, i.costo]), [["VACIO", 30, "KG", 300000], ["ENTRAÑA", 10, "KG", 150000]])
   assert.deepEqual(r.porEvento.find((e) => e.eventoId === "c").insumos.map((i) => [i.descripcion, i.cantidad]), [["ENTRAÑA", 8]])
+})
+
+// --- A cuenta y resto, como seña y saldo ---
+const aCuentaGrido = (monto, extra = {}) => pagoGrido(monto, { id: "mov-cuenta", concepto: conceptoPagoMenuProveedor("Grido", "Evento a", true), refId: refPagoMenuProveedorACuenta("a", "GRIDO"), fecha: "2026-10-10T15:00:00.000Z", ...extra })
+
+test("a cuenta: Grido queda debiendo su costo de hoy menos lo que se le dio", () => {
+  assert.equal(conceptoPagoMenuProveedor("Grido", "Ana", true), "Pago menú (Grido) a cuenta - Ana")
+  const st = stateCon([aCuentaGrido(200000)])
+  const pagos = pagosMenuProveedor(st.movimientosCaja, "a")
+  assert.deepEqual(pagos.get("GRIDO"), { monto: 200000, aCuenta: 200000, fecha: "2026-10-10T15:00:00.000Z", fechaACuenta: "2026-10-10T15:00:00.000Z", saldado: false })
+  // Grido $450.000 − $200.000 a cuenta = $250.000; más JOSE $20.000 y sal $500.
+  assert.equal(restaProveedor(450000, pagos.get("GRIDO")), 250000)
+  assert.equal(menuDe(st).monto, 270500)
+  assert.equal(menuDe(st, true).monto, 470500)
+  assert.deepEqual(proveedoresSinPagar(calcularComprasSegmentadas(A, recetas, insumos), pagos).sort(), ["GRIDO", "JOSE", SIN_PROVEEDOR])
+  const c = calcularCostoEventoCajaEventos(A, { recetas, insumos, cocteles: [], insumosBarra: [], servicios: [], personal: [], movimientosCaja: st.movimientosCaja })
+  assert.deepEqual([c.costoCocina, c.pagadoCocina], [470500, 200000])
+  // En la lista: dos columnas, a cuenta y lo que resta; los insumos de A ya no están para comprar.
+  const r = comprasDeProveedor([menu(A), menu(B)], "GRIDO", (id) => pagosMenuProveedor(st.movimientosCaja, id).get("GRIDO"))
+  const a = r.porEvento.find((e) => e.eventoId === "a")
+  assert.deepEqual([a.costo, a.aCuenta, a.resta, a.saldado, a.pagado], [450000, 200000, 250000, false, 200000])
+  assert.equal(r.total, 250000 + 150000)
+  assert.deepEqual(r.insumos.map((i) => [i.descripcion, i.cantidad]), [["VACIO", 15]])
+})
+
+test("resto: después de a cuenta, pagar el resto salda a Grido", () => {
+  const st = stateCon([aCuentaGrido(200000), pagoGrido(250000)])
+  const pagos = pagosMenuProveedor(st.movimientosCaja, "a")
+  assert.deepEqual([pagos.get("GRIDO").monto, pagos.get("GRIDO").aCuenta, pagos.get("GRIDO").saldado], [450000, 200000, true])
+  assert.equal(restaProveedor(450000, pagos.get("GRIDO")), 0)
+  assert.equal(menuDe(st).monto, 20500)
+  assert.deepEqual(proveedoresSinPagar(calcularComprasSegmentadas(A, recetas, insumos), pagos).sort(), ["JOSE", SIN_PROVEEDOR])
+  // Si el precio sube después de saldarlo, lo de Grido no cambia.
+  const caro = insumos.map((i) => (i.id === "vacio" ? { ...i, precioUnitario: 20000 } : i))
+  assert.equal(pendienteMenuSinProveedoresPagos(calcularComprasSegmentadas(A, recetas, caro), pagos), 20500)
 })

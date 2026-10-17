@@ -96,15 +96,35 @@ export interface CompraDeEvento {
   /** Costo de hoy de lo de este proveedor en el menú del evento. */
   costo: number
   insumos: InsumoDeEvento[]
-  /** Si ya se le pagó a este proveedor en este evento (lib/pago-menu-proveedor.ts). */
-  pago?: { monto: number; fecha: string }
+  // Pagos a este proveedor en este evento (lib/pago-menu-proveedor.ts), como
+  // la seña y el saldo de un servicio: una parte a cuenta y después el resto.
+  /** Lo que se le dio a cuenta. */
+  aCuenta: number
+  fechaACuenta?: string
+  /** Ya se le pagó el resto (o todo de una vez). */
+  saldado: boolean
+  /** Fecha del último pago. */
+  fechaPago?: string
+  /** Todo lo que se le pagó. */
+  pagado: number
+  /** Lo que falta pagarle: costo de hoy menos lo dado a cuenta (0 si está saldado). */
+  resta: number
+}
+
+/** Pagos a un proveedor en un evento (PagoProveedorMenu de lib/pago-menu-proveedor.ts). */
+export interface PagoDeEvento {
+  monto: number
+  aCuenta: number
+  fecha: string
+  fechaACuenta?: string
+  saldado: boolean
 }
 
 export interface ComprasDeProveedor {
-  /** Lo que falta comprar: insumos sumados de los eventos todavía sin pagar. */
+  /** Lo que falta comprar: insumos sumados de los eventos sin ningún pago. */
   insumos: InsumoAComprar[]
   porEvento: CompraDeEvento[]
-  /** Costo de hoy de los eventos sin pagar. */
+  /** Lo que falta pagarle, sumando lo que resta de cada evento. */
   total: number
   /** Lo que ya se le pagó, en los eventos de la lista. */
   pagado: number
@@ -115,18 +135,19 @@ const redondear = (n: number) => Math.round(n * 100) / 100
 /**
  * Suma, entre los menús dados, lo que hay que comprarle a un proveedor:
  * cada insumo una sola vez con la cantidad y el costo de todos los eventos
- * que todavía no se le pagaron, y el detalle de cada evento (con sus
- * cantidades). Los eventos sin nada de ese proveedor no aparecen.
- * `pagoDe` dice si a ese proveedor ya se le pagó el menú de un evento.
+ * en los que todavía no se le pagó nada, y el detalle de cada evento (con sus
+ * cantidades, lo pagado y lo que resta). Los eventos sin nada de ese
+ * proveedor no aparecen. `pagoDe` da los pagos a ese proveedor en un evento.
  */
 export function comprasDeProveedor(
   menus: MenuEvento[],
   clave: string,
-  pagoDe?: (eventoId: string) => { monto: number; fecha: string } | undefined,
+  pagoDe?: (eventoId: string) => PagoDeEvento | undefined,
 ): ComprasDeProveedor {
   const insumos = new Map<string, InsumoAComprar>()
   const porEvento: CompraDeEvento[] = []
   let pagado = 0
+  let falta = 0
   for (const m of menus) {
     const deEvento = new Map<string, InsumoDeEvento>()
     for (const c of m.compras) {
@@ -150,15 +171,26 @@ export function comprasDeProveedor(
     const lista = [...deEvento.values()]
       .map((i) => ({ ...i, cantidad: redondear(i.cantidad), costo: redondear(i.costo) }))
       .sort((a, b) => b.costo - a.costo || a.descripcion.localeCompare(b.descripcion, "es"))
+    const costo = redondear(lista.reduce((s, i) => s + i.costo, 0))
+    const aCuenta = redondear(pago?.aCuenta ?? 0)
+    const saldado = pago?.saldado === true
+    // Misma cuenta que restaProveedor (lib/pago-menu-proveedor.ts).
+    const resta = saldado ? 0 : Math.max(0, redondear(costo - aCuenta))
     porEvento.push({
       eventoId: m.eventoId,
       eventoNombre: m.eventoNombre,
       eventoFecha: m.eventoFecha,
-      costo: redondear(lista.reduce((s, i) => s + i.costo, 0)),
+      costo,
       insumos: lista,
-      ...(pago ? { pago: { monto: pago.monto, fecha: pago.fecha } } : {}),
+      aCuenta,
+      ...(pago?.fechaACuenta ? { fechaACuenta: pago.fechaACuenta } : {}),
+      saldado,
+      ...(pago?.fecha ? { fechaPago: pago.fecha } : {}),
+      pagado: redondear(pago?.monto ?? 0),
+      resta,
     })
-    if (pago) {
+    falta += resta
+    if (pago && pago.monto > 0) {
       pagado += pago.monto
       continue
     }
@@ -176,5 +208,5 @@ export function comprasDeProveedor(
   const lista = [...insumos.values()]
     .map((i) => ({ ...i, cantidad: redondear(i.cantidad), costo: redondear(i.costo) }))
     .sort((a, b) => b.costo - a.costo || a.descripcion.localeCompare(b.descripcion, "es"))
-  return { insumos: lista, porEvento, total: redondear(lista.reduce((s, i) => s + i.costo, 0)), pagado: redondear(pagado) }
+  return { insumos: lista, porEvento, total: redondear(falta), pagado: redondear(pagado) }
 }
