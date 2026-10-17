@@ -1,10 +1,16 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
+import { puedeEscribirCotizador, MOTIVO_COTIZADOR } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 import { sql } from "@/lib/db"
 
 // Devuelve un paquete de la papelera a "Paquetes reutilizables por salón",
 // tal cual estaba (mismo id, mismos servicios y precios).
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Escribir en el cotizador: el Vendedor, Administración y Soporte
+  // (lib/permisos-escritura.ts). Antes cualquier sesión podía.
+  const prohibido = await exigirPerfil(req, puedeEscribirCotizador, MOTIVO_COTIZADOR, "/api/vendedor/papelera/paquetes/[id]/restaurar")
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const filas = await sql`

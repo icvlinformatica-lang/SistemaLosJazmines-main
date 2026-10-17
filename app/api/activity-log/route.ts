@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic'
 // redeploy: env vars restored
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { tieneAccesoTotal } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 
 export async function GET(req: Request) {
   try {
@@ -73,7 +75,11 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE() {
+// Vaciar el historial (Configuración > Actividad): solo Administración y
+// Soporte. Antes cualquier sesión podía borrarlo entero.
+export async function DELETE(req: Request) {
+  const prohibido = await exigirPerfil(req, tieneAccesoTotal, "Solo Administración puede vaciar el historial de actividad.", "/api/activity-log")
+  if (prohibido) return prohibido
   try {
     await sql`DELETE FROM activity_log`
     return NextResponse.json({ ok: true })

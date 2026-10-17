@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
+import { puedeEscribirCotizador, MOTIVO_COTIZADOR } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 import { sql } from "@/lib/db"
 
 /**
@@ -81,6 +83,10 @@ interface ServicioCatalogo {
 }
 
 export async function POST(req: Request) {
+  // Escribir en el cotizador: el Vendedor, Administración y Soporte
+  // (lib/permisos-escritura.ts). Antes cualquier sesión podía.
+  const prohibido = await exigirPerfil(req, puedeEscribirCotizador, MOTIVO_COTIZADOR, "/api/vendedor/paquetes")
+  if (prohibido) return prohibido
   try {
     const body = await req.json().catch(() => ({}))
     const { nombre, salon, descripcion, capacidadMinima, capacidadMaxima, servicios } = body || {}

@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { tieneAccesoTotal } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 
 // en_cotizador (scripts/014) se lee con to_jsonb para no romper si la
 // migración todavía no se aplicó: en ese caso vale false.
@@ -42,6 +44,9 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Solo Administración y Soporte (ver el POST en ../route.ts).
+  const prohibido = await exigirPerfil(request, tieneAccesoTotal, "Solo Administración puede cambiar las barras.", "/api/barra-templates/[id]")
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const body = await request.json()
@@ -88,6 +93,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const prohibido = await exigirPerfil(request, tieneAccesoTotal, "Solo Administración puede cambiar las barras.", "/api/barra-templates/[id]")
+  if (prohibido) return prohibido
   try {
     const { id } = await params
 

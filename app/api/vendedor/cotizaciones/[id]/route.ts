@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
+import { puedeEscribirCotizador, MOTIVO_COTIZADOR } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 import { sql } from "@/lib/db"
 import { normalizarDietasDetalle } from "@/lib/dietas-evento"
 import { normalizarOrigen } from "@/lib/origen-cliente"
@@ -44,6 +46,10 @@ function parseJson(raw: unknown): any {
 // (misma info + eliminado_at/eliminado_por) para poder recuperarla después
 // desde la papelera (ver /api/vendedor/papelera y .../papelera/cotizaciones).
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Escribir en el cotizador: el Vendedor, Administración y Soporte
+  // (lib/permisos-escritura.ts). Antes cualquier sesión podía.
+  const prohibido = await exigirPerfil(req, puedeEscribirCotizador, MOTIVO_COTIZADOR, "/api/vendedor/cotizaciones/[id]")
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const eliminadoPor = usuarioDesdeCookie(req)
