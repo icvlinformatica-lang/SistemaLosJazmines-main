@@ -14,6 +14,7 @@ import { ChatAyuda } from "@/components/chat-ayuda"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
 import { AtajosRapidos } from "@/components/atajos-rapidos"
+import { InstalarAppBoton } from "@/components/instalar-app"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
 
@@ -208,6 +209,9 @@ export default function HomePage() {
           <HelpCircle className="h-5 w-5" />
         </button>
       </div>
+
+      {/* Instalar la app en el celular, abajo al centro (entre los atajos y el borde). */}
+      <InstalarAppBoton />
 
       <NovedadesModal open={novedadesOpen} onOpenChange={setNovedadesOpen} />
       <ResumenDiarioModal open={resumenOpen} onOpenChange={setResumenOpen} soloDiario={perfilActivo?.id === "cobro"} />
