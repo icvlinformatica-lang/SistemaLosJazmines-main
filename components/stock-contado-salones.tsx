@@ -9,7 +9,7 @@
 import { useEffect, useState, type CSSProperties } from "react"
 import { useProfile } from "@/lib/profile-context"
 import { useStore } from "@/lib/store-context"
-import { salonColor } from "@/lib/store"
+import { salonColor, salonLabel } from "@/lib/store"
 import {
   fechaHoraCortaArgentina,
   puedeVerConsolidado,
@@ -62,7 +62,10 @@ export function useStockContadoSalones(sector: SectorStock): StockContado {
   }, [permitido, sector, version])
 
   const { configuracionCajas } = useStore()
-  const salonesConColor = salones.map((s) => ({ ...s, color: salonColor(s.id, configuracionCajas) }))
+  // El nombre sale de salonLabel (la configuración que ya tiene la pantalla) y
+  // no del que mandó el servidor al cargar: así, al renombrar un salón en
+  // Configuración, la columna cambia enseguida y dice "Salón" y no "Salon".
+  const salonesConColor = salones.map((s) => ({ ...s, nombre: salonLabel(s.id), color: salonColor(s.id, configuracionCajas) }))
 
   return {
     visible: permitido && !error,
@@ -115,7 +118,7 @@ export function StockContadoCelda({
       <PopoverContent className="w-72 p-3 text-xs" align="end">
         <p className="mb-2 font-semibold">Contado en salones</p>
         <div className="space-y-1">
-          {[...salones.map((s) => ({ id: s.id, nombre: s.nombre })), ...extras.map((e) => ({ id: e.salon, nombre: e.salon }))].map(
+          {[...salones.map((s) => ({ id: s.id, nombre: s.nombre })), ...extras.map((e) => ({ id: e.salon, nombre: salonLabel(e.salon) }))].map(
             (s) => {
               const d = porSalon.get(s.id)
               return (
