@@ -294,7 +294,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Mantener el registro global de nombres personalizados de salones al día,
   // para que salonLabel() muestre el nombre elegido en todo el sistema.
-  useEffect(() => {
+  // Se hace durante el render y no en un useEffect: el efecto corre DESPUÉS de
+  // que las pantallas ya se dibujaron, así que las que no vuelven a dibujarse
+  // solas (por ejemplo los encabezados de Stock por salón en Almacén y Barra)
+  // se quedaban con el nombre viejo hasta recargar.
+  useMemo(() => {
     setSalonNombresCustom(state.configuracionCajas)
   }, [state.configuracionCajas])
 
