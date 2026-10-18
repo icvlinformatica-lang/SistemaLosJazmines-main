@@ -278,7 +278,8 @@ export interface EstadoMaqueta {
   /** Colores de los globos y los detalles (según el festejo). */
   paleta: string[]
   festejo: string | null
-  /** Globos en la entrada: aparecen al elegir el festejo. */
+  /** Arco de globos en la entrada. Apagado desde el 18/10/2026: el dueño lo vio
+   *  raro (todos los festejos tenían globos); el festejo lo dice el atril. */
   globos: boolean
   /** Atril de la entrada: título según el festejo y la fecha, si ya la eligió. */
   cartel: { titulo: string; fecha: string | null } | null
@@ -360,7 +361,7 @@ export function estadoMaqueta(e: EntradaMaqueta): EstadoMaqueta {
     ambiente: ambienteDeSalon(e.salon?.clave, e.vistaCasona ?? "jardin"),
     paleta: paletaFestejo(festejo),
     festejo,
-    globos: !!festejo,
+    globos: false,
     cartel: festejo ? { titulo: tituloCartel(festejo), fecha: e.fecha ? fechaLarga(e.fecha, false) : null } : null,
     salon: e.salon?.nombre ?? null,
     mesas: e.salon ? personasPorMesa(e.adultos, MAX_MESAS) : [],
@@ -383,7 +384,7 @@ export function estadoMuestra(): EstadoMaqueta {
     ambiente: ambienteDeSalon("Casona", "jardin"),
     paleta: PALETA_FIESTA,
     festejo: null,
-    globos: true,
+    globos: false,
     cartel: { titulo: "Bienvenidos", fecha: null },
     salon: null,
     mesas: personasPorMesa(100, MAX_MESAS),

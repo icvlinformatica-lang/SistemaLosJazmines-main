@@ -124,9 +124,9 @@ function entrada(cambios = {}) {
   }
 }
 
-test("antes de elegir el salón: solo los globos y el atril del festejo", () => {
+test("antes de elegir el salón: solo el atril del festejo, sin globos", () => {
   const e = maq.estadoMaqueta(entrada({ salon: null, fecha: null, alcanzado: 0 }))
-  assert.equal(e.globos, true)
+  assert.equal(e.globos, false)
   assert.deepEqual(e.cartel, { titulo: "Mis XV", fecha: null })
   assert.deepEqual(e.mesas, [])
   assert.deepEqual(e.piezas, {})

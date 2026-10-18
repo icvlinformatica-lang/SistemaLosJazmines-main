@@ -78,7 +78,7 @@ const ENCUADRES = {
   portada: { objetivo: [0, 0.2, 0.3], distancia: 22.5, elevacion: 0.6, giro: -0.38, aspecto: 1.5 },
   isla: { objetivo: [0, 0.3, 0.3], distancia: 20.5, elevacion: 0.7, giro: 0, aspecto: 1.85 },
   entrada: { objetivo: [0.1, 0.8, 4.0], distancia: 9.2, elevacion: 0.44, giro: -0.12, aspecto: 1.85 },
-  cartel: { objetivo: [1.45, 0.95, 4.85], distancia: 5.2, elevacion: 0.24, giro: -0.24, aspecto: 1.85 },
+  cartel: { objetivo: [1.5, 1.4, 4.85], distancia: 6.6, elevacion: 0.24, giro: -0.24, aspecto: 1.85 },
   mesas: { objetivo: [0, 0.45, 1.3], distancia: 14, elevacion: 0.8, giro: 0, aspecto: 1.85 },
   mesa: { objetivo: [1.85, 0.8, 0.85], distancia: 5.4, elevacion: 0.8, giro: -0.32, aspecto: 1.85 },
   barra: { objetivo: [-6.3, 0.95, -1.1], distancia: 7.4, elevacion: 0.42, giro: 0.72, aspecto: 1.85 },
