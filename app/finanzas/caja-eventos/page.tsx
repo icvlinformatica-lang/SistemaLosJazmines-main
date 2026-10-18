@@ -2145,6 +2145,36 @@ useStore()
       </TableRow>
     ))
 
+  // Celdas del evento en la vista de un proveedor (ComprasProveedor): las
+  // mismas de renderFilasPagar, para que se vea como el resto de "Por pagar".
+  const renderCeldasEventoProveedor = (eventoId: string) => {
+    const eg = egresosProximosFiltrados.find((e) => e.eventoId === eventoId)
+    return (
+      <>
+        <TableCell className="text-sm text-muted-foreground align-top">{formatFechaCarga(eg?.eventoFechaCarga)}</TableCell>
+        <TableCell className="text-sm text-muted-foreground align-top">
+          {eg?.eventoFecha ? formatFechaEvento(eg.eventoFecha) : "—"}
+        </TableCell>
+        <TableCell className="align-top">
+          <p className="text-sm">{eg?.eventoNombre ?? "—"}</p>
+          {eg?.salon && (
+            <p className="inline-flex items-center gap-1 align-middle text-xs text-muted-foreground">
+              <SalonDot salon={eg.salon} size={7} />
+              {salonLabel(eg.salon)}
+            </p>
+          )}
+        </TableCell>
+        <TableCell className="text-sm align-top">
+          {eg?.eventoTipo ? (
+            <Badge variant="secondary" className="font-normal">{eg.eventoTipo}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+      </>
+    )
+  }
+
   // Selector de salón estilo perfiles al entrar
   if (selectorAbierto) {
     return (
@@ -2842,15 +2872,6 @@ useStore()
                   }}
                 />
               )}
-              {comprasProveedorElegido && filtroPagar.sub && (
-                <ComprasProveedor
-                  clave={filtroPagar.sub}
-                  nombre={etiquetasProveedor.get(filtroPagar.sub) ?? filtroPagar.sub}
-                  compras={comprasProveedorElegido}
-                  onPagar={handlePagarProveedorMenu}
-                  guardando={guardandoOperacion}
-                />
-              )}
               {egresosProximos.length === 0 && serviciosPagados.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos a proveedores pendientes.
@@ -2859,6 +2880,17 @@ useStore()
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos pendientes que coincidan con el filtro.
                 </p>
+              ) : comprasProveedorElegido && filtroPagar.sub ? (
+                // Con un proveedor elegido, la tabla muestra lo de ese
+                // proveedor en cada menú (no el menú entero).
+                <ComprasProveedor
+                  clave={filtroPagar.sub}
+                  nombre={etiquetasProveedor.get(filtroPagar.sub) ?? filtroPagar.sub}
+                  compras={comprasProveedorElegido}
+                  onPagar={handlePagarProveedorMenu}
+                  guardando={guardandoOperacion}
+                  celdasEvento={renderCeldasEventoProveedor}
+                />
               ) : gruposSueldoPorPersona ? (
                 <Table>
                   <TableHeader>
@@ -2995,7 +3027,7 @@ useStore()
                   </TableBody>
                 </Table>
               )}
-              {salonFiltro !== "todos" && !gruposSueldoPorPersona && totalFilasPagarCombinado > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && !gruposSueldoPorPersona && !comprasProveedorElegido && totalFilasPagarCombinado > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
                   {filasPagar < totalFilasPagarCombinado ? (
                     <Button
@@ -3019,7 +3051,19 @@ useStore()
                   )}
                 </div>
               )}
-              {egresosProximosFiltrados.length > 0 && (
+              {comprasProveedorElegido && filtroPagar.sub && comprasProveedorElegido.porEvento.length > 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-x-4 px-6 pt-3 mt-1 border-t border-border">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Falta pagarle a {etiquetasProveedor.get(filtroPagar.sub) ?? "este proveedor"}
+                    {comprasProveedorElegido.pagado > 0 && (
+                      <span className="ml-2 text-xs font-normal">
+                        · ya pagado <span className="text-emerald-700">{formatCurrency(comprasProveedorElegido.pagado)}</span>
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-base font-bold text-red-600">−{formatCurrency(comprasProveedorElegido.total)}</span>
+                </div>
+              ) : egresosProximosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">
                     {!filtroPagarActivo ? `Total por pagar (${DIAS_TOTAL_PAGO} días)` : "Total del filtro"}
