@@ -99,11 +99,21 @@ probar a 390 px sin scroll horizontal).
   una invitación.
 - **Letra**: Bodoni Moda (`app/clientes/fuentes`, licencia OFL) solo para
   títulos y montos; el resto, la letra del sistema.
-- **Lo memorable es una sola cosa**: la guirnalda de luces que hace de
-  indicador de pasos (`components/clientes/guirnalda.tsx`). Cada lamparita
-  es un paso y, cuando la fiesta está lista, se prenden todas. El resto queda
-  sobrio: sin animaciones de entrada; solo se mueve lo que responde a un
-  toque (el total que corre hasta el valor nuevo).
+- **Lo memorable es una sola cosa**: la maqueta 3D del jardín de noche
+  (`components/clientes/maqueta/`), que se arma sola con cada elección. Es
+  el juego: la persona ve crecer su fiesta. La guirnalda de luces sigue siendo
+  el indicador de pasos (`components/clientes/guirnalda.tsx`), apoyada arriba
+  de la maqueta; cada lamparita es un paso y al final se prenden todas. El
+  resto de la pantalla queda sobrio: lo único que se mueve fuera de la
+  maqueta es lo que responde a un toque (el total que corre, el aviso
+  "Sumaste…", el presupuesto que llega girando como una invitación).
+- **La maqueta**: formas simples hechas en código (sin modelos que bajar),
+  con los colores de arriba más madera; los globos y detalles toman el color
+  del festejo. Es ilustración: nunca lleva precios ni datos de nadie. Cada
+  pieza nueva cae con un rebote y la cámara va a mostrarla. Con "reducir
+  movimiento" queda quieta (sin vaivén, sin vuelta de cámara ni papelitos).
+  three.js se baja aparte y solo en `/clientes`; sin WebGL, la pantalla queda
+  como antes, sin maqueta.
 - **Lo que suma cada opción** va a la derecha: en dorado lo que todavía se
   puede sumar ("+ $ 120.000") y en crema lo que ya suma lo elegido.
 

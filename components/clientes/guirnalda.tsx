@@ -102,7 +102,9 @@ export function Guirnalda({
         })}
       </svg>
       {onIr && (
-        <div className="absolute inset-0">
+        // Solo las lamparitas reciben el toque: así, puesta sobre la maqueta
+        // 3D, el resto se puede arrastrar para girarla.
+        <div className="pointer-events-none absolute inset-0">
           {lamparas.map((l) => {
             const puede = l.i <= alcanzado && (completa || l.i !== actual)
             return (
@@ -113,7 +115,7 @@ export function Guirnalda({
                 disabled={!puede}
                 aria-label={`Paso ${l.i + 1}: ${l.nombre}${!completa && l.i === actual ? " (estás acá)" : ""}`}
                 aria-current={!completa && l.i === actual ? "step" : undefined}
-                className="absolute h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] disabled:cursor-default"
+                className="pointer-events-auto absolute h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] disabled:cursor-default"
                 style={{ left: `${(l.x / ANCHO) * 100}%`, top: `${(l.y / ALTO) * 100}%` }}
               />
             )

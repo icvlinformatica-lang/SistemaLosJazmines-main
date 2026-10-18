@@ -15,6 +15,10 @@
 // - Las fechas ocupadas se ven tachadas antes del peaje (decisión del
 //   18/10/2026), solo la fecha (/api/clientes/ocupadas).
 // - Va a pantalla completa, sin el menú del sistema (components/app-shell.tsx).
+// - Arriba de cada paso va la maqueta 3D del jardín (components/clientes/
+//   maqueta-3d.tsx), que se arma sola con cada elección: es el juego. Es solo
+//   una ilustración (lib/clientes-maqueta.ts); los montos salen de la cuenta de
+//   siempre. Sin WebGL, la pantalla queda como antes.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -69,8 +73,17 @@ import {
   type ResumenSimulacion,
   type SeleccionCliente,
 } from "@/lib/clientes-simulador"
+import {
+  descripcionMaqueta,
+  estadoMaqueta,
+  estadoMuestra,
+  novedades,
+  textoSumaste,
+  type EstadoMaqueta,
+} from "@/lib/clientes-maqueta"
 import { numeroWhatsApp } from "@/lib/telefono-whatsapp"
 import { fuenteFiesta } from "./fuente-fiesta"
+import { Maqueta3D, type ManejoMaqueta } from "@/components/clientes/maqueta-3d"
 import { Guirnalda } from "@/components/clientes/guirnalda"
 import { TotalAnimado } from "@/components/clientes/total-animado"
 import { CalendarioFiesta } from "@/components/clientes/calendario-fiesta"
@@ -107,6 +120,20 @@ const NOMBRE_CATEGORIA: Record<string, string> = {
 const ATAJOS_INVITADOS = [50, 80, 100, 120]
 const MINIMO_ADULTOS = 10
 const serif = "font-[family-name:var(--font-fiesta)]"
+
+/** Qué muestra la maqueta en cada paso (planos de components/clientes/maqueta/motor.ts). */
+const FOCO_PASO: Record<IdPaso, string> = {
+  festejo: "entrada",
+  salon: "isla",
+  fecha: "cartel",
+  invitados: "mesas",
+  menu: "mesa",
+  barra: "barra",
+  detalles: "isla",
+}
+const PASO_INVITADOS = PASOS.findIndex((p) => p.id === "invitados")
+/** Cuánto se queda la cámara mostrando lo que se acaba de sumar. */
+const MS_MOSTRAR_SUMADO = 2600
 
 /** "+ $ 120.000" / "− $ 30.000" / "sin costo extra". */
 function diferencia(d: number): string {
@@ -173,6 +200,14 @@ export default function ClientesPage() {
   const [enviando, setEnviando] = useState(false)
   const [resumen, setResumen] = useState<ResumenSimulacion | null>(null)
   const [errorServidor, setErrorServidor] = useState<string | null>(null)
+
+  // ── Maqueta 3D ──
+  const [conMaqueta, setConMaqueta] = useState(true)
+  const maqueta = useRef<ManejoMaqueta>(null)
+  const [fotoMaqueta, setFotoMaqueta] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<{ id: number; texto: string } | null>(null)
+  const [focoSumado, setFocoSumado] = useState<string | null>(null)
+  const muestra = useMemo(() => estadoMuestra(), [])
 
   const hoy = useMemo(() => hoyArgentina(), [])
   const rango = useMemo(() => rangoCalendario(hoy), [hoy])
@@ -245,6 +280,74 @@ export default function ClientesPage() {
     setIntentoSeguir(false)
     if (typeof window !== "undefined") window.scrollTo({ top: 0 })
   }, [paso, vista])
+
+  // Lo que muestra la maqueta: se arma con lo mismo que el total.
+  const estadoMaq = useMemo(
+    () =>
+      estadoMaqueta({
+        tipoEvento,
+        salon: salon ? { nombre: salon.nombre, barras: salon.barras } : null,
+        servicios: serviciosFecha,
+        elegidos: servicios,
+        fecha,
+        adultos,
+        ninos,
+        conCatering,
+        recetas,
+        barraIds,
+        alcanzado,
+        totalPasos: PASOS.length,
+        pasoInvitados: PASO_INVITADOS,
+        completa: vista === "lista" || vista === "presupuesto",
+      }),
+    [tipoEvento, salon, serviciosFecha, servicios, fecha, adultos, ninos, conCatering, recetas, barraIds, alcanzado, vista],
+  )
+  // Cada cosa que se suma: un aviso ("Sumaste la pantalla LED") y la cámara va
+  // a mostrarla un momento.
+  const estadoPrevio = useRef<EstadoMaqueta | null>(null)
+  useEffect(() => {
+    const antes = estadoPrevio.current
+    estadoPrevio.current = estadoMaq
+    if (vista !== "pasos") return
+    const nuevas = novedades(antes, estadoMaq)
+    if (!nuevas.length) return
+    setAviso({ id: Date.now(), texto: textoSumaste(nuevas) })
+    setFocoSumado(nuevas[nuevas.length - 1].foco)
+  }, [estadoMaq, vista])
+  useEffect(() => {
+    if (!aviso) return
+    const t = setTimeout(() => setAviso(null), 2400)
+    return () => clearTimeout(t)
+  }, [aviso])
+  useEffect(() => {
+    if (!focoSumado) return
+    const t = setTimeout(() => setFocoSumado(null), MS_MOSTRAR_SUMADO)
+    return () => clearTimeout(t)
+  }, [focoSumado])
+  useEffect(() => {
+    setFocoSumado(null)
+    setAviso(null)
+  }, [paso, vista])
+  // Al bajar en la página, la maqueta se achica (para que entre más lista en
+  // celulares chicos). Con margen para que no tiemble cerca del borde.
+  const [compacta, setCompacta] = useState(false)
+  useEffect(() => {
+    if (vista !== "pasos") {
+      setCompacta(false)
+      return
+    }
+    const alMover = () => {
+      const y = window.scrollY
+      setCompacta((c) => (c ? y > 8 : y > 56 && document.documentElement.scrollHeight - window.innerHeight > 240))
+    }
+    alMover()
+    window.addEventListener("scroll", alMover, { passive: true })
+    return () => window.removeEventListener("scroll", alMover)
+  }, [vista])
+  const focoMaqueta =
+    vista === "lista" || vista === "presupuesto"
+      ? "fiesta"
+      : (focoSumado ?? (idPaso === "barra" && estadoMaq.barras >= 2 ? "barra2" : FOCO_PASO[idPaso]))
 
   const irAPaso = (i: number) => {
     setVista("pasos")
@@ -335,6 +438,8 @@ export default function ClientesPage() {
       const dO = ro && ro.ok ? await ro.json().catch(() => null) : null
       if (dO?.ok && dO.ocupadas) setOcupadas(dO.ocupadas)
       setResumen(ds.resumen)
+      // La foto de su maqueta va en el presupuesto (si el navegador la dibujó).
+      setFotoMaqueta(maqueta.current?.foto() ?? null)
       setPeajeAbierto(false)
       setVista("presupuesto")
     } catch {
@@ -425,9 +530,28 @@ export default function ClientesPage() {
         .lj-rango::-moz-range-thumb { width: 26px; height: 26px; border-radius: 999px; background: #f8f2e4; border: 2px solid #f3cf7a; }
         .lj-rango:focus-visible { outline: none; }
         .lj-rango:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 5px rgba(243,207,122,.4); }
+        @keyframes lj-aviso {
+          0% { opacity: 0; transform: translateY(8px) scale(.92); }
+          10% { opacity: 1; transform: translateY(0) scale(1.03); }
+          16% { transform: scale(1); }
+          86% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-6px); }
+        }
+        .lj-aviso { animation: lj-aviso 2.4s ease-out both; }
+        @keyframes lj-invitacion {
+          from { opacity: 0; transform: perspective(1400px) rotateY(-78deg) translateY(24px); }
+          55% { opacity: 1; }
+          to { opacity: 1; transform: perspective(1400px) rotateY(0) translateY(0); }
+        }
+        .lj-invitacion { animation: lj-invitacion .95s cubic-bezier(.18,.82,.22,1) both; transform-origin: 0% 50%; }
+        @media (prefers-reduced-motion: reduce) {
+          .lj-aviso { animation: none; }
+          .lj-invitacion { animation: none; }
+        }
         @media print {
           @page { margin: 12mm; }
           .lj-imprimir { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .lj-invitacion { animation: none; }
         }
       `}</style>
 
@@ -456,6 +580,17 @@ export default function ClientesPage() {
             </h1>
           </div>
 
+          {/* Una fiesta armada, en 3D: lo que van a poder hacer. */}
+          {conMaqueta && (
+            <Maqueta3D
+              estado={muestra}
+              foco="portada"
+              descripcion="Maqueta 3D de una fiesta armada en el jardín de Los Jazmines"
+              onFalla={() => setConMaqueta(false)}
+              className="relative mx-auto min-h-[230px] w-full max-w-[640px] flex-1"
+            />
+          )}
+
           <div className="mx-auto mt-auto w-full max-w-[480px] px-5 pb-[calc(env(safe-area-inset-bottom)+28px)]">
             <p className="max-w-[34ch] text-[16.5px] leading-relaxed text-[#f5f0e8]/85">
               Conocé el valor al instante: elegí la fecha, los invitados, el menú y cada detalle, y mirá cómo se arma el precio.
@@ -477,13 +612,46 @@ export default function ClientesPage() {
         <>
           {/* Fondo sólido (para que nada se vea a través del texto) y un
               degradé corto debajo, para que el contenido se esconda suave. */}
-          <header className="sticky top-0 z-20 bg-[#0d1d14] pb-3 pt-[calc(env(safe-area-inset-top)+10px)] after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-6 after:bg-gradient-to-b after:from-[#0d1d14] after:to-transparent">
+          {/* En los pasos, la maqueta queda fija arriba (para ver cómo se suma
+              cada cosa); en "Tu fiesta está lista" es grande y se va con el scroll. */}
+          <header
+            className={`${vista === "pasos" ? "sticky top-0" : "relative"} z-20 bg-[#0d1d14] pb-3 pt-[calc(env(safe-area-inset-top)+10px)] after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-6 after:bg-gradient-to-b after:from-[#0d1d14] after:to-transparent`}
+          >
             <div className="mx-auto max-w-[480px] px-5">
               <div className="flex h-10 items-center justify-between">
                 {logo}
                 {chrome}
               </div>
-              <div className="mt-1">
+            </div>
+            {conMaqueta ? (
+              <Maqueta3D
+                ref={maqueta}
+                estado={estadoMaq}
+                foco={focoMaqueta}
+                descripcion={descripcionMaqueta(estadoMaq)}
+                onFalla={() => setConMaqueta(false)}
+                className={`relative mx-auto mt-1 max-w-[480px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_62%,#15301f_0%,#0d1d14_72%)] transition-[height] duration-500 ${
+                  vista === "lista" ? "h-[clamp(250px,44svh,390px)]" : compacta ? "h-[clamp(120px,19svh,160px)]" : "h-[clamp(150px,27svh,236px)]"
+                }`}
+              >
+                {/* Para que la guirnalda de pasos se lea separada de la maqueta. */}
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0d1d14] via-[#0d1d14]/55 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#0d1d14] to-transparent" />
+                <div
+                  className={`pointer-events-none absolute inset-x-5 top-0 transition-opacity duration-300 ${compacta ? "opacity-0 [&_button]:!pointer-events-none" : "opacity-100"}`}
+                >
+                  <Guirnalda
+                    pasos={[...PASOS]}
+                    actual={vista === "lista" ? PASOS.length : paso}
+                    alcanzado={alcanzado}
+                    completa={vista === "lista"}
+                    onIr={irAPaso}
+                  />
+                </div>
+                {aviso && <AvisoSumaste key={aviso.id} texto={aviso.texto} />}
+              </Maqueta3D>
+            ) : (
+              <div className="mx-auto mt-1 max-w-[480px] px-5">
                 <Guirnalda
                   pasos={[...PASOS]}
                   actual={vista === "lista" ? PASOS.length : paso}
@@ -492,6 +660,8 @@ export default function ClientesPage() {
                   onIr={irAPaso}
                 />
               </div>
+            )}
+            <div className="mx-auto max-w-[480px] px-5">
               <div className="mt-1 flex items-baseline justify-between text-[13px]">
                 <span className="text-[#f5f0e8]/85">{vista === "lista" ? "Todo listo" : PASOS[paso].nombre}</span>
                 <span className="tabular-nums text-[#f5f0e8]/50">
@@ -1000,7 +1170,8 @@ export default function ClientesPage() {
             {logo}
             {chrome}
           </div>
-          <div className="mt-4">
+          {/* Llega como una invitación: gira y se apoya. */}
+          <div className="lj-invitacion mt-4">
             <PresupuestoCliente
               nombre={contacto.nombre.trim()}
               tipoEvento={tipoEvento}
@@ -1013,6 +1184,7 @@ export default function ClientesPage() {
               barras={barrasElegidas}
               validoHasta={validoHasta}
               disponible={fecha ? !(ocupadas[salon.salon] ?? []).includes(fecha) : null}
+              ilustracion={fotoMaqueta}
             />
           </div>
           <div className="mt-5 space-y-3 px-1 print:hidden">
@@ -1143,6 +1315,19 @@ function Paso({ titulo, ayuda, children }: { titulo: string; ayuda?: string; chi
       {ayuda && <p className="mt-2 text-[15px] leading-relaxed text-[#f5f0e8]/70">{ayuda}</p>}
       <div className="mt-6">{children}</div>
     </section>
+  )
+}
+
+/** "Sumaste la pantalla LED": aparece sobre la maqueta cuando algo se suma. */
+function AvisoSumaste({ texto }: { texto: string }) {
+  return (
+    <p
+      role="status"
+      className="lj-aviso pointer-events-none absolute bottom-3 left-5 flex max-w-[calc(100%-40px)] items-center gap-2 rounded-full bg-[#f8f2e4] px-3.5 py-1.5 text-[13.5px] font-medium text-[#1a3a2a] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.7)]"
+    >
+      <Sparkles className="h-4 w-4 shrink-0 text-[#b08d2a]" aria-hidden="true" />
+      <span className="truncate">{texto}</span>
+    </p>
   )
 }
 

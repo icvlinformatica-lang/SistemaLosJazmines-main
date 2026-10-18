@@ -25,6 +25,7 @@ export function PresupuestoCliente({
   barras,
   validoHasta,
   disponible,
+  ilustracion,
 }: {
   nombre: string
   tipoEvento: string | null
@@ -38,6 +39,8 @@ export function PresupuestoCliente({
   validoHasta: string
   /** null = no se sabe (no se pudo consultar). */
   disponible: boolean | null
+  /** Foto de la maqueta 3D con lo que eligió (si el navegador la pudo dibujar). */
+  ilustracion?: string | null
 }) {
   const rubros = resumen.rubros.filter((r) => r.clave === "salon" || r.precio > 0)
   const extras = resumen.servicios.filter((s) => !s.incluido)
@@ -61,6 +64,21 @@ export function PresupuestoCliente({
           {salonNombre}, {invitados}
         </p>
       </header>
+
+      {ilustracion && (
+        // En pantalla va acá arriba; al imprimir va chica al costado de "Qué
+        // incluye", para que el presupuesto entre en una hoja.
+        <figure className="mt-6 print:hidden">
+          <img
+            src={ilustracion}
+            alt="Ilustración de tu fiesta con lo que elegiste"
+            className="block aspect-[4/3] w-full rounded-2xl bg-[#0d1d14] object-cover"
+          />
+          <figcaption className="mt-2 text-center text-[12.5px] text-[#1a3a2a]/60">
+            Así imaginamos tu fiesta. Es una ilustración de lo que elegiste.
+          </figcaption>
+        </figure>
+      )}
 
       <dl className="mt-7 space-y-2.5">
         {rubros.map((r) => (
@@ -86,7 +104,15 @@ export function PresupuestoCliente({
         )}
       </div>
 
-      <section className="mt-7 space-y-3 text-[14px] leading-relaxed">
+      <section className="mt-7 space-y-3 text-[14px] leading-relaxed print:mt-5">
+        {ilustracion && (
+          <img
+            src={ilustracion}
+            alt=""
+            aria-hidden="true"
+            className="hidden aspect-[4/3] object-cover print:float-right print:mb-2 print:ml-5 print:block print:w-[36%] print:rounded-lg"
+          />
+        )}
         <h3 className="font-[family-name:var(--font-fiesta)] text-[18px]">Qué incluye</h3>
         {platos.length > 0 ? (
           <p>
