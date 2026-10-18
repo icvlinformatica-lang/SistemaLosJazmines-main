@@ -266,14 +266,22 @@ export class MotorMaqueta {
     if (!this.contenedor) return
     const ancho = Math.max(1, this.contenedor.clientWidth)
     const alto = Math.max(1, this.contenedor.clientHeight)
-    this.renderer.setSize(ancho, alto, false)
+    const pr = this.renderer.getPixelRatio()
+    // Cambiar el tamaño borra el lienzo: solo si de verdad cambió.
+    const cambio = this.lienzo.width !== Math.floor(ancho * pr) || this.lienzo.height !== Math.floor(alto * pr)
+    if (cambio) this.renderer.setSize(ancho, alto, false)
     this.camara.aspect = ancho / alto
     this.camara.updateProjectionMatrix()
-    const pr = this.renderer.getPixelRatio()
     this.kit.matHalo.uniforms.uEscala.value = (alto * pr) / 2 / Math.tan(THREE.MathUtils.degToRad(this.camara.fov / 2))
     this.kit.matHalo.uniforms.uMaximo.value = 22 * pr
     this.kit.matHaloGrande.uniforms.uEscala.value = this.kit.matHalo.uniforms.uEscala.value
     this.sucio = true
+    // Se dibuja ya: si no, mientras la maqueta se agranda o se achica el
+    // lienzo queda en blanco hasta el cuadro siguiente (parpadea).
+    if (cambio && this.corriendo) {
+      this.moverCamara(0)
+      this.renderer.render(this.escena, this.camara)
+    }
   }
 
   // ── Lo que se dibuja ──────────────────────────────────────────────────────
@@ -637,6 +645,7 @@ export class MotorMaqueta {
       c.pr = 1
       this.renderer.setPixelRatio(1)
       this.ajustarTamano()
+      this.renderer.render(this.escena, this.camara)
       // Se vuelve a medir con la resolución nueva.
       c.medidos = 0
       c.suma = 0

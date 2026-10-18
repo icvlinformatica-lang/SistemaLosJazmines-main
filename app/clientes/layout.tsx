@@ -7,5 +7,12 @@ export const metadata: Metadata = {
 }
 
 export default function ClientesLayout({ children }: { children: React.ReactNode }) {
-  return <div className={fuenteFiesta.variable}>{children}</div>
+  return (
+    <div className={fuenteFiesta.variable}>
+      {/* Fondo de noche también detrás de la página: al tirar de más (el
+          rebote del iPhone) no aparece una franja blanca. */}
+      <style>{"html,body{background:#0d1d14}@media print{html,body{background:#fff}}"}</style>
+      {children}
+    </div>
+  )
 }
