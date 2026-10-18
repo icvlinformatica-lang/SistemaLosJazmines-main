@@ -351,8 +351,10 @@ function CostosEventoContent() {
     if (bloquearPorArchivo()) return
     updateEvento(evento.id, { cocinaPagada: checked })
     if (checked) {
-      registrarEgreso(`${prefijoPagoMenu}${nombreEnCaja}`, costoCocinaHoy)
-      toast({ title: "Cocina marcada como pagada", description: formatCurrency(costoCocinaHoy) })
+      // Si ya se pagó una parte por proveedor (Caja Eventos), sale solo el resto.
+      const resto = pagadoCocina > 0 ? Math.max(0, costoCocina - pagadoCocina) : costoCocinaHoy
+      registrarEgreso(`${prefijoPagoMenu}${nombreEnCaja}`, resto)
+      toast({ title: "Cocina marcada como pagada", description: formatCurrency(resto) })
     } else {
       quitarEgreso(prefijoPagoMenu)
       toast({ title: "Pago de cocina revertido" })
@@ -743,6 +745,11 @@ function CostosEventoContent() {
                 pagado={!!evento.cocinaPagada}
                 fechaPago={fechaPagoCocina}
               />
+              {!evento.cocinaPagada && pagadoCocina > 0 && (
+                <p className="text-xs text-emerald-700">
+                  Pagado en parte por proveedor: {formatCurrency(pagadoCocina)}. Falta {formatCurrency(Math.max(0, costoCocina - pagadoCocina))}.
+                </p>
+              )}
               {menuPorSegmento.length > 0 && (
                 <Dialog>
                   <DialogTrigger asChild>

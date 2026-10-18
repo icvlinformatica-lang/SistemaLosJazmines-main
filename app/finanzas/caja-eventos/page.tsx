@@ -57,7 +57,35 @@ import { useStore } from "@/lib/store-context"
 import { useClock } from "@/lib/clock-context"
 import { useToast } from "@/hooks/use-toast"
 import { construirCobroCuota } from "@/lib/cobrar-cuota"
-import { generateId, SALONES, salonLabel, salonColor, SALON_COLOR_GENERAL, type EventoGuardado, type MovimientoCaja } from "@/lib/store"
+import {
+  generateId,
+  SALONES,
+  salonLabel,
+  salonColor,
+  SALON_COLOR_GENERAL,
+  calcularComprasSegmentadas,
+  type CalculoCompraSegmentado,
+  type EventoGuardado,
+  type MovimientoCaja,
+} from "@/lib/store"
+import {
+  SIN_PROVEEDOR,
+  claveProveedor,
+  comprasDeProveedor,
+  etiquetasProveedores,
+  proveedoresDeCompras,
+  type CompraDeEvento,
+} from "@/lib/compras-por-proveedor"
+import {
+  conceptoPagoMenuProveedor,
+  pagosMenuProveedor,
+  proveedoresSinPagar,
+  refPagoMenuProveedor,
+  refPagoMenuProveedorACuenta,
+  restaProveedor,
+} from "@/lib/pago-menu-proveedor"
+import { nombreEventoEnCaja } from "@/lib/egresos-evento"
+import { ComprasProveedor } from "./compras-proveedor"
 import {
   BarraFiltrosEgresos,
   FILTRO_EGRESOS_INICIAL,
@@ -1203,10 +1231,42 @@ useStore()
   // Filtros combinables en "Por pagar": salón (madre) + tipo de pasivo +
   // sub-filtro (tipo de servicio o evento) + búsqueda (lupa).
   const [filtroPagar, setFiltroPagar] = useState<FiltroEgresos>(FILTRO_EGRESOS_INICIAL)
-  const egresosProximosFiltrados = useMemo(
-    () => filtrarEgresos(egresosProximos, filtroPagar),
-    [egresosProximos, filtroPagar],
+  // Insumos de cocina de cada menú por pagar, para el filtro Menú → Proveedor.
+  // Es la misma cuenta que arma el monto del menú (calcularComprasSegmentadas
+  // en use-caja-eventos), así que lo del proveedor sale de esos mismos números.
+  const comprasMenuPorEvento = useMemo(() => {
+    const eventosPorId = new Map((state.eventos || []).map((ev) => [ev.id, ev]))
+    const m = new Map<string, CalculoCompraSegmentado[]>()
+    for (const e of egresosProximos) {
+      if (e.tipo !== "menu" || m.has(e.eventoId)) continue
+      const ev = eventosPorId.get(e.eventoId)
+      if (ev) m.set(e.eventoId, calcularComprasSegmentadas(ev, state.recetas || [], state.insumos || []))
+    }
+    return m
+  }, [egresosProximos, state.eventos, state.recetas, state.insumos])
+  const proveedoresMenu = useMemo(
+    () => new Map([...comprasMenuPorEvento].map(([id, compras]) => [id, proveedoresDeCompras(compras)])),
+    [comprasMenuPorEvento],
   )
+  const etiquetasProveedor = useMemo(() => etiquetasProveedores(state.insumos || []), [state.insumos])
+  const egresosProximosFiltrados = useMemo(
+    () => filtrarEgresos(egresosProximos, filtroPagar, proveedoresMenu),
+    [egresosProximos, filtroPagar, proveedoresMenu],
+  )
+  // Con un proveedor elegido: qué comprarle, sumando los menús que se ven.
+  const comprasProveedorElegido = useMemo(() => {
+    if (filtroPagar.tipo !== "menu" || !filtroPagar.sub) return null
+    const menus = egresosProximosFiltrados
+      .filter((e) => e.tipo === "menu")
+      .map((e) => ({
+        eventoId: e.eventoId,
+        eventoNombre: e.eventoNombre,
+        eventoFecha: e.eventoFecha,
+        compras: comprasMenuPorEvento.get(e.eventoId) ?? [],
+      }))
+    const clave = filtroPagar.sub
+    return comprasDeProveedor(menus, clave, (eventoId) => pagosMenuProveedor(state.movimientosCaja, eventoId).get(clave))
+  }, [filtroPagar.tipo, filtroPagar.sub, egresosProximosFiltrados, comprasMenuPorEvento, state.movimientosCaja])
   // Catálogo completo de servicios activos (Finanzas → Servicios), para que
   // el sub-filtro "Servicios" de la barra de filtros muestre todo lo que
   // ofrecemos y no solo lo que tiene un pago pendiente en este momento.
@@ -1312,8 +1372,8 @@ useStore()
     [dataConHistorialServicios],
   )
   const serviciosPagadosFiltrados = useMemo(
-    () => filtrarEgresos(serviciosPagados, filtroPagar),
-    [serviciosPagados, filtroPagar],
+    () => filtrarEgresos(serviciosPagados, filtroPagar, proveedoresMenu),
+    [serviciosPagados, filtroPagar, proveedoresMenu],
   )
   // Total combinado (pendientes + ya pagados) para la paginación de "Ver
   // más" en la tabla plana de "Por pagar" (solo aplica con un salón elegido).
@@ -1426,6 +1486,90 @@ useStore()
       saldoResultante: saldoPrev - egreso.monto,
     }
     return await guardarOperacion(guardarEstado, [movimiento])
+  }
+
+  // Paga lo de un proveedor en el menú de un evento (filtro Menú → Proveedor),
+  // como la seña y el saldo de un servicio: "a cuenta" (un monto que se elige;
+  // el resto queda fiado) o "resto" (lo que falta: lo salda). Cada pago es un
+  // egreso de Caja Eventos con refId para saber de qué proveedor es
+  // (lib/pago-menu-proveedor.ts). Lo que falta se vuelve a calcular con el
+  // Almacén de este momento; si no es lo que se mostró, no paga. Si con el
+  // resto quedan todos los proveedores saldados, el menú queda pagado.
+  const handlePagarProveedorMenu = async (
+    compra: CompraDeEvento,
+    modo: "cuenta" | "resto",
+    montoACuenta = 0,
+  ): Promise<boolean> => {
+    const clave = filtroPagar.tipo === "menu" ? filtroPagar.sub : null
+    if (!clave || clave === SIN_PROVEEDOR) return false
+    const evento = state.eventos.find((e) => e.id === compra.eventoId)
+    if (!evento || evento.cocinaPagada) return false
+    const pagos = pagosMenuProveedor(state.movimientosCaja, evento.id)
+    const nombreProv = etiquetasProveedor.get(clave) ?? clave
+    if (pagos.get(clave)?.saldado) {
+      toast({ title: "Ya estaba pagado", description: `${nombreProv} ya figura pagado en este evento.` })
+      return false
+    }
+    const compras = calcularComprasSegmentadas(evento, state.recetas || [], state.insumos || [])
+    const costoHoy = compras
+      .filter((c) => c.cantidadNecesaria > 0 && claveProveedor(c.insumo.proveedor) === clave)
+      .reduce((s, c) => s + c.costoMateriaPrima, 0)
+    const resta = restaProveedor(costoHoy, pagos.get(clave))
+    if (resta <= 0 || Math.abs(resta - compra.resta) > 0.01) {
+      toast({
+        title: "Cambió el monto",
+        description: "El menú, los precios o los pagos cambiaron recién. Revisá la lista y volvé a intentar.",
+        variant: "destructive",
+      })
+      return false
+    }
+    const aCuenta = modo === "cuenta"
+    const monto = aCuenta ? Math.round(montoACuenta * 100) / 100 : resta
+    if (aCuenta && (!(monto > 0) || monto >= resta - 0.005)) {
+      toast({
+        title: "Revisá el monto",
+        description: `A cuenta tiene que ser más de $0 y menos de lo que resta (${formatCurrency(resta)}). Para pagar todo, usá "Pagar resto".`,
+        variant: "destructive",
+      })
+      return false
+    }
+    const fechaISO = new Date().toISOString()
+    const saldoPrev = (state.movimientosCaja ?? [])
+      .filter((m) => m.cajaDestino === "caja_eventos")
+      .reduce((sum, m) => (m.tipo === "ingreso" ? sum + m.monto : sum - m.monto), 0)
+    const movimiento: MovimientoCaja = {
+      id: generateId(),
+      fecha: fechaISO,
+      tipo: "egreso",
+      concepto: conceptoPagoMenuProveedor(nombreProv, nombreEventoEnCaja(evento), aCuenta),
+      monto,
+      salon: evento.salon || "",
+      eventoId: evento.id,
+      cajaDestino: "caja_eventos",
+      saldoResultante: saldoPrev - monto,
+      refId: aCuenta ? refPagoMenuProveedorACuenta(evento.id, clave) : refPagoMenuProveedor(evento.id, clave),
+    }
+    const previo = pagos.get(clave)
+    const pagosDespues = new Map(pagos).set(clave, {
+      monto: (previo?.monto ?? 0) + monto,
+      aCuenta: (previo?.aCuenta ?? 0) + (aCuenta ? monto : 0),
+      fecha: fechaISO,
+      saldado: !aCuenta,
+    })
+    const menuCompleto = !aCuenta && proveedoresSinPagar(compras, pagosDespues).length === 0
+    const ok = await guardarOperacion(
+      menuCompleto ? () => updateEvento(evento.id, { cocinaPagada: true }) : async () => true,
+      [movimiento],
+    )
+    if (ok) {
+      toast({
+        title: menuCompleto ? "Menú pagado completo" : aCuenta ? `${nombreProv}: pagado a cuenta` : `${nombreProv} pagado`,
+        description: aCuenta
+          ? `${formatCurrency(monto)} · resta ${formatCurrency(Math.max(0, resta - monto))} · ${nombreEventoEnCaja(evento)}`
+          : `${formatCurrency(monto)} · ${nombreEventoEnCaja(evento)}`,
+      })
+    }
+    return ok
   }
 
   // Corrige solo la fecha de una seña YA pagada (servicio.fechaPagoSeña y, si existe,
@@ -2000,6 +2144,36 @@ useStore()
         </TableCell>
       </TableRow>
     ))
+
+  // Celdas del evento en la vista de un proveedor (ComprasProveedor): las
+  // mismas de renderFilasPagar, para que se vea como el resto de "Por pagar".
+  const renderCeldasEventoProveedor = (eventoId: string) => {
+    const eg = egresosProximosFiltrados.find((e) => e.eventoId === eventoId)
+    return (
+      <>
+        <TableCell className="text-sm text-muted-foreground align-top">{formatFechaCarga(eg?.eventoFechaCarga)}</TableCell>
+        <TableCell className="text-sm text-muted-foreground align-top">
+          {eg?.eventoFecha ? formatFechaEvento(eg.eventoFecha) : "—"}
+        </TableCell>
+        <TableCell className="align-top">
+          <p className="text-sm">{eg?.eventoNombre ?? "—"}</p>
+          {eg?.salon && (
+            <p className="inline-flex items-center gap-1 align-middle text-xs text-muted-foreground">
+              <SalonDot salon={eg.salon} size={7} />
+              {salonLabel(eg.salon)}
+            </p>
+          )}
+        </TableCell>
+        <TableCell className="text-sm align-top">
+          {eg?.eventoTipo ? (
+            <Badge variant="secondary" className="font-normal">{eg.eventoTipo}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+      </>
+    )
+  }
 
   // Selector de salón estilo perfiles al entrar
   if (selectorAbierto) {
@@ -2690,6 +2864,8 @@ useStore()
                   egresos={egresosProximos}
                   filtro={filtroPagar}
                   catalogoServicios={catalogoServiciosActivos}
+                  proveedoresMenu={proveedoresMenu}
+                  etiquetasProveedor={etiquetasProveedor}
                   onChange={(f) => {
                     setFiltroPagar(f)
                     setFilasPagar(LIMITE_FILAS)
@@ -2704,6 +2880,17 @@ useStore()
                 <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay pagos pendientes que coincidan con el filtro.
                 </p>
+              ) : comprasProveedorElegido && filtroPagar.sub ? (
+                // Con un proveedor elegido, la tabla muestra lo de ese
+                // proveedor en cada menú (no el menú entero).
+                <ComprasProveedor
+                  clave={filtroPagar.sub}
+                  nombre={etiquetasProveedor.get(filtroPagar.sub) ?? filtroPagar.sub}
+                  compras={comprasProveedorElegido}
+                  onPagar={handlePagarProveedorMenu}
+                  guardando={guardandoOperacion}
+                  celdasEvento={renderCeldasEventoProveedor}
+                />
               ) : gruposSueldoPorPersona ? (
                 <Table>
                   <TableHeader>
@@ -2840,7 +3027,7 @@ useStore()
                   </TableBody>
                 </Table>
               )}
-              {salonFiltro !== "todos" && !gruposSueldoPorPersona && totalFilasPagarCombinado > LIMITE_FILAS && (
+              {salonFiltro !== "todos" && !gruposSueldoPorPersona && !comprasProveedorElegido && totalFilasPagarCombinado > LIMITE_FILAS && (
                 <div className="px-6 pt-2">
                   {filasPagar < totalFilasPagarCombinado ? (
                     <Button
@@ -2864,7 +3051,19 @@ useStore()
                   )}
                 </div>
               )}
-              {egresosProximosFiltrados.length > 0 && (
+              {comprasProveedorElegido && filtroPagar.sub && comprasProveedorElegido.porEvento.length > 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-x-4 px-6 pt-3 mt-1 border-t border-border">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Falta pagarle a {etiquetasProveedor.get(filtroPagar.sub) ?? "este proveedor"}
+                    {comprasProveedorElegido.pagado > 0 && (
+                      <span className="ml-2 text-xs font-normal">
+                        · ya pagado <span className="text-emerald-700">{formatCurrency(comprasProveedorElegido.pagado)}</span>
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-base font-bold text-red-600">−{formatCurrency(comprasProveedorElegido.total)}</span>
+                </div>
+              ) : egresosProximosFiltrados.length > 0 && (
                 <div className="flex items-center justify-between px-6 pt-3 mt-1 border-t border-border">
                   <span className="text-sm font-medium text-muted-foreground">
                     {!filtroPagarActivo ? `Total por pagar (${DIAS_TOTAL_PAGO} días)` : "Total del filtro"}
