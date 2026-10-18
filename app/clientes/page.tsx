@@ -3,7 +3,8 @@
 // Vista de Clientes — prototipo del simulador "Armá tu fiesta".
 //
 // Es lo que va a ver un cliente que llega desde Instagram: arma su fiesta en
-// 7 pasos (festejo, salón, fecha, invitados, menú, barra y detalles) y ve el
+// 7 pasos (festejo, salón, fecha, invitados, menú, barra y detalles; 8 con la
+// Casona, que suma "¿Adentro o al aire libre?" después del salón) y ve el
 // total en vivo. Al final, para ver el detalle y congelar el precio 7 días,
 // deja nombre, WhatsApp y mail ("el peaje").
 //
@@ -17,17 +18,21 @@
 // - Va a pantalla completa, sin el menú del sistema (components/app-shell.tsx).
 // - Arriba de cada paso va la maqueta 3D (components/clientes/maqueta-3d.tsx),
 //   que se arma sola con cada elección: es el juego. El lugar es el del salón
-//   elegido (la Casona: jardín, pileta y casa, y se puede ver adentro con el
-//   botón "Jardín / Adentro"; los demás, salones cerrados). Es solo una
-//   ilustración (lib/clientes-maqueta.ts): el botón no cambia el precio ni lo
-//   que se manda, y los montos salen de la cuenta de siempre. Sin WebGL, la
-//   pantalla queda como antes.
+//   elegido (la Casona: jardín, pileta y casa, o su salón de adentro, según
+//   el paso "Lugar"; los demás, salones cerrados). Es solo una ilustración
+//   (lib/clientes-maqueta.ts): los montos salen de la cuenta de siempre.
+//   Sobre la maqueta no va ningún botón para elegir (arriba no llega el
+//   dedo): todas las elecciones están abajo, en el paso.
+// - La maqueta se ve a pantalla completa tocándola (o con el botón de su
+//   esquina) y sola al girar el celular. En Android, además, la pantalla
+//   completa es la del sistema y gira a horizontal; en iPhone, que no deja,
+//   ocupa toda la página y pide girar el celular. Sin WebGL, la pantalla queda
+//   como antes.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
-  Armchair,
   Baby,
   Briefcase,
   Cake,
@@ -35,12 +40,16 @@ import {
   Crown,
   Gem,
   Loader2,
+  House,
   LogOut,
+  Maximize2,
   MessageCircle,
+  Minimize2,
   Minus,
   Plus,
   Printer,
   RotateCcw,
+  Smartphone,
   Sparkles,
   Trees,
   type LucideIcon,
@@ -62,6 +71,9 @@ import {
   elegirBarra,
   elegirPlato,
   fechaLarga,
+  indicePaso,
+  pasoDespuesDe,
+  pasosCliente,
   formatoPesos,
   linkWhatsApp,
   nombreEnFrase,
@@ -75,6 +87,7 @@ import {
   sumarDias,
   textoWhatsAppCliente,
   type CatalogoClientes,
+  type IdPasoCliente,
   type ResumenSimulacion,
   type SeleccionCliente,
 } from "@/lib/clientes-simulador"
@@ -85,8 +98,9 @@ import {
   estadoMuestra,
   novedades,
   rasgosSalon,
+  salonConAireLibre,
+  TEXTO_LUGAR,
   textoSumaste,
-  tieneVistaAdentro,
   type EstadoMaqueta,
   type VistaCasona,
 } from "@/lib/clientes-maqueta"
@@ -99,16 +113,7 @@ import { CalendarioFiesta } from "@/components/clientes/calendario-fiesta"
 import { Opcion } from "@/components/clientes/opcion"
 import { PresupuestoCliente } from "@/components/clientes/presupuesto-cliente"
 
-const PASOS = [
-  { id: "festejo", nombre: "Festejo" },
-  { id: "salon", nombre: "Salón" },
-  { id: "fecha", nombre: "Fecha" },
-  { id: "invitados", nombre: "Invitados" },
-  { id: "menu", nombre: "Menú" },
-  { id: "barra", nombre: "Barra" },
-  { id: "detalles", nombre: "Detalles" },
-] as const
-type IdPaso = (typeof PASOS)[number]["id"]
+type IdPaso = IdPasoCliente
 
 const ICONO_FESTEJO: Record<string, LucideIcon> = {
   Casamiento: Gem,
@@ -134,13 +139,13 @@ const serif = "font-[family-name:var(--font-fiesta)]"
 const FOCO_PASO: Record<IdPaso, string> = {
   festejo: "entrada",
   salon: "isla",
+  lugar: "isla",
   fecha: "cartel",
   invitados: "mesas",
   menu: "mesa",
   barra: "barra",
   detalles: "isla",
 }
-const PASO_INVITADOS = PASOS.findIndex((p) => p.id === "invitados")
 /** Cuánto se queda la cámara mostrando lo que se acaba de sumar. */
 const MS_MOSTRAR_SUMADO = 2600
 /** Y la casa y la pileta, al elegir la Casona (vuela más lejos). */
@@ -188,13 +193,16 @@ export default function ClientesPage() {
 
   // ── Recorrido ──
   const [vista, setVista] = useState<Vista>("portada")
-  const [paso, setPaso] = useState(0)
-  const [alcanzado, setAlcanzado] = useState(0)
+  // Por id y no por número: el paso "lugar" aparece o no según el salón.
+  const [pasoId, setPasoId] = useState<IdPaso>("festejo")
+  const [alcanzadoId, setAlcanzadoId] = useState<IdPaso>("festejo")
   const [intentoSeguir, setIntentoSeguir] = useState(false)
 
   // ── Lo que elige ──
   const [tipoEvento, setTipoEvento] = useState<string | null>(null)
   const [salonId, setSalonId] = useState<string | null>(null)
+  // Solo la Casona: la fiesta en el jardín o adentro (su propio paso).
+  const [lugar, setLugar] = useState<VistaCasona | null>(null)
   const [fecha, setFecha] = useState<string | null>(null)
   const [adultos, setAdultos] = useState(60)
   const [ninos, setNinos] = useState(0)
@@ -218,8 +226,12 @@ export default function ClientesPage() {
   const [fotoMaqueta, setFotoMaqueta] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ id: number; texto: string } | null>(null)
   const [focoSumado, setFocoSumado] = useState<{ foco: string; ms: number } | null>(null)
-  // Solo la Casona: ver la fiesta en el jardín o adentro (es solo el dibujo).
-  const [vistaCasona, setVistaCasona] = useState<VistaCasona>("jardin")
+  // Pantalla completa: la pide la persona (tocando la maqueta) o se abre sola
+  // al girar el celular. Si la cierra con el celular girado, no se vuelve a
+  // abrir hasta que lo ponga derecho.
+  const [pantallaCompleta, setPantallaCompleta] = useState(false)
+  const [girado, setGirado] = useState(false)
+  const [giradoCerrado, setGiradoCerrado] = useState(false)
   const muestra = useMemo(() => estadoMuestra(), [])
 
   const hoy = useMemo(() => hoyArgentina(), [])
@@ -230,6 +242,19 @@ export default function ClientesPage() {
   const ocupadasSalon = useMemo(() => new Set(salon ? ocupadas[salon.salon] ?? [] : []), [ocupadas, salon])
   const fechaOcupada = !!fecha && ocupadasSalon.has(fecha)
   const serviciosFecha = useMemo(() => (salon ? serviciosParaFecha(salon, fecha) : []), [salon, fecha])
+
+  // ── Los pasos (con "lugar" solo si el salón tiene aire libre) ──
+  const conLugar = salonConAireLibre(salon?.salon)
+  const PASOS = useMemo(() => pasosCliente(conLugar), [conLugar])
+  const paso = indicePaso(PASOS, pasoId)
+  const alcanzado = indicePaso(PASOS, alcanzadoId)
+  // Si eligió la Casona y todavía no dijo adentro o afuera (por ejemplo, la
+  // cambió desde el paso de la fecha), tiene que pasar por ese paso.
+  useEffect(() => {
+    if (!conLugar || lugar) return
+    if (pasoDespuesDe(alcanzadoId, "lugar")) setAlcanzadoId("lugar")
+    if (pasoDespuesDe(pasoId, "lugar")) setPasoId("lugar")
+  }, [conLugar, lugar, alcanzadoId, pasoId])
 
   // Al cambiar de salón o de fecha se descarta lo que ya no está disponible
   // (igual que en el cotizador del vendedor).
@@ -274,6 +299,8 @@ export default function ClientesPage() {
         return tipoEvento ? null : "Elegí qué van a festejar."
       case "salon":
         return salon ? null : "Elegí un salón."
+      case "lugar":
+        return lugar ? null : "Elegí si la fiesta es adentro o al aire libre."
       case "fecha":
         if (!fecha) return "Elegí una fecha."
         return fechaOcupada ? `Ese día ${salon?.nombre} ya está reservado. Elegí otra fecha.` : null
@@ -292,7 +319,7 @@ export default function ClientesPage() {
   useEffect(() => {
     setIntentoSeguir(false)
     if (typeof window !== "undefined") window.scrollTo({ top: 0 })
-  }, [paso, vista])
+  }, [pasoId, vista])
 
   // Lo que muestra la maqueta: se arma con lo mismo que el total.
   const estadoMaq = useMemo(
@@ -300,7 +327,7 @@ export default function ClientesPage() {
       estadoMaqueta({
         tipoEvento,
         salon: salon ? { clave: salon.salon, nombre: salon.nombre, barras: salon.barras } : null,
-        vistaCasona,
+        vistaCasona: lugar ?? "jardin",
         servicios: serviciosFecha,
         elegidos: servicios,
         fecha,
@@ -311,10 +338,10 @@ export default function ClientesPage() {
         barraIds,
         alcanzado,
         totalPasos: PASOS.length,
-        pasoInvitados: PASO_INVITADOS,
+        pasoInvitados: indicePaso(PASOS, "invitados"),
         completa: vista === "lista" || vista === "presupuesto",
       }),
-    [tipoEvento, salon, vistaCasona, serviciosFecha, servicios, fecha, adultos, ninos, conCatering, recetas, barraIds, alcanzado, vista],
+    [tipoEvento, salon, lugar, serviciosFecha, servicios, fecha, adultos, ninos, conCatering, recetas, barraIds, alcanzado, PASOS, vista],
   )
   // Cada cosa que se suma: un aviso ("Sumaste la pantalla LED") y la cámara va
   // a mostrarla un momento. Al elegir la Casona, va a mostrar su casa y su pileta.
@@ -347,7 +374,7 @@ export default function ClientesPage() {
   useEffect(() => {
     setFocoSumado(null)
     setAviso(null)
-  }, [paso, vista])
+  }, [pasoId, vista])
   // Al bajar en la página, la maqueta se achica (para que entre más lista en
   // celulares chicos). Con margen para que no tiemble cerca del borde.
   const [compacta, setCompacta] = useState(false)
@@ -369,28 +396,94 @@ export default function ClientesPage() {
       ? "fiesta"
       : (focoSumado?.foco ?? (idPaso === "barra" && estadoMaq.barras >= 2 ? "barra2" : FOCO_PASO[idPaso]))
 
-  const irAPaso = (i: number) => {
+  const irAlPaso = (id: IdPaso) => {
     setVista("pasos")
-    setPaso(i)
+    setPasoId(id)
   }
+  const irAPaso = (i: number) => irAlPaso(PASOS[i].id)
   const siguiente = () => {
     if (falta) {
       setIntentoSeguir(true)
       return
     }
     if (paso < PASOS.length - 1) {
-      setPaso(paso + 1)
-      setAlcanzado((a) => Math.max(a, paso + 1))
+      const sig = PASOS[paso + 1].id
+      setPasoId(sig)
+      setAlcanzadoId((a) => (pasoDespuesDe(sig, a) ? sig : a))
     } else {
-      setAlcanzado(PASOS.length - 1)
+      setAlcanzadoId(PASOS[PASOS.length - 1].id)
       setVista("lista")
     }
   }
   const anterior = () => {
     if (vista === "lista") return irAPaso(PASOS.length - 1)
     if (paso === 0) return setVista("portada")
-    setPaso(paso - 1)
+    setPasoId(PASOS[paso - 1].id)
   }
+
+  // ── Pantalla completa de la maqueta ──
+  const enRecorrido = vista === "pasos" || vista === "lista"
+  const verGrande = conMaqueta && enRecorrido && (pantallaCompleta || (girado && !giradoCerrado))
+  // Celular acostado: la maqueta ocupa toda la pantalla sola.
+  useEffect(() => {
+    const mq = window.matchMedia?.("(orientation: landscape) and (max-height: 520px) and (pointer: coarse)")
+    if (!mq) return
+    const alCambiar = () => {
+      setGirado(mq.matches)
+      if (!mq.matches) setGiradoCerrado(false)
+    }
+    alCambiar()
+    mq.addEventListener?.("change", alCambiar)
+    return () => mq.removeEventListener?.("change", alCambiar)
+  }, [])
+  // Si sale de la pantalla completa del sistema (gesto de volver, tecla Esc),
+  // la maqueta vuelve a su lugar.
+  useEffect(() => {
+    const alCambiar = () => {
+      if (!document.fullscreenElement) setPantallaCompleta(false)
+    }
+    document.addEventListener("fullscreenchange", alCambiar)
+    return () => document.removeEventListener("fullscreenchange", alCambiar)
+  }, [])
+  // Con la maqueta grande, la página de atrás no se mueve.
+  useEffect(() => {
+    if (!verGrande) return
+    const antes = document.documentElement.style.overflow
+    document.documentElement.style.overflow = "hidden"
+    return () => {
+      document.documentElement.style.overflow = antes
+    }
+  }, [verGrande])
+  const abrirGrande = () => {
+    setPantallaCompleta(true)
+    // Android: pantalla completa de verdad y, si deja, gira a horizontal. En
+    // iPhone no existe para esto: queda la maqueta ocupando toda la página.
+    const el = maqueta.current?.elemento()
+    if (el?.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen({ navigationUI: "hide" })
+        .then(() => {
+          const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }
+          return o?.lock?.("landscape")
+        })
+        .catch(() => {
+          // Sin permiso para girar o sin pantalla completa: igual se ve grande.
+        })
+    }
+  }
+  const cerrarGrande = () => {
+    setPantallaCompleta(false)
+    if (girado) setGiradoCerrado(true)
+    try {
+      screen.orientation?.unlock?.()
+    } catch {
+      // No estaba girada por nosotros.
+    }
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+  }
+  // Fuera de los pasos (portada, presupuesto) no queda abierta.
+  useEffect(() => {
+    if (!enRecorrido && pantallaCompleta) cerrarGrande()
+  }, [enRecorrido])
 
   const salir = () => {
     if (esPerfilClientes) {
@@ -634,8 +727,10 @@ export default function ClientesPage() {
               degradé corto debajo, para que el contenido se esconda suave. */}
           {/* En los pasos, la maqueta queda fija arriba (para ver cómo se suma
               cada cosa); en "Tu fiesta está lista" es grande y se va con el scroll. */}
+          {/* Con el celular acostado (sin la maqueta grande) la cabecera no
+              queda fija: si no, entre ella y la barra de abajo no se ve nada. */}
           <header
-            className={`${vista === "pasos" ? "sticky top-0" : "relative"} z-20 bg-[#0d1d14] pb-3 pt-[calc(env(safe-area-inset-top)+10px)] after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-6 after:bg-gradient-to-b after:from-[#0d1d14] after:to-transparent`}
+            className={`${vista === "pasos" ? "sticky top-0 [@media(orientation:landscape)_and_(max-height:520px)]:relative" : "relative"} ${verGrande ? "z-[60]" : "z-20"} bg-[#0d1d14] pb-3 pt-[calc(env(safe-area-inset-top)+10px)] after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-6 after:bg-gradient-to-b after:from-[#0d1d14] after:to-transparent`}
           >
             <div className="mx-auto max-w-[480px] px-5">
               <div className="flex h-10 items-center justify-between">
@@ -650,27 +745,49 @@ export default function ClientesPage() {
                 foco={focoMaqueta}
                 descripcion={descripcionMaqueta(estadoMaq)}
                 onFalla={() => setConMaqueta(false)}
-                className={`relative mx-auto mt-1 max-w-[480px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_62%,#15301f_0%,#0d1d14_72%)] transition-[height] duration-500 ${
-                  vista === "lista" ? "h-[clamp(250px,44svh,390px)]" : compacta ? "h-[clamp(120px,19svh,160px)]" : "h-[clamp(150px,27svh,236px)]"
-                }`}
+                onTocar={verGrande ? undefined : abrirGrande}
+                className={
+                  verGrande
+                    ? "fixed inset-0 z-[60] overflow-hidden bg-[radial-gradient(ellipse_at_50%_62%,#15301f_0%,#0d1d14_72%)]"
+                    : `relative mx-auto mt-1 max-w-[480px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_62%,#15301f_0%,#0d1d14_72%)] transition-[height] duration-500 ${
+                        vista === "lista" ? "h-[clamp(250px,44svh,390px)]" : compacta ? "h-[clamp(120px,19svh,160px)]" : "h-[clamp(150px,27svh,236px)]"
+                      }`
+                }
               >
-                {/* Para que la guirnalda de pasos se lea separada de la maqueta. */}
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0d1d14] via-[#0d1d14]/55 to-transparent" />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#0d1d14] to-transparent" />
-                <div
-                  className={`pointer-events-none absolute inset-x-5 top-0 transition-opacity duration-300 ${compacta ? "opacity-0 [&_button]:!pointer-events-none" : "opacity-100"}`}
-                >
-                  <Guirnalda
-                    pasos={[...PASOS]}
-                    actual={vista === "lista" ? PASOS.length : paso}
-                    alcanzado={alcanzado}
-                    completa={vista === "lista"}
-                    onIr={irAPaso}
+                {verGrande ? (
+                  <ControlesGrande
+                    paso={vista === "lista" ? "Tu fiesta" : `${PASOS[paso].nombre} · ${paso + 1} de ${PASOS.length}`}
+                    total={salon ? formatoPesos(total) : null}
+                    onCerrar={cerrarGrande}
                   />
-                </div>
-                {/* Como la guirnalda, el botón se esconde cuando la maqueta se achica. */}
-                {tieneVistaAdentro(estadoMaq.ambiente) && <VerCasona vista={vistaCasona} onCambiar={setVistaCasona} oculto={compacta} />}
-                {aviso && <AvisoSumaste key={aviso.id} texto={aviso.texto} arriba={tieneVistaAdentro(estadoMaq.ambiente) && !compacta} />}
+                ) : (
+                  <>
+                    {/* Para que la guirnalda de pasos se lea separada de la maqueta. */}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0d1d14] via-[#0d1d14]/55 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#0d1d14] to-transparent" />
+                    <div
+                      className={`pointer-events-none absolute inset-x-5 top-0 transition-opacity duration-300 ${compacta ? "opacity-0 [&_button]:!pointer-events-none" : "opacity-100"}`}
+                    >
+                      <Guirnalda
+                        pasos={[...PASOS]}
+                        actual={vista === "lista" ? PASOS.length : paso}
+                        alcanzado={alcanzado}
+                        completa={vista === "lista"}
+                        onIr={irAPaso}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={abrirGrande}
+                      aria-label="Ver la maqueta en pantalla completa"
+                      title="Pantalla completa"
+                      className="absolute bottom-2 right-3 flex h-10 w-10 items-center justify-center rounded-full border border-[#f3cf7a]/35 bg-[#0d1d14]/75 text-[#f5f0e8]/85 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)] backdrop-blur-sm hover:text-[#f5f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+                    >
+                      <Maximize2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+                {aviso && <AvisoSumaste key={aviso.id} texto={aviso.texto} grande={verGrande} />}
               </Maqueta3D>
             ) : (
               <div className="mx-auto mt-1 max-w-[480px] px-5">
@@ -781,6 +898,43 @@ export default function ClientesPage() {
                         {libreEseDia === false && (
                           <span className="mt-2 block text-[13px] text-[#e8a39b]">Ese día ya está reservado.</span>
                         )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Paso>
+            )}
+
+            {vista === "pasos" && idPaso === "lugar" && salon && (
+              <Paso titulo="¿Adentro o al aire libre?" ayuda={`${salon.nombre} tiene las dos opciones y el precio es el mismo. Arriba ves cómo queda.`}>
+                <div className="space-y-3" role="radiogroup" aria-label="Dónde es la fiesta">
+                  {(
+                    [
+                      { valor: "jardin", titulo: "Al aire libre", detalle: "En el jardín, bajo la guirnalda de luces, con la pileta al costado.", Icono: Trees },
+                      { valor: "adentro", titulo: "Adentro", detalle: "En el salón de la casa, a resguardo del clima.", Icono: House },
+                    ] as Array<{ valor: VistaCasona; titulo: string; detalle: string; Icono: LucideIcon }>
+                  ).map(({ valor, titulo, detalle, Icono }) => {
+                    const elegido = lugar === valor
+                    return (
+                      <button
+                        key={valor}
+                        type="button"
+                        role="radio"
+                        aria-checked={elegido}
+                        onClick={() => setLugar(valor)}
+                        className={[
+                          "flex w-full items-start gap-4 rounded-[20px] border p-5 text-left transition-[background-color,border-color,box-shadow] duration-200",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]",
+                          elegido
+                            ? "border-[#c9a227] bg-[#1a3a2a] shadow-[0_0_34px_-14px_rgba(243,207,122,0.8)]"
+                            : "border-[rgba(245,240,232,0.12)] bg-[#12261a] hover:border-[rgba(245,240,232,0.25)]",
+                        ].join(" ")}
+                      >
+                        <Icono className={`mt-0.5 h-7 w-7 shrink-0 ${elegido ? "text-[#f3cf7a]" : "text-[#f5f0e8]/70"}`} strokeWidth={1.6} />
+                        <span className="min-w-0">
+                          <span className={`${serif} block text-[26px] leading-none`}>{titulo}</span>
+                          <span className="mt-2 block text-[14.5px] leading-snug text-[#f5f0e8]/75">{detalle}</span>
+                        </span>
                       </button>
                     )
                   })}
@@ -1075,14 +1229,17 @@ export default function ClientesPage() {
                 </p>
                 <ul className="mt-6 divide-y divide-[rgba(245,240,232,0.1)] rounded-2xl border border-[rgba(245,240,232,0.12)] bg-[#12261a]">
                   {[
-                    { paso: 0, titulo: "Festejo", valor: tipoEvento ?? "—" },
-                    { paso: 1, titulo: "Salón", valor: salon.nombre },
-                    { paso: 2, titulo: "Fecha", valor: fecha ? fechaLarga(fecha) : "Sin fecha" },
-                    { paso: 3, titulo: "Invitados", valor: `${adultos} adultos${ninos ? ` y ${ninos} chicos` : ""}` },
-                    { paso: 4, titulo: "Menú", valor: platosElegidos.length ? platosElegidos.join(", ") : "Sin catering" },
-                    { paso: 5, titulo: "Barra", valor: barrasElegidas.length ? barrasElegidas.join(", ") : "Sin barra" },
+                    { paso: "festejo" as IdPaso, titulo: "Festejo", valor: tipoEvento ?? "—" },
+                    { paso: "salon" as IdPaso, titulo: "Salón", valor: salon.nombre },
+                    ...(conLugar
+                      ? [{ paso: "lugar" as IdPaso, titulo: "Lugar", valor: lugar === "adentro" ? "Adentro" : lugar === "jardin" ? "Al aire libre" : "Sin elegir" }]
+                      : []),
+                    { paso: "fecha" as IdPaso, titulo: "Fecha", valor: fecha ? fechaLarga(fecha) : "Sin fecha" },
+                    { paso: "invitados" as IdPaso, titulo: "Invitados", valor: `${adultos} adultos${ninos ? ` y ${ninos} chicos` : ""}` },
+                    { paso: "menu" as IdPaso, titulo: "Menú", valor: platosElegidos.length ? platosElegidos.join(", ") : "Sin catering" },
+                    { paso: "barra" as IdPaso, titulo: "Barra", valor: barrasElegidas.length ? barrasElegidas.join(", ") : "Sin barra" },
                     {
-                      paso: 6,
+                      paso: "detalles" as IdPaso,
                       titulo: "Detalles",
                       valor: Object.keys(servicios).length
                         ? serviciosFecha
@@ -1095,7 +1252,7 @@ export default function ClientesPage() {
                     <li key={fila.titulo}>
                       <button
                         type="button"
-                        onClick={() => irAPaso(fila.paso)}
+                        onClick={() => irAlPaso(fila.paso)}
                         aria-label={`${fila.titulo}: ${fila.valor}. Cambiar`}
                         className="flex w-full items-baseline gap-4 px-4 py-3.5 text-left hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#f3cf7a]"
                       >
@@ -1202,6 +1359,7 @@ export default function ClientesPage() {
               tipoEvento={tipoEvento}
               fecha={fecha}
               salonNombre={salon.nombre}
+              lugar={conLugar && lugar ? TEXTO_LUGAR[lugar] : null}
               adultos={adultos}
               ninos={ninos}
               resumen={resumen}
@@ -1220,6 +1378,7 @@ export default function ClientesPage() {
                   tipoEvento,
                   fecha,
                   salon: salon.nombre,
+                  lugar: conLugar && lugar ? TEXTO_LUGAR[lugar] : null,
                   invitados: comensales,
                   total: resumen.total,
                 }),
@@ -1344,12 +1503,14 @@ function Paso({ titulo, ayuda, children }: { titulo: string; ayuda?: string; chi
 }
 
 /** "Sumaste la pantalla LED": aparece sobre la maqueta cuando algo se suma.
- *  Con el botón Jardín / Adentro abajo, va un poco más arriba. */
-function AvisoSumaste({ texto, arriba }: { texto: string; arriba?: boolean }) {
+ *  A pantalla completa va más arriba, para no tapar los controles de abajo. */
+function AvisoSumaste({ texto, grande }: { texto: string; grande?: boolean }) {
   return (
     <p
       role="status"
-      className={`lj-aviso pointer-events-none absolute ${arriba ? "bottom-[54px]" : "bottom-3"} left-5 flex max-w-[calc(100%-40px)] items-center gap-2 rounded-full bg-[#f8f2e4] px-3.5 py-1.5 text-[13.5px] font-medium text-[#1a3a2a] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.7)]`}
+      className={`lj-aviso pointer-events-none absolute left-5 flex items-center gap-2 rounded-full bg-[#f8f2e4] px-3.5 py-1.5 text-[13.5px] font-medium text-[#1a3a2a] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.7)] ${
+        grande ? "top-[calc(env(safe-area-inset-top)+16px)] max-w-[calc(100%-40px)]" : "bottom-3 max-w-[calc(100%-84px)]"
+      }`}
     >
       <Sparkles className="h-4 w-4 shrink-0 text-[#b08d2a]" aria-hidden="true" />
       <span className="truncate">{texto}</span>
@@ -1357,41 +1518,32 @@ function AvisoSumaste({ texto, arriba }: { texto: string; arriba?: boolean }) {
   )
 }
 
-/** Ver la fiesta de la Casona en el jardín o adentro. Es solo el dibujo: no
- *  cambia el precio ni lo que se manda con el presupuesto. */
-function VerCasona({ vista, onCambiar, oculto }: { vista: VistaCasona; onCambiar: (v: VistaCasona) => void; oculto?: boolean }) {
-  const opciones: Array<{ valor: VistaCasona; texto: string; Icono: LucideIcon }> = [
-    { valor: "jardin", texto: "Jardín", Icono: Trees },
-    { valor: "adentro", texto: "Adentro", Icono: Armchair },
-  ]
+/** Lo que va sobre la maqueta a pantalla completa: en qué paso está, el total
+ *  y el botón para volver, todo abajo (donde llega el dedo). Con el celular
+ *  derecho, sugiere girarlo para verla más grande. */
+function ControlesGrande({ paso, total, onCerrar }: { paso: string; total: string | null; onCerrar: () => void }) {
   return (
-    <div
-      role="group"
-      aria-label="Ver la fiesta en el jardín o adentro"
-      aria-hidden={oculto || undefined}
-      className={`absolute bottom-3 right-4 flex rounded-full border border-[#f3cf7a]/35 bg-[#0d1d14]/80 p-0.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)] backdrop-blur-sm transition-opacity duration-300 ${
-        oculto ? "pointer-events-none opacity-0" : "opacity-100"
-      }`}
-    >
-      {opciones.map(({ valor, texto, Icono }) => {
-        const activa = vista === valor
-        return (
-          <button
-            key={valor}
-            type="button"
-            aria-pressed={activa}
-            tabIndex={oculto ? -1 : undefined}
-            onClick={() => onCambiar(valor)}
-            className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] ${
-              activa ? "bg-[#f3cf7a] text-[#0d1d14]" : "text-[#f5f0e8]/80 hover:text-[#f5f0e8]"
-            }`}
-          >
-            <Icono className="h-3.5 w-3.5" aria-hidden="true" />
-            {texto}
-          </button>
-        )
-      })}
-    </div>
+    <>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#0d1d14]/90 to-transparent" />
+      <p className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+64px)] mx-auto flex w-fit items-center gap-2 rounded-full bg-[#0d1d14]/70 px-3.5 py-1.5 text-[13px] text-[#f5f0e8]/80 backdrop-blur-sm [@media(orientation:landscape)]:hidden">
+        <Smartphone className="h-4 w-4 rotate-90" aria-hidden="true" />
+        Girá el celular para verla más grande
+      </p>
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 px-[max(20px,env(safe-area-inset-left))] pb-[calc(env(safe-area-inset-bottom)+16px)]">
+        <div className="pointer-events-none min-w-0">
+          <p className="truncate text-[12.5px] text-[#f5f0e8]/65">{paso}</p>
+          {total && <p className={`${serif} truncate text-[22px] font-semibold leading-tight tabular-nums text-[#f8f2e4]`}>{total}</p>}
+          <p className="mt-0.5 text-[12px] text-[#f5f0e8]/50">Deslizá para girarla</p>
+        </div>
+        <button
+          type="button"
+          onClick={onCerrar}
+          className="flex h-12 shrink-0 items-center gap-2 rounded-full bg-[#f3cf7a] px-5 text-[15px] font-semibold text-[#0d1d14] shadow-[0_0_30px_-8px_rgba(243,207,122,0.7)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#f3cf7a]/40"
+        >
+          <Minimize2 className="h-4 w-4" aria-hidden="true" /> Seguir eligiendo
+        </button>
+      </div>
+    </>
   )
 }
 

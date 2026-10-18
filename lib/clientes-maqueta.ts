@@ -170,11 +170,14 @@ export function tituloCartel(tipoEvento: string | null | undefined): string {
 // ── El lugar: cada salón con lo suyo ────────────────────────────────────────
 
 /**
- * Cómo se ve la Casona en la maqueta: la fiesta en el jardín o adentro. Es
- * solo el dibujo (el botón "Jardín / Adentro"): no cambia el precio ni lo que
- * se manda con el presupuesto.
+ * Dónde es la fiesta en la Casona: en el jardín (al aire libre) o adentro. Lo
+ * elige la persona en su propio paso, "¿Adentro o al aire libre?". No cambia
+ * el precio: cambia el dibujo y se anota en el presupuesto y en el WhatsApp.
  */
 export type VistaCasona = "jardin" | "adentro"
+
+/** Cómo se dice en una frase ("en Casona al aire libre"). */
+export const TEXTO_LUGAR: Record<VistaCasona, string> = { jardin: "al aire libre", adentro: "adentro" }
 
 export interface Ambiente {
   /** "plano": todavía no eligió salón (la maqueta es el plano, para llenar).
@@ -201,9 +204,15 @@ export function ambienteDeSalon(clave: string | null | undefined, vista: VistaCa
   return { lugar: "interior", estilo: "salon", casona: false }
 }
 
-/** Si el salón se puede ver en el jardín o adentro (el botón de la maqueta). */
+/** Si el salón se puede ver en el jardín o adentro. */
 export function tieneVistaAdentro(a: Ambiente): boolean {
   return a.casona
+}
+
+/** Si con ese salón se elige "¿adentro o al aire libre?" (por la clave, como
+ *  el dibujo: solo la Casona tiene las dos cosas). */
+export function salonConAireLibre(clave: string | null | undefined): boolean {
+  return tieneVistaAdentro(ambienteDeSalon(clave))
 }
 
 /** Lo que tiene el salón además de lo incluido (va en su tarjeta). */
@@ -265,7 +274,7 @@ export interface EntradaMaqueta {
   tipoEvento: string | null
   /** `clave` es la de la base (decide el lugar); `nombre`, el que se ve. */
   salon: { clave: string; nombre: string; barras: Array<{ id: string; bebidaDeMesa: boolean }> } | null
-  /** Solo para la Casona: ver la fiesta en el jardín (si no se dice) o adentro. */
+  /** Solo para la Casona: la fiesta en el jardín (si todavía no eligió) o adentro. */
   vistaCasona?: VistaCasona
   /** Servicios que valen para la fecha: los incluidos y los adicionales. */
   servicios: Array<{ servicioId: string; nombre: string; incluido: boolean }>

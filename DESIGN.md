@@ -117,8 +117,13 @@ probar a 390 px sin scroll horizontal).
 - **Cada salón es como es** (`components/clientes/maqueta/ambientes.ts`):
   antes de elegir salón la maqueta es un plano (verde con grilla dorada y lo
   que va a ir en punteado). Solo la Casona tiene aire libre: su jardín con
-  guirnalda, y al costado la casa para quedarse y la pileta; con el botón
-  "Jardín / Adentro" se ve la fiesta en su salón interior (es solo el dibujo).
+  guirnalda, y al costado la casa para quedarse y la pileta. Con la Casona se
+  suma el paso 3, "¿Adentro o al aire libre?", y con "Adentro" se ve la fiesta
+  en su salón interior (no cambia el precio). Sobre la maqueta no va ningún
+  botón para elegir, porque arriba no llega el dedo: todas las elecciones van
+  abajo. Lo único encima es el botón de pantalla completa, en su esquina de
+  abajo (también se abre tocando la maqueta o girando el celular); a pantalla
+  completa, el total y "Seguir eligiendo" van abajo.
   Quinta, Salón y cualquier salón nuevo son salones cerrados vistos como una
   maqueta: la pared que tapa la vista baja y, de cerca, el techo (vigas y
   arañas) se desvanece. Cada uno tiene su estilo: la Quinta, ladrillo y

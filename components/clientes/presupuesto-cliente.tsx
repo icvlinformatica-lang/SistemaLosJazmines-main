@@ -18,6 +18,7 @@ export function PresupuestoCliente({
   tipoEvento,
   fecha,
   salonNombre,
+  lugar,
   adultos,
   ninos,
   resumen,
@@ -31,6 +32,8 @@ export function PresupuestoCliente({
   tipoEvento: string | null
   fecha: string | null
   salonNombre: string
+  /** "al aire libre" / "adentro", si el salón tiene las dos. */
+  lugar?: string | null
   adultos: number
   ninos: number
   resumen: ResumenSimulacion
@@ -61,7 +64,8 @@ export function PresupuestoCliente({
         <p className="mt-1 text-[14.5px] leading-relaxed text-[#1a3a2a]/75">
           {fecha ? <span className="first-letter:uppercase inline-block">{fechaLarga(fecha)}</span> : "Sin fecha elegida"}
           <br />
-          {salonNombre}, {invitados}
+          {salonNombre}
+          {lugar ? ` ${lugar}` : ""}, {invitados}
         </p>
       </header>
 

@@ -1,7 +1,8 @@
 // Simulador "Armá tu fiesta" — vista de Clientes (prototipo, perfil "clientes").
 //
-// La persona arma su fiesta paso a paso (festejo, salón, fecha, invitados,
-// menú, barra y detalles) y ve el total en vivo. La cuenta es la MISMA del
+// La persona arma su fiesta paso a paso (festejo, salón, adentro o al aire
+// libre si el salón tiene las dos, fecha, invitados, menú, barra y detalles) y
+// ve el total en vivo. La cuenta es la MISMA del
 // cotizador del vendedor: armarCotizacion (lib/cotizador-salon.ts) con los
 // precios por unidad del catálogo por salón (lib/catalogo-cotizador-servidor.ts).
 // El servidor recalcula con costos reales en /api/clientes/simular.
@@ -42,6 +43,48 @@ export const DIAS_PRECIO_CONGELADO = 7
 export const MESES_CALENDARIO = 24
 
 export { MAX_BARRAS }
+
+// ── Los pasos ───────────────────────────────────────────────────────────────
+
+/** Todos los pasos, en orden. "lugar" (¿adentro o al aire libre?) va solo con
+ *  un salón que tiene las dos cosas (hoy, la Casona): ver pasosCliente. */
+export const PASOS_CLIENTE = [
+  { id: "festejo", nombre: "Festejo" },
+  { id: "salon", nombre: "Salón" },
+  { id: "lugar", nombre: "Lugar" },
+  { id: "fecha", nombre: "Fecha" },
+  { id: "invitados", nombre: "Invitados" },
+  { id: "menu", nombre: "Menú" },
+  { id: "barra", nombre: "Barra" },
+  { id: "detalles", nombre: "Detalles" },
+] as const
+export type IdPasoCliente = (typeof PASOS_CLIENTE)[number]["id"]
+export type PasoCliente = (typeof PASOS_CLIENTE)[number]
+
+/** Los pasos que se recorren: sin "lugar" si el salón no tiene aire libre
+ *  (o todavía no se eligió salón). */
+export function pasosCliente(conLugar: boolean): PasoCliente[] {
+  return PASOS_CLIENTE.filter((p) => conLugar || p.id !== "lugar")
+}
+
+/**
+ * En qué lugar de `pasos` está el paso `id`. Si no está (el paso "lugar" con
+ * un salón cerrado), el del último paso anterior que sí está: así, al cambiar
+ * de salón, lo ya recorrido sigue prendido en la guirnalda.
+ */
+export function indicePaso(pasos: ReadonlyArray<{ id: string }>, id: IdPasoCliente): number {
+  const orden = PASOS_CLIENTE.findIndex((p) => p.id === id)
+  for (let i = orden; i >= 0; i--) {
+    const j = pasos.findIndex((p) => p.id === PASOS_CLIENTE[i].id)
+    if (j >= 0) return j
+  }
+  return 0
+}
+
+/** Si el paso `a` va después que `b` en el recorrido completo. */
+export function pasoDespuesDe(a: IdPasoCliente, b: IdPasoCliente): boolean {
+  return PASOS_CLIENTE.findIndex((p) => p.id === a) > PASOS_CLIENTE.findIndex((p) => p.id === b)
+}
 
 // ── Catálogo para clientes ──────────────────────────────────────────────────
 
@@ -485,6 +528,8 @@ export function textoWhatsAppCliente(d: {
   tipoEvento?: string | null
   fecha?: string | null
   salon?: string | null
+  /** "al aire libre" / "adentro", si el salón tiene las dos. */
+  lugar?: string | null
   invitados?: number | null
   total?: number | null
 }): string {
@@ -494,7 +539,7 @@ export function textoWhatsAppCliente(d: {
   const fiesta = [
     d.tipoEvento ? d.tipoEvento : "Mi fiesta",
     d.fecha ? `el ${fechaLarga(d.fecha)}` : "",
-    d.salon ? `en ${d.salon}` : "",
+    d.salon ? `en ${d.salon}${d.lugar ? ` ${d.lugar}` : ""}` : "",
     d.invitados ? `para ${d.invitados} invitados` : "",
   ]
     .filter(Boolean)

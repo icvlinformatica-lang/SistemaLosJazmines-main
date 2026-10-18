@@ -231,12 +231,16 @@ test("cada salón tiene su lugar: solo la Casona tiene jardín, pileta y casa", 
   assert.deepEqual(maq.ambienteDeSalon(""), { lugar: "plano", estilo: null, casona: false })
   assert.equal(maq.tieneVistaAdentro(maq.ambienteDeSalon("Casona")), true)
   assert.equal(maq.tieneVistaAdentro(maq.ambienteDeSalon("Quinta")), false)
+  // El paso "¿Adentro o al aire libre?" va solo con la Casona (por la clave).
+  assert.equal(maq.salonConAireLibre("Casona"), true)
+  for (const clave of ["Quinta", "Salon", "Salon 4", null, ""]) assert.equal(maq.salonConAireLibre(clave), false, String(clave))
+  assert.deepEqual(maq.TEXTO_LUGAR, { jardin: "al aire libre", adentro: "adentro" })
   assert.match(maq.rasgosSalon("Casona"), /pileta/)
   assert.equal(maq.rasgosSalon("Quinta"), null)
   assert.equal(maq.rasgosSalon(null), null)
 })
 
-test("el lugar sale de la clave del salón y del botón Jardín / Adentro", () => {
+test("el lugar sale de la clave del salón y del paso adentro o al aire libre", () => {
   assert.equal(maq.estadoMaqueta(entrada({ salon: null })).ambiente.lugar, "plano")
   assert.equal(maq.estadoMaqueta(entrada()).ambiente.lugar, "jardin")
   assert.equal(maq.estadoMaqueta(entrada({ vistaCasona: "adentro" })).ambiente.lugar, "interior")
@@ -259,7 +263,7 @@ test("la descripción dice dónde es la fiesta", () => {
   assert.equal(maq.descripcionMaqueta(maq.estadoMaqueta(entrada({ tipoEvento: null, salon: null }))), "Maqueta de tu fiesta, todavía vacía.")
 })
 
-test("avisos del lugar: la Casona muestra la pileta y la casa; el botón, el cambio", () => {
+test("avisos del lugar: la Casona muestra la pileta y la casa; adentro o afuera, el cambio", () => {
   const sinSalon = maq.estadoMaqueta(entrada({ salon: null }))
   const jardin = maq.estadoMaqueta(entrada())
   const adentro = maq.estadoMaqueta(entrada({ vistaCasona: "adentro" }))
