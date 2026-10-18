@@ -1,6 +1,7 @@
 "use client"
 
 import { CalendarCheck, CalendarX, Snowflake } from "lucide-react"
+import { TEXTO_INCLUIDO_EN_TODOS, yaIncluidoEnTodos } from "@/lib/clientes-maqueta"
 import {
   fechaLarga,
   formatoPesos,
@@ -47,7 +48,7 @@ export function PresupuestoCliente({
 }) {
   const rubros = resumen.rubros.filter((r) => r.clave === "salon" || r.precio > 0)
   const extras = resumen.servicios.filter((s) => !s.incluido)
-  const incluidos = resumen.servicios.filter((s) => s.incluido)
+  const incluidos = resumen.servicios.filter((s) => s.incluido && !yaIncluidoEnTodos(s.nombre))
   const invitados = `${adultos} ${adultos === 1 ? "adulto" : "adultos"}${ninos > 0 ? ` y ${ninos} ${ninos === 1 ? "chico" : "chicos"}` : ""}`
 
   return (
@@ -138,11 +139,10 @@ export function PresupuestoCliente({
             <span className="font-medium">Extras:</span> {extras.map((s) => servicioConCantidad(s, true)).join("; ")}.
           </p>
         )}
-        {incluidos.length > 0 && (
-          <p>
-            <span className="font-medium">Ya viene con el salón:</span> {incluidos.map((s) => nombreEnFrase(s.nombre)).join("; ")}.
-          </p>
-        )}
+        <p>
+          <span className="font-medium">Ya viene con el salón:</span> {TEXTO_INCLUIDO_EN_TODOS}
+          {incluidos.length > 0 ? `; además, ${incluidos.map((s) => nombreEnFrase(s.nombre)).join("; ")}` : ""}.
+        </p>
         {resumen.personal.length > 0 && (
           <p>
             <span className="font-medium">Personal:</span>{" "}

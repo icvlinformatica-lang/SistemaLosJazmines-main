@@ -98,6 +98,9 @@ import {
   estadoMuestra,
   novedades,
   rasgosSalon,
+  INCLUIDO_EN_TODOS,
+  TEXTO_INCLUIDO_EN_TODOS,
+  yaIncluidoEnTodos,
   salonConAireLibre,
   TEXTO_LUGAR,
   textoSumaste,
@@ -869,7 +872,7 @@ export default function ClientesPage() {
                 <div className="space-y-3" role="radiogroup" aria-label="Salón">
                   {catalogo?.salones.map((s) => {
                     const elegido = salonId === s.salon
-                    const incluidos = serviciosParaFecha(s, fecha).filter((x) => x.incluido)
+                    const incluidos = serviciosParaFecha(s, fecha).filter((x) => x.incluido && !yaIncluidoEnTodos(x.nombre))
                     const libreEseDia = fecha ? !(ocupadas[s.salon] ?? []).includes(fecha) : null
                     return (
                       <button
@@ -893,11 +896,10 @@ export default function ClientesPage() {
                         {rasgosSalon(s.salon) && (
                           <span className="mt-3 block text-[14.5px] leading-snug text-[#f5f0e8]/90">{rasgosSalon(s.salon)}</span>
                         )}
-                        {incluidos.length > 0 && (
-                          <span className={`${rasgosSalon(s.salon) ? "mt-1.5" : "mt-3"} block text-[14px] leading-relaxed text-[#f5f0e8]/70`}>
-                            Incluye {incluidos.map((x) => nombreEnFrase(x.nombre)).join("; ")}.
-                          </span>
-                        )}
+                        <span className={`${rasgosSalon(s.salon) ? "mt-1.5" : "mt-3"} block text-[14px] leading-relaxed text-[#f5f0e8]/70`}>
+                          Incluye {TEXTO_INCLUIDO_EN_TODOS}
+                          {incluidos.length > 0 ? `; además, ${incluidos.map((x) => nombreEnFrase(x.nombre)).join("; ")}` : ""}.
+                        </span>
                         {libreEseDia === false && (
                           <span className="mt-2 block text-[13px] text-[#e8a39b]">Ese día ya está reservado.</span>
                         )}
@@ -1141,23 +1143,24 @@ export default function ClientesPage() {
 
             {vista === "pasos" && idPaso === "detalles" && salon && (
               <Paso titulo="Los detalles" ayuda="Lo que ya viene con el salón no se cobra aparte.">
-                {serviciosFecha.some((s) => s.incluido) && (
-                  <div className="mb-6">
-                    <h3 className={`${serif} mb-2.5 text-[21px]`}>Ya viene con el salón</h3>
-                    <ul className="flex flex-wrap gap-2">
-                      {serviciosFecha
-                        .filter((s) => s.incluido)
-                        .map((s) => (
-                          <li
-                            key={s.servicioId}
-                            className="rounded-full border border-[#c9a227]/50 px-3 py-1.5 text-[13.5px] text-[#f5f0e8]/85"
-                          >
-                            {nombreParaCliente(s.nombre)}
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
+                <div className="mb-6">
+                  <h3 className={`${serif} mb-2.5 text-[21px]`}>Ya viene con el salón</h3>
+                  <ul className="flex flex-wrap gap-2">
+                    {[
+                      ...INCLUIDO_EN_TODOS.map((nombre) => ({ clave: `todos-${nombre}`, nombre })),
+                      ...serviciosFecha
+                        .filter((s) => s.incluido && !yaIncluidoEnTodos(s.nombre))
+                        .map((s) => ({ clave: s.servicioId, nombre: nombreParaCliente(s.nombre) })),
+                    ].map((x) => (
+                      <li
+                        key={x.clave}
+                        className="rounded-full border border-[#c9a227]/50 px-3 py-1.5 text-[13.5px] text-[#f5f0e8]/85"
+                      >
+                        {x.nombre}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
                 {(() => {
                   const extras = serviciosFecha.filter((s) => !s.incluido)
                   if (extras.length === 0) return <p className="text-[15px] text-[#f5f0e8]/70">No hay adicionales para esta fecha.</p>

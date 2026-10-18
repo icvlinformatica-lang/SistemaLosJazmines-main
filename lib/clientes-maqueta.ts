@@ -238,6 +238,23 @@ export function rasgosSalon(clave: string | null | undefined): string | null {
   return RASGOS[clave ?? ""] ?? null
 }
 
+// ── Lo que viene en todos los salones ───────────────────────────────────────
+
+/** Lo que incluyen los tres salones, dicho por el dueño el 18/10/2026. Es lo
+ *  que se le muestra al cliente: no cambia precios ni lo que se cobra, que
+ *  sigue saliendo del catálogo del cotizador. */
+export const INCLUIDO_EN_TODOS = ["DJ", "Sonido", "Luces", "Vajilla", "Manteles", "Mesas", "Sillas", "Decoración"]
+export const TEXTO_INCLUIDO_EN_TODOS = "DJ, sonido, luces, vajilla, manteles, mesas, sillas y decoración"
+
+/** Un incluido del catálogo que ya dice la lista de arriba ("DJ, SONIDO, LUCES
+ *  Y HUMO", "MESAS Y SILLAS") no se repite. Basta con que todas sus palabras
+ *  estén en la lista (más el humo, que es parte de las luces). */
+const PALABRAS_INCLUIDAS = new Set(["DJ", "SONIDO", "LUCES", "LUZ", "HUMO", "VAJILLA", "MANTEL", "MANTELES", "MANTELERIA", "MESA", "MESAS", "SILLA", "SILLAS", "DECORACION", "Y", "E", "CON", "DE", "LA", "LAS", "LOS", "EL"])
+export function yaIncluidoEnTodos(nombre: string | null | undefined): boolean {
+  const palabras = normalizar(nombre).split(/[^A-Z0-9]+/).filter(Boolean)
+  return palabras.length > 0 && palabras.every((w) => PALABRAS_INCLUIDAS.has(w))
+}
+
 // ── Mesas ───────────────────────────────────────────────────────────────────
 
 export const PERSONAS_POR_MESA = 10
@@ -323,6 +340,9 @@ export function lucesPrendidas(alcanzado: number, totalPasos: number, completa: 
 export function estadoMaqueta(e: EntradaMaqueta): EstadoMaqueta {
   const piezas: Partial<Record<Pieza, number>> = {}
   if (e.salon) {
+    // Todos los salones traen DJ, luces y decoración: se ven apenas se elige.
+    piezas.dj = 1
+    piezas.decoracion = 1
     for (const s of e.servicios) {
       const p = piezaDeServicio(s.nombre)
       if (!p) continue

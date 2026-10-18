@@ -156,6 +156,23 @@ test("con el salón: lo incluido aparece solo; lo adicional, cuando se elige", (
   assert.equal(Object.keys(con.piezas).length, 5)
 })
 
+test("todos los salones traen DJ y decoración, aunque el catálogo no los marque", () => {
+  const sinIncluidos = maq.estadoMaqueta(entrada({ servicios: SERVICIOS.filter((s) => !s.incluido) }))
+  assert.deepEqual(sinIncluidos.piezas, { dj: 1, decoracion: 1 })
+  assert.deepEqual(maq.estadoMaqueta(entrada({ salon: null, servicios: [] })).piezas, {})
+  assert.equal(maq.TEXTO_INCLUIDO_EN_TODOS, "DJ, sonido, luces, vajilla, manteles, mesas, sillas y decoración")
+  assert.equal(maq.INCLUIDO_EN_TODOS.length, 8)
+})
+
+test("un incluido del catálogo que ya está en la lista de todos no se repite", () => {
+  for (const n of ["DJ, SONIDO, LUCES Y HUMO", "DECORACIÓN", "Mesas y sillas", "VAJILLA Y MANTELERÍA 2027", "Manteles"]) {
+    assert.equal(maq.yaIncluidoEnTodos(n), true, n)
+  }
+  for (const n of ["PANTALLA LED", "MESA DULCE", "LUCES Y PANTALLA", "", null]) {
+    assert.equal(maq.yaIncluidoEnTodos(n), false, String(n))
+  }
+})
+
 test("menú, bebida de mesa y barras", () => {
   assert.equal(maq.estadoMaqueta(entrada({ recetas: ["p1"] })).platos, true)
   assert.equal(maq.estadoMaqueta(entrada({ recetas: ["p1"], conCatering: false })).platos, false)
