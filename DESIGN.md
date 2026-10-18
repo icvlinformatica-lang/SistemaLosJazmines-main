@@ -85,6 +85,28 @@ quedan siempre visibles; Cobrar cuota, Marcar como finalizado y Eliminar se
 movieron a un menú desplegable. Mismo componente reusado entre la tabla de
 desktop y las tarjetas de mobile.
 
+## 7. Vista de Clientes (/clientes)
+
+Es lo único que mira un cliente, no el equipo: tiene su propio lenguaje,
+tomado de la foto del jardín de noche con guirnaldas (`public/clientes/`).
+Las reglas 1 a 6 siguen valiendo (íconos de `lucide-react`, nada de emojis,
+probar a 390 px sin scroll horizontal).
+
+- **Color**: noche `#0d1d14` de fondo, superficies `#12261a`, elegido
+  `#1a3a2a` (el verde de la marca) con borde dorado `#c9a227`, luz
+  `#f3cf7a` para lo que se puede tocar y para el total, crema `#f5f0e8` para
+  el texto. El presupuesto va en papel `#f8f2e4` con tinta `#1a3a2a`, como
+  una invitación.
+- **Letra**: Bodoni Moda (`app/clientes/fuentes`, licencia OFL) solo para
+  títulos y montos; el resto, la letra del sistema.
+- **Lo memorable es una sola cosa**: la guirnalda de luces que hace de
+  indicador de pasos (`components/clientes/guirnalda.tsx`). Cada lamparita
+  es un paso y, cuando la fiesta está lista, se prenden todas. El resto queda
+  sobrio: sin animaciones de entrada; solo se mueve lo que responde a un
+  toque (el total que corre hasta el valor nuevo).
+- **Lo que suma cada opción** va a la derecha: en dorado lo que todavía se
+  puede sumar ("+ $ 120.000") y en crema lo que ya suma lo elegido.
+
 ---
 
 ## Pendientes / inconsistencias detectadas (no corregidas todavía)

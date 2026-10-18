@@ -15,10 +15,13 @@ import {
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { chequearLimite, registrarFallo, registrarExito, obtenerIp } from "@/lib/auth/rate-limit"
 
+// "clientes" (prototipo del simulador) no tiene PIN propio: no está en
+// getPins(), así que verifyPin lo rechaza siempre. Se entra con el pase de
+// Administración o con el acceso rápido que recibe Diego.
 const PERFILES_VALIDOS = [
   "cocina", "barra", "administracion", "soporte", "cobro",
   "dj", "fotografo", "vestido", "pantalla", "coordinacion",
-  "vendedor",
+  "vendedor", "clientes",
 ]
 
 // POST { perfilId, pin } — login con PIN
