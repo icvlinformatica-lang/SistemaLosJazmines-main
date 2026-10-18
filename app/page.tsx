@@ -14,6 +14,7 @@ import { ChatAyuda } from "@/components/chat-ayuda"
 import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { GuiaAyudaModal } from "@/components/guia-ayuda-modal"
 import { AtajosRapidos } from "@/components/atajos-rapidos"
+import { AvisoSemanalModal, useAvisoSemanal } from "@/components/aviso-semanal"
 import { useUI } from "@/lib/ui-context"
 import { useProfile } from "@/lib/profile-context"
 
@@ -85,6 +86,11 @@ export default function HomePage() {
   const { data: resumenPagar } = useSWR(veAtrasadas ? CLAVE_VIENEN_A_PAGAR : null, cargarResumenVienenAPagar)
   const cuotasAtrasadas = contarCuotasAtrasadas(resumenPagar?.vienenAPagar ?? [])
 
+  // Aviso de los lunes (Administración y Soporte): se abre solo una vez por
+  // semana y después queda en Novedades, con punto rojo mientras falte
+  // finalizar eventos del finde pasado.
+  const aviso = useAvisoSemanal(perfilActivo?.id)
+
   const handleBackgroundClick = () => {
     toggleSidebar()
   }
@@ -145,6 +151,9 @@ export default function HomePage() {
         >
           <Bell className="h-4 w-4" />
           <span>Novedades</span>
+          {aviso.aplica && aviso.cantidadPendientes > 0 && (
+            <span className="h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-[#f5f0e8]" aria-label="Hay eventos del finde pasado sin finalizar" />
+          )}
         </button>
         <button
           type="button"
@@ -209,7 +218,12 @@ export default function HomePage() {
         </button>
       </div>
 
-      <NovedadesModal open={novedadesOpen} onOpenChange={setNovedadesOpen} />
+      <NovedadesModal
+        open={novedadesOpen}
+        onOpenChange={setNovedadesOpen}
+        avisoSemanal={aviso.aplica ? { pendientes: aviso.cantidadPendientes } : null}
+      />
+      <AvisoSemanalModal open={aviso.abierto} onClose={aviso.cerrar} />
       <ResumenDiarioModal open={resumenOpen} onOpenChange={setResumenOpen} soloDiario={perfilActivo?.id === "cobro"} />
       <FindeModal open={findeOpen} onOpenChange={setFindeOpen} />
       <VienenAPagarModal open={pagarOpen} onOpenChange={setPagarOpen} />
