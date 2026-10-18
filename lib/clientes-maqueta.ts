@@ -2,8 +2,10 @@
 //
 // Qué se dibuja según lo que va eligiendo la persona: cada elección suma algo
 // a la maqueta (las mesas con los invitados, la barra, la pantalla LED…), y
-// así arma su fiesta como en un juego. Es una ilustración: nunca lleva precios
-// ni datos de nadie; los montos siguen en la pantalla, con la cuenta de siempre.
+// así arma su fiesta como en un juego. El lugar es el del salón elegido: el
+// jardín de la Casona (con pileta y la casa) o un salón cerrado; antes de
+// elegirlo, el plano vacío. Es una ilustración: nunca lleva precios ni datos
+// de nadie; los montos siguen en la pantalla, con la cuenta de siempre.
 //
 // Lógica pura (sin three.js ni "use client"): la usan la pantalla /clientes,
 // el motor 3D (components/clientes/maqueta) y scripts/test-clientes-maqueta.cjs.
@@ -165,6 +167,50 @@ export function tituloCartel(tipoEvento: string | null | undefined): string {
   return TITULO_CARTEL[tipoEvento ?? ""] ?? "Bienvenidos"
 }
 
+// ── El lugar: cada salón con lo suyo ────────────────────────────────────────
+
+/**
+ * Cómo se ve la Casona en la maqueta: la fiesta en el jardín o adentro. Es
+ * solo el dibujo (el botón "Jardín / Adentro"): no cambia el precio ni lo que
+ * se manda con el presupuesto.
+ */
+export type VistaCasona = "jardin" | "adentro"
+
+export interface Ambiente {
+  /** "plano": todavía no eligió salón (la maqueta es el plano, para llenar).
+   *  "jardin": la fiesta al aire libre (solo la Casona tiene).
+   *  "interior": la fiesta en un salón cerrado. */
+  lugar: "plano" | "jardin" | "interior"
+  /** De qué salón es el dibujo (el piso, las paredes, las arañas). */
+  estilo: "casona" | "quinta" | "salon" | null
+  /** La Casona: la pileta y la casa para quedarse (se ven en las dos vistas). */
+  casona: boolean
+}
+
+/**
+ * Qué lugar se dibuja según la clave del salón (la de la base: "Casona",
+ * "Quinta", "Salon"…, que no cambia aunque en Configuración se le cambie el
+ * nombre que se ve). Solo la Casona tiene aire libre: además tiene salón
+ * adentro, pileta y una casa para quedarse. Quinta, Salón y cualquier salón
+ * nuevo son salones cerrados.
+ */
+export function ambienteDeSalon(clave: string | null | undefined, vista: VistaCasona = "jardin"): Ambiente {
+  if (!clave) return { lugar: "plano", estilo: null, casona: false }
+  if (clave === "Casona") return { lugar: vista === "adentro" ? "interior" : "jardin", estilo: "casona", casona: true }
+  if (clave === "Quinta") return { lugar: "interior", estilo: "quinta", casona: false }
+  return { lugar: "interior", estilo: "salon", casona: false }
+}
+
+/** Si el salón se puede ver en el jardín o adentro (el botón de la maqueta). */
+export function tieneVistaAdentro(a: Ambiente): boolean {
+  return a.casona
+}
+
+/** Lo que tiene el salón además de lo incluido (va en su tarjeta). */
+export function rasgosSalon(clave: string | null | undefined): string | null {
+  return clave === "Casona" ? "Al aire libre o adentro, con pileta y una casa para quedarse." : null
+}
+
 // ── Mesas ───────────────────────────────────────────────────────────────────
 
 export const PERSONAS_POR_MESA = 10
@@ -183,6 +229,8 @@ export function personasPorMesa(personas: number, maxMesas: number): number[] {
 // ── Estado de la maqueta ────────────────────────────────────────────────────
 
 export interface EstadoMaqueta {
+  /** Dónde es la fiesta: el plano vacío, el jardín de la Casona o un salón cerrado. */
+  ambiente: Ambiente
   /** Colores de los globos y los detalles (según el festejo). */
   paleta: string[]
   festejo: string | null
@@ -190,7 +238,7 @@ export interface EstadoMaqueta {
   globos: boolean
   /** Atril de la entrada: título según el festejo y la fecha, si ya la eligió. */
   cartel: { titulo: string; fecha: string | null } | null
-  /** Nombre del salón en el cartel de la casa. */
+  /** Nombre del salón (el que se ve) en su cartel. */
   salon: string | null
   /** Gente en cada mesa (una entrada por mesa; vacío = sin mesas). */
   mesas: number[]
@@ -215,7 +263,10 @@ export interface EstadoMaqueta {
 
 export interface EntradaMaqueta {
   tipoEvento: string | null
-  salon: { nombre: string; barras: Array<{ id: string; bebidaDeMesa: boolean }> } | null
+  /** `clave` es la de la base (decide el lugar); `nombre`, el que se ve. */
+  salon: { clave: string; nombre: string; barras: Array<{ id: string; bebidaDeMesa: boolean }> } | null
+  /** Solo para la Casona: ver la fiesta en el jardín (si no se dice) o adentro. */
+  vistaCasona?: VistaCasona
   /** Servicios que valen para la fecha: los incluidos y los adicionales. */
   servicios: Array<{ servicioId: string; nombre: string; incluido: boolean }>
   /** Adicionales elegidos: id → cantidad. */
@@ -259,6 +310,7 @@ export function estadoMaqueta(e: EntradaMaqueta): EstadoMaqueta {
   const deMesa = new Set((e.salon?.barras ?? []).filter((b) => b.bebidaDeMesa).map((b) => b.id))
   const festejo = e.tipoEvento || null
   return {
+    ambiente: ambienteDeSalon(e.salon?.clave, e.vistaCasona ?? "jardin"),
     paleta: paletaFestejo(festejo),
     festejo,
     globos: !!festejo,
@@ -277,9 +329,11 @@ export function estadoMaqueta(e: EntradaMaqueta): EstadoMaqueta {
   }
 }
 
-/** La fiesta de muestra de la portada: todo lo que se puede sumar. */
+/** La fiesta de muestra de la portada: todo lo que se puede sumar, en el
+ *  jardín de la Casona (con la pileta y la casa). */
 export function estadoMuestra(): EstadoMaqueta {
   return {
+    ambiente: ambienteDeSalon("Casona", "jardin"),
     paleta: PALETA_FIESTA,
     festejo: null,
     globos: true,
@@ -303,6 +357,15 @@ function enLista(partes: string[]): string {
   return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`
 }
 
+/** Dónde es la fiesta, para la descripción ("en Casona, en el jardín…"). */
+function dondeEs(m: EstadoMaqueta): string {
+  const { lugar, casona } = m.ambiente
+  if (lugar === "plano") return ""
+  const en = m.salon ? ` en ${m.salon}` : ""
+  if (lugar === "jardin") return `${en}, en el jardín${casona ? " con la pileta y la casa" : ""}`
+  return `${en}, adentro`
+}
+
 /** Texto que describe la maqueta, para lectores de pantalla. */
 export function descripcionMaqueta(m: EstadoMaqueta): string {
   const partes: string[] = []
@@ -317,8 +380,8 @@ export function descripcionMaqueta(m: EstadoMaqueta): string {
     if (!m.piezas[p] || p === "mesas" || p === "suite") continue
     partes.push(p === "letras" && m.letras.length ? `letras luminosas (${m.letras.join("")})` : NOMBRE_PIEZA[p])
   }
-  if (partes.length === 0) return "Maqueta del jardín de Los Jazmines, todavía vacía."
-  return `Maqueta de tu fiesta: ${enLista(partes)}.`
+  if (partes.length === 0) return `Maqueta de tu fiesta${dondeEs(m)}, todavía vacía.`
+  return `Maqueta de tu fiesta${dondeEs(m)}: ${enLista(partes)}.`
 }
 
 /** "Sumaste la pantalla LED" / "Sumaste el menú y la bebida de mesa". */
@@ -339,7 +402,7 @@ export interface Novedad {
  * otra barra, el menú. Lo incluido aparece al elegir el salón y no se avisa.
  */
 export function novedades(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): Novedad[] {
-  if (!antes || antes.salon !== ahora.salon) return []
+  if (!antes || antes.salon !== ahora.salon || antes.ambiente.estilo !== ahora.ambiente.estilo) return []
   const nuevas: Novedad[] = []
   if (!antes.platos && ahora.platos) nuevas.push({ texto: "el menú", foco: "mesa" })
   if (!antes.bebidaDeMesa && ahora.bebidaDeMesa) nuevas.push({ texto: "la bebida de mesa", foco: "mesa" })
@@ -356,4 +419,20 @@ export function novedades(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): No
     }
   }
   return nuevas
+}
+
+/**
+ * Un aviso del lugar (no de algo que se suma): al elegir la Casona, que la
+ * cámara vaya a mostrar la pileta y la casa; al pasar del jardín a adentro (o
+ * al revés), que se vea entero el cambio. Nada para los salones cerrados.
+ */
+export function avisoLugar(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): Novedad | null {
+  if (!antes) return null
+  const a = antes.ambiente
+  const b = ahora.ambiente
+  if (b.casona && !a.casona) return { texto: "Tiene pileta y una casa para quedarse", foco: "casona" }
+  if (a.casona && b.casona && a.lugar !== b.lugar) {
+    return { texto: b.lugar === "interior" ? "Así queda adentro" : "Así queda en el jardín", foco: "isla" }
+  }
+  return null
 }

@@ -15,15 +15,19 @@
 // - Las fechas ocupadas se ven tachadas antes del peaje (decisión del
 //   18/10/2026), solo la fecha (/api/clientes/ocupadas).
 // - Va a pantalla completa, sin el menú del sistema (components/app-shell.tsx).
-// - Arriba de cada paso va la maqueta 3D del jardín (components/clientes/
-//   maqueta-3d.tsx), que se arma sola con cada elección: es el juego. Es solo
-//   una ilustración (lib/clientes-maqueta.ts); los montos salen de la cuenta de
-//   siempre. Sin WebGL, la pantalla queda como antes.
+// - Arriba de cada paso va la maqueta 3D (components/clientes/maqueta-3d.tsx),
+//   que se arma sola con cada elección: es el juego. El lugar es el del salón
+//   elegido (la Casona: jardín, pileta y casa, y se puede ver adentro con el
+//   botón "Jardín / Adentro"; los demás, salones cerrados). Es solo una
+//   ilustración (lib/clientes-maqueta.ts): el botón no cambia el precio ni lo
+//   que se manda, y los montos salen de la cuenta de siempre. Sin WebGL, la
+//   pantalla queda como antes.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
+  Armchair,
   Baby,
   Briefcase,
   Cake,
@@ -38,6 +42,7 @@ import {
   Printer,
   RotateCcw,
   Sparkles,
+  Trees,
   type LucideIcon,
 } from "lucide-react"
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer"
@@ -74,12 +79,16 @@ import {
   type SeleccionCliente,
 } from "@/lib/clientes-simulador"
 import {
+  avisoLugar,
   descripcionMaqueta,
   estadoMaqueta,
   estadoMuestra,
   novedades,
+  rasgosSalon,
   textoSumaste,
+  tieneVistaAdentro,
   type EstadoMaqueta,
+  type VistaCasona,
 } from "@/lib/clientes-maqueta"
 import { numeroWhatsApp } from "@/lib/telefono-whatsapp"
 import { fuenteFiesta } from "./fuente-fiesta"
@@ -134,6 +143,8 @@ const FOCO_PASO: Record<IdPaso, string> = {
 const PASO_INVITADOS = PASOS.findIndex((p) => p.id === "invitados")
 /** Cuánto se queda la cámara mostrando lo que se acaba de sumar. */
 const MS_MOSTRAR_SUMADO = 2600
+/** Y la casa y la pileta, al elegir la Casona (vuela más lejos). */
+const MS_MOSTRAR_LUGAR = 3600
 
 /** "+ $ 120.000" / "− $ 30.000" / "sin costo extra". */
 function diferencia(d: number): string {
@@ -206,7 +217,9 @@ export default function ClientesPage() {
   const maqueta = useRef<ManejoMaqueta>(null)
   const [fotoMaqueta, setFotoMaqueta] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ id: number; texto: string } | null>(null)
-  const [focoSumado, setFocoSumado] = useState<string | null>(null)
+  const [focoSumado, setFocoSumado] = useState<{ foco: string; ms: number } | null>(null)
+  // Solo la Casona: ver la fiesta en el jardín o adentro (es solo el dibujo).
+  const [vistaCasona, setVistaCasona] = useState<VistaCasona>("jardin")
   const muestra = useMemo(() => estadoMuestra(), [])
 
   const hoy = useMemo(() => hoyArgentina(), [])
@@ -286,7 +299,8 @@ export default function ClientesPage() {
     () =>
       estadoMaqueta({
         tipoEvento,
-        salon: salon ? { nombre: salon.nombre, barras: salon.barras } : null,
+        salon: salon ? { clave: salon.salon, nombre: salon.nombre, barras: salon.barras } : null,
+        vistaCasona,
         servicios: serviciosFecha,
         elegidos: servicios,
         fecha,
@@ -300,19 +314,25 @@ export default function ClientesPage() {
         pasoInvitados: PASO_INVITADOS,
         completa: vista === "lista" || vista === "presupuesto",
       }),
-    [tipoEvento, salon, serviciosFecha, servicios, fecha, adultos, ninos, conCatering, recetas, barraIds, alcanzado, vista],
+    [tipoEvento, salon, vistaCasona, serviciosFecha, servicios, fecha, adultos, ninos, conCatering, recetas, barraIds, alcanzado, vista],
   )
   // Cada cosa que se suma: un aviso ("Sumaste la pantalla LED") y la cámara va
-  // a mostrarla un momento.
+  // a mostrarla un momento. Al elegir la Casona, va a mostrar su casa y su pileta.
   const estadoPrevio = useRef<EstadoMaqueta | null>(null)
   useEffect(() => {
     const antes = estadoPrevio.current
     estadoPrevio.current = estadoMaq
     if (vista !== "pasos") return
+    const lugar = avisoLugar(antes, estadoMaq)
+    if (lugar) {
+      setAviso({ id: Date.now(), texto: lugar.texto })
+      setFocoSumado({ foco: lugar.foco, ms: lugar.foco === "casona" ? MS_MOSTRAR_LUGAR : MS_MOSTRAR_SUMADO })
+      return
+    }
     const nuevas = novedades(antes, estadoMaq)
     if (!nuevas.length) return
     setAviso({ id: Date.now(), texto: textoSumaste(nuevas) })
-    setFocoSumado(nuevas[nuevas.length - 1].foco)
+    setFocoSumado({ foco: nuevas[nuevas.length - 1].foco, ms: MS_MOSTRAR_SUMADO })
   }, [estadoMaq, vista])
   useEffect(() => {
     if (!aviso) return
@@ -321,7 +341,7 @@ export default function ClientesPage() {
   }, [aviso])
   useEffect(() => {
     if (!focoSumado) return
-    const t = setTimeout(() => setFocoSumado(null), MS_MOSTRAR_SUMADO)
+    const t = setTimeout(() => setFocoSumado(null), focoSumado.ms)
     return () => clearTimeout(t)
   }, [focoSumado])
   useEffect(() => {
@@ -347,7 +367,7 @@ export default function ClientesPage() {
   const focoMaqueta =
     vista === "lista" || vista === "presupuesto"
       ? "fiesta"
-      : (focoSumado ?? (idPaso === "barra" && estadoMaq.barras >= 2 ? "barra2" : FOCO_PASO[idPaso]))
+      : (focoSumado?.foco ?? (idPaso === "barra" && estadoMaq.barras >= 2 ? "barra2" : FOCO_PASO[idPaso]))
 
   const irAPaso = (i: number) => {
     setVista("pasos")
@@ -648,7 +668,9 @@ export default function ClientesPage() {
                     onIr={irAPaso}
                   />
                 </div>
-                {aviso && <AvisoSumaste key={aviso.id} texto={aviso.texto} />}
+                {/* Como la guirnalda, el botón se esconde cuando la maqueta se achica. */}
+                {tieneVistaAdentro(estadoMaq.ambiente) && <VerCasona vista={vistaCasona} onCambiar={setVistaCasona} oculto={compacta} />}
+                {aviso && <AvisoSumaste key={aviso.id} texto={aviso.texto} arriba={tieneVistaAdentro(estadoMaq.ambiente) && !compacta} />}
               </Maqueta3D>
             ) : (
               <div className="mx-auto mt-1 max-w-[480px] px-5">
@@ -748,8 +770,11 @@ export default function ClientesPage() {
                           <span className={`${serif} text-[28px] leading-none`}>{s.nombre}</span>
                           <span className="text-[13.5px] text-[#f5f0e8]/65">hasta {s.capacidadMaxima} invitados</span>
                         </span>
+                        {rasgosSalon(s.salon) && (
+                          <span className="mt-3 block text-[14.5px] leading-snug text-[#f5f0e8]/90">{rasgosSalon(s.salon)}</span>
+                        )}
                         {incluidos.length > 0 && (
-                          <span className="mt-3 block text-[14px] leading-relaxed text-[#f5f0e8]/70">
+                          <span className={`${rasgosSalon(s.salon) ? "mt-1.5" : "mt-3"} block text-[14px] leading-relaxed text-[#f5f0e8]/70`}>
                             Incluye {incluidos.map((x) => nombreEnFrase(x.nombre)).join("; ")}.
                           </span>
                         )}
@@ -1318,16 +1343,55 @@ function Paso({ titulo, ayuda, children }: { titulo: string; ayuda?: string; chi
   )
 }
 
-/** "Sumaste la pantalla LED": aparece sobre la maqueta cuando algo se suma. */
-function AvisoSumaste({ texto }: { texto: string }) {
+/** "Sumaste la pantalla LED": aparece sobre la maqueta cuando algo se suma.
+ *  Con el botón Jardín / Adentro abajo, va un poco más arriba. */
+function AvisoSumaste({ texto, arriba }: { texto: string; arriba?: boolean }) {
   return (
     <p
       role="status"
-      className="lj-aviso pointer-events-none absolute bottom-3 left-5 flex max-w-[calc(100%-40px)] items-center gap-2 rounded-full bg-[#f8f2e4] px-3.5 py-1.5 text-[13.5px] font-medium text-[#1a3a2a] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.7)]"
+      className={`lj-aviso pointer-events-none absolute ${arriba ? "bottom-[54px]" : "bottom-3"} left-5 flex max-w-[calc(100%-40px)] items-center gap-2 rounded-full bg-[#f8f2e4] px-3.5 py-1.5 text-[13.5px] font-medium text-[#1a3a2a] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.7)]`}
     >
       <Sparkles className="h-4 w-4 shrink-0 text-[#b08d2a]" aria-hidden="true" />
       <span className="truncate">{texto}</span>
     </p>
+  )
+}
+
+/** Ver la fiesta de la Casona en el jardín o adentro. Es solo el dibujo: no
+ *  cambia el precio ni lo que se manda con el presupuesto. */
+function VerCasona({ vista, onCambiar, oculto }: { vista: VistaCasona; onCambiar: (v: VistaCasona) => void; oculto?: boolean }) {
+  const opciones: Array<{ valor: VistaCasona; texto: string; Icono: LucideIcon }> = [
+    { valor: "jardin", texto: "Jardín", Icono: Trees },
+    { valor: "adentro", texto: "Adentro", Icono: Armchair },
+  ]
+  return (
+    <div
+      role="group"
+      aria-label="Ver la fiesta en el jardín o adentro"
+      aria-hidden={oculto || undefined}
+      className={`absolute bottom-3 right-4 flex rounded-full border border-[#f3cf7a]/35 bg-[#0d1d14]/80 p-0.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)] backdrop-blur-sm transition-opacity duration-300 ${
+        oculto ? "pointer-events-none opacity-0" : "opacity-100"
+      }`}
+    >
+      {opciones.map(({ valor, texto, Icono }) => {
+        const activa = vista === valor
+        return (
+          <button
+            key={valor}
+            type="button"
+            aria-pressed={activa}
+            tabIndex={oculto ? -1 : undefined}
+            onClick={() => onCambiar(valor)}
+            className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] ${
+              activa ? "bg-[#f3cf7a] text-[#0d1d14]" : "text-[#f5f0e8]/80 hover:text-[#f5f0e8]"
+            }`}
+          >
+            <Icono className="h-3.5 w-3.5" aria-hidden="true" />
+            {texto}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

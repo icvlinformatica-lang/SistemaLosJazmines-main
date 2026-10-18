@@ -1,9 +1,12 @@
 // Motor de la maqueta 3D del simulador (vista de Clientes).
 //
-// Dibuja con three.js el jardín de Los Jazmines de noche y lo va armando con
-// lo que elige la persona (EstadoMaqueta, de lib/clientes-maqueta.ts): cada
-// cosa nueva cae con un rebote, la cámara va a mostrar lo de cada paso y al
-// final hay festejo. Se carga aparte (import dinámico), solo en /clientes.
+// Dibuja con three.js la fiesta de noche en el lugar del salón elegido (el
+// jardín de la Casona con su casa y su pileta, o un salón cerrado; antes de
+// elegirlo, el plano vacío, en ambientes.ts) y la va armando con lo que elige
+// la persona (EstadoMaqueta, de lib/clientes-maqueta.ts): cada cosa nueva cae
+// con un rebote, al cambiar de salón el piso crece y las paredes suben, la
+// cámara va a mostrar lo de cada paso y al final hay festejo. Se carga aparte
+// (import dinámico), solo en /clientes.
 //
 // Es uno solo para toda la página: el lienzo se muda de lugar entre la
 // portada, los pasos y "Tu fiesta está lista" (montar/desmontar), así no se
@@ -18,13 +21,22 @@
 
 import * as THREE from "three"
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js"
-import { palabraFestejo, type EstadoMaqueta, type Pieza } from "@/lib/clientes-maqueta"
+import { palabraFestejo, type Ambiente, type EstadoMaqueta, type Pieza } from "@/lib/clientes-maqueta"
 import {
+  TerrenoCasona,
+  crearInterior,
+  crearJardin,
+  crearPiso,
+  materialesBase,
+  type EstiloSala,
+  type Entorno,
+  type TipoPiso,
+} from "./ambientes"
+import {
+  Base,
   Cartel,
-  Casa,
   Festejo,
   Globos,
-  Guirnalda3D,
   Kit,
   LUGARES,
   LUGARES_MESAS,
@@ -35,7 +47,6 @@ import {
   crearDJ,
   crearFotografo,
   crearInvitacion,
-  crearIsla,
   crearLetra,
   crearMaquillaje,
   crearMesaDulce,
@@ -85,6 +96,8 @@ const ENCUADRES = {
   invitacion: { objetivo: [0, 2.0, 4.2], distancia: 5.6, elevacion: 0.2, giro: -0.1, aspecto: 1.85 },
   dj: { objetivo: [0, 1.0, -4.0], distancia: 8.2, elevacion: 0.3, giro: 0, aspecto: 1.85 },
   decoracion: { objetivo: [1.85, 0.8, 0.85], distancia: 5.4, elevacion: 0.8, giro: -0.32, aspecto: 1.85 },
+  // La Casona: su casa para quedarse y la pileta, desde adelante a la izquierda.
+  casona: { objetivo: [-11.5, 0.9, -0.5], distancia: 11, elevacion: 0.5, giro: 0.4, aspecto: 1.85 },
 } satisfies Record<string, Encuadre>
 
 export type Foco = keyof typeof ENCUADRES
@@ -94,12 +107,48 @@ export function esFoco(x: string): x is Foco {
   return Object.prototype.hasOwnProperty.call(ENCUADRES, x)
 }
 
+interface Caja {
+  min: [number, number, number]
+  max: [number, number, number]
+}
+
 /** Lo que tiene que entrar entero en cuadro, para los planos generales. */
-const CAJAS: Partial<Record<Foco, { min: [number, number, number]; max: [number, number, number] }>> = {
-  portada: { min: [-8.1, -1.0, -6.1], max: [8.1, 2.95, 6.1] },
-  isla: { min: [-8.1, -0.6, -6.1], max: [8.1, 2.95, 6.1] },
-  fiesta: { min: [-8.1, -0.6, -6.1], max: [8.1, 2.95, 6.1] },
+const CAJAS: Partial<Record<Foco, Caja>> = {
+  portada: { min: [-8.1, -1.0, -6.1], max: [8.1, 3.1, 6.1] },
+  isla: { min: [-8.1, -0.6, -6.1], max: [8.1, 3.1, 6.1] },
+  fiesta: { min: [-8.1, -0.6, -6.1], max: [8.1, 3.1, 6.1] },
   mesas: { min: [-6.2, 0, -3.6], max: [6.2, 1.2, 4.8] },
+  casona: { min: [-14.8, -0.3, -5.6], max: [-8.2, 3.9, 4.6] },
+}
+
+/** En la Casona los planos generales suman su terreno (la casa y la pileta). */
+const ENCUADRES_CASONA: Partial<Record<Foco, Encuadre>> = {
+  portada: { objetivo: [-3.4, 0.2, 0.3], distancia: 26, elevacion: 0.6, giro: 0.3, aspecto: 1.5 },
+  isla: { objetivo: [-3.4, 0.3, 0.3], distancia: 24, elevacion: 0.68, giro: 0, aspecto: 1.85 },
+  fiesta: { objetivo: [-3.4, 0.4, -0.2], distancia: 22, elevacion: 0.56, giro: 0, aspecto: 1.45 },
+}
+const TODA_LA_CASONA: Caja = { min: [-14.85, -0.6, -6.1], max: [8.1, 3.9, 6.1] }
+const CAJAS_CASONA: Partial<Record<Foco, Caja>> = {
+  portada: { min: [-14.85, -1.0, -6.1], max: [8.1, 3.9, 6.1] },
+  isla: TODA_LA_CASONA,
+  fiesta: TODA_LA_CASONA,
+}
+
+/** La luz de la noche en cada lugar: más fría afuera, más cálida adentro. */
+const TONOS: Record<Ambiente["lugar"], { cielo: string; suelo: string; hemi: number; luna: number; calidez: number }> = {
+  plano: { cielo: "#4b6890", suelo: "#0d1d14", hemi: 1.05, luna: 0.85, calidez: 0.7 },
+  jardin: { cielo: "#55739f", suelo: "#0d1d14", hemi: 1.15, luna: 0.95, calidez: 1 },
+  interior: { cielo: "#8a7966", suelo: "#1c140e", hemi: 1.0, luna: 0.5, calidez: 1.2 },
+}
+
+/** Algo que cambia de a poco (el piso que crece, las paredes que suben…). */
+interface Transicion {
+  obj: object
+  prop: string
+  t: number
+  dur: number
+  aplicar(u: number): void
+  fin?: () => void
 }
 
 interface Animacion {
@@ -120,6 +169,8 @@ function rebote(u: number) {
   const c3 = c1 + 1
   return 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2)
 }
+
+const frenando = (u: number) => 1 - Math.pow(1 - u, 3)
 
 export interface OpcionesMotor {
   reducido: boolean
@@ -156,8 +207,19 @@ export class MotorMaqueta {
   private orbitaPendiente = 0
   private arrastre: { x: number; giro: number; id: number } | null = null
 
-  private casa: Casa
-  private guirnalda: Guirnalda3D
+  private base: Base
+  private hemi: THREE.HemisphereLight
+  private luna: THREE.DirectionalLight
+  private calidez = 1
+  private claveAmbiente = ""
+  private ambiente: Ambiente | null = null
+  private pisos: Array<{ tipo: TipoPiso; grupo: THREE.Group }> = []
+  private capaPiso = 0
+  private entorno: { clave: string; pieza: Entorno } | null = null
+  private saliendo: Entorno[] = []
+  private terreno: TerrenoCasona | null = null
+  private terrenosSaliendo: TerrenoCasona[] = []
+  private transiciones: Transicion[] = []
   private calidas: THREE.PointLight[] = []
   private lucesActual = 0
   private lucesObjetivo = 0
@@ -195,11 +257,12 @@ export class MotorMaqueta {
     pmrem.dispose()
     this.escena.fog = new THREE.Fog(NOCHE, 30, 70)
 
-    // Noche: luz de luna fría y, a medida que se prende la guirnalda, luz cálida.
-    this.escena.add(new THREE.HemisphereLight("#55739f", "#0d1d14", 1.15))
-    const luna = new THREE.DirectionalLight("#bccbff", 0.95)
-    luna.position.set(-8, 14, 7)
-    this.escena.add(luna)
+    // Noche: luz de luna fría y, a medida que se prenden las lamparitas, luz cálida.
+    this.hemi = new THREE.HemisphereLight("#55739f", "#0d1d14", 1.15)
+    this.escena.add(this.hemi)
+    this.luna = new THREE.DirectionalLight("#bccbff", 0.95)
+    this.luna.position.set(-8, 14, 7)
+    this.escena.add(this.luna)
     for (const [x, y, z, base] of [
       [-4.2, 2.5, 1.0, 26],
       [4.2, 2.5, 1.0, 26],
@@ -214,11 +277,9 @@ export class MotorMaqueta {
     }
 
     this.escena.add(this.raiz)
-    this.raiz.add(crearIsla(this.kit))
-    this.casa = new Casa(this.kit)
-    this.raiz.add(this.casa.grupo)
-    this.guirnalda = new Guirnalda3D(this.kit, this.reducido)
-    this.raiz.add(this.guirnalda.grupo)
+    // La base de la isla; el piso, las paredes o el jardín llegan con el salón.
+    this.base = new Base(this.kit)
+    this.raiz.add(this.base.grupo)
 
     this.lienzo.addEventListener("webglcontextlost", this.alPerderContexto, false)
     this.lienzo.addEventListener("pointerdown", this.alApretar)
@@ -280,6 +341,7 @@ export class MotorMaqueta {
     // lienzo queda en blanco hasta el cuadro siguiente (parpadea).
     if (cambio && this.corriendo) {
       this.moverCamara(0)
+      this.entorno?.pieza.cortar?.(this.camara.position, 0, true)
       this.renderer.render(this.escena, this.camara)
     }
   }
@@ -293,10 +355,17 @@ export class MotorMaqueta {
       // Al cambiar de paso, la cámara vuelve a su lugar de a poco.
       this.giroUsuario *= 0.5
     }
-    this.guirnalda.prender(e.luces)
-    this.guirnalda.festejo = e.completa
+    this.ponerAmbiente(e.ambiente)
+    const ent = this.entorno?.pieza
+    if (ent) {
+      ent.luces?.prender(e.luces)
+      if (ent.luces) ent.luces.festejo = e.completa
+      ent.setPaleta?.(e.paleta)
+      ent.setNivel?.(e.luces, e.completa)
+      ent.setNombre?.(e.salon)
+    }
+    this.terreno?.setNombre(e.salon)
     this.lucesObjetivo = e.luces
-    this.casa.setNombre(e.salon)
 
     const clavePaleta = e.paleta.join(",")
     if (e.globos && (!this.globos || this.globos.paleta !== clavePaleta)) {
@@ -361,7 +430,7 @@ export class MotorMaqueta {
     this.pieza("invitacion", !!p.invitacion, "", () => crearInvitacion(this.kit, this.reducido))
     this.sincronizarLetras(e.letras)
 
-    // Con "reducir movimiento" el final es solo la guirnalda entera prendida.
+    // Con "reducir movimiento" el final es solo con todas las lamparitas prendidas.
     if (e.completa && !this.festejo && !this.reducido) {
       this.festejo = new Festejo(this.kit, e.paleta)
       this.raiz.add(this.festejo.grupo)
@@ -372,6 +441,169 @@ export class MotorMaqueta {
       this.festejo = null
       this.orbitaPendiente = 0
     }
+    this.sucio = true
+  }
+
+  // ── El lugar: el plano, el jardín o un salón cerrado ──────────────────────
+
+  private ponerAmbiente(a: Ambiente) {
+    const clave = `${a.lugar}|${a.estilo ?? ""}|${a.casona ? 1 : 0}`
+    if (clave === this.claveAmbiente) return
+    const primero = !this.claveAmbiente
+    this.claveAmbiente = clave
+    this.ambiente = a
+    // Los planos generales cambian (la Casona suma su terreno).
+    this.ajuste.clave = ""
+    const tipo: TipoPiso = a.lugar === "plano" ? "plano" : a.lugar === "jardin" ? "cesped" : ((a.estilo ?? "salon") as TipoPiso)
+    if (this.pisos[this.pisos.length - 1]?.tipo !== tipo) this.ponerPiso(tipo, primero)
+    const m = materialesBase(this.kit, a)
+    this.base.setMateriales(m.arriba, m.costados)
+    this.ponerEntorno(a, primero)
+    this.ponerTerreno(a.casona)
+    this.tonoEscena(a.lugar)
+  }
+
+  /** El piso nuevo crece desde el centro tapando al anterior, que después se va. */
+  private ponerPiso(tipo: TipoPiso, inmediato: boolean) {
+    const g = crearPiso(this.kit, tipo)
+    // Uno apenas más arriba que el otro, para que no se mezclen mientras crece.
+    this.capaPiso = (this.capaPiso + 1) % 2
+    g.position.y = this.capaPiso * 0.0025
+    this.raiz.add(g)
+    const viejos = this.pisos.slice()
+    this.pisos.push({ tipo, grupo: g })
+    const quitarViejos = () => {
+      for (const v of viejos) this.raiz.remove(v.grupo)
+      this.pisos = this.pisos.filter((p) => !viejos.includes(p))
+    }
+    if (inmediato || !viejos.length) return quitarViejos()
+    for (const v of viejos) v.grupo.traverse((o) => {
+      if (o.userData.relieve) o.visible = false
+    })
+    this.transicion(g, "piso", 0.85, (u) => {
+      const k = Math.max(0.001, frenando(u))
+      g.scale.set(k, 1, k)
+    }, { fin: quitarViejos })
+  }
+
+  /** El jardín o las paredes del salón: lo viejo baja y lo nuevo sube. */
+  private ponerEntorno(a: Ambiente, primero: boolean) {
+    const clave = a.lugar === "plano" ? "" : a.lugar === "jardin" ? "jardin" : `sala-${a.estilo ?? "salon"}`
+    if ((this.entorno?.clave ?? "") === clave) return
+    // De un salón cerrado a otro, las paredes nuevas esperan a que bajen las
+    // viejas (están en el mismo lugar y se mezclarían).
+    const espera = this.entorno?.clave.startsWith("sala-") && clave.startsWith("sala-") ? 0.34 : 0.18
+    if (this.entorno) {
+      const viejo = this.entorno.pieza
+      this.saliendo.push(viejo)
+      this.bajar(viejo.grupo, () => {
+        this.raiz.remove(viejo.grupo)
+        viejo.liberar?.()
+        this.saliendo = this.saliendo.filter((x) => x !== viejo)
+      })
+      this.entorno = null
+    }
+    if (!clave) return
+    const pieza = a.lugar === "jardin" ? crearJardin(this.kit, this.reducido) : crearInterior(this.kit, (a.estilo ?? "salon") as EstiloSala, this.reducido)
+    this.raiz.add(pieza.grupo)
+    pieza.cortar?.(this.camara.position, 0, true)
+    this.subir(pieza.grupo, primero ? 0 : espera)
+    this.entorno = { clave, pieza }
+  }
+
+  /** El terreno de la Casona (la casa y la pileta) sube desde abajo y se pega al jardín. */
+  private ponerTerreno(si: boolean) {
+    if (si && !this.terreno) {
+      const t = new TerrenoCasona(this.kit, this.reducido)
+      this.raiz.add(t.grupo)
+      this.terreno = t
+      this.transicion(t.grupo, "subida", 0.95, (u) => {
+        t.grupo.position.y = -3.6 * Math.pow(1 - u, 3)
+      })
+      this.subir(t.verde, 0.55)
+      this.subir(t.casa, 0.7)
+      this.subir(t.pileta, 0.85)
+    } else if (!si && this.terreno) {
+      const t = this.terreno
+      this.terreno = null
+      this.terrenosSaliendo.push(t)
+      for (const o of [t.verde, t.casa, t.pileta]) this.bajar(o, () => {})
+      this.transicion(t.grupo, "subida", 0.6, (u) => {
+        t.grupo.position.y = -3.6 * u * u
+      }, {
+        demora: 0.25,
+        fin: () => {
+          this.raiz.remove(t.grupo)
+          t.liberar()
+          this.terrenosSaliendo = this.terrenosSaliendo.filter((x) => x !== t)
+        },
+      })
+    }
+  }
+
+  /** La luz de la noche, de a poco: más fría en el jardín, más cálida adentro. */
+  private tonoEscena(lugar: Ambiente["lugar"]) {
+    const meta = TONOS[lugar]
+    const cielo0 = this.hemi.color.clone()
+    const suelo0 = this.hemi.groundColor.clone()
+    const cielo1 = new THREE.Color(meta.cielo)
+    const suelo1 = new THREE.Color(meta.suelo)
+    const [h0, l0, c0] = [this.hemi.intensity, this.luna.intensity, this.calidez]
+    this.transicion(this.hemi, "tono", 0.9, (u) => {
+      this.hemi.color.copy(cielo0).lerp(cielo1, u)
+      this.hemi.groundColor.copy(suelo0).lerp(suelo1, u)
+      this.hemi.intensity = h0 + (meta.hemi - h0) * u
+      this.luna.intensity = l0 + (meta.luna - l0) * u
+      this.calidez = c0 + (meta.calidez - c0) * u
+    })
+  }
+
+  /** Crece hacia arriba con un rebote (las paredes, los árboles, la casa). */
+  private subir(obj: THREE.Object3D, demora = 0) {
+    this.transicion(obj, "alto", 0.75, (u) => {
+      obj.scale.y = Math.max(0.001, rebote(u))
+    }, { demora })
+  }
+
+  /** Se achica hacia abajo y después avisa (para sacarlo de la escena). */
+  private bajar(obj: THREE.Object3D, fin: () => void) {
+    const desde = obj.scale.y
+    this.transicion(obj, "alto", 0.34, (u) => {
+      obj.scale.y = Math.max(0.001, desde * (1 - u * u))
+    }, { fin })
+  }
+
+  /** Una transición: arranca ya (con la demora, si tiene) y reemplaza a la
+   *  que estuviera cambiando lo mismo. Con "reducir movimiento" es instantánea. */
+  private transicion(obj: object, prop: string, dur: number, aplicar: (u: number) => void, op: { demora?: number; fin?: () => void } = {}) {
+    this.transiciones = this.transiciones.filter((x) => !(x.obj === obj && x.prop === prop))
+    if (this.reducido) {
+      aplicar(1)
+      op.fin?.()
+      return
+    }
+    aplicar(0)
+    this.transiciones.push({ obj, prop, t: -(op.demora ?? 0), dur, aplicar, fin: op.fin })
+    this.sucio = true
+  }
+
+  private avanzarTransiciones(dt: number) {
+    if (!this.transiciones.length) return
+    const terminadas: Transicion[] = []
+    const seguir: Transicion[] = []
+    for (const x of this.transiciones) {
+      x.t += dt
+      if (x.t < 0) {
+        seguir.push(x)
+        continue
+      }
+      const u = Math.min(1, x.t / x.dur)
+      x.aplicar(u)
+      if (u < 1) seguir.push(x)
+      else terminadas.push(x)
+    }
+    this.transiciones = seguir
+    for (const x of terminadas) x.fin?.()
     this.sucio = true
   }
 
@@ -503,8 +735,8 @@ export class MotorMaqueta {
 
   /** La distancia más corta a la que la caja entra entera en pantalla (con
    *  aire a los costados para el vaivén). Se calcula una vez por paso y tamaño. */
-  private distanciaQueEntra(enc: Encuadre, caja: { min: [number, number, number]; max: [number, number, number] }, nombre: string) {
-    const clave = `${nombre}|${this.camara.aspect.toFixed(3)}`
+  private distanciaQueEntra(enc: Encuadre, caja: Caja, nombre: string) {
+    const clave = `${nombre}|${this.ambiente?.casona ? "casona" : ""}|${this.camara.aspect.toFixed(3)}`
     if (this.ajuste.clave === clave) return this.ajuste.distancia
     const c = this.camPrueba
     c.fov = this.camara.fov
@@ -540,10 +772,19 @@ export class MotorMaqueta {
     return hi
   }
 
+  /** El plano de cada foco; en la Casona, los generales suman su terreno. */
+  private encuadre(f: Foco): Encuadre {
+    return (this.ambiente?.casona && ENCUADRES_CASONA[f]) || ENCUADRES[f]
+  }
+
+  private caja(f: Foco): Caja | undefined {
+    return (this.ambiente?.casona && CAJAS_CASONA[f]) || CAJAS[f]
+  }
+
   private moverCamara(dt: number) {
-    const enc = ENCUADRES[this.foco]
+    const enc = this.encuadre(this.foco)
     const aspecto = this.camara.aspect || 1.8
-    const caja = CAJAS[this.foco]
+    const caja = this.caja(this.foco)
     const distancia = caja ? this.distanciaQueEntra(enc, caja, this.foco) : enc.distancia * Math.pow(Math.max(1, enc.aspecto / aspecto), 0.92)
     const k = this.reducido || !this.camLista ? 1 : 1 - Math.exp(-dt * 2.2)
     const antes = this.cam.objetivo.clone()
@@ -614,16 +855,23 @@ export class MotorMaqueta {
     if (!this.enPantalla || document.hidden) return
     this.t += dt
     this.animar(dt)
-    this.guirnalda.avanzar(dt, this.t)
+    this.avanzarTransiciones(dt)
+    const ent = this.entorno?.pieza
+    ent?.avanzar?.(dt, this.t)
+    for (const s of this.saliendo) s.avanzar?.(dt, this.t)
+    this.terreno?.avanzar(dt, this.t)
+    for (const t of this.terrenosSaliendo) t.avanzar(dt, this.t)
     for (const { pieza } of this.piezas.values()) pieza.avanzar?.(dt, this.t)
     for (const b of this.barras) b.avanzar?.(dt, this.t)
     for (const l of this.letras) l.pieza.avanzar?.(dt, this.t)
     this.globos?.pieza.avanzar(dt)
     this.festejo?.avanzar(dt)
     this.moverCamara(dt)
+    // La pared que tapa la vista baja (en los salones cerrados).
+    if (ent?.cortar?.(this.camara.position, dt, this.reducido)) this.sucio = true
     const antes = this.lucesActual
     this.lucesActual = this.reducido ? this.lucesObjetivo : this.lucesActual + (this.lucesObjetivo - this.lucesActual) * Math.min(1, dt * 1.8)
-    for (const l of this.calidas) l.intensity = (l.userData.base as number) * (0.12 + 0.88 * this.lucesActual) * (this.estado ? 1 : 0.6)
+    for (const l of this.calidas) l.intensity = (l.userData.base as number) * (0.12 + 0.88 * this.lucesActual) * (this.estado ? 1 : 0.6) * this.calidez
     if (Math.abs(antes - this.lucesActual) > 1e-4) this.sucio = true
     if (this.reducido && !this.sucio) return
     this.sucio = false
@@ -669,8 +917,11 @@ export class MotorMaqueta {
    *  ángulo lindo, de tres cuartos, con la isla entera (no en medio del giro). */
   foto(): string | null {
     try {
-      const enc: Encuadre = { objetivo: [0, 0.3, 0.2], distancia: 20, elevacion: 0.64, giro: -0.42, aspecto: 1.4 }
-      const caja = CAJAS.isla
+      const casona = !!this.ambiente?.casona
+      const enc: Encuadre = casona
+        ? { objetivo: [-3.4, 0.3, 0.2], distancia: 24, elevacion: 0.62, giro: -0.36, aspecto: 1.4 }
+        : { objetivo: [0, 0.3, 0.2], distancia: 20, elevacion: 0.64, giro: -0.42, aspecto: 1.4 }
+      const caja = this.caja("isla")
       if (!caja) return null
       const d = this.distanciaQueEntra(enc, caja, "foto")
       const c = this.camFoto
@@ -693,8 +944,11 @@ export class MotorMaqueta {
       const color = this.renderer.getClearColor(new THREE.Color())
       const alfa = this.renderer.getClearAlpha()
       this.renderer.setClearColor(NOCHE, 1)
+      c.updateMatrixWorld()
+      this.entorno?.pieza.cortar?.(c.position, 0, true)
       this.renderer.render(this.escena, c)
       const url = this.lienzo.toDataURL("image/jpeg", 0.88)
+      this.entorno?.pieza.cortar?.(this.camara.position, 0, true)
       this.renderer.setClearColor(color, alfa)
       fog.near = cerca
       fog.far = lejos
@@ -726,9 +980,12 @@ export class MotorMaqueta {
     this.globos?.pieza.liberar()
     this.cartel?.liberar()
     this.festejo?.liberar()
-    this.casa.liberar()
-    this.guirnalda.liberar()
-    // Lo que queda (la isla, la casa…). Liberar dos veces lo mismo no hace daño.
+    this.entorno?.pieza.liberar?.()
+    for (const s of this.saliendo) s.liberar?.()
+    this.terreno?.liberar()
+    for (const t of this.terrenosSaliendo) t.liberar()
+    this.base.liberar()
+    // Lo que queda (los pisos, los árboles…). Liberar dos veces lo mismo no hace daño.
     this.escena.traverse((o) => {
       if (o instanceof THREE.Mesh || o instanceof THREE.Line || o instanceof THREE.Points) {
         o.geometry.dispose()

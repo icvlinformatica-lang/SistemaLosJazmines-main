@@ -1,6 +1,7 @@
-// Piezas de la maqueta 3D (vista de Clientes): la isla del jardín, la casa,
-// la guirnalda, las mesas con la gente, las barras y cada adicional que se
-// puede sumar. Todo con formas simples (sin modelos que bajar), en metros:
+// Piezas de la maqueta 3D (vista de Clientes): la base de la isla, las
+// lamparitas, las mesas con la gente, las barras y cada adicional que se
+// puede sumar. El lugar de cada salón (el piso, el jardín o las paredes) está
+// en ambientes.ts. Todo con formas simples (sin modelos que bajar), en metros:
 // la isla mide 16 × 12, el frente mira hacia +z y el piso está en y = 0.
 //
 // Lo compartido (materiales, texturas y geometrías que se repiten) vive en
@@ -12,10 +13,11 @@ import { PantallaLed, texturaCartel, texturaHalo, texturaLetrero, texturaNeon, t
 import { SEPARACION_LETRAS, anchoLetra, formaLetra } from "./letras"
 
 export const ISLA = { ancho: 16, fondo: 12 }
+/** Puntas apenas redondeadas: en los salones cerrados las paredes llegan a la esquina. */
+export const RADIO_ISLA = 0.4
 
 /** Dónde va cada cosa en la isla (x, z) y hacia dónde mira (giro en y). */
 export const LUGARES = {
-  casa: { x: -5.6, z: -4.6 },
   dj: { x: 0, z: -4.25 },
   pantalla: { x: 0, z: -5.15 },
   shimmer: { x: 5.3, z: -4.95 },
@@ -50,7 +52,7 @@ export const LUGARES_MESAS_NINOS: Array<[number, number]> = [
 // ── Utilidades ──────────────────────────────────────────────────────────────
 
 /** Pinta toda la geometría de un color (para unir piezas en una sola malla). */
-function conColor(geo: THREE.BufferGeometry, color: THREE.ColorRepresentation): THREE.BufferGeometry {
+export function conColor(geo: THREE.BufferGeometry, color: THREE.ColorRepresentation): THREE.BufferGeometry {
   const c = new THREE.Color(color)
   const n = geo.attributes.position.count
   const arr = new Float32Array(n * 3)
@@ -63,7 +65,7 @@ function conColor(geo: THREE.BufferGeometry, color: THREE.ColorRepresentation): 
   return geo
 }
 
-function unir(partes: THREE.BufferGeometry[]): THREE.BufferGeometry {
+export function unir(partes: THREE.BufferGeometry[]): THREE.BufferGeometry {
   // Algunas formas vienen sin índice (el icosaedro): si se mezclan, todas sin índice.
   const mezcla = partes.some((p) => p.index) && partes.some((p) => !p.index)
   const listas = mezcla ? partes.map((p) => (p.index ? p.toNonIndexed() : p)) : partes
@@ -74,7 +76,7 @@ function unir(partes: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 /** Números al azar que siempre salen iguales (para que la maqueta no cambie). */
-function azar(semilla: number) {
+export function azar(semilla: number) {
   let s = semilla >>> 0 || 1
   return () => {
     s = (s * 1664525 + 1013904223) >>> 0
@@ -156,8 +158,6 @@ export class Kit {
     oscuro: THREE.MeshStandardMaterial
     dorado: THREE.MeshStandardMaterial
     crema: THREE.MeshStandardMaterial
-    pared: THREE.MeshStandardMaterial
-    techo: THREE.MeshStandardMaterial
     ventana: THREE.MeshStandardMaterial
     colores: THREE.MeshStandardMaterial
     coloresBrillo: THREE.MeshStandardMaterial
@@ -189,8 +189,6 @@ export class Kit {
       oscuro: std({ color: "#15201a", roughness: 0.6 }),
       dorado: std({ color: "#c9a227", roughness: 0.38, metalness: 0.75 }),
       crema: std({ color: "#f5f0e8", roughness: 0.9 }),
-      pared: std({ color: "#d8cdb6", roughness: 0.9 }),
-      techo: std({ color: "#263228", roughness: 0.85 }),
       ventana: std({ color: "#3a2c18", emissive: "#f3cf7a", emissiveIntensity: 0.85, roughness: 0.4 }),
       colores: std({ vertexColors: true, roughness: 0.72, metalness: 0.08 }),
       coloresBrillo: std({ vertexColors: true, roughness: 0.3, metalness: 0.12 }),
@@ -208,6 +206,19 @@ export class Kit {
       this.cache.set(clave, g)
     }
     return g
+  }
+
+  private readonly recursos = new Map<string, { dispose(): void }>()
+
+  /** Texturas y materiales de cada lugar (los pisos, las paredes): se crean la
+   *  primera vez que se usan y quedan para cuando se vuelve a ese salón. */
+  recurso<T extends { dispose(): void }>(clave: string, crear: () => T): T {
+    let r = this.recursos.get(clave)
+    if (!r) {
+      r = crear()
+      this.recursos.set(clave, r)
+    }
+    return r as T
   }
 
   /** Brillos (puntos que se suman a la luz) en esas posiciones. */
@@ -266,6 +277,8 @@ export class Kit {
   liberar() {
     for (const g of this.cache.values()) g.dispose()
     this.cache.clear()
+    for (const r of this.recursos.values()) r.dispose()
+    this.recursos.clear()
     for (const m of Object.values(this.mat)) m.dispose()
     this.matHalo.dispose()
     this.matHaloGrande.dispose()
@@ -281,72 +294,66 @@ export function brilloHalos(p: THREE.Points, valor: number | ((i: number) => num
   a.needsUpdate = true
 }
 
-// ── La isla, la pista, la casa y los árboles ────────────────────────────────
+// ── La base de la isla, los árboles y los carteles ──────────────────────────
 
-export function crearIsla(kit: Kit): THREE.Group {
-  const grupo = new THREE.Group()
-  const { ancho, fondo } = ISLA
-  const r = 1.5
+/** Rectángulo de puntas redondeadas en el plano (x, y). */
+export function formaRedondeada(x0: number, y0: number, ancho: number, alto: number, r = RADIO_ISLA): THREE.Shape {
   const forma = new THREE.Shape()
-  const x0 = -ancho / 2
-  const y0 = -fondo / 2
   forma.moveTo(x0 + r, y0)
   forma.lineTo(x0 + ancho - r, y0)
   forma.quadraticCurveTo(x0 + ancho, y0, x0 + ancho, y0 + r)
-  forma.lineTo(x0 + ancho, y0 + fondo - r)
-  forma.quadraticCurveTo(x0 + ancho, y0 + fondo, x0 + ancho - r, y0 + fondo)
-  forma.lineTo(x0 + r, y0 + fondo)
-  forma.quadraticCurveTo(x0, y0 + fondo, x0, y0 + fondo - r)
+  forma.lineTo(x0 + ancho, y0 + alto - r)
+  forma.quadraticCurveTo(x0 + ancho, y0 + alto, x0 + ancho - r, y0 + alto)
+  forma.lineTo(x0 + r, y0 + alto)
+  forma.quadraticCurveTo(x0, y0 + alto, x0, y0 + alto - r)
   forma.lineTo(x0, y0 + r)
   forma.quadraticCurveTo(x0, y0, x0 + r, y0)
-  const profundidad = 0.9
-  const geo = new THREE.ExtrudeGeometry(forma, {
-    depth: profundidad,
+  return forma
+}
+
+/** Un bloque de isla (0,9 m de alto, con el canto suave): de x0 a x0 + ancho
+ *  y de z0 a z0 + fondo. Hay que bajarlo 0,12 para que arriba quede en y = 0. */
+export function geometriaBloque(x0: number, z0: number, ancho: number, fondo: number): THREE.BufferGeometry {
+  const geo = new THREE.ExtrudeGeometry(formaRedondeada(x0, z0, ancho, fondo), {
+    depth: 0.9,
     bevelEnabled: true,
     bevelThickness: 0.12,
     bevelSize: 0.12,
     bevelSegments: 2,
-    curveSegments: 10,
+    curveSegments: 6,
   })
-  // La forma está en el plano xy: se acuesta y el pasto queda arriba (y = 0).
+  // La forma está en el plano xy: se acuesta (y pasa a ser z) y arriba queda en y = 0.12.
   geo.rotateX(Math.PI / 2)
-  geo.translate(0, 0, 0)
-  const isla = new THREE.Mesh(geo, [kit.mat.cesped, kit.mat.tierra])
-  isla.position.y = -0.12
-  grupo.add(isla)
-
-  // Pista de baile (madera oscura lustrada, con un filo dorado).
-  const p = LUGARES.pista
-  const pista = new THREE.Mesh(new THREE.BoxGeometry(p.ancho, 0.05, p.fondo), kit.mat.pista)
-  pista.position.set(p.x, 0.025, p.z)
-  grupo.add(pista)
-  const filo = new THREE.Mesh(new THREE.BoxGeometry(p.ancho + 0.08, 0.035, p.fondo + 0.08), kit.mat.dorado)
-  filo.position.set(p.x, 0.0175, p.z)
-  grupo.add(filo)
-
-  // Camino de piedras desde la entrada hasta la pista.
-  const azarPiedras = azar(7)
-  const piedras: THREE.BufferGeometry[] = []
-  for (let z = 5.75; z > -0.2; z -= 0.42) {
-    const g = new THREE.CylinderGeometry(0.2, 0.22, 0.04, 9)
-    g.scale(1 + azarPiedras() * 0.3, 1, 0.8 + azarPiedras() * 0.25)
-    g.rotateY(azarPiedras() * Math.PI)
-    g.translate((azarPiedras() - 0.5) * 0.18, 0.02, z)
-    piedras.push(conColor(g, azarPiedras() > 0.5 ? "#958c7a" : "#857c6b"))
-  }
-  grupo.add(new THREE.Mesh(unir(piedras), kit.mat.colores))
-
-  grupo.add(crearArboles(kit))
-  return grupo
+  return geo
 }
 
-function crearArboles(kit: Kit): THREE.Mesh {
-  const lugares: Array<[number, number, number]> = [
-    [7.25, -5.25, 1.15], [-7.35, -5.35, 1.0], [7.35, 5.25, 0.95], [-7.4, 5.35, 0.9],
-    [-2.6, -5.55, 0.85], [7.5, -3.9, 0.8],
-  ]
+/** La base de la isla, el bloque que flota. El piso de cada lugar va encima
+ *  (ambientes.ts); acá solo el borde y los costados, que cambian de material
+ *  (tierra en el jardín, madera oscura en los salones cerrados). */
+export class Base {
+  readonly grupo = new THREE.Group()
+  private malla: THREE.Mesh
+
+  constructor(kit: Kit) {
+    const { ancho, fondo } = ISLA
+    this.malla = new THREE.Mesh(geometriaBloque(-ancho / 2, -fondo / 2, ancho, fondo), [kit.mat.cesped, kit.mat.tierra])
+    this.malla.position.y = -0.12
+    this.grupo.add(this.malla)
+  }
+
+  setMateriales(arriba: THREE.Material, costados: THREE.Material) {
+    this.malla.material = [arriba, costados]
+  }
+
+  liberar() {
+    this.malla.geometry.dispose()
+  }
+}
+
+/** Árboles redondos (x, z, tamaño), todos en una sola malla. */
+export function geometriaArboles(lugares: Array<[number, number, number]>, semilla = 21): THREE.BufferGeometry {
   const partes: THREE.BufferGeometry[] = []
-  const a = azar(21)
+  const a = azar(semilla)
   for (const [x, z, s] of lugares) {
     const tronco = new THREE.CylinderGeometry(0.07 * s, 0.11 * s, 0.9 * s, 7)
     tronco.translate(x, 0.45 * s, z)
@@ -358,79 +365,76 @@ function crearArboles(kit: Kit): THREE.Mesh {
       partes.push(conColor(copa, k === 1 ? "#1d4a30" : k === 0 ? "#173d27" : "#245a39"))
     }
   }
-  return new THREE.Mesh(unir(partes), kit.mat.colores)
+  return unir(partes)
 }
 
-/** La casa del salón: paredes claras, ventanas con luz y el cartel con el nombre. */
-export class Casa implements Pieza3D {
+/** Cartel con el nombre del salón: letras claras que brillan, sobre una tabla
+ *  verde con filo dorado (o solas, si no lleva tabla). */
+export class Letrero implements Pieza3D {
   grupo = new THREE.Group()
-  private letrero: THREE.Mesh | null = null
+  private texto: THREE.Mesh | null = null
   private nombre = ""
+  private tabla: THREE.Mesh[] = []
 
-  constructor(private kit: Kit) {
-    const { x, z } = LUGARES.casa
-    const ancho = 4.0
-    const alto = 1.75
-    const fondo = 1.8
-    const paredes = new THREE.Mesh(new THREE.BoxGeometry(ancho, alto, fondo), kit.mat.pared)
-    paredes.position.y = alto / 2
-    this.grupo.add(paredes)
-    // Techo a dos aguas.
-    const perfil = new THREE.Shape()
-    perfil.moveTo(-fondo / 2 - 0.18, 0)
-    perfil.lineTo(0, 0.8)
-    perfil.lineTo(fondo / 2 + 0.18, 0)
-    perfil.lineTo(-fondo / 2 - 0.18, 0)
-    const techoGeo = new THREE.ExtrudeGeometry(perfil, { depth: ancho + 0.3, bevelEnabled: false })
-    techoGeo.translate(0, 0, -(ancho + 0.3) / 2)
-    techoGeo.rotateY(Math.PI / 2)
-    const techo = new THREE.Mesh(techoGeo, kit.mat.techo)
-    techo.position.y = alto
-    this.grupo.add(techo)
-    // Ventanales con luz cálida y la puerta.
-    const vidrio = new THREE.PlaneGeometry(0.62, 1.0)
-    for (const vx of [-1.45, -0.72, 0.72, 1.45]) {
-      const v = new THREE.Mesh(vidrio, kit.mat.ventana)
-      v.position.set(vx, 0.78, fondo / 2 + 0.005)
-      this.grupo.add(v)
+  constructor(
+    private kit: Kit,
+    private ancho: number,
+    conTabla: boolean,
+  ) {
+    if (conTabla) {
+      const alto = ancho / 4
+      const filo = new THREE.Mesh(new THREE.BoxGeometry(ancho + 0.1, alto + 0.1, 0.03), kit.mat.dorado)
+      const fondo = new THREE.Mesh(new THREE.BoxGeometry(ancho + 0.02, alto + 0.02, 0.05), new THREE.MeshStandardMaterial({ color: "#1a3a2a", roughness: 0.8 }))
+      fondo.position.z = 0.012
+      this.tabla.push(filo, fondo)
+      this.grupo.add(filo, fondo)
     }
-    const puerta = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 1.2), kit.mat.ventana)
-    puerta.position.set(0, 0.6, fondo / 2 + 0.005)
-    this.grupo.add(puerta)
-    const marco = new THREE.Mesh(new THREE.BoxGeometry(ancho + 0.04, 0.08, 0.05), kit.mat.dorado)
-    marco.position.set(0, 1.36, fondo / 2 + 0.02)
-    this.grupo.add(marco)
-    this.grupo.add(kit.sombraBajo(5.2, 3.0))
-    this.grupo.position.set(x, 0, z)
   }
 
   setNombre(nombre: string | null) {
     const n = nombre ?? ""
     if (n === this.nombre) return
     this.nombre = n
-    if (this.letrero) {
-      this.grupo.remove(this.letrero)
-      ;(this.letrero.material as THREE.MeshBasicMaterial).map?.dispose()
-      ;(this.letrero.material as THREE.Material).dispose()
-      this.letrero = null
+    if (this.texto) {
+      this.grupo.remove(this.texto)
+      ;(this.texto.material as THREE.MeshBasicMaterial).map?.dispose()
+      ;(this.texto.material as THREE.Material).dispose()
+      this.texto.geometry.dispose()
+      this.texto = null
     }
+    // Sin nombre (la fiesta de muestra) no hay cartel.
+    this.grupo.visible = !!n
     if (!n) return
     const mat = new THREE.MeshBasicMaterial({ map: texturaLetrero(n, this.kit.familia), transparent: true, depthWrite: false })
-    this.letrero = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), mat)
-    this.letrero.position.set(0, 1.56, 0.92)
-    this.grupo.add(this.letrero)
+    this.texto = new THREE.Mesh(new THREE.PlaneGeometry(this.ancho, this.ancho / 4), mat)
+    this.texto.position.z = 0.045
+    this.grupo.add(this.texto)
   }
 
   liberar() {
     this.setNombre(null)
+    for (const m of this.tabla) {
+      m.geometry.dispose()
+      if (m.material !== this.kit.mat.dorado) (m.material as THREE.Material).dispose()
+    }
   }
 }
 
-// ── La guirnalda de la maqueta ──────────────────────────────────────────────
+// ── Lamparitas: la guirnalda del jardín y las arañas de los salones ─────────
 
-/** Cuatro tiras de lamparitas cruzando el jardín. Se prenden de a poco:
- *  `prender(fraccion)` (de 0 a 1), con un parpadeo al encenderse. */
-export class Guirnalda3D implements Pieza3D {
+export interface OpcionesLamparitas {
+  /** En qué orden se prenden (índices de los puntos). */
+  orden: number[]
+  colorPrendido?: THREE.ColorRepresentation
+  colorHalo?: THREE.ColorRepresentation
+  tamHalo?: number
+  /** Tamaño de cada lamparita (1 = 5 cm de radio). */
+  escala?: number
+}
+
+/** Lamparitas que se prenden de a poco: `prender(fraccion)` (de 0 a 1), con
+ *  un parpadeo al encenderse; en el festejo final titilan en ola. */
+export class Lamparitas implements Pieza3D {
   grupo = new THREE.Group()
   private focos: THREE.InstancedMesh
   private halos: THREE.Points
@@ -438,60 +442,37 @@ export class Guirnalda3D implements Pieza3D {
   private objetivo: Float32Array
   private fase: Float32Array
   private orden: number[]
-  private colorPrendido = new THREE.Color("#ffe6a8")
+  private colorPrendido: THREE.Color
   private colorApagado = new THREE.Color("#3d3b33")
   private color = new THREE.Color()
   festejo = false
+  /** Para esconderlas de cerca (las arañas, cuando la cámara baja a mostrar algo). */
+  opacidad = 1
 
-  constructor(kit: Kit, private reducido: boolean) {
-    const tiras = [-3.2, -0.3, 2.0, 4.4]
-    // Postes en el borde de la isla, por fuera de las barras.
-    const xIzq = -7.78
-    const xDer = 7.78
-    const alto = 2.95
-    const caida = 0.62
-    const puntos: THREE.Vector3[] = []
-    const postes: THREE.BufferGeometry[] = []
-    tiras.forEach((z, k) => {
-      const cable: THREE.Vector3[] = []
-      for (let i = 0; i <= 40; i++) {
-        const u = i / 40
-        const x = xIzq + (xDer - xIzq) * u
-        cable.push(new THREE.Vector3(x, alto - caida * (1 - Math.pow(2 * u - 1, 2)), z))
-      }
-      const linea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(cable), kit.mat.cable)
-      this.grupo.add(linea)
-      const n = 27
-      for (let i = 1; i < n; i++) {
-        const u = i / n
-        const x = xIzq + (xDer - xIzq) * u
-        const y = alto - caida * (1 - Math.pow(2 * u - 1, 2)) - 0.075
-        puntos.push(new THREE.Vector3(x, y, z + (k % 2 ? 0.02 : -0.02)))
-      }
-      for (const x of [xIzq, xDer]) {
-        const poste = new THREE.CylinderGeometry(0.045, 0.06, alto + 0.05, 7)
-        poste.translate(x, (alto + 0.05) / 2, z)
-        postes.push(conColor(poste, "#5b4330"))
-      }
-    })
-    this.grupo.add(new THREE.Mesh(unir(postes), kit.mat.colores))
+  constructor(
+    kit: Kit,
+    puntos: THREE.Vector3[],
+    private reducido: boolean,
+    op: OpcionesLamparitas,
+  ) {
+    this.colorPrendido = new THREE.Color(op.colorPrendido ?? "#ffe6a8")
     const esfera = kit.geo("foco", () => new THREE.SphereGeometry(0.05, 10, 8))
     this.focos = new THREE.InstancedMesh(esfera, kit.mat.foco, puntos.length)
     const m = new THREE.Matrix4()
+    const e = op.escala ?? 1
     puntos.forEach((p, i) => {
-      m.makeTranslation(p.x, p.y, p.z)
+      m.makeScale(e, e, e).setPosition(p.x, p.y, p.z)
       this.focos.setMatrixAt(i, m)
       this.focos.setColorAt(i, this.colorApagado)
     })
     this.grupo.add(this.focos)
-    this.halos = kit.halos(puntos, "#ffcf7d", 0.36, 0)
+    this.halos = kit.halos(puntos, op.colorHalo ?? "#ffcf7d", op.tamHalo ?? 0.36, 0)
     this.grupo.add(this.halos)
     this.brillo = new Float32Array(puntos.length)
     this.objetivo = new Float32Array(puntos.length)
     const a = azar(3)
     this.fase = Float32Array.from(puntos, () => a() * Math.PI * 2)
-    // Se prenden de adelante hacia atrás, de izquierda a derecha.
-    this.orden = puntos.map((_, i) => i).sort((i, j) => puntos[j].z - puntos[i].z || puntos[i].x - puntos[j].x)
+    this.orden = op.orden
   }
 
   get cantidad() {
@@ -522,7 +503,7 @@ export class Guirnalda3D implements Pieza3D {
         if (this.festejo) visible *= 0.78 + 0.32 * Math.max(0, Math.sin(t * 5 - i * 0.37))
         if (meta > 0 && b < 0.85) visible *= 0.55 + 0.45 * Math.abs(Math.sin(t * 38 + this.fase[i]))
       }
-      halos.setX(i, visible * 0.9)
+      halos.setX(i, visible * 0.9 * this.opacidad)
       if (Math.abs(antes - b) > 0.0005 || b > 0) {
         this.color.copy(this.colorApagado).lerp(this.colorPrendido, Math.min(1, visible))
         this.focos.setColorAt(i, this.color)
@@ -530,13 +511,67 @@ export class Guirnalda3D implements Pieza3D {
       }
     }
     halos.needsUpdate = true
+    this.focos.visible = this.opacidad > 0.3
     if (cambio && this.focos.instanceColor) this.focos.instanceColor.needsUpdate = true
   }
 
   liberar() {
     this.focos.dispose()
     this.halos.geometry.dispose()
-    for (const o of this.grupo.children) if (o instanceof THREE.Line || o instanceof THREE.Mesh) o.geometry.dispose()
+  }
+}
+
+/** Cuatro tiras de lamparitas cruzando el jardín, colgadas de postes. */
+export class Guirnalda3D implements Pieza3D {
+  grupo = new THREE.Group()
+  readonly lamparitas: Lamparitas
+  private lineas: THREE.Line[] = []
+  private postes: THREE.Mesh
+
+  constructor(kit: Kit, reducido: boolean) {
+    const tiras = [-3.2, -0.3, 2.0, 4.4]
+    // Postes en el borde de la isla, por fuera de las barras.
+    const xIzq = -7.78
+    const xDer = 7.78
+    const alto = 2.95
+    const caida = 0.62
+    const puntos: THREE.Vector3[] = []
+    const postes: THREE.BufferGeometry[] = []
+    tiras.forEach((z, k) => {
+      const cable: THREE.Vector3[] = []
+      for (let i = 0; i <= 40; i++) {
+        const u = i / 40
+        const x = xIzq + (xDer - xIzq) * u
+        cable.push(new THREE.Vector3(x, alto - caida * (1 - Math.pow(2 * u - 1, 2)), z))
+      }
+      const linea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(cable), kit.mat.cable)
+      this.lineas.push(linea)
+      this.grupo.add(linea)
+      const n = 27
+      for (let i = 1; i < n; i++) {
+        const u = i / n
+        const x = xIzq + (xDer - xIzq) * u
+        const y = alto - caida * (1 - Math.pow(2 * u - 1, 2)) - 0.075
+        puntos.push(new THREE.Vector3(x, y, z + (k % 2 ? 0.02 : -0.02)))
+      }
+      for (const x of [xIzq, xDer]) {
+        const poste = new THREE.CylinderGeometry(0.045, 0.06, alto + 0.05, 7)
+        poste.translate(x, (alto + 0.05) / 2, z)
+        postes.push(conColor(poste, "#5b4330"))
+      }
+    })
+    this.postes = new THREE.Mesh(unir(postes), kit.mat.colores)
+    this.grupo.add(this.postes)
+    // Se prenden de adelante hacia atrás, de izquierda a derecha.
+    const orden = puntos.map((_, i) => i).sort((i, j) => puntos[j].z - puntos[i].z || puntos[i].x - puntos[j].x)
+    this.lamparitas = new Lamparitas(kit, puntos, reducido, { orden })
+    this.grupo.add(this.lamparitas.grupo)
+  }
+
+  liberar() {
+    this.lamparitas.liberar()
+    for (const l of this.lineas) l.geometry.dispose()
+    this.postes.geometry.dispose()
   }
 }
 
@@ -1216,7 +1251,7 @@ export function crearMesaDulce(kit: Kit, paleta: string[]): Pieza3D {
   }
 }
 
-// ── Cartel de neón (en la pared de la casa) ─────────────────────────────────
+// ── Cartel de neón ─────────────────────────────────────────────────────────
 
 export function crearNeon(kit: Kit, color: string): Pieza3D {
   const grupo = new THREE.Group()
@@ -1404,7 +1439,7 @@ export function crearInvitacion(kit: Kit, reducido: boolean): Pieza3D {
   sello.rotation.x = Math.PI / 2
   sello.position.set(0, -0.01, 0.02)
   sobre.add(sello)
-  sobre.add(kit.halos([new THREE.Vector3(0, 0, -0.05)], "#f3cf7a", 1.6, 0.35, true))
+  sobre.add(kit.halos([new THREE.Vector3(0, 0, -0.05)], "#f3cf7a", 1.1, 0.26, true))
   grupo.add(sobre)
   const { x, y, z } = LUGARES.invitacion
   grupo.position.set(x, y, z)

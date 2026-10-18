@@ -99,7 +99,7 @@ probar a 390 px sin scroll horizontal).
   una invitación.
 - **Letra**: Bodoni Moda (`app/clientes/fuentes`, licencia OFL) solo para
   títulos y montos; el resto, la letra del sistema.
-- **Lo memorable es una sola cosa**: la maqueta 3D del jardín de noche
+- **Lo memorable es una sola cosa**: la maqueta 3D de la fiesta de noche
   (`components/clientes/maqueta/`), que se arma sola con cada elección. Es
   el juego: la persona ve crecer su fiesta. La guirnalda de luces sigue siendo
   el indicador de pasos (`components/clientes/guirnalda.tsx`), apoyada arriba
@@ -114,6 +114,17 @@ probar a 390 px sin scroll horizontal).
   movimiento" queda quieta (sin vaivén, sin vuelta de cámara ni papelitos).
   three.js se baja aparte y solo en `/clientes`; sin WebGL, la pantalla queda
   como antes, sin maqueta.
+- **Cada salón es como es** (`components/clientes/maqueta/ambientes.ts`):
+  antes de elegir salón la maqueta es un plano (verde con grilla dorada y lo
+  que va a ir en punteado). Solo la Casona tiene aire libre: su jardín con
+  guirnalda, y al costado la casa para quedarse y la pileta; con el botón
+  "Jardín / Adentro" se ve la fiesta en su salón interior (es solo el dibujo).
+  Quinta, Salón y cualquier salón nuevo son salones cerrados vistos como una
+  maqueta: la pared que tapa la vista baja y, de cerca, el techo (vigas y
+  arañas) se desvanece. Cada uno tiene su estilo: la Quinta, ladrillo y
+  madera; el Salón, boiserie, mármol y cortinados verdes; la Casona por
+  dentro, cal, arcos y terracota. Si hay fotos de los salones, se ajustan los
+  colores y las texturas de cada estilo (`DISENOS`).
 - **Lo que suma cada opción** va a la derecha: en dorado lo que todavía se
   puede sumar ("+ $ 120.000") y en crema lo que ya suma lo elegido.
 
