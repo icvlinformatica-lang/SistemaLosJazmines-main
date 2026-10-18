@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronUp, LockOpen, LogIn } from "lucide-react"
+import { InstalarAppBoton } from "@/components/instalar-app"
 import {
   PERFILES,
   useProfile,
@@ -558,6 +559,9 @@ export default function LoginPage() {
           </button>
         </div>
       </div>
+
+      {/* Instalar la app en el celular: abajo, antes del pie. shrink-0 como el pie. */}
+      <InstalarAppBoton className="shrink-0 mt-4" />
 
       {/* Pie - solo si hay al menos un PIN guardado o los perfiles están
           desbloqueados. shrink-0: altura fija, nunca se recorta ni empuja el
