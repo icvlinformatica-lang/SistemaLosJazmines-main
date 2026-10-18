@@ -124,8 +124,10 @@ probar a 390 px sin scroll horizontal).
   abajo. Lo único encima es el botón de pantalla completa, en su esquina de
   abajo (también se abre tocando la maqueta o girando el celular); a pantalla
   completa, el total y "Seguir eligiendo" van abajo.
-  Quinta, Salón y cualquier salón nuevo son salones cerrados vistos como una
-  maqueta: la pared que tapa la vista baja y, de cerca, el techo (vigas y
+  Adelante de la isla, la Quinta tiene su patio chico (baldosas, bancos,
+  lucecitas) y la playa de estacionamiento; la Casona, la playa. El Salón no
+  tiene exterior. Quinta, Salón y cualquier salón nuevo son salones cerrados
+  vistos como una maqueta: la pared que tapa la vista baja y, de cerca, el techo (vigas y
   arañas) se desvanece. Cada uno tiene su estilo: la Quinta, ladrillo y
   madera; el Salón, boiserie, mármol y cortinados verdes; la Casona por
   dentro, cal, arcos y terracota. Si hay fotos de los salones, se ajustan los

@@ -148,7 +148,7 @@ const FOCO_PASO: Record<IdPaso, string> = {
 }
 /** Cuánto se queda la cámara mostrando lo que se acaba de sumar. */
 const MS_MOSTRAR_SUMADO = 2600
-/** Y la casa y la pileta, al elegir la Casona (vuela más lejos). */
+/** Y el lugar al elegir el salón: la casa y la pileta de la Casona, o el frente de la Quinta (vuela más lejos). */
 const MS_MOSTRAR_LUGAR = 3600
 
 /** "+ $ 120.000" / "− $ 30.000" / "sin costo extra". */
@@ -353,7 +353,7 @@ export default function ClientesPage() {
     const lugar = avisoLugar(antes, estadoMaq)
     if (lugar) {
       setAviso({ id: Date.now(), texto: lugar.texto })
-      setFocoSumado({ foco: lugar.foco, ms: lugar.foco === "casona" ? MS_MOSTRAR_LUGAR : MS_MOSTRAR_SUMADO })
+      setFocoSumado({ foco: lugar.foco, ms: lugar.foco === "casona" || lugar.foco === "frente" ? MS_MOSTRAR_LUGAR : MS_MOSTRAR_SUMADO })
       return
     }
     const nuevas = novedades(antes, estadoMaq)
@@ -426,7 +426,10 @@ export default function ClientesPage() {
   const verGrande = conMaqueta && enRecorrido && (pantallaCompleta || (girado && !giradoCerrado))
   // Celular acostado: la maqueta ocupa toda la pantalla sola.
   useEffect(() => {
-    const mq = window.matchMedia?.("(orientation: landscape) and (max-height: 520px) and (pointer: coarse)")
+    // Un celular: pantalla táctil (o sin mouse) y poca altura acostado.
+    const mq = window.matchMedia?.(
+      "(orientation: landscape) and (max-height: 520px) and (pointer: coarse), (orientation: landscape) and (max-height: 520px) and (hover: none)",
+    )
     if (!mq) return
     const alCambiar = () => {
       setGirado(mq.matches)

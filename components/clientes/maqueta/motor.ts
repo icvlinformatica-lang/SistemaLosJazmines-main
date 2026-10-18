@@ -23,6 +23,8 @@ import * as THREE from "three"
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js"
 import { palabraFestejo, type Ambiente, type EstadoMaqueta, type Pieza } from "@/lib/clientes-maqueta"
 import {
+  FRENTE,
+  FrenteSalon,
   TerrenoCasona,
   crearInterior,
   crearJardin,
@@ -98,6 +100,8 @@ const ENCUADRES = {
   decoracion: { objetivo: [1.85, 0.8, 0.85], distancia: 5.4, elevacion: 0.8, giro: -0.32, aspecto: 1.85 },
   // La Casona: su casa para quedarse y la pileta, desde adelante a la izquierda.
   casona: { objetivo: [-11.5, 0.9, -0.5], distancia: 11, elevacion: 0.5, giro: 0.4, aspecto: 1.85 },
+  // El frente de la Quinta: el patio chico y el estacionamiento.
+  frente: { objetivo: [0.2, 0.5, 7.7], distancia: 11.5, elevacion: 0.62, giro: -0.12, aspecto: 1.85 },
 } satisfies Record<string, Encuadre>
 
 export type Foco = keyof typeof ENCUADRES
@@ -132,6 +136,14 @@ const CAJAS_CASONA: Partial<Record<Foco, Caja>> = {
   portada: { min: [-14.85, -1.0, -6.1], max: [8.1, 3.9, 6.1] },
   isla: TODA_LA_CASONA,
   fiesta: TODA_LA_CASONA,
+}
+
+/** Con el frente (patio o estacionamiento), los planos generales lo suman: la
+ *  caja llega hasta su borde y la cámara mira un poco más adelante. */
+const GENERALES: ReadonlySet<string> = new Set(["portada", "isla", "fiesta"])
+const CORRER_FRENTE = 1.6
+function tieneFrente(a: Ambiente | null): boolean {
+  return !!a && (a.estacionamiento || a.exterior === "chico")
 }
 
 /** La luz de la noche en cada lugar: más fría afuera, más cálida adentro. */
@@ -219,6 +231,8 @@ export class MotorMaqueta {
   private saliendo: Entorno[] = []
   private terreno: TerrenoCasona | null = null
   private terrenosSaliendo: TerrenoCasona[] = []
+  private frente: { clave: string; pieza: FrenteSalon } | null = null
+  private frentesSaliendo: FrenteSalon[] = []
   private transiciones: Transicion[] = []
   private calidas: THREE.PointLight[] = []
   private lucesActual = 0
@@ -447,7 +461,7 @@ export class MotorMaqueta {
   // ── El lugar: el plano, el jardín o un salón cerrado ──────────────────────
 
   private ponerAmbiente(a: Ambiente) {
-    const clave = `${a.lugar}|${a.estilo ?? ""}|${a.casona ? 1 : 0}`
+    const clave = `${a.lugar}|${a.estilo ?? ""}|${a.casona ? 1 : 0}|${a.exterior}|${a.estacionamiento ? 1 : 0}`
     if (clave === this.claveAmbiente) return
     const primero = !this.claveAmbiente
     this.claveAmbiente = clave
@@ -460,7 +474,38 @@ export class MotorMaqueta {
     this.base.setMateriales(m.arriba, m.costados)
     this.ponerEntorno(a, primero)
     this.ponerTerreno(a.casona)
+    this.ponerFrente(a)
     this.tonoEscena(a.lugar)
+  }
+
+  /** El frente (patio chico, estacionamiento) sube desde abajo y se pega a la isla. */
+  private ponerFrente(a: Ambiente) {
+    const clave = tieneFrente(a) ? `${a.casona ? "casona" : "salon"}|${a.exterior}|${a.estacionamiento ? 1 : 0}` : ""
+    if ((this.frente?.clave ?? "") === clave) return
+    if (this.frente) {
+      const f = this.frente.pieza
+      this.frente = null
+      this.frentesSaliendo.push(f)
+      this.bajar(f.cosas, () => {})
+      this.transicion(f.grupo, "subida", 0.6, (u) => {
+        f.grupo.position.y = -3.6 * u * u
+      }, {
+        demora: 0.2,
+        fin: () => {
+          this.raiz.remove(f.grupo)
+          f.liberar()
+          this.frentesSaliendo = this.frentesSaliendo.filter((x) => x !== f)
+        },
+      })
+    }
+    if (!clave) return
+    const f = new FrenteSalon(this.kit, a)
+    this.raiz.add(f.grupo)
+    this.frente = { clave, pieza: f }
+    this.transicion(f.grupo, "subida", 0.95, (u) => {
+      f.grupo.position.y = -3.6 * Math.pow(1 - u, 3)
+    }, { demora: 0.15 })
+    this.subir(f.cosas, 0.75)
   }
 
   /** El piso nuevo crece desde el centro tapando al anterior, que después se va. */
@@ -774,11 +819,15 @@ export class MotorMaqueta {
 
   /** El plano de cada foco; en la Casona, los generales suman su terreno. */
   private encuadre(f: Foco): Encuadre {
-    return (this.ambiente?.casona && ENCUADRES_CASONA[f]) || ENCUADRES[f]
+    const enc = (this.ambiente?.casona && ENCUADRES_CASONA[f]) || ENCUADRES[f]
+    if (!tieneFrente(this.ambiente) || !GENERALES.has(f)) return enc
+    return { ...enc, objetivo: [enc.objetivo[0], enc.objetivo[1], enc.objetivo[2] + CORRER_FRENTE] }
   }
 
   private caja(f: Foco): Caja | undefined {
-    return (this.ambiente?.casona && CAJAS_CASONA[f]) || CAJAS[f]
+    const c = (this.ambiente?.casona && CAJAS_CASONA[f]) || CAJAS[f]
+    if (!c || !tieneFrente(this.ambiente) || !GENERALES.has(f)) return c
+    return { min: c.min, max: [c.max[0], c.max[1], FRENTE.z1] }
   }
 
   private moverCamara(dt: number) {
@@ -984,6 +1033,8 @@ export class MotorMaqueta {
     for (const s of this.saliendo) s.liberar?.()
     this.terreno?.liberar()
     for (const t of this.terrenosSaliendo) t.liberar()
+    this.frente?.pieza.liberar()
+    for (const f of this.frentesSaliendo) f.liberar()
     this.base.liberar()
     // Lo que queda (los pisos, los árboles…). Liberar dos veces lo mismo no hace daño.
     this.escena.traverse((o) => {

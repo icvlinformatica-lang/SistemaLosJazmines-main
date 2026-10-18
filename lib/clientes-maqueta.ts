@@ -188,20 +188,32 @@ export interface Ambiente {
   estilo: "casona" | "quinta" | "salon" | null
   /** La Casona: la pileta y la casa para quedarse (se ven en las dos vistas). */
   casona: boolean
+  /** El exterior de cada salón (dicho por el dueño el 18/10/2026): el Salón no
+   *  tiene, la Quinta tiene uno chico (un patio al frente) y la Casona, uno
+   *  amplio para eventos (el jardín). */
+  exterior: "ninguno" | "chico" | "amplio"
+  /** La Quinta y la Casona tienen estacionamiento (se dibuja al frente). */
+  estacionamiento: boolean
 }
 
 /**
  * Qué lugar se dibuja según la clave del salón (la de la base: "Casona",
  * "Quinta", "Salon"…, que no cambia aunque en Configuración se le cambie el
- * nombre que se ve). Solo la Casona tiene aire libre: además tiene salón
- * adentro, pileta y una casa para quedarse. Quinta, Salón y cualquier salón
- * nuevo son salones cerrados.
+ * nombre que se ve). Lo dijo el dueño el 18/10/2026:
+ * - Casona: amplio exterior para eventos (la fiesta puede ser al aire libre),
+ *   salón adentro, pileta, casa para quedarse y estacionamiento.
+ * - Quinta: salón con un exterior chico y estacionamiento. La fiesta es
+ *   adentro; el exterior es un patio al frente.
+ * - Salón: salón cerrado, sin exterior.
+ * Cualquier salón nuevo se dibuja cerrado y sin nada afuera.
  */
 export function ambienteDeSalon(clave: string | null | undefined, vista: VistaCasona = "jardin"): Ambiente {
-  if (!clave) return { lugar: "plano", estilo: null, casona: false }
-  if (clave === "Casona") return { lugar: vista === "adentro" ? "interior" : "jardin", estilo: "casona", casona: true }
-  if (clave === "Quinta") return { lugar: "interior", estilo: "quinta", casona: false }
-  return { lugar: "interior", estilo: "salon", casona: false }
+  if (!clave) return { lugar: "plano", estilo: null, casona: false, exterior: "ninguno", estacionamiento: false }
+  if (clave === "Casona") {
+    return { lugar: vista === "adentro" ? "interior" : "jardin", estilo: "casona", casona: true, exterior: "amplio", estacionamiento: true }
+  }
+  if (clave === "Quinta") return { lugar: "interior", estilo: "quinta", casona: false, exterior: "chico", estacionamiento: true }
+  return { lugar: "interior", estilo: "salon", casona: false, exterior: "ninguno", estacionamiento: false }
 }
 
 /** Si el salón se puede ver en el jardín o adentro. */
@@ -215,9 +227,15 @@ export function salonConAireLibre(clave: string | null | undefined): boolean {
   return tieneVistaAdentro(ambienteDeSalon(clave))
 }
 
-/** Lo que tiene el salón además de lo incluido (va en su tarjeta). */
+/** Lo que tiene el salón además de lo incluido (va en su tarjeta). Lo dijo el
+ *  dueño el 18/10/2026; un salón nuevo no dice nada hasta que se sepa. */
+const RASGOS: Record<string, string> = {
+  Casona: "Amplio exterior para eventos: la fiesta puede ser al aire libre o adentro. Con pileta, una casa para quedarse y estacionamiento.",
+  Quinta: "Con un exterior chico y estacionamiento.",
+  Salon: "Salón cerrado, sin exterior.",
+}
 export function rasgosSalon(clave: string | null | undefined): string | null {
-  return clave === "Casona" ? "Al aire libre o adentro, con pileta y una casa para quedarse." : null
+  return RASGOS[clave ?? ""] ?? null
 }
 
 // ── Mesas ───────────────────────────────────────────────────────────────────
@@ -368,11 +386,13 @@ function enLista(partes: string[]): string {
 
 /** Dónde es la fiesta, para la descripción ("en Casona, en el jardín…"). */
 function dondeEs(m: EstadoMaqueta): string {
-  const { lugar, casona } = m.ambiente
+  const { lugar, casona, exterior, estacionamiento } = m.ambiente
   if (lugar === "plano") return ""
   const en = m.salon ? ` en ${m.salon}` : ""
-  if (lugar === "jardin") return `${en}, en el jardín${casona ? " con la pileta y la casa" : ""}`
-  return `${en}, adentro`
+  const afuera = [casona ? "la pileta" : "", casona ? "la casa" : "", exterior === "chico" ? "el patio" : "", estacionamiento ? "el estacionamiento" : ""].filter(Boolean)
+  const con = afuera.length ? ` con ${enLista(afuera)}` : ""
+  if (lugar === "jardin") return `${en}, en el jardín${con}`
+  return `${en}, adentro${con}`
 }
 
 /** Texto que describe la maqueta, para lectores de pantalla. */
@@ -432,14 +452,16 @@ export function novedades(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): No
 
 /**
  * Un aviso del lugar (no de algo que se suma): al elegir la Casona, que la
- * cámara vaya a mostrar la pileta y la casa; al pasar del jardín a adentro (o
- * al revés), que se vea entero el cambio. Nada para los salones cerrados.
+ * cámara vaya a mostrar la pileta y la casa; al elegir la Quinta, su patio y
+ * el estacionamiento; al pasar del jardín a adentro (o al revés), que se vea
+ * entero el cambio. Nada para el Salón.
  */
 export function avisoLugar(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): Novedad | null {
   if (!antes) return null
   const a = antes.ambiente
   const b = ahora.ambiente
-  if (b.casona && !a.casona) return { texto: "Tiene pileta y una casa para quedarse", foco: "casona" }
+  if (b.casona && !a.casona) return { texto: "Tiene pileta, una casa para quedarse y estacionamiento", foco: "casona" }
+  if (b.estilo !== a.estilo && b.exterior === "chico") return { texto: "Tiene un patio al frente y estacionamiento", foco: "frente" }
   if (a.casona && b.casona && a.lugar !== b.lugar) {
     return { texto: b.lugar === "interior" ? "Así queda adentro" : "Así queda en el jardín", foco: "isla" }
   }
