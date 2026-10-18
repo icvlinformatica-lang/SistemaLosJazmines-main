@@ -5,6 +5,7 @@ import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota, type DecisionSaldo
 import type { NotasStaffPerfil, MomentoCronograma } from "./staff-evento"
 import type { DietaDetalle } from "./dietas-evento"
 import { prefijoPagoBarra, prefijoPagoMenu, prefijoPagoSaldo, ultimoEgresoEvento } from "./egresos-evento"
+import { pagosMenuProveedor, totalPagosMenuProveedor } from "./pago-menu-proveedor"
 
 // Data Store for Los Jazmines Catering System
 // Uses localStorage for persistence
@@ -2560,8 +2561,14 @@ export function congelarCostosEvento(
           : saldoPendiente,
     }
   })
+  // Menú pagado por proveedor (lib/pago-menu-proveedor.ts): cuenta lo que
+  // salió a cada proveedor, más el resto si después se pagó entero.
+  const pagadoProveedoresMenu = totalPagosMenuProveedor(pagosMenuProveedor(ctx.movimientosCaja, evento.id))
+  const egresoMenuEntero = ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoMenu)?.monto
   const montoPagadoCocina = evento.cocinaPagada
-    ? ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoMenu)?.monto
+    ? pagadoProveedoresMenu > 0
+      ? pagadoProveedoresMenu + (egresoMenuEntero ?? 0)
+      : egresoMenuEntero
     : undefined
   const montoPagadoBarra = evento.barraPagada
     ? ultimoEgresoEvento(ctx.movimientosCaja, evento.id, prefijoPagoBarra)?.monto

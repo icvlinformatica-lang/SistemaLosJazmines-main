@@ -13,11 +13,12 @@ import { salonLabel } from "@/lib/store"
 import type { EgresoPendienteServicio } from "@/lib/hooks/use-caja-eventos"
 import { etiquetaGrupo, grupoServicio } from "@/lib/grupo-servicio"
 import { coincideEgresoBusqueda, coincideMes } from "@/lib/buscador-caja-eventos"
+import { SIN_PROVEEDOR } from "@/lib/compras-por-proveedor"
 
 export interface FiltroEgresos {
   salon: string // "todos" o id del salón
   tipo: string // "todos" | "seña" | "saldo" | "menu" | "barra" | "sueldo" | "servicios"
-  sub: string | null // grupo de servicio (grupoServicio, ej. "VESTIDO") o persona (sueldo)
+  sub: string | null // grupo de servicio (grupoServicio, ej. "VESTIDO"), persona (sueldo) o proveedor (menú, claveProveedor)
   q: string // texto de búsqueda (evento, proveedor/persona o concepto)
   qAbierta: boolean // ya no se usa: la búsqueda queda siempre visible
   mes: string // "todos" o "YYYY-MM" (mes de vencimiento)
@@ -42,13 +43,24 @@ const coincideTipo = (e: EgresoPendienteServicio, tipo: string) => {
   return e.tipo === tipo
 }
 
-/** Aplica salón + tipo + sub-filtro + búsqueda, todos combinados. */
-export function filtrarEgresos(egresos: EgresoPendienteServicio[], f: FiltroEgresos): EgresoPendienteServicio[] {
+/** Proveedores (claveProveedor) de los insumos del menú de cada evento. */
+export type ProveedoresMenu = Map<string, Set<string>>
+
+/** Aplica salón + tipo + sub-filtro + búsqueda, todos combinados. Con el
+ *  tipo "menu", el sub-filtro es un proveedor: quedan los menús que llevan
+ *  algún insumo de ese proveedor (`proveedoresMenu`). */
+export function filtrarEgresos(
+  egresos: EgresoPendienteServicio[],
+  f: FiltroEgresos,
+  proveedoresMenu?: ProveedoresMenu,
+): EgresoPendienteServicio[] {
   return egresos.filter((e) => {
     if (f.salon !== "todos" && e.salon !== f.salon) return false
     if (!coincideTipo(e, f.tipo)) return false
     if (f.sub) {
-      if (f.tipo === "sueldo") {
+      if (f.tipo === "menu") {
+        if (!proveedoresMenu?.get(e.eventoId)?.has(f.sub)) return false
+      } else if (f.tipo === "sueldo") {
         if (personaDe(e) !== f.sub) return false
       } else if (grupoServicio(e.servicioNombre) !== f.sub) {
         return false
@@ -78,13 +90,18 @@ const SUB_ESTILOS: Record<string, { activo: string; inactivo: string }> = {
   saldo: { activo: "bg-orange-500 text-white border-orange-500", inactivo: "bg-card text-orange-800 border-orange-300 hover:bg-orange-50" },
   sueldo: { activo: "bg-emerald-600 text-white border-emerald-600", inactivo: "bg-card text-emerald-800 border-emerald-300 hover:bg-emerald-50" },
   servicios: { activo: "bg-indigo-500 text-white border-indigo-500", inactivo: "bg-card text-indigo-800 border-indigo-300 hover:bg-indigo-50" },
+  menu: { activo: "bg-sky-500 text-white border-sky-500", inactivo: "bg-card text-sky-800 border-sky-300 hover:bg-sky-50" },
 }
+
+const ETIQUETA_SUB: Record<string, string> = { sueldo: "Persona:", menu: "Proveedor:", servicios: "Servicio:" }
 
 export function BarraFiltrosEgresos({
   egresos,
   filtro,
   onChange,
   catalogoServicios = [],
+  proveedoresMenu,
+  etiquetasProveedor,
 }: {
   egresos: EgresoPendienteServicio[]
   filtro: FiltroEgresos
@@ -93,6 +110,10 @@ export function BarraFiltrosEgresos({
    * Solo aportan variantes de nombre para la etiqueta del grupo: el sub-filtro
    * muestra únicamente los servicios con algún pago en la lista. */
   catalogoServicios?: string[]
+  /** Proveedores de los insumos del menú de cada evento (sub-filtro de "Menú"). */
+  proveedoresMenu?: ProveedoresMenu
+  /** Nombre a mostrar de cada proveedor (etiquetasProveedores). */
+  etiquetasProveedor?: Map<string, string>
 }) {
   // Salones disponibles entre los egresos (filtro madre, siempre sobre el total)
   const salones = useMemo(() => {
@@ -103,8 +124,8 @@ export function BarraFiltrosEgresos({
 
   // Base para contar chips de tipo: aplica salón + búsqueda (no tipo/sub)
   const base = useMemo(
-    () => filtrarEgresos(egresos, { ...filtro, tipo: "todos", sub: null }),
-    [egresos, filtro],
+    () => filtrarEgresos(egresos, { ...filtro, tipo: "todos", sub: null }, proveedoresMenu),
+    [egresos, filtro, proveedoresMenu],
   )
   const conteo = useMemo(() => {
     const c: Record<string, number> = { todos: base.length, servicios: 0 }
@@ -145,6 +166,20 @@ export function BarraFiltrosEgresos({
         .map(([g, nombres]) => [g, c.get(g) || 0, etiquetaGrupo(g, nombres)] as [string, number, string])
         .sort((a, b) => a[2].localeCompare(b[2], "es"))
     }
+    if (filtro.tipo === "menu") {
+      // Proveedores de los insumos de los menús que se ven, con cuántos menús
+      // llevan algo de cada uno. "Sin proveedor" va al final.
+      const c = new Map<string, number>()
+      for (const e of base) {
+        if (e.tipo !== "menu") continue
+        for (const p of proveedoresMenu?.get(e.eventoId) ?? []) c.set(p, (c.get(p) || 0) + 1)
+      }
+      if (filtro.sub && !c.has(filtro.sub)) c.set(filtro.sub, 0)
+      const etiqueta = (p: string) => etiquetasProveedor?.get(p) ?? (p === SIN_PROVEEDOR ? "Sin proveedor" : p)
+      return [...c.entries()]
+        .map(([p, cant]) => [p, cant, etiqueta(p)] as [string, number, string])
+        .sort((a, b) => Number(a[0] === SIN_PROVEEDOR) - Number(b[0] === SIN_PROVEEDOR) || a[2].localeCompare(b[2], "es"))
+    }
     if (filtro.tipo !== "sueldo") return []
     const enTipo = base.filter((e) => coincideTipo(e, filtro.tipo))
     const c = new Map<string, number>()
@@ -155,7 +190,7 @@ export function BarraFiltrosEgresos({
     return [...c.entries()]
       .sort((a, b) => a[0].localeCompare(b[0], "es"))
       .map(([persona, cant]) => [persona, cant, persona] as [string, number, string])
-  }, [base, filtro.tipo, filtro.sub, catalogoServicios])
+  }, [base, filtro.tipo, filtro.sub, catalogoServicios, proveedoresMenu, etiquetasProveedor])
 
   const setTipo = (tipo: string) => onChange({ ...filtro, tipo, sub: null })
 
@@ -209,7 +244,7 @@ export function BarraFiltrosEgresos({
       {subOpciones.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pl-1 border-l-2 border-border ml-1">
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pl-1.5">
-            {filtro.tipo === "sueldo" ? "Persona:" : "Servicio:"}
+            {ETIQUETA_SUB[filtro.tipo] ?? "Servicio:"}
           </span>
           <button
             type="button"
