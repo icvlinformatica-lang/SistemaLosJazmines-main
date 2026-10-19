@@ -46,9 +46,9 @@ import {
   ChevronDown,
   ChevronLeft,
   Crown,
+  Fence,
   Gem,
   Loader2,
-  Logs,
   House,
   LogOut,
   Maximize2,
@@ -162,7 +162,8 @@ const ICONO_RASGO: Record<IconoRasgo, LucideIcon> = {
   pileta: Waves,
   casa: BedDouble,
   estacionamiento: SquareParking,
-  madera: Logs,
+  // Tablas de madera: lucide no tiene un ícono de madera.
+  madera: Fence,
   verde: Shrub,
   cerrado: House,
 }
