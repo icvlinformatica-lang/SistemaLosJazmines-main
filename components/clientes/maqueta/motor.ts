@@ -23,6 +23,8 @@ import * as THREE from "three"
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js"
 import { palabraFestejo, type Ambiente, type EstadoMaqueta, type Pieza } from "@/lib/clientes-maqueta"
 import {
+  FRENTE,
+  FrenteSalon,
   TerrenoCasona,
   crearInterior,
   crearJardin,
@@ -76,7 +78,8 @@ const ENCUADRES = {
   portada: { objetivo: [0, 0.2, 0.3], distancia: 22.5, elevacion: 0.6, giro: -0.38, aspecto: 1.5 },
   isla: { objetivo: [0, 0.3, 0.3], distancia: 20.5, elevacion: 0.7, giro: 0, aspecto: 1.85 },
   entrada: { objetivo: [0.1, 0.8, 4.0], distancia: 9.2, elevacion: 0.44, giro: -0.12, aspecto: 1.85 },
-  cartel: { objetivo: [1.45, 0.95, 4.85], distancia: 5.2, elevacion: 0.24, giro: -0.24, aspecto: 1.85 },
+  // Desde la derecha del camino: en la Quinta, la pérgola de la entrada tapaba el cartel.
+  cartel: { objetivo: [1.5, 1.4, 4.85], distancia: 6.6, elevacion: 0.28, giro: 0.16, aspecto: 1.85 },
   mesas: { objetivo: [0, 0.45, 1.3], distancia: 14, elevacion: 0.8, giro: 0, aspecto: 1.85 },
   mesa: { objetivo: [1.85, 0.8, 0.85], distancia: 5.4, elevacion: 0.8, giro: -0.32, aspecto: 1.85 },
   barra: { objetivo: [-6.3, 0.95, -1.1], distancia: 7.4, elevacion: 0.42, giro: 0.72, aspecto: 1.85 },
@@ -96,8 +99,10 @@ const ENCUADRES = {
   invitacion: { objetivo: [0, 2.0, 4.2], distancia: 5.6, elevacion: 0.2, giro: -0.1, aspecto: 1.85 },
   dj: { objetivo: [0, 1.0, -4.0], distancia: 8.2, elevacion: 0.3, giro: 0, aspecto: 1.85 },
   decoracion: { objetivo: [1.85, 0.8, 0.85], distancia: 5.4, elevacion: 0.8, giro: -0.32, aspecto: 1.85 },
-  // La Casona: su casa para quedarse y la pileta, desde adelante a la izquierda.
+  // La Casona: su casa colonial para quedarse y la pileta, desde adelante a la izquierda.
   casona: { objetivo: [-11.5, 0.9, -0.5], distancia: 11, elevacion: 0.5, giro: 0.4, aspecto: 1.85 },
+  // El frente de la Quinta: la entrada con mucho verde y el estacionamiento.
+  frente: { objetivo: [0.2, 0.5, 7.7], distancia: 11.5, elevacion: 0.62, giro: -0.12, aspecto: 1.85 },
 } satisfies Record<string, Encuadre>
 
 export type Foco = keyof typeof ENCUADRES
@@ -132,6 +137,17 @@ const CAJAS_CASONA: Partial<Record<Foco, Caja>> = {
   portada: { min: [-14.85, -1.0, -6.1], max: [8.1, 3.9, 6.1] },
   isla: TODA_LA_CASONA,
   fiesta: TODA_LA_CASONA,
+}
+
+/** Con el frente (la entrada o el estacionamiento), los planos generales lo suman: la
+ *  caja llega hasta su borde y la cámara mira un poco más adelante. */
+const GENERALES: ReadonlySet<string> = new Set(["portada", "isla", "fiesta"])
+const CORRER_FRENTE = 1.6
+/** Los planos donde se ve el techo de madera (la Casona y la Quinta): los de
+ *  lejos, la casa y la entrada. En los de cerca taparía las mesas. */
+const CON_TECHO: ReadonlySet<string> = new Set([...GENERALES, "casona", "frente"])
+function tieneFrente(a: Ambiente | null): boolean {
+  return !!a && (a.estacionamiento || a.exterior === "chico")
 }
 
 /** La luz de la noche en cada lugar: más fría afuera, más cálida adentro. */
@@ -219,6 +235,8 @@ export class MotorMaqueta {
   private saliendo: Entorno[] = []
   private terreno: TerrenoCasona | null = null
   private terrenosSaliendo: TerrenoCasona[] = []
+  private frente: { clave: string; pieza: FrenteSalon } | null = null
+  private frentesSaliendo: FrenteSalon[] = []
   private transiciones: Transicion[] = []
   private calidas: THREE.PointLight[] = []
   private lucesActual = 0
@@ -232,6 +250,9 @@ export class MotorMaqueta {
   private cartel: Cartel | null = null
   private festejo: Festejo | null = null
   private animaciones: Animacion[] = []
+  /** La noche detrás de la maqueta: el fondo del estilo del festejo
+   *  (lib/clientes-tema.ts). La usan la niebla del horizonte y la foto. */
+  private noche = NOCHE.clone()
 
   constructor(op: OpcionesMotor) {
     this.reducido = op.reducido
@@ -358,6 +379,7 @@ export class MotorMaqueta {
     this.ponerAmbiente(e.ambiente)
     const ent = this.entorno?.pieza
     if (ent) {
+      ent.verTecho?.(CON_TECHO.has(this.foco))
       ent.luces?.prender(e.luces)
       if (ent.luces) ent.luces.festejo = e.completa
       ent.setPaleta?.(e.paleta)
@@ -447,7 +469,7 @@ export class MotorMaqueta {
   // ── El lugar: el plano, el jardín o un salón cerrado ──────────────────────
 
   private ponerAmbiente(a: Ambiente) {
-    const clave = `${a.lugar}|${a.estilo ?? ""}|${a.casona ? 1 : 0}`
+    const clave = `${a.lugar}|${a.estilo ?? ""}|${a.casona ? 1 : 0}|${a.exterior}|${a.estacionamiento ? 1 : 0}`
     if (clave === this.claveAmbiente) return
     const primero = !this.claveAmbiente
     this.claveAmbiente = clave
@@ -460,7 +482,38 @@ export class MotorMaqueta {
     this.base.setMateriales(m.arriba, m.costados)
     this.ponerEntorno(a, primero)
     this.ponerTerreno(a.casona)
+    this.ponerFrente(a)
     this.tonoEscena(a.lugar)
+  }
+
+  /** El frente (la entrada de la Quinta, el estacionamiento) sube desde abajo y se pega a la isla. */
+  private ponerFrente(a: Ambiente) {
+    const clave = tieneFrente(a) ? `${a.casona ? "casona" : "salon"}|${a.exterior}|${a.estacionamiento ? 1 : 0}` : ""
+    if ((this.frente?.clave ?? "") === clave) return
+    if (this.frente) {
+      const f = this.frente.pieza
+      this.frente = null
+      this.frentesSaliendo.push(f)
+      this.bajar(f.cosas, () => {})
+      this.transicion(f.grupo, "subida", 0.6, (u) => {
+        f.grupo.position.y = -3.6 * u * u
+      }, {
+        demora: 0.2,
+        fin: () => {
+          this.raiz.remove(f.grupo)
+          f.liberar()
+          this.frentesSaliendo = this.frentesSaliendo.filter((x) => x !== f)
+        },
+      })
+    }
+    if (!clave) return
+    const f = new FrenteSalon(this.kit, a)
+    this.raiz.add(f.grupo)
+    this.frente = { clave, pieza: f }
+    this.transicion(f.grupo, "subida", 0.95, (u) => {
+      f.grupo.position.y = -3.6 * Math.pow(1 - u, 3)
+    }, { demora: 0.15 })
+    this.subir(f.cosas, 0.75)
   }
 
   /** El piso nuevo crece desde el centro tapando al anterior, que después se va. */
@@ -506,6 +559,7 @@ export class MotorMaqueta {
     if (!clave) return
     const pieza = a.lugar === "jardin" ? crearJardin(this.kit, this.reducido) : crearInterior(this.kit, (a.estilo ?? "salon") as EstiloSala, this.reducido)
     this.raiz.add(pieza.grupo)
+    pieza.verTecho?.(CON_TECHO.has(this.foco))
     pieza.cortar?.(this.camara.position, 0, true)
     this.subir(pieza.grupo, primero ? 0 : espera)
     this.entorno = { clave, pieza }
@@ -774,11 +828,15 @@ export class MotorMaqueta {
 
   /** El plano de cada foco; en la Casona, los generales suman su terreno. */
   private encuadre(f: Foco): Encuadre {
-    return (this.ambiente?.casona && ENCUADRES_CASONA[f]) || ENCUADRES[f]
+    const enc = (this.ambiente?.casona && ENCUADRES_CASONA[f]) || ENCUADRES[f]
+    if (!tieneFrente(this.ambiente) || !GENERALES.has(f)) return enc
+    return { ...enc, objetivo: [enc.objetivo[0], enc.objetivo[1], enc.objetivo[2] + CORRER_FRENTE] }
   }
 
   private caja(f: Foco): Caja | undefined {
-    return (this.ambiente?.casona && CAJAS_CASONA[f]) || CAJAS[f]
+    const c = (this.ambiente?.casona && CAJAS_CASONA[f]) || CAJAS[f]
+    if (!c || !tieneFrente(this.ambiente) || !GENERALES.has(f)) return c
+    return { min: c.min, max: [c.max[0], c.max[1], FRENTE.z1] }
   }
 
   private moverCamara(dt: number) {
@@ -913,6 +971,20 @@ export class MotorMaqueta {
 
   private camFoto = new THREE.PerspectiveCamera()
 
+  /** Cambia el color de la noche (al elegir otro festejo). */
+  setFondo(color: string) {
+    const nuevo = new THREE.Color()
+    try {
+      nuevo.set(color)
+    } catch {
+      return
+    }
+    if (nuevo.equals(this.noche)) return
+    this.noche.copy(nuevo)
+    ;(this.escena.fog as THREE.Fog).color.copy(nuevo)
+    this.sucio = true
+  }
+
   /** Una foto de la maqueta (JPG) para el presupuesto: siempre desde el mismo
    *  ángulo lindo, de tres cuartos, con la isla entera (no en medio del giro). */
   foto(): string | null {
@@ -943,7 +1015,7 @@ export class MotorMaqueta {
       fog.far = d * 2.6
       const color = this.renderer.getClearColor(new THREE.Color())
       const alfa = this.renderer.getClearAlpha()
-      this.renderer.setClearColor(NOCHE, 1)
+      this.renderer.setClearColor(this.noche, 1)
       c.updateMatrixWorld()
       this.entorno?.pieza.cortar?.(c.position, 0, true)
       this.renderer.render(this.escena, c)
@@ -984,6 +1056,8 @@ export class MotorMaqueta {
     for (const s of this.saliendo) s.liberar?.()
     this.terreno?.liberar()
     for (const t of this.terrenosSaliendo) t.liberar()
+    this.frente?.pieza.liberar()
+    for (const f of this.frentesSaliendo) f.liberar()
     this.base.liberar()
     // Lo que queda (los pisos, los árboles…). Liberar dos veces lo mismo no hace daño.
     this.escena.traverse((o) => {

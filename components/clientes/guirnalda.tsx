@@ -55,19 +55,21 @@ export function Guirnalda({
       <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="w-full h-auto overflow-visible" aria-hidden="true">
         <defs>
           <radialGradient id="lj-vidrio-prendido" cx="50%" cy="40%" r="60%">
-            <stop offset="0%" stopColor="#fffaf0" />
-            <stop offset="45%" stopColor="#f3cf7a" />
-            <stop offset="100%" stopColor="#c9a227" />
+            {/* Los colores salen del estilo del festejo (lib/clientes-tema.ts):
+                en un atributo de SVG no se pueden usar variables, en style sí. */}
+            <stop offset="0%" style={{ stopColor: "#fffaf3" }} />
+            <stop offset="45%" style={{ stopColor: "var(--lj-acento)" }} />
+            <stop offset="100%" style={{ stopColor: "var(--lj-borde-elegido)" }} />
           </radialGradient>
           <radialGradient id="lj-halo" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#f3cf7a" stopOpacity="0.55" />
-            <stop offset="100%" stopColor="#f3cf7a" stopOpacity="0" />
+            <stop offset="0%" style={{ stopColor: "var(--lj-acento)", stopOpacity: 0.55 }} />
+            <stop offset="100%" style={{ stopColor: "var(--lj-acento)", stopOpacity: 0 }} />
           </radialGradient>
         </defs>
         <path
           d={`M ${P0.x} ${P0.y} Q ${P1.x} ${P1.y} ${P2.x} ${P2.y}`}
           fill="none"
-          stroke="rgba(245,240,232,0.38)"
+          style={{ stroke: "color-mix(in oklab, var(--lj-texto) 38%, transparent)" }}
           strokeWidth="1.1"
         />
         {lamparas.map((l) => {
@@ -75,8 +77,22 @@ export function Guirnalda({
           const esActual = !completa && l.i === actual
           return (
             <g key={l.id}>
-              <line x1={l.x} y1={l.cableY} x2={l.x} y2={l.y - 6} stroke="rgba(245,240,232,0.38)" strokeWidth="1" />
-              <rect x={l.x - 2.4} y={l.y - 7} width="4.8" height="3.6" rx="0.8" fill="#3d4a40" />
+              <line
+                x1={l.x}
+                y1={l.cableY}
+                x2={l.x}
+                y2={l.y - 6}
+                style={{ stroke: "color-mix(in oklab, var(--lj-texto) 38%, transparent)" }}
+                strokeWidth="1"
+              />
+              <rect
+                x={l.x - 2.4}
+                y={l.y - 7}
+                width="4.8"
+                height="3.6"
+                rx="0.8"
+                style={{ fill: "color-mix(in oklab, var(--lj-texto) 22%, var(--lj-fondo))" }}
+              />
               {prendida && (
                 <circle
                   cx={l.x}
@@ -91,11 +107,14 @@ export function Guirnalda({
                 cx={l.x}
                 cy={l.y}
                 r={5.2}
-                fill={prendida ? "url(#lj-vidrio-prendido)" : "rgba(245,240,232,0.08)"}
-                stroke={prendida ? "#f3cf7a" : "rgba(245,240,232,0.32)"}
+                fill={prendida ? "url(#lj-vidrio-prendido)" : undefined}
                 strokeWidth={esActual ? 1.6 : 0.8}
                 className={completa ? "lj-lampara-fiesta" : undefined}
-                style={completa ? { animationDelay: `${l.i * 110}ms` } : undefined}
+                style={{
+                  ...(prendida ? {} : { fill: "color-mix(in oklab, var(--lj-texto) 8%, transparent)" }),
+                  stroke: prendida ? "var(--lj-acento)" : "color-mix(in oklab, var(--lj-texto) 32%, transparent)",
+                  ...(completa ? { animationDelay: `${l.i * 110}ms` } : {}),
+                }}
               />
             </g>
           )
@@ -115,7 +134,7 @@ export function Guirnalda({
                 disabled={!puede}
                 aria-label={`Paso ${l.i + 1}: ${l.nombre}${!completa && l.i === actual ? " (estás acá)" : ""}`}
                 aria-current={!completa && l.i === actual ? "step" : undefined}
-                className="pointer-events-auto absolute h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] disabled:cursor-default"
+                className="pointer-events-auto absolute h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)] disabled:cursor-default"
                 style={{ left: `${(l.x / ANCHO) * 100}%`, top: `${(l.y / ALTO) * 100}%` }}
               />
             )

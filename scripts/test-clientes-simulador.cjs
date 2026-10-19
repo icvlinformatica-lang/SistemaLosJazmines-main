@@ -132,14 +132,45 @@ test("nombres prolijos para un cliente", () => {
   assert.equal(sim.nombreParaCliente(""), "")
   assert.equal(sim.nombreEnFrase("DECORACIÓN"), "decoración")
   assert.equal(sim.nombreEnFrase("DJ, SONIDO, LUCES Y HUMO"), "DJ, sonido, luces y humo")
-  assert.equal(sim.nombreSalonCliente("Salon", new Map([["Salon", "Salon"]])), "Salón")
+  // Los tres de fiesta, con el nombre que conocen los clientes (dicho por el
+  // dueño el 18/10/2026), si Configuración no les puso uno propio.
+  assert.equal(sim.nombreSalonCliente("Salon", new Map([["Salon", "Salon"]])), "Jazmines Salón")
+  assert.equal(sim.nombreSalonCliente("Quinta", null), "Jazmines Quinta")
+  assert.equal(sim.nombreSalonCliente("Casona", { Casona: "Casona" }), "Jazmines Casona")
+  assert.equal(sim.nombreSalonCliente("Casona", { Casona: "  " }), "Jazmines Casona")
+  // Un nombre propio de Configuración gana; los salones nuevos, como estén.
+  assert.equal(sim.nombreSalonCliente("Quinta", { Quinta: "La Quinta" }), "La Quinta")
   assert.equal(sim.nombreSalonCliente("Salon 4", { "Salon 4": "Multiespacio Beruti" }), "Multiespacio Beruti")
-  assert.equal(sim.nombreSalonCliente("Quinta", null), "Quinta")
+  assert.equal(sim.nombreSalonCliente("Salon 5", null), "Salon 5")
+})
+
+test("catálogo: los salones van en el orden en que los nombra el dueño (Salón, Casona, Quinta)", () => {
+  assert.ok(sim.ordenSalonCliente("Salon") < sim.ordenSalonCliente("Casona"))
+  assert.ok(sim.ordenSalonCliente("Casona") < sim.ordenSalonCliente("Quinta"))
+  assert.ok(sim.ordenSalonCliente("Quinta") < sim.ordenSalonCliente("Salon 4"))
+  assert.equal(sim.ordenSalonCliente("Salon 4"), sim.ordenSalonCliente("Salon 5"))
+  const c = sim.armarCatalogoClientes({
+    salones: [
+      salonConPrecios({ salon: "Salon 5" }),
+      salonConPrecios({ salon: "Quinta" }),
+      salonConPrecios({ salon: "Salon 4" }),
+      salonConPrecios({ salon: "Casona" }),
+      salonConPrecios({ salon: "Salon" }),
+    ],
+    servicios: SERVICIOS,
+    cocteles: COCTELES,
+    nombresSalones: null,
+    fechasEspeciales: [],
+  })
+  // Los nuevos van después, en el orden en que vinieron.
+  assert.deepEqual(c.salones.map((s) => s.salon), ["Salon", "Casona", "Quinta", "Salon 5", "Salon 4"])
+  assert.deepEqual(c.salones.slice(0, 3).map((s) => s.nombre), ["Jazmines Salón", "Jazmines Casona", "Jazmines Quinta"])
 })
 
 test("catálogo: solo salones listos, nada en $0, tragos por nombre y bebida de mesa primero", () => {
   const c = catalogoDePrueba()
   assert.deepEqual(c.salones.map((s) => s.salon), ["Casona", "Quinta"])
+  assert.equal(c.salones[0].nombre, "Jazmines Casona")
   assert.equal(c.salones[1].nombre, "La Quinta")
   const casona = c.salones[0]
   assert.deepEqual(casona.menu.map((m) => m.recetaId), ["e1", "p1", "p2", "d1"]) // sin el plato en $0
@@ -345,20 +376,113 @@ test("fechas ocupadas: solo salones pedidos, solo fechas válidas, sin repetir y
 
 // ── WhatsApp ────────────────────────────────────────────────────────────────
 
-test("mensaje de WhatsApp del cliente", () => {
+test("mensaje de WhatsApp: todo lo que armó, con el nombre del formulario, y de plata solo el total", () => {
   const texto = sim.textoWhatsAppCliente({
-    nombre: "Sofía",
-    tipoEvento: "Cumpleaños de 15",
-    fecha: "2026-11-14",
-    salon: "Casona",
-    invitados: 90,
-    total: 8020000,
+    nombre: "  Sofía   Martínez ",
+    tipoEvento: "Casamiento",
+    fecha: "2026-12-19",
+    salon: "Jazmines Casona",
+    lugar: "adentro",
+    adultos: 90,
+    ninos: 10,
+    conCatering: true,
+    platos: ["Cazuela de pollo", "Bondiola braseada", "Casata"],
+    barras: ["Bebida de mesa", "Barra clásica"],
+    servicios: ["Pantalla LED", "Plataforma 360 (2 horas)", "Letras luminosas (3)"],
+    total: 11178050,
   })
-  assert.match(texto, /^Hola, soy Sofía\. /)
-  assert.match(texto, /Cumpleaños de 15 el sábado 14 de noviembre de 2026 en Casona para 90 invitados\./)
-  assert.match(texto, /8\.020\.000/)
-  assert.ok(sim.linkWhatsApp(texto).startsWith("https://wa.me/?text=Hola%2C%20soy"))
+  assert.equal(
+    texto,
+    [
+      "Hola, soy Sofía Martínez.",
+      "Quiero festejar mi casamiento el sábado 19 de diciembre de 2026 en Jazmines Casona, adentro, para 100 invitados (90 adultos y 10 chicos).",
+      "Me gustaría con catering: cazuela de pollo, bondiola braseada y casata.",
+      "Barra: bebida de mesa y barra clásica.",
+      "Y los siguientes servicios:\n- Pantalla LED\n- Plataforma 360 (2 horas)\n- Letras luminosas (3)",
+      `El simulador me dio un precio sugerido de ${sim.formatoPesos(11178050)}.`,
+      "¿Me cuentan las formas de pago para avanzar? ¡Gracias!",
+    ].join("\n"),
+  )
+  // Un solo monto: el total (nunca el precio de cada cosa).
+  assert.equal((texto.match(/\$/g) ?? []).length, 1)
+
+  // Sin catering, sin barra ni adicionales, sin chicos y en un salón sin "lugar".
+  const simple = sim.textoWhatsAppCliente({
+    nombre: "Juan",
+    tipoEvento: "Empresarial",
+    fecha: "2026-11-13",
+    salon: "Jazmines Quinta",
+    adultos: 80,
+    ninos: 0,
+    conCatering: false,
+    platos: [],
+    barras: [],
+    servicios: [],
+    total: 5400000,
+  })
+  assert.equal(
+    simple,
+    [
+      "Hola, soy Juan.",
+      "Quiero festejar un evento empresarial el viernes 13 de noviembre de 2026 en Jazmines Quinta para 80 invitados.",
+      "Me gustaría sin catering.",
+      `El simulador me dio un precio sugerido de ${sim.formatoPesos(5400000)}.`,
+      "¿Me cuentan las formas de pago para avanzar? ¡Gracias!",
+    ].join("\n"),
+  )
+  // Con catering pero sin platos todavía.
+  assert.match(sim.textoWhatsAppCliente({ conCatering: true, platos: [] }), /Me gustaría con catering \(todavía no elegí los platos\)\./)
+})
+
+test("mensaje de WhatsApp: qué se festeja, dicho por quien escribe", () => {
+  assert.equal(sim.queSeFesteja("Casamiento"), "mi casamiento")
+  assert.equal(sim.queSeFesteja("Cumpleaños"), "mi cumpleaños")
+  assert.equal(sim.queSeFesteja("Cumpleaños de 15"), "un cumpleaños de 15")
+  assert.equal(sim.queSeFesteja("Bautismo"), "un bautismo")
+  assert.equal(sim.queSeFesteja("Empresarial"), "un evento empresarial")
+  assert.equal(sim.queSeFesteja("Otro"), "una fiesta")
+  assert.equal(sim.queSeFesteja(null), "una fiesta")
+  // Todos los festejos que se ofrecen tienen su frase.
+  for (const t of sim.TIPOS_EVENTO_CLIENTE) assert.ok(sim.queSeFesteja(t).length > 0, t)
+})
+
+test("formas de pago: las tres que ofrece Los Jazmines, también dichas en una frase", () => {
+  assert.deepEqual([...sim.FORMAS_DE_PAGO], ["Cuotas fijas", "Cuotas con IPC", "Pago total"])
+  // En medio de una frase: minúscula al empezar, pero la sigla IPC queda igual.
+  assert.equal(sim.formasDePagoEnFrase(), "cuotas fijas, cuotas con IPC o pago total")
+})
+
+test("link de WhatsApp: al número de Los Jazmines y con el mensaje entero", () => {
+  const texto = sim.textoWhatsAppCliente({ nombre: "Sofía", tipoEvento: "Casamiento", total: 1000 })
+  const link = sim.linkWhatsAppLosJazmines(texto)
+  assert.equal(sim.WHATSAPP_LOS_JAZMINES, "11 4060-8208")
+  assert.ok(link.startsWith("https://wa.me/5491140608208?text=Hola%2C%20soy%20Sof%C3%ADa"))
+  assert.equal(decodeURIComponent(link.split("?text=")[1]), texto)
+  // Sin número, WhatsApp deja elegir a quién mandarlo; con número, va directo.
+  assert.ok(sim.linkWhatsApp("hola").startsWith("https://wa.me/?text=hola"))
   assert.ok(sim.linkWhatsApp("hola", "+54 9 11 2345-6789").startsWith("https://wa.me/5491123456789?text="))
+})
+
+// ── Pasos ───────────────────────────────────────────────────────────────────
+
+test("pasos: 'lugar' va después del salón solo si el salón tiene aire libre", () => {
+  const ids = (ps) => ps.map((p) => p.id)
+  assert.deepEqual(ids(sim.pasosCliente(false)), ["festejo", "salon", "fecha", "invitados", "menu", "barra", "detalles"])
+  assert.deepEqual(ids(sim.pasosCliente(true)), ["festejo", "salon", "lugar", "fecha", "invitados", "menu", "barra", "detalles"])
+})
+
+test("pasos: el número de cada paso y, sin 'lugar', el del paso anterior", () => {
+  const con = sim.pasosCliente(true)
+  const sin = sim.pasosCliente(false)
+  assert.equal(sim.indicePaso(con, "lugar"), 2)
+  assert.equal(sim.indicePaso(con, "fecha"), 3)
+  assert.equal(sim.indicePaso(sin, "fecha"), 2)
+  // Si llegó hasta "lugar" con la Casona y cambia a la Quinta, queda en el salón.
+  assert.equal(sim.indicePaso(sin, "lugar"), 1)
+  assert.equal(sim.indicePaso(sin, "festejo"), 0)
+  assert.equal(sim.pasoDespuesDe("fecha", "lugar"), true)
+  assert.equal(sim.pasoDespuesDe("lugar", "lugar"), false)
+  assert.equal(sim.pasoDespuesDe("salon", "lugar"), false)
 })
 
 // ── Rutas ───────────────────────────────────────────────────────────────────

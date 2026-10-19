@@ -1,7 +1,8 @@
 // Simulador "Armá tu fiesta" — vista de Clientes (prototipo, perfil "clientes").
 //
-// La persona arma su fiesta paso a paso (festejo, salón, fecha, invitados,
-// menú, barra y detalles) y ve el total en vivo. La cuenta es la MISMA del
+// La persona arma su fiesta paso a paso (festejo, salón, adentro o al aire
+// libre si el salón tiene las dos, fecha, invitados, menú, barra y detalles) y
+// ve el total en vivo. La cuenta es la MISMA del
 // cotizador del vendedor: armarCotizacion (lib/cotizador-salon.ts) con los
 // precios por unidad del catálogo por salón (lib/catalogo-cotizador-servidor.ts).
 // El servidor recalcula con costos reales en /api/clientes/simular.
@@ -16,6 +17,9 @@
 // - Nada en $0: un plato, una barra o un adicional sin precio no se muestra
 //   (salvo lo que ya viene incluido con el salón, que se lista como "Incluido").
 // - De las fechas ocupadas, solo la fecha: nada del evento.
+// - Del precio, la pantalla muestra solo el total (pedido de Rodri del
+//   19/10/2026): ni lo de cada cosa, ni los rubros, ni por invitado. Los
+//   precios por unidad igual llegan al navegador, para sumar en vivo.
 
 import {
   MAX_BARRAS,
@@ -31,17 +35,72 @@ import {
   type ResultadoCotizacionSalon,
 } from "./cotizador-salon"
 import { servicioCorrespondeAlAnio } from "./tarifario-cotizador"
+import { numeroWhatsApp } from "./telefono-whatsapp"
 
 /** Misma lista que el cotizador del vendedor (los textos se guardan tal cual). */
 export const TIPOS_EVENTO_CLIENTE = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
 
-/** Días que se congela el precio después de dejar los datos (decisión del 18/10/2026). */
+/** Días que se congela el precio después de dejar los datos (decisión del 18/10/2026).
+ *  Desde el 19/10/2026 la vista de Clientes no lo muestra (MOSTRAR_PRECIO_CONGELADO). */
 export const DIAS_PRECIO_CONGELADO = 7
+
+/** Las formas de pago que ofrece Los Jazmines (dicho por Rodri el 19/10/2026).
+ *  La vista de Clientes las nombra junto al precio: es un precio sugerido y el
+ *  final depende de cuál elija el cliente con un vendedor. */
+export const FORMAS_DE_PAGO = ["Cuotas fijas", "Cuotas con IPC", "Pago total"] as const
+
+/** "cuotas fijas, cuotas con IPC o pago total", para ir en medio de una frase. */
+export function formasDePagoEnFrase(): string {
+  const partes = FORMAS_DE_PAGO.map((f) => f.charAt(0).toLocaleLowerCase("es") + f.slice(1))
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} o ${partes[partes.length - 1]}` : partes.join("")
+}
 
 /** Hasta cuándo se muestran fechas en el calendario. */
 export const MESES_CALENDARIO = 24
 
 export { MAX_BARRAS }
+
+// ── Los pasos ───────────────────────────────────────────────────────────────
+
+/** Todos los pasos, en orden. "lugar" (¿adentro o al aire libre?) va solo con
+ *  un salón que tiene las dos cosas (hoy, la Casona): ver pasosCliente. */
+export const PASOS_CLIENTE = [
+  { id: "festejo", nombre: "Festejo" },
+  { id: "salon", nombre: "Salón" },
+  { id: "lugar", nombre: "Lugar" },
+  { id: "fecha", nombre: "Fecha" },
+  { id: "invitados", nombre: "Invitados" },
+  { id: "menu", nombre: "Menú" },
+  { id: "barra", nombre: "Barra" },
+  { id: "detalles", nombre: "Detalles" },
+] as const
+export type IdPasoCliente = (typeof PASOS_CLIENTE)[number]["id"]
+export type PasoCliente = (typeof PASOS_CLIENTE)[number]
+
+/** Los pasos que se recorren: sin "lugar" si el salón no tiene aire libre
+ *  (o todavía no se eligió salón). */
+export function pasosCliente(conLugar: boolean): PasoCliente[] {
+  return PASOS_CLIENTE.filter((p) => conLugar || p.id !== "lugar")
+}
+
+/**
+ * En qué lugar de `pasos` está el paso `id`. Si no está (el paso "lugar" con
+ * un salón cerrado), el del último paso anterior que sí está: así, al cambiar
+ * de salón, lo ya recorrido sigue prendido en la guirnalda.
+ */
+export function indicePaso(pasos: ReadonlyArray<{ id: string }>, id: IdPasoCliente): number {
+  const orden = PASOS_CLIENTE.findIndex((p) => p.id === id)
+  for (let i = orden; i >= 0; i--) {
+    const j = pasos.findIndex((p) => p.id === PASOS_CLIENTE[i].id)
+    if (j >= 0) return j
+  }
+  return 0
+}
+
+/** Si el paso `a` va después que `b` en el recorrido completo. */
+export function pasoDespuesDe(a: IdPasoCliente, b: IdPasoCliente): boolean {
+  return PASOS_CLIENTE.findIndex((p) => p.id === a) > PASOS_CLIENTE.findIndex((p) => p.id === b)
+}
 
 // ── Catálogo para clientes ──────────────────────────────────────────────────
 
@@ -92,12 +151,32 @@ export function salonListoParaClientes(s: { precioSalon: number; capacidadMaxima
   return (Number(s.precioSalon) || 0) > 0 && (Number(s.capacidadMaxima) || 0) > 0
 }
 
-/** Nombre visible de un salón: el de Configuración de cajas, o el de siempre. */
+/** Los tres salones de fiesta, como los conocen los clientes y en el orden en
+ *  que los nombró el dueño el 18/10/2026. Solo para la vista de Clientes:
+ *  adentro del sistema el nombre sigue saliendo de Configuración. */
+const SALONES_COMERCIALES: ReadonlyArray<{ clave: string; nombre: string }> = [
+  { clave: "Salon", nombre: "Jazmines Salón" },
+  { clave: "Casona", nombre: "Jazmines Casona" },
+  { clave: "Quinta", nombre: "Jazmines Quinta" },
+]
+
+/** Nombre visible de un salón para un cliente: el de Configuración de cajas si
+ *  le pusieron uno propio; si no, su nombre comercial ("Jazmines Casona"), o
+ *  el de siempre para un salón nuevo. */
 export function nombreSalonCliente(salon: string, nombres?: Map<string, string> | Record<string, string> | null): string {
   const custom = nombres instanceof Map ? nombres.get(salon) : nombres?.[salon]
   // salonesConfigurados() devuelve la clave cuando no hay nombre propio.
   if (typeof custom === "string" && custom.trim() && custom.trim() !== salon) return custom.trim()
+  const comercial = SALONES_COMERCIALES.find((s) => s.clave === salon)
+  if (comercial) return comercial.nombre
   return salon === "Salon" ? "Salón" : salon
+}
+
+/** En qué lugar va el salón en la lista para clientes: primero los tres de
+ *  fiesta, en ese orden; cualquier otro, después (en el orden en que vino). */
+export function ordenSalonCliente(salon: string): number {
+  const i = SALONES_COMERCIALES.findIndex((s) => s.clave === salon)
+  return i < 0 ? SALONES_COMERCIALES.length : i
 }
 
 const SIGLAS = /\b(dj|led|vip|xv)\b/gi
@@ -198,6 +277,9 @@ export function armarCatalogoClientes(entrada: {
       })),
     })
   }
+  // En el orden en que el dueño nombra los salones (sort es estable: los demás
+  // quedan como vinieron).
+  salones.sort((a, b) => ordenSalonCliente(a.salon) - ordenSalonCliente(b.salon))
   return { salones, fechasEspeciales: entrada.fechasEspeciales ?? [] }
 }
 
@@ -479,34 +561,104 @@ export function formatoPesos(n: number): string {
   return PESOS.format(Math.round(Number(n) || 0))
 }
 
-/** Mensaje que el cliente le manda al salón desde el presupuesto. */
+/** El WhatsApp de Los Jazmines, adonde el cliente manda su fiesta (dicho por
+ *  Rodri el 19/10/2026). linkWhatsAppLosJazmines lo pasa al formato de wa.me. */
+export const WHATSAPP_LOS_JAZMINES = "11 4060-8208"
+
+/** "a, b y c". (clientes-maqueta tiene uno igual, pero importa de acá.) */
+function enFrase(partes: string[]): string {
+  if (partes.length <= 1) return partes.join("")
+  return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`
+}
+
+/** Qué se festeja, dicho por quien escribe: "mi casamiento", "un bautismo"… */
+export function queSeFesteja(tipoEvento: string | null | undefined): string {
+  switch (tipoEvento) {
+    case "Casamiento":
+      return "mi casamiento"
+    case "Cumpleaños":
+      return "mi cumpleaños"
+    // Estos los suelen escribir los padres: sin "mi".
+    case "Cumpleaños de 15":
+      return "un cumpleaños de 15"
+    case "Bautismo":
+      return "un bautismo"
+    case "Empresarial":
+      return "un evento empresarial"
+    default:
+      return "una fiesta"
+  }
+}
+
+/**
+ * El mensaje que el cliente le manda a Los Jazmines por WhatsApp con todo lo
+ * que armó (pedido de Rodri del 19/10/2026): quién es, qué festeja, cuándo,
+ * dónde y para cuántos, con o sin catering (y qué platos), la barra, los
+ * servicios que sumó y el precio sugerido. Nunca el precio de cada cosa. Cierra
+ * preguntando por las formas de pago, porque de eso depende el precio final.
+ */
 export function textoWhatsAppCliente(d: {
+  /** El de "Nombre y apellido", tal cual lo escribió. */
   nombre?: string | null
   tipoEvento?: string | null
   fecha?: string | null
   salon?: string | null
-  invitados?: number | null
+  /** "al aire libre" / "adentro", si el salón tiene las dos. */
+  lugar?: string | null
+  adultos?: number | null
+  ninos?: number | null
+  conCatering?: boolean | null
+  /** Los platos elegidos, como se ven en la pantalla. */
+  platos?: string[]
+  barras?: string[]
+  /** Los adicionales que sumó (no lo que ya viene con el salón), con su cantidad. */
+  servicios?: string[]
   total?: number | null
 }): string {
-  const partes: string[] = []
-  const nombre = (d.nombre ?? "").trim()
-  partes.push(nombre ? `Hola, soy ${nombre}.` : "Hola.")
-  const fiesta = [
-    d.tipoEvento ? d.tipoEvento : "Mi fiesta",
-    d.fecha ? `el ${fechaLarga(d.fecha)}` : "",
-    d.salon ? `en ${d.salon}` : "",
-    d.invitados ? `para ${d.invitados} invitados` : "",
-  ]
-    .filter(Boolean)
-    .join(" ")
-  partes.push(`Armé mi presupuesto en el simulador de Los Jazmines: ${fiesta}.`)
-  if (d.total) partes.push(`Me dio un total estimado de ${formatoPesos(d.total)}.`)
-  partes.push("¿Me ayudan a reservar?")
-  return partes.join(" ")
+  const lineas: string[] = []
+  const nombre = (d.nombre ?? "").trim().replace(/\s+/g, " ")
+  lineas.push(nombre ? `Hola, soy ${nombre}.` : "Hola.")
+
+  const adultos = Math.max(0, Math.round(d.adultos ?? 0))
+  const ninos = Math.max(0, Math.round(d.ninos ?? 0))
+  const invitados = adultos + ninos
+  const cuantos =
+    invitados === 0
+      ? ""
+      : ninos > 0
+        ? `para ${invitados} invitados (${adultos} ${adultos === 1 ? "adulto" : "adultos"} y ${ninos} ${ninos === 1 ? "chico" : "chicos"})`
+        : `para ${invitados} ${invitados === 1 ? "invitado" : "invitados"}`
+  let fiesta = `Quiero festejar ${queSeFesteja(d.tipoEvento)}`
+  if (d.fecha && fechaLarga(d.fecha)) fiesta += ` el ${fechaLarga(d.fecha)}`
+  if (d.salon) fiesta += ` en ${d.salon}${d.lugar ? `, ${d.lugar}` : ""}`
+  if (cuantos) fiesta += `${d.salon && d.lugar ? "," : ""} ${cuantos}`
+  lineas.push(`${fiesta}.`)
+
+  const platos = (d.platos ?? []).filter(Boolean)
+  if (d.conCatering === false) lineas.push("Me gustaría sin catering.")
+  else if (d.conCatering) {
+    lineas.push(
+      platos.length ? `Me gustaría con catering: ${enFrase(platos.map(nombreEnFrase))}.` : "Me gustaría con catering (todavía no elegí los platos).",
+    )
+  }
+  const barras = (d.barras ?? []).filter(Boolean)
+  if (barras.length) lineas.push(`Barra: ${enFrase(barras.map(nombreEnFrase))}.`)
+  // Uno por renglón: los nombres pueden traer comas ("DJ, sonido y luces").
+  const servicios = (d.servicios ?? []).filter(Boolean)
+  if (servicios.length) lineas.push(["Y los siguientes servicios:", ...servicios.map((s) => `- ${s}`)].join("\n"))
+
+  if (d.total) lineas.push(`El simulador me dio un precio sugerido de ${formatoPesos(d.total)}.`)
+  lineas.push("¿Me cuentan las formas de pago para avanzar? ¡Gracias!")
+  return lineas.join("\n")
 }
 
 /** Link de WhatsApp. Sin número abre WhatsApp para elegir a quién mandarlo. */
 export function linkWhatsApp(texto: string, numero?: string | null): string {
   const n = String(numero ?? "").replace(/\D/g, "")
   return `https://wa.me/${n}?text=${encodeURIComponent(texto)}`
+}
+
+/** Link de WhatsApp al número de Los Jazmines, con el mensaje ya escrito. */
+export function linkWhatsAppLosJazmines(texto: string): string {
+  return linkWhatsApp(texto, numeroWhatsApp(WHATSAPP_LOS_JAZMINES))
 }
