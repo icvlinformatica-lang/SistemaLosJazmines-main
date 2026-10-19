@@ -66,7 +66,10 @@ export function PresupuestoCliente({
           {fecha ? <span className="first-letter:uppercase inline-block">{fechaLarga(fecha)}</span> : "Sin fecha elegida"}
           <br />
           {salonNombre}
-          {lugar ? ` ${lugar}` : ""}, {invitados}
+          {lugar ? ` ${lugar}` : ""},{" "}
+          {/* Los invitados van juntos: con "Jazmines Casona al aire libre" la
+              línea ya es larga y, si no, se cortaba en "y 6 / chicos". */}
+          <span className="inline-block">{invitados}</span>
         </p>
       </header>
 

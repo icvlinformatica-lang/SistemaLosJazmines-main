@@ -135,12 +135,32 @@ export function salonListoParaClientes(s: { precioSalon: number; capacidadMaxima
   return (Number(s.precioSalon) || 0) > 0 && (Number(s.capacidadMaxima) || 0) > 0
 }
 
-/** Nombre visible de un salón: el de Configuración de cajas, o el de siempre. */
+/** Los tres salones de fiesta, como los conocen los clientes y en el orden en
+ *  que los nombró el dueño el 18/10/2026. Solo para la vista de Clientes:
+ *  adentro del sistema el nombre sigue saliendo de Configuración. */
+const SALONES_COMERCIALES: ReadonlyArray<{ clave: string; nombre: string }> = [
+  { clave: "Salon", nombre: "Jazmines Salón" },
+  { clave: "Casona", nombre: "Jazmines Casona" },
+  { clave: "Quinta", nombre: "Jazmines Quinta" },
+]
+
+/** Nombre visible de un salón para un cliente: el de Configuración de cajas si
+ *  le pusieron uno propio; si no, su nombre comercial ("Jazmines Casona"), o
+ *  el de siempre para un salón nuevo. */
 export function nombreSalonCliente(salon: string, nombres?: Map<string, string> | Record<string, string> | null): string {
   const custom = nombres instanceof Map ? nombres.get(salon) : nombres?.[salon]
   // salonesConfigurados() devuelve la clave cuando no hay nombre propio.
   if (typeof custom === "string" && custom.trim() && custom.trim() !== salon) return custom.trim()
+  const comercial = SALONES_COMERCIALES.find((s) => s.clave === salon)
+  if (comercial) return comercial.nombre
   return salon === "Salon" ? "Salón" : salon
+}
+
+/** En qué lugar va el salón en la lista para clientes: primero los tres de
+ *  fiesta, en ese orden; cualquier otro, después (en el orden en que vino). */
+export function ordenSalonCliente(salon: string): number {
+  const i = SALONES_COMERCIALES.findIndex((s) => s.clave === salon)
+  return i < 0 ? SALONES_COMERCIALES.length : i
 }
 
 const SIGLAS = /\b(dj|led|vip|xv)\b/gi
@@ -241,6 +261,9 @@ export function armarCatalogoClientes(entrada: {
       })),
     })
   }
+  // En el orden en que el dueño nombra los salones (sort es estable: los demás
+  // quedan como vinieron).
+  salones.sort((a, b) => ordenSalonCliente(a.salon) - ordenSalonCliente(b.salon))
   return { salones, fechasEspeciales: entrada.fechasEspeciales ?? [] }
 }
 

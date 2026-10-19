@@ -52,6 +52,7 @@ import {
   Smartphone,
   Sparkles,
   Trees,
+  Users,
   type LucideIcon,
 } from "lucide-react"
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer"
@@ -889,9 +890,12 @@ export default function ClientesPage() {
                             : "border-[rgba(245,240,232,0.12)] bg-[#12261a] hover:border-[rgba(245,240,232,0.25)]",
                         ].join(" ")}
                       >
-                        <span className="flex items-baseline justify-between gap-3">
-                          <span className={`${serif} text-[28px] leading-none`}>{s.nombre}</span>
-                          <span className="text-[13.5px] text-[#f5f0e8]/65">hasta {s.capacidadMaxima} invitados</span>
+                        {/* El nombre ("Jazmines Casona") va solo en su renglón y abajo
+                            la capacidad, que es lo primero que se compara. */}
+                        <span className={`${serif} block text-[28px] leading-[1.05]`}>{s.nombre}</span>
+                        <span className="mt-2 flex items-center gap-1.5 text-[14px] text-[#f5f0e8]/80">
+                          <Users className="h-4 w-4 shrink-0 text-[#f3cf7a]/80" aria-hidden="true" />
+                          Hasta {s.capacidadMaxima} invitados
                         </span>
                         {rasgosSalon(s.salon) && (
                           <span className="mt-3 block text-[14.5px] leading-snug text-[#f5f0e8]/90">{rasgosSalon(s.salon)}</span>

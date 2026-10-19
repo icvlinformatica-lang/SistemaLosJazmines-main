@@ -132,6 +132,10 @@ probar a 390 px sin scroll horizontal).
   madera; el Salón, boiserie, mármol y cortinados verdes; la Casona por
   dentro, cal, arcos y terracota. Si hay fotos de los salones, se ajustan los
   colores y las texturas de cada estilo (`DISENOS`).
+- **Las tarjetas de los salones**: el nombre comercial (Jazmines Salón,
+  Jazmines Casona, Jazmines Quinta, en ese orden) va solo en su renglón y
+  abajo la capacidad, con el ícono de personas, porque es lo primero que se
+  compara; después, lo que tiene afuera y lo que incluye.
 - **Lo que suma cada opción** va a la derecha: en dorado lo que todavía se
   puede sumar ("+ $ 120.000") y en crema lo que ya suma lo elegido.
 

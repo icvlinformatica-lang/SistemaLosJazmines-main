@@ -132,14 +132,45 @@ test("nombres prolijos para un cliente", () => {
   assert.equal(sim.nombreParaCliente(""), "")
   assert.equal(sim.nombreEnFrase("DECORACIÓN"), "decoración")
   assert.equal(sim.nombreEnFrase("DJ, SONIDO, LUCES Y HUMO"), "DJ, sonido, luces y humo")
-  assert.equal(sim.nombreSalonCliente("Salon", new Map([["Salon", "Salon"]])), "Salón")
+  // Los tres de fiesta, con el nombre que conocen los clientes (dicho por el
+  // dueño el 18/10/2026), si Configuración no les puso uno propio.
+  assert.equal(sim.nombreSalonCliente("Salon", new Map([["Salon", "Salon"]])), "Jazmines Salón")
+  assert.equal(sim.nombreSalonCliente("Quinta", null), "Jazmines Quinta")
+  assert.equal(sim.nombreSalonCliente("Casona", { Casona: "Casona" }), "Jazmines Casona")
+  assert.equal(sim.nombreSalonCliente("Casona", { Casona: "  " }), "Jazmines Casona")
+  // Un nombre propio de Configuración gana; los salones nuevos, como estén.
+  assert.equal(sim.nombreSalonCliente("Quinta", { Quinta: "La Quinta" }), "La Quinta")
   assert.equal(sim.nombreSalonCliente("Salon 4", { "Salon 4": "Multiespacio Beruti" }), "Multiespacio Beruti")
-  assert.equal(sim.nombreSalonCliente("Quinta", null), "Quinta")
+  assert.equal(sim.nombreSalonCliente("Salon 5", null), "Salon 5")
+})
+
+test("catálogo: los salones van en el orden en que los nombra el dueño (Salón, Casona, Quinta)", () => {
+  assert.ok(sim.ordenSalonCliente("Salon") < sim.ordenSalonCliente("Casona"))
+  assert.ok(sim.ordenSalonCliente("Casona") < sim.ordenSalonCliente("Quinta"))
+  assert.ok(sim.ordenSalonCliente("Quinta") < sim.ordenSalonCliente("Salon 4"))
+  assert.equal(sim.ordenSalonCliente("Salon 4"), sim.ordenSalonCliente("Salon 5"))
+  const c = sim.armarCatalogoClientes({
+    salones: [
+      salonConPrecios({ salon: "Salon 5" }),
+      salonConPrecios({ salon: "Quinta" }),
+      salonConPrecios({ salon: "Salon 4" }),
+      salonConPrecios({ salon: "Casona" }),
+      salonConPrecios({ salon: "Salon" }),
+    ],
+    servicios: SERVICIOS,
+    cocteles: COCTELES,
+    nombresSalones: null,
+    fechasEspeciales: [],
+  })
+  // Los nuevos van después, en el orden en que vinieron.
+  assert.deepEqual(c.salones.map((s) => s.salon), ["Salon", "Casona", "Quinta", "Salon 5", "Salon 4"])
+  assert.deepEqual(c.salones.slice(0, 3).map((s) => s.nombre), ["Jazmines Salón", "Jazmines Casona", "Jazmines Quinta"])
 })
 
 test("catálogo: solo salones listos, nada en $0, tragos por nombre y bebida de mesa primero", () => {
   const c = catalogoDePrueba()
   assert.deepEqual(c.salones.map((s) => s.salon), ["Casona", "Quinta"])
+  assert.equal(c.salones[0].nombre, "Jazmines Casona")
   assert.equal(c.salones[1].nombre, "La Quinta")
   const casona = c.salones[0]
   assert.deepEqual(casona.menu.map((m) => m.recetaId), ["e1", "p1", "p2", "d1"]) // sin el plato en $0
