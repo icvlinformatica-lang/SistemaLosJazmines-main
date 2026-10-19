@@ -46,9 +46,9 @@ import {
   ChevronDown,
   ChevronLeft,
   Crown,
-  Flower2,
   Gem,
   Loader2,
+  Logs,
   House,
   LogOut,
   Maximize2,
@@ -59,6 +59,7 @@ import {
   Printer,
   RotateCcw,
   Smartphone,
+  Shrub,
   Sparkles,
   SquareParking,
   Trees,
@@ -161,7 +162,8 @@ const ICONO_RASGO: Record<IconoRasgo, LucideIcon> = {
   pileta: Waves,
   casa: BedDouble,
   estacionamiento: SquareParking,
-  patio: Flower2,
+  madera: Logs,
+  verde: Shrub,
   cerrado: House,
 }
 
@@ -1014,7 +1016,7 @@ export default function ClientesPage() {
                   {(
                     [
                       { valor: "jardin", titulo: "Al aire libre", detalle: "Jardín con guirnaldas y pileta", Icono: Trees },
-                      { valor: "adentro", titulo: "Adentro", detalle: "El salón de la casa", Icono: House },
+                      { valor: "adentro", titulo: "Adentro", detalle: "Bajo techo de madera", Icono: House },
                     ] as Array<{ valor: VistaCasona; titulo: string; detalle: string; Icono: LucideIcon }>
                   ).map(({ valor, titulo, detalle, Icono }) => {
                     const elegido = lugar === valor

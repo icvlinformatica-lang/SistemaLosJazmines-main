@@ -254,8 +254,8 @@ test("cada salón tiene su lugar: Casona con exterior amplio, Quinta con uno chi
   assert.equal(maq.salonConAireLibre("Casona"), true)
   for (const clave of ["Quinta", "Salon", "Salon 4", null, ""]) assert.equal(maq.salonConAireLibre(clave), false, String(clave))
   assert.deepEqual(maq.TEXTO_LUGAR, { jardin: "al aire libre", adentro: "adentro" })
-  assert.match(maq.rasgosSalon("Casona"), /Amplio exterior.*pileta.*estacionamiento/)
-  assert.equal(maq.rasgosSalon("Quinta"), "Con un exterior chico y estacionamiento.")
+  assert.match(maq.rasgosSalon("Casona"), /Amplio exterior.*techo de madera.*pileta.*casa colonial.*estacionamiento/)
+  assert.equal(maq.rasgosSalon("Quinta"), "Todo el salón en madera, una entrada con mucho verde y estacionamiento.")
   assert.equal(maq.rasgosSalon("Salon"), "Salón cerrado, sin exterior.")
   assert.equal(maq.rasgosSalon("Salon 4"), null)
   assert.equal(maq.rasgosSalon(null), null)
@@ -280,7 +280,7 @@ test("la descripción dice dónde es la fiesta", () => {
   assert.match(maq.descripcionMaqueta(maq.estadoMaqueta(entrada())), /^Maqueta de tu fiesta en Casona, en el jardín con la pileta, la casa y el estacionamiento: /)
   assert.match(maq.descripcionMaqueta(maq.estadoMaqueta(entrada({ vistaCasona: "adentro" }))), /^Maqueta de tu fiesta en Casona, adentro con la pileta, la casa y el estacionamiento: /)
   const quinta = { ...SALON, clave: "Quinta", nombre: "Quinta" }
-  assert.match(maq.descripcionMaqueta(maq.estadoMaqueta(entrada({ salon: quinta }))), /^Maqueta de tu fiesta en Quinta, adentro con el patio y el estacionamiento: /)
+  assert.match(maq.descripcionMaqueta(maq.estadoMaqueta(entrada({ salon: quinta }))), /^Maqueta de tu fiesta en Quinta, adentro con el verde de la entrada y el estacionamiento: /)
   const salon = { ...SALON, clave: "Salon", nombre: "Salón" }
   assert.match(maq.descripcionMaqueta(maq.estadoMaqueta(entrada({ salon }))), /^Maqueta de tu fiesta en Salón, adentro: /)
   assert.equal(maq.descripcionMaqueta(maq.estadoMaqueta(entrada({ tipoEvento: null, salon: null }))), "Maqueta de tu fiesta, todavía vacía.")
@@ -292,8 +292,10 @@ test("avisos del lugar: la Casona muestra la pileta y la casa; la Quinta, su fre
   const adentro = maq.estadoMaqueta(entrada({ vistaCasona: "adentro" }))
   const quinta = maq.estadoMaqueta(entrada({ salon: { ...SALON, clave: "Quinta", nombre: "Quinta" } }))
   const salon = maq.estadoMaqueta(entrada({ salon: { ...SALON, clave: "Salon", nombre: "Salón" } }))
-  const CASONA = { texto: "Tiene pileta, una casa para quedarse y estacionamiento", foco: "casona" }
-  const QUINTA = { texto: "Tiene un patio al frente y estacionamiento", foco: "frente" }
+  const CASONA = { texto: "Pileta, casa colonial y estacionamiento", foco: "casona" }
+  const QUINTA = { texto: "Todo en madera, entrada con mucho verde", foco: "frente" }
+  // Entran enteros en el aviso del celular (si no, se cortan con "…").
+  for (const t of [CASONA.texto, QUINTA.texto, "Así queda adentro", "Así queda en el jardín"]) assert.ok(t.length <= 40, t)
   assert.deepEqual(maq.avisoLugar(sinSalon, jardin), CASONA)
   assert.deepEqual(maq.avisoLugar(quinta, adentro), CASONA)
   assert.deepEqual(maq.avisoLugar(sinSalon, quinta), QUINTA)
@@ -314,7 +316,8 @@ test("avisos del lugar: la Casona muestra la pileta y la casa; la Quinta, su fre
 
 test("tarjeta del salón en pocas palabras: rasgos con ícono y lo incluido una sola vez", () => {
   assert.deepEqual(maq.rasgosCortos("Casona").map((r) => r.icono), ["aire-libre", "pileta", "casa", "estacionamiento"])
-  assert.deepEqual(maq.rasgosCortos("Quinta").map((r) => r.texto), ["Patio", "Estacionamiento"])
+  assert.deepEqual(maq.rasgosCortos("Quinta").map((r) => r.texto), ["Todo en madera", "Entrada con mucho verde", "Estacionamiento"])
+  assert.deepEqual(maq.rasgosCortos("Casona").map((r) => r.texto)[2], "Casa colonial para quedarse")
   assert.deepEqual(maq.rasgosCortos("Salon").map((r) => r.texto), ["Salón cerrado"])
   assert.deepEqual(maq.rasgosCortos("Salon 4"), [])
   assert.deepEqual(maq.rasgosCortos(null), [])
