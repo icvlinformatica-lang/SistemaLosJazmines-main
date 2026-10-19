@@ -5,8 +5,10 @@
 // Es lo que va a ver un cliente que llega desde Instagram: arma su fiesta en
 // 7 pasos (festejo, salón, fecha, invitados, menú, barra y detalles; 8 con la
 // Casona, que suma "¿Adentro o al aire libre?" después del salón) y ve el
-// total en vivo. Al final, para ver el detalle y congelar el precio 7 días,
-// deja nombre, WhatsApp y mail ("el peaje").
+// total en vivo, sin el precio de cada cosa (MOSTRAR_DESGLOSE). Al final toca
+// "Quiero que se contacten conmigo", deja nombre, WhatsApp y mail ("el
+// peaje") y desde su presupuesto le escribe a Los Jazmines por WhatsApp con
+// todo lo que eligió.
 //
 // - El total en vivo sale de armarCotizacion con los precios del catálogo
 //   (/api/clientes/catalogo), igual que en /vendedor/cotizar. El presupuesto
@@ -88,7 +90,7 @@ import {
   pasoDespuesDe,
   pasosCliente,
   formatoPesos,
-  linkWhatsApp,
+  linkWhatsAppLosJazmines,
   nombreEnFrase,
   nombreParaCliente,
   pasosDelMenu,
@@ -183,6 +185,14 @@ const FOCO_PASO: Record<IdPaso, string> = {
 const MS_MOSTRAR_SUMADO = 2600
 /** Y el lugar al elegir el salón: la casa y la pileta de la Casona, o el frente de la Quinta (vuela más lejos). */
 const MS_MOSTRAR_LUGAR = 3600
+
+/**
+ * Pedido de Rodri del 19/10/2026: al cliente se le muestra solo el total, que
+ * va sumando en cada paso; ni el precio de cada plato, barra o adicional, ni lo
+ * que suma lo elegido, ni los rubros, ni el "por invitado". Escondido y no
+ * borrado: con true vuelve todo.
+ */
+const MOSTRAR_DESGLOSE = false
 
 /** "+ $ 120.000" / "− $ 30.000" / "sin costo extra". */
 function diferencia(d: number): string {
@@ -1183,7 +1193,7 @@ export default function ClientesPage() {
                           <div className="space-y-2">
                             {grupo.platos.map((p) => {
                               const elegido = recetas.includes(p.recetaId)
-                              const d = elegido ? 0 : totalCon({ recetas: elegirPlato(recetas, p.recetaId, salon.menu) }) - total
+                              const d = !MOSTRAR_DESGLOSE || elegido ? 0 : totalCon({ recetas: elegirPlato(recetas, p.recetaId, salon.menu) }) - total
                               return (
                                 <Opcion
                                   key={p.recetaId}
@@ -1191,8 +1201,8 @@ export default function ClientesPage() {
                                   elegida={elegido}
                                   onElegir={() => tocarPlato(p.recetaId)}
                                   titulo={p.nombre}
-                                  detalle={`${formatoPesos(p.precioPorPorcion)} por persona`}
-                                  lateral={elegido ? undefined : diferencia(d)}
+                                  detalle={MOSTRAR_DESGLOSE ? `${formatoPesos(p.precioPorPorcion)} por persona` : undefined}
+                                  lateral={MOSTRAR_DESGLOSE && !elegido ? diferencia(d) : undefined}
                                 />
                               )
                             })}
@@ -1223,11 +1233,13 @@ export default function ClientesPage() {
                     {salon.barras.map((b) => {
                       const elegida = barraIds.includes(b.id)
                       const llena = !elegida && barraIds.length >= MAX_BARRAS
-                      const d = elegida
-                        ? aporte({ barraIds: barraIds.filter((id) => id !== b.id) })
-                        : llena
-                          ? 0
-                          : totalCon({ barraIds: elegirBarra(barraIds, b.id) }) - total
+                      const d = !MOSTRAR_DESGLOSE
+                        ? 0
+                        : elegida
+                          ? aporte({ barraIds: barraIds.filter((id) => id !== b.id) })
+                          : llena
+                            ? 0
+                            : totalCon({ barraIds: elegirBarra(barraIds, b.id) }) - total
                       const tragos =
                         b.cocteles.length > 3 ? `${b.cocteles.slice(0, 3).join(", ")} y ${b.cocteles.length - 3} más` : b.cocteles.join(", ")
                       return (
@@ -1239,7 +1251,17 @@ export default function ClientesPage() {
                           onElegir={() => setBarraIds((prev) => elegirBarra(prev, b.id))}
                           titulo={b.nombre}
                           detalle={b.bebidaDeMesa ? "Acompaña el menú." : tragos || undefined}
-                          lateral={elegida ? <Aporte monto={d} /> : llena ? "máximo 2" : diferencia(d)}
+                          lateral={
+                            elegida
+                              ? MOSTRAR_DESGLOSE
+                                ? <Aporte monto={d} />
+                                : undefined
+                              : llena
+                                ? "máximo 2"
+                                : MOSTRAR_DESGLOSE
+                                  ? diferencia(d)
+                                  : undefined
+                          }
                         />
                       )
                     })}
@@ -1300,9 +1322,11 @@ export default function ClientesPage() {
                                 const conCantidad = UNIDADES_CON_CANTIDAD.includes(s.unidad)
                                 const sinEste = { ...servicios }
                                 delete sinEste[s.servicioId]
-                                const d = elegido
-                                  ? aporte({ servicios: sinEste })
-                                  : totalCon({ servicios: { ...servicios, [s.servicioId]: 1 } }) - total
+                                const d = !MOSTRAR_DESGLOSE
+                                  ? 0
+                                  : elegido
+                                    ? aporte({ servicios: sinEste })
+                                    : totalCon({ servicios: { ...servicios, [s.servicioId]: 1 } }) - total
                                 return (
                                   <Opcion
                                     key={s.servicioId}
@@ -1318,11 +1342,15 @@ export default function ClientesPage() {
                                     }
                                     titulo={nombreParaCliente(s.nombre)}
                                     detalle={
-                                      conCantidad
-                                        ? `${formatoPesos(s.precio)} ${s.unidad === "Por Hora" ? "por hora" : "cada uno"}`
-                                        : undefined
+                                      !conCantidad
+                                        ? undefined
+                                        : MOSTRAR_DESGLOSE
+                                          ? `${formatoPesos(s.precio)} ${s.unidad === "Por Hora" ? "por hora" : "cada uno"}`
+                                          : s.unidad === "Por Hora"
+                                            ? "Por hora"
+                                            : "Por unidad"
                                     }
-                                    lateral={elegido ? <Aporte monto={d} /> : diferencia(d)}
+                                    lateral={MOSTRAR_DESGLOSE ? (elegido ? <Aporte monto={d} /> : diferencia(d)) : undefined}
                                   >
                                     {conCantidad && (
                                       <div className="flex items-center justify-between">
@@ -1395,7 +1423,7 @@ export default function ClientesPage() {
                   <p className={`${cifras} mt-1 text-[40px] font-semibold leading-none tabular-nums text-[var(--lj-titulo)]`}>
                     {formatoPesos(total)}
                   </p>
-                  {comensales > 0 && (
+                  {MOSTRAR_DESGLOSE && comensales > 0 && (
                     <p className="mt-2 text-[13.5px] tabular-nums text-[var(--lj-texto)]/60">{formatoPesos(total / comensales)} por invitado</p>
                   )}
                   <p className="mt-4 text-[14.5px] leading-relaxed text-[var(--lj-texto)]/80">
@@ -1404,9 +1432,9 @@ export default function ClientesPage() {
                   <button
                     type="button"
                     onClick={() => setPeajeAbierto(true)}
-                    className="mt-4 flex h-13 w-full items-center justify-center rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] py-3.5 text-[16px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_36px_-10px_var(--lj-brillo)] transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
+                    className="mt-4 flex h-13 w-full items-center justify-center rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] px-4 py-3.5 text-[16px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_36px_-10px_var(--lj-brillo)] transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
                   >
-                    Ver el detalle
+                    Quiero que se contacten conmigo
                   </button>
                 </div>
                 <button
@@ -1496,26 +1524,33 @@ export default function ClientesPage() {
               validoHasta={validoHasta}
               disponible={fecha ? !(ocupadas[salon.salon] ?? []).includes(fecha) : null}
               ilustracion={fotoMaqueta}
+              desglose={MOSTRAR_DESGLOSE}
             />
           </div>
           <div className="mt-5 space-y-3 px-1 print:hidden">
+            {/* Al WhatsApp de Los Jazmines, con todo lo que armó y el nombre del peaje. */}
             <a
-              href={linkWhatsApp(
+              href={linkWhatsAppLosJazmines(
                 textoWhatsAppCliente({
-                  nombre: contacto.nombre.trim().split(/\s+/)[0],
+                  nombre: contacto.nombre,
                   tipoEvento,
                   fecha,
                   salon: salon.nombre,
                   lugar: conLugar && lugar ? TEXTO_LUGAR[lugar] : null,
-                  invitados: comensales,
+                  adultos,
+                  ninos,
+                  conCatering,
+                  platos: platosElegidos,
+                  barras: barrasElegidas,
+                  servicios: resumen.servicios.filter((s) => !s.incluido).map((s) => servicioConCantidad(s)),
                   total: resumen.total,
                 }),
               )}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-14 w-full items-center justify-center gap-2.5 rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] text-[16px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_36px_-10px_var(--lj-brillo)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
+              className="flex h-14 w-full items-center justify-center gap-2.5 rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] px-4 text-[16px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_36px_-10px_var(--lj-brillo)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
             >
-              <MessageCircle className="h-5 w-5" /> Escribir por WhatsApp
+              <MessageCircle className="h-5 w-5 shrink-0" /> Escribinos por WhatsApp
             </a>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -1549,7 +1584,7 @@ export default function ClientesPage() {
         >
           <div className="mx-auto w-full max-w-[480px] overflow-y-auto px-6 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-4">
             <DrawerTitle className={`${serif} text-[28px] font-medium leading-tight text-[var(--lj-tinta)]`}>
-              ¿A nombre de quién lo preparamos?
+              ¿Cómo te contactamos?
             </DrawerTitle>
             <DrawerDescription className="mt-2 text-[15px] leading-relaxed text-[var(--lj-tinta)]/75">
               Te congelamos el precio {DIAS_PRECIO_CONGELADO} días.
@@ -1610,7 +1645,7 @@ export default function ClientesPage() {
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-[var(--lj-radio-boton)] bg-[var(--lj-tinta)] text-[16px] font-semibold text-[var(--lj-papel)] transition-opacity disabled:opacity-70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-tinta)]/30"
               >
                 {enviando && <Loader2 className="h-5 w-5 animate-spin" />}
-                {enviando ? "Preparando tu presupuesto" : "Ver mi presupuesto"}
+                {enviando ? "Preparando tu presupuesto" : "Quiero que me contacten"}
               </button>
               <p className="text-center text-[12.5px] text-[var(--lj-tinta)]/70">Prototipo: estos datos no se guardan ni se mandan.</p>
             </form>

@@ -166,8 +166,17 @@ probar a 390 px sin scroll horizontal).
   pileta, casa colonial, estacionamiento, todo en madera, entrada con mucho
   verde, salón cerrado). Lo que incluyen todos va una sola vez,
   debajo de las tarjetas; en cada una, solo lo que trae de más.
-- **Lo que suma cada opción** va a la derecha: en dorado lo que todavía se
-  puede sumar ("+ $ 120.000") y en crema lo que ya suma lo elegido.
+- **Solo el total** (pedido de Rodri del 19/10/2026): ninguna opción muestra
+  su precio ni cuánto suma, y el presupuesto no tiene desglose por rubro ni
+  "por invitado". El total de abajo es el único monto, y cambia en vivo con
+  cada toque. Lo de cada cosa está escondido con `MOSTRAR_DESGLOSE = false`
+  en `app/clientes/page.tsx`: con `true` vuelve a la derecha de cada opción
+  (en dorado lo que se puede sumar, "+ $ 120.000", y en crema lo que ya suma).
+- **El final es un pedido de contacto**: "Tu fiesta está lista" termina con
+  el botón "Quiero que se contacten conmigo", que abre la hoja con nombre,
+  WhatsApp y mail. El presupuesto tiene un solo botón principal, "Escribinos
+  por WhatsApp" (corto, para que entre en un renglón en el celular), que abre
+  el chat de Los Jazmines con el mensaje ya escrito.
 
 ---
 

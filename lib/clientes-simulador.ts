@@ -17,6 +17,9 @@
 // - Nada en $0: un plato, una barra o un adicional sin precio no se muestra
 //   (salvo lo que ya viene incluido con el salón, que se lista como "Incluido").
 // - De las fechas ocupadas, solo la fecha: nada del evento.
+// - Del precio, la pantalla muestra solo el total (pedido de Rodri del
+//   19/10/2026): ni lo de cada cosa, ni los rubros, ni por invitado. Los
+//   precios por unidad igual llegan al navegador, para sumar en vivo.
 
 import {
   MAX_BARRAS,
@@ -32,6 +35,7 @@ import {
   type ResultadoCotizacionSalon,
 } from "./cotizador-salon"
 import { servicioCorrespondeAlAnio } from "./tarifario-cotizador"
+import { numeroWhatsApp } from "./telefono-whatsapp"
 
 /** Misma lista que el cotizador del vendedor (los textos se guardan tal cual). */
 export const TIPOS_EVENTO_CLIENTE = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
@@ -545,36 +549,103 @@ export function formatoPesos(n: number): string {
   return PESOS.format(Math.round(Number(n) || 0))
 }
 
-/** Mensaje que el cliente le manda al salón desde el presupuesto. */
+/** El WhatsApp de Los Jazmines, adonde el cliente manda su fiesta (dicho por
+ *  Rodri el 19/10/2026). linkWhatsAppLosJazmines lo pasa al formato de wa.me. */
+export const WHATSAPP_LOS_JAZMINES = "11 4060-8208"
+
+/** "a, b y c". (clientes-maqueta tiene uno igual, pero importa de acá.) */
+function enFrase(partes: string[]): string {
+  if (partes.length <= 1) return partes.join("")
+  return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`
+}
+
+/** Qué se festeja, dicho por quien escribe: "mi casamiento", "un bautismo"… */
+export function queSeFesteja(tipoEvento: string | null | undefined): string {
+  switch (tipoEvento) {
+    case "Casamiento":
+      return "mi casamiento"
+    case "Cumpleaños":
+      return "mi cumpleaños"
+    // Estos los suelen escribir los padres: sin "mi".
+    case "Cumpleaños de 15":
+      return "un cumpleaños de 15"
+    case "Bautismo":
+      return "un bautismo"
+    case "Empresarial":
+      return "un evento empresarial"
+    default:
+      return "una fiesta"
+  }
+}
+
+/**
+ * El mensaje que el cliente le manda a Los Jazmines por WhatsApp con todo lo
+ * que armó (pedido de Rodri del 19/10/2026): quién es, qué festeja, cuándo,
+ * dónde y para cuántos, con o sin catering (y qué platos), la barra, los
+ * servicios que sumó y el total estimado. Nunca el precio de cada cosa.
+ */
 export function textoWhatsAppCliente(d: {
+  /** El de "Nombre y apellido", tal cual lo escribió. */
   nombre?: string | null
   tipoEvento?: string | null
   fecha?: string | null
   salon?: string | null
   /** "al aire libre" / "adentro", si el salón tiene las dos. */
   lugar?: string | null
-  invitados?: number | null
+  adultos?: number | null
+  ninos?: number | null
+  conCatering?: boolean | null
+  /** Los platos elegidos, como se ven en la pantalla. */
+  platos?: string[]
+  barras?: string[]
+  /** Los adicionales que sumó (no lo que ya viene con el salón), con su cantidad. */
+  servicios?: string[]
   total?: number | null
 }): string {
-  const partes: string[] = []
-  const nombre = (d.nombre ?? "").trim()
-  partes.push(nombre ? `Hola, soy ${nombre}.` : "Hola.")
-  const fiesta = [
-    d.tipoEvento ? d.tipoEvento : "Mi fiesta",
-    d.fecha ? `el ${fechaLarga(d.fecha)}` : "",
-    d.salon ? `en ${d.salon}${d.lugar ? ` ${d.lugar}` : ""}` : "",
-    d.invitados ? `para ${d.invitados} invitados` : "",
-  ]
-    .filter(Boolean)
-    .join(" ")
-  partes.push(`Armé mi presupuesto en el simulador de Los Jazmines: ${fiesta}.`)
-  if (d.total) partes.push(`Me dio un total estimado de ${formatoPesos(d.total)}.`)
-  partes.push("¿Me ayudan a reservar?")
-  return partes.join(" ")
+  const lineas: string[] = []
+  const nombre = (d.nombre ?? "").trim().replace(/\s+/g, " ")
+  lineas.push(nombre ? `Hola, soy ${nombre}.` : "Hola.")
+
+  const adultos = Math.max(0, Math.round(d.adultos ?? 0))
+  const ninos = Math.max(0, Math.round(d.ninos ?? 0))
+  const invitados = adultos + ninos
+  const cuantos =
+    invitados === 0
+      ? ""
+      : ninos > 0
+        ? `para ${invitados} invitados (${adultos} ${adultos === 1 ? "adulto" : "adultos"} y ${ninos} ${ninos === 1 ? "chico" : "chicos"})`
+        : `para ${invitados} ${invitados === 1 ? "invitado" : "invitados"}`
+  let fiesta = `Quiero festejar ${queSeFesteja(d.tipoEvento)}`
+  if (d.fecha && fechaLarga(d.fecha)) fiesta += ` el ${fechaLarga(d.fecha)}`
+  if (d.salon) fiesta += ` en ${d.salon}${d.lugar ? `, ${d.lugar}` : ""}`
+  if (cuantos) fiesta += `${d.salon && d.lugar ? "," : ""} ${cuantos}`
+  lineas.push(`${fiesta}.`)
+
+  const platos = (d.platos ?? []).filter(Boolean)
+  if (d.conCatering === false) lineas.push("Me gustaría sin catering.")
+  else if (d.conCatering) {
+    lineas.push(
+      platos.length ? `Me gustaría con catering: ${enFrase(platos.map(nombreEnFrase))}.` : "Me gustaría con catering (todavía no elegí los platos).",
+    )
+  }
+  const barras = (d.barras ?? []).filter(Boolean)
+  if (barras.length) lineas.push(`Barra: ${enFrase(barras.map(nombreEnFrase))}.`)
+  // Uno por renglón: los nombres pueden traer comas ("DJ, sonido y luces").
+  const servicios = (d.servicios ?? []).filter(Boolean)
+  if (servicios.length) lineas.push(["Y los siguientes servicios:", ...servicios.map((s) => `- ${s}`)].join("\n"))
+
+  if (d.total) lineas.push(`El simulador me dio un total estimado de ${formatoPesos(d.total)}.`)
+  lineas.push("¿Me contactan para avanzar? ¡Gracias!")
+  return lineas.join("\n")
 }
 
 /** Link de WhatsApp. Sin número abre WhatsApp para elegir a quién mandarlo. */
 export function linkWhatsApp(texto: string, numero?: string | null): string {
   const n = String(numero ?? "").replace(/\D/g, "")
   return `https://wa.me/${n}?text=${encodeURIComponent(texto)}`
+}
+
+/** Link de WhatsApp al número de Los Jazmines, con el mensaje ya escrito. */
+export function linkWhatsAppLosJazmines(texto: string): string {
+  return linkWhatsApp(texto, numeroWhatsApp(WHATSAPP_LOS_JAZMINES))
 }

@@ -376,23 +376,85 @@ test("fechas ocupadas: solo salones pedidos, solo fechas válidas, sin repetir y
 
 // ── WhatsApp ────────────────────────────────────────────────────────────────
 
-test("mensaje de WhatsApp del cliente", () => {
+test("mensaje de WhatsApp: todo lo que armó, con el nombre del formulario, y de plata solo el total", () => {
   const texto = sim.textoWhatsAppCliente({
-    nombre: "Sofía",
-    tipoEvento: "Cumpleaños de 15",
-    fecha: "2026-11-14",
-    salon: "Casona",
-    invitados: 90,
-    total: 8020000,
+    nombre: "  Sofía   Martínez ",
+    tipoEvento: "Casamiento",
+    fecha: "2026-12-19",
+    salon: "Jazmines Casona",
+    lugar: "adentro",
+    adultos: 90,
+    ninos: 10,
+    conCatering: true,
+    platos: ["Cazuela de pollo", "Bondiola braseada", "Casata"],
+    barras: ["Bebida de mesa", "Barra clásica"],
+    servicios: ["Pantalla LED", "Plataforma 360 (2 horas)", "Letras luminosas (3)"],
+    total: 11178050,
   })
-  assert.match(texto, /^Hola, soy Sofía\. /)
-  assert.match(texto, /Cumpleaños de 15 el sábado 14 de noviembre de 2026 en Casona para 90 invitados\./)
-  assert.match(texto, /8\.020\.000/)
-  assert.ok(sim.linkWhatsApp(texto).startsWith("https://wa.me/?text=Hola%2C%20soy"))
+  assert.equal(
+    texto,
+    [
+      "Hola, soy Sofía Martínez.",
+      "Quiero festejar mi casamiento el sábado 19 de diciembre de 2026 en Jazmines Casona, adentro, para 100 invitados (90 adultos y 10 chicos).",
+      "Me gustaría con catering: cazuela de pollo, bondiola braseada y casata.",
+      "Barra: bebida de mesa y barra clásica.",
+      "Y los siguientes servicios:\n- Pantalla LED\n- Plataforma 360 (2 horas)\n- Letras luminosas (3)",
+      `El simulador me dio un total estimado de ${sim.formatoPesos(11178050)}.`,
+      "¿Me contactan para avanzar? ¡Gracias!",
+    ].join("\n"),
+  )
+  // Un solo monto: el total (nunca el precio de cada cosa).
+  assert.equal((texto.match(/\$/g) ?? []).length, 1)
+
+  // Sin catering, sin barra ni adicionales, sin chicos y en un salón sin "lugar".
+  const simple = sim.textoWhatsAppCliente({
+    nombre: "Juan",
+    tipoEvento: "Empresarial",
+    fecha: "2026-11-13",
+    salon: "Jazmines Quinta",
+    adultos: 80,
+    ninos: 0,
+    conCatering: false,
+    platos: [],
+    barras: [],
+    servicios: [],
+    total: 5400000,
+  })
+  assert.equal(
+    simple,
+    [
+      "Hola, soy Juan.",
+      "Quiero festejar un evento empresarial el viernes 13 de noviembre de 2026 en Jazmines Quinta para 80 invitados.",
+      "Me gustaría sin catering.",
+      `El simulador me dio un total estimado de ${sim.formatoPesos(5400000)}.`,
+      "¿Me contactan para avanzar? ¡Gracias!",
+    ].join("\n"),
+  )
+  // Con catering pero sin platos todavía.
+  assert.match(sim.textoWhatsAppCliente({ conCatering: true, platos: [] }), /Me gustaría con catering \(todavía no elegí los platos\)\./)
+})
+
+test("mensaje de WhatsApp: qué se festeja, dicho por quien escribe", () => {
+  assert.equal(sim.queSeFesteja("Casamiento"), "mi casamiento")
+  assert.equal(sim.queSeFesteja("Cumpleaños"), "mi cumpleaños")
+  assert.equal(sim.queSeFesteja("Cumpleaños de 15"), "un cumpleaños de 15")
+  assert.equal(sim.queSeFesteja("Bautismo"), "un bautismo")
+  assert.equal(sim.queSeFesteja("Empresarial"), "un evento empresarial")
+  assert.equal(sim.queSeFesteja("Otro"), "una fiesta")
+  assert.equal(sim.queSeFesteja(null), "una fiesta")
+  // Todos los festejos que se ofrecen tienen su frase.
+  for (const t of sim.TIPOS_EVENTO_CLIENTE) assert.ok(sim.queSeFesteja(t).length > 0, t)
+})
+
+test("link de WhatsApp: al número de Los Jazmines y con el mensaje entero", () => {
+  const texto = sim.textoWhatsAppCliente({ nombre: "Sofía", tipoEvento: "Casamiento", total: 1000 })
+  const link = sim.linkWhatsAppLosJazmines(texto)
+  assert.equal(sim.WHATSAPP_LOS_JAZMINES, "11 4060-8208")
+  assert.ok(link.startsWith("https://wa.me/5491140608208?text=Hola%2C%20soy%20Sof%C3%ADa"))
+  assert.equal(decodeURIComponent(link.split("?text=")[1]), texto)
+  // Sin número, WhatsApp deja elegir a quién mandarlo; con número, va directo.
+  assert.ok(sim.linkWhatsApp("hola").startsWith("https://wa.me/?text=hola"))
   assert.ok(sim.linkWhatsApp("hola", "+54 9 11 2345-6789").startsWith("https://wa.me/5491123456789?text="))
-  // Con la Casona dice si es adentro o al aire libre.
-  const conLugar = sim.textoWhatsAppCliente({ tipoEvento: "Casamiento", salon: "Casona", lugar: "al aire libre", invitados: 100 })
-  assert.match(conLugar, /Casamiento en Casona al aire libre para 100 invitados\./)
 })
 
 // ── Pasos ───────────────────────────────────────────────────────────────────

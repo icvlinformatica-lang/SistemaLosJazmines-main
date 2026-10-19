@@ -11,9 +11,11 @@ import {
 } from "@/lib/clientes-simulador"
 
 /** El presupuesto como una tarjeta de papel, al estilo de una invitación:
- *  arriba para quién y qué se festeja; en el medio, cada rubro con su precio
- *  (con puntos guía, como en una carta); abajo, qué incluye, hasta cuándo vale
- *  el precio y si la fecha está libre. Solo precios: nunca costos. */
+ *  arriba para quién y qué se festeja; en el medio, el total; abajo, qué
+ *  incluye, hasta cuándo vale el precio y si la fecha está libre. Con
+ *  `desglose`, también cada rubro con su precio (con puntos guía, como en una
+ *  carta) y el precio por invitado; la vista de Clientes no lo muestra desde
+ *  el 19/10/2026 (solo el total). Solo precios: nunca costos. */
 export function PresupuestoCliente({
   nombre,
   tipoEvento,
@@ -28,6 +30,7 @@ export function PresupuestoCliente({
   validoHasta,
   disponible,
   ilustracion,
+  desglose = false,
 }: {
   nombre: string
   tipoEvento: string | null
@@ -45,6 +48,8 @@ export function PresupuestoCliente({
   disponible: boolean | null
   /** Foto de la maqueta 3D con lo que eligió (si el navegador la pudo dibujar). */
   ilustracion?: string | null
+  /** El precio de cada rubro y por invitado, además del total. */
+  desglose?: boolean
 }) {
   const rubros = resumen.rubros.filter((r) => r.clave === "salon" || r.precio > 0)
   const extras = resumen.servicios.filter((s) => !s.incluido)
@@ -88,24 +93,26 @@ export function PresupuestoCliente({
         </figure>
       )}
 
-      <dl className="mt-7 space-y-2.5">
-        {rubros.map((r) => (
-          <div key={r.clave} className="flex items-baseline gap-2 text-[15px]">
-            <dt className="shrink-0">{r.nombre}</dt>
-            <span aria-hidden="true" className="min-w-4 flex-1 translate-y-[-3px] border-b border-dotted border-[var(--lj-tinta)]/35" />
-            <dd className="shrink-0 tabular-nums">{formatoPesos(r.precio)}</dd>
-          </div>
-        ))}
-      </dl>
+      {desglose && (
+        <dl className="mt-7 space-y-2.5">
+          {rubros.map((r) => (
+            <div key={r.clave} className="flex items-baseline gap-2 text-[15px]">
+              <dt className="shrink-0">{r.nombre}</dt>
+              <span aria-hidden="true" className="min-w-4 flex-1 translate-y-[-3px] border-b border-dotted border-[var(--lj-tinta)]/35" />
+              <dd className="shrink-0 tabular-nums">{formatoPesos(r.precio)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
-      <div className="mt-5 border-t border-[var(--lj-oro)]/60 pt-4">
+      <div className={`${desglose ? "mt-5" : "mt-7"} border-t border-[var(--lj-oro)]/60 pt-4`}>
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-[15px] font-medium">Total</span>
           <span className="font-[family-name:var(--lj-letra-titulo)] [font-style:var(--lj-estilo-titulo)] text-[32px] font-semibold leading-none tabular-nums">
             {formatoPesos(resumen.total)}
           </span>
         </div>
-        {resumen.porInvitado > 0 && (
+        {desglose && resumen.porInvitado > 0 && (
           <p className="mt-1.5 text-right text-[13px] text-[var(--lj-tinta)]/70">
             {formatoPesos(resumen.porInvitado)} por invitado
           </p>
