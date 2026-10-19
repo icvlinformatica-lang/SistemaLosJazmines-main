@@ -96,9 +96,28 @@ probar a 390 px sin scroll horizontal).
   `#1a3a2a` (el verde de la marca) con borde dorado `#c9a227`, luz
   `#f3cf7a` para lo que se puede tocar y para el total, crema `#f5f0e8` para
   el texto. El presupuesto va en papel `#f8f2e4` con tinta `#1a3a2a`, como
-  una invitación.
+  una invitación. Ese es el estilo de la marca ("jardín"); cada festejo tiene
+  el suyo (abajo). Los colores nunca van fijos en la pantalla: son variables
+  `--lj-…` que salen de `lib/clientes-tema.ts`.
 - **Letra**: Bodoni Moda (`app/clientes/fuentes`, licencia OFL) solo para
   títulos y montos; el resto, la letra del sistema.
+- **Un estilo por festejo** (`lib/clientes-tema.ts`, pedido del 19/10/2026):
+  la pantalla es la misma, cambia el ánimo, apenas se toca el festejo y con un
+  pasaje suave de colores.
+  - **Cumpleaños de 15, femenino**: ciruela de noche y rosa, los títulos en la
+    cursiva de Bodoni Moda (baja solo con ese festejo) y todo más redondo.
+  - **Casamiento, formal**: negro cálido, marfil y champagne, esquinas justas
+    y una línea fina bajo cada título, como una invitación.
+  - **Empresarial, sobrio**: grafito y plata, títulos y montos en la letra del
+    sistema (Geist), esquinas apenas redondeadas y nada que brille.
+  - **Bautismo, suave**: azul de noche y celeste.
+  - Cumpleaños, Otro y antes de elegir: el de la marca.
+  Todo es de noche, como la maqueta; el papel del presupuesto también cambia.
+  `test-clientes-tema` controla que en cada estilo el texto se lea (AA), y por
+  eso el texto apagado nunca baja de 60 %.
+- **Poco texto**: cada paso tiene su título y, como mucho, una línea. Lo que
+  se puede decir con un ícono va con ícono; lo que es igual para todos los
+  salones se dice una sola vez; lo secundario se pliega.
 - **Lo memorable es una sola cosa**: la maqueta 3D de la fiesta de noche
   (`components/clientes/maqueta/`), que se arma sola con cada elección. Es
   el juego: la persona ve crecer su fiesta. La guirnalda de luces sigue siendo
@@ -117,14 +136,36 @@ probar a 390 px sin scroll horizontal).
 - **Cada salón es como es** (`components/clientes/maqueta/ambientes.ts`):
   antes de elegir salón la maqueta es un plano (verde con grilla dorada y lo
   que va a ir en punteado). Solo la Casona tiene aire libre: su jardín con
-  guirnalda, y al costado la casa para quedarse y la pileta; con el botón
-  "Jardín / Adentro" se ve la fiesta en su salón interior (es solo el dibujo).
-  Quinta, Salón y cualquier salón nuevo son salones cerrados vistos como una
-  maqueta: la pared que tapa la vista baja y, de cerca, el techo (vigas y
-  arañas) se desvanece. Cada uno tiene su estilo: la Quinta, ladrillo y
-  madera; el Salón, boiserie, mármol y cortinados verdes; la Casona por
-  dentro, cal, arcos y terracota. Si hay fotos de los salones, se ajustan los
-  colores y las texturas de cada estilo (`DISENOS`).
+  guirnalda, y al costado la casa colonial para quedarse y la pileta. La casa
+  sale de las fotos del dueño (19/10/2026): blanca, de una planta, con galería
+  de columnas y techo de tejas, azotea con pretil y copones, y el cartel en el
+  copete arriba de la puerta. Con la Casona se suma el paso 3, "¿Adentro o al
+  aire libre?", y con "Adentro" se ve la fiesta en su salón interior (no
+  cambia el precio). Sobre la maqueta no va ningún botón para elegir, porque
+  arriba no llega el dedo: todas las elecciones van abajo. Lo único encima es
+  el botón de pantalla completa, en su esquina de abajo (también se abre
+  tocando la maqueta o girando el celular); a pantalla completa, el total y
+  "Seguir eligiendo" van abajo.
+  Adelante de la isla, la Quinta tiene su entrada con mucho verde (una
+  pérgola de madera con jazmín sobre el camino, piedra blanca, matas y
+  cercos) y la playa de estacionamiento; la Casona, la playa. El Salón no
+  tiene exterior. Quinta, Salón y cualquier salón nuevo son salones cerrados
+  vistos como una maqueta: la pared que tapa la vista baja y, de cerca, el
+  techo (vigas y arañas) se desvanece. Cada uno tiene su estilo: la Quinta,
+  todo en madera (paredes blancas con friso de tablas, parquet, techo de
+  listones en cuadrícula y cortinas blancas con dorado); el Salón, boiserie,
+  mármol y cortinados verdes; la Casona por dentro, cal, arcos, terracota y
+  su techo de madera (vigas y casetones). El techo de madera se ve en los
+  planos de lejos y se va apenas la cámara se acerca, para no tapar las
+  mesas. Si hay más fotos de los salones, se ajustan los colores y las
+  texturas de cada estilo (`DISENOS`).
+- **Las tarjetas de los salones**: el nombre comercial (Jazmines Salón,
+  Jazmines Casona, Jazmines Quinta, en ese orden) va solo en su renglón y
+  abajo la capacidad, con el ícono de personas, porque es lo primero que se
+  compara; después, lo que tiene en pocas palabras y con su ícono (aire libre,
+  pileta, casa colonial, estacionamiento, todo en madera, entrada con mucho
+  verde, salón cerrado). Lo que incluyen todos va una sola vez,
+  debajo de las tarjetas; en cada una, solo lo que trae de más.
 - **Lo que suma cada opción** va a la derecha: en dorado lo que todavía se
   puede sumar ("+ $ 120.000") y en crema lo que ya suma lo elegido.
 

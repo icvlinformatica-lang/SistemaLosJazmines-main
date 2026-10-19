@@ -145,7 +145,8 @@ const PALETAS: Record<string, string[]> = {
   Casamiento: ["#f8f2e4", "#e9d8b4", "#c9a227"],
   "Cumpleaños de 15": ["#e8a3b5", "#f3cf7a", "#f8f2e4"],
   Cumpleaños: ["#f3cf7a", "#2f8f5b", "#e8a3b5", "#f8f2e4"],
-  Empresarial: ["#2f8f5b", "#f8f2e4", "#c9a227"],
+  // Sobrio, como su estilo en la pantalla (lib/clientes-tema.ts): plata, blanco y acero.
+  Empresarial: ["#c8d5e2", "#f6f8fa", "#4d6681"],
   Bautismo: ["#f8f2e4", "#b9d3e8", "#e9d8b4"],
 }
 const PALETA_FIESTA = ["#f3cf7a", "#f8f2e4", "#2f8f5b"]
@@ -170,11 +171,14 @@ export function tituloCartel(tipoEvento: string | null | undefined): string {
 // ── El lugar: cada salón con lo suyo ────────────────────────────────────────
 
 /**
- * Cómo se ve la Casona en la maqueta: la fiesta en el jardín o adentro. Es
- * solo el dibujo (el botón "Jardín / Adentro"): no cambia el precio ni lo que
- * se manda con el presupuesto.
+ * Dónde es la fiesta en la Casona: en el jardín (al aire libre) o adentro. Lo
+ * elige la persona en su propio paso, "¿Adentro o al aire libre?". No cambia
+ * el precio: cambia el dibujo y se anota en el presupuesto y en el WhatsApp.
  */
 export type VistaCasona = "jardin" | "adentro"
+
+/** Cómo se dice en una frase ("en Casona al aire libre"). */
+export const TEXTO_LUGAR: Record<VistaCasona, string> = { jardin: "al aire libre", adentro: "adentro" }
 
 export interface Ambiente {
   /** "plano": todavía no eligió salón (la maqueta es el plano, para llenar).
@@ -183,32 +187,118 @@ export interface Ambiente {
   lugar: "plano" | "jardin" | "interior"
   /** De qué salón es el dibujo (el piso, las paredes, las arañas). */
   estilo: "casona" | "quinta" | "salon" | null
-  /** La Casona: la pileta y la casa para quedarse (se ven en las dos vistas). */
+  /** La Casona: la pileta y la casa colonial para quedarse (se ven en las dos vistas). */
   casona: boolean
+  /** El exterior de cada salón (dicho por el dueño el 18/10/2026): el Salón no
+   *  tiene, la Quinta tiene uno chico (la entrada, con mucho verde) y la
+   *  Casona, uno amplio para eventos (el jardín). */
+  exterior: "ninguno" | "chico" | "amplio"
+  /** La Quinta y la Casona tienen estacionamiento (se dibuja al frente). */
+  estacionamiento: boolean
 }
 
 /**
  * Qué lugar se dibuja según la clave del salón (la de la base: "Casona",
  * "Quinta", "Salon"…, que no cambia aunque en Configuración se le cambie el
- * nombre que se ve). Solo la Casona tiene aire libre: además tiene salón
- * adentro, pileta y una casa para quedarse. Quinta, Salón y cualquier salón
- * nuevo son salones cerrados.
+ * nombre que se ve). Lo dijo el dueño el 18 y el 19/10/2026 (con fotos):
+ * - Casona: amplio exterior para eventos (la fiesta puede ser al aire libre o
+ *   adentro, en un espacio con techo de madera), pileta, una casa colonial
+ *   para quedarse a la noche y estacionamiento.
+ * - Quinta: todo el salón con estética de madera, sin casa; la entrada tiene
+ *   mucho verde, y hay estacionamiento. La fiesta es adentro.
+ * - Salón: salón cerrado, sin exterior.
+ * Cualquier salón nuevo se dibuja cerrado y sin nada afuera.
  */
 export function ambienteDeSalon(clave: string | null | undefined, vista: VistaCasona = "jardin"): Ambiente {
-  if (!clave) return { lugar: "plano", estilo: null, casona: false }
-  if (clave === "Casona") return { lugar: vista === "adentro" ? "interior" : "jardin", estilo: "casona", casona: true }
-  if (clave === "Quinta") return { lugar: "interior", estilo: "quinta", casona: false }
-  return { lugar: "interior", estilo: "salon", casona: false }
+  if (!clave) return { lugar: "plano", estilo: null, casona: false, exterior: "ninguno", estacionamiento: false }
+  if (clave === "Casona") {
+    return { lugar: vista === "adentro" ? "interior" : "jardin", estilo: "casona", casona: true, exterior: "amplio", estacionamiento: true }
+  }
+  if (clave === "Quinta") return { lugar: "interior", estilo: "quinta", casona: false, exterior: "chico", estacionamiento: true }
+  return { lugar: "interior", estilo: "salon", casona: false, exterior: "ninguno", estacionamiento: false }
 }
 
-/** Si el salón se puede ver en el jardín o adentro (el botón de la maqueta). */
+/** Si el salón se puede ver en el jardín o adentro. */
 export function tieneVistaAdentro(a: Ambiente): boolean {
   return a.casona
 }
 
-/** Lo que tiene el salón además de lo incluido (va en su tarjeta). */
+/** Si con ese salón se elige "¿adentro o al aire libre?" (por la clave, como
+ *  el dibujo: solo la Casona tiene las dos cosas). */
+export function salonConAireLibre(clave: string | null | undefined): boolean {
+  return tieneVistaAdentro(ambienteDeSalon(clave))
+}
+
+/** Lo que tiene el salón además de lo incluido. Lo dijo el dueño el 18 y el
+ *  19/10/2026; un salón nuevo no dice nada hasta que se sepa. */
+const RASGOS: Record<string, string> = {
+  Casona:
+    "Amplio exterior para eventos: la fiesta puede ser al aire libre o bajo techo de madera. Con pileta, una casa colonial para quedarse a la noche y estacionamiento.",
+  Quinta: "Todo el salón en madera, una entrada con mucho verde y estacionamiento.",
+  Salon: "Salón cerrado, sin exterior.",
+}
 export function rasgosSalon(clave: string | null | undefined): string | null {
-  return clave === "Casona" ? "Al aire libre o adentro, con pileta y una casa para quedarse." : null
+  return RASGOS[clave ?? ""] ?? null
+}
+
+/** Lo mismo que rasgosSalon, en pocas palabras y con su ícono, para la tarjeta
+ *  del salón en el celular (pedido de Rodri del 19/10/2026: "hay mucho
+ *  texto"). Cada `icono` lo dibuja la pantalla. */
+export type IconoRasgo = "aire-libre" | "pileta" | "casa" | "estacionamiento" | "madera" | "verde" | "cerrado"
+const RASGOS_CORTOS: Record<string, Array<{ icono: IconoRasgo; texto: string }>> = {
+  Casona: [
+    { icono: "aire-libre", texto: "Aire libre o adentro" },
+    { icono: "pileta", texto: "Pileta" },
+    { icono: "casa", texto: "Casa colonial para quedarse" },
+    { icono: "estacionamiento", texto: "Estacionamiento" },
+  ],
+  Quinta: [
+    { icono: "madera", texto: "Todo en madera" },
+    { icono: "verde", texto: "Entrada con mucho verde" },
+    { icono: "estacionamiento", texto: "Estacionamiento" },
+  ],
+  Salon: [{ icono: "cerrado", texto: "Salón cerrado" }],
+}
+export function rasgosCortos(clave: string | null | undefined): Array<{ icono: IconoRasgo; texto: string }> {
+  return RASGOS_CORTOS[clave ?? ""] ?? []
+}
+
+// ── Lo que viene en todos los salones ───────────────────────────────────────
+
+/** Lo que incluyen los tres salones, dicho por el dueño el 18/10/2026. Es lo
+ *  que se le muestra al cliente: no cambia precios ni lo que se cobra, que
+ *  sigue saliendo del catálogo del cotizador. */
+export const INCLUIDO_EN_TODOS = ["DJ", "Sonido", "Luces", "Vajilla", "Manteles", "Mesas", "Sillas", "Decoración"]
+export const TEXTO_INCLUIDO_EN_TODOS = "DJ, sonido, luces, vajilla, manteles, mesas, sillas y decoración"
+
+/** Un incluido del catálogo que ya dice la lista de arriba ("DJ, SONIDO, LUCES
+ *  Y HUMO", "MESAS Y SILLAS") no se repite. Basta con que todas sus palabras
+ *  estén en la lista (más el humo, que es parte de las luces). */
+const PALABRAS_INCLUIDAS = new Set(["DJ", "SONIDO", "LUCES", "LUZ", "HUMO", "VAJILLA", "MANTEL", "MANTELES", "MANTELERIA", "MESA", "MESAS", "SILLA", "SILLAS", "DECORACION", "Y", "E", "CON", "DE", "LA", "LAS", "LOS", "EL"])
+export function yaIncluidoEnTodos(nombre: string | null | undefined): boolean {
+  const palabras = normalizar(nombre).split(/[^A-Z0-9]+/).filter(Boolean)
+  return palabras.length > 0 && palabras.every((w) => PALABRAS_INCLUIDAS.has(w))
+}
+
+/**
+ * Lo incluido se dice una sola vez para todos los salones de la lista, y en
+ * cada tarjeta solo lo que trae de más. `incluidosPorSalon` tiene, por salón,
+ * los nombres de los servicios incluidos del catálogo (como vienen).
+ * - `comunes`: lo de INCLUIDO_EN_TODOS más lo del catálogo que traen todos.
+ * - `extra[i]`: lo que trae el salón i y no todos.
+ */
+export function incluidosComunes(incluidosPorSalon: string[][]): { comunes: string[]; extra: string[][] } {
+  const propios = incluidosPorSalon.map((lista) => lista.filter((n) => !yaIncluidoEnTodos(n)))
+  // Sin mayúsculas, tildes ni el año del final ("SUITE 2026" = "Suite").
+  const clave = (n: string) => normalizar(n)
+  const enTodos = propios.length
+    ? propios[0].filter((n) => propios.every((lista) => lista.some((m) => clave(m) === clave(n))))
+    : []
+  const comunesClave = new Set(enTodos.map(clave))
+  return {
+    comunes: [...INCLUIDO_EN_TODOS, ...enTodos],
+    extra: propios.map((lista) => lista.filter((n) => !comunesClave.has(clave(n)))),
+  }
 }
 
 // ── Mesas ───────────────────────────────────────────────────────────────────
@@ -234,7 +324,8 @@ export interface EstadoMaqueta {
   /** Colores de los globos y los detalles (según el festejo). */
   paleta: string[]
   festejo: string | null
-  /** Globos en la entrada: aparecen al elegir el festejo. */
+  /** Arco de globos en la entrada. Apagado desde el 18/10/2026: el dueño lo vio
+   *  raro (todos los festejos tenían globos); el festejo lo dice el atril. */
   globos: boolean
   /** Atril de la entrada: título según el festejo y la fecha, si ya la eligió. */
   cartel: { titulo: string; fecha: string | null } | null
@@ -265,7 +356,7 @@ export interface EntradaMaqueta {
   tipoEvento: string | null
   /** `clave` es la de la base (decide el lugar); `nombre`, el que se ve. */
   salon: { clave: string; nombre: string; barras: Array<{ id: string; bebidaDeMesa: boolean }> } | null
-  /** Solo para la Casona: ver la fiesta en el jardín (si no se dice) o adentro. */
+  /** Solo para la Casona: la fiesta en el jardín (si todavía no eligió) o adentro. */
   vistaCasona?: VistaCasona
   /** Servicios que valen para la fecha: los incluidos y los adicionales. */
   servicios: Array<{ servicioId: string; nombre: string; incluido: boolean }>
@@ -296,6 +387,9 @@ export function lucesPrendidas(alcanzado: number, totalPasos: number, completa: 
 export function estadoMaqueta(e: EntradaMaqueta): EstadoMaqueta {
   const piezas: Partial<Record<Pieza, number>> = {}
   if (e.salon) {
+    // Todos los salones traen DJ, luces y decoración: se ven apenas se elige.
+    piezas.dj = 1
+    piezas.decoracion = 1
     for (const s of e.servicios) {
       const p = piezaDeServicio(s.nombre)
       if (!p) continue
@@ -313,7 +407,7 @@ export function estadoMaqueta(e: EntradaMaqueta): EstadoMaqueta {
     ambiente: ambienteDeSalon(e.salon?.clave, e.vistaCasona ?? "jardin"),
     paleta: paletaFestejo(festejo),
     festejo,
-    globos: !!festejo,
+    globos: false,
     cartel: festejo ? { titulo: tituloCartel(festejo), fecha: e.fecha ? fechaLarga(e.fecha, false) : null } : null,
     salon: e.salon?.nombre ?? null,
     mesas: e.salon ? personasPorMesa(e.adultos, MAX_MESAS) : [],
@@ -336,7 +430,7 @@ export function estadoMuestra(): EstadoMaqueta {
     ambiente: ambienteDeSalon("Casona", "jardin"),
     paleta: PALETA_FIESTA,
     festejo: null,
-    globos: true,
+    globos: false,
     cartel: { titulo: "Bienvenidos", fecha: null },
     salon: null,
     mesas: personasPorMesa(100, MAX_MESAS),
@@ -352,18 +446,26 @@ export function estadoMuestra(): EstadoMaqueta {
   }
 }
 
-function enLista(partes: string[]): string {
+/** "a, b y c". */
+export function enLista(partes: string[]): string {
   if (partes.length <= 1) return partes.join("")
   return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`
 }
 
 /** Dónde es la fiesta, para la descripción ("en Casona, en el jardín…"). */
 function dondeEs(m: EstadoMaqueta): string {
-  const { lugar, casona } = m.ambiente
+  const { lugar, casona, exterior, estacionamiento } = m.ambiente
   if (lugar === "plano") return ""
   const en = m.salon ? ` en ${m.salon}` : ""
-  if (lugar === "jardin") return `${en}, en el jardín${casona ? " con la pileta y la casa" : ""}`
-  return `${en}, adentro`
+  const afuera = [
+    casona ? "la pileta" : "",
+    casona ? "la casa" : "",
+    exterior === "chico" ? "el verde de la entrada" : "",
+    estacionamiento ? "el estacionamiento" : "",
+  ].filter(Boolean)
+  const con = afuera.length ? ` con ${enLista(afuera)}` : ""
+  if (lugar === "jardin") return `${en}, en el jardín${con}`
+  return `${en}, adentro${con}`
 }
 
 /** Texto que describe la maqueta, para lectores de pantalla. */
@@ -423,14 +525,17 @@ export function novedades(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): No
 
 /**
  * Un aviso del lugar (no de algo que se suma): al elegir la Casona, que la
- * cámara vaya a mostrar la pileta y la casa; al pasar del jardín a adentro (o
- * al revés), que se vea entero el cambio. Nada para los salones cerrados.
+ * cámara vaya a mostrar la pileta y la casa; al elegir la Quinta, su entrada
+ * verde y el estacionamiento; al pasar del jardín a adentro (o al revés), que se vea
+ * entero el cambio. Nada para el Salón. Textos de 40 letras como mucho: es lo
+ * que entra en el aviso sobre la maqueta en un celular (si no, se corta).
  */
 export function avisoLugar(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): Novedad | null {
   if (!antes) return null
   const a = antes.ambiente
   const b = ahora.ambiente
-  if (b.casona && !a.casona) return { texto: "Tiene pileta y una casa para quedarse", foco: "casona" }
+  if (b.casona && !a.casona) return { texto: "Pileta, casa colonial y estacionamiento", foco: "casona" }
+  if (b.estilo !== a.estilo && b.exterior === "chico") return { texto: "Todo en madera, entrada con mucho verde", foco: "frente" }
   if (a.casona && b.casona && a.lugar !== b.lugar) {
     return { texto: b.lugar === "interior" ? "Así queda adentro" : "Así queda en el jardín", foco: "isla" }
   }

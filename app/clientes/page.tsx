@@ -3,7 +3,8 @@
 // Vista de Clientes — prototipo del simulador "Armá tu fiesta".
 //
 // Es lo que va a ver un cliente que llega desde Instagram: arma su fiesta en
-// 7 pasos (festejo, salón, fecha, invitados, menú, barra y detalles) y ve el
+// 7 pasos (festejo, salón, fecha, invitados, menú, barra y detalles; 8 con la
+// Casona, que suma "¿Adentro o al aire libre?" después del salón) y ve el
 // total en vivo. Al final, para ver el detalle y congelar el precio 7 días,
 // deja nombre, WhatsApp y mail ("el peaje").
 //
@@ -17,32 +18,53 @@
 // - Va a pantalla completa, sin el menú del sistema (components/app-shell.tsx).
 // - Arriba de cada paso va la maqueta 3D (components/clientes/maqueta-3d.tsx),
 //   que se arma sola con cada elección: es el juego. El lugar es el del salón
-//   elegido (la Casona: jardín, pileta y casa, y se puede ver adentro con el
-//   botón "Jardín / Adentro"; los demás, salones cerrados). Es solo una
-//   ilustración (lib/clientes-maqueta.ts): el botón no cambia el precio ni lo
-//   que se manda, y los montos salen de la cuenta de siempre. Sin WebGL, la
-//   pantalla queda como antes.
+//   elegido (la Casona: jardín, pileta y casa, o su salón de adentro, según
+//   el paso "Lugar"; los demás, salones cerrados). Es solo una ilustración
+//   (lib/clientes-maqueta.ts): los montos salen de la cuenta de siempre.
+//   Sobre la maqueta no va ningún botón para elegir (arriba no llega el
+//   dedo): todas las elecciones están abajo, en el paso.
+// - La maqueta se ve a pantalla completa tocándola (o con el botón de su
+//   esquina) y sola al girar el celular. En Android, además, la pantalla
+//   completa es la del sistema y gira a horizontal; en iPhone, que no deja,
+//   ocupa toda la página y pide girar el celular. Sin WebGL, la pantalla queda
+//   como antes.
+// - Cada festejo tiene su estilo (lib/clientes-tema.ts, pedido de Rodri del
+//   19/10/2026): el 15 más femenino, el casamiento más formal, lo empresarial
+//   más sobrio y el bautismo suave. Los colores, las letras y las esquinas son
+//   variables CSS (--lj-…) que cambian apenas se toca el festejo. Y poco texto:
+//   cada paso tiene su título y, como mucho, una línea.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
-  Armchair,
   Baby,
+  BedDouble,
   Briefcase,
   Cake,
+  Check,
+  ChevronDown,
   ChevronLeft,
   Crown,
+  Fence,
   Gem,
   Loader2,
+  House,
   LogOut,
+  Maximize2,
   MessageCircle,
+  Minimize2,
   Minus,
   Plus,
   Printer,
   RotateCcw,
+  Smartphone,
+  Shrub,
   Sparkles,
+  SquareParking,
   Trees,
+  Users,
+  Waves,
   type LucideIcon,
 } from "lucide-react"
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer"
@@ -62,6 +84,9 @@ import {
   elegirBarra,
   elegirPlato,
   fechaLarga,
+  indicePaso,
+  pasoDespuesDe,
+  pasosCliente,
   formatoPesos,
   linkWhatsApp,
   nombreEnFrase,
@@ -75,23 +100,31 @@ import {
   sumarDias,
   textoWhatsAppCliente,
   type CatalogoClientes,
+  type IdPasoCliente,
   type ResumenSimulacion,
   type SeleccionCliente,
 } from "@/lib/clientes-simulador"
 import {
   avisoLugar,
   descripcionMaqueta,
+  enLista,
   estadoMaqueta,
   estadoMuestra,
   novedades,
-  rasgosSalon,
+  incluidosComunes,
+  rasgosCortos,
+  INCLUIDO_EN_TODOS,
+  yaIncluidoEnTodos,
+  salonConAireLibre,
+  TEXTO_LUGAR,
   textoSumaste,
-  tieneVistaAdentro,
   type EstadoMaqueta,
+  type IconoRasgo,
   type VistaCasona,
 } from "@/lib/clientes-maqueta"
+import { temaDeFestejo, variablesTema } from "@/lib/clientes-tema"
 import { numeroWhatsApp } from "@/lib/telefono-whatsapp"
-import { fuenteFiesta } from "./fuente-fiesta"
+import { fuenteFiesta, fuenteFiestaItalica } from "./fuente-fiesta"
 import { Maqueta3D, type ManejoMaqueta } from "@/components/clientes/maqueta-3d"
 import { Guirnalda } from "@/components/clientes/guirnalda"
 import { TotalAnimado } from "@/components/clientes/total-animado"
@@ -99,16 +132,7 @@ import { CalendarioFiesta } from "@/components/clientes/calendario-fiesta"
 import { Opcion } from "@/components/clientes/opcion"
 import { PresupuestoCliente } from "@/components/clientes/presupuesto-cliente"
 
-const PASOS = [
-  { id: "festejo", nombre: "Festejo" },
-  { id: "salon", nombre: "Salón" },
-  { id: "fecha", nombre: "Fecha" },
-  { id: "invitados", nombre: "Invitados" },
-  { id: "menu", nombre: "Menú" },
-  { id: "barra", nombre: "Barra" },
-  { id: "detalles", nombre: "Detalles" },
-] as const
-type IdPaso = (typeof PASOS)[number]["id"]
+type IdPaso = IdPasoCliente
 
 const ICONO_FESTEJO: Record<string, LucideIcon> = {
   Casamiento: Gem,
@@ -128,22 +152,36 @@ const NOMBRE_CATEGORIA: Record<string, string> = {
 
 const ATAJOS_INVITADOS = [50, 80, 100, 120]
 const MINIMO_ADULTOS = 10
-const serif = "font-[family-name:var(--font-fiesta)]"
+/** Letra de los títulos según el estilo del festejo (en el 15, su cursiva). */
+const serif = "font-[family-name:var(--lj-letra-titulo)] [font-style:var(--lj-estilo-titulo)]"
+/** Letra de los montos y números grandes: la misma familia, siempre derecha. */
+const cifras = "font-[family-name:var(--lj-letra-cifras)]"
+/** Ícono de cada rasgo del salón (lib/clientes-maqueta.ts, rasgosCortos). */
+const ICONO_RASGO: Record<IconoRasgo, LucideIcon> = {
+  "aire-libre": Trees,
+  pileta: Waves,
+  casa: BedDouble,
+  estacionamiento: SquareParking,
+  // Tablas de madera: lucide no tiene un ícono de madera.
+  madera: Fence,
+  verde: Shrub,
+  cerrado: House,
+}
 
 /** Qué muestra la maqueta en cada paso (planos de components/clientes/maqueta/motor.ts). */
 const FOCO_PASO: Record<IdPaso, string> = {
   festejo: "entrada",
   salon: "isla",
+  lugar: "isla",
   fecha: "cartel",
   invitados: "mesas",
   menu: "mesa",
   barra: "barra",
   detalles: "isla",
 }
-const PASO_INVITADOS = PASOS.findIndex((p) => p.id === "invitados")
 /** Cuánto se queda la cámara mostrando lo que se acaba de sumar. */
 const MS_MOSTRAR_SUMADO = 2600
-/** Y la casa y la pileta, al elegir la Casona (vuela más lejos). */
+/** Y el lugar al elegir el salón: la casa y la pileta de la Casona, o el frente de la Quinta (vuela más lejos). */
 const MS_MOSTRAR_LUGAR = 3600
 
 /** "+ $ 120.000" / "− $ 30.000" / "sin costo extra". */
@@ -188,13 +226,16 @@ export default function ClientesPage() {
 
   // ── Recorrido ──
   const [vista, setVista] = useState<Vista>("portada")
-  const [paso, setPaso] = useState(0)
-  const [alcanzado, setAlcanzado] = useState(0)
+  // Por id y no por número: el paso "lugar" aparece o no según el salón.
+  const [pasoId, setPasoId] = useState<IdPaso>("festejo")
+  const [alcanzadoId, setAlcanzadoId] = useState<IdPaso>("festejo")
   const [intentoSeguir, setIntentoSeguir] = useState(false)
 
   // ── Lo que elige ──
   const [tipoEvento, setTipoEvento] = useState<string | null>(null)
   const [salonId, setSalonId] = useState<string | null>(null)
+  // Solo la Casona: la fiesta en el jardín o adentro (su propio paso).
+  const [lugar, setLugar] = useState<VistaCasona | null>(null)
   const [fecha, setFecha] = useState<string | null>(null)
   const [adultos, setAdultos] = useState(60)
   const [ninos, setNinos] = useState(0)
@@ -218,18 +259,63 @@ export default function ClientesPage() {
   const [fotoMaqueta, setFotoMaqueta] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ id: number; texto: string } | null>(null)
   const [focoSumado, setFocoSumado] = useState<{ foco: string; ms: number } | null>(null)
-  // Solo la Casona: ver la fiesta en el jardín o adentro (es solo el dibujo).
-  const [vistaCasona, setVistaCasona] = useState<VistaCasona>("jardin")
+  // Pantalla completa: la pide la persona (tocando la maqueta) o se abre sola
+  // al girar el celular. Si la cierra con el celular girado, no se vuelve a
+  // abrir hasta que lo ponga derecho.
+  const [pantallaCompleta, setPantallaCompleta] = useState(false)
+  const [girado, setGirado] = useState(false)
+  const [giradoCerrado, setGiradoCerrado] = useState(false)
   const muestra = useMemo(() => estadoMuestra(), [])
+  // ¿Desplegado "Ya viene con el salón" en los detalles? Arranca plegado.
+  const [verIncluido, setVerIncluido] = useState(false)
+
+  // ── El estilo del festejo (colores, letras, esquinas) ──
+  const tema = useMemo(() => temaDeFestejo(tipoEvento), [tipoEvento])
+  const varsTema = useMemo(() => variablesTema(tema) as React.CSSProperties, [tema])
+  // Al cambiar de estilo, los colores pasan de uno a otro en un momento (no de golpe).
+  const [cambiandoTema, setCambiandoTema] = useState(false)
+  const temaPrevio = useRef(tema.id)
+  useEffect(() => {
+    if (temaPrevio.current === tema.id) return
+    temaPrevio.current = tema.id
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return
+    setCambiandoTema(true)
+    const t = setTimeout(() => setCambiandoTema(false), 700)
+    return () => clearTimeout(t)
+  }, [tema.id])
 
   const hoy = useMemo(() => hoyArgentina(), [])
   const rango = useMemo(() => rangoCalendario(hoy), [hoy])
 
   const salon = useMemo(() => catalogo?.salones.find((s) => s.salon === salonId) ?? null, [catalogo, salonId])
   const salonesListos = useMemo(() => (catalogo?.salones ?? []).map((s) => s.salon), [catalogo])
+  const incluidos = useMemo(
+    () =>
+      incluidosComunes(
+        (catalogo?.salones ?? []).map((s) =>
+          serviciosParaFecha(s, fecha)
+            .filter((x) => x.incluido)
+            .map((x) => x.nombre),
+        ),
+      ),
+    [catalogo, fecha],
+  )
   const ocupadasSalon = useMemo(() => new Set(salon ? ocupadas[salon.salon] ?? [] : []), [ocupadas, salon])
   const fechaOcupada = !!fecha && ocupadasSalon.has(fecha)
   const serviciosFecha = useMemo(() => (salon ? serviciosParaFecha(salon, fecha) : []), [salon, fecha])
+
+  // ── Los pasos (con "lugar" solo si el salón tiene aire libre) ──
+  const conLugar = salonConAireLibre(salon?.salon)
+  const PASOS = useMemo(() => pasosCliente(conLugar), [conLugar])
+  const paso = indicePaso(PASOS, pasoId)
+  const alcanzado = indicePaso(PASOS, alcanzadoId)
+  // Si eligió la Casona y todavía no dijo adentro o afuera (por ejemplo, la
+  // cambió desde el paso de la fecha), tiene que pasar por ese paso.
+  useEffect(() => {
+    if (!conLugar || lugar) return
+    if (pasoDespuesDe(alcanzadoId, "lugar")) setAlcanzadoId("lugar")
+    if (pasoDespuesDe(pasoId, "lugar")) setPasoId("lugar")
+  }, [conLugar, lugar, alcanzadoId, pasoId])
 
   // Al cambiar de salón o de fecha se descarta lo que ya no está disponible
   // (igual que en el cotizador del vendedor).
@@ -274,6 +360,8 @@ export default function ClientesPage() {
         return tipoEvento ? null : "Elegí qué van a festejar."
       case "salon":
         return salon ? null : "Elegí un salón."
+      case "lugar":
+        return lugar ? null : "Elegí si la fiesta es adentro o al aire libre."
       case "fecha":
         if (!fecha) return "Elegí una fecha."
         return fechaOcupada ? `Ese día ${salon?.nombre} ya está reservado. Elegí otra fecha.` : null
@@ -292,7 +380,7 @@ export default function ClientesPage() {
   useEffect(() => {
     setIntentoSeguir(false)
     if (typeof window !== "undefined") window.scrollTo({ top: 0 })
-  }, [paso, vista])
+  }, [pasoId, vista])
 
   // Lo que muestra la maqueta: se arma con lo mismo que el total.
   const estadoMaq = useMemo(
@@ -300,7 +388,7 @@ export default function ClientesPage() {
       estadoMaqueta({
         tipoEvento,
         salon: salon ? { clave: salon.salon, nombre: salon.nombre, barras: salon.barras } : null,
-        vistaCasona,
+        vistaCasona: lugar ?? "jardin",
         servicios: serviciosFecha,
         elegidos: servicios,
         fecha,
@@ -311,10 +399,10 @@ export default function ClientesPage() {
         barraIds,
         alcanzado,
         totalPasos: PASOS.length,
-        pasoInvitados: PASO_INVITADOS,
+        pasoInvitados: indicePaso(PASOS, "invitados"),
         completa: vista === "lista" || vista === "presupuesto",
       }),
-    [tipoEvento, salon, vistaCasona, serviciosFecha, servicios, fecha, adultos, ninos, conCatering, recetas, barraIds, alcanzado, vista],
+    [tipoEvento, salon, lugar, serviciosFecha, servicios, fecha, adultos, ninos, conCatering, recetas, barraIds, alcanzado, PASOS, vista],
   )
   // Cada cosa que se suma: un aviso ("Sumaste la pantalla LED") y la cámara va
   // a mostrarla un momento. Al elegir la Casona, va a mostrar su casa y su pileta.
@@ -326,7 +414,7 @@ export default function ClientesPage() {
     const lugar = avisoLugar(antes, estadoMaq)
     if (lugar) {
       setAviso({ id: Date.now(), texto: lugar.texto })
-      setFocoSumado({ foco: lugar.foco, ms: lugar.foco === "casona" ? MS_MOSTRAR_LUGAR : MS_MOSTRAR_SUMADO })
+      setFocoSumado({ foco: lugar.foco, ms: lugar.foco === "casona" || lugar.foco === "frente" ? MS_MOSTRAR_LUGAR : MS_MOSTRAR_SUMADO })
       return
     }
     const nuevas = novedades(antes, estadoMaq)
@@ -347,7 +435,7 @@ export default function ClientesPage() {
   useEffect(() => {
     setFocoSumado(null)
     setAviso(null)
-  }, [paso, vista])
+  }, [pasoId, vista])
   // Al bajar en la página, la maqueta se achica (para que entre más lista en
   // celulares chicos). Con margen para que no tiemble cerca del borde.
   const [compacta, setCompacta] = useState(false)
@@ -369,28 +457,97 @@ export default function ClientesPage() {
       ? "fiesta"
       : (focoSumado?.foco ?? (idPaso === "barra" && estadoMaq.barras >= 2 ? "barra2" : FOCO_PASO[idPaso]))
 
-  const irAPaso = (i: number) => {
+  const irAlPaso = (id: IdPaso) => {
     setVista("pasos")
-    setPaso(i)
+    setPasoId(id)
   }
+  const irAPaso = (i: number) => irAlPaso(PASOS[i].id)
   const siguiente = () => {
     if (falta) {
       setIntentoSeguir(true)
       return
     }
     if (paso < PASOS.length - 1) {
-      setPaso(paso + 1)
-      setAlcanzado((a) => Math.max(a, paso + 1))
+      const sig = PASOS[paso + 1].id
+      setPasoId(sig)
+      setAlcanzadoId((a) => (pasoDespuesDe(sig, a) ? sig : a))
     } else {
-      setAlcanzado(PASOS.length - 1)
+      setAlcanzadoId(PASOS[PASOS.length - 1].id)
       setVista("lista")
     }
   }
   const anterior = () => {
     if (vista === "lista") return irAPaso(PASOS.length - 1)
     if (paso === 0) return setVista("portada")
-    setPaso(paso - 1)
+    setPasoId(PASOS[paso - 1].id)
   }
+
+  // ── Pantalla completa de la maqueta ──
+  const enRecorrido = vista === "pasos" || vista === "lista"
+  const verGrande = conMaqueta && enRecorrido && (pantallaCompleta || (girado && !giradoCerrado))
+  // Celular acostado: la maqueta ocupa toda la pantalla sola.
+  useEffect(() => {
+    // Un celular: pantalla táctil (o sin mouse) y poca altura acostado.
+    const mq = window.matchMedia?.(
+      "(orientation: landscape) and (max-height: 520px) and (pointer: coarse), (orientation: landscape) and (max-height: 520px) and (hover: none)",
+    )
+    if (!mq) return
+    const alCambiar = () => {
+      setGirado(mq.matches)
+      if (!mq.matches) setGiradoCerrado(false)
+    }
+    alCambiar()
+    mq.addEventListener?.("change", alCambiar)
+    return () => mq.removeEventListener?.("change", alCambiar)
+  }, [])
+  // Si sale de la pantalla completa del sistema (gesto de volver, tecla Esc),
+  // la maqueta vuelve a su lugar.
+  useEffect(() => {
+    const alCambiar = () => {
+      if (!document.fullscreenElement) setPantallaCompleta(false)
+    }
+    document.addEventListener("fullscreenchange", alCambiar)
+    return () => document.removeEventListener("fullscreenchange", alCambiar)
+  }, [])
+  // Con la maqueta grande, la página de atrás no se mueve.
+  useEffect(() => {
+    if (!verGrande) return
+    const antes = document.documentElement.style.overflow
+    document.documentElement.style.overflow = "hidden"
+    return () => {
+      document.documentElement.style.overflow = antes
+    }
+  }, [verGrande])
+  const abrirGrande = () => {
+    setPantallaCompleta(true)
+    // Android: pantalla completa de verdad y, si deja, gira a horizontal. En
+    // iPhone no existe para esto: queda la maqueta ocupando toda la página.
+    const el = maqueta.current?.elemento()
+    if (el?.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen({ navigationUI: "hide" })
+        .then(() => {
+          const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }
+          return o?.lock?.("landscape")
+        })
+        .catch(() => {
+          // Sin permiso para girar o sin pantalla completa: igual se ve grande.
+        })
+    }
+  }
+  const cerrarGrande = () => {
+    setPantallaCompleta(false)
+    if (girado) setGiradoCerrado(true)
+    try {
+      screen.orientation?.unlock?.()
+    } catch {
+      // No estaba girada por nosotros.
+    }
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+  }
+  // Fuera de los pasos (portada, presupuesto) no queda abierta.
+  useEffect(() => {
+    if (!enRecorrido && pantallaCompleta) cerrarGrande()
+  }, [enRecorrido])
 
   const salir = () => {
     if (esPerfilClientes) {
@@ -508,13 +665,13 @@ export default function ClientesPage() {
   // ── Pantallas ──
   const chrome = (
     <div className="flex items-center gap-2 print:hidden">
-      <span className="rounded-full border border-[#f3cf7a]/45 px-2.5 py-0.5 text-[11.5px] text-[#f3cf7a]">Prototipo</span>
+      <span className="rounded-full border border-[var(--lj-acento)]/45 px-2.5 py-0.5 text-[11.5px] text-[var(--lj-acento)]">Prototipo</span>
       <button
         type="button"
         onClick={salir}
         aria-label={esPerfilClientes ? "Salir del perfil Clientes" : "Volver al sistema"}
         title={esPerfilClientes ? "Salir" : "Volver al sistema"}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-[#f5f0e8]/80 hover:bg-white/10 hover:text-[#f5f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+        className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--lj-texto)]/80 hover:bg-white/10 hover:text-[var(--lj-texto)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
       >
         {esPerfilClientes ? <LogOut className="h-4.5 w-4.5" /> : <ArrowLeft className="h-4.5 w-4.5" />}
       </button>
@@ -525,7 +682,7 @@ export default function ClientesPage() {
     <span
       role="img"
       aria-label="Los Jazmines"
-      className="block h-[26px] w-[82px] bg-[#f5f0e8]"
+      className="block h-[26px] w-[82px] bg-[var(--lj-texto)]"
       style={{
         WebkitMaskImage: "url(/clientes/logo-recorte.png)",
         maskImage: "url(/clientes/logo-recorte.png)",
@@ -540,16 +697,33 @@ export default function ClientesPage() {
   )
 
   return (
-    <div className="min-h-svh bg-[#0d1d14] text-[#f5f0e8] antialiased print:min-h-0 print:bg-white">
+    <div
+      data-tema={tema.id}
+      data-cambiando={cambiandoTema || undefined}
+      style={varsTema}
+      className="min-h-svh bg-[var(--lj-fondo)] text-[var(--lj-texto)] antialiased print:min-h-0 print:bg-white"
+    >
       <style>{`
+        html, body { background: ${tema.colores.fondo}; }
+        @media print { html, body { background: #fff; } }
+        /* Al tocar otro festejo, los colores cambian en un momento. */
+        [data-cambiando], [data-cambiando] * {
+          transition-property: color, background-color, border-color, fill, stroke, box-shadow, text-decoration-color !important;
+          transition-duration: .6s !important;
+          transition-timing-function: ease !important;
+        }
+        /* Casamiento: una línea fina bajo cada título, como en una invitación. */
+        [data-tema="casamiento"] .lj-titulo::after {
+          content: ""; display: block; width: 44px; height: 1px; margin-top: 14px; background: var(--lj-borde-elegido);
+        }
         .lj-rango { -webkit-appearance: none; appearance: none; width: 100%; height: 40px; background: transparent; cursor: pointer; }
-        .lj-rango::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, #f3cf7a var(--lj-p), rgba(245,240,232,.16) var(--lj-p)); }
-        .lj-rango::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; margin-top: -12px; border-radius: 999px; background: #f8f2e4; border: 2px solid #f3cf7a; box-shadow: 0 0 20px rgba(243,207,122,.55); }
-        .lj-rango::-moz-range-track { height: 6px; border-radius: 999px; background: rgba(245,240,232,.16); }
-        .lj-rango::-moz-range-progress { height: 6px; border-radius: 999px; background: #f3cf7a; }
-        .lj-rango::-moz-range-thumb { width: 26px; height: 26px; border-radius: 999px; background: #f8f2e4; border: 2px solid #f3cf7a; }
+        .lj-rango::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--lj-acento) var(--lj-p), color-mix(in oklab, var(--lj-texto) 16%, transparent) var(--lj-p)); }
+        .lj-rango::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; margin-top: -12px; border-radius: 999px; background: var(--lj-titulo); border: 2px solid var(--lj-acento); box-shadow: 0 0 20px var(--lj-brillo-suave); }
+        .lj-rango::-moz-range-track { height: 6px; border-radius: 999px; background: color-mix(in oklab, var(--lj-texto) 16%, transparent); }
+        .lj-rango::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--lj-acento); }
+        .lj-rango::-moz-range-thumb { width: 26px; height: 26px; border-radius: 999px; background: var(--lj-titulo); border: 2px solid var(--lj-acento); }
         .lj-rango:focus-visible { outline: none; }
-        .lj-rango:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 5px rgba(243,207,122,.4); }
+        .lj-rango:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 5px color-mix(in oklab, var(--lj-acento) 40%, transparent); }
         @keyframes lj-aviso {
           0% { opacity: 0; transform: translateY(8px) scale(.92); }
           10% { opacity: 1; transform: translateY(0) scale(1.03); }
@@ -587,7 +761,7 @@ export default function ClientesPage() {
               fetchPriority="high"
             />
           </picture>
-          <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(13,29,20,0.55)_0%,rgba(13,29,20,0.05)_32%,rgba(13,29,20,0.15)_52%,rgba(13,29,20,0.92)_78%,#0d1d14_100%)]" />
+          <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--lj-fondo)_55%,transparent)_0%,color-mix(in_oklab,var(--lj-fondo)_5%,transparent)_32%,color-mix(in_oklab,var(--lj-fondo)_15%,transparent)_52%,color-mix(in_oklab,var(--lj-fondo)_92%,transparent)_78%,var(--lj-fondo)_100%)]" />
 
           <div className="mx-auto flex w-full max-w-[480px] items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+16px)]">
             {logo}
@@ -595,7 +769,7 @@ export default function ClientesPage() {
           </div>
 
           <div className="mx-auto w-full max-w-[480px] px-5 pt-14 md:pt-20">
-            <h1 className={`${serif} text-[46px] font-medium leading-[0.98] tracking-[-0.015em] text-[#f8f2e4] [text-wrap:balance]`}>
+            <h1 className={`${serif} text-[46px] font-medium leading-[0.98] tracking-[-0.015em] text-[var(--lj-titulo)] [text-wrap:balance]`}>
               Diseñá tu evento a medida
             </h1>
           </div>
@@ -607,22 +781,23 @@ export default function ClientesPage() {
               foco="portada"
               descripcion="Maqueta 3D de una fiesta armada en el jardín de Los Jazmines"
               onFalla={() => setConMaqueta(false)}
+              fondo={tema.colores.fondo}
               className="relative mx-auto min-h-[230px] w-full max-w-[640px] flex-1"
             />
           )}
 
           <div className="mx-auto mt-auto w-full max-w-[480px] px-5 pb-[calc(env(safe-area-inset-bottom)+28px)]">
-            <p className="max-w-[34ch] text-[16.5px] leading-relaxed text-[#f5f0e8]/85">
-              Conocé el valor al instante: elegí la fecha, los invitados, el menú y cada detalle, y mirá cómo se arma el precio.
+            <p className="max-w-[34ch] text-[16.5px] leading-relaxed text-[var(--lj-texto)]/85">
+              Elegí cada detalle y mirá el precio al instante.
             </p>
             <button
               type="button"
               onClick={() => irAPaso(0)}
-              className="mt-6 flex h-14 w-full items-center justify-center rounded-full bg-[#f3cf7a] text-[16.5px] font-semibold text-[#0d1d14] shadow-[0_0_40px_-8px_rgba(243,207,122,0.75)] transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#f3cf7a]/40"
+              className="mt-6 flex h-14 w-full items-center justify-center rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] text-[16.5px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_40px_-8px_var(--lj-brillo)] transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
             >
               Empezar a armar
             </button>
-            <p className="mt-3 text-center text-[13px] text-[#f5f0e8]/60">Te lleva unos dos minutos y no hace falta registrarse.</p>
+            <p className="mt-3 text-center text-[13px] text-[var(--lj-texto)]/70">En dos minutos y sin registrarte.</p>
           </div>
         </section>
       )}
@@ -634,8 +809,10 @@ export default function ClientesPage() {
               degradé corto debajo, para que el contenido se esconda suave. */}
           {/* En los pasos, la maqueta queda fija arriba (para ver cómo se suma
               cada cosa); en "Tu fiesta está lista" es grande y se va con el scroll. */}
+          {/* Con el celular acostado (sin la maqueta grande) la cabecera no
+              queda fija: si no, entre ella y la barra de abajo no se ve nada. */}
           <header
-            className={`${vista === "pasos" ? "sticky top-0" : "relative"} z-20 bg-[#0d1d14] pb-3 pt-[calc(env(safe-area-inset-top)+10px)] after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-6 after:bg-gradient-to-b after:from-[#0d1d14] after:to-transparent`}
+            className={`${vista === "pasos" ? "sticky top-0 [@media(orientation:landscape)_and_(max-height:520px)]:relative" : "relative"} ${verGrande ? "z-[60]" : "z-20"} bg-[var(--lj-fondo)] pb-3 pt-[calc(env(safe-area-inset-top)+10px)] after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-6 after:bg-gradient-to-b after:from-[var(--lj-fondo)] after:to-transparent`}
           >
             <div className="mx-auto max-w-[480px] px-5">
               <div className="flex h-10 items-center justify-between">
@@ -650,27 +827,50 @@ export default function ClientesPage() {
                 foco={focoMaqueta}
                 descripcion={descripcionMaqueta(estadoMaq)}
                 onFalla={() => setConMaqueta(false)}
-                className={`relative mx-auto mt-1 max-w-[480px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_62%,#15301f_0%,#0d1d14_72%)] transition-[height] duration-500 ${
-                  vista === "lista" ? "h-[clamp(250px,44svh,390px)]" : compacta ? "h-[clamp(120px,19svh,160px)]" : "h-[clamp(150px,27svh,236px)]"
-                }`}
+                onTocar={verGrande ? undefined : abrirGrande}
+                fondo={tema.colores.fondo}
+                className={
+                  verGrande
+                    ? "fixed inset-0 z-[60] overflow-hidden bg-[radial-gradient(ellipse_at_50%_62%,var(--lj-halo)_0%,var(--lj-fondo)_72%)]"
+                    : `relative mx-auto mt-1 max-w-[480px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_62%,var(--lj-halo)_0%,var(--lj-fondo)_72%)] transition-[height] duration-500 ${
+                        vista === "lista" ? "h-[clamp(250px,44svh,390px)]" : compacta ? "h-[clamp(120px,19svh,160px)]" : "h-[clamp(150px,27svh,236px)]"
+                      }`
+                }
               >
-                {/* Para que la guirnalda de pasos se lea separada de la maqueta. */}
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0d1d14] via-[#0d1d14]/55 to-transparent" />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#0d1d14] to-transparent" />
-                <div
-                  className={`pointer-events-none absolute inset-x-5 top-0 transition-opacity duration-300 ${compacta ? "opacity-0 [&_button]:!pointer-events-none" : "opacity-100"}`}
-                >
-                  <Guirnalda
-                    pasos={[...PASOS]}
-                    actual={vista === "lista" ? PASOS.length : paso}
-                    alcanzado={alcanzado}
-                    completa={vista === "lista"}
-                    onIr={irAPaso}
+                {verGrande ? (
+                  <ControlesGrande
+                    paso={vista === "lista" ? "Tu fiesta" : `${PASOS[paso].nombre} · ${paso + 1} de ${PASOS.length}`}
+                    total={salon ? formatoPesos(total) : null}
+                    onCerrar={cerrarGrande}
                   />
-                </div>
-                {/* Como la guirnalda, el botón se esconde cuando la maqueta se achica. */}
-                {tieneVistaAdentro(estadoMaq.ambiente) && <VerCasona vista={vistaCasona} onCambiar={setVistaCasona} oculto={compacta} />}
-                {aviso && <AvisoSumaste key={aviso.id} texto={aviso.texto} arriba={tieneVistaAdentro(estadoMaq.ambiente) && !compacta} />}
+                ) : (
+                  <>
+                    {/* Para que la guirnalda de pasos se lea separada de la maqueta. */}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[var(--lj-fondo)] via-[var(--lj-fondo)]/55 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[var(--lj-fondo)] to-transparent" />
+                    <div
+                      className={`pointer-events-none absolute inset-x-5 top-0 transition-opacity duration-300 ${compacta ? "opacity-0 [&_button]:!pointer-events-none" : "opacity-100"}`}
+                    >
+                      <Guirnalda
+                        pasos={[...PASOS]}
+                        actual={vista === "lista" ? PASOS.length : paso}
+                        alcanzado={alcanzado}
+                        completa={vista === "lista"}
+                        onIr={irAPaso}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={abrirGrande}
+                      aria-label="Ver la maqueta en pantalla completa"
+                      title="Pantalla completa"
+                      className="absolute bottom-2 right-3 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--lj-acento)]/35 bg-[var(--lj-fondo)]/75 text-[var(--lj-texto)]/85 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)] backdrop-blur-sm hover:text-[var(--lj-texto)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
+                    >
+                      <Maximize2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+                {aviso && <AvisoSumaste key={aviso.id} texto={aviso.texto} grande={verGrande} />}
               </Maqueta3D>
             ) : (
               <div className="mx-auto mt-1 max-w-[480px] px-5">
@@ -685,8 +885,8 @@ export default function ClientesPage() {
             )}
             <div className="mx-auto max-w-[480px] px-5">
               <div className="mt-1 flex items-baseline justify-between text-[13px]">
-                <span className="text-[#f5f0e8]/85">{vista === "lista" ? "Todo listo" : PASOS[paso].nombre}</span>
-                <span className="tabular-nums text-[#f5f0e8]/50">
+                <span className="text-[var(--lj-texto)]/85">{vista === "lista" ? "Todo listo" : PASOS[paso].nombre}</span>
+                <span className="tabular-nums text-[var(--lj-texto)]/60">
                   {vista === "lista" ? `${PASOS.length} de ${PASOS.length}` : `${paso + 1} de ${PASOS.length}`}
                 </span>
               </div>
@@ -695,7 +895,7 @@ export default function ClientesPage() {
 
           <main className={`mx-auto max-w-[480px] px-5 pt-2 ${vista === "pasos" ? "pb-48" : "pb-[calc(env(safe-area-inset-bottom)+28px)]"}`}>
             {errorCarga && (
-              <div className="rounded-2xl border border-[#e8a39b]/40 bg-[#2a1714] p-4 text-[14.5px] text-[#f6d9d4]">
+              <div className="rounded-2xl border border-[var(--lj-alerta)]/40 bg-[#2a1714] p-4 text-[14.5px] text-[#f6d9d4]">
                 <p>{errorCarga}</p>
                 <button
                   type="button"
@@ -721,14 +921,14 @@ export default function ClientesPage() {
                         aria-checked={elegido}
                         onClick={() => setTipoEvento(t)}
                         className={[
-                          "flex h-[112px] flex-col justify-between rounded-2xl border p-4 text-left transition-[background-color,border-color,box-shadow] duration-200",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]",
+                          "flex h-[112px] flex-col justify-between rounded-[var(--lj-radio)] border p-4 text-left transition-[background-color,border-color,box-shadow] duration-200",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]",
                           elegido
-                            ? "border-[#c9a227] bg-[#1a3a2a] shadow-[0_0_30px_-12px_rgba(243,207,122,0.75)]"
-                            : "border-[rgba(245,240,232,0.12)] bg-[#12261a] hover:border-[rgba(245,240,232,0.25)]",
+                            ? "border-[var(--lj-borde-elegido)] bg-[var(--lj-elegido)] shadow-[0_0_30px_-12px_var(--lj-brillo)]"
+                            : "border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] hover:border-[var(--lj-texto)]/25",
                         ].join(" ")}
                       >
-                        <Icono className={`h-6 w-6 ${elegido ? "text-[#f3cf7a]" : "text-[#f5f0e8]/70"}`} strokeWidth={1.6} />
+                        <Icono className={`h-6 w-6 ${elegido ? "text-[var(--lj-acento)]" : "text-[var(--lj-texto)]/70"}`} strokeWidth={1.6} />
                         <span className={`${serif} text-[19px] leading-tight`}>{t}</span>
                       </button>
                     )
@@ -738,18 +938,18 @@ export default function ClientesPage() {
             )}
 
             {vista === "pasos" && idPaso === "salon" && (
-              <Paso titulo="Elegí el salón" ayuda="Cada uno tiene su capacidad y lo que ya viene incluido.">
+              <Paso titulo="Elegí el salón">
                 {!catalogo && !errorCarga && <Cargando />}
                 {catalogo && catalogo.salones.length === 0 && (
-                  <p className="rounded-2xl border border-[rgba(245,240,232,0.12)] bg-[#12261a] p-4 text-[15px] text-[#f5f0e8]/80">
+                  <p className="rounded-[var(--lj-radio)] border border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] p-4 text-[15px] text-[var(--lj-texto)]/80">
                     Todavía no hay salones listos para cotizar desde acá.
                     {!esPerfilClientes && " Para que aparezca uno, cargale el costo del salón y la capacidad en Cotizaciones > Configuración."}
                   </p>
                 )}
                 <div className="space-y-3" role="radiogroup" aria-label="Salón">
-                  {catalogo?.salones.map((s) => {
+                  {catalogo?.salones.map((s, i) => {
                     const elegido = salonId === s.salon
-                    const incluidos = serviciosParaFecha(s, fecha).filter((x) => x.incluido)
+                    const deMas = incluidos.extra[i] ?? []
                     const libreEseDia = fecha ? !(ocupadas[s.salon] ?? []).includes(fecha) : null
                     return (
                       <button
@@ -759,28 +959,88 @@ export default function ClientesPage() {
                         aria-checked={elegido}
                         onClick={() => setSalonId(s.salon)}
                         className={[
-                          "w-full rounded-[20px] border p-5 text-left transition-[background-color,border-color,box-shadow] duration-200",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]",
+                          "w-full rounded-[var(--lj-radio)] border p-5 text-left transition-[background-color,border-color,box-shadow] duration-200",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]",
                           elegido
-                            ? "border-[#c9a227] bg-[#1a3a2a] shadow-[0_0_34px_-14px_rgba(243,207,122,0.8)]"
-                            : "border-[rgba(245,240,232,0.12)] bg-[#12261a] hover:border-[rgba(245,240,232,0.25)]",
+                            ? "border-[var(--lj-borde-elegido)] bg-[var(--lj-elegido)] shadow-[0_0_34px_-14px_var(--lj-brillo)]"
+                            : "border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] hover:border-[var(--lj-texto)]/25",
                         ].join(" ")}
                       >
-                        <span className="flex items-baseline justify-between gap-3">
-                          <span className={`${serif} text-[28px] leading-none`}>{s.nombre}</span>
-                          <span className="text-[13.5px] text-[#f5f0e8]/65">hasta {s.capacidadMaxima} invitados</span>
+                        {/* El nombre ("Jazmines Casona") va solo en su renglón y abajo
+                            la capacidad, que es lo primero que se compara. */}
+                        <span className={`${serif} block text-[28px] leading-[1.05]`}>{s.nombre}</span>
+                        <span className="mt-2 flex items-center gap-1.5 text-[14px] text-[var(--lj-texto)]/80">
+                          <Users className="h-4 w-4 shrink-0 text-[var(--lj-acento)]/80" aria-hidden="true" />
+                          Hasta {s.capacidadMaxima} invitados
                         </span>
-                        {rasgosSalon(s.salon) && (
-                          <span className="mt-3 block text-[14.5px] leading-snug text-[#f5f0e8]/90">{rasgosSalon(s.salon)}</span>
-                        )}
-                        {incluidos.length > 0 && (
-                          <span className={`${rasgosSalon(s.salon) ? "mt-1.5" : "mt-3"} block text-[14px] leading-relaxed text-[#f5f0e8]/70`}>
-                            Incluye {incluidos.map((x) => nombreEnFrase(x.nombre)).join("; ")}.
+                        {/* Lo que tiene, en pocas palabras y con su ícono. */}
+                        {(rasgosCortos(s.salon).length > 0 || deMas.length > 0) && (
+                          <span className="mt-3.5 flex flex-wrap gap-x-4 gap-y-2 text-[14px] text-[var(--lj-texto)]/85">
+                            {rasgosCortos(s.salon).map((r) => {
+                              const Icono = ICONO_RASGO[r.icono]
+                              return (
+                                <span key={r.icono} className="flex items-center gap-1.5">
+                                  <Icono className="h-4 w-4 shrink-0 text-[var(--lj-acento)]/80" aria-hidden="true" />
+                                  {r.texto}
+                                </span>
+                              )
+                            })}
+                            {deMas.map((n) => (
+                              <span key={n} className="flex items-center gap-1.5">
+                                <Plus className="h-4 w-4 shrink-0 text-[var(--lj-acento)]/80" aria-hidden="true" />
+                                {nombreParaCliente(n)}
+                              </span>
+                            ))}
                           </span>
                         )}
                         {libreEseDia === false && (
-                          <span className="mt-2 block text-[13px] text-[#e8a39b]">Ese día ya está reservado.</span>
+                          <span className="mt-2 block text-[13px] text-[var(--lj-alerta)]">Ese día ya está reservado.</span>
                         )}
+                      </button>
+                    )
+                  })}
+                </div>
+                {catalogo && catalogo.salones.length > 0 && (
+                  <p className="mt-4 flex items-start gap-2 text-[13.5px] leading-snug text-[var(--lj-texto)]/70">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--lj-acento)]/80" aria-hidden="true" />
+                    <span>
+                      {catalogo.salones.length > 1 ? "Todos incluyen" : "Incluye"} {enLista(incluidos.comunes.map((n) => nombreEnFrase(n)))}.
+                    </span>
+                  </p>
+                )}
+              </Paso>
+            )}
+
+            {vista === "pasos" && idPaso === "lugar" && salon && (
+              <Paso titulo="¿Adentro o al aire libre?">
+                <div className="space-y-3" role="radiogroup" aria-label="Dónde es la fiesta">
+                  {(
+                    [
+                      { valor: "jardin", titulo: "Al aire libre", detalle: "Jardín con guirnaldas y pileta", Icono: Trees },
+                      { valor: "adentro", titulo: "Adentro", detalle: "Bajo techo de madera", Icono: House },
+                    ] as Array<{ valor: VistaCasona; titulo: string; detalle: string; Icono: LucideIcon }>
+                  ).map(({ valor, titulo, detalle, Icono }) => {
+                    const elegido = lugar === valor
+                    return (
+                      <button
+                        key={valor}
+                        type="button"
+                        role="radio"
+                        aria-checked={elegido}
+                        onClick={() => setLugar(valor)}
+                        className={[
+                          "flex w-full items-start gap-4 rounded-[var(--lj-radio)] border p-5 text-left transition-[background-color,border-color,box-shadow] duration-200",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]",
+                          elegido
+                            ? "border-[var(--lj-borde-elegido)] bg-[var(--lj-elegido)] shadow-[0_0_34px_-14px_var(--lj-brillo)]"
+                            : "border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] hover:border-[var(--lj-texto)]/25",
+                        ].join(" ")}
+                      >
+                        <Icono className={`mt-0.5 h-7 w-7 shrink-0 ${elegido ? "text-[var(--lj-acento)]" : "text-[var(--lj-texto)]/70"}`} strokeWidth={1.6} />
+                        <span className="min-w-0">
+                          <span className={`${serif} block text-[26px] leading-none`}>{titulo}</span>
+                          <span className="mt-2 block text-[14.5px] leading-snug text-[var(--lj-texto)]/75">{detalle}</span>
+                        </span>
                       </button>
                     )
                   })}
@@ -789,7 +1049,7 @@ export default function ClientesPage() {
             )}
 
             {vista === "pasos" && idPaso === "fecha" && salon && (
-              <Paso titulo="¿Qué día es?" ayuda="Los días tachados ya están reservados.">
+              <Paso titulo="¿Qué día es?">
                 <CalendarioFiesta
                   valor={fecha}
                   onElegir={elegirFecha}
@@ -800,7 +1060,7 @@ export default function ClientesPage() {
                 {fecha && calculo && (
                   <div
                     ref={infoFecha}
-                    className="mt-4 rounded-2xl border border-[rgba(245,240,232,0.12)] bg-[#12261a] p-4 text-[14.5px] leading-relaxed"
+                    className="mt-4 rounded-[var(--lj-radio)] border border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] p-4 text-[14.5px] leading-relaxed"
                   >
                     <p className="first-letter:uppercase">
                       <span className={`${serif} text-[19px]`}>{fechaLarga(fecha)}</span>
@@ -815,13 +1075,13 @@ export default function ClientesPage() {
                         onCambiar={setSalonId}
                       />
                     ) : calculo.resultado.recargo ? (
-                      <p className="mt-1 text-[#f5f0e8]/70">
+                      <p className="mt-1 text-[var(--lj-texto)]/70">
                         {calculo.dia.tipo === "especial"
-                          ? `Es ${calculo.dia.etiqueta}: esta fecha tiene otro valor, ya sumado en el total.`
-                          : "Los sábados tienen otro valor: ya está sumado en el total."}
+                          ? `${calculo.dia.etiqueta}: tiene otro valor, ya sumado.`
+                          : "Sábado: tiene otro valor, ya sumado."}
                       </p>
                     ) : (
-                      <p className="mt-1 text-[#f5f0e8]/70">Libre en {salon.nombre}.</p>
+                      <p className="mt-1 text-[var(--lj-texto)]/70">Libre en {salon.nombre}</p>
                     )}
                   </div>
                 )}
@@ -829,13 +1089,13 @@ export default function ClientesPage() {
             )}
 
             {vista === "pasos" && idPaso === "invitados" && salon && (
-              <Paso titulo="¿Cuántos van a ser?" ayuda="Los chicos cuentan para el menú, no para la barra.">
-                <div className="rounded-2xl border border-[rgba(245,240,232,0.12)] bg-[#12261a] p-5">
+              <Paso titulo="¿Cuántos van a ser?">
+                <div className="rounded-[var(--lj-radio)] border border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] p-5">
                   <div className="flex items-baseline justify-between">
-                    <label htmlFor="lj-adultos" className="text-[14.5px] text-[#f5f0e8]/75">
+                    <label htmlFor="lj-adultos" className="text-[14.5px] text-[var(--lj-texto)]/75">
                       Adultos
                     </label>
-                    <span className={`${serif} text-[56px] leading-none tabular-nums`} aria-hidden="true">
+                    <span className={`${cifras} text-[56px] leading-none tabular-nums`} aria-hidden="true">
                       {adultos}
                     </span>
                   </div>
@@ -862,32 +1122,38 @@ export default function ClientesPage() {
                         type="button"
                         onClick={() => setAdultos(n)}
                         aria-pressed={adultos === n}
-                        className={`rounded-full border px-3.5 py-1.5 text-[13.5px] tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] ${
+                        className={`rounded-[var(--lj-radio-boton)] border px-3.5 py-1.5 text-[13.5px] tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)] ${
                           adultos === n
-                            ? "border-[#f3cf7a] bg-[#f3cf7a] text-[#0d1d14]"
-                            : "border-[rgba(245,240,232,0.2)] text-[#f5f0e8]/80 hover:border-[rgba(245,240,232,0.4)]"
+                            ? "border-[var(--lj-acento)] bg-[var(--lj-acento)] text-[var(--lj-sobre-acento)]"
+                            : "border-[var(--lj-texto)]/20 text-[var(--lj-texto)]/80 hover:border-[var(--lj-texto)]/40"
                         }`}
                       >
                         {n}
                       </button>
                     ))}
                   </div>
-                  <div className="mt-6 flex items-center justify-between border-t border-[rgba(245,240,232,0.1)] pt-5">
-                    <span className="text-[14.5px] text-[#f5f0e8]/75">Chicos</span>
+                  <div className="mt-6 flex items-center justify-between border-t border-[var(--lj-texto)]/10 pt-5">
+                    <span className="text-[14.5px] text-[var(--lj-texto)]/75">
+                      Chicos
+                      {/* Cuentan para el menú, no para la barra. */}
+                      <span className="block text-[12.5px] text-[var(--lj-texto)]/60">Solo menú, sin barra</span>
+                    </span>
                     <Contador valor={ninos} onCambiar={setNinos} min={0} etiqueta="chicos" />
                   </div>
                 </div>
                 <p
-                  className={`mt-3 text-[13.5px] ${calculo?.resultado.superaCapacidad ? "text-[#e8a39b]" : "text-[#f5f0e8]/55"}`}
+                  className={`mt-3 text-[13.5px] tabular-nums ${calculo?.resultado.superaCapacidad ? "text-[var(--lj-alerta)]" : "text-[var(--lj-texto)]/60"}`}
                 >
-                  En {salon.nombre} entran hasta {salon.capacidadMaxima} personas. Van {comensales}.
+                  {calculo?.resultado.superaCapacidad
+                    ? `Son ${comensales}: en ${salon.nombre} entran hasta ${salon.capacidadMaxima}.`
+                    : `Van ${comensales} de ${salon.capacidadMaxima}.`}
                 </p>
               </Paso>
             )}
 
             {vista === "pasos" && idPaso === "menu" && salon && (
-              <Paso titulo="El menú" ayuda="Un plato por paso. Podés cambiarlo cuando quieras.">
-                <div className="mb-5 grid grid-cols-2 gap-1 rounded-full border border-[rgba(245,240,232,0.14)] bg-[#12261a] p-1" role="radiogroup" aria-label="Catering">
+              <Paso titulo="El menú">
+                <div className="mb-5 grid grid-cols-2 gap-1 rounded-[var(--lj-radio-boton)] border border-[var(--lj-texto)]/14 bg-[var(--lj-superficie)] p-1" role="radiogroup" aria-label="Catering">
                   {[
                     { valor: true, texto: "Con catering" },
                     { valor: false, texto: "Sin catering" },
@@ -898,8 +1164,8 @@ export default function ClientesPage() {
                       role="radio"
                       aria-checked={conCatering === o.valor}
                       onClick={() => setConCatering(o.valor)}
-                      className={`h-11 rounded-full text-[14.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] ${
-                        conCatering === o.valor ? "bg-[#f3cf7a] font-semibold text-[#0d1d14]" : "text-[#f5f0e8]/75"
+                      className={`h-11 rounded-[var(--lj-radio-boton)] text-[14.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)] ${
+                        conCatering === o.valor ? "bg-[var(--lj-acento)] font-semibold text-[var(--lj-sobre-acento)]" : "text-[var(--lj-texto)]/75"
                       }`}
                     >
                       {o.texto}
@@ -908,7 +1174,7 @@ export default function ClientesPage() {
                 </div>
                 {conCatering ? (
                   pasosMenu.length === 0 ? (
-                    <p className="text-[15px] text-[#f5f0e8]/70">Este salón todavía no tiene platos para elegir.</p>
+                    <p className="text-[15px] text-[var(--lj-texto)]/70">Este salón todavía no tiene platos para elegir.</p>
                   ) : (
                     <div className="space-y-6">
                       {pasosMenu.map((grupo) => (
@@ -936,22 +1202,22 @@ export default function ClientesPage() {
                     </div>
                   )
                 ) : (
-                  <p className="rounded-2xl border border-[rgba(245,240,232,0.12)] bg-[#12261a] p-4 text-[14.5px] leading-relaxed text-[#f5f0e8]/75">
-                    Sin catering no se suma la comida ni el personal de cocina. El salón, la barra y los detalles siguen igual.
+                  <p className="rounded-[var(--lj-radio)] border border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] p-4 text-[14.5px] leading-relaxed text-[var(--lj-texto)]/75">
+                    Sin comida ni personal de cocina.
                   </p>
                 )}
               </Paso>
             )}
 
             {vista === "pasos" && idPaso === "barra" && salon && (
-              <Paso titulo="La barra" ayuda={`Se calcula por adulto. Podés sumar hasta ${MAX_BARRAS === 2 ? "dos" : MAX_BARRAS}.`}>
+              <Paso titulo="La barra" ayuda={`Hasta ${MAX_BARRAS === 2 ? "dos" : MAX_BARRAS}, se cobra por adulto.`}>
                 {bebidaSumada && bebidaDeMesa && barraIds.includes(bebidaDeMesa.id) && (
-                  <p className="mb-4 rounded-xl bg-[#1a3a2a] px-4 py-3 text-[14px] leading-snug text-[#f5f0e8]/85">
-                    Sumamos la bebida de mesa porque elegiste menú. Si no la querés, sacala.
+                  <p className="mb-4 rounded-[var(--lj-radio-chico)] bg-[var(--lj-elegido)] px-4 py-3 text-[14px] leading-snug text-[var(--lj-texto)]/85">
+                    Sumamos la bebida de mesa por el menú.
                   </p>
                 )}
                 {salon.barras.length === 0 ? (
-                  <p className="text-[15px] text-[#f5f0e8]/70">Este salón todavía no tiene barras para elegir.</p>
+                  <p className="text-[15px] text-[var(--lj-texto)]/70">Este salón todavía no tiene barras para elegir.</p>
                 ) : (
                   <div className="space-y-2">
                     {salon.barras.map((b) => {
@@ -963,7 +1229,7 @@ export default function ClientesPage() {
                           ? 0
                           : totalCon({ barraIds: elegirBarra(barraIds, b.id) }) - total
                       const tragos =
-                        b.cocteles.length > 5 ? `${b.cocteles.slice(0, 5).join(", ")} y ${b.cocteles.length - 5} más` : b.cocteles.join(", ")
+                        b.cocteles.length > 3 ? `${b.cocteles.slice(0, 3).join(", ")} y ${b.cocteles.length - 3} más` : b.cocteles.join(", ")
                       return (
                         <Opcion
                           key={b.id}
@@ -983,27 +1249,43 @@ export default function ClientesPage() {
             )}
 
             {vista === "pasos" && idPaso === "detalles" && salon && (
-              <Paso titulo="Los detalles" ayuda="Lo que ya viene con el salón no se cobra aparte.">
-                {serviciosFecha.some((s) => s.incluido) && (
-                  <div className="mb-6">
-                    <h3 className={`${serif} mb-2.5 text-[21px]`}>Ya viene con el salón</h3>
-                    <ul className="flex flex-wrap gap-2">
-                      {serviciosFecha
-                        .filter((s) => s.incluido)
-                        .map((s) => (
-                          <li
-                            key={s.servicioId}
-                            className="rounded-full border border-[#c9a227]/50 px-3 py-1.5 text-[13.5px] text-[#f5f0e8]/85"
-                          >
-                            {nombreParaCliente(s.nombre)}
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
+              <Paso titulo="Los detalles">
+                {/* Lo que ya viene no se cobra aparte: se pliega, para que lo
+                    primero sean los adicionales. */}
+                <div className="mb-6 rounded-[var(--lj-radio-chico)] border border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)]">
+                  <button
+                    type="button"
+                    onClick={() => setVerIncluido((v) => !v)}
+                    aria-expanded={verIncluido}
+                    aria-controls="lj-incluido"
+                    className="flex w-full items-center gap-2.5 rounded-[var(--lj-radio-chico)] px-4 py-3.5 text-left text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
+                  >
+                    <Check className="h-4 w-4 shrink-0 text-[var(--lj-acento)]" aria-hidden="true" />
+                    <span className="flex-1">Ya viene con el salón</span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-[var(--lj-texto)]/70 transition-transform duration-200 ${verIncluido ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <ul id="lj-incluido" hidden={!verIncluido} className="flex flex-wrap gap-2 px-4 pb-4">
+                    {[
+                      ...INCLUIDO_EN_TODOS.map((nombre) => ({ clave: `todos-${nombre}`, nombre })),
+                      ...serviciosFecha
+                        .filter((s) => s.incluido && !yaIncluidoEnTodos(s.nombre))
+                        .map((s) => ({ clave: s.servicioId, nombre: nombreParaCliente(s.nombre) })),
+                    ].map((x) => (
+                      <li
+                        key={x.clave}
+                        className="rounded-[var(--lj-radio-boton)] border border-[var(--lj-borde-elegido)]/50 px-3 py-1.5 text-[13.5px] text-[var(--lj-texto)]/85"
+                      >
+                        {x.nombre}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
                 {(() => {
                   const extras = serviciosFecha.filter((s) => !s.incluido)
-                  if (extras.length === 0) return <p className="text-[15px] text-[#f5f0e8]/70">No hay adicionales para esta fecha.</p>
+                  if (extras.length === 0) return <p className="text-[15px] text-[var(--lj-texto)]/70">No hay adicionales para esta fecha.</p>
                   const categorias = [...new Set(extras.map((s) => s.categoria))]
                   return (
                     <div className="space-y-6">
@@ -1044,7 +1326,7 @@ export default function ClientesPage() {
                                   >
                                     {conCantidad && (
                                       <div className="flex items-center justify-between">
-                                        <span className="text-[14px] text-[#f5f0e8]/70">
+                                        <span className="text-[14px] text-[var(--lj-texto)]/70">
                                           {s.unidad === "Por Hora" ? "Horas" : "Cantidad"}
                                         </span>
                                         <Contador
@@ -1069,20 +1351,23 @@ export default function ClientesPage() {
 
             {vista === "lista" && salon && calculo && (
               <section>
-                <h1 className={`${serif} text-[38px] font-medium leading-[1.02] tracking-[-0.01em] text-[#f8f2e4]`}>Tu fiesta está lista</h1>
-                <p className="mt-2 text-[15.5px] leading-relaxed text-[#f5f0e8]/75">
-                  Este es el valor estimado de lo que armaste. Tocá una línea para cambiarla.
-                </p>
-                <ul className="mt-6 divide-y divide-[rgba(245,240,232,0.1)] rounded-2xl border border-[rgba(245,240,232,0.12)] bg-[#12261a]">
+                <h1 className={`lj-titulo ${serif} text-[38px] font-medium leading-[1.02] tracking-[-0.01em] text-[var(--lj-titulo)]`}>
+                  Tu fiesta está lista
+                </h1>
+                <p className="mt-2 text-[15.5px] leading-relaxed text-[var(--lj-texto)]/75">Tocá una línea para cambiarla.</p>
+                <ul className="mt-6 divide-y divide-[var(--lj-texto)]/10 rounded-[var(--lj-radio)] border border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)]">
                   {[
-                    { paso: 0, titulo: "Festejo", valor: tipoEvento ?? "—" },
-                    { paso: 1, titulo: "Salón", valor: salon.nombre },
-                    { paso: 2, titulo: "Fecha", valor: fecha ? fechaLarga(fecha) : "Sin fecha" },
-                    { paso: 3, titulo: "Invitados", valor: `${adultos} adultos${ninos ? ` y ${ninos} chicos` : ""}` },
-                    { paso: 4, titulo: "Menú", valor: platosElegidos.length ? platosElegidos.join(", ") : "Sin catering" },
-                    { paso: 5, titulo: "Barra", valor: barrasElegidas.length ? barrasElegidas.join(", ") : "Sin barra" },
+                    { paso: "festejo" as IdPaso, titulo: "Festejo", valor: tipoEvento ?? "—" },
+                    { paso: "salon" as IdPaso, titulo: "Salón", valor: salon.nombre },
+                    ...(conLugar
+                      ? [{ paso: "lugar" as IdPaso, titulo: "Lugar", valor: lugar === "adentro" ? "Adentro" : lugar === "jardin" ? "Al aire libre" : "Sin elegir" }]
+                      : []),
+                    { paso: "fecha" as IdPaso, titulo: "Fecha", valor: fecha ? fechaLarga(fecha) : "Sin fecha" },
+                    { paso: "invitados" as IdPaso, titulo: "Invitados", valor: `${adultos} adultos${ninos ? ` y ${ninos} chicos` : ""}` },
+                    { paso: "menu" as IdPaso, titulo: "Menú", valor: platosElegidos.length ? platosElegidos.join(", ") : "Sin catering" },
+                    { paso: "barra" as IdPaso, titulo: "Barra", valor: barrasElegidas.length ? barrasElegidas.join(", ") : "Sin barra" },
                     {
-                      paso: 6,
+                      paso: "detalles" as IdPaso,
                       titulo: "Detalles",
                       valor: Object.keys(servicios).length
                         ? serviciosFecha
@@ -1095,44 +1380,44 @@ export default function ClientesPage() {
                     <li key={fila.titulo}>
                       <button
                         type="button"
-                        onClick={() => irAPaso(fila.paso)}
+                        onClick={() => irAlPaso(fila.paso)}
                         aria-label={`${fila.titulo}: ${fila.valor}. Cambiar`}
-                        className="flex w-full items-baseline gap-4 px-4 py-3.5 text-left hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#f3cf7a]"
+                        className="flex w-full items-baseline gap-4 px-4 py-3.5 text-left hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--lj-acento)]"
                       >
-                        <span className="w-[76px] shrink-0 text-[13px] text-[#f5f0e8]/55">{fila.titulo}</span>
+                        <span className="w-[76px] shrink-0 text-[13px] text-[var(--lj-texto)]/55">{fila.titulo}</span>
                         <span className="min-w-0 flex-1 text-[15px] leading-snug first-letter:uppercase">{fila.valor}</span>
                       </button>
                     </li>
                   ))}
                 </ul>
-                <div className="mt-6 rounded-2xl bg-[#1a3a2a] p-5">
-                  <p className="text-[13.5px] text-[#f5f0e8]/65">Total estimado</p>
-                  <p className={`${serif} mt-1 text-[40px] font-semibold leading-none tabular-nums text-[#f8f2e4]`}>
+                <div className="mt-6 rounded-[var(--lj-radio)] bg-[var(--lj-elegido)] p-5">
+                  <p className="text-[13.5px] text-[var(--lj-texto)]/65">Total estimado</p>
+                  <p className={`${cifras} mt-1 text-[40px] font-semibold leading-none tabular-nums text-[var(--lj-titulo)]`}>
                     {formatoPesos(total)}
                   </p>
                   {comensales > 0 && (
-                    <p className="mt-2 text-[13.5px] tabular-nums text-[#f5f0e8]/60">{formatoPesos(total / comensales)} por invitado</p>
+                    <p className="mt-2 text-[13.5px] tabular-nums text-[var(--lj-texto)]/60">{formatoPesos(total / comensales)} por invitado</p>
                   )}
-                  <p className="mt-4 text-[14.5px] leading-relaxed text-[#f5f0e8]/80">
-                    Para ver el detalle completo y congelar este precio por {DIAS_PRECIO_CONGELADO} días, dejanos tus datos.
+                  <p className="mt-4 text-[14.5px] leading-relaxed text-[var(--lj-texto)]/80">
+                    Dejá tus datos y te congelamos el precio {DIAS_PRECIO_CONGELADO} días.
                   </p>
                   <button
                     type="button"
                     onClick={() => setPeajeAbierto(true)}
-                    className="mt-4 flex h-13 w-full items-center justify-center rounded-full bg-[#f3cf7a] py-3.5 text-[16px] font-semibold text-[#0d1d14] shadow-[0_0_36px_-10px_rgba(243,207,122,0.8)] transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#f3cf7a]/40"
+                    className="mt-4 flex h-13 w-full items-center justify-center rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] py-3.5 text-[16px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_36px_-10px_var(--lj-brillo)] transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
                   >
-                    Ver el detalle y congelar el precio
+                    Ver el detalle
                   </button>
                 </div>
                 <button
                   type="button"
                   onClick={anterior}
-                  className="mt-6 flex items-center gap-1.5 text-[14px] text-[#f5f0e8]/70 hover:text-[#f5f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+                  className="mt-6 flex items-center gap-1.5 text-[14px] text-[var(--lj-texto)]/70 hover:text-[var(--lj-texto)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
                 >
                   <ChevronLeft className="h-4 w-4" /> Volver a los detalles
                 </button>
-                <p className="mt-6 text-[12.5px] leading-relaxed text-[#f5f0e8]/45">
-                  Prototipo: lo que cargues acá no se guarda ni se le manda a nadie.
+                <p className="mt-6 text-[12.5px] leading-relaxed text-[var(--lj-texto)]/45">
+                  Prototipo: no se guarda nada.
                 </p>
               </section>
             )}
@@ -1141,9 +1426,9 @@ export default function ClientesPage() {
           {/* Barra de abajo: total en vivo y navegación */}
           {vista === "pasos" && (
             <div ref={barraAbajo} className="fixed inset-x-0 bottom-0 z-30 print:hidden">
-              <div className="mx-auto max-w-[480px] border-t border-[rgba(245,240,232,0.12)] bg-[#0d1d14]/95 px-5 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-3 backdrop-blur-md md:rounded-t-2xl md:border-x">
+              <div className="mx-auto max-w-[480px] border-t border-[var(--lj-texto)]/12 bg-[var(--lj-fondo)]/95 px-5 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-3 backdrop-blur-md md:rounded-t-2xl md:border-x">
                 {intentoSeguir && falta && (
-                  <p className="mb-2.5 text-[13.5px] leading-snug text-[#e8a39b]" role="alert">
+                  <p className="mb-2.5 text-[13.5px] leading-snug text-[var(--lj-alerta)]" role="alert">
                     {falta}
                   </p>
                 )}
@@ -1152,30 +1437,30 @@ export default function ClientesPage() {
                     type="button"
                     onClick={anterior}
                     aria-label="Paso anterior"
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[rgba(245,240,232,0.18)] text-[#f5f0e8]/85 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[var(--lj-texto)]/18 text-[var(--lj-texto)]/85 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <div className="min-w-0 flex-1">
                     {salon ? (
                       <>
-                        <p className="text-[12px] text-[#f5f0e8]/55">Total estimado</p>
+                        <p className="text-[12px] text-[var(--lj-texto)]/60">Total estimado</p>
                         <TotalAnimado
                           valor={total}
                           formato={formatoPesos}
-                          className={`${serif} block truncate text-[25px] font-semibold leading-tight tabular-nums text-[#f8f2e4]`}
+                          className={`${cifras} block truncate text-[25px] font-semibold leading-tight tabular-nums text-[var(--lj-titulo)]`}
                         />
                       </>
                     ) : (
-                      <p className="text-[13px] leading-snug text-[#f5f0e8]/60">El total aparece cuando elijas el salón.</p>
+                      <p className="text-[13px] leading-snug text-[var(--lj-texto)]/60">El total aparece cuando elijas el salón.</p>
                     )}
                   </div>
                   <button
                     type="button"
                     onClick={siguiente}
                     aria-disabled={!!falta}
-                    className={`h-12 shrink-0 rounded-full px-6 text-[15.5px] font-semibold transition-[opacity,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#f3cf7a]/40 ${
-                      falta ? "bg-[#f3cf7a]/45 text-[#0d1d14]/70" : "bg-[#f3cf7a] text-[#0d1d14]"
+                    className={`h-12 shrink-0 rounded-[var(--lj-radio-boton)] px-6 text-[15.5px] font-semibold transition-[opacity,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40 ${
+                      falta ? "bg-[var(--lj-acento)]/45 text-[var(--lj-sobre-acento)]/70" : "bg-[var(--lj-acento)] text-[var(--lj-sobre-acento)]"
                     }`}
                   >
                     {paso === PASOS.length - 1 ? "Ver total" : "Siguiente"}
@@ -1202,6 +1487,7 @@ export default function ClientesPage() {
               tipoEvento={tipoEvento}
               fecha={fecha}
               salonNombre={salon.nombre}
+              lugar={conLugar && lugar ? TEXTO_LUGAR[lugar] : null}
               adultos={adultos}
               ninos={ninos}
               resumen={resumen}
@@ -1220,13 +1506,14 @@ export default function ClientesPage() {
                   tipoEvento,
                   fecha,
                   salon: salon.nombre,
+                  lugar: conLugar && lugar ? TEXTO_LUGAR[lugar] : null,
                   invitados: comensales,
                   total: resumen.total,
                 }),
               )}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-14 w-full items-center justify-center gap-2.5 rounded-full bg-[#f3cf7a] text-[16px] font-semibold text-[#0d1d14] shadow-[0_0_36px_-10px_rgba(243,207,122,0.8)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#f3cf7a]/40"
+              className="flex h-14 w-full items-center justify-center gap-2.5 rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] text-[16px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_36px_-10px_var(--lj-brillo)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
             >
               <MessageCircle className="h-5 w-5" /> Escribir por WhatsApp
             </a>
@@ -1234,20 +1521,20 @@ export default function ClientesPage() {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="flex h-12 items-center justify-center gap-2 rounded-full border border-[rgba(245,240,232,0.2)] text-[14.5px] text-[#f5f0e8]/90 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+                className="flex h-12 items-center justify-center gap-2 rounded-[var(--lj-radio-boton)] border border-[var(--lj-texto)]/20 text-[14.5px] text-[var(--lj-texto)]/90 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
               >
                 <Printer className="h-4 w-4" /> Guardar en PDF
               </button>
               <button
                 type="button"
                 onClick={() => setVista("lista")}
-                className="flex h-12 items-center justify-center gap-2 rounded-full border border-[rgba(245,240,232,0.2)] text-[14.5px] text-[#f5f0e8]/90 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+                className="flex h-12 items-center justify-center gap-2 rounded-[var(--lj-radio-boton)] border border-[var(--lj-texto)]/20 text-[14.5px] text-[var(--lj-texto)]/90 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
               >
                 <RotateCcw className="h-4 w-4" /> Cambiar algo
               </button>
             </div>
-            <p className="pt-2 text-center text-[12.5px] leading-relaxed text-[#f5f0e8]/45">
-              Prototipo: tus datos no se guardaron ni se mandaron. El precio lo calculó el sistema con la misma cuenta que usa un vendedor.
+            <p className="pt-2 text-center text-[12.5px] leading-relaxed text-[var(--lj-texto)]/45">
+              Prototipo: no se guardó ni se mandó nada. El precio es el mismo que calcula un vendedor.
             </p>
           </div>
         </div>
@@ -1257,14 +1544,15 @@ export default function ClientesPage() {
       <Drawer open={peajeAbierto} onOpenChange={setPeajeAbierto}>
         {/* La hoja se dibuja afuera del layout (portal): lleva su propia fuente. */}
         <DrawerContent
-          className={`${fuenteFiesta.variable} border-0 bg-[#f8f2e4] text-[#1a3a2a] data-[vaul-drawer-direction=bottom]:max-h-[92svh]`}
+          style={varsTema}
+          className={`${fuenteFiesta.variable} ${fuenteFiestaItalica.variable} border-0 bg-[var(--lj-papel)] text-[var(--lj-tinta)] data-[vaul-drawer-direction=bottom]:max-h-[92svh]`}
         >
           <div className="mx-auto w-full max-w-[480px] overflow-y-auto px-6 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-4">
-            <DrawerTitle className={`${serif} text-[28px] font-medium leading-tight text-[#1a3a2a]`}>
+            <DrawerTitle className={`${serif} text-[28px] font-medium leading-tight text-[var(--lj-tinta)]`}>
               ¿A nombre de quién lo preparamos?
             </DrawerTitle>
-            <DrawerDescription className="mt-2 text-[15px] leading-relaxed text-[#1a3a2a]/75">
-              Te mostramos el detalle completo y te congelamos este precio por {DIAS_PRECIO_CONGELADO} días.
+            <DrawerDescription className="mt-2 text-[15px] leading-relaxed text-[var(--lj-tinta)]/75">
+              Te congelamos el precio {DIAS_PRECIO_CONGELADO} días.
             </DrawerDescription>
             <form
               className="mt-5 space-y-4"
@@ -1306,25 +1594,25 @@ export default function ClientesPage() {
                   type="checkbox"
                   checked={contacto.acepta}
                   onChange={(e) => editarContacto("acepta", e.target.checked)}
-                  className="mt-0.5 h-5 w-5 shrink-0 accent-[#1a3a2a]"
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--lj-tinta)]"
                 />
                 <span>Acepto que Los Jazmines me contacte por WhatsApp o mail sobre este presupuesto.</span>
               </label>
               {erroresPeaje.acepta && <p className="text-[13px] text-[#9a3428]">{erroresPeaje.acepta}</p>}
               {errorServidor && (
-                <p className="rounded-xl bg-[#f6e1dd] px-4 py-3 text-[14px] text-[#7a2e24]" role="alert">
+                <p className="rounded-[var(--lj-radio-chico)] bg-[#f6e1dd] px-4 py-3 text-[14px] text-[#7a2e24]" role="alert">
                   {errorServidor}
                 </p>
               )}
               <button
                 type="submit"
                 disabled={enviando}
-                className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#1a3a2a] text-[16px] font-semibold text-[#f8f2e4] transition-opacity disabled:opacity-70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1a3a2a]/30"
+                className="flex h-14 w-full items-center justify-center gap-2 rounded-[var(--lj-radio-boton)] bg-[var(--lj-tinta)] text-[16px] font-semibold text-[var(--lj-papel)] transition-opacity disabled:opacity-70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-tinta)]/30"
               >
                 {enviando && <Loader2 className="h-5 w-5 animate-spin" />}
                 {enviando ? "Preparando tu presupuesto" : "Ver mi presupuesto"}
               </button>
-              <p className="text-center text-[12.5px] text-[#1a3a2a]/55">Prototipo: estos datos no se guardan ni se mandan.</p>
+              <p className="text-center text-[12.5px] text-[var(--lj-tinta)]/70">Prototipo: estos datos no se guardan ni se mandan.</p>
             </form>
           </div>
         </DrawerContent>
@@ -1336,62 +1624,55 @@ export default function ClientesPage() {
 function Paso({ titulo, ayuda, children }: { titulo: string; ayuda?: string; children: React.ReactNode }) {
   return (
     <section>
-      <h1 className={`${serif} text-[34px] font-medium leading-[1.04] tracking-[-0.01em] text-[#f8f2e4]`}>{titulo}</h1>
-      {ayuda && <p className="mt-2 text-[15px] leading-relaxed text-[#f5f0e8]/70">{ayuda}</p>}
+      <h1 className={`lj-titulo ${serif} text-[34px] font-medium leading-[1.04] tracking-[-0.01em] text-[var(--lj-titulo)]`}>{titulo}</h1>
+      {ayuda && <p className="mt-2 text-[15px] leading-relaxed text-[var(--lj-texto)]/70">{ayuda}</p>}
       <div className="mt-6">{children}</div>
     </section>
   )
 }
 
 /** "Sumaste la pantalla LED": aparece sobre la maqueta cuando algo se suma.
- *  Con el botón Jardín / Adentro abajo, va un poco más arriba. */
-function AvisoSumaste({ texto, arriba }: { texto: string; arriba?: boolean }) {
+ *  A pantalla completa va más arriba, para no tapar los controles de abajo. */
+function AvisoSumaste({ texto, grande }: { texto: string; grande?: boolean }) {
   return (
     <p
       role="status"
-      className={`lj-aviso pointer-events-none absolute ${arriba ? "bottom-[54px]" : "bottom-3"} left-5 flex max-w-[calc(100%-40px)] items-center gap-2 rounded-full bg-[#f8f2e4] px-3.5 py-1.5 text-[13.5px] font-medium text-[#1a3a2a] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.7)]`}
+      className={`lj-aviso pointer-events-none absolute left-5 flex items-center gap-2 rounded-full bg-[var(--lj-papel)] px-3.5 py-1.5 text-[13.5px] font-medium text-[var(--lj-tinta)] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.7)] ${
+        grande ? "top-[calc(env(safe-area-inset-top)+16px)] max-w-[calc(100%-40px)]" : "bottom-3 max-w-[calc(100%-84px)]"
+      }`}
     >
-      <Sparkles className="h-4 w-4 shrink-0 text-[#b08d2a]" aria-hidden="true" />
+      <Sparkles className="h-4 w-4 shrink-0 text-[var(--lj-oro)]" aria-hidden="true" />
       <span className="truncate">{texto}</span>
     </p>
   )
 }
 
-/** Ver la fiesta de la Casona en el jardín o adentro. Es solo el dibujo: no
- *  cambia el precio ni lo que se manda con el presupuesto. */
-function VerCasona({ vista, onCambiar, oculto }: { vista: VistaCasona; onCambiar: (v: VistaCasona) => void; oculto?: boolean }) {
-  const opciones: Array<{ valor: VistaCasona; texto: string; Icono: LucideIcon }> = [
-    { valor: "jardin", texto: "Jardín", Icono: Trees },
-    { valor: "adentro", texto: "Adentro", Icono: Armchair },
-  ]
+/** Lo que va sobre la maqueta a pantalla completa: en qué paso está, el total
+ *  y el botón para volver, todo abajo (donde llega el dedo). Con el celular
+ *  derecho, sugiere girarlo para verla más grande. */
+function ControlesGrande({ paso, total, onCerrar }: { paso: string; total: string | null; onCerrar: () => void }) {
   return (
-    <div
-      role="group"
-      aria-label="Ver la fiesta en el jardín o adentro"
-      aria-hidden={oculto || undefined}
-      className={`absolute bottom-3 right-4 flex rounded-full border border-[#f3cf7a]/35 bg-[#0d1d14]/80 p-0.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)] backdrop-blur-sm transition-opacity duration-300 ${
-        oculto ? "pointer-events-none opacity-0" : "opacity-100"
-      }`}
-    >
-      {opciones.map(({ valor, texto, Icono }) => {
-        const activa = vista === valor
-        return (
-          <button
-            key={valor}
-            type="button"
-            aria-pressed={activa}
-            tabIndex={oculto ? -1 : undefined}
-            onClick={() => onCambiar(valor)}
-            className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] ${
-              activa ? "bg-[#f3cf7a] text-[#0d1d14]" : "text-[#f5f0e8]/80 hover:text-[#f5f0e8]"
-            }`}
-          >
-            <Icono className="h-3.5 w-3.5" aria-hidden="true" />
-            {texto}
-          </button>
-        )
-      })}
-    </div>
+    <>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[var(--lj-fondo)]/90 to-transparent" />
+      <p className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+64px)] mx-auto flex w-fit items-center gap-2 rounded-full bg-[var(--lj-fondo)]/70 px-3.5 py-1.5 text-[13px] text-[var(--lj-texto)]/80 backdrop-blur-sm [@media(orientation:landscape)]:hidden">
+        <Smartphone className="h-4 w-4 rotate-90" aria-hidden="true" />
+        Girá el celular para verla más grande
+      </p>
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 px-[max(20px,env(safe-area-inset-left))] pb-[calc(env(safe-area-inset-bottom)+16px)]">
+        <div className="pointer-events-none min-w-0">
+          <p className="truncate text-[12.5px] text-[var(--lj-texto)]/65">{paso}</p>
+          {total && <p className={`${cifras} truncate text-[22px] font-semibold leading-tight tabular-nums text-[var(--lj-titulo)]`}>{total}</p>}
+          <p className="mt-0.5 text-[12px] text-[var(--lj-texto)]/50">Deslizá para girarla</p>
+        </div>
+        <button
+          type="button"
+          onClick={onCerrar}
+          className="flex h-12 shrink-0 items-center gap-2 rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] px-5 text-[15px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_30px_-8px_var(--lj-brillo)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
+        >
+          <Minimize2 className="h-4 w-4" aria-hidden="true" /> Seguir eligiendo
+        </button>
+      </div>
+    </>
   )
 }
 
@@ -1399,12 +1680,12 @@ function VerCasona({ vista, onCambiar, oculto }: { vista: VistaCasona; onCambiar
  *  el "+ $" (dorado) de lo que todavía se puede sumar. */
 function Aporte({ monto }: { monto: number }) {
   if (Math.abs(monto) < 1) return null
-  return <span className="text-[#f5f0e8]/70">{formatoPesos(monto)}</span>
+  return <span className="text-[var(--lj-texto)]/70">{formatoPesos(monto)}</span>
 }
 
 function Cargando() {
   return (
-    <div className="flex items-center gap-2.5 py-6 text-[15px] text-[#f5f0e8]/70">
+    <div className="flex items-center gap-2.5 py-6 text-[15px] text-[var(--lj-texto)]/70">
       <Loader2 className="h-5 w-5 animate-spin" /> Cargando los salones…
     </div>
   )
@@ -1428,7 +1709,7 @@ function Contador({
         onClick={() => onCambiar(Math.max(min, valor - 1))}
         disabled={valor <= min}
         aria-label={`Uno menos (${etiqueta})`}
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(245,240,232,0.22)] text-[#f5f0e8] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--lj-texto)]/22 text-[var(--lj-texto)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
       >
         <Minus className="h-4 w-4" />
       </button>
@@ -1439,7 +1720,7 @@ function Contador({
         type="button"
         onClick={() => onCambiar(valor + 1)}
         aria-label={`Uno más (${etiqueta})`}
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(245,240,232,0.22)] text-[#f5f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--lj-texto)]/22 text-[var(--lj-texto)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
       >
         <Plus className="h-4 w-4" />
       </button>
@@ -1460,7 +1741,7 @@ function SugerirSalon({
 }) {
   return (
     <div className="mt-1">
-      <p className="text-[#e8a39b]">Ese día {salonNombre} ya está reservado.</p>
+      <p className="text-[var(--lj-alerta)]">Ese día {salonNombre} ya está reservado.</p>
       {libres.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {libres.map((s) => (
@@ -1468,7 +1749,7 @@ function SugerirSalon({
               key={s.salon}
               type="button"
               onClick={() => onCambiar(s.salon)}
-              className="rounded-full bg-[#f3cf7a] px-4 py-2 text-[14px] font-semibold text-[#0d1d14] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#f3cf7a]/40"
+              className="rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] px-4 py-2 text-[14px] font-semibold text-[var(--lj-sobre-acento)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
               aria-label={`Cambiar a ${s.nombre}, libre el ${fechaLarga(fecha)}`}
             >
               {s.nombre} está libre: cambiar
@@ -1514,8 +1795,8 @@ function Campo({
         onChange={(e) => onCambiar(e.target.value)}
         aria-invalid={!!error}
         aria-describedby={error ? `${id}-error` : undefined}
-        className={`mt-1.5 h-12 w-full rounded-xl border bg-white/70 px-4 text-[16px] text-[#1a3a2a] placeholder:text-[#1a3a2a]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a3a2a]/40 ${
-          error ? "border-[#9a3428]" : "border-[#1a3a2a]/20"
+        className={`mt-1.5 h-12 w-full rounded-[var(--lj-radio-chico)] border bg-white/70 px-4 text-[16px] text-[var(--lj-tinta)] placeholder:text-[var(--lj-tinta)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-tinta)]/40 ${
+          error ? "border-[#9a3428]" : "border-[var(--lj-tinta)]/20"
         }`}
       />
       {error && (
