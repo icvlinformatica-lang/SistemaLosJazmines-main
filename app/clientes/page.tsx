@@ -6,9 +6,9 @@
 // 7 pasos (festejo, salón, fecha, invitados, menú, barra y detalles; 8 con la
 // Casona, que suma "¿Adentro o al aire libre?" después del salón) y ve el
 // total en vivo, sin el precio de cada cosa (MOSTRAR_DESGLOSE). Al final toca
-// "Quiero que se contacten conmigo", deja nombre, WhatsApp y mail ("el
-// peaje") y desde su presupuesto le escribe a Los Jazmines por WhatsApp con
-// todo lo que eligió.
+// "Solicitar presupuesto", deja nombre, WhatsApp y mail ("el peaje") y con
+// ese mismo toque se le abre el WhatsApp de Los Jazmines con todo lo que
+// eligió. Detrás queda su presupuesto.
 //
 // - El total en vivo sale de armarCotizacion con los precios del catálogo
 //   (/api/clientes/catalogo), igual que en /vendedor/cotizar. El presupuesto
@@ -193,6 +193,21 @@ const MS_MOSTRAR_LUGAR = 3600
  * borrado: con true vuelve todo.
  */
 const MOSTRAR_DESGLOSE = false
+
+/**
+ * Abre el link en otra pestaña igual que si se tocara un <a target="_blank">,
+ * el mismo camino que el botón de WhatsApp del presupuesto. Tiene que pasar
+ * en el mismo toque del usuario: si no, el navegador lo frena.
+ */
+function abrirEnOtraPestana(href: string) {
+  const a = document.createElement("a")
+  a.href = href
+  a.target = "_blank"
+  a.rel = "noopener noreferrer"
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
 
 /** "+ $ 120.000" / "− $ 30.000" / "sin costo extra". */
 function diferencia(d: number): string {
@@ -639,6 +654,38 @@ export default function ClientesPage() {
   const validoHasta = sumarDias(hoy, DIAS_PRECIO_CONGELADO)
   const platosElegidos = salon ? platosEnOrden(salon.menu, seleccion.recetas).map((m) => m.nombre) : []
   const barrasElegidas = salon ? salon.barras.filter((b) => barraIds.includes(b.id)).map((b) => b.nombre) : []
+
+  /** El mensaje para el WhatsApp de Los Jazmines: uno solo para la hoja y para el presupuesto. */
+  const mensajeWhatsApp = (serviciosMensaje: string[], totalMensaje: number) =>
+    textoWhatsAppCliente({
+      nombre: contacto.nombre,
+      tipoEvento,
+      fecha,
+      salon: salon?.nombre,
+      lugar: conLugar && lugar ? TEXTO_LUGAR[lugar] : null,
+      adultos,
+      ninos,
+      conCatering,
+      platos: platosElegidos,
+      barras: barrasElegidas,
+      servicios: serviciosMensaje,
+      total: totalMensaje,
+    })
+
+  // "Solicitar presupuesto" (pedido de Rodri del 19/10/2026: "así directamente
+  // ya hablan con el salón"). Con la hoja completa, el WhatsApp se abre en este
+  // mismo toque: si se esperara la respuesta del servidor, el navegador lo
+  // frenaría como ventana emergente. Por eso este mensaje lleva el total en
+  // vivo, que es la misma cuenta que repite el servidor. Detrás queda el
+  // presupuesto, con su botón de WhatsApp por si no se abrió.
+  const solicitarPresupuesto = () => {
+    if (!salon || enviando || !validarContacto()) return
+    const serviciosElegidos = serviciosFecha
+      .filter((s) => !s.incluido && s.servicioId in servicios)
+      .map((s) => servicioConCantidad({ ...s, cantidad: servicios[s.servicioId] ?? 1 }))
+    abrirEnOtraPestana(linkWhatsAppLosJazmines(mensajeWhatsApp(serviciosElegidos, total)))
+    void verPresupuesto()
+  }
 
   // Al elegir una fecha, que se vea el renglón de abajo (qué día es y si tiene
   // otro valor), que en el celular queda tapado por la barra del total.
@@ -1434,7 +1481,7 @@ export default function ClientesPage() {
                     onClick={() => setPeajeAbierto(true)}
                     className="mt-4 flex h-13 w-full items-center justify-center rounded-[var(--lj-radio-boton)] bg-[var(--lj-acento)] px-4 py-3.5 text-[16px] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_36px_-10px_var(--lj-brillo)] transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-acento)]/40"
                   >
-                    Quiero que se contacten conmigo
+                    Solicitar presupuesto
                   </button>
                 </div>
                 <button
@@ -1531,20 +1578,10 @@ export default function ClientesPage() {
             {/* Al WhatsApp de Los Jazmines, con todo lo que armó y el nombre del peaje. */}
             <a
               href={linkWhatsAppLosJazmines(
-                textoWhatsAppCliente({
-                  nombre: contacto.nombre,
-                  tipoEvento,
-                  fecha,
-                  salon: salon.nombre,
-                  lugar: conLugar && lugar ? TEXTO_LUGAR[lugar] : null,
-                  adultos,
-                  ninos,
-                  conCatering,
-                  platos: platosElegidos,
-                  barras: barrasElegidas,
-                  servicios: resumen.servicios.filter((s) => !s.incluido).map((s) => servicioConCantidad(s)),
-                  total: resumen.total,
-                }),
+                mensajeWhatsApp(
+                  resumen.servicios.filter((s) => !s.incluido).map((s) => servicioConCantidad(s)),
+                  resumen.total,
+                ),
               )}
               target="_blank"
               rel="noopener noreferrer"
@@ -1569,7 +1606,7 @@ export default function ClientesPage() {
               </button>
             </div>
             <p className="pt-2 text-center text-[12.5px] leading-relaxed text-[var(--lj-texto)]/45">
-              Prototipo: no se guardó ni se mandó nada. El precio es el mismo que calcula un vendedor.
+              Prototipo: no se guardó nada. El precio es el mismo que calcula un vendedor.
             </p>
           </div>
         </div>
@@ -1584,7 +1621,7 @@ export default function ClientesPage() {
         >
           <div className="mx-auto w-full max-w-[480px] overflow-y-auto px-6 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-4">
             <DrawerTitle className={`${serif} text-[28px] font-medium leading-tight text-[var(--lj-tinta)]`}>
-              ¿Cómo te contactamos?
+              ¿A nombre de quién lo preparamos?
             </DrawerTitle>
             <DrawerDescription className="mt-2 text-[15px] leading-relaxed text-[var(--lj-tinta)]/75">
               Te congelamos el precio {DIAS_PRECIO_CONGELADO} días.
@@ -1593,7 +1630,7 @@ export default function ClientesPage() {
               className="mt-5 space-y-4"
               onSubmit={(e) => {
                 e.preventDefault()
-                verPresupuesto()
+                solicitarPresupuesto()
               }}
               noValidate
             >
@@ -1644,10 +1681,12 @@ export default function ClientesPage() {
                 disabled={enviando}
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-[var(--lj-radio-boton)] bg-[var(--lj-tinta)] text-[16px] font-semibold text-[var(--lj-papel)] transition-opacity disabled:opacity-70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--lj-tinta)]/30"
               >
-                {enviando && <Loader2 className="h-5 w-5 animate-spin" />}
-                {enviando ? "Preparando tu presupuesto" : "Quiero que me contacten"}
+                {enviando ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageCircle className="h-5 w-5 shrink-0" />}
+                {enviando ? "Preparando tu presupuesto" : "Solicitar presupuesto"}
               </button>
-              <p className="text-center text-[12.5px] text-[var(--lj-tinta)]/70">Prototipo: estos datos no se guardan ni se mandan.</p>
+              <p className="text-center text-[12.5px] text-[var(--lj-tinta)]/70">
+                Se abre WhatsApp con lo que armaste. Prototipo: no se guarda nada.
+              </p>
             </form>
           </div>
         </DrawerContent>

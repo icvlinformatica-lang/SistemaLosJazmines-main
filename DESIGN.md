@@ -172,11 +172,14 @@ probar a 390 px sin scroll horizontal).
   cada toque. Lo de cada cosa está escondido con `MOSTRAR_DESGLOSE = false`
   en `app/clientes/page.tsx`: con `true` vuelve a la derecha de cada opción
   (en dorado lo que se puede sumar, "+ $ 120.000", y en crema lo que ya suma).
-- **El final es un pedido de contacto**: "Tu fiesta está lista" termina con
-  el botón "Quiero que se contacten conmigo", que abre la hoja con nombre,
-  WhatsApp y mail. El presupuesto tiene un solo botón principal, "Escribinos
-  por WhatsApp" (corto, para que entre en un renglón en el celular), que abre
-  el chat de Los Jazmines con el mensaje ya escrito.
+- **El final lleva directo al salón** (pedido de Rodri del 19/10/2026): "Tu
+  fiesta está lista" termina con el botón "Solicitar presupuesto", que abre
+  la hoja con nombre, WhatsApp y mail. La hoja tiene el mismo botón, con el
+  ícono de WhatsApp: al tocarlo se abre el chat de Los Jazmines con el
+  mensaje ya escrito, y la letra chica lo avisa ("Se abre WhatsApp con lo que
+  armaste"). Detrás queda el presupuesto, con un solo botón principal,
+  "Escribinos por WhatsApp" (corto, para que entre en un renglón en el
+  celular), por si el chat no se abrió.
 
 ---
 
