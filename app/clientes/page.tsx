@@ -5,7 +5,9 @@
 // Es lo que va a ver un cliente que llega desde Instagram: arma su fiesta en
 // 7 pasos (festejo, salón, fecha, invitados, menú, barra y detalles; 8 con la
 // Casona, que suma "¿Adentro o al aire libre?" después del salón) y ve el
-// total en vivo, sin el precio de cada cosa (MOSTRAR_DESGLOSE). Al final toca
+// precio sugerido en vivo, sin el precio de cada cosa (MOSTRAR_DESGLOSE). El
+// final depende de la forma de pago y la fecha la confirma un vendedor; ya
+// no se congela el precio (MOSTRAR_PRECIO_CONGELADO). Al final toca
 // "Solicitar presupuesto", deja nombre, WhatsApp y mail ("el peaje") y con
 // ese mismo toque se le abre el WhatsApp de Los Jazmines con todo lo que
 // eligió. Detrás queda su presupuesto.
@@ -80,6 +82,7 @@ import {
 } from "@/lib/cotizador-salon"
 import {
   DIAS_PRECIO_CONGELADO,
+  FORMAS_DE_PAGO,
   MAX_BARRAS,
   TIPOS_EVENTO_CLIENTE,
   cotizarCliente,
@@ -193,6 +196,14 @@ const MS_MOSTRAR_LUGAR = 3600
  * borrado: con true vuelve todo.
  */
 const MOSTRAR_DESGLOSE = false
+
+/**
+ * Pedido de Rodri del 19/10/2026: se saca lo de congelar el precio 7 días. En
+ * su lugar se dice que es un precio sugerido, que el final depende de la forma
+ * de pago (FORMAS_DE_PAGO) y que la fecha la confirma un vendedor. Escondido y
+ * no borrado: con true vuelve el precio congelado.
+ */
+const MOSTRAR_PRECIO_CONGELADO = false
 
 /**
  * Abre el link en otra pestaña igual que si se tocara un <a target="_blank">,
@@ -1140,6 +1151,10 @@ export default function ClientesPage() {
                     ) : (
                       <p className="mt-1 text-[var(--lj-texto)]/70">Libre en {salon.nombre}</p>
                     )}
+                    {/* Pedido de Rodri del 19/10/2026: elegirla acá no la guarda. */}
+                    {!fechaOcupada && (
+                      <p className="mt-1 text-[13px] text-[var(--lj-texto)]/55">Queda reservada cuando la confirma un vendedor.</p>
+                    )}
                   </div>
                 )}
               </Paso>
@@ -1466,16 +1481,37 @@ export default function ClientesPage() {
                   ))}
                 </ul>
                 <div className="mt-6 rounded-[var(--lj-radio)] bg-[var(--lj-elegido)] p-5">
-                  <p className="text-[13.5px] text-[var(--lj-texto)]/65">Total estimado</p>
+                  <p className="text-[13.5px] text-[var(--lj-texto)]/65">Precio sugerido</p>
                   <p className={`${cifras} mt-1 text-[40px] font-semibold leading-none tabular-nums text-[var(--lj-titulo)]`}>
                     {formatoPesos(total)}
                   </p>
                   {MOSTRAR_DESGLOSE && comensales > 0 && (
                     <p className="mt-2 text-[13.5px] tabular-nums text-[var(--lj-texto)]/60">{formatoPesos(total / comensales)} por invitado</p>
                   )}
-                  <p className="mt-4 text-[14.5px] leading-relaxed text-[var(--lj-texto)]/80">
-                    Dejá tus datos y te congelamos el precio {DIAS_PRECIO_CONGELADO} días.
-                  </p>
+                  {MOSTRAR_PRECIO_CONGELADO ? (
+                    <p className="mt-4 text-[14.5px] leading-relaxed text-[var(--lj-texto)]/80">
+                      Dejá tus datos y te congelamos el precio {DIAS_PRECIO_CONGELADO} días.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="mt-4 text-[14.5px] leading-relaxed text-[var(--lj-texto)]/80">
+                        El precio final depende de cómo quieras pagarlo:
+                      </p>
+                      <ul aria-label="Formas de pago" className="mt-2.5 flex flex-wrap gap-2">
+                        {FORMAS_DE_PAGO.map((forma) => (
+                          <li
+                            key={forma}
+                            className="rounded-[var(--lj-radio-boton)] border border-[var(--lj-borde-elegido)]/50 px-3 py-1.5 text-[13.5px] text-[var(--lj-texto)]/85"
+                          >
+                            {forma}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-5 text-[14.5px] leading-relaxed text-[var(--lj-texto)]/80">
+                        Las fechas se van rápido: un vendedor te confirma la tuya.
+                      </p>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPeajeAbierto(true)}
@@ -1519,7 +1555,7 @@ export default function ClientesPage() {
                   <div className="min-w-0 flex-1">
                     {salon ? (
                       <>
-                        <p className="text-[12px] text-[var(--lj-texto)]/60">Total estimado</p>
+                        <p className="text-[12px] text-[var(--lj-texto)]/60">Precio sugerido</p>
                         <TotalAnimado
                           valor={total}
                           formato={formatoPesos}
@@ -1527,7 +1563,7 @@ export default function ClientesPage() {
                         />
                       </>
                     ) : (
-                      <p className="text-[13px] leading-snug text-[var(--lj-texto)]/60">El total aparece cuando elijas el salón.</p>
+                      <p className="text-[13px] leading-snug text-[var(--lj-texto)]/60">El precio aparece cuando elijas el salón.</p>
                     )}
                   </div>
                   <button
@@ -1538,7 +1574,7 @@ export default function ClientesPage() {
                       falta ? "bg-[var(--lj-acento)]/45 text-[var(--lj-sobre-acento)]/70" : "bg-[var(--lj-acento)] text-[var(--lj-sobre-acento)]"
                     }`}
                   >
-                    {paso === PASOS.length - 1 ? "Ver total" : "Siguiente"}
+                    {paso === PASOS.length - 1 ? "Ver precio" : "Siguiente"}
                   </button>
                 </div>
               </div>
@@ -1568,7 +1604,7 @@ export default function ClientesPage() {
               resumen={resumen}
               platos={platosElegidos}
               barras={barrasElegidas}
-              validoHasta={validoHasta}
+              validoHasta={MOSTRAR_PRECIO_CONGELADO ? validoHasta : null}
               disponible={fecha ? !(ocupadas[salon.salon] ?? []).includes(fecha) : null}
               ilustracion={fotoMaqueta}
               desglose={MOSTRAR_DESGLOSE}
@@ -1624,7 +1660,7 @@ export default function ClientesPage() {
               ¿A nombre de quién lo preparamos?
             </DrawerTitle>
             <DrawerDescription className="mt-2 text-[15px] leading-relaxed text-[var(--lj-tinta)]/75">
-              Te congelamos el precio {DIAS_PRECIO_CONGELADO} días.
+              {MOSTRAR_PRECIO_CONGELADO ? `Te congelamos el precio ${DIAS_PRECIO_CONGELADO} días.` : "Te asesoramos sin compromiso."}
             </DrawerDescription>
             <form
               className="mt-5 space-y-4"

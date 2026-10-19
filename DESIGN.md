@@ -172,6 +172,16 @@ probar a 390 px sin scroll horizontal).
   cada toque. Lo de cada cosa está escondido con `MOSTRAR_DESGLOSE = false`
   en `app/clientes/page.tsx`: con `true` vuelve a la derecha de cada opción
   (en dorado lo que se puede sumar, "+ $ 120.000", y en crema lo que ya suma).
+- **Precio sugerido** (pedido de Rodri del 19/10/2026): ese único monto se
+  llama "Precio sugerido" en la barra de abajo, en "Tu fiesta está lista" y en
+  el presupuesto. Debajo se explica que el final depende de cómo quiera
+  pagarlo, con las tres formas de pago (cuotas fijas, cuotas con IPC y pago
+  total) como etiquetas que no se tocan, iguales a las de "Ya viene con el
+  salón". En el presupuesto va en la caja oscura, con el ícono de billetera.
+  La fecha: "Queda reservada cuando la confirma un vendedor", al elegirla y en
+  el presupuesto. No se congela el precio (`MOSTRAR_PRECIO_CONGELADO = false`):
+  en su lugar, "Las fechas se van rápido: un vendedor te confirma la tuya" y,
+  en la hoja, "Te asesoramos sin compromiso".
 - **El final lleva directo al salón** (pedido de Rodri del 19/10/2026): "Tu
   fiesta está lista" termina con el botón "Solicitar presupuesto", que abre
   la hoja con nombre, WhatsApp y mail. La hoja tiene el mismo botón, con el

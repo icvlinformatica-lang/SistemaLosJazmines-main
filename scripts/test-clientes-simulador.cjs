@@ -399,8 +399,8 @@ test("mensaje de WhatsApp: todo lo que armó, con el nombre del formulario, y de
       "Me gustaría con catering: cazuela de pollo, bondiola braseada y casata.",
       "Barra: bebida de mesa y barra clásica.",
       "Y los siguientes servicios:\n- Pantalla LED\n- Plataforma 360 (2 horas)\n- Letras luminosas (3)",
-      `El simulador me dio un total estimado de ${sim.formatoPesos(11178050)}.`,
-      "¿Me contactan para avanzar? ¡Gracias!",
+      `El simulador me dio un precio sugerido de ${sim.formatoPesos(11178050)}.`,
+      "¿Me cuentan las formas de pago para avanzar? ¡Gracias!",
     ].join("\n"),
   )
   // Un solo monto: el total (nunca el precio de cada cosa).
@@ -426,8 +426,8 @@ test("mensaje de WhatsApp: todo lo que armó, con el nombre del formulario, y de
       "Hola, soy Juan.",
       "Quiero festejar un evento empresarial el viernes 13 de noviembre de 2026 en Jazmines Quinta para 80 invitados.",
       "Me gustaría sin catering.",
-      `El simulador me dio un total estimado de ${sim.formatoPesos(5400000)}.`,
-      "¿Me contactan para avanzar? ¡Gracias!",
+      `El simulador me dio un precio sugerido de ${sim.formatoPesos(5400000)}.`,
+      "¿Me cuentan las formas de pago para avanzar? ¡Gracias!",
     ].join("\n"),
   )
   // Con catering pero sin platos todavía.
@@ -444,6 +444,12 @@ test("mensaje de WhatsApp: qué se festeja, dicho por quien escribe", () => {
   assert.equal(sim.queSeFesteja(null), "una fiesta")
   // Todos los festejos que se ofrecen tienen su frase.
   for (const t of sim.TIPOS_EVENTO_CLIENTE) assert.ok(sim.queSeFesteja(t).length > 0, t)
+})
+
+test("formas de pago: las tres que ofrece Los Jazmines, también dichas en una frase", () => {
+  assert.deepEqual([...sim.FORMAS_DE_PAGO], ["Cuotas fijas", "Cuotas con IPC", "Pago total"])
+  // En medio de una frase: minúscula al empezar, pero la sigla IPC queda igual.
+  assert.equal(sim.formasDePagoEnFrase(), "cuotas fijas, cuotas con IPC o pago total")
 })
 
 test("link de WhatsApp: al número de Los Jazmines y con el mensaje entero", () => {

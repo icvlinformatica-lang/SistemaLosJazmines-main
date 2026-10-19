@@ -40,8 +40,20 @@ import { numeroWhatsApp } from "./telefono-whatsapp"
 /** Misma lista que el cotizador del vendedor (los textos se guardan tal cual). */
 export const TIPOS_EVENTO_CLIENTE = ["Casamiento", "Cumpleaños de 15", "Empresarial", "Cumpleaños", "Bautismo", "Otro"] as const
 
-/** Días que se congela el precio después de dejar los datos (decisión del 18/10/2026). */
+/** Días que se congela el precio después de dejar los datos (decisión del 18/10/2026).
+ *  Desde el 19/10/2026 la vista de Clientes no lo muestra (MOSTRAR_PRECIO_CONGELADO). */
 export const DIAS_PRECIO_CONGELADO = 7
+
+/** Las formas de pago que ofrece Los Jazmines (dicho por Rodri el 19/10/2026).
+ *  La vista de Clientes las nombra junto al precio: es un precio sugerido y el
+ *  final depende de cuál elija el cliente con un vendedor. */
+export const FORMAS_DE_PAGO = ["Cuotas fijas", "Cuotas con IPC", "Pago total"] as const
+
+/** "cuotas fijas, cuotas con IPC o pago total", para ir en medio de una frase. */
+export function formasDePagoEnFrase(): string {
+  const partes = FORMAS_DE_PAGO.map((f) => f.charAt(0).toLocaleLowerCase("es") + f.slice(1))
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} o ${partes[partes.length - 1]}` : partes.join("")
+}
 
 /** Hasta cuándo se muestran fechas en el calendario. */
 export const MESES_CALENDARIO = 24
@@ -582,7 +594,8 @@ export function queSeFesteja(tipoEvento: string | null | undefined): string {
  * El mensaje que el cliente le manda a Los Jazmines por WhatsApp con todo lo
  * que armó (pedido de Rodri del 19/10/2026): quién es, qué festeja, cuándo,
  * dónde y para cuántos, con o sin catering (y qué platos), la barra, los
- * servicios que sumó y el total estimado. Nunca el precio de cada cosa.
+ * servicios que sumó y el precio sugerido. Nunca el precio de cada cosa. Cierra
+ * preguntando por las formas de pago, porque de eso depende el precio final.
  */
 export function textoWhatsAppCliente(d: {
   /** El de "Nombre y apellido", tal cual lo escribió. */
@@ -634,8 +647,8 @@ export function textoWhatsAppCliente(d: {
   const servicios = (d.servicios ?? []).filter(Boolean)
   if (servicios.length) lineas.push(["Y los siguientes servicios:", ...servicios.map((s) => `- ${s}`)].join("\n"))
 
-  if (d.total) lineas.push(`El simulador me dio un total estimado de ${formatoPesos(d.total)}.`)
-  lineas.push("¿Me contactan para avanzar? ¡Gracias!")
+  if (d.total) lineas.push(`El simulador me dio un precio sugerido de ${formatoPesos(d.total)}.`)
+  lineas.push("¿Me cuentan las formas de pago para avanzar? ¡Gracias!")
   return lineas.join("\n")
 }
 

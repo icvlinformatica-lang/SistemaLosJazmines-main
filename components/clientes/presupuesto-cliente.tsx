@@ -1,9 +1,10 @@
 "use client"
 
-import { CalendarCheck, CalendarX, Snowflake } from "lucide-react"
+import { CalendarCheck, CalendarX, Snowflake, Wallet } from "lucide-react"
 import { TEXTO_INCLUIDO_EN_TODOS, yaIncluidoEnTodos } from "@/lib/clientes-maqueta"
 import {
   fechaLarga,
+  formasDePagoEnFrase,
   formatoPesos,
   nombreEnFrase,
   servicioConCantidad,
@@ -11,11 +12,14 @@ import {
 } from "@/lib/clientes-simulador"
 
 /** El presupuesto como una tarjeta de papel, al estilo de una invitación:
- *  arriba para quién y qué se festeja; en el medio, el total; abajo, qué
- *  incluye, hasta cuándo vale el precio y si la fecha está libre. Con
- *  `desglose`, también cada rubro con su precio (con puntos guía, como en una
- *  carta) y el precio por invitado; la vista de Clientes no lo muestra desde
- *  el 19/10/2026 (solo el total). Solo precios: nunca costos. */
+ *  arriba para quién y qué se festeja; en el medio, el precio sugerido; abajo,
+ *  qué incluye, las formas de pago (el precio final depende de cuál elija) y si
+ *  la fecha está libre (se reserva cuando la confirma un vendedor). Con
+ *  `validoHasta`, también hasta cuándo vale el precio; la vista de Clientes no
+ *  lo pasa desde el 19/10/2026. Con `desglose`, también cada rubro con su
+ *  precio (con puntos guía, como en una carta) y el precio por invitado; la
+ *  vista de Clientes no lo muestra desde el 19/10/2026 (solo el total). Solo
+ *  precios: nunca costos. */
 export function PresupuestoCliente({
   nombre,
   tipoEvento,
@@ -43,7 +47,8 @@ export function PresupuestoCliente({
   resumen: ResumenSimulacion
   platos: string[]
   barras: string[]
-  validoHasta: string
+  /** Hasta cuándo vale el precio; sin esto no se muestra. */
+  validoHasta?: string | null
   /** null = no se sabe (no se pudo consultar). */
   disponible: boolean | null
   /** Foto de la maqueta 3D con lo que eligió (si el navegador la pudo dibujar). */
@@ -107,7 +112,7 @@ export function PresupuestoCliente({
 
       <div className={`${desglose ? "mt-5" : "mt-7"} border-t border-[var(--lj-oro)]/60 pt-4`}>
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[15px] font-medium">Total</span>
+          <span className="text-[15px] font-medium">Precio sugerido</span>
           <span className="font-[family-name:var(--lj-letra-titulo)] [font-style:var(--lj-estilo-titulo)] text-[32px] font-semibold leading-none tabular-nums">
             {formatoPesos(resumen.total)}
           </span>
@@ -163,11 +168,20 @@ export function PresupuestoCliente({
 
       <div className="mt-7 space-y-2.5">
         <p className="flex items-start gap-2.5 rounded-[var(--lj-radio-chico)] bg-[var(--lj-tinta)] px-4 py-3 text-[14px] leading-snug text-[var(--lj-papel)]">
-          <Snowflake className="mt-0.5 h-4 w-4 shrink-0 text-[var(--lj-acento)]" aria-hidden="true" />
+          <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-[var(--lj-acento)]" aria-hidden="true" />
           <span>
-            Precio congelado hasta el <span className="font-medium">{fechaLarga(validoHasta, false)}</span>.
+            <span className="font-medium">Es un precio sugerido.</span> El final lo definís con un vendedor según cómo
+            quieras pagarlo: {formasDePagoEnFrase()}.
           </span>
         </p>
+        {validoHasta && (
+          <p className="flex items-start gap-2.5 rounded-[var(--lj-radio-chico)] bg-[var(--lj-tinta)] px-4 py-3 text-[14px] leading-snug text-[var(--lj-papel)]">
+            <Snowflake className="mt-0.5 h-4 w-4 shrink-0 text-[var(--lj-acento)]" aria-hidden="true" />
+            <span>
+              Precio congelado hasta el <span className="font-medium">{fechaLarga(validoHasta, false)}</span>.
+            </span>
+          </p>
+        )}
         {disponible !== null && fecha && (
           <p
             className={`flex items-start gap-2.5 rounded-[var(--lj-radio-chico)] px-4 py-3 text-[14px] leading-snug ${
@@ -181,7 +195,7 @@ export function PresupuestoCliente({
             )}
             <span>
               {disponible
-                ? `La fecha está libre en ${salonNombre}.`
+                ? `La fecha está libre en ${salonNombre}. Queda reservada cuando la confirma un vendedor.`
                 : `Esa fecha se reservó recién en ${salonNombre}. Escribinos y te ayudamos a elegir otra.`}
             </span>
           </p>
