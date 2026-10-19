@@ -62,10 +62,12 @@ export const Maqueta3D = forwardRef<
     onFalla?: () => void
     /** Un toque corto sobre la maqueta (no un arrastre). */
     onTocar?: () => void
+    /** El fondo de la página (el estilo del festejo): la niebla y la foto lo usan. */
+    fondo?: string
     /** Lo que va encima de la maqueta (la guirnalda de pasos, avisos). */
     children?: ReactNode
   }
->(function Maqueta3D({ estado, foco, descripcion, className, onFalla, onTocar, children }, ref) {
+>(function Maqueta3D({ estado, foco, descripcion, className, onFalla, onTocar, fondo, children }, ref) {
   const caja = useRef<HTMLDivElement>(null)
   const exterior = useRef<HTMLDivElement>(null)
   const toque = useRef<{ x: number; y: number; t: number; id: number } | null>(null)
@@ -134,6 +136,10 @@ export const Maqueta3D = forwardRef<
   useEffect(() => {
     if (listo) motor?.actualizar(estado, focoValido(foco))
   }, [listo, estado, foco])
+
+  useEffect(() => {
+    if (listo && fondo) motor?.setFondo(fondo)
+  }, [listo, fondo])
 
   useImperativeHandle(ref, () => ({ foto: () => (listo && motor ? motor.foto() : null), elemento: () => exterior.current }), [listo])
 

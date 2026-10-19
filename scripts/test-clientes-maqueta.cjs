@@ -311,3 +311,26 @@ test("avisos del lugar: la Casona muestra la pileta y la casa; la Quinta, su fre
   assert.deepEqual(maq.novedades(jardin, adentro), [])
   assert.deepEqual(maq.novedades(quinta, jardin), [])
 })
+
+test("tarjeta del salón en pocas palabras: rasgos con ícono y lo incluido una sola vez", () => {
+  assert.deepEqual(maq.rasgosCortos("Casona").map((r) => r.icono), ["aire-libre", "pileta", "casa", "estacionamiento"])
+  assert.deepEqual(maq.rasgosCortos("Quinta").map((r) => r.texto), ["Patio", "Estacionamiento"])
+  assert.deepEqual(maq.rasgosCortos("Salon").map((r) => r.texto), ["Salón cerrado"])
+  assert.deepEqual(maq.rasgosCortos("Salon 4"), [])
+  assert.deepEqual(maq.rasgosCortos(null), [])
+  // Lo que traen todos se dice una vez; en cada tarjeta, solo lo de más.
+  const r = maq.incluidosComunes([
+    ["DJ, SONIDO, LUCES Y HUMO", "MESAS, SILLAS, VAJILLA Y MANTELERÍA", "SUITE", "DECORACIÓN"],
+    ["DJ, SONIDO, LUCES Y HUMO", "SUITE 2026", "CABINA DE FOTOS"],
+  ])
+  assert.deepEqual(r.comunes, [...maq.INCLUIDO_EN_TODOS, "SUITE"])
+  assert.deepEqual(r.extra, [[], ["CABINA DE FOTOS"]])
+  assert.deepEqual(maq.incluidosComunes([]), { comunes: maq.INCLUIDO_EN_TODOS, extra: [] })
+  assert.equal(maq.enLista(["DJ", "sonido", "suite"]), "DJ, sonido y suite")
+})
+
+test("lo empresarial también es sobrio en la maqueta (sin el verde de la marca)", () => {
+  assert.ok(!maq.paletaFestejo("Empresarial").includes("#2f8f5b"))
+  assert.deepEqual(maq.paletaFestejo("Empresarial"), ["#c8d5e2", "#f6f8fa", "#4d6681"])
+})
+

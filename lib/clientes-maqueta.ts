@@ -145,7 +145,8 @@ const PALETAS: Record<string, string[]> = {
   Casamiento: ["#f8f2e4", "#e9d8b4", "#c9a227"],
   "Cumpleaños de 15": ["#e8a3b5", "#f3cf7a", "#f8f2e4"],
   Cumpleaños: ["#f3cf7a", "#2f8f5b", "#e8a3b5", "#f8f2e4"],
-  Empresarial: ["#2f8f5b", "#f8f2e4", "#c9a227"],
+  // Sobrio, como su estilo en la pantalla (lib/clientes-tema.ts): plata, blanco y acero.
+  Empresarial: ["#c8d5e2", "#f6f8fa", "#4d6681"],
   Bautismo: ["#f8f2e4", "#b9d3e8", "#e9d8b4"],
 }
 const PALETA_FIESTA = ["#f3cf7a", "#f8f2e4", "#2f8f5b"]
@@ -238,6 +239,27 @@ export function rasgosSalon(clave: string | null | undefined): string | null {
   return RASGOS[clave ?? ""] ?? null
 }
 
+/** Lo mismo que rasgosSalon, en pocas palabras y con su ícono, para la tarjeta
+ *  del salón en el celular (pedido de Rodri del 19/10/2026: "hay mucho
+ *  texto"). Cada `icono` lo dibuja la pantalla. */
+export type IconoRasgo = "aire-libre" | "pileta" | "casa" | "estacionamiento" | "patio" | "cerrado"
+const RASGOS_CORTOS: Record<string, Array<{ icono: IconoRasgo; texto: string }>> = {
+  Casona: [
+    { icono: "aire-libre", texto: "Aire libre o adentro" },
+    { icono: "pileta", texto: "Pileta" },
+    { icono: "casa", texto: "Casa para quedarse" },
+    { icono: "estacionamiento", texto: "Estacionamiento" },
+  ],
+  Quinta: [
+    { icono: "patio", texto: "Patio" },
+    { icono: "estacionamiento", texto: "Estacionamiento" },
+  ],
+  Salon: [{ icono: "cerrado", texto: "Salón cerrado" }],
+}
+export function rasgosCortos(clave: string | null | undefined): Array<{ icono: IconoRasgo; texto: string }> {
+  return RASGOS_CORTOS[clave ?? ""] ?? []
+}
+
 // ── Lo que viene en todos los salones ───────────────────────────────────────
 
 /** Lo que incluyen los tres salones, dicho por el dueño el 18/10/2026. Es lo
@@ -253,6 +275,27 @@ const PALABRAS_INCLUIDAS = new Set(["DJ", "SONIDO", "LUCES", "LUZ", "HUMO", "VAJ
 export function yaIncluidoEnTodos(nombre: string | null | undefined): boolean {
   const palabras = normalizar(nombre).split(/[^A-Z0-9]+/).filter(Boolean)
   return palabras.length > 0 && palabras.every((w) => PALABRAS_INCLUIDAS.has(w))
+}
+
+/**
+ * Lo incluido se dice una sola vez para todos los salones de la lista, y en
+ * cada tarjeta solo lo que trae de más. `incluidosPorSalon` tiene, por salón,
+ * los nombres de los servicios incluidos del catálogo (como vienen).
+ * - `comunes`: lo de INCLUIDO_EN_TODOS más lo del catálogo que traen todos.
+ * - `extra[i]`: lo que trae el salón i y no todos.
+ */
+export function incluidosComunes(incluidosPorSalon: string[][]): { comunes: string[]; extra: string[][] } {
+  const propios = incluidosPorSalon.map((lista) => lista.filter((n) => !yaIncluidoEnTodos(n)))
+  // Sin mayúsculas, tildes ni el año del final ("SUITE 2026" = "Suite").
+  const clave = (n: string) => normalizar(n)
+  const enTodos = propios.length
+    ? propios[0].filter((n) => propios.every((lista) => lista.some((m) => clave(m) === clave(n))))
+    : []
+  const comunesClave = new Set(enTodos.map(clave))
+  return {
+    comunes: [...INCLUIDO_EN_TODOS, ...enTodos],
+    extra: propios.map((lista) => lista.filter((n) => !comunesClave.has(clave(n)))),
+  }
 }
 
 // ── Mesas ───────────────────────────────────────────────────────────────────
@@ -400,7 +443,8 @@ export function estadoMuestra(): EstadoMaqueta {
   }
 }
 
-function enLista(partes: string[]): string {
+/** "a, b y c". */
+export function enLista(partes: string[]): string {
   if (partes.length <= 1) return partes.join("")
   return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`
 }

@@ -246,6 +246,9 @@ export class MotorMaqueta {
   private cartel: Cartel | null = null
   private festejo: Festejo | null = null
   private animaciones: Animacion[] = []
+  /** La noche detrás de la maqueta: el fondo del estilo del festejo
+   *  (lib/clientes-tema.ts). La usan la niebla del horizonte y la foto. */
+  private noche = NOCHE.clone()
 
   constructor(op: OpcionesMotor) {
     this.reducido = op.reducido
@@ -964,6 +967,20 @@ export class MotorMaqueta {
 
   /** Una foto de la maqueta (JPG) para el presupuesto: siempre desde el mismo
    *  ángulo lindo, de tres cuartos, con la isla entera (no en medio del giro). */
+  /** Cambia el color de la noche (al elegir otro festejo). */
+  setFondo(color: string) {
+    const nuevo = new THREE.Color()
+    try {
+      nuevo.set(color)
+    } catch {
+      return
+    }
+    if (nuevo.equals(this.noche)) return
+    this.noche.copy(nuevo)
+    ;(this.escena.fog as THREE.Fog).color.copy(nuevo)
+    this.sucio = true
+  }
+
   foto(): string | null {
     try {
       const casona = !!this.ambiente?.casona
@@ -992,7 +1009,7 @@ export class MotorMaqueta {
       fog.far = d * 2.6
       const color = this.renderer.getClearColor(new THREE.Color())
       const alfa = this.renderer.getClearAlpha()
-      this.renderer.setClearColor(NOCHE, 1)
+      this.renderer.setClearColor(this.noche, 1)
       c.updateMatrixWorld()
       this.entorno?.pieza.cortar?.(c.position, 0, true)
       this.renderer.render(this.escena, c)

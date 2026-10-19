@@ -96,9 +96,28 @@ probar a 390 px sin scroll horizontal).
   `#1a3a2a` (el verde de la marca) con borde dorado `#c9a227`, luz
   `#f3cf7a` para lo que se puede tocar y para el total, crema `#f5f0e8` para
   el texto. El presupuesto va en papel `#f8f2e4` con tinta `#1a3a2a`, como
-  una invitación.
+  una invitación. Ese es el estilo de la marca ("jardín"); cada festejo tiene
+  el suyo (abajo). Los colores nunca van fijos en la pantalla: son variables
+  `--lj-…` que salen de `lib/clientes-tema.ts`.
 - **Letra**: Bodoni Moda (`app/clientes/fuentes`, licencia OFL) solo para
   títulos y montos; el resto, la letra del sistema.
+- **Un estilo por festejo** (`lib/clientes-tema.ts`, pedido del 19/10/2026):
+  la pantalla es la misma, cambia el ánimo, apenas se toca el festejo y con un
+  pasaje suave de colores.
+  - **Cumpleaños de 15, femenino**: ciruela de noche y rosa, los títulos en la
+    cursiva de Bodoni Moda (baja solo con ese festejo) y todo más redondo.
+  - **Casamiento, formal**: negro cálido, marfil y champagne, esquinas justas
+    y una línea fina bajo cada título, como una invitación.
+  - **Empresarial, sobrio**: grafito y plata, títulos y montos en la letra del
+    sistema (Geist), esquinas apenas redondeadas y nada que brille.
+  - **Bautismo, suave**: azul de noche y celeste.
+  - Cumpleaños, Otro y antes de elegir: el de la marca.
+  Todo es de noche, como la maqueta; el papel del presupuesto también cambia.
+  `test-clientes-tema` controla que en cada estilo el texto se lea (AA), y por
+  eso el texto apagado nunca baja de 60 %.
+- **Poco texto**: cada paso tiene su título y, como mucho, una línea. Lo que
+  se puede decir con un ícono va con ícono; lo que es igual para todos los
+  salones se dice una sola vez; lo secundario se pliega.
 - **Lo memorable es una sola cosa**: la maqueta 3D de la fiesta de noche
   (`components/clientes/maqueta/`), que se arma sola con cada elección. Es
   el juego: la persona ve crecer su fiesta. La guirnalda de luces sigue siendo
@@ -135,7 +154,9 @@ probar a 390 px sin scroll horizontal).
 - **Las tarjetas de los salones**: el nombre comercial (Jazmines Salón,
   Jazmines Casona, Jazmines Quinta, en ese orden) va solo en su renglón y
   abajo la capacidad, con el ícono de personas, porque es lo primero que se
-  compara; después, lo que tiene afuera y lo que incluye.
+  compara; después, lo que tiene en pocas palabras y con su ícono (aire libre,
+  pileta, casa, estacionamiento, patio). Lo que incluyen todos va una sola vez,
+  debajo de las tarjetas; en cada una, solo lo que trae de más.
 - **Lo que suma cada opción** va a la derecha: en dorado lo que todavía se
   puede sumar ("+ $ 120.000") y en crema lo que ya suma lo elegido.
 
