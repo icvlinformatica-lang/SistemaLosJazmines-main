@@ -15,20 +15,42 @@ export type NavegacionDelNavegador = {
   entries?: () => EntradaHistorial[]
 }
 
+/**
+ * Cuántos pasos hay que ir para atrás para llegar a la pantalla anterior del
+ * sistema, o 0 si no hay (se entró directo, la anterior es de otro sitio o es
+ * el login). Las entradas de la misma pantalla que la actual (por ejemplo
+ * Contratos y Contratos con un evento elegido) se saltean: volver a ellas no
+ * cambia nada a la vista y la flecha parecía no andar.
+ */
+export function pasosParaVolver(nav: NavegacionDelNavegador | null | undefined, origen: string): number {
+  if (!nav || !nav.canGoBack || !nav.currentEntry || typeof nav.entries !== "function") return 0
+  const actual = nav.currentEntry
+  const entradas = nav.entries()
+  const pantallaActual = pantallaDe(actual.url, origen)
+  for (let i = actual.index - 1; i >= 0; i--) {
+    const entrada = entradas.find((e) => e.index === i)
+    const pantalla = entrada ? pantallaDe(entrada.url, origen) : null
+    if (!pantalla) return 0
+    if (pantalla === "/login") return 0
+    if (pantalla !== pantallaActual) return actual.index - i
+  }
+  return 0
+}
+
 /** true si "atrás" lleva a otra pantalla de este sistema (que no sea el login). */
 export function puedeVolverAtras(nav: NavegacionDelNavegador | null | undefined, origen: string): boolean {
-  if (!nav || !nav.canGoBack || !nav.currentEntry || typeof nav.entries !== "function") return false
-  const anterior = nav.entries().find((e) => e.index === nav.currentEntry!.index - 1)
-  if (!anterior?.url) return false
-  let url: URL
+  return pasosParaVolver(nav, origen) > 0
+}
+
+/** La ruta (sin ?…) de una dirección de este sistema, o null si es de otro sitio. */
+function pantallaDe(direccion: string | null, origen: string): string | null {
+  if (!direccion) return null
   try {
-    url = new URL(anterior.url)
+    const url = new URL(direccion)
+    return url.origin === origen ? url.pathname : null
   } catch {
-    return false
+    return null
   }
-  if (url.origin !== origen) return false
-  if (url.pathname === "/login") return false
-  return true
 }
 
 /** Lee la Navigation API del navegador, si existe. */
