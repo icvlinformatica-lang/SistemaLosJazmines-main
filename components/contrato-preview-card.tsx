@@ -59,9 +59,13 @@ export function ContratoPreviewCard({
     if (siguiente && htmlResuelto === null) setHtmlResuelto(resolverHtml())
   }
 
+  // Cada HTML nuevo va en un iframe nuevo (ver `key` abajo).
+  const [versionHtml, setVersionHtml] = useState(0)
+
   // Si el HTML llega como string y cambio (preview en vivo), reflejarlo
   if (typeof html === "string" && abierta && htmlResuelto !== html) {
     setHtmlResuelto(html)
+    setVersionHtml((v) => v + 1)
   }
 
   return (
@@ -107,7 +111,13 @@ export function ContratoPreviewCard({
           {/* Hoja A4 (~880px de ancho util) escalada al ancho de la columna;
               el contenedor scrollea sobre la altura ya escalada */}
           <div className="relative mx-auto overflow-hidden" style={{ width: 880 * 0.36, height: 4200 * 0.36 }}>
+            {/* key: cambiarle el srcDoc a un iframe ya cargado lo navega y el
+                navegador lo anota en el historial de la pestaña. Con el
+                contrato en vivo eso pasaba en cada cambio, y las flechas de
+                volver (que van "atrás") retrocedían dentro del iframe sin
+                salir de la pantalla. Un iframe nuevo no suma historial. */}
             <iframe
+              key={versionHtml}
               srcDoc={htmlResuelto}
               title={`Vista previa de ${titulo}`}
               className="pointer-events-none origin-top-left border-0"
