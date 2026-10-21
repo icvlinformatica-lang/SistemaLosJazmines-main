@@ -2,8 +2,9 @@
 
 // Stock por salón — pantalla de carga del conteo físico de insumos que
 // quedaron en un salón al terminar un evento. La usan Cocina (solo insumos
-// de cocina), Barra (solo insumos de barra) y Administración/Soporte (los
-// dos), de madrugada y desde el celular. El servidor vuelve a controlar el
+// de cocina), Barra (solo insumos de barra), Mantenimiento (solo artículos de
+// limpieza, desde el 21/10/2026) y Administración/Soporte (los tres), de
+// madrugada y desde el celular. El servidor vuelve a controlar el
 // perfil real al guardar.
 //
 // Flujo: elegir salón → menú (un botón por sector "Contar stock" y, debajo,
@@ -53,7 +54,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, ChefHat, ChevronDown, ChevronRight, ClipboardList, History, Loader2, Search, Send, Wine } from "lucide-react"
+import { ArrowLeft, ChefHat, ChevronDown, ChevronRight, ClipboardList, History, Loader2, Search, Send, SprayCan, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -75,8 +76,8 @@ interface CargaHistorial {
   cantidadItems: number
 }
 
-const SECTOR_LABEL: Record<SectorStock, string> = { cocina: "cocina", barra: "barra" }
-const SECTOR_ICON: Record<SectorStock, typeof ChefHat> = { cocina: ChefHat, barra: Wine }
+const SECTOR_LABEL: Record<SectorStock, string> = { cocina: "cocina", barra: "barra", limpieza: "limpieza" }
+const SECTOR_ICON: Record<SectorStock, typeof ChefHat> = { cocina: ChefHat, barra: Wine, limpieza: SprayCan }
 
 function fmtCantidad(n: number): string {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(n)
@@ -142,7 +143,44 @@ export default function StockPorSalonPage() {
   const [busqueda, setBusqueda] = useState("")
   // Cocina: "Los que ya conté acá" (true) o "Todos" (false).
   const [soloContados, setSoloContados] = useState(false)
-  // Barra: categorías plegadas.
+  // Artículos de limpieza: no están en el store (no los usa ninguna otra
+  // pantalla), se traen de /api/insumos-limpieza solo si el perfil cuenta
+  // limpieza. null mientras carga; el error se muestra en la lista.
+  const [articulosLimpieza, setArticulosLimpieza] = useState<InsumoCarga[] | null>(null)
+  const [errorLimpieza, setErrorLimpieza] = useState("")
+  const cuentaLimpieza = sectores.includes("limpieza")
+  useEffect(() => {
+    if (!cuentaLimpieza) return
+    let cancelado = false
+    fetch("/api/insumos-limpieza")
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (cancelado) return
+        if (!res.ok || !data?.ok) {
+          setErrorLimpieza(data?.error || "No se pudieron traer los artículos de limpieza")
+          setArticulosLimpieza([])
+          return
+        }
+        setErrorLimpieza("")
+        setArticulosLimpieza(
+          (data.articulos || []).map((a: { id: string; descripcion: string; unidad: string; categoria: string | null }) => ({
+            id: a.id,
+            descripcion: a.descripcion,
+            unidad: a.unidad,
+            categoria: a.categoria || undefined,
+          })),
+        )
+      })
+      .catch(() => {
+        if (cancelado) return
+        setErrorLimpieza("No se pudieron traer los artículos de limpieza")
+        setArticulosLimpieza([])
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [cuentaLimpieza])
+  // Barra y limpieza: categorías plegadas.
   const [plegadas, setPlegadas] = useState<Set<string>>(new Set())
   const [confirmando, setConfirmando] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -236,8 +274,9 @@ export default function StockPorSalonPage() {
     if (sector === "cocina") return (state.insumos || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad }))
     if (sector === "barra")
       return (state.insumosBarra || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad, categoria: i.categoria }))
+    if (sector === "limpieza") return articulosLimpieza || []
     return []
-  }, [sector, state.insumos, state.insumosBarra])
+  }, [sector, state.insumos, state.insumosBarra, articulosLimpieza])
 
   const saldos = (sector && estados[sector]?.saldos) || {}
   const contados = useMemo(() => new Set(Object.keys(saldos)), [saldos])
@@ -247,9 +286,9 @@ export default function StockPorSalonPage() {
     [catalogo, busqueda, soloContados, sector, contados, valores],
   )
 
-  // Barra: secciones por categoría (Otros al final).
+  // Barra y limpieza: secciones por categoría (Otros al final).
   const grupos = useMemo(() => {
-    if (sector !== "barra") return [{ clave: "", items: visibles }]
+    if (sector !== "barra" && sector !== "limpieza") return [{ clave: "", items: visibles }]
     const m = new Map<string, InsumoCarga[]>()
     for (const i of visibles) {
       const c = i.categoria || "Otros"
@@ -558,7 +597,13 @@ export default function StockPorSalonPage() {
 
         {visibles.length === 0 ? (
           <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            No hay insumos que coincidan.
+            {sector === "limpieza" && errorLimpieza
+              ? errorLimpieza
+              : sector === "limpieza" && articulosLimpieza === null
+                ? "Cargando artículos..."
+                : sector === "limpieza" && catalogo.length === 0
+                  ? "Todavía no hay artículos de limpieza. Los carga Administración en Almacén → Insumos Limpieza."
+                  : "No hay insumos que coincidan."}
           </p>
         ) : (
           <div className="space-y-3">

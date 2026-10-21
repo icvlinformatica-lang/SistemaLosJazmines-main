@@ -55,7 +55,7 @@ export async function GET(req: Request) {
  * body: {
  *   sesionId: string (uuid generado por la pantalla al empezar la carga)
  *   salon: string
- *   sector: "cocina" | "barra"
+ *   sector: "cocina" | "barra" | "limpieza"
  *   cargadoPor: string (nombre tipeado al iniciar, obligatorio)
  *   iniciadaEn?: string (ISO)
  *   items: { insumoId: string, cantidad: number }[]
@@ -64,7 +64,7 @@ export async function GET(req: Request) {
  * Se puede cargar en cualquier momento y sin PIN (pedido del dueño,
  * 15/10/2026: cada carga es una sesión con fecha y el historial se ve en
  * /stock). Solo el perfil que carga ese sector: Cocina cocina, Barra barra,
- * Administración y Soporte los dos.
+ * Mantenimiento limpieza, Administración y Soporte los tres.
  *
  * El rótulo de la sesión lo decide el SERVIDOR: si hay un evento terminado
  * pendiente de carga en ese salón y sector, queda atada a ese evento
@@ -153,7 +153,9 @@ export async function POST(req: Request) {
     const ids = itemsBody.map((i) => i.insumoId)
     const catalogo = (sector === "cocina"
       ? await sql`SELECT id, descripcion, unidad FROM insumos WHERE id = ANY(${ids})`
-      : await sql`SELECT id, descripcion, unidad FROM insumos_barra WHERE id = ANY(${ids})`) as unknown as Array<{
+      : sector === "barra"
+        ? await sql`SELECT id, descripcion, unidad FROM insumos_barra WHERE id = ANY(${ids})`
+        : await sql`SELECT id, descripcion, unidad FROM insumos_limpieza WHERE id = ANY(${ids})`) as unknown as Array<{
       id: string
       descripcion: string
       unidad: string | null
@@ -236,7 +238,9 @@ export async function POST(req: Request) {
       // Un salón sin fila no aporta nada a la suma: "nadie contó acá" pesa
       // como 0. Es correcto desde la migración inicial, que le dio a cada
       // insumo su fila en Casona.
-      for (const it of itemsBody) {
+      // Limpieza no tiene stock_actual: su total se suma en vivo de
+      // stock_salones (ver scripts/026_stock_limpieza.sql).
+      for (const it of sector === "limpieza" ? [] : itemsBody) {
         const total = (await tx`
           SELECT COALESCE(SUM(cantidad), 0) AS total FROM stock_salones
           WHERE insumo_tipo = ${sector} AND insumo_id = ${it.insumoId}

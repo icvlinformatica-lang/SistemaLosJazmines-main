@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck, Wallet, Search, X, KeyRound } from "lucide-react"
+import { Download, Upload, ArrowLeft, Trash2, History, Check, RefreshCw, Database, Package, ChefHat, Wine, ClipboardList, Cloud, Loader2, Plus, Minus, CalendarCheck, CalendarX, UtensilsCrossed, ChevronDown, ChevronUp, CreditCard, UserCheck, Wallet, Search, X, KeyRound, SprayCan } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
@@ -32,7 +32,7 @@ import { StockSesionDetalleDialog } from "@/components/stock-sesion-detalle-dial
 
 type ActivityEntry = {
   id: string
-  tipo: "insumo" | "insumo_barra" | "receta" | "coctel" | "evento" | "stock_sesion"
+  tipo: "insumo" | "insumo_barra" | "insumo_limpieza" | "receta" | "coctel" | "evento" | "stock_sesion"
   accion: "creado" | "eliminado" | "modificado" | "planificado"
   nombre: string
   detalle?: string
@@ -42,6 +42,7 @@ type ActivityEntry = {
 const TIPO_LABELS: Record<string, string> = {
   insumo: "Insumo",
   insumo_barra: "Insumo Barra",
+  insumo_limpieza: "Insumo Limpieza",
   receta: "Receta",
   coctel: "Coctel",
   evento: "Evento",
@@ -73,6 +74,7 @@ const ACCION_COLOR: Record<string, string> = {
 const TIPO_ICON: Record<string, React.ReactNode> = {
   insumo: <Package className="h-4 w-4 text-amber-600" />,
   insumo_barra: <Wine className="h-4 w-4 text-purple-600" />,
+  insumo_limpieza: <SprayCan className="h-4 w-4 text-cyan-600" />,
   receta: <ChefHat className="h-4 w-4 text-emerald-600" />,
   coctel: <Wine className="h-4 w-4 text-rose-600" />,
   evento: <CalendarCheck className="h-4 w-4 text-sky-600" />,
@@ -645,7 +647,7 @@ export default function ConfiguracionPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{perfil.nombre}</p>
-                      <p className="text-lg font-mono font-bold tracking-wider">{pins.perfiles?.[perfil.id] ?? "—"}</p>
+                      <p className="text-lg font-mono font-bold tracking-wider">{pins.perfiles?.[perfil.id] || "Sin cargar"}</p>
                     </div>
                   </div>
                 ))}

@@ -30,6 +30,7 @@ const { POST } = require(path.join(RAIZ, "app", "api", "auth", "login", "route.t
 const PERFILES = [
   "cocina", "barra", "administracion", "soporte", "cobro",
   "dj", "fotografo", "vestido", "pantalla", "coordinacion", "vendedor",
+  "mantenimiento",
 ]
 
 let ip = 0
