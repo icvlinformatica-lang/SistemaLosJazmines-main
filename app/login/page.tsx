@@ -252,7 +252,12 @@ export default function LoginPage() {
   }
 
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
-  const perfilesGestion = PERFILES.filter((p) => p.categoria === "gestion")
+  // "Clientes" no tiene PIN propio: su tarjeta aparece solo si este navegador
+  // tiene su acceso rápido (el que deja el link de Soporte). Ni el pase de
+  // Administración lo abre, así que a los demás no se les ofrece.
+  const perfilesGestion = PERFILES.filter(
+    (p) => p.categoria === "gestion" && (p.id !== "clientes" || !!pinsGuardados[p.id]),
+  )
   const perfilesEvento = PERFILES.filter((p) => p.categoria === "evento")
 
   // El paso "¿Quién ingresa?"/PIN vive en un panel aparte, debajo de toda la
