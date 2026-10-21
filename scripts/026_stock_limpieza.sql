@@ -2,8 +2,8 @@
 --
 -- SOLO ADITIVA: crea una tabla nueva y amplía tres controles para aceptar un
 -- valor nuevo ('limpieza'). No modifica ni borra ninguna fila existente.
--- Pendiente de aplicar: la corre el dueño en el SQL Editor de Supabase ANTES
--- de publicar el código que la usa.
+-- Aplicada el 21/10/2026 (la corrió el dueño en el SQL Editor de Supabase;
+-- verificado en information_schema: tabla, columnas, RLS y los tres controles).
 --
 -- Pedido de Diego (21/10/2026): un stock aparte de cocina y barra para
 -- limpieza, papelería y mantenimiento (bolsas, papel higiénico, rollo de
