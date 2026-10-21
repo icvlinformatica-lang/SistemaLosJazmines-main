@@ -24,7 +24,13 @@ import {
 } from "@/lib/store"
 import { salonLabel } from "@/lib/store"
 import { insumosEnSalon } from "@/lib/stock-salon-evento"
-import { moverStockDelEvento, itemsDesdeMapa, consumoCocinaDelEvento } from "@/lib/consumo-stock-evento"
+import {
+  moverStockDelEvento,
+  itemsDesdeMapa,
+  consumoCocinaDelEvento,
+  consumoBarraDelEvento,
+  barraDescontadaAlImprimir,
+} from "@/lib/consumo-stock-evento"
 import { useStockPorSalon } from "@/lib/hooks/use-stock-por-salon"
 import { SalonDot } from "@/components/salon-badge"
 import { FaltantesEventoChip } from "@/components/faltantes-evento-aviso"
@@ -772,6 +778,8 @@ export default function EventosListaPage() {
 
     // La misma cuenta que al descontar (ver consumoCocinaDelEvento).
     const stockDelta = consumoCocinaDelEvento(evento, recetas, insumos)
+    // La barra vuelve solo si se descontó al imprimir (ver barraDescontadaAlImprimir).
+    const stockDeltaBarra = barraDescontadaAlImprimir(evento) ? consumoBarraDelEvento(evento, cocteles, insumosBarra) : {}
 
     // Devolver el stock AL SALÓN del que había salido.
     await moverStockDelEvento({
@@ -779,7 +787,7 @@ export default function EventosListaPage() {
       eventoId: evento.id,
       nombreEvento: evento.nombrePareja || evento.nombre || "Evento sin nombre",
       motivo: "devolucion",
-      items: itemsDesdeMapa(stockDelta, "cocina", 1),
+      items: [...itemsDesdeMapa(stockDelta, "cocina", 1), ...itemsDesdeMapa(stockDeltaBarra, "barra", 1)],
     })
 
     // Volver a pendiente via API y resetear campos de stock
@@ -798,7 +806,7 @@ export default function EventosListaPage() {
         tipo: "evento",
         accion: "modificado",
         nombre: nombreEvento,
-        detalle: `Stock recuperado — evento vuelto a Pendiente (${Object.keys(stockDelta).length} insumos restituidos)`,
+        detalle: `Stock recuperado — evento vuelto a Pendiente (${Object.keys(stockDelta).length + Object.keys(stockDeltaBarra).length} insumos restituidos)`,
       }),
     }).catch(() => {})
 
@@ -817,13 +825,14 @@ export default function EventosListaPage() {
     // falló), y devolver ahí sería sumar mercadería que nunca salió.
     if (recuperarStockAlEliminar && evento && evento.estado === "en_preparacion" && evento.stockDescontado) {
       const stockDelta = consumoCocinaDelEvento(evento, recetas, insumos)
+      const stockDeltaBarra = barraDescontadaAlImprimir(evento) ? consumoBarraDelEvento(evento, cocteles, insumosBarra) : {}
       // Al eliminar, lo que se había descontado vuelve a SU salón.
       await moverStockDelEvento({
         salon: evento?.salon,
         eventoId: evento?.id,
         nombreEvento: evento?.nombrePareja || evento?.nombre || "Evento sin nombre",
         motivo: "devolucion",
-        items: itemsDesdeMapa(stockDelta, "cocina", 1),
+        items: [...itemsDesdeMapa(stockDelta, "cocina", 1), ...itemsDesdeMapa(stockDeltaBarra, "barra", 1)],
       })
     }
 
@@ -935,6 +944,8 @@ export default function EventosListaPage() {
       // Misma cuenta que la lista de compras: unidades, rinde y porciones
       // (ver consumoCocinaDelEvento).
       const stockDelta = consumoCocinaDelEvento(evento, recetas, insumos)
+      // La barra también, con la cuenta de su lista de compras (desde el 21/10/2026).
+      const stockDeltaBarra = consumoBarraDelEvento(evento, cocteles, insumosBarra)
       // Lo consumido sale del salón del evento, no del total de los cinco.
       // El endpoint deja el total como suma de los salones y registra solo el
       // renglón de Actividad; lo que ese salón nunca contó no se toca.
@@ -944,7 +955,7 @@ export default function EventosListaPage() {
         eventoId: evento.id,
         nombreEvento,
         motivo: "impresion",
-        items: itemsDesdeMapa(stockDelta, "cocina", -1),
+        items: [...itemsDesdeMapa(stockDelta, "cocina", -1), ...itemsDesdeMapa(stockDeltaBarra, "barra", -1)],
       })
       // El renglón de Actividad lo escribe /api/stock-salones/consumo, con el
       // salón y cuántos quedaron sin contar. No hace falta otro acá.

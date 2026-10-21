@@ -155,3 +155,38 @@ test("lo que se descuenta al imprimir es exactamente lo que vuelve al recuperar"
     assert.equal(s.sector, "cocina")
   }
 })
+
+// ── Barra: desde el 21/10/2026 imprimir descuenta también la barra ──
+const { consumoBarraDelEvento, barraDescontadaAlImprimir } = require(path.join(RAIZ, "lib/consumo-stock-evento.ts"))
+
+const insumoBarra = (id, unidad, extra = {}) => ({ id, codigo: id, descripcion: id, unidad, stockActual: 0, precioUnitario: 1000, ...extra })
+const INSUMOS_BARRA = [
+  insumoBarra("fernet", "UN", { contenidoCantidad: 750, contenidoUnidad: "CC" }),
+  insumoBarra("coca", "UN", { contenidoCantidad: 2000, contenidoUnidad: "CC" }),
+  insumoBarra("jugo", "LT"),
+]
+const COCTELES = [
+  { id: "fernet-coca", nombre: "Fernet con coca", categoria: "Con Alcohol", insumos: [
+    { insumoBarraId: "fernet", cantidadPorCoctel: 75, unidadCoctel: "CC" },
+    { insumoBarraId: "coca", cantidadPorCoctel: 200, unidadCoctel: "CC" },
+  ] },
+  { id: "jugo", nombre: "Jugo", categoria: "Sin Alcohol", insumos: [{ insumoBarraId: "jugo", cantidadPorCoctel: 250, unidadCoctel: "CC" }] },
+]
+
+test("barra: 100 adultos con fernet = 10 botellas de fernet y 10 de coca; 20 chicos con jugo = 5 LT", () => {
+  const ev = evento({ adultos: 100, adolescentes: 12, ninos: 8, barras: [{ coctelesIncluidos: ["fernet-coca", "jugo"] }] })
+  assert.deepEqual(consumoBarraDelEvento(ev, COCTELES, INSUMOS_BARRA), { fernet: 10, coca: 10, jugo: 5 })
+  assert.deepEqual(itemsDesdeMapa({ jugo: 5 }, "barra", -1), [{ insumoId: "jugo", sector: "barra", delta: -5 }])
+})
+
+test("barra: sin cócteles o sin invitados no se mueve nada", () => {
+  assert.deepEqual(consumoBarraDelEvento(evento({ adultos: 100 }), COCTELES, INSUMOS_BARRA), {})
+  assert.deepEqual(consumoBarraDelEvento(evento({ barras: [{ coctelesIncluidos: ["fernet-coca"] }] }), COCTELES, INSUMOS_BARRA), {})
+})
+
+test("barra: solo se devuelve si el evento se imprimió cuando ya se descontaba la barra", () => {
+  assert.equal(barraDescontadaAlImprimir({ fechaImpresion: "2026-10-20T01:08:29.443Z" }), false)
+  assert.equal(barraDescontadaAlImprimir({ fechaImpresion: "2026-10-22T15:00:00.000Z" }), true)
+  assert.equal(barraDescontadaAlImprimir({ fechaImpresion: null }), false)
+  assert.equal(barraDescontadaAlImprimir({}), false)
+})
