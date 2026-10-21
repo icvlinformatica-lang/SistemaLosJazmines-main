@@ -6,9 +6,10 @@
 // las rutas /api/clientes/* (servidor). Test: scripts/test-clientes-simulador.cjs
 
 /** Perfiles que pueden abrir la vista de Clientes y leer sus datos (solo
- *  precios y fechas ocupadas, nunca costos). Administración y Soporte, para
- *  revisarla; "clientes", el perfil del prototipo. */
-export const PERFILES_VISTA_CLIENTES = ["clientes", "administracion", "soporte"] as const
+ *  precios y fechas ocupadas, nunca costos). Soporte, para revisarla y armar
+ *  el link; "clientes", el perfil del prototipo. Administración no (pedido
+ *  del 21/10/2026: solo entra Soporte). */
+export const PERFILES_VISTA_CLIENTES = ["clientes", "soporte"] as const
 
 export function puedeVerVistaClientes(perfil: string | null | undefined): boolean {
   return typeof perfil === "string" && (PERFILES_VISTA_CLIENTES as readonly string[]).includes(perfil)

@@ -85,7 +85,8 @@ export const PERFILES: Perfil[] = [
     icon: BarChart2,
     iconColor: NEGRO,
     rutas: ["*"],
-    rutasExcluidas: ["/eventos/produccion"],
+    // La vista de Clientes es solo de Soporte (pedido del 21/10/2026).
+    rutasExcluidas: ["/eventos/produccion", "/clientes"],
   },
   {
     id: "coordinacion",

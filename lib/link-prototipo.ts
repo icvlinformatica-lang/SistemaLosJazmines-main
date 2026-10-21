@@ -1,5 +1,5 @@
 // Link del prototipo de la vista de Clientes (pedido del 21/10/2026): un link
-// que Administración o Soporte le pasa a alguien (por ejemplo a Diego) para
+// que Soporte le pasa a alguien (por ejemplo a Diego) para
 // que abra SOLO el simulador, sin PIN y sin entrar al sistema.
 //
 // Cómo funciona: el link lleva un acceso rápido del perfil "clientes" (el
@@ -14,8 +14,8 @@
 
 export const PERFIL_LINK_PROTOTIPO = "clientes"
 export const RUTA_LINK_PROTOTIPO = "/prototipo"
-/** Quién puede generar el link: Administración y Soporte. */
-export const PERFILES_GENERAN_LINK = ["administracion", "soporte"] as const
+/** Quién puede generar el link: solo Soporte (pedido del 21/10/2026). */
+export const PERFILES_GENERAN_LINK = ["soporte"] as const
 
 export function puedeGenerarLinkPrototipo(perfil: string | null | undefined): boolean {
   return typeof perfil === "string" && (PERFILES_GENERAN_LINK as readonly string[]).includes(perfil)

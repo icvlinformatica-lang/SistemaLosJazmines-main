@@ -6,7 +6,7 @@ import { PERFIL_LINK_PROTOTIPO, puedeGenerarLinkPrototipo, urlLinkPrototipo } fr
 
 /**
  * POST /api/clientes/link-prototipo — arma el link para compartir el
- * simulador (ver lib/link-prototipo.ts). Solo Administración y Soporte.
+ * simulador (ver lib/link-prototipo.ts). Solo Soporte.
  * Devuelve el link y hasta cuándo vale (30 días, lo que dura un acceso
  * rápido). No guarda nada: el link es un token firmado del perfil "clientes".
  */

@@ -98,9 +98,9 @@ function catalogoDePrueba() {
 
 // ── Quién ve la vista ───────────────────────────────────────────────────────
 
-test("vista-clientes: solo clientes, Administración y Soporte", () => {
-  for (const p of ["clientes", "administracion", "soporte"]) assert.equal(vista.puedeVerVistaClientes(p), true, p)
-  for (const p of ["vendedor", "cobro", "cocina", "barra", "dj", "fotografo", "vestido", "pantalla", "coordinacion", "", null, undefined]) {
+test("vista-clientes: solo clientes y Soporte (Administración no, desde el 21/10/2026)", () => {
+  for (const p of ["clientes", "soporte"]) assert.equal(vista.puedeVerVistaClientes(p), true, p)
+  for (const p of ["administracion", "vendedor", "cobro", "cocina", "barra", "dj", "fotografo", "vestido", "pantalla", "coordinacion", "", null, undefined]) {
     assert.equal(vista.puedeVerVistaClientes(p), false, String(p))
   }
 })
@@ -486,7 +486,9 @@ test("rutas: sin el perfil correcto, 403 y no se lee la base", async () => {
 })
 
 test("catálogo: precios de la misma cuenta del vendedor, sin costos ni nombres del personal", async () => {
-  for (const p of ["clientes", "administracion", "soporte"]) {
+  perfilActual = "administracion"
+  assert.equal((await rutaCatalogo.GET(pedir("/api/clientes/catalogo"))).status, 403)
+  for (const p of ["clientes", "soporte"]) {
     perfilActual = p
     const res = await rutaCatalogo.GET(pedir("/api/clientes/catalogo"))
     assert.equal(res.status, 200, p)
