@@ -5,7 +5,15 @@
 // Antes cada una hacía PATCH /api/insumos/:id restando del total, que mezcla
 // los cinco salones: un evento en Quinta descontaba mercadería de Casona.
 
-import { calcularComprasSegmentadas, type Evento, type Insumo, type Receta } from "./store"
+import {
+  calcularComprasBarras,
+  calcularComprasSegmentadas,
+  type Coctel,
+  type Evento,
+  type Insumo,
+  type InsumoBarra,
+  type Receta,
+} from "./store"
 
 export type MotivoConsumo = "impresion" | "cierre" | "devolucion"
 
@@ -108,4 +116,41 @@ export function consumoCocinaDelEvento(
     mapa[c.insumoId] = cantidad
   }
   return mapa
+}
+
+/**
+ * Cuánto de cada insumo de barra consume un evento, en la unidad de stock
+ * del insumo. Es la "cantidad necesaria" de la lista de compras de barra
+ * (calcularComprasBarras): un trago de cada cóctel con alcohol por adulto y
+ * uno de cada cóctel sin alcohol por adolescente y niño.
+ *
+ * Al imprimir se descuenta con esto y al recuperar o eliminar se devuelve
+ * con esto mismo, igual que la cocina.
+ */
+export function consumoBarraDelEvento(
+  evento: Evento,
+  cocteles: Coctel[],
+  insumosBarra: InsumoBarra[],
+): Record<string, number> {
+  const mapa: Record<string, number> = {}
+  for (const c of calcularComprasBarras(evento, cocteles, insumosBarra)) {
+    const cantidad = Math.round(c.cantidadNecesaria * 1000) / 1000
+    if (!Number.isFinite(cantidad) || cantidad <= 0) continue
+    mapa[c.insumoBarraId] = cantidad
+  }
+  return mapa
+}
+
+/**
+ * Desde cuándo imprimir descuenta también la barra. Hasta el 21/10/2026
+ * imprimir descontaba solo la cocina, y el evento no guarda qué sectores se
+ * le descontaron: solo `stockDescontado` y la fecha de impresión. Un evento
+ * impreso antes de esta fecha devuelve solo cocina al recuperar o eliminar,
+ * porque devolverle barra sería sumar mercadería que nunca salió.
+ */
+export const DESCUENTA_BARRA_AL_IMPRIMIR_DESDE = "2026-10-21T12:00:00.000Z"
+
+export function barraDescontadaAlImprimir(evento: { fechaImpresion?: string | null }): boolean {
+  const fecha = evento.fechaImpresion ? Date.parse(evento.fechaImpresion) : NaN
+  return Number.isFinite(fecha) && fecha >= Date.parse(DESCUENTA_BARRA_AL_IMPRIMIR_DESDE)
 }
