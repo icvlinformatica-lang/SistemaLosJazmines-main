@@ -269,8 +269,10 @@ function LimpiezaContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="sticky left-0 z-20 bg-card">Artículo</TableHead>
-                  <TableHead className="w-[120px]">Categoría</TableHead>
-                  <TableHead className="w-[80px]">Unidad</TableHead>
+                  {/* En el celular se esconden Categoría y Unidad (la unidad va
+                      debajo del nombre) para que entren los salones. */}
+                  <TableHead className="hidden w-[120px] sm:table-cell">Categoría</TableHead>
+                  <TableHead className="hidden w-[80px] sm:table-cell">Unidad</TableHead>
                   {stockContado.visible &&
                     stockContado.salones.map((s) => (
                       <TableHead
@@ -317,11 +319,12 @@ function LimpiezaContent() {
                     const resumen = stockContado.porInsumo.get(a.id)
                     return (
                       <TableRow key={a.id} className="bg-background">
-                        <TableCell className="sticky left-0 z-10 bg-inherit font-medium [background-color:inherit]">
+                        <TableCell className="sticky left-0 z-10 max-w-[9rem] whitespace-normal bg-background font-medium sm:max-w-none">
                           {a.descripcion}
+                          <span className="block text-xs font-normal text-muted-foreground sm:hidden">{a.unidad}</span>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{a.categoria || "—"}</TableCell>
-                        <TableCell>{a.unidad}</TableCell>
+                        <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">{a.categoria || "—"}</TableCell>
+                        <TableCell className="hidden sm:table-cell">{a.unidad}</TableCell>
                         {stockContado.visible &&
                           stockContado.salones.map((s) => (
                             <TableCell key={s.id} className="text-right" style={fondoSalon(s.color)}>
