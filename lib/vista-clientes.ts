@@ -21,3 +21,14 @@ export function esRutaVistaClientes(pathname: string | null | undefined): boolea
   const p = String(pathname ?? "")
   return p === "/clientes" || p.startsWith("/clientes/")
 }
+
+/** Qué rutas de la API puede usar una sesión del perfil "clientes": solo las
+ *  del simulador (/api/clientes/*). Desde el 21/10/2026 esa sesión se puede
+ *  abrir con un link sin PIN (lib/link-prototipo.ts), así que el middleware le
+ *  cierra todo lo demás: /api/eventos (DNI y pagos), el proxy /api/db (cajas,
+ *  personal) y cualquier otra. Las de login y logout son públicas y no pasan
+ *  por acá. */
+export function apiPermitidaParaClientes(pathname: string | null | undefined): boolean {
+  const p = String(pathname ?? "")
+  return p.startsWith("/api/clientes/")
+}

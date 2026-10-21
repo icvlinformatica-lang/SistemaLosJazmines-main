@@ -13,6 +13,7 @@ import { WelcomeModal } from "@/components/welcome-modal"
 import { RegistroVisitasAtajos } from "@/components/atajos-rapidos"
 import { esRutaVistaClientes } from "@/lib/vista-clientes"
 import { puedeEntrarARuta } from "@/lib/acceso-ruta"
+import { RUTA_LINK_PROTOTIPO } from "@/lib/link-prototipo"
 // Escucha desde el arranque el aviso de Chrome para instalar la app (lo usa el botón de Inicio).
 import "@/components/instalar-app"
 
@@ -20,7 +21,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { perfilActivo, hydrated } = useProfile()
   const pathname = usePathname()
   const router = useRouter()
-  const esLogin = pathname === "/login"
+  // El link del prototipo (/prototipo) entra solo, sin sesión previa: se
+  // muestra como el login, sin redirigir ni montar el sistema.
+  const esLogin = pathname === "/login" || pathname === RUTA_LINK_PROTOTIPO
 
   useEffect(() => {
     if (!hydrated) return
