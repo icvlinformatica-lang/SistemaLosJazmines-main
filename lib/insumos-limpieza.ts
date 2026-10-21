@@ -156,3 +156,76 @@ export function faltaTabla(err: unknown): boolean {
 }
 
 export const AVISO_SIN_TABLA = "Falta crear la tabla del stock de limpieza en la base (scripts/026_stock_limpieza.sql)."
+
+// ── Compra de un artículo desde "Cargar gastos" ────────────────────────────
+// Pedido de Rodrigo (21/10/2026): al cargar un gasto en Caja Jazmines,
+// Administración o Soporte pueden elegir un artículo de limpieza, poner
+// cuánto salió y cuánto se compró. El gasto va a Caja Jazmines por el camino
+// de siempre (costos_operativos, desde el store) y lo comprado se SUMA al
+// stock de ese salón (app/api/insumos-limpieza/compra). El precio del
+// artículo pasa a ser el de esta compra (monto / cantidad).
+
+export interface CompraLimpieza {
+  /** uuid de la operación: es el id de la sesión de stock y del renglón de Actividad. */
+  id: string
+  insumoId: string
+  salon: string
+  /** Lo que se compró, en la unidad del artículo (ej. 10 paquetes). */
+  cantidad: number
+  /** Cuánto salió en total, en pesos. */
+  monto: number
+}
+
+export type ValidacionCompra = { ok: true; compra: CompraLimpieza } | { ok: false; error: string }
+
+export function validarCompraLimpieza(body: unknown, salonesValidos: Set<string>): ValidacionCompra {
+  const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>
+  const id = typeof b.id === "string" ? b.id.trim() : ""
+  if (!RE_UUID.test(id)) return { ok: false, error: "Id inválido" }
+  const insumoId = typeof b.insumoId === "string" ? b.insumoId.trim() : ""
+  if (!insumoId) return { ok: false, error: "Falta el artículo" }
+  const salon = typeof b.salon === "string" ? b.salon : ""
+  if (!salonesValidos.has(salon)) return { ok: false, error: "Salón inválido" }
+  // Number("") da 0: un campo vacío no puede colarse.
+  const cantidad = typeof b.cantidad === "number" ? b.cantidad : Number.NaN
+  if (!Number.isFinite(cantidad) || cantidad <= 0) return { ok: false, error: "La cantidad comprada tiene que ser mayor a 0" }
+  if (cantidad > 1e6) return { ok: false, error: "La cantidad es demasiado grande" }
+  const monto = typeof b.monto === "number" ? b.monto : Number.NaN
+  if (!Number.isFinite(monto) || monto <= 0) return { ok: false, error: "El monto tiene que ser mayor a 0" }
+  if (monto > 1e10) return { ok: false, error: "El monto es demasiado alto" }
+  return {
+    ok: true,
+    compra: {
+      id,
+      insumoId,
+      salon,
+      cantidad: Math.round(cantidad * 10000) / 10000,
+      monto: Math.round(monto * 100) / 100,
+    },
+  }
+}
+
+/** Precio de una unidad según la compra: monto / cantidad, en pesos con 2 decimales. */
+export function precioPorUnidadCompra(monto: number, cantidad: number): number {
+  if (!(cantidad > 0) || !(monto > 0)) return 0
+  return Math.round((monto / cantidad) * 100) / 100
+}
+
+/** Concepto del gasto en Caja Jazmines: "Papel higiénico x4 · 10 PAQ". */
+export function conceptoGastoLimpieza(descripcion: string, cantidad: number, unidad: string): string {
+  const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(cantidad)
+  return `${descripcion} · ${fmt} ${unidad || "UN"}`
+}
+
+/** Artículos cuyo nombre contiene lo escrito (sin mayúsculas ni tildes). Hasta `max`. */
+export function buscarArticulosLimpieza<T extends { descripcion: string }>(texto: string, articulos: T[], max = 6): T[] {
+  const clave = claveDescripcion(texto)
+  if (clave.length < 2) return []
+  const palabras = clave.split(" ")
+  return articulos
+    .filter((a) => {
+      const nombre = claveDescripcion(a.descripcion)
+      return palabras.every((p) => nombre.includes(p))
+    })
+    .slice(0, max)
+}

@@ -48,7 +48,9 @@ export default function HomePage() {
   const [guiaOpen, setGuiaOpen] = useState(false)
   const { toggleSidebar } = useUI()
   const { perfilActivo } = useProfile()
-  const puedeCargarGastos = perfilActivo?.id === "administracion" || perfilActivo?.id === "cobro"
+  // Soporte también, desde el 21/10/2026 (pedido de Rodrigo: cargar compras de limpieza).
+  const puedeCargarGastos =
+    perfilActivo?.id === "administracion" || perfilActivo?.id === "soporte" || perfilActivo?.id === "cobro"
 
   // Cotizaciones esperando aprobación. El botón aparece SOLO si hay alguna:
   // si no hay nada que revisar, no ensucia la pantalla. Mismo endpoint que

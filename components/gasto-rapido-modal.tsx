@@ -28,11 +28,19 @@ import { SALONES, salonLabel, generateId, type DistribucionSalon } from "@/lib/s
 import { SalonDot } from "@/components/salon-badge"
 import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salones-editor"
 import { cambiarDiaResumen, fechaArgentina, fechaResumenValida } from "@/lib/resumen-fecha"
-import { usuarioActivo } from "@/lib/profile-context"
+import { usuarioActivo, useProfile } from "@/lib/profile-context"
+import { puedeEditarCatalogoLimpieza } from "@/lib/stock-salones"
+import {
+  buscarArticulosLimpieza,
+  conceptoGastoLimpieza,
+  precioPorUnidadCompra,
+  type ArticuloLimpieza,
+} from "@/lib/insumos-limpieza"
+import { fetchWithRetry } from "@/lib/fetch-with-retry"
 import type { GastoVariable } from "@/lib/hooks/use-caja-jazmines"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { camposFaltantesGasto, MENSAJE_CAMPO_FALTANTE, type CampoGasto } from "@/lib/gasto-rapido-validacion"
-import { Plus, ChevronLeft, ChevronRight, CalendarDays, Sparkles } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, CalendarDays, Sparkles, SprayCan, Square, CheckSquare, X } from "lucide-react"
 
 /**
  * Paleta para carpetas de gastos variables creadas por el usuario; el color
@@ -71,6 +79,21 @@ interface GastoRapidoModalProps {
 export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual }: GastoRapidoModalProps) {
   const { state, updateCostoOperativo, addCostoOperativo, archivarGasto, addMovimientosCaja } = useStore()
   const { toast } = useToast()
+  const { perfilActivo } = useProfile()
+
+  // ── Compra de un artículo de limpieza (pedido de Rodrigo, 21/10/2026) ────
+  // Administración y Soporte, al escribir el concepto, ven los artículos de
+  // limpieza que coinciden. Al tildar uno se pide cuánto se compró: el gasto
+  // se agenda como siempre y lo comprado se suma al stock del salón
+  // (/api/insumos-limpieza/compra), con el precio por unidad de esta compra.
+  const puedeComprarLimpieza = puedeEditarCatalogoLimpieza(perfilActivo?.id)
+  const [articulosLimpieza, setArticulosLimpieza] = useState<ArticuloLimpieza[]>([])
+  const [articuloCompra, setArticuloCompra] = useState<ArticuloLimpieza | null>(null)
+  const [cantidadCompra, setCantidadCompra] = useState("")
+  // uuid de la compra: se genera al tildar el artículo y se reusa en los
+  // reintentos, así no se suma dos veces al stock.
+  const [idCompra, setIdCompra] = useState("")
+  const [guardandoCompra, setGuardandoCompra] = useState(false)
 
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: "",
@@ -166,6 +189,22 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     setYaPagado(false)
     setIntentoGuardar(false)
   }, [open])
+
+  // La lista de artículos de limpieza se trae al abrir. Si falla (o falta la
+  // tabla), el diálogo funciona igual, sin sugerencias.
+  useEffect(() => {
+    if (!open || !puedeComprarLimpieza) return
+    let cancelado = false
+    fetch("/api/insumos-limpieza")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelado && d?.ok && Array.isArray(d.articulos)) setArticulosLimpieza(d.articulos)
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [open, puedeComprarLimpieza])
 
   // Al abrir para cargar un gasto nuevo, el vencimiento arranca con la fecha
   // de hoy en Argentina (fechaNegocio, no toISOString: después de las 21:00
@@ -314,6 +353,87 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     })
   }
 
+  function limpiarCompra() {
+    setArticuloCompra(null)
+    setCantidadCompra("")
+    setIdCompra("")
+  }
+
+  function elegirArticulo(a: ArticuloLimpieza) {
+    setArticuloCompra(a)
+    setIdCompra(crypto.randomUUID())
+    // Va a un solo salón: lo comprado se suma al stock de ese salón.
+    setNuevoGasto((p) => ({ ...p, nombre: a.descripcion, repartir: false, distribucion: [], carpeta: "limpieza" }))
+  }
+
+  const sugerenciasLimpieza =
+    puedeComprarLimpieza && modoVariable === "gasto" && !editandoVariableId && !articuloCompra
+      ? buscarArticulosLimpieza(nuevoGasto.nombre, articulosLimpieza)
+      : []
+  const cantidadCompraNum = Number(cantidadCompra.replace(",", "."))
+  const precioUnidadCompra = precioPorUnidadCompra(Number(nuevoGasto.monto) || 0, cantidadCompraNum)
+
+  async function guardarCompraLimpieza(articulo: ArticuloLimpieza) {
+    const monto = Number(nuevoGasto.monto)
+    if (!(cantidadCompraNum > 0)) {
+      toast({ title: "Falta cuánto se compró", description: `Poné la cantidad en ${articulo.unidad}.`, variant: "destructive" })
+      return
+    }
+    const concepto = conceptoGastoLimpieza(articulo.descripcion, cantidadCompraNum, articulo.unidad)
+    if (
+      !confirm(
+        `¿Agendar "${concepto}" por ${formatCurrency(monto)}${yaPagado ? ", ya marcado como pagado" : ""}? ` +
+          `Se suman ${cantidadCompraNum} ${articulo.unidad} al stock de ${salonLabel(nuevoGasto.salon)}.`,
+      )
+    )
+      return
+    setGuardandoCompra(true)
+    try {
+      // Primero el stock: si falla, no se agenda nada y se puede reintentar.
+      const res = await fetchWithRetry("/api/insumos-limpieza/compra", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: idCompra,
+          insumoId: articulo.id,
+          salon: nuevoGasto.salon,
+          cantidad: cantidadCompraNum,
+          monto,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.ok) {
+        toast({ title: "No se guardó la compra", description: data?.error || "Volvé a intentar.", variant: "destructive" })
+        return
+      }
+      addCostoOperativo({
+        concepto,
+        tipo: "Gastos Generales" as any,
+        monto,
+        frecuencia: "Por Evento",
+        esPorPersona: false,
+        salon: nuevoGasto.salon,
+        activo: true,
+        fechaVencimiento: nuevoGasto.fecha,
+        fechaGasto: nuevoGasto.fechaGasto || undefined,
+        esVariable: true,
+        pagado: yaPagado,
+        categoria: nuevoGasto.carpeta,
+        createdAt: new Date().toISOString(),
+        cargadoPor: usuarioActivo() || undefined,
+      })
+      toast({
+        title: "Compra cargada",
+        description: `${concepto}: gasto en Caja Jazmines y stock de ${salonLabel(nuevoGasto.salon)} en ${data.nueva ?? "—"} ${articulo.unidad}.`,
+      })
+      cerrarYResetear()
+    } catch {
+      toast({ title: "No se guardó la compra", description: "Se cortó la conexión. Volvé a intentar.", variant: "destructive" })
+    } finally {
+      setGuardandoCompra(false)
+    }
+  }
+
   function cerrarYResetear() {
     setNuevoGasto({ nombre: "", monto: "", salon: "", fecha: "", fechaGasto: "", repartir: false, distribucion: [], carpeta: "varios" })
     setCreandoCarpeta(false)
@@ -321,6 +441,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     setModoVariable("gasto")
     setYaPagado(false)
     setIntentoGuardar(false)
+    limpiarCompra()
     onOpenChange(false)
   }
 
@@ -339,6 +460,11 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
       return
     }
     if (!nuevoGasto.nombre || !nuevoGasto.monto || !nuevoGasto.fecha) return
+    if (articuloCompra && !editandoVariableId) {
+      if (!nuevoGasto.salon || guardandoCompra) return
+      void guardarCompraLimpieza(articuloCompra)
+      return
+    }
     if (nuevoGasto.repartir) {
       if (variableRepartoInvalido) return
     } else if (!nuevoGasto.salon) {
@@ -402,6 +528,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
           setCreandoCarpeta(false)
           setYaPagado(false)
           setIntentoGuardar(false)
+          limpiarCompra()
         }
       }}
     >
@@ -438,14 +565,17 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
                 className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
                   modoVariable === "retiro" ? "bg-background shadow-sm text-red-600" : "text-muted-foreground"
                 }`}
-                onClick={() => setModoVariable("retiro")}
+                onClick={() => {
+                  setModoVariable("retiro")
+                  limpiarCompra()
+                }}
               >
                 Retiro
               </button>
             </div>
           )}
           <div className="space-y-2">
-            {modoVariable !== "retiro" && (
+            {modoVariable !== "retiro" && !articuloCompra && (
               <div className="flex items-center justify-between">
                 <Label htmlFor="gv-repartir">Repartir entre varios salones</Label>
                 <Switch
@@ -496,8 +626,63 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
               value={nuevoGasto.nombre}
               onChange={(e) => setNuevoGasto((p) => ({ ...p, nombre: e.target.value }))}
               aria-invalid={falta("nombre")}
+              disabled={!!articuloCompra}
             />
             {avisoFalta("nombre")}
+            {sugerenciasLimpieza.length > 0 && (
+              <div className="space-y-1 rounded-lg border border-sky-200 bg-sky-50 p-2 dark:border-sky-900 dark:bg-sky-950/40">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-sky-900 dark:text-sky-200">
+                  <SprayCan className="h-3.5 w-3.5" />
+                  ¿Es una compra de limpieza? Tildá el artículo y se suma al stock.
+                </p>
+                {sugerenciasLimpieza.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm hover:bg-sky-100 dark:hover:bg-sky-900/50"
+                    onClick={() => elegirArticulo(a)}
+                  >
+                    <Square className="h-4 w-4 shrink-0 text-sky-700" />
+                    <span className="flex-1 truncate">{a.descripcion}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{a.unidad}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {articuloCompra && (
+              <div className="space-y-2 rounded-lg border border-sky-300 bg-sky-50 p-2.5 dark:border-sky-800 dark:bg-sky-950/40">
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckSquare className="h-4 w-4 shrink-0 text-sky-700" />
+                  <span className="flex-1 font-medium">{articuloCompra.descripcion}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    aria-label="No es una compra de limpieza"
+                    onClick={limpiarCompra}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="gv-cantidad-compra">¿Cuánto compraste? ({articuloCompra.unidad})</Label>
+                  <Input
+                    id="gv-cantidad-compra"
+                    inputMode="decimal"
+                    placeholder="Ej: 10"
+                    value={cantidadCompra}
+                    onChange={(e) => setCantidadCompra(e.target.value.replace(/[^0-9.,]/g, ""))}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {precioUnidadCompra > 0
+                    ? `Sale ${formatCurrency(precioUnidadCompra)} por ${articuloCompra.unidad}. `
+                    : ""}
+                  Se suma al stock del salón elegido y el precio del artículo pasa a ser el de esta compra.
+                </p>
+              </div>
+            )}
             {sugerirCarpeta && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
                 <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
@@ -533,7 +718,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
             )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="gv-monto">Monto (ARS)</Label>
+            <Label htmlFor="gv-monto">{articuloCompra ? "¿Cuánto salió en total? (ARS)" : "Monto (ARS)"}</Label>
             <MoneyInput
               id="gv-monto"
               placeholder="Ej: 50.000"
@@ -773,6 +958,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
           </Button>
           <Button
             onClick={handleAgregarGasto}
+            disabled={guardandoCompra}
             className={
               modoVariable === "retiro" && !editandoVariableId
                 ? "bg-red-600 hover:bg-red-700 text-white"
