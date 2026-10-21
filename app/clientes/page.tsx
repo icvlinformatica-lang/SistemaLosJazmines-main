@@ -41,6 +41,7 @@ import {
   Gem,
   Loader2,
   House,
+  Link2,
   LogOut,
   Maximize2,
   MessageCircle,
@@ -108,6 +109,7 @@ import {
   type VistaCasona,
 } from "@/lib/clientes-maqueta"
 import { numeroWhatsApp } from "@/lib/telefono-whatsapp"
+import { puedeGenerarLinkPrototipo } from "@/lib/link-prototipo"
 import { fuenteFiesta } from "./fuente-fiesta"
 import { Maqueta3D, type ManejoMaqueta } from "@/components/clientes/maqueta-3d"
 import { Guirnalda } from "@/components/clientes/guirnalda"
@@ -166,6 +168,38 @@ export default function ClientesPage() {
   const router = useRouter()
   const { perfilActivo, cerrarSesion } = useProfile()
   const esPerfilClientes = perfilActivo?.id === "clientes"
+
+  // ── Link para compartir el prototipo (solo Administración y Soporte) ──
+  const puedeCompartir = puedeGenerarLinkPrototipo(perfilActivo?.id)
+  const [linkPrototipo, setLinkPrototipo] = useState<{ url: string; vence: string | null; copiado: boolean } | null>(null)
+  const [armandoLink, setArmandoLink] = useState(false)
+  const [errorLink, setErrorLink] = useState(false)
+  const armarLinkPrototipo = async () => {
+    setArmandoLink(true)
+    setErrorLink(false)
+    try {
+      const res = await fetch("/api/clientes/link-prototipo", { method: "POST" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok || typeof data.url !== "string") throw new Error("sin link")
+      let copiado = false
+      try {
+        await navigator.clipboard.writeText(data.url)
+        copiado = true
+      } catch {}
+      setLinkPrototipo({ url: data.url, vence: data.vence ?? null, copiado })
+    } catch {
+      setErrorLink(true)
+    } finally {
+      setArmandoLink(false)
+    }
+  }
+  const copiarLinkPrototipo = async () => {
+    if (!linkPrototipo) return
+    try {
+      await navigator.clipboard.writeText(linkPrototipo.url)
+      setLinkPrototipo({ ...linkPrototipo, copiado: true })
+    } catch {}
+  }
 
   // ── Datos ──
   const [catalogo, setCatalogo] = useState<CatalogoClientes | null>(null)
@@ -608,6 +642,18 @@ export default function ClientesPage() {
   const chrome = (
     <div className="flex items-center gap-2 print:hidden">
       <span className="rounded-full border border-[#f3cf7a]/45 px-2.5 py-0.5 text-[11.5px] text-[#f3cf7a]">Prototipo</span>
+      {puedeCompartir && (
+        <button
+          type="button"
+          onClick={armarLinkPrototipo}
+          disabled={armandoLink}
+          aria-label="Link para compartir el prototipo"
+          title="Link para compartir"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-[#f5f0e8]/80 hover:bg-white/10 hover:text-[#f5f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a] disabled:opacity-60"
+        >
+          {armandoLink ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Link2 className="h-4.5 w-4.5" />}
+        </button>
+      )}
       <button
         type="button"
         onClick={salir}
@@ -1494,6 +1540,56 @@ export default function ClientesPage() {
           </div>
         </DrawerContent>
       </Drawer>
+
+      {(linkPrototipo || errorLink) && (
+        <div className="fixed inset-x-0 top-3 z-[80] flex justify-center px-4 print:hidden" role="status">
+          <div className="w-full max-w-md rounded-2xl border border-[#c9a227]/60 bg-[#12261a] p-4 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.7)]">
+            {errorLink ? (
+              <p className="text-[14.5px]">No se pudo armar el link. Probá de nuevo.</p>
+            ) : (
+              linkPrototipo && (
+                <>
+                  <p className="text-[14.5px] font-medium">
+                    {linkPrototipo.copiado ? "Link copiado" : "Link para compartir"}
+                  </p>
+                  <p className="mt-1 text-[13px] leading-snug text-[#f5f0e8]/70">
+                    Abre solo este simulador, sin PIN y sin entrar al sistema
+                    {linkPrototipo.vence ? `. Vale hasta el ${fechaLarga(linkPrototipo.vence.slice(0, 10), false)}` : ""}.
+                  </p>
+                  <input
+                    readOnly
+                    value={linkPrototipo.url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    aria-label="Link del prototipo"
+                    className="mt-3 w-full rounded-lg border border-[rgba(245,240,232,0.15)] bg-[#0d1d14] px-3 py-2 text-[12.5px] text-[#f5f0e8]/85"
+                  />
+                </>
+              )
+            )}
+            <div className="mt-3 flex justify-end gap-2">
+              {linkPrototipo && !errorLink && (
+                <button
+                  type="button"
+                  onClick={copiarLinkPrototipo}
+                  className="rounded-full bg-[#f3cf7a] px-4 py-2 text-[14px] font-medium text-[#1a3a2a]"
+                >
+                  Copiar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setLinkPrototipo(null)
+                  setErrorLink(false)
+                }}
+                className="rounded-full border border-[rgba(245,240,232,0.25)] px-4 py-2 text-[14px]"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
