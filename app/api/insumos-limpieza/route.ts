@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { logActivity } from "@/lib/activity-logger"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
-import { puedeEditarCatalogoLimpieza, sectoresPermitidos } from "@/lib/stock-salones"
+import { puedeAgregarArticuloLimpieza, sectoresPermitidos } from "@/lib/stock-salones"
 import { AVISO_SIN_TABLA, faltaTabla, nombreRepetido, validarArticuloLimpieza } from "@/lib/insumos-limpieza"
 
 /**
@@ -11,8 +11,8 @@ import { AVISO_SIN_TABLA, faltaTabla, nombreRepetido, validarArticuloLimpieza } 
  *
  * GET  — la lista. La ven quienes cuentan limpieza (Mantenimiento,
  *        Administración y Soporte): es lo que muestra /stock para contar.
- * POST — alta de un artículo. Solo Administración y Soporte
- *        (puedeEditarCatalogoLimpieza). Idempotente: el id lo genera la
+ * POST — alta de un artículo. Administración, Soporte y Mantenimiento
+ *        (puedeAgregarArticuloLimpieza). Idempotente: el id lo genera la
  *        pantalla y un reintento no crea otro.
  *
  * Sin precio: no mueve costos de eventos ni cajas.
@@ -41,7 +41,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const perfil = await perfilDesdeRequest(req)
-    if (!puedeEditarCatalogoLimpieza(perfil)) {
+    if (!puedeAgregarArticuloLimpieza(perfil)) {
       return NextResponse.json({ ok: false, error: "Este perfil no puede cargar artículos" }, { status: 403 })
     }
     const v = validarArticuloLimpieza(await req.json().catch(() => ({})))

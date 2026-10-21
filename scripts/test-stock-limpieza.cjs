@@ -22,6 +22,7 @@ require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(f
 const {
   sectoresPermitidos,
   puedeEditarCatalogoLimpieza,
+  puedeAgregarArticuloLimpieza,
   esSectorStock,
 } = require("../lib/stock-salones.ts")
 const {
@@ -45,12 +46,17 @@ test("Mantenimiento cuenta solo limpieza; Administración y Soporte los tres; el
   assert.deepEqual(sectoresPermitidos("cobro"), [])
 })
 
-test("el catálogo de limpieza lo arman solo Administración y Soporte", () => {
+test("editar, borrar y el lapicito por salón: solo Administración y Soporte", () => {
   assert.equal(puedeEditarCatalogoLimpieza("administracion"), true)
   assert.equal(puedeEditarCatalogoLimpieza("soporte"), true)
   assert.equal(puedeEditarCatalogoLimpieza("mantenimiento"), false)
   assert.equal(puedeEditarCatalogoLimpieza("cocina"), false)
   assert.equal(puedeEditarCatalogoLimpieza(null), false)
+})
+
+test("agregar artículos: Administración, Soporte y también Mantenimiento; nadie más", () => {
+  for (const p of ["administracion", "soporte", "mantenimiento"]) assert.equal(puedeAgregarArticuloLimpieza(p), true)
+  for (const p of ["cocina", "barra", "dj", "cobro", "vendedor", null]) assert.equal(puedeAgregarArticuloLimpieza(p), false)
 })
 
 test("esSectorStock reconoce los tres sectores y nada más", () => {
@@ -209,14 +215,17 @@ const alta = (body) =>
     body: JSON.stringify(body),
   }))
 
-test("catálogo: Mantenimiento lo ve pero no agrega; un perfil sin limpieza no lo ve", async () => {
+test("catálogo: Mantenimiento lo ve y agrega; un perfil sin limpieza no lo ve ni agrega", async () => {
   reset("mantenimiento")
   const res = await catalogo.GET(new Request("http://localhost/api/insumos-limpieza"))
   assert.equal(res.status, 200)
   assert.equal((await res.json()).articulos[0].descripcion, "Papel higiénico")
-  assert.equal((await alta({ id: UUID, descripcion: "Bolsas" })).status, 403)
+  assert.equal((await alta({ id: UUID, descripcion: "Bolsas" })).status, 200)
+  assert.equal(articulos.length, 2)
   reset("cocina")
   assert.equal((await catalogo.GET(new Request("http://localhost/api/insumos-limpieza"))).status, 403)
+  assert.equal((await alta({ id: UUID, descripcion: "Bolsas" })).status, 403)
+  assert.equal(articulos.length, 1)
 })
 
 test("catálogo: Administración agrega, el reintento no duplica y el nombre repetido se frena", async () => {

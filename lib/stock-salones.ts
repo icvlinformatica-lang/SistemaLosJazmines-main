@@ -155,13 +155,23 @@ export function sectoresPermitidos(perfilId: string | null | undefined): SectorS
 }
 
 /**
- * Quién arma el catálogo de artículos de limpieza (/admin/limpieza: alta,
- * edición y baja de artículos, y el ajuste por salón del lapicito). Igual que
- * en cocina y barra, es de Administración y Soporte; Mantenimiento cuenta en
- * /stock.
+ * Quién edita y borra artículos de limpieza y corrige el stock de un salón
+ * con el lapicito (/admin/limpieza). Igual que en cocina y barra, es de
+ * Administración y Soporte. Agregar artículos nuevos lo puede hacer también
+ * Mantenimiento: ver puedeAgregarArticuloLimpieza.
  */
 export function puedeEditarCatalogoLimpieza(perfilId: string | null | undefined): boolean {
   return perfilId === "administracion" || perfilId === "soporte"
+}
+
+/**
+ * Quién agrega artículos nuevos a la lista de limpieza. Además de
+ * Administración y Soporte, Mantenimiento (pedido de Rodrigo, 21/10/2026):
+ * es quien se da cuenta de que falta un artículo al contar. Los artículos no
+ * tienen precio, así que agregar uno no mueve costos ni cajas.
+ */
+export function puedeAgregarArticuloLimpieza(perfilId: string | null | undefined): boolean {
+  return puedeEditarCatalogoLimpieza(perfilId) || perfilId === "mantenimiento"
 }
 
 /** Perfiles que pueden ver la vista consolidada y el detalle de las sesiones. */

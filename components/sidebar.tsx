@@ -85,9 +85,13 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
     ]
   }
 
-  // Mantenimiento: solo contar el stock de limpieza de cada salón.
+  // Mantenimiento: contar el stock de limpieza de cada salón y agregar
+  // artículos a la lista.
   if (perfilId === "mantenimiento") {
-    return [{ href: "/stock", label: "Stock de limpieza", icon: SprayCan }]
+    return [
+      { href: "/stock", label: "Contar stock", icon: ClipboardList },
+      { href: "/admin/limpieza", label: "Artículos de limpieza", icon: SprayCan },
+    ]
   }
 
   // Perfil "Vendedor"

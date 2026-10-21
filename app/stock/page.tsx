@@ -602,7 +602,7 @@ export default function StockPorSalonPage() {
               : sector === "limpieza" && articulosLimpieza === null
                 ? "Cargando artículos..."
                 : sector === "limpieza" && catalogo.length === 0
-                  ? "Todavía no hay artículos de limpieza. Los carga Administración en Almacén → Insumos Limpieza."
+                  ? "Todavía no hay artículos de limpieza. Se agregan en Insumos Limpieza (Mantenimiento: Artículos de limpieza)."
                   : "No hay insumos que coincidan."}
           </p>
         ) : (

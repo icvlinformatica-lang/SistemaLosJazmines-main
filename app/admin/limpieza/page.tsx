@@ -6,7 +6,8 @@
 // 21/10/2026: un tercer stock como el de cocina y barra, contado por salón.
 //
 // Acá Administración y Soporte arman la lista (nombre, categoría y unidad) y
-// ven cuánto hay en cada salón. El lapicito también corrige el stock de cada
+// ven cuánto hay en cada salón. Mantenimiento también agrega artículos (ve la
+// lista, sin las columnas por salón ni editar o borrar). El lapicito también corrige el stock de cada
 // salón (/api/stock-salones/ajuste, el mismo camino que cocina y barra). El
 // conteo de todos los salones juntos se hace en /stock, que también usa el
 // perfil Mantenimiento.
@@ -19,7 +20,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { useProfile } from "@/lib/profile-context"
-import { puedeEditarCatalogoLimpieza } from "@/lib/stock-salones"
+import { puedeAgregarArticuloLimpieza, puedeEditarCatalogoLimpieza } from "@/lib/stock-salones"
 import { CATEGORIAS_LIMPIEZA, UNIDADES_LIMPIEZA, nombreRepetido, type ArticuloLimpieza } from "@/lib/insumos-limpieza"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
 import { StockSalonCelda, useStockContadoSalones, fondoSalon } from "@/components/stock-contado-salones"
@@ -58,6 +59,9 @@ function LimpiezaContent() {
   const { toast } = useToast()
   const { perfilActivo } = useProfile()
   const puedeEditar = puedeEditarCatalogoLimpieza(perfilActivo?.id)
+  // Mantenimiento agrega artículos, pero no edita, no borra ni ve el lapicito
+  // por salón (las columnas por salón son de Administración y Soporte).
+  const puedeAgregar = puedeAgregarArticuloLimpieza(perfilActivo?.id)
   const stockContado = useStockContadoSalones("limpieza")
 
   const [articulos, setArticulos] = useState<ArticuloLimpieza[] | null>(null)
@@ -221,7 +225,7 @@ function LimpiezaContent() {
               Contar stock
             </Link>
           </Button>
-          {puedeEditar && (
+          {puedeAgregar && (
             <Button onClick={abrirAlta} disabled={articulos === null || !!error}>
               <Plus className="mr-2 h-4 w-4" />
               Agregar artículo
