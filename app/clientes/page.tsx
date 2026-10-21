@@ -42,7 +42,6 @@ import {
   Loader2,
   House,
   Link2,
-  LogOut,
   Maximize2,
   MessageCircle,
   Minimize2,
@@ -166,7 +165,7 @@ type Vista = "portada" | "pasos" | "lista" | "presupuesto"
 
 export default function ClientesPage() {
   const router = useRouter()
-  const { perfilActivo, cerrarSesion } = useProfile()
+  const { perfilActivo } = useProfile()
   const esPerfilClientes = perfilActivo?.id === "clientes"
 
   // ── Link para compartir el prototipo (solo Administración y Soporte) ──
@@ -525,14 +524,10 @@ export default function ClientesPage() {
     if (!enRecorrido && pantallaCompleta) cerrarGrande()
   }, [enRecorrido])
 
-  const salir = () => {
-    if (esPerfilClientes) {
-      cerrarSesion()
-      router.replace("/login")
-    } else {
-      router.push("/")
-    }
-  }
+  // Solo Soporte vuelve al sistema. Quien entra con el link (perfil Clientes)
+  // no tiene botón de salir: no queremos que desde un link compartido se
+  // llegue al login (pedido del 21/10/2026).
+  const volverAlSistema = () => router.push("/")
 
   // ── Menú y barra ──
   const bebidaDeMesa = salon?.barras.find((b) => b.bebidaDeMesa) ?? null
@@ -654,15 +649,17 @@ export default function ClientesPage() {
           {armandoLink ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Link2 className="h-4.5 w-4.5" />}
         </button>
       )}
-      <button
-        type="button"
-        onClick={salir}
-        aria-label={esPerfilClientes ? "Salir del perfil Clientes" : "Volver al sistema"}
-        title={esPerfilClientes ? "Salir" : "Volver al sistema"}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-[#f5f0e8]/80 hover:bg-white/10 hover:text-[#f5f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
-      >
-        {esPerfilClientes ? <LogOut className="h-4.5 w-4.5" /> : <ArrowLeft className="h-4.5 w-4.5" />}
-      </button>
+      {!esPerfilClientes && (
+        <button
+          type="button"
+          onClick={volverAlSistema}
+          aria-label="Volver al sistema"
+          title="Volver al sistema"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-[#f5f0e8]/80 hover:bg-white/10 hover:text-[#f5f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+        >
+          <ArrowLeft className="h-4.5 w-4.5" />
+        </button>
+      )}
     </div>
   )
 
