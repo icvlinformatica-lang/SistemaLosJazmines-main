@@ -5,15 +5,16 @@
 // jabón para la ropa, perfumes del baño, resmas...). Pedido de Diego,
 // 21/10/2026: un tercer stock como el de cocina y barra, contado por salón.
 //
-// Acá Administración y Soporte arman la lista (nombre, categoría y unidad) y
+// Acá Administración y Soporte arman la lista (nombre, categoría, unidad,
+// cuánto trae cada unidad y precio) y
 // ven cuánto hay en cada salón. Mantenimiento también agrega artículos (ve la
 // lista, sin las columnas por salón ni editar o borrar). El lapicito también corrige el stock de cada
 // salón (/api/stock-salones/ajuste, el mismo camino que cocina y barra). El
 // conteo de todos los salones juntos se hace en /stock, que también usa el
 // perfil Mantenimiento.
 //
-// No hay precio: estos artículos no entran en el costo de los eventos ni en
-// las cajas. El Total es la suma de lo contado en los salones (no hay un
+// El precio y el contenido se cargan pero, por ahora, no entran en el costo
+// de los eventos ni en las cajas (más adelante irán a Caja Eventos). El Total es la suma de lo contado en los salones (no hay un
 // stock_actual aparte como en cocina y barra).
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
@@ -21,7 +22,15 @@ import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { useProfile } from "@/lib/profile-context"
 import { puedeAgregarArticuloLimpieza, puedeEditarCatalogoLimpieza } from "@/lib/stock-salones"
-import { CATEGORIAS_LIMPIEZA, UNIDADES_LIMPIEZA, nombreRepetido, type ArticuloLimpieza } from "@/lib/insumos-limpieza"
+import {
+  CATEGORIAS_LIMPIEZA,
+  UNIDADES_LIMPIEZA,
+  describirContenido,
+  nombreRepetido,
+  type ArticuloLimpieza,
+} from "@/lib/insumos-limpieza"
+import { ContenidoPorUnidadInput, type UnidadContenido } from "@/components/contenido-por-unidad-input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
 import { StockSalonCelda, useStockContadoSalones, fondoSalon } from "@/components/stock-contado-salones"
 import { StockPorSalonCampos, guardarStockPorSalon, valoresInicialesPorSalon } from "@/components/stock-salones-editor"
@@ -47,13 +56,28 @@ function fmtCantidad(n: number): string {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(n)
 }
 
+function fmtPesos(n: number): string {
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(n)
+}
+
 interface Formulario {
   descripcion: string
   categoria: string
   unidad: string
+  precioUnitario: number
+  /** En gramos o cc; 0 = sin cargar. */
+  contenidoCantidad: number
+  contenidoUnidad: UnidadContenido
 }
 
-const FORM_VACIO: Formulario = { descripcion: "", categoria: "Limpieza", unidad: "UN" }
+const FORM_VACIO: Formulario = {
+  descripcion: "",
+  categoria: "Limpieza",
+  unidad: "UN",
+  precioUnitario: 0,
+  contenidoCantidad: 0,
+  contenidoUnidad: "CC",
+}
 
 function LimpiezaContent() {
   const { toast } = useToast()
@@ -126,7 +150,14 @@ function LimpiezaContent() {
 
   const abrirEdicion = (a: ArticuloLimpieza) => {
     setEditando(a)
-    setForm({ descripcion: a.descripcion, categoria: a.categoria || "", unidad: a.unidad })
+    setForm({
+      descripcion: a.descripcion,
+      categoria: a.categoria || "",
+      unidad: a.unidad,
+      precioUnitario: a.precioUnitario,
+      contenidoCantidad: a.contenidoCantidad ?? 0,
+      contenidoUnidad: a.contenidoUnidad ?? "CC",
+    })
     setStockSalones(valoresInicialesPorSalon(stockContado.porInsumo.get(a.id), stockContado.salones))
     setDialogoAbierto(true)
   }
@@ -144,16 +175,24 @@ function LimpiezaContent() {
     setGuardando(true)
     try {
       const id = editando?.id ?? idNuevo
+      const datos = {
+        descripcion,
+        categoria: form.categoria,
+        unidad: form.unidad,
+        precioUnitario: form.precioUnitario,
+        contenidoCantidad: form.contenidoCantidad,
+        contenidoUnidad: form.contenidoUnidad,
+      }
       const res = editando
         ? await fetchWithRetry(`/api/insumos-limpieza/${encodeURIComponent(id)}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ descripcion, categoria: form.categoria, unidad: form.unidad }),
+            body: JSON.stringify(datos),
           })
         : await fetchWithRetry("/api/insumos-limpieza", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, descripcion, categoria: form.categoria, unidad: form.unidad }),
+            body: JSON.stringify({ id, ...datos }),
           })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data?.ok) {
@@ -204,7 +243,7 @@ function LimpiezaContent() {
     }
   }
 
-  const columnas = 4 + (stockContado.visible ? stockContado.salones.length + 1 : 0)
+  const columnas = 5 + (stockContado.visible ? stockContado.salones.length + 1 : 0)
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 lg:max-w-none lg:py-4">
@@ -277,6 +316,7 @@ function LimpiezaContent() {
                       debajo del nombre) para que entren los salones. */}
                   <TableHead className="hidden w-[120px] sm:table-cell">Categoría</TableHead>
                   <TableHead className="hidden w-[80px] sm:table-cell">Unidad</TableHead>
+                  <TableHead className="hidden w-[110px] text-right md:table-cell">Precio</TableHead>
                   {stockContado.visible &&
                     stockContado.salones.map((s) => (
                       <TableHead
@@ -325,10 +365,23 @@ function LimpiezaContent() {
                       <TableRow key={a.id} className="bg-background">
                         <TableCell className="sticky left-0 z-10 max-w-[9rem] whitespace-normal bg-background font-medium sm:max-w-none">
                           {a.descripcion}
-                          <span className="block text-xs font-normal text-muted-foreground sm:hidden">{a.unidad}</span>
+                          <span className="block text-xs font-normal text-muted-foreground sm:hidden">
+                            {a.unidad}
+                            {a.contenidoCantidad ? ` de ${describirContenido(a.contenidoCantidad, a.contenidoUnidad)}` : ""}
+                          </span>
                         </TableCell>
                         <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">{a.categoria || "—"}</TableCell>
-                        <TableCell className="hidden sm:table-cell">{a.unidad}</TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {a.unidad}
+                          {a.contenidoCantidad ? (
+                            <span className="block text-xs text-muted-foreground">
+                              de {describirContenido(a.contenidoCantidad, a.contenidoUnidad)}
+                            </span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="hidden text-right tabular-nums md:table-cell">
+                          {a.precioUnitario > 0 ? fmtPesos(a.precioUnitario) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                         {stockContado.visible &&
                           stockContado.salones.map((s) => (
                             <TableCell key={s.id} className="text-right" style={fondoSalon(s.color)}>
@@ -380,7 +433,7 @@ function LimpiezaContent() {
             <DialogTitle>{editando ? "Editar artículo" : "Nuevo artículo de limpieza"}</DialogTitle>
             <DialogDescription>
               {editando
-                ? "Cambiá el nombre, la categoría, la unidad o lo que hay en cada salón."
+                ? "Cambiá el nombre, la categoría, la unidad, el precio o lo que hay en cada salón."
                 : "Agregalo a la lista. Si ya sabés cuánto hay en cada salón, escribilo; si no, se cuenta después en Contar stock."}
             </DialogDescription>
           </DialogHeader>
@@ -427,6 +480,27 @@ function LimpiezaContent() {
                     <option key={u} value={u} />
                   ))}
                 </datalist>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>¿Cuánto trae cada unidad? (opcional)</Label>
+                <ContenidoPorUnidadInput
+                  cantidad={form.contenidoCantidad}
+                  unidad={form.contenidoUnidad}
+                  onChange={(v) => setForm((f) => ({ ...f, contenidoCantidad: v.cantidad, contenidoUnidad: v.unidad }))}
+                />
+                <p className="text-xs text-muted-foreground">Ej: un bidón de 5 litros, un paquete de 500 gramos.</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="limpieza-precio">Precio por unidad (opcional)</Label>
+                <MoneyInput
+                  id="limpieza-precio"
+                  value={form.precioUnitario}
+                  onValueChange={(v) => setForm((f) => ({ ...f, precioUnitario: v }))}
+                  placeholder="$ 0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Lo que sale una {form.unidad || "UN"}. Por ahora no se suma a costos ni a cajas.
+                </p>
               </div>
             </div>
             {stockContado.visible && (

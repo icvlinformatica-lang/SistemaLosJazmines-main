@@ -30,6 +30,8 @@ const {
   nombreRepetido,
   totalesPorArticulo,
   claveDescripcion,
+  articuloDesdeFila,
+  describirContenido,
 } = require("../lib/insumos-limpieza.ts")
 const { validarAjusteAlmacen } = require("../lib/stock-ajuste-almacen.ts")
 
@@ -67,7 +69,18 @@ test("esSectorStock reconoce los tres sectores y nada más", () => {
 // ── Catálogo (lógica pura) ──────────────────────────────────────────────
 test("validar un artículo: nombre obligatorio, unidad en mayúsculas (UN si falta), categoría opcional", () => {
   const ok = validarArticuloLimpieza({ id: UUID, descripcion: "  Papel   higiénico x4 ", unidad: "paq", categoria: " Papelería " })
-  assert.deepEqual(ok, { ok: true, articulo: { id: UUID, descripcion: "Papel higiénico x4", unidad: "PAQ", categoria: "Papelería" } })
+  assert.deepEqual(ok, {
+    ok: true,
+    articulo: {
+      id: UUID,
+      descripcion: "Papel higiénico x4",
+      unidad: "PAQ",
+      categoria: "Papelería",
+      precioUnitario: 0,
+      contenidoCantidad: null,
+      contenidoUnidad: null,
+    },
+  })
   const sinUnidad = validarArticuloLimpieza({ id: UUID, descripcion: "Esponja" })
   assert.equal(sinUnidad.ok && sinUnidad.articulo.unidad, "UN")
   assert.equal(sinUnidad.ok && sinUnidad.articulo.categoria, null)
@@ -75,6 +88,44 @@ test("validar un artículo: nombre obligatorio, unidad en mayúsculas (UN si fal
   assert.equal(validarArticuloLimpieza({ id: "no-uuid", descripcion: "Alcohol" }).ok, false)
   // Al editar, el id viene de la dirección y no se pide uuid en el cuerpo.
   assert.equal(validarArticuloLimpieza({ descripcion: "Alcohol" }, "abc").ok, true)
+})
+
+test("precio y contenido: opcionales, precio con 2 decimales, contenido en gramos o cc", () => {
+  // Bidón de lavandina de 5 litros a $4.599,999 → $4.600, 5000 cc.
+  const bidon = validarArticuloLimpieza({
+    id: UUID,
+    descripcion: "Lavandina",
+    unidad: "un",
+    precioUnitario: 4599.999,
+    contenidoCantidad: 5000,
+    contenidoUnidad: "cc",
+  })
+  assert.equal(bidon.ok, true)
+  assert.equal(bidon.articulo.precioUnitario, 4600)
+  assert.equal(bidon.articulo.contenidoCantidad, 5000)
+  assert.equal(bidon.articulo.contenidoUnidad, "CC")
+  // Contenido 0 = sin cargar, aunque venga una unidad.
+  const sinContenido = validarArticuloLimpieza({ id: UUID, descripcion: "Esponja", contenidoCantidad: 0, contenidoUnidad: "CC" })
+  assert.equal(sinContenido.articulo.contenidoCantidad, null)
+  assert.equal(sinContenido.articulo.contenidoUnidad, null)
+  assert.equal(validarArticuloLimpieza({ id: UUID, descripcion: "X", precioUnitario: -1 }).ok, false)
+  assert.equal(validarArticuloLimpieza({ id: UUID, descripcion: "X", precioUnitario: "abc" }).ok, false)
+  assert.equal(validarArticuloLimpieza({ id: UUID, descripcion: "X", contenidoCantidad: 5, contenidoUnidad: "LT" }).ok, false)
+  assert.equal(validarArticuloLimpieza({ id: UUID, descripcion: "X", contenidoCantidad: -5, contenidoUnidad: "CC" }).ok, false)
+})
+
+test("fila de la base → artículo: numeric llega como texto y una fila sin las columnas nuevas no rompe", () => {
+  assert.deepEqual(
+    articuloDesdeFila({ id: "a", descripcion: "Alcohol", unidad: null, categoria: null, precio_unitario: "1250.50", contenido_cantidad: "1000", contenido_unidad: "CC" }),
+    { id: "a", descripcion: "Alcohol", unidad: "UN", categoria: null, precioUnitario: 1250.5, contenidoCantidad: 1000, contenidoUnidad: "CC" },
+  )
+  const vieja = articuloDesdeFila({ id: "b", descripcion: "Bolsas", unidad: "PAQ", categoria: "Limpieza" })
+  assert.equal(vieja.precioUnitario, 0)
+  assert.equal(vieja.contenidoCantidad, null)
+  assert.equal(describirContenido(5000, "CC"), "5 L")
+  assert.equal(describirContenido(750, "CC"), "750 cc")
+  assert.equal(describirContenido(500, "GRS"), "500 g")
+  assert.equal(describirContenido(null, null), "sin cargar")
 })
 
 test("nombre repetido: sin mayúsculas, tildes ni espacios de más, salvo el propio", () => {
@@ -117,7 +168,15 @@ const db = async (parts, ...values) => {
   if (q.includes("FROM insumos_limpieza")) return articulos
   if (q.includes("INSERT INTO insumos_limpieza")) {
     if (articulos.some((a) => a.id === values[0])) return []
-    articulos.push({ id: values[0], descripcion: values[1], unidad: values[2], categoria: values[3] })
+    articulos.push({
+      id: values[0],
+      descripcion: values[1],
+      unidad: values[2],
+      categoria: values[3],
+      precio_unitario: values[4],
+      contenido_cantidad: values[5],
+      contenido_unidad: values[6],
+    })
     return [{ id: values[0] }]
   }
   if (q.includes("FROM insumos_barra") || q.includes("FROM insumos ")) throw new Error(`No debería leer otro catálogo: ${q}`)
@@ -242,6 +301,26 @@ test("catálogo: Administración agrega, el reintento no duplica y el nombre rep
   assert.equal(actividad.length, 1)
   const r3 = await alta({ id: "00000000-0000-4000-8000-000000000099", descripcion: "papel HIGIENICO" })
   assert.equal(r3.status, 409)
+})
+
+test("catálogo: el alta guarda precio y contenido, y el GET los devuelve", async () => {
+  reset("administracion")
+  const r = await alta({
+    id: UUID,
+    descripcion: "Lavandina",
+    unidad: "UN",
+    precioUnitario: 4600,
+    contenidoCantidad: 5000,
+    contenidoUnidad: "CC",
+  })
+  assert.equal(r.status, 200)
+  assert.match(actividad[0].join(" "), /Trae: 5 L/)
+  assert.match(actividad[0].join(" "), /Precio: \$4600/)
+  const lista = await (await catalogo.GET(new Request("http://localhost/api/insumos-limpieza"))).json()
+  const lavandina = lista.articulos.find((a) => a.id === UUID)
+  assert.equal(lavandina.precioUnitario, 4600)
+  assert.equal(lavandina.contenidoCantidad, 5000)
+  assert.equal(lavandina.contenidoUnidad, "CC")
 })
 
 test("sin la tabla (falta el SQL 026) avisa claro en vez de romper", async () => {

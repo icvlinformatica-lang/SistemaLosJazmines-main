@@ -4,10 +4,11 @@ import { sql } from "@/lib/db"
 import { logActivity } from "@/lib/activity-logger"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 import { puedeEditarCatalogoLimpieza } from "@/lib/stock-salones"
-import { AVISO_SIN_TABLA, faltaTabla, nombreRepetido, validarArticuloLimpieza } from "@/lib/insumos-limpieza"
+import { AVISO_SIN_TABLA, articuloDesdeFila, describirContenido, faltaTabla, nombreRepetido, validarArticuloLimpieza } from "@/lib/insumos-limpieza"
 
 /**
- * PUT    — edita nombre, unidad o categoría de un artículo de limpieza.
+ * PUT    — edita nombre, unidad, categoría, precio o contenido de un artículo
+ *          de limpieza.
  * DELETE — lo borra junto con sus conteos por salón (stock_salones). El
  *          historial de cargas (stock_sesion_items) queda: guarda una copia
  *          del nombre de ese día.
@@ -25,12 +26,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 })
     const a = v.articulo
 
-    const existentes = (await sql`SELECT id, descripcion, unidad, categoria FROM insumos_limpieza`) as unknown as Array<{
-      id: string
-      descripcion: string
-      unidad: string | null
-      categoria: string | null
-    }>
+    const existentes = (
+      (await sql`
+        SELECT id, descripcion, unidad, categoria, precio_unitario, contenido_cantidad, contenido_unidad
+        FROM insumos_limpieza
+      `) as unknown as Array<Parameters<typeof articuloDesdeFila>[0]>
+    ).map(articuloDesdeFila)
     const previo = existentes.find((e) => e.id === id)
     if (!previo) return NextResponse.json({ ok: false, error: "El artículo ya no existe" }, { status: 404 })
     if (nombreRepetido(a.descripcion, existentes, id)) {
@@ -39,15 +40,23 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     await sql`
       UPDATE insumos_limpieza
-      SET descripcion = ${a.descripcion}, unidad = ${a.unidad}, categoria = ${a.categoria}, updated_at = NOW()
+      SET descripcion = ${a.descripcion}, unidad = ${a.unidad}, categoria = ${a.categoria},
+          precio_unitario = ${a.precioUnitario}, contenido_cantidad = ${a.contenidoCantidad},
+          contenido_unidad = ${a.contenidoUnidad}, updated_at = NOW()
       WHERE id = ${id}
     `
     const cambios: string[] = []
     if (previo.descripcion !== a.descripcion) cambios.push(`Nombre: ${previo.descripcion} → ${a.descripcion}`)
-    if ((previo.unidad || "UN") !== a.unidad) cambios.push(`Unidad: ${previo.unidad || "UN"} → ${a.unidad}`)
+    if (previo.unidad !== a.unidad) cambios.push(`Unidad: ${previo.unidad} → ${a.unidad}`)
     if ((previo.categoria || "") !== (a.categoria || "")) {
       cambios.push(`Categoría: ${previo.categoria || "sin categoría"} → ${a.categoria || "sin categoría"}`)
     }
+    if (Math.abs(previo.precioUnitario - a.precioUnitario) > 0.005) {
+      cambios.push(`Precio: $${previo.precioUnitario} → $${a.precioUnitario}`)
+    }
+    const contenidoAntes = describirContenido(previo.contenidoCantidad, previo.contenidoUnidad)
+    const contenidoAhora = describirContenido(a.contenidoCantidad, a.contenidoUnidad)
+    if (contenidoAntes !== contenidoAhora) cambios.push(`Trae: ${contenidoAntes} → ${contenidoAhora}`)
     if (cambios.length) await logActivity("insumo_limpieza", "modificado", a.descripcion, cambios.join(" · "))
     return NextResponse.json({ ok: true, articulo: a })
   } catch (err) {

@@ -4,7 +4,7 @@ import { sql } from "@/lib/db"
 import { logActivity } from "@/lib/activity-logger"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 import { puedeAgregarArticuloLimpieza, sectoresPermitidos } from "@/lib/stock-salones"
-import { AVISO_SIN_TABLA, faltaTabla, nombreRepetido, validarArticuloLimpieza } from "@/lib/insumos-limpieza"
+import { AVISO_SIN_TABLA, articuloDesdeFila, describirContenido, faltaTabla, nombreRepetido, validarArticuloLimpieza } from "@/lib/insumos-limpieza"
 
 /**
  * Catálogo de artículos de limpieza (tabla insumos_limpieza, scripts/026).
@@ -15,7 +15,8 @@ import { AVISO_SIN_TABLA, faltaTabla, nombreRepetido, validarArticuloLimpieza } 
  *        (puedeAgregarArticuloLimpieza). Idempotente: el id lo genera la
  *        pantalla y un reintento no crea otro.
  *
- * Sin precio: no mueve costos de eventos ni cajas.
+ * El precio y el contenido por unidad se guardan, pero por ahora no mueven
+ * costos de eventos ni cajas.
  */
 
 export async function GET(req: Request) {
@@ -25,12 +26,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 })
     }
     const filas = (await sql`
-      SELECT id, descripcion, unidad, categoria FROM insumos_limpieza ORDER BY descripcion ASC
-    `) as unknown as Array<{ id: string; descripcion: string; unidad: string | null; categoria: string | null }>
-    return NextResponse.json({
-      ok: true,
-      articulos: filas.map((f) => ({ id: f.id, descripcion: f.descripcion, unidad: f.unidad || "UN", categoria: f.categoria })),
-    })
+      SELECT id, descripcion, unidad, categoria, precio_unitario, contenido_cantidad, contenido_unidad
+      FROM insumos_limpieza ORDER BY descripcion ASC
+    `) as unknown as Array<Parameters<typeof articuloDesdeFila>[0]>
+    return NextResponse.json({ ok: true, articulos: filas.map(articuloDesdeFila) })
   } catch (err) {
     if (faltaTabla(err)) return NextResponse.json({ ok: false, error: AVISO_SIN_TABLA }, { status: 503 })
     console.error("[API] Error en insumos-limpieza GET:", err)
@@ -59,12 +58,17 @@ export async function POST(req: Request) {
     }
 
     const creada = (await sql`
-      INSERT INTO insumos_limpieza (id, descripcion, unidad, categoria)
-      VALUES (${a.id}, ${a.descripcion}, ${a.unidad}, ${a.categoria})
+      INSERT INTO insumos_limpieza (id, descripcion, unidad, categoria, precio_unitario, contenido_cantidad, contenido_unidad)
+      VALUES (${a.id}, ${a.descripcion}, ${a.unidad}, ${a.categoria}, ${a.precioUnitario}, ${a.contenidoCantidad}, ${a.contenidoUnidad})
       ON CONFLICT (id) DO NOTHING
       RETURNING id
     `) as unknown as Array<{ id: string }>
-    if (creada.length) await logActivity("insumo_limpieza", "creado", a.descripcion, `Unidad: ${a.unidad}`)
+    if (creada.length) {
+      const detalle = [`Unidad: ${a.unidad}`]
+      if (a.contenidoCantidad) detalle.push(`Trae: ${describirContenido(a.contenidoCantidad, a.contenidoUnidad)}`)
+      if (a.precioUnitario > 0) detalle.push(`Precio: $${a.precioUnitario}`)
+      await logActivity("insumo_limpieza", "creado", a.descripcion, detalle.join(" · "))
+    }
     return NextResponse.json({ ok: true, articulo: a, duplicada: !creada.length })
   } catch (err) {
     if (faltaTabla(err)) return NextResponse.json({ ok: false, error: AVISO_SIN_TABLA }, { status: 503 })

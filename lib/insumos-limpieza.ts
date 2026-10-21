@@ -2,7 +2,11 @@
 // Pedido de Diego (21/10/2026): un tercer stock, aparte de cocina y barra,
 // para limpieza, papelería y mantenimiento. Se cuenta por salón igual que los
 // otros dos (stock_salones con insumo_tipo 'limpieza') y el total es la suma
-// de los salones. No tiene precio: no entra en costos de eventos ni en cajas.
+// de los salones.
+//
+// Precio y contenido por unidad (pedido de Rodrigo, 21/10/2026): se cargan
+// para tenerlos a mano, pero por ahora NO entran en costos de eventos ni en
+// cajas. Cuando se sumen a Caja Eventos, se toman de acá.
 //
 // Lógica pura (sin base ni React) para poder probarla sola
 // (scripts/test-insumos-limpieza.cjs). La usan app/api/insumos-limpieza/** y
@@ -13,6 +17,11 @@ export interface ArticuloLimpieza {
   descripcion: string
   unidad: string
   categoria: string | null
+  /** Precio de una unidad (la de `unidad`). 0 = sin cargar. */
+  precioUnitario: number
+  /** Cuánto trae cada unidad, en gramos o cc (como Almacén y Barra). null = sin cargar. */
+  contenidoCantidad: number | null
+  contenidoUnidad: "GRS" | "CC" | null
 }
 
 /** Agrupan la lista de carga en /stock. Se puede escribir otra. */
@@ -54,7 +63,62 @@ export function validarArticuloLimpieza(body: unknown, idFijo?: string): Validac
   if (unidad.length > 20) return { ok: false, error: "La unidad es demasiado larga" }
   const categoriaTexto = typeof b.categoria === "string" ? b.categoria.replace(/\s+/g, " ").trim() : ""
   if (categoriaTexto.length > 40) return { ok: false, error: "La categoría es demasiado larga" }
-  return { ok: true, articulo: { id, descripcion, unidad, categoria: categoriaTexto || null } }
+  // Sin precio = 0 (sin cargar). Pesos con centavos, redondeado a 2 decimales.
+  const precioCrudo = b.precioUnitario ?? 0
+  const precio = typeof precioCrudo === "number" ? precioCrudo : Number(precioCrudo)
+  if (!Number.isFinite(precio) || precio < 0) return { ok: false, error: "El precio no es válido" }
+  if (precio > 1e10) return { ok: false, error: "El precio es demasiado alto" }
+  const precioUnitario = Math.round(precio * 100) / 100
+  // Contenido: 0 o vacío = sin cargar. Siempre en gramos o cc (la pantalla
+  // deja escribir litros o kilos y los convierte).
+  const contenidoCrudo = b.contenidoCantidad ?? 0
+  const contenido = typeof contenidoCrudo === "number" ? contenidoCrudo : Number(contenidoCrudo)
+  if (!Number.isFinite(contenido) || contenido < 0) return { ok: false, error: "El contenido no es válido" }
+  let contenidoCantidad: number | null = null
+  let contenidoUnidad: "GRS" | "CC" | null = null
+  if (contenido > 0) {
+    const u = typeof b.contenidoUnidad === "string" ? b.contenidoUnidad.trim().toUpperCase() : ""
+    if (u !== "GRS" && u !== "CC") return { ok: false, error: "El contenido va en gramos o cc" }
+    contenidoCantidad = Math.round(contenido * 1000) / 1000
+    contenidoUnidad = u
+  }
+  return {
+    ok: true,
+    articulo: { id, descripcion, unidad, categoria: categoriaTexto || null, precioUnitario, contenidoCantidad, contenidoUnidad },
+  }
+}
+
+/** Una fila de insumos_limpieza (numeric llega como texto) → artículo. */
+export function articuloDesdeFila(f: {
+  id: string
+  descripcion: string
+  unidad: string | null
+  categoria: string | null
+  precio_unitario?: string | number | null
+  contenido_cantidad?: string | number | null
+  contenido_unidad?: string | null
+}): ArticuloLimpieza {
+  const precio = Number(f.precio_unitario ?? 0)
+  const contenido = Number(f.contenido_cantidad ?? 0)
+  const unidadContenido = f.contenido_unidad === "GRS" || f.contenido_unidad === "CC" ? f.contenido_unidad : null
+  const hayContenido = Number.isFinite(contenido) && contenido > 0 && unidadContenido !== null
+  return {
+    id: f.id,
+    descripcion: f.descripcion,
+    unidad: f.unidad || "UN",
+    categoria: f.categoria,
+    precioUnitario: Number.isFinite(precio) ? precio : 0,
+    contenidoCantidad: hayContenido ? contenido : null,
+    contenidoUnidad: hayContenido ? unidadContenido : null,
+  }
+}
+
+/** "5 L", "500 g" o "sin cargar", para el historial y la tabla. */
+export function describirContenido(cantidad: number | null, unidad: "GRS" | "CC" | null): string {
+  if (!cantidad || cantidad <= 0 || !unidad) return "sin cargar"
+  const fmt = (n: number) => new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(n)
+  if (unidad === "CC") return cantidad >= 1000 ? `${fmt(cantidad / 1000)} L` : `${fmt(cantidad)} cc`
+  return cantidad >= 1000 ? `${fmt(cantidad / 1000)} kg` : `${fmt(cantidad)} g`
 }
 
 /** ¿Ya hay otro artículo con el mismo nombre (sin contar mayúsculas ni tildes)? */
