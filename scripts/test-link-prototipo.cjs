@@ -36,18 +36,18 @@ const ruta = require(path.join(RAIZ, "app", "api", "clientes", "link-prototipo",
 
 const pedido = () => new Request("https://jazmines.example/api/clientes/link-prototipo", { method: "POST" })
 
-test("solo Administración y Soporte arman el link", async () => {
-  for (const perfil of [null, "clientes", "vendedor", "cobro", "dj", "cocina"]) {
+test("solo Soporte arma el link", async () => {
+  for (const perfil of [null, "administracion", "clientes", "vendedor", "cobro", "dj", "cocina"]) {
     perfilDeLaSesion = perfil
     const res = await ruta.POST(pedido())
     assert.equal(res.status, 403, String(perfil))
   }
-  assert.equal(link.puedeGenerarLinkPrototipo("administracion"), true)
+  assert.equal(link.puedeGenerarLinkPrototipo("administracion"), false)
   assert.equal(link.puedeGenerarLinkPrototipo("soporte"), true)
 })
 
 test("el link abre el perfil clientes y vale 30 días", async () => {
-  perfilDeLaSesion = "administracion"
+  perfilDeLaSesion = "soporte"
   const res = await ruta.POST(pedido())
   assert.equal(res.status, 200)
   const data = await res.json()

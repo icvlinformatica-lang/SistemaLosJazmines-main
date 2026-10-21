@@ -27,11 +27,11 @@ require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(f
 const auth = require(path.join(RAIZ, "lib", "auth", "server.ts"))
 const { POST } = require(path.join(RAIZ, "app", "api", "auth", "login", "route.ts"))
 
-// "clientes" (prototipo del simulador, 18/10/2026): Diego también recibe su
-// acceso rápido, porque ese perfil no tiene PIN propio.
+// "clientes" (prototipo del simulador) no está: desde el 21/10/2026 se entra
+// solo con el link que arma Soporte, así que Diego no recibe su acceso rápido.
 const PERFILES = [
   "cocina", "barra", "administracion", "soporte", "cobro",
-  "dj", "fotografo", "vestido", "pantalla", "coordinacion", "vendedor", "clientes",
+  "dj", "fotografo", "vestido", "pantalla", "coordinacion", "vendedor",
 ]
 
 let ip = 0
@@ -96,7 +96,7 @@ test("con el PIN equivocado, poner Diego no sirve", async () => {
   assert.equal(data.accesosRapidos, undefined)
 })
 
-test("Clientes no tiene PIN propio: no entra con ningún PIN; sí con el pase de Administración o el acceso de Diego", async () => {
+test("Clientes no tiene PIN propio: no entra con ningún PIN, ni con el pase de Administración ni con lo de Diego; sí con el link de Soporte", async () => {
   // Ni un PIN cualquiera, ni el de otro perfil, ni la clave maestra.
   for (const pin of ["1111", "222222", "0000"]) {
     const conPin = await login({ perfilId: "clientes", pin })
@@ -108,16 +108,17 @@ test("Clientes no tiene PIN propio: no entra con ningún PIN; sí con el pase de
   } finally {
     delete process.env.PIN_MAESTRO
   }
-  // Con el pase de Administración entra, sin acceso rápido ni pase nuevo.
+  // Con el pase de Administración, no (desde el 21/10/2026 solo Soporte).
   const admin = await login({ perfilId: "administracion", pin: "222222" })
   const conPase = await login({ perfilId: "clientes", paseAdmin: admin.data.paseAdmin })
-  assert.equal(conPase.status, 200)
-  assert.equal((await auth.verifyToken(conPase.data.sessionToken))?.perfilId, "clientes")
-  assert.equal(conPase.data.quickToken, undefined)
-  assert.equal(conPase.data.paseAdmin, undefined)
-  // Con el acceso rápido que recibe Diego, también.
+  assert.equal(conPase.status, 401)
+  // El pase sigue sirviendo para los demás perfiles.
+  assert.equal((await login({ perfilId: "cocina", paseAdmin: admin.data.paseAdmin })).status, 200)
+  // Diego ya no recibe el acceso de Clientes.
   const diego = await login({ perfilId: "administracion", pin: "222222", quien: "Diego" })
-  const conAcceso = await login({ perfilId: "clientes", quickToken: diego.data.accesosRapidos.clientes })
+  assert.equal(diego.data.accesosRapidos.clientes, undefined)
+  // Con el acceso rápido del link de Soporte, entra.
+  const conAcceso = await login({ perfilId: "clientes", quickToken: await auth.signQuickToken("clientes") })
   assert.equal(conAcceso.status, 200)
   assert.equal(conAcceso.data.perfilId, "clientes")
 })

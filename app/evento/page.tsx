@@ -864,16 +864,27 @@ function EventoPageContent() {
       })
       setIsSaving(false)
       if (fromContratos) {
-        router.push(`/eventos/contratos?eventoId=${editingEventoId}`)
+        // replace y no push: el planificador no queda en el historial, así la
+        // flecha de Contratos vuelve a la pantalla de antes y no otra vez acá.
+        router.replace(`/eventos/contratos?eventoId=${editingEventoId}`)
       } else {
-        // Quedarse en el planificador: la nueva version del contrato pasa a ser
-        // la vigente (arriba a la izquierda) y la anterior queda plegada debajo.
-        if (seCreoNuevaVersion) {
-          updateEventoActual({ versionesContrato } as Partial<EventoGuardado>)
-        }
+        // Quedarse en el planificador con lo que se acaba de guardar. Los datos
+        // del contrato, el plan de cuotas y las observaciones se editan en
+        // campos propios de esta pantalla y no en el evento en memoria: si no
+        // se los pasa acá, el evento en memoria queda con los datos viejos, la
+        // comparación con lo guardado ve "cambios sin guardar" y las dos
+        // flechas de volver abren el aviso en vez de volver.
+        // La nueva versión del contrato pasa a ser la vigente (arriba a la
+        // izquierda) y la anterior queda plegada debajo.
+        const eventoGuardado = {
+          ...evento,
+          ...eventData,
+          ...(seCreoNuevaVersion ? { versionesContrato } : {}),
+        } as EventoGuardado
+        updateEventoActual(eventoGuardado as Partial<EventoGuardado>)
         // Re-bloquear las secciones y tomar un snapshot fresco para comparar
         setSeccionesDesbloqueadas({})
-        setOriginalEvento(JSON.parse(JSON.stringify({ ...evento, ...eventData, versionesContrato })) as EventoGuardado)
+        setOriginalEvento(JSON.parse(JSON.stringify(eventoGuardado)) as EventoGuardado)
         window.scrollTo({ top: 0, behavior: "smooth" })
       }
     } else {
