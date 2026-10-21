@@ -71,7 +71,7 @@ function textoOtrosSalones(
   return detalle.map((d) => `${smartUnitsForShopping(d.cantidad, unidad)} ${salonLabel(d.salon)}`).join(" + ")
 }
 
-function smartUnitsForShopping(amount: number, unit: string): string {
+export function smartUnitsForShopping(amount: number, unit: string): string {
   const normalizedUnit = unit.toUpperCase()
 
   if ((normalizedUnit === "GRS" || normalizedUnit === "GR") && amount >= 1000) {
@@ -92,7 +92,9 @@ function smartUnitsForShopping(amount: number, unit: string): string {
     return `${amount.toFixed(2)} ${normalizedUnit}`
   }
 
-  return `${amount.toFixed(1)} ${unit}`
+  // Botellas, latas y unidades: "500 UN" y no "500.0 UN"; con fracción, un decimal.
+  const redondeado = Math.round(amount * 10) / 10
+  return `${Number.isInteger(redondeado) ? redondeado : redondeado.toFixed(1)} ${unit}`
 }
 
 function smartUnitsForKitchen(amount: number, unit: string): string {
@@ -155,7 +157,12 @@ export function imprimirDocumentoEvento(data: PrintData, sections: DocumentSecti
   // vez de comprarlo.
   const salonEvento = data.stockOtrosSalones?.salon ?? null
   const porSalon = data.stockOtrosSalones
-  const tituloStock = porSalon && salonEvento ? `EN ${salonLabel(salonEvento).toUpperCase()}` : "EN STOCK"
+  // La columna se llama siempre "STOCK ACTUAL": es lo que hay hoy, antes de
+  // este evento. Con conteo por salón, abajo dice de qué salón es.
+  const tituloStock =
+    porSalon && salonEvento
+      ? `STOCK ACTUAL<br><span style="font-size:7pt;font-weight:normal;">EN ${salonLabel(salonEvento).toUpperCase()}</span>`
+      : "STOCK ACTUAL"
   const avisoSinConteo =
     porSalon && salonEvento && salonSinConteos(porSalon.cocina, salonEvento) && salonSinConteos(porSalon.barra, salonEvento)
 
