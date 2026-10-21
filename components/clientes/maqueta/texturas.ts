@@ -1,9 +1,9 @@
 // Texturas dibujadas en un canvas para la maqueta 3D (vista de Clientes):
 // el brillo de las lamparitas, el atril de la entrada, el cartel del salón,
 // la pantalla LED, el cartel de neón y los pisos y paredes de cada salón (el
-// plano, la madera, el mármol, la terracota, el ladrillo, la boiserie y la
-// cal). Todo se dibuja acá (sin imágenes que bajar), con la letra de la vista
-// de Clientes (Bodoni Moda) cuando ya cargó.
+// plano, la madera, el parquet, el mármol, la terracota, la boiserie, la cal
+// y el friso de madera) y la piedra blanca de la entrada de la Quinta. Todo se dibuja acá (sin imágenes que bajar), con la letra de la
+// vista de Clientes (Bodoni Moda) cuando ya cargó.
 
 import * as THREE from "three"
 
@@ -411,28 +411,6 @@ export function texturaTerracota(): THREE.CanvasTexture {
   return repetida(c)
 }
 
-/** Pared de ladrillo a la vista (la textura tiene 2 × 1 m). */
-export function texturaLadrillo(): THREE.CanvasTexture {
-  const { c, g } = lienzo(512, 256)
-  const a = azarTex(21)
-  g.fillStyle = "#5f4b3d"
-  g.fillRect(0, 0, 512, 256)
-  const tonos = ["#8b4a33", "#96553b", "#7d432f", "#9f6040", "#874632", "#93513a"]
-  const filas = 12
-  const alto = 256 / filas
-  const largo = 64
-  for (let f = 0; f < filas; f++) {
-    const corrido = f % 2 ? largo / 2 : 0
-    for (let k = -1; k < 9; k++) {
-      const x = k * largo + corrido
-      g.fillStyle = tonos[Math.floor(a() * tonos.length)]
-      for (const dx of [0, 512, -512]) g.fillRect(x + dx + 1.5, f * alto + 1.5, largo - 3, alto - 3)
-    }
-  }
-  manchas(g, 512, 256, 260, (r) => `rgba(${r() > 0.5 ? "40,24,16" : "200,150,110"},${0.05 + r() * 0.06})`, [1, 3], 22)
-  return repetida(c)
-}
-
 /**
  * Pared con boiserie (salón elegante): crema, con un zócalo de paneles, una
  * moldura dorada y un panel alto. Un tramo de 2 m de ancho por el alto entero.
@@ -470,5 +448,115 @@ export function texturaRevoque(): THREE.CanvasTexture {
   g.fillRect(0, 0, 256, 256)
   manchas(g, 256, 256, 90, (r) => `rgba(${r() > 0.5 ? "255,250,240" : "190,170,140"},${0.05 + r() * 0.07})`, [6, 22], 31)
   manchas(g, 256, 256, 200, (r) => `rgba(150,130,100,${0.04 + r() * 0.05})`, [0.6, 1.6], 32)
+  return repetida(c)
+}
+
+/**
+ * Pared de la Quinta: blanca, con un friso de tablas de madera hasta 1,1 m y
+ * una moldura de madera arriba del friso (las fotos del 19/10/2026: paredes
+ * blancas y todo el salón con estética de madera). Un tramo de 2 m de ancho
+ * por el alto entero de la pared (`alto`, en metros).
+ */
+export function texturaFrisoMadera(alto: number): THREE.CanvasTexture {
+  const PX = 256
+  const { c, g } = lienzo(2 * PX, Math.round(alto * PX))
+  const Y = (m: number) => (alto - m) * PX
+  const a = azarTex(41)
+  // Arriba, revoque blanco apenas cálido.
+  g.fillStyle = "#efe9df"
+  g.fillRect(0, 0, c.width, c.height)
+  manchas(g, c.width, c.height, 120, (r) => `rgba(${r() > 0.5 ? "255,253,248" : "200,186,165"},${0.04 + r() * 0.05})`, [8, 26], 42)
+  // El friso: 16 tablas verticales de 12,5 cm (así el tramo se repite sin costura).
+  const tonos = ["#9a6a42", "#8f6039", "#a5734a", "#94653e", "#a06e45"]
+  const arriba = Y(1.05)
+  const tabla = c.width / 16
+  for (let k = 0; k < 16; k++) {
+    const x = k * tabla
+    g.fillStyle = tonos[Math.floor(a() * tonos.length)]
+    g.fillRect(x, arriba, tabla, c.height - arriba)
+    // Vetas a lo largo de la tabla.
+    g.strokeStyle = "rgba(70,42,20,0.18)"
+    g.lineWidth = 1
+    for (let v = 0; v < 3; v++) {
+      const vx = x + 5 + v * 9 + a() * 4
+      g.beginPath()
+      g.moveTo(vx, arriba)
+      g.bezierCurveTo(vx + 3, arriba + 60, vx - 3, arriba + 150, vx + 1, c.height)
+      g.stroke()
+    }
+    // La junta del machimbre.
+    g.fillStyle = "rgba(48,28,14,0.6)"
+    g.fillRect(x, arriba, 2, c.height - arriba)
+  }
+  // La moldura de arriba del friso: madera más oscura con un filo de luz.
+  g.fillStyle = "#5e3d25"
+  g.fillRect(0, Y(1.12), c.width, Y(1.05) - Y(1.12))
+  g.fillStyle = "rgba(255,226,180,0.35)"
+  g.fillRect(0, Y(1.12), c.width, 3)
+  g.fillStyle = "rgba(40,24,12,0.35)"
+  g.fillRect(0, Y(1.05) - 3, c.width, 3)
+  return repetida(c)
+}
+
+/** Parquet en punta de Hungría (las tablitas forman una V), madera cálida. La
+ *  textura tiene 2 × 2 m: 8 columnas de 25 cm. */
+export function texturaParquet(): THREE.CanvasTexture {
+  const { c, g } = lienzo(512, 512)
+  const tonos = ["#a0703f", "#94663a", "#ab7a48", "#8c5f35", "#9a6a3c", "#a7764a"]
+  const col = 64
+  const paso = 32
+  // El tono de cada tablita depende de su columna y de su lugar en la vuelta
+  // (16 por columna), así la de arriba y la de abajo empalman sin costura.
+  const tono = (j: number, k: number) => {
+    const m = ((k % 16) + 16) % 16
+    const h = Math.sin((j + 1) * 12.9898 + (m + 1) * 78.233) * 43758.5453
+    return tonos[Math.floor((h - Math.floor(h)) * tonos.length)]
+  }
+  for (let j = 0; j < 8; j++) {
+    const x0 = j * col
+    const x1 = x0 + col
+    // Las columnas pares suben hacia la derecha y las impares bajan: la V.
+    const y = (x: number, k: number) => (j % 2 === 0 ? x - x0 : x1 - x) + k * paso
+    g.save()
+    g.beginPath()
+    g.rect(x0, 0, col, 512)
+    g.clip()
+    for (let k = -3; k <= 17; k++) {
+      g.fillStyle = tono(j, k)
+      g.beginPath()
+      g.moveTo(x0, y(x0, k))
+      g.lineTo(x1, y(x1, k))
+      g.lineTo(x1, y(x1, k + 1))
+      g.lineTo(x0, y(x0, k + 1))
+      g.closePath()
+      g.fill()
+      // Una veta por tablita y la junta con la siguiente.
+      g.strokeStyle = "rgba(70,42,20,0.16)"
+      g.lineWidth = 1
+      g.beginPath()
+      g.moveTo(x0, y(x0, k) + paso * 0.55)
+      g.lineTo(x1, y(x1, k) + paso * 0.55)
+      g.stroke()
+      g.strokeStyle = "rgba(52,30,14,0.55)"
+      g.lineWidth = 1.5
+      g.beginPath()
+      g.moveTo(x0, y(x0, k))
+      g.lineTo(x1, y(x1, k))
+      g.stroke()
+    }
+    g.restore()
+    g.fillStyle = "rgba(52,30,14,0.6)"
+    g.fillRect(x0, 0, 1.5, 512)
+  }
+  return repetida(c)
+}
+
+/** Piedra partida blanca (la entrada de la Quinta). La textura tiene 1 × 1 m. */
+export function texturaGrava(): THREE.CanvasTexture {
+  const { c, g } = lienzo(256, 256)
+  g.fillStyle = "#d6d1c6"
+  g.fillRect(0, 0, 256, 256)
+  manchas(g, 256, 256, 900, (r) => `rgba(${r() > 0.45 ? "250,248,242" : "150,142,128"},${0.35 + r() * 0.4})`, [0.8, 2.4], 51)
+  manchas(g, 256, 256, 260, (r) => `rgba(110,102,90,${0.2 + r() * 0.25})`, [0.5, 1.2], 52)
   return repetida(c)
 }

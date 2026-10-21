@@ -3,12 +3,15 @@
 // - El plano: antes de elegir salón, la isla es un plano con la grilla y, en
 //   punteado, dónde van a ir la pista, las mesas y las barras.
 // - El jardín (solo la Casona): pasto, árboles y la guirnalda de lamparitas.
-//   Al costado, el terreno de la Casona con la casa para quedarse y la pileta,
-//   que se ve también cuando la fiesta es adentro.
+//   Al costado, el terreno de la Casona con la casa colonial para quedarse y
+//   la pileta, que se ve también cuando la fiesta es adentro.
 // - Los salones cerrados (Quinta, Salón y la Casona por dentro): piso, paredes
 //   con ventanas, vigas, arañas que se prenden con los pasos y luces de color
 //   en las paredes. La pared que tapa la vista (según desde dónde mira la
-//   cámara) baja, como en las maquetas de verdad.
+//   cámara) baja, como en las maquetas de verdad. La Casona y la Quinta tienen
+//   techo de madera (listones arriba de las vigas).
+// - Al frente (la Quinta y la Casona): el camino de entrada, el estacionamiento
+//   y, en la Quinta, la entrada con mucho verde y la pérgola.
 // Todo en metros, con el frente hacia +z, como en piezas.ts. Lo que se repite
 // (geometrías, texturas y materiales) queda en el Kit para volver a usarlo.
 
@@ -30,7 +33,17 @@ import {
   type Kit,
   type Pieza3D,
 } from "./piezas"
-import { texturaBoiserie, texturaLadrillo, texturaMadera, texturaMarmol, texturaPlano, texturaRevoque, texturaTerracota } from "./texturas"
+import {
+  texturaBoiserie,
+  texturaFrisoMadera,
+  texturaGrava,
+  texturaMadera,
+  texturaMarmol,
+  texturaParquet,
+  texturaPlano,
+  texturaRevoque,
+  texturaTerracota,
+} from "./texturas"
 
 export type TipoPiso = "plano" | "cesped" | "casona" | "quinta" | "salon"
 export type EstiloSala = "casona" | "quinta" | "salon"
@@ -45,6 +58,9 @@ export interface Entorno extends Pieza3D {
   setPaleta?(paleta: string[]): void
   /** Cuánto de la fiesta está armada (de 0 a 1): las luces de color de las paredes. */
   setNivel?(nivel: number, festejo: boolean): void
+  /** El techo de madera se ve en los planos de lejos y se va en los de cerca
+   *  (si no, tapa las mesas). Lo decide el motor según el plano. */
+  verTecho?(si: boolean): void
 }
 
 const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(p)
@@ -98,8 +114,8 @@ function materialPiso(kit: Kit, tipo: TipoPiso): THREE.Material {
       return kit.recurso("mat-piso-casona", () => std({ map: tex, roughness: 0.82 }))
     }
     case "quinta": {
-      const tex = kit.recurso("tex-madera", () => porMetro(texturaMadera(), 2))
-      return kit.recurso("mat-piso-quinta", () => std({ map: tex, roughness: 0.58 }))
+      const tex = kit.recurso("tex-parquet", () => porMetro(texturaParquet(), 2))
+      return kit.recurso("mat-piso-quinta", () => std({ map: tex, roughness: 0.5 }))
     }
     case "salon": {
       const tex = kit.recurso("tex-marmol", () => porMetro(texturaMarmol(), 2))
@@ -227,6 +243,11 @@ interface Diseno {
   cornisa: string
   marco: string
   viga: { color: string; ancho: number; alto: number; filo?: string }
+  /** El techo de madera (la Casona y la Quinta): listones de adelante hacia
+   *  atrás cada `paso` metros, apoyados arriba de las vigas; con `cruce`,
+   *  también a lo ancho cada tantos metros (la cuadrícula fina de la Quinta y
+   *  los casetones de la Casona). */
+  techo: { color: string; ancho: number; alto: number; paso: number; cruce: number | null } | null
   arana: "edison" | "cristal" | "hierro"
   colorLuz: string
   colorHalo: string
@@ -243,21 +264,25 @@ interface Diseno {
 }
 
 const DISENOS: Record<EstiloSala, Diseno> = {
-  // Ladrillo a la vista, piso de madera, vigas oscuras y lamparitas colgando.
+  // Todo el salón en madera (dicho por el dueño el 19/10/2026, con fotos):
+  // paredes blancas con friso de tablas, parquet, un techo de listones en
+  // cuadrícula, ventanas con marcos de madera, cortinas blancas con dorado y
+  // lamparitas colgando.
   quinta: {
     piso: "quinta",
-    canto: "#7a4330",
-    zocalo: "#3b2416",
-    cornisa: "#4a3020",
-    marco: "#1c1c1c",
-    viga: { color: "#4a3020", ancho: 0.13, alto: 0.18 },
+    canto: "#e6dfd3",
+    zocalo: "#4a3020",
+    cornisa: "#7a5234",
+    marco: "#5e3f27",
+    viga: { color: "#6b4a30", ancho: 0.12, alto: 0.17 },
+    techo: { color: "#b08458", ancho: 0.05, alto: 0.11, paso: 0.44, cruce: 1.3 },
     arana: "edison",
     colorLuz: "#ffd59a",
     colorHalo: "#ffb760",
     calido: "#ffb45c",
-    maceta: "#a5583a",
+    maceta: "#7a5234",
     planta: "#5f7a4f",
-    cortinas: null,
+    cortinas: "#f1ebdf",
     apliques: false,
     arcos: false,
     ventanalPileta: false,
@@ -271,6 +296,7 @@ const DISENOS: Record<EstiloSala, Diseno> = {
     cornisa: "#f3ecdf",
     marco: "#f3ecdf",
     viga: { color: "#efe6d4", ancho: 0.11, alto: 0.15, filo: "#c9a227" },
+    techo: null,
     arana: "cristal",
     colorLuz: "#fff3d6",
     colorHalo: "#ffe0a6",
@@ -283,14 +309,17 @@ const DISENOS: Record<EstiloSala, Diseno> = {
     ventanalPileta: false,
     letrero: true,
   },
-  // La Casona por dentro: paredes a la cal, arcos, terracota y hierro forjado.
+  // La Casona por dentro: paredes a la cal, arcos, terracota, hierro forjado
+  // y el techo de madera (dicho por el dueño el 19/10/2026: la fiesta es en
+  // un espacio con techo de madera): vigas gruesas y casetones a la vista.
   casona: {
     piso: "casona",
     canto: "#ddd2bd",
     zocalo: "#5a3d28",
     cornisa: "#e4d9c4",
     marco: "#3d2a1c",
-    viga: { color: "#3d2a1c", ancho: 0.15, alto: 0.2 },
+    viga: { color: "#3d2a1c", ancho: 0.17, alto: 0.22 },
+    techo: { color: "#5c3d26", ancho: 0.12, alto: 0.14, paso: 1.3, cruce: 1.3 },
     arana: "hierro",
     colorLuz: "#ffe2b0",
     colorHalo: "#ffc56b",
@@ -307,8 +336,8 @@ const DISENOS: Record<EstiloSala, Diseno> = {
 
 function materialPared(kit: Kit, estilo: EstiloSala): THREE.Material {
   if (estilo === "quinta") {
-    const tex = kit.recurso("tex-ladrillo", () => porMetro(texturaLadrillo(), 2, 1))
-    return kit.recurso("mat-pared-quinta", () => std({ map: tex, roughness: 0.92 }))
+    const tex = kit.recurso("tex-friso-madera", () => porMetro(texturaFrisoMadera(SALA.alto), 2, SALA.alto))
+    return kit.recurso("mat-pared-quinta", () => std({ map: tex, roughness: 0.86 }))
   }
   if (estilo === "salon") {
     const tex = kit.recurso("tex-boiserie", () => porMetro(texturaBoiserie(), 2, SALA.alto))
@@ -744,6 +773,39 @@ function geometriaVigas(d: Diseno): THREE.BufferGeometry {
 }
 
 /**
+ * El techo de madera de la Casona y la Quinta: listones de pared a pared (de
+ * adelante hacia atrás) apoyados arriba de las vigas y otros a lo ancho,
+ * alineados con las vigas (los finos de la Quinta forman una cuadrícula; los
+ * gruesos de la Casona, casetones). Es una maqueta: las tablas de arriba no se
+ * dibujan, para que la fiesta se vea entre los listones.
+ */
+function geometriaTechoMadera(t: NonNullable<Diseno["techo"]>): THREE.BufferGeometry {
+  const partes: THREE.BufferGeometry[] = []
+  const y = SALA.alto - 0.02 + t.alto / 2
+  const n = Math.floor((2 * SALA.x) / t.paso)
+  const a = azar(29)
+  const tono = new THREE.Color()
+  for (let i = 0; i < n; i++) {
+    const liston = new THREE.BoxGeometry(t.ancho, t.alto, 2 * SALA.z)
+    liston.translate((i - (n - 1) / 2) * t.paso, y, 0)
+    // Cada tabla apenas distinta, como la madera de verdad.
+    partes.push(conColor(liston, tono.set(t.color).offsetHSL(0, 0, (a() - 0.5) * 0.06)))
+  }
+  if (t.cruce) {
+    // Desde la viga del medio, para que los cruces caigan sobre las vigas.
+    const origen = VIGAS_Z[1]
+    for (let k = -Math.floor((SALA.z + origen) / t.cruce); origen + k * t.cruce < SALA.z - 0.3; k++) {
+      const z = origen + k * t.cruce
+      if (z < -SALA.z + 0.3) continue
+      const cruce = new THREE.BoxGeometry(2 * SALA.x, t.alto, t.ancho)
+      cruce.translate(0, y, z)
+      partes.push(conColor(cruce, t.color))
+    }
+  }
+  return unir(partes)
+}
+
+/**
  * Un salón cerrado, con el estilo de cada salón. Las paredes bajan solas
  * cuando tapan la vista (`cortar`), las arañas se prenden con los pasos y las
  * luces de color de las paredes toman los colores del festejo.
@@ -834,16 +896,21 @@ export function crearInterior(kit: Kit, estilo: EstiloSala, reducido: boolean): 
   }
 
   // Vigas, arañas y plantas. Las vigas y las arañas se desvanecen cuando la
-  // cámara baja a mostrar algo de cerca (si no, tapan lo que se muestra).
+  // cámara baja a mostrar algo de cerca (si no, tapan lo que se muestra). El
+  // techo de madera se ve solo en los planos de lejos (verTecho): el salón
+  // entero, la casa y la entrada; en los de cerca taparía las mesas.
   const matVigas = kit.mat.colores.clone()
   const matAranas = kit.mat.coloresBrillo.clone()
-  for (const m of [matVigas, matAranas]) {
+  const matTablas = kit.mat.colores.clone()
+  for (const m of [matVigas, matAranas, matTablas]) {
     m.transparent = true
     propios.push(m)
   }
   const techo = new THREE.Group()
   grupo.add(techo)
   techo.add(new THREE.Mesh(kit.geo(`vigas-${estilo}`, () => geometriaVigas(d)), matVigas))
+  const techoMadera = d.techo ? new THREE.Mesh(kit.geo(`techo-madera-${estilo}`, () => geometriaTechoMadera(d.techo!)), matTablas) : null
+  if (techoMadera) grupo.add(techoMadera)
   const yColgado = SALA.alto - 0.02 - d.viga.alto
   const aranas = ARANAS.map((ar, i) => ({ ...ar, semilla: 80 + i, forma: formaArana(d.arana, !!ar.grande, 80 + i, false) }))
   techo.add(
@@ -886,6 +953,8 @@ export function crearInterior(kit: Kit, estilo: EstiloSala, reducido: boolean): 
 
   // ── Estado ──
   let alTecho = 1
+  let alTablas = 1
+  let conTablas = true
   let nivelMeta = 0
   let nivel = 0
   let festejo = false
@@ -936,6 +1005,17 @@ export function crearInterior(kit: Kit, estilo: EstiloSala, reducido: boolean): 
         luces.opacidad = ft
         cambio = true
       }
+      if (techoMadera) {
+        const metaTablas = conTablas ? 1 : 0
+        let fm = inmediato ? metaTablas : alTablas + (metaTablas - alTablas) * Math.min(1, dt * 4)
+        if (Math.abs(metaTablas - fm) < 1e-3) fm = metaTablas
+        if (fm !== alTablas) {
+          alTablas = fm
+          matTablas.opacity = fm
+          techoMadera.visible = fm > 0.01
+          cambio = true
+        }
+      }
       return cambio
     },
     setNombre(nombre) {
@@ -951,6 +1031,9 @@ export function crearInterior(kit: Kit, estilo: EstiloSala, reducido: boolean): 
     setNivel(n, f) {
       nivelMeta = Math.max(0, Math.min(1, n))
       festejo = f
+    },
+    verTecho(si) {
+      conTablas = si
     },
     avanzar(dt, t) {
       luces.festejo = festejo
@@ -1003,38 +1086,84 @@ export function crearInterior(kit: Kit, estilo: EstiloSala, reducido: boolean): 
   }
 }
 
-// ── El terreno de la Casona: la casa para quedarse y la pileta ──────────────
+// ── El terreno de la Casona: la casa colonial para quedarse y la pileta ─────
 
 /** El terreno de la Casona va pegado a la izquierda del jardín. */
 export const TERRENO = { x0: -14.7, x1: -7.4, z0: -6, z1: 6 }
-const CASA = { x: -11.45, z: -3.75, ancho: 5.0, fondo: 2.4, planta: 1.5, alta: 1.3 }
+/** La casa colonial para quedarse: una planta, `alto` hasta la cornisa, con la
+ *  galería de `galeria` metros al frente. */
+const CASA = { x: -11.45, z: -3.75, ancho: 5.0, fondo: 2.4, alto: 2.15, galeria: 1.1 }
 const PILETA = { x: -12.15, z: 1.5, ancho: 2.6, largo: 3.8 }
 
-/** Techo a cuatro aguas (la cumbrera va a lo largo de x). */
-function techoCuatroAguas(ancho: number, fondo: number, alto: number, vuelo: number): THREE.BufferGeometry {
-  const a = ancho / 2 + vuelo
-  const f = fondo / 2 + vuelo
-  const r = Math.max(0, a - f)
-  const FI = [-a, 0, f]
-  const FD = [a, 0, f]
-  const AD = [a, 0, -f]
-  const AI = [-a, 0, -f]
-  const CI = [-r, alto, 0]
-  const CD = [r, alto, 0]
-  const caras = [FI, FD, CD, FI, CD, CI, AD, AI, CI, AD, CI, CD, AI, FI, CI, FD, AD, CD]
-  const g = new THREE.BufferGeometry()
-  g.setAttribute("position", new THREE.Float32BufferAttribute(caras.flat(), 3))
-  g.computeVertexNormals()
-  const col = new Float32Array(caras.length * 3)
-  const frente = new THREE.Color("#a9573b")
-  const lado = new THREE.Color("#9a4e34")
-  for (let i = 0; i < caras.length; i++) {
-    const c = i < 12 ? frente : lado
+/** Colores de la casa colonial (las fotos del 19/10/2026): blanca, tejas de
+ *  terracota, madera oscura y hierro. */
+const COLONIAL = {
+  pared: "#f2ede3",
+  moldura: "#e6dfd2",
+  zocalo: "#bdb3a2",
+  azotea: "#b9ae9c",
+  madera: "#5c3b25",
+  maderaOscura: "#3b2618",
+  hierro: "#25211e",
+  piso: "#a45d3f",
+  tejas: ["#b5603d", "#a85536", "#bf6a45", "#9e4f33", "#b05a39"],
+}
+
+/**
+ * Un alero de tejas coloniales: canales y cobijas de terracota (ondas) sobre
+ * un entablonado de madera. Arriba de todo queda en (y = 0, z = 0) y baja
+ * hacia +z: `largo` más adelante está `caida` más abajo.
+ */
+function techoTejas(ancho: number, largo: number, caida: number): THREE.BufferGeometry {
+  const onda = 0.21
+  const alto = 0.035
+  /** Cada hilada de tejas (de arriba hacia abajo), con su sombra donde la tapa la de arriba. */
+  const hilada = 0.3
+  const ang = Math.atan2(caida, largo)
+  const pendiente = Math.hypot(largo, caida)
+  const enPendiente = (g: THREE.BufferGeometry) => g.rotateX(ang).translate(0, -caida / 2, largo / 2)
+  const tejas = new THREE.PlaneGeometry(ancho, pendiente, Math.round(ancho / onda) * 6, Math.ceil(pendiente / hilada) * 4)
+  const p = tejas.attributes.position as THREE.BufferAttribute
+  const col = new Float32Array(p.count * 3)
+  const c = new THREE.Color()
+  for (let i = 0; i < p.count; i++) {
+    const u = (p.getX(i) + ancho / 2) / onda
+    const s = 0.5 + 0.5 * Math.sin(u * Math.PI * 2)
+    // Desde arriba (y = pendiente/2 es la punta contra la pared).
+    const desde = (pendiente / 2 - p.getY(i)) / hilada
+    const fila = Math.floor(desde)
+    const v = desde - fila
+    p.setZ(i, s * alto + v * 0.012)
+    // Un tono por teja, más oscuro en el fondo de cada canal y arriba de cada
+    // hilada (la sombra de la de arriba).
+    const h = Math.sin((Math.floor(u) + 1) * 91.7 + fila * 13.1) * 4375.85
+    const sombra = 0.78 + 0.22 * THREE.MathUtils.smoothstep(v, 0, 0.35)
+    c.set(COLONIAL.tejas[Math.floor((h - Math.floor(h)) * COLONIAL.tejas.length)]).multiplyScalar((0.72 + 0.28 * s) * sombra)
     col.set([c.r, c.g, c.b], i * 3)
   }
-  g.setAttribute("color", new THREE.BufferAttribute(col, 3))
-  g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(caras.length * 2), 2))
-  return g
+  tejas.setAttribute("color", new THREE.BufferAttribute(col, 3))
+  tejas.computeVertexNormals()
+  // El plano está parado (mira a +z): se acuesta y se inclina.
+  tejas.rotateX(-Math.PI / 2)
+  const partes = [enPendiente(tejas)]
+  partes.push(enPendiente(conColor(new THREE.BoxGeometry(ancho, 0.04, pendiente).translate(0, -0.02, 0), COLONIAL.madera)))
+  for (const lado of [-1, 1]) {
+    partes.push(enPendiente(conColor(new THREE.BoxGeometry(0.05, 0.08, pendiente).translate(lado * (ancho / 2 - 0.025), 0, 0), COLONIAL.moldura)))
+  }
+  // La teja de arriba, contra la pared.
+  partes.push(conColor(new THREE.BoxGeometry(ancho, 0.06, 0.1).translate(0, 0.03, 0.04), "#8f4a30"))
+  return unir(partes)
+}
+
+/** Un copón (el jarrón de remate de los pilares). */
+function geometriaCopon(): THREE.BufferGeometry {
+  const perfil = [
+    [0, 0], [0.075, 0], [0.075, 0.025], [0.045, 0.045], [0.05, 0.07], [0.095, 0.13],
+    [0.085, 0.17], [0.05, 0.2], [0.068, 0.222], [0.055, 0.24], [0, 0.245],
+  ].map(([r, y]) => new THREE.Vector2(r, y))
+  const copon = new THREE.LatheGeometry(perfil, 12)
+  const remate = new THREE.SphereGeometry(0.032, 8, 6).translate(0, 0.27, 0)
+  return unir([conColor(copon, COLONIAL.moldura), conColor(remate, COLONIAL.moldura)])
 }
 
 interface FormaCasa {
@@ -1043,84 +1172,185 @@ interface FormaCasa {
   apagadas: THREE.BufferGeometry
 }
 
-/** Los faroles a los lados de la puerta (relativos al centro de la casa). */
-const FAROLES = [-0.72, 0.72].map((x) => new THREE.Vector3(x, 1.12, CASA.fondo / 2 + 0.14))
+/** Las farolas de hierro a los lados de la escalinata (relativas al centro de la casa). */
+const FAROLES = [-1.35, 1.35].map((x) => new THREE.Vector3(x, 1.53, CASA.fondo / 2 + CASA.galeria + 0.3))
+/** La luz de las ventanas que cae en el piso de la galería. */
+const LUZ_GALERIA = [-1.55, 1.55].map((x) => new THREE.Vector3(x, 0.4, CASA.fondo / 2 + 0.35))
+/** Dónde va el cartel (y su ancho): en el copete, arriba de la puerta. */
+const CARTEL_CASA = { ancho: 1.4, pos: new THREE.Vector3(0, CASA.alto + 0.1 + 0.29, CASA.fondo / 2 + 0.075) }
 
-/** La casa de dos plantas, con galería de columnas, balcón y postigos verdes.
- *  Medidas relativas a su centro; el frente mira hacia +z. */
+/**
+ * La casa colonial para quedarse (fotos del 19/10/2026): blanca, de una
+ * planta, con una galería de columnas y techo de tejas, y una azotea con
+ * pretil, pilares con copones y un copete con el cartel. Ventanas con postigos
+ * de madera y rejas, una puerta de dos hojas, farolas y una santa rita.
+ * Medidas relativas a su centro; el frente mira hacia +z.
+ */
 function formaCasa(): FormaCasa {
-  const { ancho: W, fondo: D, planta, alta } = CASA
-  const H = planta + alta
+  const { ancho: W, fondo: D, alto: H, galeria: G } = CASA
   const frente = D / 2
+  const C = COLONIAL
   const partes: THREE.BufferGeometry[] = []
-  const caja = (w: number, h: number, d: number, x: number, y: number, z: number, color: string) =>
-    partes.push(conColor(new THREE.BoxGeometry(w, h, d).translate(x, y, z), color))
-  caja(W + 0.06, 0.22, D + 0.06, 0, 0.11, 0, "#9b9282")
-  caja(W, H, D, 0, H / 2, 0, "#ece2cf")
-  caja(W + 0.05, 0.07, D + 0.05, 0, planta + 0.02, 0, "#d9ccb2")
-  caja(W + 0.16, 0.1, D + 0.16, 0, H + 0.02, 0, "#d9ccb2")
-  partes.push(techoCuatroAguas(W, D, 0.95, 0.22).translate(0, H + 0.07, 0))
-  caja(W - D + 0.1, 0.06, 0.12, 0, H + 1.02, 0, "#8f4530")
-  caja(0.32, 0.55, 0.32, 1.35, H + 0.7, -0.35, "#cdbfa6")
-  caja(0.4, 0.06, 0.4, 1.35, H + 1.0, -0.35, "#8d8574")
-  // Galería: piso, columnas, el techo (que es el piso del balcón) y la baranda.
-  caja(W + 0.1, 0.1, 1.0, 0, 0.05, frente + 0.5, "#b8ab94")
-  for (const x of [-2.4, -1.2, 1.2, 2.4]) {
-    partes.push(conColor(new THREE.CylinderGeometry(0.065, 0.075, planta - 0.08, 10).translate(x, (planta - 0.08) / 2 + 0.06, frente + 0.9), "#f1e9d8"))
-    caja(0.18, 0.06, 0.18, x, planta - 0.05, frente + 0.9, "#e4d9c4")
-  }
-  caja(W + 0.1, 0.1, 1.05, 0, planta + 0.03, frente + 0.525, "#e4d9c4")
-  caja(W + 0.1, 0.24, 0.06, 0, planta - 0.1, frente + 1.03, "#e4d9c4")
-  const hierro = "#2a2826"
-  caja(W + 0.1, 0.035, 0.035, 0, planta + 0.56, frente + 1.03, hierro)
-  for (let x = -W / 2; x <= W / 2 + 0.01; x += 0.14) caja(0.018, 0.48, 0.018, x, planta + 0.32, frente + 1.03, hierro)
-  for (const x of [-W / 2 - 0.03, W / 2 + 0.03]) {
-    caja(0.035, 0.035, 1.03, x, planta + 0.56, frente + 0.52, hierro)
-    for (let z = frente + 0.1; z < frente + 1.0; z += 0.14) caja(0.018, 0.48, 0.018, x, planta + 0.32, z, hierro)
-  }
-  // Puerta de madera con un medio punto de vidrio arriba.
-  caja(1.02, 1.36, 0.05, 0, 0.78, frente + 0.01, "#d9ccb2")
-  caja(0.9, 1.25, 0.06, 0, 0.73, frente + 0.02, "#4a3223")
-  caja(0.02, 1.2, 0.07, 0, 0.73, frente + 0.03, "#2f2016")
   const prendidas: THREE.BufferGeometry[] = []
   const apagadas: THREE.BufferGeometry[] = []
-  const vidrio = (lista: THREE.BufferGeometry[], w: number, h: number, x: number, y: number, z: number, giro = 0) =>
-    lista.push(new THREE.PlaneGeometry(w, h).rotateY(giro).translate(x, y, z))
-  prendidas.push(new THREE.CircleGeometry(0.45, 16, 0, Math.PI).translate(0, 1.36, frente + 0.03))
-  const ventana = (x: number, y: number, w: number, h: number, prendida: boolean, postigos: boolean) => {
-    caja(w + 0.08, h + 0.08, 0.04, x, y, frente + 0.01, "#d9ccb2")
-    vidrio(prendida ? prendidas : apagadas, w, h, x, y, frente + 0.035)
-    caja(0.02, h, 0.05, x, y, frente + 0.04, "#3a2a1e")
-    caja(w, 0.02, 0.05, x, y + h * 0.18, frente + 0.04, "#3a2a1e")
-    if (postigos) for (const lado of [-1, 1]) caja(0.18, h, 0.03, x + lado * (w / 2 + 0.13), y, frente + 0.02, "#3f6a55")
+  const caja = (w: number, h: number, d: number, x: number, y: number, z: number, color: string) =>
+    partes.push(conColor(new THREE.BoxGeometry(w, h, d).translate(x, y, z), color))
+
+  // El cuerpo: zócalo, paredes, la cornisa y la azotea.
+  caja(W + 0.05, 0.3, D + 0.05, 0, 0.15, 0, C.zocalo)
+  caja(W, H, D, 0, H / 2, 0, C.pared)
+  caja(W + 0.08, 0.05, D + 0.08, 0, H - 0.02, 0, C.moldura)
+  caja(W + 0.16, 0.1, D + 0.16, 0, H + 0.05, 0, C.moldura)
+  caja(W - 0.12, 0.012, D - 0.12, 0, H + 0.106, 0, C.azotea)
+
+  // El pretil de la azotea, con su coronamiento.
+  const base = H + 0.1
+  const pretil = 0.32
+  const t = 0.1
+  for (const z of [-1, 1]) {
+    caja(W + 0.12, pretil, t, 0, base + pretil / 2, z * (frente + 0.01), C.pared)
+    caja(W + 0.16, 0.035, t + 0.04, 0, base + pretil + 0.0175, z * (frente + 0.01), C.moldura)
   }
-  // Planta baja: dos ventanas grandes. Planta alta: cuatro ventanas y la puerta del balcón.
-  ventana(-1.8, 0.82, 0.66, 1.0, true, false)
-  ventana(1.8, 0.82, 0.66, 1.0, true, false)
-  ventana(-2.0, planta + 0.68, 0.5, 0.78, true, true)
-  ventana(-1.0, planta + 0.68, 0.5, 0.78, false, true)
-  ventana(1.0, planta + 0.68, 0.5, 0.78, true, true)
-  ventana(2.0, planta + 0.68, 0.5, 0.78, false, true)
-  ventana(0, planta + 0.6, 0.62, 0.98, true, false)
-  // Ventanas de los costados.
+  for (const x of [-1, 1]) {
+    caja(t, pretil, D, x * (W / 2 + 0.01), base + pretil / 2, 0, C.pared)
+    caja(t + 0.04, 0.035, D, x * (W / 2 + 0.01), base + pretil + 0.0175, 0, C.moldura)
+  }
+  // Pilares con copones: en las esquinas, a los lados del copete y en el medio de los costados.
+  const copon = geometriaCopon()
+  const pilares: Array<[number, number]> = [
+    [-W / 2, frente], [W / 2, frente], [-W / 2, -frente], [W / 2, -frente],
+    [-1.05, frente], [1.05, frente], [-W / 2, 0], [W / 2, 0],
+  ]
+  for (const [x, z] of pilares) {
+    const px = x + Math.sign(x) * 0.01
+    const pz = z === 0 ? 0 : z + Math.sign(z) * 0.01
+    caja(0.2, pretil + 0.1, 0.2, px, base + (pretil + 0.1) / 2, pz, C.pared)
+    caja(0.25, 0.04, 0.25, px, base + pretil + 0.12, pz, C.moldura)
+    partes.push(copon.clone().translate(px, base + pretil + 0.14, pz))
+  }
+  copon.dispose()
+  // El copete: el pretil sube en curva arriba de la puerta (ahí va el cartel).
+  const copete = new THREE.Shape()
+  copete.moveTo(-0.95, 0)
+  copete.lineTo(0.95, 0)
+  copete.lineTo(0.95, pretil + 0.1)
+  copete.quadraticCurveTo(0, 1.0, -0.95, pretil + 0.1)
+  copete.lineTo(-0.95, 0)
+  const gCopete = new THREE.ExtrudeGeometry(copete, { depth: t, bevelEnabled: false, curveSegments: 10 })
+  partes.push(conColor(gCopete.translate(0, base, frente + 0.06 - t), C.pared))
+
+  // Una chimenea con su sombrerete de tejas.
+  caja(0.36, 0.62, 0.32, 1.55, base + 0.31, -0.5, C.pared)
+  caja(0.44, 0.05, 0.4, 1.55, base + 0.645, -0.5, C.moldura)
   for (const lado of [-1, 1]) {
-    for (const [y, prendida] of [[0.82, lado > 0], [planta + 0.68, lado < 0]] as Array<[number, boolean]>) {
-      vidrio(prendida ? prendidas : apagadas, 0.5, 0.78, lado * (W / 2 + 0.006), y, 0, lado * (Math.PI / 2))
-      partes.push(conColor(new THREE.BoxGeometry(0.03, 0.86, 0.58).translate(lado * (W / 2 + 0.002), y, 0), "#d9ccb2"))
-    }
+    partes.push(conColor(new THREE.BoxGeometry(0.28, 0.04, 0.46).rotateZ(lado * -0.5).translate(1.55 + lado * 0.11, base + 0.73, -0.5), C.tejas[0]))
   }
-  // Faroles a los lados de la puerta y canteros con flores.
-  for (const x of [-0.72, 0.72]) caja(0.09, 0.16, 0.09, x, 1.12, frente + 0.07, hierro)
+
+  // La galería: piso de terracota, columnas, la viga y el techo de tejas.
+  const linea = frente + G - 0.12
+  caja(W + 0.1, 0.12, G, 0, 0.06, frente + G / 2, C.piso)
+  caja(W + 0.1, 0.03, 0.06, 0, 0.12, frente + G - 0.03, C.zocalo)
+  caja(1.3, 0.06, 0.24, 0, 0.03, frente + G + 0.12, C.zocalo)
+  const arriba = H - 0.1
+  const caidaPorMetro = Math.tan(0.35)
+  const yViga = arriba - (linea - frente) * caidaPorMetro - 0.06
+  for (const x of [-2.42, -1.65, -0.85, 0.85, 1.65, 2.42]) {
+    caja(0.17, 0.06, 0.17, x, 0.15, linea, C.moldura)
+    partes.push(conColor(new THREE.CylinderGeometry(0.06, 0.07, yViga - 0.32, 12).translate(x, 0.18 + (yViga - 0.32) / 2, linea), "#f6f2ea"))
+    caja(0.18, 0.06, 0.18, x, yViga - 0.17, linea, C.moldura)
+  }
+  caja(W + 0.1, 0.14, 0.17, 0, yViga - 0.07, linea, C.moldura)
+  const largo = G + 0.05
+  partes.push(techoTejas(W + 0.3, largo, largo * caidaPorMetro).translate(0, arriba, frente))
+
+  // La puerta de dos hojas, de madera, con su moldura.
+  caja(1.2, 0.08, 0.05, 0, 1.88, frente + 0.02, C.moldura)
+  for (const lado of [-1, 1]) caja(0.09, 1.76, 0.05, lado * 0.555, 0.12 + 0.88, frente + 0.02, C.moldura)
+  caja(1.02, 1.72, 0.04, 0, 0.12 + 0.86, frente + 0.01, C.madera)
+  caja(0.018, 1.66, 0.05, 0, 0.12 + 0.86, frente + 0.02, C.maderaOscura)
+  for (const lado of [-1, 1]) {
+    for (const y of [0.55, 1.3]) caja(0.34, 0.5, 0.05, lado * 0.255, y, frente + 0.02, C.maderaOscura)
+    caja(0.04, 0.04, 0.06, lado * 0.06, 1.0, frente + 0.04, "#c9a227")
+  }
+
+  // Las ventanas: moldura, vidrio con travesaños, postigos abiertos y reja.
+  // Se arman en la cara de adelante y se giran a su pared.
+  const ventana = (cara: "frente" | "izq" | "der", u: number, prendida: boolean) => {
+    const w = 0.62
+    const h = 1.1
+    const y0 = 0.58
+    const yc = y0 + h / 2
+    const piezas: THREE.BufferGeometry[] = []
+    const pz = (w2: number, h2: number, d2: number, x: number, y: number, z: number, color: string) =>
+      piezas.push(conColor(new THREE.BoxGeometry(w2, h2, d2).translate(u + x, y, z), color))
+    for (const lado of [-1, 1]) pz(0.06, h + 0.12, 0.03, lado * (w / 2 + 0.03), yc, 0.015, C.moldura)
+    pz(w + 0.2, 0.06, 0.05, 0, y0 + h + 0.06, 0.025, C.moldura)
+    pz(w + 0.16, 0.04, 0.09, 0, y0 - 0.02, 0.045, C.moldura)
+    // Travesaños de madera: seis vidrios.
+    pz(0.025, h, 0.03, 0, yc, 0.012, C.maderaOscura)
+    for (const k of [1, 2]) pz(w, 0.025, 0.03, 0, y0 + (h * k) / 3, 0.012, C.maderaOscura)
+    // Postigos abiertos contra la pared.
+    for (const lado of [-1, 1]) {
+      pz(w / 2, h, 0.025, lado * (w * 0.75 + 0.07), yc, 0.014, C.madera)
+      for (const k of [0.25, 0.75]) pz(w / 2 - 0.06, 0.02, 0.03, lado * (w * 0.75 + 0.07), y0 + h * k, 0.02, C.maderaOscura)
+    }
+    // La reja, apenas salida de la pared.
+    for (const k of [0, 1, 2, 3, 4]) pz(0.016, h + 0.04, 0.016, -w / 2 + 0.06 + (k * (w - 0.12)) / 4, yc, 0.07, C.hierro)
+    for (const y of [y0 + 0.02, y0 + h - 0.02, yc]) pz(w + 0.02, 0.018, 0.018, 0, y, 0.07, C.hierro)
+    const vid = new THREE.PlaneGeometry(w, h).translate(u, yc, 0.004)
+    const giro = cara === "der" ? Math.PI / 2 : cara === "izq" ? -Math.PI / 2 : 0
+    const ubicar = (g: THREE.BufferGeometry) =>
+      cara === "frente" ? g.translate(0, 0, frente) : g.rotateY(giro).translate((cara === "der" ? 1 : -1) * (W / 2), 0, 0)
+    for (const g of piezas) partes.push(ubicar(g))
+    ;(prendida ? prendidas : apagadas).push(ubicar(vid))
+  }
+  ventana("frente", -1.55, true)
+  ventana("frente", 1.55, true)
+  // Una en cada costado, en el medio (debajo del pilar del pretil).
+  ventana("izq", 0, true)
+  ventana("der", 0, false)
+
+  // Farolas de hierro a los lados de la escalinata.
+  for (const f of FAROLES) {
+    caja(0.12, 0.08, 0.12, f.x, 0.04, f.z, C.hierro)
+    partes.push(conColor(new THREE.CylinderGeometry(0.028, 0.04, 1.36, 8).translate(f.x, 0.72, f.z), C.hierro))
+    caja(0.15, 0.03, 0.15, f.x, 1.415, f.z, C.hierro)
+    // El vidrio del farol va con las ventanas prendidas (brilla).
+    prendidas.push(new THREE.BoxGeometry(0.11, 0.17, 0.11).translate(f.x, 1.52, f.z))
+    for (const dx of [-1, 1]) for (const dz of [-1, 1]) caja(0.014, 0.18, 0.014, f.x + dx * 0.058, 1.52, f.z + dz * 0.058, C.hierro)
+    partes.push(conColor(new THREE.ConeGeometry(0.11, 0.11, 4).rotateY(Math.PI / 4).translate(f.x, 1.665, f.z), C.hierro))
+  }
+
+  // Canteros con flores al frente de la galería (jazmines y rosas).
   const a = azar(91)
-  for (const x of [-2.1, -1.45, -0.85, 0.85, 1.45, 2.1]) {
-    const mata = new THREE.IcosahedronGeometry(0.24 + a() * 0.05, 1)
+  for (const x of [-2.35, -1.9, 1.9, 2.35]) {
+    const mata = new THREE.IcosahedronGeometry(0.22 + a() * 0.05, 1)
     mata.scale(1, 0.85, 0.9)
-    partes.push(conColor(mata.translate(x, 0.22, frente + 1.3), a() > 0.5 ? "#2a5a3a" : "#245033"))
+    partes.push(conColor(mata.translate(x, 0.2, frente + G + 0.3), a() > 0.5 ? "#2a5a3a" : "#245033"))
     for (let k = 0; k < 3; k++) {
-      const flor = new THREE.IcosahedronGeometry(0.045, 0)
-      partes.push(conColor(flor.translate(x + (a() - 0.5) * 0.3, 0.38 + a() * 0.06, frente + 1.3 + (a() - 0.5) * 0.24), a() > 0.5 ? "#f8f2e4" : "#e8a3b5"))
+      const flor = new THREE.IcosahedronGeometry(0.042, 0)
+      partes.push(conColor(flor.translate(x + (a() - 0.5) * 0.28, 0.35 + a() * 0.06, frente + G + 0.3 + (a() - 0.5) * 0.22), a() > 0.5 ? "#f8f2e4" : "#e8a3b5"))
     }
   }
+  // Una santa rita que sube por la columna de la esquina y se apoya en las tejas.
+  const enTejas = (z: number) => arriba - (z - frente) * caidaPorMetro + 0.05
+  for (let k = 0; k < 16; k++) {
+    const sobreTecho = k >= 11
+    const z = sobreTecho ? linea - 0.05 - a() * 0.55 : linea + (a() - 0.5) * 0.18
+    const x = sobreTecho ? -2.55 + a() * 0.55 : -2.42 + (a() - 0.5) * 0.2
+    const y = sobreTecho ? enTejas(z) + 0.04 : 0.3 + k * 0.13
+    const hojas = new THREE.IcosahedronGeometry(0.11 + a() * 0.05, 0)
+    partes.push(conColor(hojas.translate(x, y, z), a() > 0.5 ? "#2d5e35" : "#24502f"))
+  }
+  for (let k = 0; k < 24; k++) {
+    const flor = new THREE.IcosahedronGeometry(0.04, 0)
+    const sobreTecho = k >= 15
+    const z = sobreTecho ? linea - 0.05 - a() * 0.55 : linea + (a() - 0.5) * 0.26
+    const x = sobreTecho ? -2.6 + a() * 0.65 : -2.42 + (a() - 0.5) * 0.3
+    const y = sobreTecho ? enTejas(z) + 0.1 : 0.35 + a() * (yViga - 0.3)
+    partes.push(conColor(flor.translate(x, y, z), a() > 0.5 ? "#c8357d" : "#d9488f"))
+  }
+
   return { cuerpo: unir(partes), prendidas: unir(prendidas), apagadas: unir(apagadas) }
 }
 
@@ -1244,11 +1474,13 @@ export class TerrenoCasona implements Pieza3D {
         kit.recurso("mat-vidrio-apagado", () => std({ color: "#1d2633", emissive: "#0f1724", emissiveIntensity: 0.7, roughness: 0.2, metalness: 0.3 })),
       ),
     )
-    const faroles = kit.halos(FAROLES, "#ffcf7d", 0.5, 0.9)
-    this.propios.push(faroles.geometry)
-    this.casa.add(faroles)
-    this.letrero = new Letrero(kit, 1.9, true)
-    this.letrero.grupo.position.set(0, CASA.planta - 0.1, CASA.fondo / 2 + 1.07)
+    const faroles = kit.halos(FAROLES, "#ffcf7d", 0.55, 0.95)
+    // La luz de las ventanas en el piso de la galería (se ve debajo del alero).
+    const galeria = kit.halos(LUZ_GALERIA, "#ffc56b", 1.5, 0.32, true)
+    this.propios.push(faroles.geometry, galeria.geometry)
+    this.casa.add(faroles, galeria)
+    this.letrero = new Letrero(kit, CARTEL_CASA.ancho, true)
+    this.letrero.grupo.position.copy(CARTEL_CASA.pos)
     this.casa.add(this.letrero.grupo)
     this.casa.add(kit.sombraBajo(6.2, 4.2).translateZ(0.4))
     this.casa.position.set(CASA.x, 0, CASA.z)
@@ -1305,14 +1537,14 @@ export class TerrenoCasona implements Pieza3D {
         kit.geo("terreno-verde", () => {
           const piedras: THREE.BufferGeometry[] = []
           const r = azar(13)
-          for (const [x, z] of [[-11.45, -1.15], [-9.05, 3.25], [-8.55, 3.15]]) {
+          for (const [x, z] of [[-11.45, -1.05], [-9.05, 3.25], [-8.55, 3.15]]) {
             const g = new THREE.CylinderGeometry(0.2, 0.22, 0.04, 9)
             g.scale(1 + r() * 0.3, 1, 0.8 + r() * 0.2)
             piedras.push(conColor(g.translate(x, 0.02, z), "#958c7a"))
           }
           return unir([
             geometriaArboles([[-14.25, -5.6, 1.0], [-8.75, -5.5, 0.85], [-8.7, 5.3, 0.75]], 33),
-            geometriaPalmera(-14.1, 4.75, 2.5),
+            geometriaPalmera(-14.1, 4.75, 3.3),
             ...piedras,
           ])
         }),
@@ -1350,7 +1582,7 @@ export class TerrenoCasona implements Pieza3D {
   }
 }
 
-// ── El frente: el patio chico de la Quinta y el estacionamiento ─────────────
+// ── El frente: la entrada de la Quinta y el estacionamiento ─────────────────
 
 /** La franja del frente va pegada adelante de la isla (y del terreno de la Casona). */
 export const FRENTE = { z0: 5.9, z1: 9.6 }
@@ -1410,49 +1642,134 @@ function geometriaCaminoFrente(): THREE.BufferGeometry {
   return unir(partes)
 }
 
-/** El patio chico de la Quinta: canteros, dos bancos, árboles y unas lucecitas. */
-function geometriaPatio(): THREE.BufferGeometry {
+// La entrada de la Quinta (fotos del 19/10/2026): mucho verde, piedra blanca
+// y una pérgola de madera con un jazmín sobre el camino, frente a la puerta.
+
+/** La pérgola: dos pares de postes a los lados del camino. */
+const PERGOLA = { x: 0.95, z0: 6.3, z1: 7.75, alto: 2.0 }
+/** Dónde va la piedra blanca: el camino y la franja contra la fachada. */
+const GRAVA: Array<[number, number, number, number]> = [
+  [-1.2, 1.2, 5.95, 9.45],
+  [-7.65, -1.2, 5.95, 6.65],
+  [1.2, 7.65, 5.95, 6.45],
+]
+
+/** Una mata redonda (x, z, radio) apoyada a la altura `y0`, con flores si
+ *  `flores` trae colores. */
+function mata(partes: THREE.BufferGeometry[], a: () => number, x: number, z: number, r: number, verde: string, flores: string[] = [], y0 = 0) {
+  const g = new THREE.IcosahedronGeometry(r, 1)
+  g.scale(1.05, 0.85, 1)
+  partes.push(conColor(g.translate(x, y0 + r * 0.8, z), verde))
+  for (let k = 0; k < flores.length * 2; k++) {
+    const ang = a() * Math.PI * 2
+    const flor = new THREE.IcosahedronGeometry(0.04, 0)
+    partes.push(conColor(flor.translate(x + Math.cos(ang) * r * 0.7, y0 + r * (1.1 + a() * 0.45), z + Math.sin(ang) * r * 0.7), flores[k % flores.length]))
+  }
+}
+
+const VERDES = ["#1f4d31", "#245a39", "#2b6a3f", "#2f6a3f", "#1d4a2e"]
+const JAZMIN = "#fbf7ee"
+
+/** La pérgola de madera con el jazmín que la cubre y sube por los postes. */
+function geometriaPergola(): THREE.BufferGeometry {
+  const { x, z0, z1, alto } = PERGOLA
   const partes: THREE.BufferGeometry[] = []
   const a = azar(83)
-  // Piso de baldosas claras.
-  partes.push(conColor(new THREE.BoxGeometry(4.6, 0.025, 2.3).translate(-4.3, 0.013, 7.75), "#b9ab90"))
-  for (let x = -6.6; x <= -2.0; x += 0.575) partes.push(conColor(new THREE.BoxGeometry(0.02, 0.01, 2.3).translate(x, 0.028, 7.75), "#9d8f75"))
-  // Dos bancos de madera.
-  for (const x of [-5.4, -3.2]) {
-    partes.push(conColor(new THREE.BoxGeometry(1.1, 0.06, 0.38).translate(x, 0.34, 8.45), "#7a5a3c"))
-    partes.push(conColor(new THREE.BoxGeometry(1.1, 0.3, 0.05).translate(x, 0.52, 8.62), "#6b4d33"))
-    for (const dx of [-0.48, 0.48]) partes.push(conColor(new THREE.BoxGeometry(0.06, 0.32, 0.36).translate(x + dx, 0.16, 8.45), "#2a2826"))
+  const caja = (w: number, h: number, d: number, px: number, py: number, pz: number, color: string) =>
+    partes.push(conColor(new THREE.BoxGeometry(w, h, d).translate(px, py, pz), color))
+  for (const px of [-x, x]) {
+    for (const pz of [z0, z1]) {
+      caja(0.17, 0.06, 0.17, px, 0.03, pz, "#9a948a")
+      caja(0.11, alto, 0.11, px, alto / 2, pz, "#6b4a30")
+    }
+    caja(0.08, 0.15, z1 - z0 + 0.7, px, alto + 0.075, (z0 + z1) / 2, "#5e3f27")
   }
-  // Una mesa redonda con dos sillas en el medio.
-  partes.push(conColor(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 16).translate(-4.3, 0.62, 7.35), "#e9e1d0"))
-  partes.push(conColor(new THREE.CylinderGeometry(0.04, 0.06, 0.6, 8).translate(-4.3, 0.3, 7.35), "#2a2826"))
-  // Canteros con flores a los costados y un cerco bajo al frente.
-  for (let x = -7.3; x <= -1.4; x += 0.45) {
-    const mata = new THREE.IcosahedronGeometry(0.24 + a() * 0.05, 1)
-    mata.scale(1.1, 0.75, 0.9)
-    partes.push(conColor(mata.translate(x, 0.2, 9.25), a() > 0.5 ? "#1f4d31" : "#245a39"))
-    if (a() > 0.4) partes.push(conColor(new THREE.IcosahedronGeometry(0.045, 0).translate(x + (a() - 0.5) * 0.3, 0.38, 9.2), a() > 0.5 ? "#f8f2e4" : "#e8a3b5"))
+  for (let z = z0 - 0.3; z <= z1 + 0.31; z += 0.25) caja(2 * x + 0.45, 0.06, 0.05, 0, alto + 0.18, z, "#8c6242")
+  // El jazmín: arriba de las vigas, colgando adelante y atrás, y subiendo por los postes.
+  const hojas = (px: number, py: number, pz: number, r: number) => {
+    const g = new THREE.IcosahedronGeometry(r, 0)
+    partes.push(conColor(g.translate(px, py, pz), VERDES[Math.floor(a() * VERDES.length)]))
   }
-  // Los dos postes de las lucecitas.
-  for (const x of [-6.75, -1.85]) partes.push(conColor(new THREE.CylinderGeometry(0.035, 0.045, 1.9, 8).translate(x, 0.95, 6.75), "#2a2826"))
-  partes.push(geometriaArboles([[-7.35, 6.65, 0.62], [-1.3, 8.6, 0.55]], 47))
+  for (const px of [-x, x]) {
+    for (let z = z0 - 0.25; z <= z1 + 0.26; z += 0.24) hojas(px + (a() - 0.5) * 0.25, alto + 0.28 + a() * 0.08, z, 0.14 + a() * 0.06)
+    for (const pz of [z0, z1]) for (let y = 0.35; y < alto; y += 0.3) hojas(px + (a() - 0.5) * 0.12, y, pz + (a() - 0.5) * 0.12, 0.09 + a() * 0.04)
+  }
+  for (let k = 0; k < 5; k++) hojas(-0.45 + a() * 0.9, alto + 0.26, z0 + a() * (z1 - z0), 0.13 + a() * 0.05)
+  for (const pz of [z0 - 0.3, z1 + 0.3]) for (const px of [-0.7, -0.15, 0.35, 0.8]) hojas(px + (a() - 0.5) * 0.15, alto + 0.02 - a() * 0.18, pz, 0.1 + a() * 0.04)
+  for (let k = 0; k < 46; k++) {
+    const flor = new THREE.IcosahedronGeometry(0.035, 0)
+    const enPoste = k % 4 === 0
+    const px = enPoste ? (k % 8 === 0 ? -x : x) + (a() - 0.5) * 0.2 : (a() - 0.5) * 2 * (x + 0.2)
+    const pz = enPoste ? (a() > 0.5 ? z0 : z1) + (a() - 0.5) * 0.2 : z0 - 0.3 + a() * (z1 - z0 + 0.6)
+    const py = enPoste ? 0.4 + a() * (alto - 0.4) : alto + 0.3 + a() * 0.14
+    partes.push(conColor(flor.translate(px, py, pz), JAZMIN))
+  }
   return unir(partes)
 }
 
-/** Las lucecitas del patio: cuelgan entre los dos postes. */
-function lucesPatio(): THREE.Vector3[] {
-  const puntos: THREE.Vector3[] = []
-  for (let i = 0; i <= 8; i++) {
-    const t = i / 8
-    puntos.push(new THREE.Vector3(-6.75 + t * 4.9, 1.85 - Math.sin(Math.PI * t) * 0.35, 6.75))
+/** Todo el verde de la entrada: cercos, matas con flores, dos árboles, cipreses
+ *  en las esquinas, maceteros de madera junto a la puerta y balizas en el camino. */
+function geometriaVerdeEntrada(): THREE.BufferGeometry {
+  const partes: THREE.BufferGeometry[] = []
+  const a = azar(87)
+  // El cerco del frente, a la izquierda del camino.
+  for (let x = -7.45; x <= -1.7; x += 0.36) {
+    const g = new THREE.IcosahedronGeometry(0.28 + a() * 0.05, 1)
+    g.scale(1.15, 0.9, 0.9)
+    partes.push(conColor(g.translate(x, 0.26, 9.2 + (a() - 0.5) * 0.08), a() > 0.5 ? "#1f4d31" : "#245a39"))
   }
-  return puntos
+  // El jardín de la izquierda: dos árboles y matas de todos los verdes.
+  partes.push(geometriaArboles([[-6.2, 7.75, 0.66], [-3.25, 8.3, 0.56]], 47))
+  const matas: Array<[number, number, number, string[]]> = [
+    [-7.2, 7.1, 0.34, [JAZMIN]], [-5.25, 7.2, 0.3, ["#e8a3b5"]], [-4.35, 7.55, 0.36, []],
+    [-2.45, 7.35, 0.32, [JAZMIN]], [-1.75, 8.05, 0.28, ["#b9a3d6"]], [-5.0, 8.5, 0.3, [JAZMIN, "#e8a3b5"]],
+    [-6.85, 8.55, 0.27, []], [-2.3, 8.75, 0.26, ["#e8a3b5"]], [-4.15, 8.85, 0.24, [JAZMIN]],
+    // Contra la fachada, bajas (no tapan las ventanas).
+    [-6.4, 6.3, 0.22, []], [-5.6, 6.32, 0.2, [JAZMIN]], [-3.7, 6.3, 0.22, []], [-2.7, 6.3, 0.2, ["#e8a3b5"]],
+    [2.7, 6.22, 0.2, [JAZMIN]], [3.7, 6.2, 0.22, []], [5.6, 6.22, 0.2, []], [6.4, 6.2, 0.22, [JAZMIN]],
+    // Entre el camino y el estacionamiento, y al principio del camino.
+    [1.38, 8.05, 0.22, []], [1.35, 8.6, 0.2, [JAZMIN]], [1.38, 9.15, 0.24, []],
+    [-1.12, 9.2, 0.26, []], [1.0, 9.32, 0.22, []],
+  ]
+  for (const [x, z, r, flores] of matas) mata(partes, a, x, z, r, VERDES[Math.floor(a() * VERDES.length)], flores)
+  // Cipreses en las esquinas de la fachada.
+  for (const x of [-7.3, 7.3]) {
+    partes.push(conColor(new THREE.CylinderGeometry(0.05, 0.07, 0.3, 6).translate(x, 0.15, 6.25), "#4a3424"))
+    partes.push(conColor(new THREE.ConeGeometry(0.3, 1.9, 9).translate(x, 1.2, 6.25), "#1d4a2e"))
+  }
+  // Maceteros de madera a los lados de la puerta.
+  for (const lado of [-1, 1]) {
+    const x = lado * 1.5
+    partes.push(conColor(new THREE.BoxGeometry(0.42, 0.38, 0.42).translate(x, 0.19, 6.2), "#7a5234"))
+    partes.push(conColor(new THREE.BoxGeometry(0.46, 0.04, 0.46).translate(x, 0.38, 6.2), "#5e3f27"))
+    mata(partes, a, x, 6.2, 0.2, "#2b6a3f", [JAZMIN], 0.36)
+  }
+  // Balizas bajas a los lados del camino.
+  for (const z of [8.25, 8.85]) {
+    for (const lado of [-1, 1]) {
+      partes.push(conColor(new THREE.CylinderGeometry(0.025, 0.03, 0.22, 6).translate(lado * 0.78, 0.11, z), "#2a2826"))
+      partes.push(conColor(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 8).translate(lado * 0.78, 0.235, z), "#2a2826"))
+    }
+  }
+  return unir(partes)
+}
+
+/** Las luces de la entrada: las lamparitas bajo la pérgola y las balizas. */
+const LUCES_PERGOLA = [-0.5, 0, 0.5].flatMap((x) => [6.55, 7.5].map((z) => new THREE.Vector3(x, PERGOLA.alto + 0.04, z)))
+const BALIZAS = [8.25, 8.85].flatMap((z) => [-0.78, 0.78].map((x) => new THREE.Vector3(x, 0.2, z)))
+
+/** La piedra blanca, con la textura en metros. */
+function geometriaGrava(): THREE.BufferGeometry {
+  const g = unir(GRAVA.map(([x0, x1, z0, z1]) => new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, 0.006, (z0 + z1) / 2)))
+  uvEnMetros(g)
+  return g
 }
 
 /**
  * El frente del salón: una franja de pasto adelante de la isla con el camino
- * de entrada, el patio chico (la Quinta) y el estacionamiento (la Quinta y la
- * Casona). `cosas` crece aparte (la anima el motor cuando el frente sube).
+ * de entrada, la entrada con mucho verde y la pérgola (la Quinta) y el
+ * estacionamiento (la Quinta y la Casona). `cosas` crece aparte (la anima el
+ * motor cuando el frente sube).
  */
 export class FrenteSalon implements Pieza3D {
   grupo = new THREE.Group()
@@ -1467,19 +1784,31 @@ export class FrenteSalon implements Pieza3D {
     bloque.position.y = -0.121
     this.grupo.add(bloque)
 
+    const verde = a.exterior === "chico"
+    if (verde) {
+      const tex = kit.recurso("tex-grava", () => porMetro(texturaGrava(), 1))
+      const grava = new THREE.Mesh(kit.geo("frente-grava", geometriaGrava), kit.recurso("mat-grava", () => std({ map: tex, roughness: 1 })))
+      grava.renderOrder = 1
+      this.cosas.add(grava)
+    }
     const partes = [kit.geo("frente-camino", geometriaCaminoFrente)]
     if (a.estacionamiento) partes.push(kit.geo("frente-playa", geometriaPlaya))
-    if (a.exterior === "chico") partes.push(kit.geo("frente-patio", geometriaPatio))
+    if (verde) partes.push(kit.geo("frente-verde", geometriaVerdeEntrada), kit.geo("frente-pergola", geometriaPergola))
     // La Casona: un cerco con árboles delante de la casa y la pileta.
     if (a.casona) partes.push(kit.geo("frente-casona", () => unir([geometriaArboles([[-13.6, 8.7, 0.7], [-10.2, 9.0, 0.6], [-4.6, 8.9, 0.62]], 59)])))
     for (const g of partes) this.cosas.add(new THREE.Mesh(g, kit.mat.colores))
     const brillos: THREE.Vector3[] = []
     if (a.estacionamiento) brillos.push(new THREE.Vector3(PLAYA.x1 - 0.05, 1.93, PLAYA.z1 - 0.2))
-    if (a.exterior === "chico") brillos.push(...lucesPatio())
+    if (verde) brillos.push(...LUCES_PERGOLA)
     if (brillos.length) {
       const h = kit.halos(brillos, "#ffcf7d", 0.42, 0.85)
       this.propios.push(h.geometry)
       this.cosas.add(h)
+    }
+    if (verde) {
+      const b = kit.halos(BALIZAS, "#ffe2a6", 0.26, 0.85)
+      this.propios.push(b.geometry)
+      this.cosas.add(b)
     }
     this.grupo.add(this.cosas)
   }

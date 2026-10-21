@@ -13,3 +13,14 @@ export const fuenteFiesta = localFont({
   weight: "400 900",
   display: "swap",
 })
+
+// La cursiva de la misma letra, para los títulos del 15 (lib/clientes-tema.ts:
+// "más femenino"). No se precarga: baja solo cuando se elige ese festejo.
+export const fuenteFiestaItalica = localFont({
+  src: "./fuentes/bodoni-moda-latin-italic.woff2",
+  variable: "--font-fiesta-italica",
+  weight: "400 900",
+  style: "italic",
+  display: "swap",
+  preload: false,
+})

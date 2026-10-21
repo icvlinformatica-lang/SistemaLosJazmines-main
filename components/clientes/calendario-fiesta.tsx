@@ -38,18 +38,18 @@ export function CalendarioFiesta({
     })
 
   return (
-    <div className="rounded-2xl border border-[rgba(245,240,232,0.12)] bg-[#12261a] p-3 sm:p-4">
+    <div className="rounded-[var(--lj-radio)] border border-[var(--lj-texto)]/12 bg-[var(--lj-superficie)] p-3 sm:p-4">
       <div className="flex items-center justify-between px-1 pb-3">
         <button
           type="button"
           onClick={() => mover(-1)}
           disabled={actual <= minimo}
           aria-label="Mes anterior"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-[#f5f0e8] transition-colors hover:bg-[rgba(245,240,232,0.08)] disabled:opacity-25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--lj-texto)] transition-colors hover:bg-[var(--lj-texto)]/8 disabled:opacity-25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <p className="font-[family-name:var(--font-fiesta)] text-[21px] text-[#f5f0e8] first-letter:uppercase" aria-live="polite">
+        <p className="font-[family-name:var(--lj-letra-titulo)] [font-style:var(--lj-estilo-titulo)] text-[21px] text-[var(--lj-texto)] first-letter:uppercase" aria-live="polite">
           {MESES[mes.mes0]} {mes.anio}
         </p>
         <button
@@ -57,7 +57,7 @@ export function CalendarioFiesta({
           onClick={() => mover(1)}
           disabled={actual >= maximo}
           aria-label="Mes siguiente"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-[#f5f0e8] transition-colors hover:bg-[rgba(245,240,232,0.08)] disabled:opacity-25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--lj-texto)] transition-colors hover:bg-[var(--lj-texto)]/8 disabled:opacity-25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
         >
           <ChevronRight className="h-5 w-5" />
         </button>
@@ -66,7 +66,7 @@ export function CalendarioFiesta({
         {INICIALES.map((d, i) => (
           <span
             key={`${d}-${i}`}
-            className={`pb-1 text-[12px] font-medium ${i >= 4 ? "text-[#f3cf7a]/80" : "text-[rgba(245,240,232,0.5)]"}`}
+            className={`pb-1 text-[12px] font-medium ${i >= 4 ? "text-[var(--lj-acento)]/80" : "text-[var(--lj-texto)]/60"}`}
             aria-hidden="true"
           >
             {d}
@@ -88,15 +88,15 @@ export function CalendarioFiesta({
                 aria-label={etiqueta}
                 aria-pressed={elegida}
                 className={[
-                  "relative flex h-10 w-10 items-center justify-center rounded-full text-[15px] tabular-nums transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3cf7a]",
+                  "relative flex h-10 w-10 items-center justify-center rounded-[var(--lj-radio-boton)] text-[15px] tabular-nums transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]",
                   elegida
-                    ? "bg-[#f3cf7a] font-semibold text-[#0d1d14] shadow-[0_0_22px_-4px_rgba(243,207,122,0.8)]"
+                    ? "bg-[var(--lj-acento)] font-semibold text-[var(--lj-sobre-acento)] shadow-[0_0_22px_-4px_var(--lj-brillo)]"
                     : fuera
-                      ? "text-[rgba(245,240,232,0.18)]"
+                      ? "text-[var(--lj-texto)]/18"
                       : ocupada
-                        ? "text-[rgba(232,163,155,0.55)] line-through decoration-[1.5px]"
-                        : "text-[#f5f0e8] hover:bg-[rgba(245,240,232,0.1)]",
+                        ? "text-[var(--lj-alerta)]/55 line-through decoration-[1.5px]"
+                        : "text-[var(--lj-texto)] hover:bg-[var(--lj-texto)]/10",
                 ].join(" ")}
               >
                 {dia}
@@ -105,13 +105,13 @@ export function CalendarioFiesta({
           )
         })}
       </div>
-      <div className="mt-3 flex items-center gap-4 px-1 text-[12.5px] text-[rgba(245,240,232,0.6)]">
+      <div className="mt-3 flex items-center gap-4 px-1 text-[12.5px] text-[var(--lj-texto)]/60">
         <span className="flex items-center gap-1.5">
-          <span className="line-through decoration-[1.5px] text-[rgba(232,163,155,0.75)] tabular-nums">14</span>
+          <span className="line-through decoration-[1.5px] text-[var(--lj-alerta)]/75 tabular-nums">14</span>
           ya reservado
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="text-[#f3cf7a]/80">V S D</span>
+          <span className="text-[var(--lj-acento)]/80">V S D</span>
           fin de semana
         </span>
       </div>
