@@ -527,15 +527,16 @@ export function novedades(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): No
  * Un aviso del lugar (no de algo que se suma): al elegir la Casona, que la
  * cámara vaya a mostrar la pileta y la casa; al elegir la Quinta, su entrada
  * verde y el estacionamiento; al pasar del jardín a adentro (o al revés), que se vea
- * entero el cambio. Nada para el Salón. Textos de 40 letras como mucho: es lo
- * que entra en el aviso sobre la maqueta en un celular (si no, se corta).
+ * entero el cambio. Nada para el Salón. Textos de 32 letras como mucho: es lo
+ * que entra en el aviso sobre la maqueta en un celular de 390 px, al lado del
+ * botón de pantalla completa (con 39 se cortaba con "…", visto el 21/10/2026).
  */
 export function avisoLugar(antes: EstadoMaqueta | null, ahora: EstadoMaqueta): Novedad | null {
   if (!antes) return null
   const a = antes.ambiente
   const b = ahora.ambiente
-  if (b.casona && !a.casona) return { texto: "Pileta, casa colonial y estacionamiento", foco: "casona" }
-  if (b.estilo !== a.estilo && b.exterior === "chico") return { texto: "Todo en madera, entrada con mucho verde", foco: "frente" }
+  if (b.casona && !a.casona) return { texto: "Pileta y casa colonial", foco: "casona" }
+  if (b.estilo !== a.estilo && b.exterior === "chico") return { texto: "Todo en madera y entrada verde", foco: "frente" }
   if (a.casona && b.casona && a.lugar !== b.lugar) {
     return { texto: b.lugar === "interior" ? "Así queda adentro" : "Así queda en el jardín", foco: "isla" }
   }

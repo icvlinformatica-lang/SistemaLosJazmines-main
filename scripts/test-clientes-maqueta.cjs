@@ -292,10 +292,10 @@ test("avisos del lugar: la Casona muestra la pileta y la casa; la Quinta, su fre
   const adentro = maq.estadoMaqueta(entrada({ vistaCasona: "adentro" }))
   const quinta = maq.estadoMaqueta(entrada({ salon: { ...SALON, clave: "Quinta", nombre: "Quinta" } }))
   const salon = maq.estadoMaqueta(entrada({ salon: { ...SALON, clave: "Salon", nombre: "Salón" } }))
-  const CASONA = { texto: "Pileta, casa colonial y estacionamiento", foco: "casona" }
-  const QUINTA = { texto: "Todo en madera, entrada con mucho verde", foco: "frente" }
-  // Entran enteros en el aviso del celular (si no, se cortan con "…").
-  for (const t of [CASONA.texto, QUINTA.texto, "Así queda adentro", "Así queda en el jardín"]) assert.ok(t.length <= 40, t)
+  const CASONA = { texto: "Pileta y casa colonial", foco: "casona" }
+  const QUINTA = { texto: "Todo en madera y entrada verde", foco: "frente" }
+  // Entran enteros en el aviso del celular de 390 px (con 39 letras se cortaban con "…").
+  for (const t of [CASONA.texto, QUINTA.texto, "Así queda adentro", "Así queda en el jardín"]) assert.ok(t.length <= 32, t)
   assert.deepEqual(maq.avisoLugar(sinSalon, jardin), CASONA)
   assert.deepEqual(maq.avisoLugar(quinta, adentro), CASONA)
   assert.deepEqual(maq.avisoLugar(sinSalon, quinta), QUINTA)
