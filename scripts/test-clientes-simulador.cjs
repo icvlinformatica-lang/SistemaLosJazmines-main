@@ -359,6 +359,31 @@ test("mensaje de WhatsApp del cliente", () => {
   assert.match(texto, /8\.020\.000/)
   assert.ok(sim.linkWhatsApp(texto).startsWith("https://wa.me/?text=Hola%2C%20soy"))
   assert.ok(sim.linkWhatsApp("hola", "+54 9 11 2345-6789").startsWith("https://wa.me/5491123456789?text="))
+  // Con la Casona dice si es adentro o al aire libre.
+  const conLugar = sim.textoWhatsAppCliente({ tipoEvento: "Casamiento", salon: "Casona", lugar: "al aire libre", invitados: 100 })
+  assert.match(conLugar, /Casamiento en Casona al aire libre para 100 invitados\./)
+})
+
+// ── Pasos ───────────────────────────────────────────────────────────────────
+
+test("pasos: 'lugar' va después del salón solo si el salón tiene aire libre", () => {
+  const ids = (ps) => ps.map((p) => p.id)
+  assert.deepEqual(ids(sim.pasosCliente(false)), ["festejo", "salon", "fecha", "invitados", "menu", "barra", "detalles"])
+  assert.deepEqual(ids(sim.pasosCliente(true)), ["festejo", "salon", "lugar", "fecha", "invitados", "menu", "barra", "detalles"])
+})
+
+test("pasos: el número de cada paso y, sin 'lugar', el del paso anterior", () => {
+  const con = sim.pasosCliente(true)
+  const sin = sim.pasosCliente(false)
+  assert.equal(sim.indicePaso(con, "lugar"), 2)
+  assert.equal(sim.indicePaso(con, "fecha"), 3)
+  assert.equal(sim.indicePaso(sin, "fecha"), 2)
+  // Si llegó hasta "lugar" con la Casona y cambia a la Quinta, queda en el salón.
+  assert.equal(sim.indicePaso(sin, "lugar"), 1)
+  assert.equal(sim.indicePaso(sin, "festejo"), 0)
+  assert.equal(sim.pasoDespuesDe("fecha", "lugar"), true)
+  assert.equal(sim.pasoDespuesDe("lugar", "lugar"), false)
+  assert.equal(sim.pasoDespuesDe("salon", "lugar"), false)
 })
 
 // ── Rutas ───────────────────────────────────────────────────────────────────

@@ -1537,6 +1537,8 @@ export class Globos implements Pieza3D {
 
 // ── Atril de la entrada ─────────────────────────────────────────────────────
 
+export const ESCALA_CARTEL = 1.6
+
 export class Cartel implements Pieza3D {
   grupo = new THREE.Group()
   private tablero: THREE.Mesh
@@ -1569,6 +1571,8 @@ export class Cartel implements Pieza3D {
     const { x, z, giro } = LUGARES.cartel
     this.grupo.position.set(x, 0, z)
     this.grupo.rotation.y = giro
+    // Más grande desde que no hay globos: es lo que dice el festejo.
+    this.grupo.scale.setScalar(ESCALA_CARTEL)
   }
 
   setTexto(titulo: string, fecha: string | null) {

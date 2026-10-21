@@ -7,6 +7,8 @@
 // (portada → pasos → "Tu fiesta está lista") sin crear otro WebGL.
 // Si el navegador no puede dibujar 3D, avisa con onFalla y la pantalla sigue
 // sin maqueta, como antes.
+// Con onTocar, un toque corto (no un arrastre para girarla) la abre a
+// pantalla completa; el lienzo se agranda solo (el motor mira el tamaño).
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react"
 import type { EstadoMaqueta } from "@/lib/clientes-maqueta"
@@ -41,7 +43,13 @@ async function obtenerMotor(familia: string): Promise<{ motor: MotorMaqueta | nu
 export interface ManejoMaqueta {
   /** Foto de la maqueta como está ahora (JPG), o null si no hay maqueta. */
   foto(): string | null
+  /** La caja de la maqueta (para ponerla a pantalla completa). */
+  elemento(): HTMLDivElement | null
 }
+
+/** Un toque y no un arrastre: poco movimiento y poco tiempo. */
+const TOQUE_PX = 10
+const TOQUE_MS = 450
 
 export const Maqueta3D = forwardRef<
   ManejoMaqueta,
@@ -52,11 +60,15 @@ export const Maqueta3D = forwardRef<
     descripcion: string
     className?: string
     onFalla?: () => void
+    /** Un toque corto sobre la maqueta (no un arrastre). */
+    onTocar?: () => void
     /** Lo que va encima de la maqueta (la guirnalda de pasos, avisos). */
     children?: ReactNode
   }
->(function Maqueta3D({ estado, foco, descripcion, className, onFalla, children }, ref) {
+>(function Maqueta3D({ estado, foco, descripcion, className, onFalla, onTocar, children }, ref) {
   const caja = useRef<HTMLDivElement>(null)
+  const exterior = useRef<HTMLDivElement>(null)
+  const toque = useRef<{ x: number; y: number; t: number; id: number } | null>(null)
   const [listo, setListo] = useState(false)
   const modRef = useRef<ModuloMotor | null>(null)
   const ultimo = useRef({ estado, foco })
@@ -123,15 +135,27 @@ export const Maqueta3D = forwardRef<
     if (listo) motor?.actualizar(estado, focoValido(foco))
   }, [listo, estado, foco])
 
-  useImperativeHandle(ref, () => ({ foto: () => (listo && motor ? motor.foto() : null) }), [listo])
+  useImperativeHandle(ref, () => ({ foto: () => (listo && motor ? motor.foto() : null), elemento: () => exterior.current }), [listo])
 
   return (
-    <div className={className}>
+    <div ref={exterior} className={className}>
       <div
         ref={caja}
         role="img"
         aria-label={descripcion}
         data-foco={foco}
+        onPointerDown={onTocar ? (e) => (toque.current = { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId }) : undefined}
+        onPointerUp={
+          onTocar
+            ? (e) => {
+                const t = toque.current
+                toque.current = null
+                if (!t || t.id !== e.pointerId) return
+                if (Math.hypot(e.clientX - t.x, e.clientY - t.y) <= TOQUE_PX && e.timeStamp - t.t <= TOQUE_MS) onTocar()
+              }
+            : undefined
+        }
+        onPointerCancel={onTocar ? () => (toque.current = null) : undefined}
         className={`absolute inset-0 transition-opacity duration-700 ${listo ? "opacity-100" : "opacity-0"}`}
         style={{ touchAction: "pan-y" }}
       />

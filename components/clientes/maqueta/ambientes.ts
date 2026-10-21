@@ -1349,3 +1349,142 @@ export class TerrenoCasona implements Pieza3D {
     for (const r of this.propios) r.dispose()
   }
 }
+
+// ── El frente: el patio chico de la Quinta y el estacionamiento ─────────────
+
+/** La franja del frente va pegada adelante de la isla (y del terreno de la Casona). */
+export const FRENTE = { z0: 5.9, z1: 9.6 }
+/** Dónde van los autos (a la derecha del camino de entrada). */
+const PLAYA = { x0: 1.5, x1: 7.5, z0: 6.55, z1: 9.25 }
+const COLORES_AUTOS = ["#e9e1d0", "#2f5f48", "#7c2f2c", "#5b6470"]
+
+/** Un auto chico y redondeado (no a escala: es una maqueta). La trompa mira a la isla (−z). */
+function geometriaAuto(x: number, z: number, color: string): THREE.BufferGeometry {
+  const partes: THREE.BufferGeometry[] = []
+  const caja = (w: number, h: number, d: number, px: number, py: number, pz: number, c: string) =>
+    partes.push(conColor(new THREE.BoxGeometry(w, h, d).translate(x + px, py, z + pz), c))
+  caja(0.98, 0.3, 2.05, 0, 0.3, 0, color)
+  caja(0.84, 0.27, 1.08, 0, 0.585, 0.12, color)
+  // Vidrios: adelante, atrás y a los costados.
+  caja(0.78, 0.2, 0.02, 0, 0.6, -0.43, "#1f2a36")
+  caja(0.78, 0.2, 0.02, 0, 0.6, 0.67, "#1f2a36")
+  caja(0.86, 0.17, 0.9, 0, 0.6, 0.12, "#1f2a36")
+  // Faros y luces de atrás.
+  caja(0.2, 0.07, 0.02, -0.3, 0.36, -1.03, "#fff4d6")
+  caja(0.2, 0.07, 0.02, 0.3, 0.36, -1.03, "#fff4d6")
+  caja(0.2, 0.06, 0.02, -0.3, 0.38, 1.03, "#b8322b")
+  caja(0.2, 0.06, 0.02, 0.3, 0.38, 1.03, "#b8322b")
+  for (const [dx, dz] of [[-0.48, -0.66], [0.48, -0.66], [-0.48, 0.66], [0.48, 0.66]]) {
+    partes.push(conColor(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 12).rotateZ(Math.PI / 2).translate(x + dx, 0.16, z + dz), "#161616"))
+  }
+  return unir(partes)
+}
+
+/** La playa de estacionamiento: el piso, las líneas, los autos y un farol. */
+function geometriaPlaya(): THREE.BufferGeometry {
+  const { x0, x1, z0, z1 } = PLAYA
+  const partes: THREE.BufferGeometry[] = []
+  partes.push(conColor(new THREE.BoxGeometry(x1 - x0, 0.03, z1 - z0).translate((x0 + x1) / 2, 0.015, (z0 + z1) / 2), "#2c3034"))
+  const lugares = 4
+  const ancho = (x1 - x0) / lugares
+  for (let i = 0; i <= lugares; i++) {
+    partes.push(conColor(new THREE.BoxGeometry(0.06, 0.01, 2.3).translate(x0 + i * ancho, 0.035, z0 + 1.25), "#e9e4d6"))
+  }
+  // Tres autos, uno de los lugares queda libre.
+  ;[0, 1, 3].forEach((i, k) => partes.push(geometriaAuto(x0 + (i + 0.5) * ancho, z0 + 1.3, COLORES_AUTOS[k % COLORES_AUTOS.length])))
+  // El farol de la esquina.
+  partes.push(conColor(new THREE.CylinderGeometry(0.035, 0.05, 2.0, 8).translate(x1 + 0.25, 1.0, z1 - 0.2), "#2a2826"))
+  partes.push(conColor(new THREE.BoxGeometry(0.42, 0.05, 0.12).translate(x1 + 0.1, 2.0, z1 - 0.2), "#2a2826"))
+  return unir(partes)
+}
+
+/** El camino de entrada: lajas desde el frente hasta la puerta de la isla. */
+function geometriaCaminoFrente(): THREE.BufferGeometry {
+  const partes: THREE.BufferGeometry[] = []
+  const a = azar(71)
+  for (let z = FRENTE.z0 + 0.45; z < FRENTE.z1 - 0.2; z += 0.62) {
+    const g = new THREE.CylinderGeometry(0.34, 0.36, 0.04, 9)
+    g.scale(1.25 + a() * 0.2, 1, 0.8)
+    partes.push(conColor(g.translate((a() - 0.5) * 0.12, 0.02, z), "#958c7a"))
+  }
+  return unir(partes)
+}
+
+/** El patio chico de la Quinta: canteros, dos bancos, árboles y unas lucecitas. */
+function geometriaPatio(): THREE.BufferGeometry {
+  const partes: THREE.BufferGeometry[] = []
+  const a = azar(83)
+  // Piso de baldosas claras.
+  partes.push(conColor(new THREE.BoxGeometry(4.6, 0.025, 2.3).translate(-4.3, 0.013, 7.75), "#b9ab90"))
+  for (let x = -6.6; x <= -2.0; x += 0.575) partes.push(conColor(new THREE.BoxGeometry(0.02, 0.01, 2.3).translate(x, 0.028, 7.75), "#9d8f75"))
+  // Dos bancos de madera.
+  for (const x of [-5.4, -3.2]) {
+    partes.push(conColor(new THREE.BoxGeometry(1.1, 0.06, 0.38).translate(x, 0.34, 8.45), "#7a5a3c"))
+    partes.push(conColor(new THREE.BoxGeometry(1.1, 0.3, 0.05).translate(x, 0.52, 8.62), "#6b4d33"))
+    for (const dx of [-0.48, 0.48]) partes.push(conColor(new THREE.BoxGeometry(0.06, 0.32, 0.36).translate(x + dx, 0.16, 8.45), "#2a2826"))
+  }
+  // Una mesa redonda con dos sillas en el medio.
+  partes.push(conColor(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 16).translate(-4.3, 0.62, 7.35), "#e9e1d0"))
+  partes.push(conColor(new THREE.CylinderGeometry(0.04, 0.06, 0.6, 8).translate(-4.3, 0.3, 7.35), "#2a2826"))
+  // Canteros con flores a los costados y un cerco bajo al frente.
+  for (let x = -7.3; x <= -1.4; x += 0.45) {
+    const mata = new THREE.IcosahedronGeometry(0.24 + a() * 0.05, 1)
+    mata.scale(1.1, 0.75, 0.9)
+    partes.push(conColor(mata.translate(x, 0.2, 9.25), a() > 0.5 ? "#1f4d31" : "#245a39"))
+    if (a() > 0.4) partes.push(conColor(new THREE.IcosahedronGeometry(0.045, 0).translate(x + (a() - 0.5) * 0.3, 0.38, 9.2), a() > 0.5 ? "#f8f2e4" : "#e8a3b5"))
+  }
+  // Los dos postes de las lucecitas.
+  for (const x of [-6.75, -1.85]) partes.push(conColor(new THREE.CylinderGeometry(0.035, 0.045, 1.9, 8).translate(x, 0.95, 6.75), "#2a2826"))
+  partes.push(geometriaArboles([[-7.35, 6.65, 0.62], [-1.3, 8.6, 0.55]], 47))
+  return unir(partes)
+}
+
+/** Las lucecitas del patio: cuelgan entre los dos postes. */
+function lucesPatio(): THREE.Vector3[] {
+  const puntos: THREE.Vector3[] = []
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8
+    puntos.push(new THREE.Vector3(-6.75 + t * 4.9, 1.85 - Math.sin(Math.PI * t) * 0.35, 6.75))
+  }
+  return puntos
+}
+
+/**
+ * El frente del salón: una franja de pasto adelante de la isla con el camino
+ * de entrada, el patio chico (la Quinta) y el estacionamiento (la Quinta y la
+ * Casona). `cosas` crece aparte (la anima el motor cuando el frente sube).
+ */
+export class FrenteSalon implements Pieza3D {
+  grupo = new THREE.Group()
+  readonly cosas = new THREE.Group()
+  private propios: Array<{ dispose(): void }> = []
+
+  constructor(kit: Kit, a: Ambiente) {
+    const x0 = a.casona ? TERRENO.x0 : -ISLA.ancho / 2
+    const x1 = ISLA.ancho / 2
+    const clave = `frente-${x0}`
+    const bloque = new THREE.Mesh(kit.geo(clave, () => geometriaBloque(x0, FRENTE.z0, x1 - x0, FRENTE.z1 - FRENTE.z0)), [kit.mat.cesped, kit.mat.tierra])
+    bloque.position.y = -0.121
+    this.grupo.add(bloque)
+
+    const partes = [kit.geo("frente-camino", geometriaCaminoFrente)]
+    if (a.estacionamiento) partes.push(kit.geo("frente-playa", geometriaPlaya))
+    if (a.exterior === "chico") partes.push(kit.geo("frente-patio", geometriaPatio))
+    // La Casona: un cerco con árboles delante de la casa y la pileta.
+    if (a.casona) partes.push(kit.geo("frente-casona", () => unir([geometriaArboles([[-13.6, 8.7, 0.7], [-10.2, 9.0, 0.6], [-4.6, 8.9, 0.62]], 59)])))
+    for (const g of partes) this.cosas.add(new THREE.Mesh(g, kit.mat.colores))
+    const brillos: THREE.Vector3[] = []
+    if (a.estacionamiento) brillos.push(new THREE.Vector3(PLAYA.x1 - 0.05, 1.93, PLAYA.z1 - 0.2))
+    if (a.exterior === "chico") brillos.push(...lucesPatio())
+    if (brillos.length) {
+      const h = kit.halos(brillos, "#ffcf7d", 0.42, 0.85)
+      this.propios.push(h.geometry)
+      this.cosas.add(h)
+    }
+    this.grupo.add(this.cosas)
+  }
+
+  liberar() {
+    for (const r of this.propios) r.dispose()
+  }
+}
