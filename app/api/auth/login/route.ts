@@ -24,7 +24,7 @@ const PERFILES_SIN_PASE = ["clientes"]
 const PERFILES_VALIDOS = [
   "cocina", "barra", "administracion", "soporte", "cobro",
   "dj", "fotografo", "vestido", "pantalla", "coordinacion",
-  "vendedor", "clientes",
+  "vendedor", "mantenimiento", "clientes",
 ]
 
 // POST { perfilId, pin } — login con PIN

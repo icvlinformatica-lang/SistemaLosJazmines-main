@@ -20,6 +20,7 @@ export const SIN_QUIEN = "Sin dato de quién"
 const TIPOS: Record<string, string> = {
   insumo: "Insumo de cocina",
   insumo_barra: "Insumo de barra",
+  insumo_limpieza: "Artículo de limpieza",
   receta: "Receta",
   coctel: "Cóctel",
   evento: "Evento",
@@ -87,7 +88,13 @@ export function quienDeRegistro(f: FilaActividad): { quien: string; sector?: str
   const por = [...detalle.matchAll(/(?:^|[·|]\s*)Por\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+)/g)]
   const ultimo = por.length > 0 ? por[por.length - 1][1] : ""
   if (f.tipo === "stock_sesion") {
-    const sector = /—\s*barra\s*$/i.test(nombre) ? "Barra" : /—\s*cocina\s*$/i.test(nombre) ? "Cocina" : undefined
+    const sector = /—\s*barra\s*$/i.test(nombre)
+      ? "Barra"
+      : /—\s*cocina\s*$/i.test(nombre)
+        ? "Cocina"
+        : /—\s*limpieza\s*$/i.test(nombre)
+          ? "Limpieza"
+          : undefined
     // "Carga de stock · 21/10 05:40 · Juan · 12 insumos actualizados"
     const partes = detalle.split("·").map((p) => p.trim())
     const cargo = partes.length >= 4 ? partes[2] : ""

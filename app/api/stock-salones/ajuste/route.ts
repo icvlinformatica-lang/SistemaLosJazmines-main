@@ -51,7 +51,9 @@ export async function POST(req: Request) {
 
     const catalogo = (sector === "cocina"
       ? await sql`SELECT id, descripcion, unidad FROM insumos WHERE id = ${insumoId}`
-      : await sql`SELECT id, descripcion, unidad FROM insumos_barra WHERE id = ${insumoId}`) as unknown as Array<{
+      : sector === "barra"
+        ? await sql`SELECT id, descripcion, unidad FROM insumos_barra WHERE id = ${insumoId}`
+        : await sql`SELECT id, descripcion, unidad FROM insumos_limpieza WHERE id = ${insumoId}`) as unknown as Array<{
       id: string
       descripcion: string
       unidad: string | null
@@ -114,7 +116,7 @@ export async function POST(req: Request) {
         `
 
         const salonNombre = salones.get(it.salon) || it.salon
-        const detalle = `Ajuste desde Almacén · ${fechaHoraCortaArgentina(ahora)} · ${cargadoPor} · ${insumo.descripcion}: ${
+        const detalle = `Ajuste desde ${sector === "limpieza" ? "Insumos Limpieza" : "Almacén"} · ${fechaHoraCortaArgentina(ahora)} · ${cargadoPor} · ${insumo.descripcion}: ${
           anterior === null ? "sin contar" : anterior
         } → ${it.cantidad}`
         await tx`
@@ -131,7 +133,8 @@ export async function POST(req: Request) {
         WHERE insumo_tipo = ${sector} AND insumo_id = ${insumoId}
       `) as unknown as Array<{ total: string }>
       const suma = Number(total[0]?.total ?? 0)
-      if (aplicados > 0) {
+      // Limpieza no tiene stock_actual: su total es esta misma suma.
+      if (aplicados > 0 && sector !== "limpieza") {
         if (sector === "cocina") {
           await tx`UPDATE insumos SET stock_actual = ${suma}, updated_at = NOW() WHERE id = ${insumoId}`
         } else {

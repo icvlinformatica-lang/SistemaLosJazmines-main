@@ -1,10 +1,18 @@
 // Lógica pura del módulo "Stock por salón" (conteo físico de insumos que
-// cargan Cocina / Barra al terminar un evento). Sin dependencias de React ni
+// cargan Cocina / Barra al terminar un evento, y Mantenimiento con los
+// artículos de limpieza). Sin dependencias de React ni
 // de la base, para poder usarla igual en el servidor y en la pantalla, y
 // probarla sola. NUNCA toca stock_actual (stock global): ver
 // scripts/005_stock_por_salon.sql.
 
-export type SectorStock = "cocina" | "barra"
+export type SectorStock = "cocina" | "barra" | "limpieza"
+
+/** Los tres sectores, en el orden en que se muestran. */
+export const SECTORES_STOCK: SectorStock[] = ["cocina", "barra", "limpieza"]
+
+export function esSectorStock(v: unknown): v is SectorStock {
+  return typeof v === "string" && (SECTORES_STOCK as string[]).includes(v)
+}
 
 /** Días hacia atrás en los que un evento terminado todavía muestra el aviso de carga. */
 export const VENTANA_AVISO_DIAS = 7
@@ -135,13 +143,35 @@ export function proximosEventosDelSalon(
 
 /**
  * Sectores que puede cargar cada perfil. Administración y Soporte cargan los
- * dos; Cocina solo cocina y Barra solo barra. El resto, ninguno.
+ * tres; Cocina solo cocina, Barra solo barra y Mantenimiento solo limpieza
+ * (pedido de Diego, 21/10/2026). El resto, ninguno.
  */
 export function sectoresPermitidos(perfilId: string | null | undefined): SectorStock[] {
-  if (perfilId === "administracion" || perfilId === "soporte") return ["cocina", "barra"]
+  if (perfilId === "administracion" || perfilId === "soporte") return ["cocina", "barra", "limpieza"]
   if (perfilId === "cocina") return ["cocina"]
   if (perfilId === "barra") return ["barra"]
+  if (perfilId === "mantenimiento") return ["limpieza"]
   return []
+}
+
+/**
+ * Quién edita y borra artículos de limpieza y corrige el stock de un salón
+ * con el lapicito (/admin/limpieza). Igual que en cocina y barra, es de
+ * Administración y Soporte. Agregar artículos nuevos lo puede hacer también
+ * Mantenimiento: ver puedeAgregarArticuloLimpieza.
+ */
+export function puedeEditarCatalogoLimpieza(perfilId: string | null | undefined): boolean {
+  return perfilId === "administracion" || perfilId === "soporte"
+}
+
+/**
+ * Quién agrega artículos nuevos a la lista de limpieza. Además de
+ * Administración y Soporte, Mantenimiento (pedido de Rodrigo, 21/10/2026):
+ * es quien se da cuenta de que falta un artículo al contar. Los artículos no
+ * tienen precio, así que agregar uno no mueve costos ni cajas.
+ */
+export function puedeAgregarArticuloLimpieza(perfilId: string | null | undefined): boolean {
+  return puedeEditarCatalogoLimpieza(perfilId) || perfilId === "mantenimiento"
 }
 
 /** Perfiles que pueden ver la vista consolidada y el detalle de las sesiones. */

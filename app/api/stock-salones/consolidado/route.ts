@@ -2,10 +2,10 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { perfilDesdeRequest, salonesConfigurados } from "@/lib/stock-salones-server"
-import { puedeVerConsolidado, type SectorStock } from "@/lib/stock-salones"
+import { esSectorStock, puedeVerConsolidado, type SectorStock } from "@/lib/stock-salones"
 
 /**
- * GET ?sector=cocina|barra — vista consolidada del conteo físico por salón.
+ * GET ?sector=cocina|barra|limpieza — vista consolidada del conteo físico por salón.
  * Se arma EN VIVO desde stock_salones (sin copias intermedias). Es
  * independiente del stock_actual global de /admin/almacen: son dos números
  * distintos a propósito. Solo Administración / Soporte.
@@ -20,13 +20,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 })
     }
     const sector = new URL(req.url).searchParams.get("sector") as SectorStock
-    if (sector !== "cocina" && sector !== "barra") {
+    if (!esSectorStock(sector)) {
       return NextResponse.json({ ok: false, error: "Sector inválido" }, { status: 400 })
     }
 
     const catalogo = (sector === "cocina"
       ? await sql`SELECT id, descripcion, unidad FROM insumos ORDER BY descripcion ASC`
-      : await sql`SELECT id, descripcion, unidad FROM insumos_barra ORDER BY descripcion ASC`) as unknown as Array<{
+      : sector === "barra"
+        ? await sql`SELECT id, descripcion, unidad FROM insumos_barra ORDER BY descripcion ASC`
+        : await sql`SELECT id, descripcion, unidad FROM insumos_limpieza ORDER BY descripcion ASC`) as unknown as Array<{
       id: string
       descripcion: string
       unidad: string | null

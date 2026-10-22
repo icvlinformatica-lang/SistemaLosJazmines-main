@@ -13,6 +13,7 @@ import {
   Monitor,
   Wrench,
   Briefcase,
+  SprayCan,
   PartyPopper,
   type LucideIcon,
 } from "lucide-react"
@@ -168,6 +169,22 @@ export const PERFILES: Perfil[] = [
     icon: Monitor,
     iconColor: CREMA,
     rutas: ["/eventos/staff"],
+  },
+  {
+    id: "mantenimiento",
+    nombre: "Mantenimiento",
+    categoria: "evento",
+    color: VERDE_EVENTO,
+    icon: SprayCan,
+    iconColor: CREMA,
+    // Pedido de Diego (21/10/2026): la encargada de limpieza y mantenimiento
+    // cuenta lo que hay de limpieza y papelería en cada salón (/stock, solo el
+    // sector limpieza) y agrega artículos nuevos a la lista (/admin/limpieza).
+    // Editar, borrar y corregir un salón con el lapicito queda para
+    // Administración. El servidor también lo cierra (sectoresPermitidos,
+    // puedeAgregarArticuloLimpieza y puedeEditarCatalogoLimpieza en
+    // lib/stock-salones.ts).
+    rutas: ["/stock", "/admin/limpieza"],
   },
   {
     id: "soporte",
