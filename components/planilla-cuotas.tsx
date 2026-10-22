@@ -310,8 +310,32 @@ export function PlanillaCuotas({
         ) : (
           <div ref={scrollRef} className="max-h-[70vh] overflow-auto border-y sm:rounded-md sm:border">
             <table className="w-max border-separate border-spacing-0 text-xs">
-              {/* Encabezado fijo arriba: cuotas por cobrar de cada mes + los meses */}
+              {/* Encabezado fijo arriba: los meses + cuotas por cobrar de cada mes */}
               <thead className="sticky top-0 z-30">
+                {/* Primero los meses, debajo la carpeta "Cuotas por cobrar" */}
+                <tr>
+                  <th
+                    data-columna-fija
+                    className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r bg-background px-2 py-2 text-left font-semibold sm:w-[200px] sm:min-w-[200px]"
+                  >
+                    Mes
+                  </th>
+                  {meses.map((mes) => {
+                    const esActual = mes === mesActual
+                    return (
+                      <th
+                        key={mes}
+                        ref={esActual ? mesActualRef : undefined}
+                        className={`min-w-[76px] border-b px-1 py-2 text-center font-semibold capitalize ${
+                          esActual ? "bg-amber-100 text-amber-900" : "bg-background text-muted-foreground"
+                        }`}
+                      >
+                        {etiquetaMes(mes)}
+                        {esActual && <span className="block text-[9px] font-medium normal-case">este mes</span>}
+                      </th>
+                    )
+                  })}
+                </tr>
                 {/* Carpeta "Cuotas por cobrar": total por mes; abierta, una fila por salón */}
                 <tr>
                   <th className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r bg-background p-0 text-left text-[11px] font-semibold sm:w-[200px] sm:min-w-[200px]">
@@ -342,29 +366,6 @@ export function PlanillaCuotas({
                       ))}
                     </tr>
                   ))}
-                <tr>
-                  <th
-                    data-columna-fija
-                    className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r bg-background px-2 py-2 text-left font-semibold sm:w-[200px] sm:min-w-[200px]"
-                  >
-                    Evento
-                  </th>
-                  {meses.map((mes) => {
-                    const esActual = mes === mesActual
-                    return (
-                      <th
-                        key={mes}
-                        ref={esActual ? mesActualRef : undefined}
-                        className={`min-w-[76px] border-b px-1 py-2 text-center font-semibold capitalize ${
-                          esActual ? "bg-amber-100 text-amber-900" : "bg-background text-muted-foreground"
-                        }`}
-                      >
-                        {etiquetaMes(mes)}
-                        {esActual && <span className="block text-[9px] font-medium normal-case">este mes</span>}
-                      </th>
-                    )
-                  })}
-                </tr>
               </thead>
               <tbody>
                 {grupos.map((g) => (
