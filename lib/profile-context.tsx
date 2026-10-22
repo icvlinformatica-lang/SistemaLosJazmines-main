@@ -14,6 +14,7 @@ import {
   Wrench,
   Briefcase,
   SprayCan,
+  PartyPopper,
   type LucideIcon,
 } from "lucide-react"
 
@@ -85,7 +86,8 @@ export const PERFILES: Perfil[] = [
     icon: BarChart2,
     iconColor: NEGRO,
     rutas: ["*"],
-    rutasExcluidas: ["/eventos/produccion"],
+    // La vista de Clientes es solo de Soporte (pedido del 21/10/2026).
+    rutasExcluidas: ["/eventos/produccion", "/clientes"],
   },
   {
     id: "coordinacion",
@@ -116,6 +118,19 @@ export const PERFILES: Perfil[] = [
     // components/sidebar.tsx tratan un array vacío como "acceso total"
     // (mismo criterio que "*"), no como "sin acceso".
     rutas: ["/vendedor", "/vendedor/cotizar", "/vendedor/paquetes", "/vendedor/papelera"],
+  },
+  // Prototipo del simulador "Armá tu fiesta": lo que va a ver un cliente que
+  // llega desde Instagram (lib/clientes-simulador.ts). No tiene PIN propio
+  // (no está en getPins): entra Administración con su pase, o Diego con su
+  // acceso rápido. Por eso el login solo muestra la tarjeta en esos casos.
+  {
+    id: "clientes",
+    nombre: "Clientes",
+    categoria: "gestion",
+    color: DORADO,
+    icon: PartyPopper,
+    iconColor: NEGRO,
+    rutas: ["/clientes"],
   },
   // Perfiles de solo lectura para staff externo: ven el calendario de
   // próximos eventos con su servicio resaltado (ver app/eventos/staff).

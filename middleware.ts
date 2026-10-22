@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { verifyToken, SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/server"
+import { apiPermitidaParaClientes } from "@/lib/vista-clientes"
 
 // Rutas de API públicas (no requieren sesión)
 // /api/cron/* lo invoca el cron de Vercel (sin sesión); cada ruta de cron
@@ -31,6 +32,12 @@ export async function middleware(req: NextRequest) {
 
   if (!session) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  }
+
+  // El perfil "clientes" se abre con un link sin PIN: solo usa la API del
+  // simulador, nunca la del sistema interno.
+  if (session.perfilId === "clientes" && !apiPermitidaParaClientes(pathname)) {
+    return NextResponse.json({ error: "Sin permiso" }, { status: 403 })
   }
 
   return NextResponse.next()
