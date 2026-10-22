@@ -55,6 +55,12 @@ interface MenuItem {
 // IDs de perfiles que tienen acceso completo (incluyendo secciones financieras)
 const PERFILES_ACCESO_TOTAL = ["administracion", "soporte"]
 
+// Perfiles cuyo panel se pliega solo al elegir una pantalla (pedido del dueño
+// el 22/10/2026 para Cocina). Antes solo se plegaba al sacar el mouse del panel
+// o tocando el fondo oscuro, y en pantallas táctiles quedaba abierto tapando la
+// pantalla elegida.
+const PERFILES_CIERRAN_AL_ELEGIR = ["cocina"]
+
 const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes: boolean): MenuItem[] => {
   const tieneAccesoTotal = PERFILES_ACCESO_TOTAL.includes(perfilId ?? "")
 
@@ -316,6 +322,10 @@ export function Sidebar() {
     router.push("/login")
   }
 
+  const cerrarAlElegir = () => {
+    if (PERFILES_CIERRAN_AL_ELEGIR.includes(perfilActivo?.id ?? "")) setSidebarOpen(false)
+  }
+
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/"
     return pathname === href || pathname.startsWith(href + "/")
@@ -489,6 +499,7 @@ export function Sidebar() {
                           <Link
                             key={child.href}
                             href={child.href}
+                            onClick={cerrarAlElegir}
                             className={cn(
                               "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 text-sm bajo:py-1.5",
                               childActive
@@ -514,6 +525,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={cerrarAlElegir}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 bajo:py-2",
                   active
