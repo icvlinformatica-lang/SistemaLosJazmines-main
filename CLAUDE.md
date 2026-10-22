@@ -172,7 +172,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Comentarios en español que expliquen el porqué, como en el resto del código.
 - UI: seguir `DESIGN.md` (íconos solo de `lucide-react`, un color por categoría o estado) y probar a 390 px sin scroll horizontal.
 
-**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 027 (`027_simulador_recorridos.sql`, el embudo del simulador, SOLO ADITIVA y **sin aplicar**: la corre el dueño en el SQL Editor; el código anda sin la tabla); la 026 (`026_stock_limpieza.sql`, stock de limpieza) se aplicó el 21/10/2026; la 024 (`024_anotaciones_evento.sql`) se aplicó el 14/10/2026; la 021 (`021_limpiar_politicas_viejas.sql`) todavía no está aplicada y la corre el dueño en el SQL Editor; la 022 (`022_staff_dietas_origen.sql`) se aplicó el 16/10/2026)
+**Migraciones** (`scripts/0NN_descripcion.sql`; la última es la 027 (`027_simulador_recorridos.sql`, el embudo del simulador, SOLO ADITIVA, aplicada el 22/10/2026); la 026 (`026_stock_limpieza.sql`, stock de limpieza) se aplicó el 21/10/2026; la 024 (`024_anotaciones_evento.sql`) se aplicó el 14/10/2026; la 021 (`021_limpiar_politicas_viejas.sql`) todavía no está aplicada y la corre el dueño en el SQL Editor; la 022 (`022_staff_dietas_origen.sql`) se aplicó el 16/10/2026)
 - Encabezado con qué hace y por qué, "SOLO ADITIVA" si lo es, y "Aplicada el <fecha>" cuando se aplique.
 - Idempotente (`if not exists`) y aditiva por defecto, con defaults que no cambien el comportamiento.
 - Si tiene varios pasos, va en `begin`/`commit`. Si borra, lleva un freno que verifique que no esté en uso y aborte.

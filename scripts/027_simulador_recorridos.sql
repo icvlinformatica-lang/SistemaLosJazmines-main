@@ -1,7 +1,8 @@
 -- 027 — Recorridos del simulador "Armá tu fiesta" (vista de Clientes).
 --
 -- SOLO ADITIVA: crea una tabla nueva. No modifica ni borra nada existente.
--- Sin aplicar todavía: la corre el dueño en el SQL Editor de Supabase.
+-- Aplicada el 22/10/2026 por el dueño en el SQL Editor de Supabase (verificado:
+-- 8 columnas, RLS activado, sin políticas y 0 permisos para anon/authenticated).
 --
 -- Pedido de Rodri (22/10/2026): "ver dónde se quedan estancados al navegar
 -- por la web del cotizador". Cada visita de quien entra con el link del
