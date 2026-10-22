@@ -43,6 +43,7 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   Baby,
+  BarChart3,
   BedDouble,
   Briefcase,
   Cake,
@@ -137,6 +138,8 @@ import { TotalAnimado } from "@/components/clientes/total-animado"
 import { CalendarioFiesta } from "@/components/clientes/calendario-fiesta"
 import { Opcion } from "@/components/clientes/opcion"
 import { PresupuestoCliente } from "@/components/clientes/presupuesto-cliente"
+import { EmbudoSimulador } from "@/components/clientes/embudo-simulador"
+import { puedeVerEmbudo, type IdEtapaEmbudo } from "@/lib/clientes-embudo"
 
 type IdPaso = IdPasoCliente
 
@@ -258,6 +261,10 @@ export default function ClientesPage() {
       setArmandoLink(false)
     }
   }
+  // ── "Dónde se quedan" (el embudo, solo Soporte) ──
+  const veEmbudo = puedeVerEmbudo(perfilActivo?.id)
+  const [embudoAbierto, setEmbudoAbierto] = useState(false)
+
   const copiarLinkPrototipo = async () => {
     if (!linkPrototipo) return
     try {
@@ -420,6 +427,42 @@ export default function ClientesPage() {
 
   // ── Qué falta para seguir ──
   const idPaso: IdPaso = PASOS[paso].id
+
+  // ── Anotar hasta dónde llega cada visita (pedido de Rodri del 22/10/2026:
+  // ver dónde se quedan). Solo con el link (perfil "clientes"): lo que mira
+  // Soporte no cuenta. Sin datos personales: la etapa, el festejo y la clave
+  // del salón. Un id por visita y cada etapa una sola vez; no se espera la
+  // respuesta, así que si falla el simulador sigue igual.
+  const idVisita = useRef<string | null>(null)
+  const etapasAnotadas = useRef(new Set<string>())
+  const anotar = (etapa: IdEtapaEmbudo) => {
+    if (!esPerfilClientes || etapasAnotadas.current.has(etapa)) return
+    etapasAnotadas.current.add(etapa)
+    if (!idVisita.current) {
+      idVisita.current =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+    }
+    try {
+      void fetch("/api/clientes/recorrido", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: idVisita.current, etapa, tipoEvento, salon: salon?.salon ?? null }),
+        keepalive: true,
+      }).catch(() => {})
+    } catch {}
+  }
+  useEffect(() => {
+    if (vista === "portada") anotar("portada")
+    else if (vista === "pasos") anotar(idPaso)
+    else anotar("precio") // la lista y el presupuesto muestran el precio sugerido
+    // Solo al cambiar de etapa: anotar ya filtra lo repetido.
+  }, [vista, idPaso, esPerfilClientes])
+  useEffect(() => {
+    if (peajeAbierto) anotar("datos")
+    // Solo al cambiar de etapa: anotar ya filtra lo repetido.
+  }, [peajeAbierto, esPerfilClientes])
   const pasosMenu = salon ? pasosDelMenu(salon.menu) : []
   const faltaMenu = salon ? pasosMenuFaltantes(salon.menu, salon.menu.filter((m) => recetas.includes(m.recetaId))) : []
   const falta: string | null = (() => {
@@ -724,6 +767,7 @@ export default function ClientesPage() {
       .filter((s) => !s.incluido && s.servicioId in servicios)
       .map((s) => servicioConCantidad({ ...s, cantidad: servicios[s.servicioId] ?? 1 }))
     abrirEnOtraPestana(linkWhatsAppLosJazmines(mensajeWhatsApp(serviciosElegidos, total)))
+    anotar("whatsapp")
     void verPresupuesto()
   }
 
@@ -773,6 +817,17 @@ export default function ClientesPage() {
           className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--lj-texto)]/80 hover:bg-white/10 hover:text-[var(--lj-texto)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)] disabled:opacity-60"
         >
           {armandoLink ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Link2 className="h-4.5 w-4.5" />}
+        </button>
+      )}
+      {veEmbudo && (
+        <button
+          type="button"
+          onClick={() => setEmbudoAbierto(true)}
+          aria-label="Dónde se quedan las visitas"
+          title="Dónde se quedan"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--lj-texto)]/80 hover:bg-white/10 hover:text-[var(--lj-texto)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lj-acento)]"
+        >
+          <BarChart3 className="h-4.5 w-4.5" />
         </button>
       )}
       {!esPerfilClientes && (
@@ -1770,6 +1825,17 @@ export default function ClientesPage() {
           </div>
         </DrawerContent>
       </Drawer>
+
+      {veEmbudo && (
+        <EmbudoSimulador
+          abierto={embudoAbierto}
+          onCambiar={setEmbudoAbierto}
+          estilo={varsTema}
+          claseFuente={`${fuenteFiesta.variable} ${fuenteFiestaItalica.variable}`}
+          claseTitulo={serif}
+          nombreSalon={(clave) => catalogo?.salones.find((x) => x.salon === clave)?.nombre ?? clave}
+        />
+      )}
 
       {(linkPrototipo || errorLink) && (
         <div className="fixed inset-x-0 top-3 z-[80] flex justify-center px-4 print:hidden" role="status">
