@@ -3,8 +3,10 @@
  * pasarela de pago. Pedido de Rodrigo (22/10/2026): el formulario de una sola
  * hoja confundía el orden de carga y llevaba a errores.
  *
- * Gasto:  1 Qué (concepto y monto) → 2 Salones (uno o repartido) →
- *         3 Fecha y pago (vencimiento, carpeta, ya pagado) → 4 Revisar.
+ * Gasto:  1 Qué (concepto y monto) → 2 Salones (uno o varios: con varios se
+ *         reparte) → 3 Fecha y pago (fecha del gasto, que arranca en hoy;
+ *         vencimiento opcional; carpeta; descontar del saldo, prendido por
+ *         defecto) → 4 Revisar.
  * Retiro: 1 Qué → 2 Salón → 3 Revisar (no tiene vencimiento ni carpeta).
  *
  * Solo ordena lo que se pide: los requisitos para guardar son los mismos de
@@ -91,6 +93,34 @@ export function puedeIrAlPaso(
   if (iDestino < 0) return false
   if (iDestino <= pasos.indexOf(actual)) return true
   return pasos.slice(0, iDestino).every((p) => p === "revisar" || faltantesDelPaso(p, d, compra).length === 0)
+}
+
+/**
+ * Partes iguales en % enteros que suman 100 (los primeros se llevan el
+ * resto): 3 salones → 34/33/33. Misma cuenta que "Repartir igual" del
+ * editor de reparto.
+ */
+export function repartoEnPartesIguales(salones: string[]): Array<{ salon: string; porcentaje: number }> {
+  if (salones.length === 0) return []
+  const base = Math.floor(100 / salones.length)
+  const resto = 100 - base * salones.length
+  return salones.map((salon, i) => ({ salon, porcentaje: base + (i < resto ? 1 : 0) }))
+}
+
+/**
+ * Elegir salones tocándolos (pedido de Rodrigo, 22/10/2026): con uno, el
+ * gasto es de ese salón; con dos o más, se reparte en partes iguales (después
+ * se pueden cambiar los %). Devuelve los campos del gasto que cambian. Los
+ * salones quedan en el orden de `orden` (el de SALONES), no en el del toque.
+ */
+export function gastoConSalones(
+  elegidos: string[],
+  orden: readonly string[],
+): { salon: string; repartir: boolean; distribucion: Array<{ salon: string; porcentaje: number }> } {
+  const lista = orden.filter((s) => elegidos.includes(s))
+  if (lista.length === 0) return { salon: "", repartir: false, distribucion: [] }
+  if (lista.length === 1) return { salon: lista[0], repartir: false, distribucion: [] }
+  return { salon: "", repartir: true, distribucion: repartoEnPartesIguales(lista) }
 }
 
 /**

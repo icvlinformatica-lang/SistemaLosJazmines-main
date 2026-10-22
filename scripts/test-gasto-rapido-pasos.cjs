@@ -22,7 +22,10 @@ const {
   primerPasoIncompleto,
   puedeIrAlPaso,
   montosPorSalon,
+  repartoEnPartesIguales,
+  gastoConSalones,
 } = require("../lib/gasto-rapido-pasos.ts")
+const SALONES = ["Quinta", "Casona", "Salon", "Salon 4", "Salon 5"]
 
 const COMPLETO = {
   modo: "gasto",
@@ -104,4 +107,26 @@ test("reparto en pesos: $100.000 al 50/30/20 y $100 en tercios suman exacto", ()
   assert.equal(Math.round(raro.reduce((s, m) => s + m.monto, 0) * 100) / 100, 1000.01)
   // Un salón con 0% no aparece.
   assert.equal(montosPorSalon(100, [{ salon: "Casona", porcentaje: 100 }, { salon: "Quinta", porcentaje: 0 }]).length, 1)
+})
+
+test("varios salones con un toque: uno es de ese salón, dos o más se reparten en partes iguales", () => {
+  assert.deepEqual(gastoConSalones([], SALONES), { salon: "", repartir: false, distribucion: [] })
+  assert.deepEqual(gastoConSalones(["Casona"], SALONES), { salon: "Casona", repartir: false, distribucion: [] })
+  // En el orden de SALONES, no en el del toque.
+  assert.deepEqual(gastoConSalones(["Casona", "Quinta"], SALONES), {
+    salon: "",
+    repartir: true,
+    distribucion: [
+      { salon: "Quinta", porcentaje: 50 },
+      { salon: "Casona", porcentaje: 50 },
+    ],
+  })
+  // Tres salones: 34/33/33 y suma 100, así que el reparto es válido de entrada.
+  const tres = gastoConSalones(["Salon", "Casona", "Quinta"], SALONES).distribucion
+  assert.deepEqual(tres.map((d) => d.porcentaje), [34, 33, 33])
+  assert.equal(tres.reduce((s, d) => s + d.porcentaje, 0), 100)
+  assert.deepEqual(repartoEnPartesIguales([]), [])
+  // $90.000 entre 3 salones: 30.600 / 29.700 / 29.700, suma exacta.
+  const pesos = montosPorSalon(90000, tres).map((m) => m.monto)
+  assert.deepEqual(pesos, [30600, 29700, 29700])
 })

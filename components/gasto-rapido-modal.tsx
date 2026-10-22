@@ -25,7 +25,7 @@ import { useStore } from "@/lib/store-context"
 import { useToast } from "@/hooks/use-toast"
 import { SALONES, salonLabel, generateId, type DistribucionSalon } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
-import { RepartoSalonesEditor, repartoValido } from "@/components/reparto-salones-editor"
+import { repartoValido, totalReparto } from "@/components/reparto-salones-editor"
 import { cambiarDiaResumen, fechaArgentina, fechaResumenValida } from "@/lib/resumen-fecha"
 import { usuarioActivo, useProfile } from "@/lib/profile-context"
 import { puedeEditarCatalogoLimpieza } from "@/lib/stock-salones"
@@ -49,6 +49,8 @@ import {
   puedeIrAlPaso,
   type FaltaPaso,
   type PasoGasto,
+  gastoConSalones,
+  repartoEnPartesIguales,
 } from "@/lib/gasto-rapido-pasos"
 import {
   Plus,
@@ -122,14 +124,17 @@ const GASTO_VACIO = {
   carpeta: "varios",
 }
 
-/** Botones de salón (uno solo elegido). Más rápido que un desplegable. */
+/**
+ * Botones de salón, más rápidos que un desplegable. Con `value` texto se
+ * elige uno; con una lista, cada toque prende o apaga ese salón.
+ */
 function ElegirSalon({
   value,
   onChange,
   opciones,
   invalido,
 }: {
-  value: string
+  value: string | string[]
   onChange: (s: string) => void
   opciones: readonly string[]
   invalido?: boolean
@@ -137,7 +142,7 @@ function ElegirSalon({
   return (
     <div className={`grid grid-cols-2 gap-1.5 sm:grid-cols-3 ${invalido ? "rounded-lg p-1 ring-1 ring-red-500" : ""}`}>
       {opciones.map((s) => {
-        const elegido = value === s
+        const elegido = Array.isArray(value) ? value.includes(s) : value === s
         return (
           <button
             key={s}
@@ -249,11 +254,13 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
   // Modo del modal: "gasto" agenda un gasto variable; "retiro" extrae dinero
   // de la caja ya mismo, siempre asignado a un salón.
   const [modoVariable, setModoVariable] = useState<"gasto" | "retiro">("gasto")
-  // "Ya está pagado": el gasto nuevo se agenda ya marcado como pagado. Es el
-  // mismo dato que deja el círculo "Marcar como pagado" de Caja Jazmines
+  // "Descontar del saldo": el gasto nuevo se agenda ya marcado como pagado. Es
+  // el mismo dato que deja el círculo "Marcar como pagado" de Caja Jazmines
   // (pagado: true en el gasto) y, como ese botón, descuenta el monto del
-  // saldo de Caja Jazmines (el store deja el egreso; desde el 14/10/2026).
-  const [yaPagado, setYaPagado] = useState(false)
+  // saldo de Caja Jazmines de cada salón (el store deja el egreso; desde el
+  // 14/10/2026). Prendido por defecto desde el 22/10/2026: casi siempre se
+  // carga lo que ya se pagó (pedido de Rodrigo); se apaga para agendarlo.
+  const [yaPagado, setYaPagado] = useState(true)
   // Paso actual y si hay que marcar en rojo lo que falta en ese paso (se
   // prende al tocar "Siguiente" con datos faltantes; se apaga al cambiar de paso).
   const [paso, setPaso] = useState<PasoGasto>("que")
@@ -283,7 +290,9 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     nombre: nuevoGasto.nombre.trim(),
     monto: nuevoGasto.monto,
     salon: nuevoGasto.salon,
-    fecha: nuevoGasto.fecha,
+    // La fecha que se exige es la del gasto; el vencimiento es opcional. Un
+    // gasto viejo sin fecha del gasto pasa con su vencimiento.
+    fecha: nuevoGasto.fechaGasto || nuevoGasto.fecha,
     repartir: nuevoGasto.repartir,
     repartoValido: repartoValido(nuevoGasto.distribucion),
   }
@@ -341,11 +350,11 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
   const fechaPanelActual = fechaPanel ?? hoyPanelISO
 
   // Siempre arranca en el primer paso y mostrando "hoy" cada vez que se abre
-  // el modal, con el interruptor "Ya está pagado" apagado.
+  // el modal, con "Descontar del saldo" prendido.
   useEffect(() => {
     if (!open) return
     setFechaPanel(null)
-    setYaPagado(false)
+    setYaPagado(true)
     setPaso("que")
     setMostrarFaltas(false)
   }, [open])
@@ -366,12 +375,13 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     }
   }, [open, puedeComprarLimpieza])
 
-  // Al abrir para cargar un gasto nuevo, el vencimiento arranca con la fecha
-  // de hoy en Argentina (fechaNegocio, no toISOString: después de las 21:00
-  // daría mañana). Se puede cambiar. En edición se respeta el guardado.
+  // Al abrir para cargar un gasto nuevo, la fecha del gasto arranca con la de
+  // hoy en Argentina (fechaNegocio, no toISOString: después de las 21:00
+  // daría mañana). Se puede cambiar si el gasto fue otro día. El vencimiento
+  // queda vacío (es opcional). En edición se respeta lo guardado.
   useEffect(() => {
     if (!open || costoAEditar) return
-    setNuevoGasto((p) => (p.fecha ? p : { ...p, fecha: fechaNegocio() }))
+    setNuevoGasto((p) => (p.fechaGasto ? p : { ...p, fechaGasto: fechaNegocio() }))
   }, [open, costoAEditar])
 
   const gastosDelPanel: ItemDelDia[] = (state.costosOperativos || [])
@@ -538,12 +548,16 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
       ? conceptoGastoLimpieza(articuloCompra.descripcion, cantidadCompraNum, articuloCompra.unidad)
       : nuevoGasto.nombre.trim()
 
+  // Sin vencimiento, vence el día del gasto: así Caja Jazmines lo sigue
+  // ordenando y sumando como siempre (antes el vencimiento arrancaba en hoy).
+  const vencimientoFinal = nuevoGasto.fecha || nuevoGasto.fechaGasto
+
   function resetear() {
     setNuevoGasto(GASTO_VACIO)
     setCreandoCarpeta(false)
     setEditandoVariableId(null)
     setModoVariable("gasto")
-    setYaPagado(false)
+    setYaPagado(true)
     setPaso("que")
     setMostrarFaltas(false)
     setHistorialAbierto(false)
@@ -617,7 +631,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
         esPorPersona: false,
         salon: dist.length > 0 ? null : nuevoGasto.salon,
         activo: true,
-        fechaVencimiento: nuevoGasto.fecha,
+        fechaVencimiento: vencimientoFinal,
         fechaGasto: nuevoGasto.fechaGasto || undefined,
         esVariable: true,
         pagado: yaPagado,
@@ -664,7 +678,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
         concepto: nuevoGasto.nombre.trim(),
         monto: montoNum,
         salon: dist.length > 0 ? null : nuevoGasto.salon,
-        fechaVencimiento: nuevoGasto.fecha,
+        fechaVencimiento: vencimientoFinal,
         fechaGasto: nuevoGasto.fechaGasto || undefined,
         distribucion: dist.length > 0 ? dist : undefined,
         categoria: nuevoGasto.carpeta,
@@ -679,7 +693,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
         esPorPersona: false,
         salon: dist.length > 0 ? null : nuevoGasto.salon,
         activo: true,
-        fechaVencimiento: nuevoGasto.fecha,
+        fechaVencimiento: vencimientoFinal,
         fechaGasto: nuevoGasto.fechaGasto || undefined,
         esVariable: true,
         // Mismo dato que deja "Marcar como pagado" en Caja Jazmines.
@@ -794,39 +808,28 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     </div>
   )
 
+  // Salones elegidos: uno es "de ese salón"; dos o más, repartido.
+  const salonesElegidos = nuevoGasto.repartir ? nuevoGasto.distribucion.map((d) => d.salon) : nuevoGasto.salon ? [nuevoGasto.salon] : []
+  function tocarSalon(s: string) {
+    const lista = salonesElegidos.includes(s) ? salonesElegidos.filter((x) => x !== s) : [...salonesElegidos, s]
+    setNuevoGasto((p) => ({ ...p, ...gastoConSalones(lista, SALONES) }))
+    setMostrarFaltas(false)
+  }
+  function setPorcentajeSalon(salon: string, pct: number) {
+    const valor = Math.max(0, Math.min(100, Math.round(pct)))
+    setNuevoGasto((p) => ({
+      ...p,
+      distribucion: p.distribucion.map((d) => (d.salon === salon ? { ...d, porcentaje: valor } : d)),
+    }))
+  }
+  const totalPct = totalReparto(nuevoGasto.distribucion)
+  const montosReparto = montosPorSalon(montoNum, nuevoGasto.distribucion)
+
   const pasoSalones = (
     <div className="space-y-4">
-      {!esRetiro && (
-        <Segmentado
-          value={nuevoGasto.repartir ? "repartir" : "uno"}
-          onChange={(v) => {
-            setNuevoGasto((p) => ({ ...p, repartir: v === "repartir" }))
-            setMostrarFaltas(false)
-          }}
-          opciones={[
-            { value: "uno", label: "Un salón" },
-            { value: "repartir", label: "Repartir entre salones" },
-          ]}
-        />
-      )}
-      {!esRetiro && nuevoGasto.repartir ? (
+      {esRetiro ? (
         <div className="space-y-1.5">
-          <RepartoSalonesEditor
-            value={nuevoGasto.distribucion}
-            onChange={(v) => setNuevoGasto((p) => ({ ...p, distribucion: v }))}
-          />
-          {avisoFalta("reparto")}
-          {montoNum > 0 && repartoValido(nuevoGasto.distribucion) && (
-            <p className="text-xs text-muted-foreground">
-              {montosPorSalon(montoNum, repartoActivo)
-                .map((m) => `${salonLabel(m.salon)} ${formatCurrency(m.monto)}`)
-                .join(" · ")}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          <Label>{esRetiro ? "¿De qué salón sale la plata?" : "¿A qué salón corresponde?"}</Label>
+          <Label>¿De qué salón sale la plata?</Label>
           <ElegirSalon
             value={nuevoGasto.salon}
             onChange={(s) => setNuevoGasto((p) => ({ ...p, salon: s }))}
@@ -834,6 +837,65 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
             invalido={falta("salon")}
           />
           {avisoFalta("salon")}
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <Label>
+            ¿De qué salón o salones?{" "}
+            <span className="font-normal text-muted-foreground">Tocá uno o varios</span>
+          </Label>
+          <ElegirSalon
+            value={salonesElegidos}
+            onChange={tocarSalon}
+            opciones={SALONES}
+            invalido={falta("salon") || falta("reparto")}
+          />
+          {avisoFalta("salon")}
+          {nuevoGasto.repartir && (
+            <div className="space-y-1.5 rounded-lg border border-border p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">Se reparte entre {salonesElegidos.length} salones</p>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-purple-600 hover:text-purple-800"
+                  onClick={() =>
+                    setNuevoGasto((p) => ({ ...p, distribucion: repartoEnPartesIguales(p.distribucion.map((d) => d.salon)) }))
+                  }
+                >
+                  Repartir igual
+                </button>
+              </div>
+              {nuevoGasto.distribucion.map((d) => {
+                const enPesos = montosReparto.find((m) => m.salon === d.salon)?.monto ?? 0
+                return (
+                  <div key={d.salon} className="flex items-center gap-2 text-sm">
+                    <SalonDot salon={d.salon} size={8} />
+                    <span className="min-w-0 flex-1 truncate">{salonLabel(d.salon)}</span>
+                    <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                      {montoNum > 0 ? formatCurrency(enPesos) : ""}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={100}
+                        aria-label={`Porcentaje de ${salonLabel(d.salon)}`}
+                        className="h-8 w-16 text-right"
+                        value={d.porcentaje || ""}
+                        onChange={(e) => setPorcentajeSalon(d.salon, Number(e.target.value) || 0)}
+                      />
+                      <span className="text-xs text-muted-foreground">%</span>
+                    </div>
+                  </div>
+                )
+              })}
+              <p className={`text-right text-xs font-medium ${totalPct === 100 ? "text-teal-600" : "text-red-600"}`}>
+                Total {totalPct}%{totalPct !== 100 ? " · tiene que dar 100%" : ""}
+              </p>
+            </div>
+          )}
+          {avisoFalta("reparto")}
         </div>
       )}
       {compraActiva && articuloCompra && nuevoGasto.repartir && repartoActivo.length > 1 && (
@@ -854,29 +916,34 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     </div>
   )
 
+  const nombresSalonesGasto = salonesElegidos.map((x) => salonLabel(x)).join(", ").replace(/, ([^,]*)$/, " y $1") || "el salón"
+
   const pasoFecha = (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="gv-fecha">Vencimiento</Label>
-          <Input
-            id="gv-fecha"
-            type="date"
-            value={nuevoGasto.fecha}
-            onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
-            aria-invalid={falta("fecha")}
-          />
-          {avisoFalta("fecha")}
-        </div>
-        <div className="space-y-1.5">
           <Label htmlFor="gv-fecha-gasto">
-            Fecha del gasto <span className="font-normal text-muted-foreground">(opcional)</span>
+            Fecha del gasto
+            {nuevoGasto.fechaGasto === fechaNegocio() && <span className="font-normal text-muted-foreground"> (hoy)</span>}
           </Label>
           <Input
             id="gv-fecha-gasto"
             type="date"
             value={nuevoGasto.fechaGasto}
             onChange={(e) => setNuevoGasto((p) => ({ ...p, fechaGasto: e.target.value }))}
+            aria-invalid={falta("fecha")}
+          />
+          {avisoFalta("fecha")}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="gv-fecha">
+            Vence <span className="font-normal text-muted-foreground">(opcional)</span>
+          </Label>
+          <Input
+            id="gv-fecha"
+            type="date"
+            value={nuevoGasto.fecha}
+            onChange={(e) => setNuevoGasto((p) => ({ ...p, fecha: e.target.value }))}
           />
         </div>
       </div>
@@ -997,8 +1064,12 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
           className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border p-2.5"
         >
           <span className="space-y-0.5">
-            <span className="block text-sm font-medium">Ya está pagado</span>
-            <span className="block text-xs text-muted-foreground">Se descuenta del saldo de Caja Jazmines.</span>
+            <span className="block text-sm font-medium">Descontar del saldo</span>
+            <span className="block text-xs text-muted-foreground">
+              {yaPagado
+                ? `Sale de Caja Jazmines de ${nombresSalonesGasto}. Apagalo si todavía no se pagó.`
+                : "No se descuenta: queda agendado sin pagar."}
+            </span>
           </span>
           <Switch id="gv-ya-pagado" checked={yaPagado} onCheckedChange={setYaPagado} />
         </label>
@@ -1048,10 +1119,11 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
         )}
         {!esRetiro && (
           <>
-            <FilaResumen label="Vence" onEditar={() => irAlPaso("fecha")}>
-              {fechaCorta(nuevoGasto.fecha)}
-              {nuevoGasto.fechaGasto && (
-                <span className="text-xs text-muted-foreground"> · gasto del {fechaCorta(nuevoGasto.fechaGasto)}</span>
+            <FilaResumen label="Fecha" onEditar={() => irAlPaso("fecha")}>
+              {nuevoGasto.fechaGasto ? fechaCorta(nuevoGasto.fechaGasto) : "—"}
+              {nuevoGasto.fechaGasto === fechaNegocio() && <span className="text-xs text-muted-foreground"> (hoy)</span>}
+              {nuevoGasto.fecha && nuevoGasto.fecha !== nuevoGasto.fechaGasto && (
+                <span className="text-xs text-muted-foreground"> · vence el {fechaCorta(nuevoGasto.fecha)}</span>
               )}
             </FilaResumen>
             <FilaResumen label="Carpeta" onEditar={() => irAlPaso("fecha")}>
@@ -1062,7 +1134,14 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
             </FilaResumen>
             {!editando && (
               <FilaResumen label="Pago" onEditar={() => irAlPaso("fecha")}>
-                {yaPagado ? "Ya pagado: se descuenta del saldo ahora" : "Queda pendiente de pago"}
+                {yaPagado ? (
+                  <>
+                    Se descuenta del saldo ahora
+                    <span className="block text-xs text-muted-foreground">Caja Jazmines de {nombresSalonesGasto}</span>
+                  </>
+                ) : (
+                  <span className="text-amber-700 dark:text-amber-400">No se descuenta: queda pendiente de pago</span>
+                )}
               </FilaResumen>
             )}
           </>
