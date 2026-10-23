@@ -55,12 +55,6 @@ interface MenuItem {
 // IDs de perfiles que tienen acceso completo (incluyendo secciones financieras)
 const PERFILES_ACCESO_TOTAL = ["administracion", "soporte"]
 
-// Perfiles cuyo panel se pliega solo al elegir una pantalla (pedido del dueño
-// el 22/10/2026 para Cocina). Antes solo se plegaba al sacar el mouse del panel
-// o tocando el fondo oscuro, y en pantallas táctiles quedaba abierto tapando la
-// pantalla elegida.
-const PERFILES_CIERRAN_AL_ELEGIR = ["cocina"]
-
 const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes: boolean): MenuItem[] => {
   const tieneAccesoTotal = PERFILES_ACCESO_TOTAL.includes(perfilId ?? "")
 
@@ -322,9 +316,12 @@ export function Sidebar() {
     router.push("/login")
   }
 
-  const cerrarAlElegir = () => {
-    if (PERFILES_CIERRAN_AL_ELEGIR.includes(perfilActivo?.id ?? "")) setSidebarOpen(false)
-  }
+  // El panel se pliega solo al elegir una pantalla, en todos los perfiles
+  // (pedido del dueño: el 22/10/2026 para Cocina y el 23/10/2026 para todos).
+  // Antes solo se plegaba al sacar el mouse del panel o tocando el fondo
+  // oscuro, y en pantallas táctiles quedaba abierto tapando la pantalla
+  // elegida. Abrir o cerrar una carpeta no lo pliega: hay que elegir adentro.
+  const cerrarAlElegir = () => setSidebarOpen(false)
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/"
@@ -354,6 +351,7 @@ export function Sidebar() {
   }
 
   const handlePlanificarFiesta = () => {
+    cerrarAlElegir()
     setEventoActual(null)
     setTimeout(() => {
       setEventoActual({
@@ -408,7 +406,7 @@ export function Sidebar() {
       >
         {/* Logo Section */}
         <div className="flex items-start justify-between gap-2 px-5 pt-6 pb-3 bajo:pt-3 bajo:pb-2">
-          <Link href="/" className="block min-w-0">
+          <Link href="/" onClick={cerrarAlElegir} className="block min-w-0">
             <h1 className="text-lg font-bold text-[#f5f0e8] leading-tight">
               Los Jazmines
             </h1>
@@ -549,6 +547,7 @@ export function Sidebar() {
               // (41 px contra 44 px).
               <Link
                 href="/vendedor/cotizar"
+                onClick={cerrarAlElegir}
                 className="flex items-center gap-2 w-full h-[41px] bajo:h-9 px-4 rounded-lg bg-[#d49133] hover:bg-[#e09d40] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
               >
                 <Calculator className="h-5 w-5 shrink-0" />
