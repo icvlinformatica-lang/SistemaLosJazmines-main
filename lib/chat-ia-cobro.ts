@@ -20,6 +20,7 @@ import { generarCalendarioCuotas } from "./calendario-cuotas"
 import { aplicaIPC, resolverCalculoCobro, type CalculoIPC } from "./ipc-cuotas"
 import { estadoDeCuota, saldoRestanteCuota, type DecisionSaldoCuota, type RecargoSaldoCuota } from "./estado-cuotas"
 import { RECARGO_POR_DIA_ATRASO } from "./vienen-a-pagar"
+import { creditoDisponible } from "./saldo-a-favor"
 
 export type EstadoPropuestaCobro = "pendiente" | "cobrado" | "cancelado"
 
@@ -272,6 +273,10 @@ export function armarPropuestaCobro(
     return { ok: false, motivo: "El evento está finalizado: no tiene cuotas para cobrar." }
   }
   if (!evento.salon) return { ok: false, motivo: "El evento no tiene salón: no se sabe a qué caja va. Cobralo desde Cobrar cuota." }
+  // El chat no descuenta el saldo a favor (lib/saldo-a-favor.ts): esos cobros van por Cobrar cuota.
+  if (creditoDisponible(evento.pagos) > 0) {
+    return { ok: false, motivo: "El evento tiene saldo a favor de un pago anterior. Por el chat no se puede: cobrala desde Cobrar cuota, que lo descuenta." }
+  }
   const numero = Number(entrada.numeroCuota)
   if (!Number.isInteger(numero) || numero <= 0) return { ok: false, motivo: "Falta qué cuota se cobra." }
   if (typeof entrada.pagaCompleto !== "boolean") return { ok: false, motivo: "Falta saber si paga la cuota completa o una parte." }

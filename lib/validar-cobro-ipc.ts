@@ -65,7 +65,12 @@ export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuarda
   if (!Number.isFinite(netoPago) || netoPago! <= 0) return "El pago no indica el neto de la cuota (sin mora)."
   if (netoPago! > saldoRestante + TOLERANCIA_CENTAVOS) return "El pago no puede superar el saldo pendiente de la cuota."
   // La mora nunca se paga en partes: siempre completa junto con la porción de cuota del día.
-  if (!Number.isFinite(pago.montoMora) || pago.montoMora! < 0 || pago.monto !== netoPago! + pago.montoMora!) {
+  // Con saldo a favor (lib/saldo-a-favor.ts) el efectivo puede ser más
+  // (sobra para la cuota siguiente) o menos (se usó saldo a favor) que la
+  // cuota más la mora; esa cuenta la controla validarSaldoAFavor.
+  const ajusteSaldo = (pago.saldoAFavor ?? 0) - (pago.creditoAplicado ?? 0)
+  if (!Number.isFinite(pago.montoMora) || pago.montoMora! < 0 || !Number.isFinite(ajusteSaldo) ||
+    (ajusteSaldo === 0 ? pago.monto !== netoPago! + pago.montoMora! : Math.abs(pago.monto - (netoPago! + pago.montoMora! + ajusteSaldo)) > TOLERANCIA_CENTAVOS)) {
     return "El importe debe separar cuota neta y mora."
   }
 

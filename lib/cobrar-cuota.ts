@@ -1,4 +1,5 @@
 import { calcularIPCPeriodo, fechaNegocio } from "./ipc-cuotas"
+import { creditoDisponible } from "./saldo-a-favor"
 import type { HistorialIPCEntry } from "./store"
 import {
   generateId,
@@ -220,6 +221,11 @@ export function construirCobroCuota(
   // qué se decide sobre el resto.
   if ((cuotaExistente?.montoPagadoNeto ?? 0) > 0) {
     return { yaCobrada: false, planUpdate: null, movimientos: [], error: "Esta cuota tiene pagos parciales registrados: completala desde el perfil del evento (Cobrar cuota)." }
+  }
+
+  // Esta acción no sabe descontar un saldo a favor (lib/saldo-a-favor.ts).
+  if (creditoDisponible(evento.pagos) > 0) {
+    return { yaCobrada: false, planUpdate: null, movimientos: [], error: "Este evento tiene saldo a favor: cobrá la cuota desde el perfil del evento (Cobrar cuota) para que se descuente." }
   }
 
   const resultado = calcularIPCPeriodo(evento, historialIPC, fechaReal)
