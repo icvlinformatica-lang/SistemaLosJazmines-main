@@ -21,6 +21,8 @@ export function ContratoPreviewCard({
   plegada = false,
   alturaPreview = 420,
   acento = "#2d5a3d",
+  puedeImprimir,
+  alImprimir,
 }: {
   titulo: string
   subtitulo?: string
@@ -31,6 +33,10 @@ export function ContratoPreviewCard({
   alturaPreview?: number
   /** Color de acento del encabezado. */
   acento?: string
+  /** Si devuelve false, no se imprime (ej. hay cambios sin guardar). */
+  puedeImprimir?: () => boolean
+  /** Se llama después de abrir la impresión, para anotarla en el evento. */
+  alImprimir?: () => void
 }) {
   const [abierta, setAbierta] = useState(!plegada)
   // El HTML se resuelve recien cuando la tarjeta esta abierta (lazy)
@@ -41,6 +47,7 @@ export function ContratoPreviewCard({
   const resolverHtml = () => (typeof html === "string" ? html : html())
 
   const imprimir = () => {
+    if (puedeImprimir && !puedeImprimir()) return
     const contenido = htmlResuelto ?? resolverHtml()
     const win = window.open("", "_blank")
     if (win) {
@@ -50,6 +57,7 @@ export function ContratoPreviewCard({
       setTimeout(() => {
         win.print()
       }, 600)
+      alImprimir?.()
     }
   }
 
