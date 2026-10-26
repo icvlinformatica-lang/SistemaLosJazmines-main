@@ -1148,11 +1148,13 @@ function BotonPlegar({ abierta, onClick, etiqueta }: { abierta: boolean; onClick
 // Resumen del mes: cuatro datos clave debajo del dashboard
 // ============================================================
 function irASeccion(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+  // Espera un instante: si la tarjeta estaba plegada, se abre en el mismo toque.
+  setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50)
 }
 
 function ChipResumen({
   seccion,
+  onAbrir,
   icono: Icono,
   color,
   titulo,
@@ -1161,6 +1163,8 @@ function ChipResumen({
   progreso,
 }: {
   seccion: string
+  /** Abre la tarjeta de esa sección (arrancan plegadas). */
+  onAbrir?: () => void
   icono: LucideIcon
   color: string
   titulo: string
@@ -1172,7 +1176,10 @@ function ChipResumen({
   return (
     <button
       type="button"
-      onClick={() => irASeccion(seccion)}
+      onClick={() => {
+        onAbrir?.()
+        irASeccion(seccion)
+      }}
       className="flex min-w-0 items-start gap-2 sm:gap-3 rounded-xl border bg-white p-2.5 sm:p-3 text-left shadow-sm transition-shadow hover:shadow-md"
       style={{ borderColor: `color-mix(in srgb, ${color} 25%, white)` }}
     >
@@ -1212,6 +1219,8 @@ function ResumenDelMes(p: {
   cuotasMes: number
   cuotasMesMonto: number
   nombreMes: string
+  /** Abre una tarjeta plegada ("fijos" o "variables"). */
+  abrirPanel?: (panel: string) => void
 }) {
   return (
     // Solo lo que el dashboard de arriba no muestra: el avance de los gastos
@@ -1220,6 +1229,7 @@ function ResumenDelMes(p: {
     <div className="grid grid-cols-2 gap-2">
       <ChipResumen
         seccion="seccion-fijos"
+        onAbrir={() => p.abrirPanel?.("fijos")}
         icono={CalendarCheck}
         color="#7e22ce"
         titulo={`Gastos fijos de ${p.nombreMes}`}
@@ -1229,6 +1239,7 @@ function ResumenDelMes(p: {
       />
       <ChipResumen
         seccion="seccion-variables"
+        onAbrir={() => p.abrirPanel?.("variables")}
         icono={Receipt}
         color="#b45309"
         titulo="Gastos variables pendientes"
@@ -1241,16 +1252,22 @@ function ResumenDelMes(p: {
 
 /** Estado inicial de las tarjetas grandes (true = plegada). */
 const PANELES_INICIALES: Record<string, boolean> = {
-  fijos: false,
-  variables: false,
-  alertas: false,
-  cuotas: false,
+  fijos: true,
+  variables: true,
+  alertas: true,
+  cuotas: true,
   servicios: true,
   proyeccion: true,
   proyeccion12: false,
 }
 /** Dónde se recuerda qué tarjetas dejó abiertas cada uno (solo este navegador). */
 const CLAVE_PANELES = "lj:caja-jazmines:paneles"
+/**
+ * Tarjetas que arrancan SIEMPRE plegadas al entrar, aunque la vez anterior se
+ * hayan dejado abiertas (pedido de Rodrigo, 26/10/2026). Lo que se guarda en
+ * el navegador solo vale para las demás (las proyecciones).
+ */
+const PANELES_SIEMPRE_PLEGADOS = ["fijos", "variables", "alertas", "cuotas", "servicios"]
 
 export default function CajaJazminePage() {
   // Tarjetas de métricas: el monto principal se ve siempre; lo que se pliega
@@ -1308,7 +1325,11 @@ export default function CajaJazminePage() {
   useEffect(() => {
     try {
       const guardado = JSON.parse(localStorage.getItem(CLAVE_PANELES) || "null")
-      if (guardado && typeof guardado === "object") setColapsadas((p) => ({ ...p, ...guardado }))
+      if (guardado && typeof guardado === "object") {
+        const recordado = { ...guardado }
+        for (const k of PANELES_SIEMPRE_PLEGADOS) delete recordado[k]
+        setColapsadas((p) => ({ ...p, ...recordado }))
+      }
     } catch {
       // Sin almacenamiento (modo privado): se usan los valores iniciales.
     }
@@ -2574,6 +2595,7 @@ export default function CajaJazminePage() {
         cuotasMes={resumenCuotasMes.cantidad}
         cuotasMesMonto={resumenCuotasMes.monto}
         nombreMes={nombreDeMes(mesHoy)}
+        abrirPanel={(panel) => setColapsadas((prev) => ({ ...prev, [panel]: false }))}
       />
 
       {/* Cuerpo: a la izquierda (2/3) lo que se carga — gastos fijos y
@@ -3111,7 +3133,7 @@ export default function CajaJazminePage() {
                   }}
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  Agendar gasto
+                  Agregar gasto
                 </Button>
                 <BotonPlegar
                   abierta={abiertaVariables}
