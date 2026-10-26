@@ -253,6 +253,10 @@ export interface PagoEvento {
   numeroCuota?: number
   montoCuotaNeto?: number
   montoMora?: number
+  /** Lo que sobró de este pago después de completar la cuota: queda a favor para la próxima (lib/saldo-a-favor.ts). */
+  saldoAFavor?: number
+  /** Saldo a favor de pagos anteriores que se usó en esta cuota (no es efectivo de hoy). */
+  creditoAplicado?: number
   calculoIPC?: import("./ipc-cuotas").CalculoIPC
   id: string
   monto: number
