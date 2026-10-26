@@ -189,11 +189,11 @@ const logoUrl = typeof window !== "undefined" ? `${window.location.origin}/image
     if (modalidadPago === "completo") {
       formaPago = `En este acto abona la suma de (PESOS) ${formatCurrency(precioEvento)} correspondiente al monto total del evento en un unico pago.`
     } else if (montoSena > 0 && numeroCuotas > 0) {
-      formaPago = `En este acto abona la suma de (PESOS) ${formatCurrency(montoSena)} en concepto de se\u00f1a y el saldo de PESOS ${formatCurrency(saldo)} a cancelar en ${numeroCuotas} cuotas. El monto de la primer cuota es de PESOS (${numeroALetras(montoPrimeraCuota)}) (${formatCurrency(montoPrimeraCuota)})${ajustaIPC ? " + IPC acumulativo" : ""}. Cuotas posteriores se deber\u00e1n abonar de forma mensual y consecutiva (el ${diaVencimiento} de cada mes).${ajustaIPC ? " Las cuotas se ajustan mensualmente seg\u00fan \u00edndice IPC Nacional." : " Las cuotas son fijas y no sufren ajustes."}`
+      formaPago = `En este acto abona la suma de (PESOS) ${formatCurrency(montoSena)} en concepto de se\u00f1a y el saldo de PESOS ${formatCurrency(saldo)} a cancelar en ${numeroCuotas} cuotas. El monto de la primer cuota es de PESOS (${numeroALetras(montoPrimeraCuota)}) (${formatCurrency(montoPrimeraCuota)})${ajustaIPC ? " + IPC acumulativo" : ""}. Cuotas posteriores se deber\u00e1n abonar de forma mensual y consecutiva (el ${diaVencimiento} de cada mes).${ajustaIPC ? " Las cuotas se ajustan mensualmente seg\u00fan \u00edndice IPC Nacional, con un tope mensual de 2%." : " Las cuotas son fijas y no sufren ajustes."}`
     } else if (montoSena > 0) {
       formaPago = `En este acto abona la suma de (PESOS) ${formatCurrency(montoSena)} en concepto de se\u00f1a y el saldo de PESOS ${formatCurrency(saldo)} a cancelar antes de la fecha del evento.`
     } else if (numeroCuotas > 0) {
-      formaPago = `El monto total de (PESOS) ${formatCurrency(precioEvento)} se abonar\u00e1 en ${numeroCuotas} cuotas mensuales y consecutivas (el ${diaVencimiento} de cada mes)${ajustaIPC ? ", ajustadas mensualmente seg\u00fan \u00edndice IPC Nacional" : ""}.`
+      formaPago = `El monto total de (PESOS) ${formatCurrency(precioEvento)} se abonar\u00e1 en ${numeroCuotas} cuotas mensuales y consecutivas (el ${diaVencimiento} de cada mes)${ajustaIPC ? ", ajustadas mensualmente seg\u00fan \u00edndice IPC Nacional, con un tope mensual de 2%" : ""}.`
     }
   }
 
