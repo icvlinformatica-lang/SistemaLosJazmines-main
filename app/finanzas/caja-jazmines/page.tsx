@@ -36,6 +36,7 @@ import { GastoRapidoModal } from "@/components/gasto-rapido-modal"
 import { useCajaJazmines } from "@/lib/hooks/use-caja-jazmines"
 import type { AlertaVencimiento, EstadoAlerta, GastoFijoMes, GastoVariable } from "@/lib/hooks/use-caja-jazmines"
 import { fechaArgentina } from "@/lib/resumen-fecha"
+import { ordenarCarpetaVariables, nombreMesGasto } from "@/lib/gastos-variables-carpeta"
 import {
   cambiosPagoDelMes,
   descripcionPagoFijo,
@@ -140,6 +141,13 @@ function formatFecha(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number)
   const date = new Date(y, m - 1, d)
   return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+/** "2026-03-15" → "15 mar 2026": corta, para los chips de gastos variables. */
+function fechaCortaGasto(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number)
+  const meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+  return y && m >= 1 && m <= 12 && d ? `${d} ${meses[m - 1]} ${y}` : dateStr
 }
 
 /** Devuelve el mes actual en formato YYYY-MM. */
@@ -3175,10 +3183,15 @@ export default function CajaJazminePage() {
                 return (
                   <div
                     key={gasto.id}
-                    className={`flex items-center gap-3 rounded-lg border p-3 ${gasto.esComision ? "border-amber-300 bg-amber-50/60" : "border-border bg-card"}`}
+                    className={`flex flex-wrap items-center gap-x-3 gap-y-0 rounded-lg border p-3 ${gasto.esComision ? "border-amber-300 bg-amber-50/60" : "border-border bg-card"}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{gasto.nombre}</p>
+                      {gasto.esComision ? (
+                        <p className="text-sm font-medium truncate">{gasto.nombre}</p>
+                      ) : (
+                        // El nombre como se cargó, entero (antes se cortaba con el reparto pegado).
+                        <p className="text-sm font-semibold leading-snug break-words">{gasto.concepto || gasto.nombre}</p>
+                      )}
                       {gasto.esComision && gasto.comisionDetalle ? (
                         <>
                           <p className="text-xs text-amber-800/80 mt-0.5">
@@ -3208,21 +3221,7 @@ export default function CajaJazminePage() {
                             )
                           )}
                         </>
-                      ) : (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {gasto.fechaGasto ? (
-                            <span className="font-semibold text-purple-600">{`hecho el ${formatFecha(gasto.fechaGasto)}`}</span>
-                          ) : null}
-                          {gasto.fechaGasto && gasto.fecha ? " · " : ""}
-                          {gasto.fecha ? `vence ${formatFecha(gasto.fecha)}` : ""}
-                          {gasto.cargadoPor ? (
-                            <>
-                              {gasto.fechaGasto || gasto.fecha ? " · " : ""}
-                              {`cargó ${gasto.cargadoPor}`}
-                            </>
-                          ) : null}
-                        </p>
-                      )}
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <div className="flex flex-col items-end gap-1 mr-1">
@@ -3343,41 +3342,50 @@ export default function CajaJazminePage() {
                       </DropdownMenu>
                       </>)}
                     </div>
+                    {/* Gastos comunes: fecha, salones y notas abajo, a lo ancho,
+                        para que en el celular no queden apretados. */}
+                    {!gasto.esComision && (
+                      <div className="basis-full -mt-1">
+                          {/* Fecha y salones, en chips para leerlos de un vistazo. */}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                            {(gasto.fechaGasto || gasto.fecha) && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-medium text-foreground tabular-nums">
+                                <Calendar className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                                {fechaCortaGasto(gasto.fechaGasto || gasto.fecha)}
+                              </span>
+                            )}
+                            {(gasto.reparto && gasto.reparto.length > 0
+                              ? gasto.reparto.filter((d) => salonFiltro === "todos" || d.salon === salonFiltro)
+                              : gasto.salon && salonFiltro === "todos"
+                                ? [{ salon: gasto.salon, porcentaje: 0 }]
+                                : []
+                            ).map((d) => (
+                              <span
+                                key={d.salon}
+                                className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium"
+                                style={{ color: salonColor(d.salon, configuracionCajas), borderColor: `${salonColor(d.salon, configuracionCajas)}55` }}
+                              >
+                                <SalonDot salon={d.salon} size={7} />
+                                {salonLabel(d.salon)}
+                                {d.porcentaje > 0 ? <span className="tabular-nums opacity-80">{d.porcentaje}%</span> : null}
+                              </span>
+                            ))}
+                          </div>
+                          {gasto.notas ? (
+                            <p className="mt-1 text-xs text-muted-foreground break-words">{gasto.notas}</p>
+                          ) : null}
+                          {(gasto.estado !== "pagado" && gasto.fecha) || gasto.cargadoPor ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {gasto.estado !== "pagado" && gasto.fecha ? `vence ${fechaCortaGasto(gasto.fecha)}` : ""}
+                              {gasto.estado !== "pagado" && gasto.fecha && gasto.cargadoPor ? " · " : ""}
+                              {gasto.cargadoPor ? `cargó ${gasto.cargadoPor}` : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                    )}
                   </div>
                 )
               }
-
-                  // Carpetas comunes: lista plana como siempre.
-                  if (carpeta.clave !== "comisiones") return carpeta.items.map(renderGastoVar)
-
-                  // ── Subcarpetas de Comisiones ─────────────────────────────
-                  // "Lista para pagar": ya se cobró lo suficiente del evento.
-                  // "Próximamente": aún no se cobró lo que corresponde.
-                  // "Pagadas": marcadas pagadas + las archivadas del histórico.
-                  // Dentro de cada subcarpeta las comisiones van agrupadas por
-                  // salón, siguiendo el orden estándar de SALONES.
-                  const ordenSalon = (a: { salon?: string }, b: { salon?: string }) => {
-                    const ia = a.salon ? SALONES.indexOf(a.salon as (typeof SALONES)[number]) : SALONES.length
-                    const ib = b.salon ? SALONES.indexOf(b.salon as (typeof SALONES)[number]) : SALONES.length
-                    return (ia === -1 ? SALONES.length : ia) - (ib === -1 ? SALONES.length : ib)
-                  }
-                  const listas = carpeta.items
-                    .filter((g) => g.estado !== "pagado" && g.listaParaPagar)
-                    .sort(ordenSalon)
-                  const proximas = carpeta.items
-                    .filter((g) => g.estado !== "pagado" && !g.listaParaPagar)
-                    .sort(ordenSalon)
-                  const pagadasVivas = carpeta.items.filter((g) => g.estado === "pagado").sort(ordenSalon)
-                  const archivadas = (state.gastosArchivados || [])
-                    .filter(
-                      (g) =>
-                        g.origen === "caja_jazmines_comision" &&
-                        (salonFiltro === "todos" || g.salon === salonFiltro),
-                    )
-                    .sort(ordenSalon)
-                  const totalPagadas =
-                    pagadasVivas.reduce((s, g) => s + g.monto, 0) +
-                    archivadas.reduce((s, g) => s + g.monto, 0)
 
                   const subcarpeta = (
                     titulo: string,
@@ -3408,13 +3416,68 @@ export default function CajaJazminePage() {
                       </summary>
                       <div className="space-y-2 p-2">
                         {count === 0 ? (
-                          <p className="py-2 text-center text-xs text-muted-foreground">Sin comisiones acá.</p>
+                          <p className="py-2 text-center text-xs text-muted-foreground">{carpeta.clave === "comisiones" ? "Sin comisiones acá." : "Sin gastos acá."}</p>
                         ) : (
                           contenido
                         )}
                       </div>
                     </details>
                   )
+
+                  // Carpetas comunes (pedido de Rodrigo, 26/10/2026: "es muy
+                  // difícil verlos"): arriba lo sin pagar y abajo lo pagado por
+                  // mes, el más reciente abierto. Va en un solo bloque para que
+                  // el "Ver más" de la carpeta no esconda meses.
+                  if (carpeta.clave !== "comisiones") {
+                    const orden = ordenarCarpetaVariables(carpeta.items)
+                    return (
+                      <div className="space-y-2">
+                        {orden.sinPagar.length > 0 &&
+                          subcarpeta("Sin pagar", "#b45309", orden.sinPagar.length, orden.subtotalSinPagar, true, (
+                            <div className="space-y-2">{orden.sinPagar.map(renderGastoVar)}</div>
+                          ))}
+                        {orden.pagadosPorMes.map((m, i) =>
+                          subcarpeta(
+                            `Pagados · ${nombreMesGasto(m.mes)}`,
+                            "#0f766e",
+                            m.items.length,
+                            m.subtotal,
+                            i === 0,
+                            <div className="space-y-2">{m.items.map(renderGastoVar)}</div>,
+                          ),
+                        )}
+                      </div>
+                    )
+                  }
+
+                  // ── Subcarpetas de Comisiones ─────────────────────────────
+                  // "Lista para pagar": ya se cobró lo suficiente del evento.
+                  // "Próximamente": aún no se cobró lo que corresponde.
+                  // "Pagadas": marcadas pagadas + las archivadas del histórico.
+                  // Dentro de cada subcarpeta las comisiones van agrupadas por
+                  // salón, siguiendo el orden estándar de SALONES.
+                  const ordenSalon = (a: { salon?: string }, b: { salon?: string }) => {
+                    const ia = a.salon ? SALONES.indexOf(a.salon as (typeof SALONES)[number]) : SALONES.length
+                    const ib = b.salon ? SALONES.indexOf(b.salon as (typeof SALONES)[number]) : SALONES.length
+                    return (ia === -1 ? SALONES.length : ia) - (ib === -1 ? SALONES.length : ib)
+                  }
+                  const listas = carpeta.items
+                    .filter((g) => g.estado !== "pagado" && g.listaParaPagar)
+                    .sort(ordenSalon)
+                  const proximas = carpeta.items
+                    .filter((g) => g.estado !== "pagado" && !g.listaParaPagar)
+                    .sort(ordenSalon)
+                  const pagadasVivas = carpeta.items.filter((g) => g.estado === "pagado").sort(ordenSalon)
+                  const archivadas = (state.gastosArchivados || [])
+                    .filter(
+                      (g) =>
+                        g.origen === "caja_jazmines_comision" &&
+                        (salonFiltro === "todos" || g.salon === salonFiltro),
+                    )
+                    .sort(ordenSalon)
+                  const totalPagadas =
+                    pagadasVivas.reduce((s, g) => s + g.monto, 0) +
+                    archivadas.reduce((s, g) => s + g.monto, 0)
 
                   return (
                     <>
