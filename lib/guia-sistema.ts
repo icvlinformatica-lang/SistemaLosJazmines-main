@@ -89,7 +89,7 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 - **Archivo de finanzas** (/finanzas/archivo): pagos y gastos archivados. Está en el menú para Administración y Soporte.
 - **Servicios** (/finanzas/servicios): catálogo de servicios que se venden (DJ, ambientación, altar, etc.) con categoría, precio y "Descripción (letra chica del contrato)": ese texto se imprime debajo del servicio en el contrato. ACÁ ES DONDE SE CARGA UN SERVICIO NUEVO: botón de agregar, se completa nombre, categoría, precio y la letra chica. Para incluirlo en un evento después se selecciona desde el generador de contratos o desde el evento.
 - **Personal** (/finanzas/personal): personal, sueldos y pagos pendientes.
-- **IPC** (/finanzas/ipc): índice de inflación para ajustar precios.
+- **IPC** (/finanzas/ipc): índice de inflación para ajustar precios. En los planes con IPC, cada cuota se calcula desde la última cuota cobrada sumando el IPC de cada mes que pasó hasta el mes en que vence (si se paga antes de vencer, hasta el mes del pago; adelantar no suma meses futuros). Una cuota atrasada queda ajustada al mes en que venció y el atraso se cobra aparte con la mora de $3.000 por día. Si en un mes no se cobró nada, ese ajuste no se pierde: se suma en la cuota siguiente. Dos cuotas del mismo mes valen lo mismo. Lo ya cobrado no se recalcula. Esta regla rige desde el 26/10/2026; antes, la cuota tomaba solo el IPC del mes en que se cobraba.
 
 ## Configuración (/configuracion)
 - Ajustes generales del sistema.
