@@ -117,6 +117,7 @@ import {
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
 import { ContratoPreviewCard } from "@/components/contrato-preview-card"
+import { cambiosAlImprimirContrato, motivoParaNoImprimir } from "@/lib/generacion-contrato"
 import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
 import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
 import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
@@ -248,6 +249,24 @@ function EventoPageContent() {
   // Cerrar o recargar la pestaña con cambios sin guardar: el navegador pide
   // confirmación (no deja poner un texto propio, muestra el suyo).
   const hayCambiosSinGuardar = isEditing && cambiosEnCurso.length > 0
+
+  // El contrato se imprime solo con el evento guardado, y cada impresión
+  // queda anotada en el evento (como en la Lista). Antes la vista previa
+  // dejaba imprimir lo que se estaba escribiendo sin guardarlo, y en el
+  // sistema no quedaba ni el evento ni la impresión.
+  const puedeImprimirContrato = () => {
+    const motivo = motivoParaNoImprimir(cambiosEnCurso.length, originalEvento, evento as EventoGuardado | null)
+    if (motivo) {
+      toast({ title: "Primero guardá el evento", description: motivo, variant: "destructive" })
+      return false
+    }
+    return true
+  }
+  const anotarImpresionContrato = () => {
+    const guardado = editingEventoId ? (state.eventos || []).find((e) => e.id === editingEventoId) : undefined
+    if (!guardado) return
+    void updateEvento(guardado.id, cambiosAlImprimirContrato(guardado, "planificador", state.pagosPersonal || []))
+  }
   useEffect(() => {
     if (!hayCambiosSinGuardar) return
     const avisar = (e: BeforeUnloadEvent) => {
@@ -1464,6 +1483,8 @@ function EventoPageContent() {
             }
             plegada={idx > 0}
             alturaPreview={idx === 0 ? 420 : 340}
+            puedeImprimir={puedeImprimirContrato}
+            alImprimir={anotarImpresionContrato}
           />
         ))
       )}
@@ -1480,6 +1501,8 @@ function EventoPageContent() {
         html={htmlContratoEnVivo || "<!DOCTYPE html><html><body></body></html>"}
         alturaPreview={520}
         acento="#b45309"
+        puedeImprimir={puedeImprimirContrato}
+        alImprimir={anotarImpresionContrato}
       />
     </>
   ) : null

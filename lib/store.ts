@@ -708,8 +708,8 @@ export interface GeneracionContrato {
   id: string
   /** ISO timestamp de cuando se genero/imprimio */
   fecha: string
-  /** Desde donde se genero: pantalla de contratos, generador de evento, o lista de eventos */
-  origen: "contratos" | "generador" | "lista"
+  /** Desde donde se genero: pantalla de contratos, generador de evento, lista de eventos, calendario o vista previa del planificador */
+  origen: "contratos" | "generador" | "lista" | "calendario" | "planificador"
   /** Numero de version del contrato vigente al momento de generar (si existia) */
   version?: number
   /** Cantidad de personal asignado incluido en el contrato generado */

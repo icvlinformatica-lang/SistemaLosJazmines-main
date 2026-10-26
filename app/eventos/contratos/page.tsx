@@ -19,6 +19,7 @@ import {
   type Coctel,
 } from "@/lib/store"
 import { generateContractHTML } from "@/lib/contract-html"
+import { etiquetaOrigenGeneracion } from "@/lib/generacion-contrato"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -1091,6 +1092,7 @@ function ContratosPageContent() {
                                 <p className="text-sm font-medium">
                                   Generacion #{arr.length - idx}
                                   {gen.version ? ` · sobre version ${gen.version}` : ""}
+                                  {etiquetaOrigenGeneracion(gen.origen) ? ` · ${etiquetaOrigenGeneracion(gen.origen)}` : ""}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {new Date(gen.fecha).toLocaleDateString("es-AR", {
