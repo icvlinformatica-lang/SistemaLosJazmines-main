@@ -1,6 +1,6 @@
 import { Info, TrendingUp } from "lucide-react"
 import { formatCurrency } from "@/lib/store"
-import type { CalculoIPC, ResultadoIPC } from "@/lib/ipc-cuotas"
+import { etiquetaMesesIPC, type CalculoIPC, type ResultadoIPC } from "@/lib/ipc-cuotas"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 export function DesgloseIPCPago({ resultado, montoCuota, diasAtraso, recargoPorDia, recargoOmitido, manual = null, aplicarIPC = true }: {
@@ -18,7 +18,8 @@ export function DesgloseIPCPago({ resultado, montoCuota, diasAtraso, recargoPorD
   const esManual = resultado.estado === "pendiente" && manual != null
   const bloqueado = resultado.estado === "pendiente" && manual == null
   const recargo = recargoOmitido ? 0 : diasAtraso * recargoPorDia
-  const mes = calculo ? new Date(`${calculo.periodo}-01T12:00:00Z`).toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "America/Argentina/Buenos_Aires" }) : ""
+  // Con la regla por vencimiento puede haber más de un mes (meses sin cobrar se acumulan).
+  const mes = calculo ? etiquetaMesesIPC(calculo) : ""
   const cuota = calculo ? (aplicarIPC ? Math.round(calculo.base * (1 + calculo.porcentaje / 100)) : calculo.base) : montoCuota
   const incremento = calculo && aplicarIPC ? cuota - calculo.base : 0
   const etiquetaBase = esManual
@@ -75,11 +76,11 @@ export function DesgloseIPCPago({ resultado, montoCuota, diasAtraso, recargoPorD
             </div>
           </dl>
         )}
-        {calculo?.aplicadoEsteMes && <p className="font-semibold text-primary">Ya se aplicó IPC este mes. Se mantiene la misma base mensual, sin volver a aumentarla.</p>}
+        {calculo?.aplicadoEsteMes && <p className="font-semibold text-primary">Ya se cobró una cuota ajustada a este mes. Vale lo mismo, sin volver a aumentarla.</p>}
         <p className="text-muted-foreground">
           {resultado.estado === "no_aplica"
             ? "Este plan no se ajusta por IPC. Se conserva el importe pactado."
-            : "Se usa la última cuota efectivamente pagada más únicamente el IPC del mes vigente. Los meses sin pagos no se acumulan. Mora, extras y vuelto nunca forman parte de la base. Las cuotas futuras se muestran al valor vigente, sin anticipar índices."}
+            : "Se usa la última cuota pagada más el IPC de cada mes que pasó hasta el mes en que vence esta cuota (si se paga antes, hasta el mes del pago). Una cuota atrasada queda ajustada al mes en que venció: el atraso se cobra con la mora. Mora, extras, vuelto y saldo a favor nunca forman parte de la base. Las cuotas futuras se muestran al valor vigente, sin anticipar índices."}
         </p>
       </div>
     </section>

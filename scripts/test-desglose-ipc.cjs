@@ -142,9 +142,15 @@ test("Ángeles usa la cifra oficial de la cuota 1, no la cuota original del plan
   assert.equal(props.resultado.calculo.base, 647465)
   assert.equal(props.resultado.calculo.monto, 658472)
 })
-test("meses sin pagos no se acumulan", () => {
+test("meses sin pagos se acumulan (regla vencimiento-v2, desde el 26/10/2026)", () => {
+  // Antes daba 102.000: solo el IPC del mes del cobro. Ahora se aplica cada
+  // mes desde la última cuota cobrada hasta el de esta cuota, compuesto.
   const ev = evento(); cobrar(ev, 1, "2026-06-10", [registro(5, 0)])
-  assert.equal(calcular(ev, [registro(5, 0), registro(6, 10), registro(7, 20), registro(8, 2)]).calculo.monto, 102000)
+  const hs = [registro(5, 0), registro(6, 10), registro(7, 20), registro(8, 2)]
+  assert.equal(calcular(ev, hs).calculo.monto, Math.round(100000 * 1.1 * 1.2 * 1.02))
+  // Si la cuota venció en julio, queda ajustada a julio aunque se cobre en septiembre.
+  ev.planDeCuotas.cuotas[1].fechaVencimiento = "2026-07-10"
+  assert.equal(calcular(ev, hs).calculo.monto, 110000)
 })
 test("dos pagos en un mes mantienen la base; el siguiente usa último neto", () => {
   const ev = evento(); cobrar(ev, 1, "2026-09-01")

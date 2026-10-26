@@ -174,15 +174,18 @@ function eventoIPC(extra = {}) {
   return ev
 }
 
-test("IPC: la cuota se calcula con el último pago y el índice del mes (oficial o provisorio)", () => {
-  const oficial = [{ mes: 9, anio: 2026, porcentaje: 2, fechaAplicacion: "", eventosActualizados: 0 }]
+test("IPC: la cuota se calcula con el último pago y el índice del mes en que venció (oficial o provisorio)", () => {
+  // La cuota 2 venció en septiembre y se cobra en octubre: lleva el IPC de
+  // septiembre (regla vencimiento-v2), no el de octubre.
+  const oficial = [{ mes: 8, anio: 2026, porcentaje: 2, fechaAplicacion: "", eventosActualizados: 0 },
+    { mes: 9, anio: 2026, porcentaje: 5, fechaAplicacion: "", eventosActualizados: 0 }]
   const o = opcionesCobroChat(proyectarIPC(eventoIPC(), oficial, HOY), oficial, HOY).opciones[0]
   assert.equal(o.montoCuota, 178500)
   assert.equal(o.totalConRecargo, 277500)
-  assert.deepEqual(o.ipc, { porcentaje: 2, periodo: "2026-10", provisorio: false })
+  assert.deepEqual(o.ipc, { porcentaje: 2, periodo: "2026-09", provisorio: false })
 
-  // Sin índice de octubre se usa el último publicado (septiembre, 3 %), marcado provisorio.
-  const septiembre = [{ mes: 8, anio: 2026, porcentaje: 3, fechaAplicacion: "", eventosActualizados: 0 }]
+  // Sin índice de septiembre se usa el último publicado antes (agosto, 3 %), marcado provisorio.
+  const septiembre = [{ mes: 7, anio: 2026, porcentaje: 3, fechaAplicacion: "", eventosActualizados: 0 }]
   const p = armarPropuestaCobro(proyectarIPC(eventoIPC(), septiembre, HOY), septiembre, HOY, entradaBase, "x")
   assert.equal(p.propuesta.montoCuota, 180250)
   assert.equal(p.propuesta.monto, 279250)

@@ -24,7 +24,7 @@ import { estadoDeCuota, saldoRestanteCuota } from "@/lib/estado-cuotas"
 import { creditoDisponible, hayCuotaSiguiente, repartirPago } from "@/lib/saldo-a-favor"
 import { ContratoPanel } from "@/components/contrato-panel"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
-import { aplicaIPC, calcularIPCPeriodo, fechaNegocio, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
+import { aplicaIPC, calcularIPCPeriodo, etiquetaMesesIPC, fechaNegocio, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
 import { PlanillaCuotas } from "@/components/planilla-cuotas"
 import { FechaAltaEvento } from "@/components/fecha-alta-evento"
 import { puedeEditarFechaAlta } from "@/lib/fecha-alta"
@@ -145,6 +145,7 @@ function PaymentReceipt({
   // Mes al que corresponde el IPC aplicado como recargo: el último IPC cargado
   // (>IPC) con fecha igual o anterior a la fecha del pago. Se toma automáticamente.
   const ipcMesLabel = (() => {
+    if ((pago.calculoIPC?.meses?.length ?? 0) > 1) return etiquetaMesesIPC(pago.calculoIPC!)
     if (pago.calculoIPC) {
       const [anio, mes] = pago.calculoIPC.periodo.split("-").map(Number)
       return `${MESES_RECIBO[mes - 1]} ${anio}`
@@ -1832,6 +1833,9 @@ function PagosPageContent() {
                 const esManual = !esParcialDestino && resultadoIPC.estado === "pendiente"
                 const baseMostrada = baseManualCobro ?? sugerencia?.base ?? 0
                 const porcentajeMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : sugerencia?.porcentaje ?? null
+                // Meses que se aplican (regla por vencimiento: pueden ser varios) e IPC del último, para el estimado.
+                const mesesIPC = resultadoIPC.estado === "listo" ? etiquetaMesesIPC(resultadoIPC.calculo) : null
+                const ipcUltimoMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.meses?.at(-1)?.porcentaje ?? porcentajeMes : porcentajeMes
                 const avisoProvisorio = etiquetaIPCProvisorio(resultadoIPC.estado === "listo" ? resultadoIPC.calculo : sugerencia)
                 const cuotaNeta = esParcialDestino ? proximaCuota.saldoRestante : calculoCobro ? calculoCobro.monto : ajustaPorIPC ? 0 : proximaCuota.monto
                 const totalSimulado = cuotaNeta + recargoAtraso
@@ -2003,8 +2007,8 @@ function PagosPageContent() {
                                   />
                                   <span className="flex min-w-0 flex-col">
                                     <span className="truncate">
-                                      Aplicar IPC del mes
-                                      {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                                      Aplicar IPC {mesesIPC ? `de ${mesesIPC}` : "del mes"}
+                                      {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR", { maximumFractionDigits: 2 })}%)</span>}
                                       {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
                                     </span>
                                     {avisoProvisorio && <span className="text-[11px] leading-tight text-amber-700">{avisoProvisorio}</span>}
@@ -2048,10 +2052,10 @@ function PagosPageContent() {
                             {cuotaNeta > 0 && proximaCuota.numeroCuota < calendarioCuotas.length && (
                               <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                                 <span className="font-semibold text-foreground">Estimado para el mes que viene:</span>{" "}
-                                si el IPC se mantiene en {porcentajeMes != null ? `${porcentajeMes.toLocaleString("es-AR")}%` : "el valor de este mes"},
+                                si el IPC se mantiene en {ipcUltimoMes != null ? `${ipcUltimoMes.toLocaleString("es-AR")}%` : "el valor de este mes"},
                                 la cuota {proximaCuota.numeroCuota + 1} rondaría{" "}
                                 <span className="font-mono font-semibold text-foreground">
-                                  {formatCurrency(Math.round(cuotaNeta * (1 + (porcentajeMes ?? 0) / 100)))}
+                                  {formatCurrency(Math.round(cuotaNeta * (1 + (ipcUltimoMes ?? 0) / 100)))}
                                 </span>
                                 . Es solo una referencia: el valor real depende del IPC que se publique ese mes.
                               </p>
@@ -2312,6 +2316,7 @@ function PagosPageContent() {
               const sugerencia = selectedEvento && resultadoIPC.estado === "pendiente" ? sugerirBaseManual(selectedEvento, historialIPC, pagoForm.fecha) : null
               const baseActual = baseManualCobro ?? sugerencia?.base ?? (resultadoIPC.estado === "listo" ? resultadoIPC.calculo.base : montoCuotaBase)
               const porcentajeMes = resultadoIPC.estado === "listo" ? resultadoIPC.calculo.porcentaje : sugerencia?.porcentaje ?? null
+              const mesesIPCForm = resultadoIPC.estado === "listo" ? etiquetaMesesIPC(resultadoIPC.calculo) : null
               const avisoProvisorio = etiquetaIPCProvisorio(resultadoIPC.estado === "listo" ? resultadoIPC.calculo : sugerencia)
               const montoConIPC = porcentajeMes != null && baseActual > 0 ? Math.round(baseActual * (1 + porcentajeMes / 100)) : null
 
@@ -2468,9 +2473,9 @@ function PagosPageContent() {
                         />
                         <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
                           <span className="min-w-0">
-                            <span className="block truncate">
-                              Aplicar IPC del mes
-                              {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR")}%)</span>}
+                            <span className="block">
+                              Aplicar IPC {mesesIPCForm ? `de ${mesesIPCForm}` : "del mes"}
+                              {porcentajeMes != null && <span className="text-muted-foreground"> ({porcentajeMes.toLocaleString("es-AR", { maximumFractionDigits: 2 })}%)</span>}
                               {porcentajeMes == null && <span className="text-destructive"> (índice no cargado)</span>}
                             </span>
                             {avisoProvisorio && <span className="block text-[11px] leading-tight text-amber-700">{avisoProvisorio}</span>}
