@@ -122,6 +122,7 @@ import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
 import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
 import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
 import { salonesOcupadosEnFecha } from "@/lib/salones-ocupados"
+import { quitarServicioFueraDeCatalogo, serviciosFueraDeCatalogo } from "@/lib/servicios-fuera-catalogo"
 
 function EventoPageContent() {
   const router = useRouter()
@@ -131,7 +132,7 @@ function EventoPageContent() {
   const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
-  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores, serviciosSincronizados } = useStore()
   // Lo contado en cada salón, para calcular las compras contra el stock del
   // salón del evento en vez del total de los cinco.
   const stockSalones = useStockPorSalon()
@@ -1338,6 +1339,7 @@ function EventoPageContent() {
   const costoTotalMateriaPrima = compras.reduce((sum, c) => sum + c.costoMateriaPrima, 0) + comprasBarras.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
   const presupuestoCompra = compras.reduce((sum, c) => sum + c.costoEstimado, 0) + comprasBarras.reduce((sum, c) => sum + c.costoEstimado, 0)
   const serviciosEvento = evento.servicios || []
+  const serviciosFueraCatalogo = serviciosFueraDeCatalogo(serviciosEvento, catalogoServicios || [])
   const costoServicios = costoPaquetesOficial > 0 ? costoPaquetesOficial : calcularCostoServicios(serviciosEvento, state)
   const costoOperativo = calcularCostosOperativos(evento, costosOperativos || [])
 
@@ -2459,6 +2461,45 @@ function EventoPageContent() {
                       </tr>
                     )
                   })}
+
+                  {/* Servicios guardados en el evento que ya no están en el
+                      catálogo (borrados o desactivados): la lista de arriba
+                      sale del catálogo y no los mostraba, pero siguen
+                      contando en Costos del evento y Caja Eventos. Solo con
+                      el catálogo cargado de la base: si falló la carga, todos
+                      parecerían borrados. */}
+                  {serviciosSincronizados && serviciosFueraCatalogo.map((sf) => (
+                    <tr key={`fuera-${sf.servicioId}`} className="border-b border-amber-200 bg-amber-50">
+                      <td className="w-10 px-1.5 py-2.5 text-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-amber-700 hover:text-destructive hover:bg-amber-100"
+                          disabled={sf.tienePagos}
+                          title={sf.tienePagos ? "Tiene pagos en Caja Eventos: deshacelos ahí para poder quitarlo" : "Quitar del evento"}
+                          aria-label={`Quitar ${sf.nombre} del evento`}
+                          onClick={() =>
+                            updateEventoActual({ servicios: quitarServicioFueraDeCatalogo(serviciosEvento, sf.servicioId) })
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="font-medium text-amber-900">{sf.nombre}</span>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Servicio borrado, sin vigencia
+                          {sf.tienePagos && " · tiene pagos en Caja Eventos"}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2.5 hidden sm:table-cell" />
+                      <td className="px-3 py-2.5 text-right tabular-nums text-amber-800">
+                        {formatCurrency(sf.costoGuardado)}
+                        <span className="block text-[11px] text-amber-700">costo cargado</span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
 
                 {/* Footer: resumen seleccionados */}
@@ -2484,7 +2525,6 @@ function EventoPageContent() {
               </table>
             </div>
           )}
-
 
         </SectionCard>
 
