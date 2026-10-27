@@ -116,19 +116,46 @@ test("eventos sin IPC: el ajuste también se controla", () => {
   assert.equal(validarAjustesCobro(pagado, anulado), null)
 })
 
-test("la cuota siguiente pregunta si se calcula sobre lo cobrado, y por defecto usa la cifra oficial", () => {
+// Pedido del dueño (27/10/2026): "calcula lo sugerido en base al último
+// monto cobrado". Ya no se pregunta: la base es lo cobrado.
+function cobroCuota2(antes, calculo, fecha) {
+  const pago = { id: "p2", numeroCuota: 2, fecha, monto: calculo.monto, montoCuotaNeto: calculo.monto, montoMora: 0, porcentajeIPC: calculo.porcentaje, calculoIPC: calculo }
+  return { pagos: [...antes.pagos, pago], planDeCuotas: { ...antes.planDeCuotas, cuotasPagadas: [...antes.planDeCuotas.cuotasPagadas, 2],
+    cuotas: antes.planDeCuotas.cuotas.map((c) => c.numero === 2 ? { ...c, pagada: true, montoCuota: calculo.monto, montoPagadoNeto: calculo.monto,
+      fechaPagoReal: fecha, calculoIPC: calculo } : c) } }
+}
+
+test("la cuota siguiente se calcula sobre lo último cobrado, sin preguntar", () => {
   const ev = evento()
   const despues = { ...ev, ...cobroCuota1(ev, { aCobrar: 105000 }) }
-  validarCobroIPC(ev, despues, historial)
-  // Cuota 2 (vence en octubre): sobre la oficial, 102.000 × 1,03.
-  const oficial = calcularIPCPeriodo(despues, historial, "2026-10-10")
-  assert.equal(oficial.calculo.base, 102000); assert.equal(oficial.calculo.monto, 105060)
-  assert.deepEqual(preguntaBaseCobrada(despues, historial, "2026-10-10"), { numero: 1, oficial: 102000, cobrado: 105000 })
-  // Elegir "lo que se cobró": base manual que el servidor acepta como un cobro normal.
-  const conCobrado = resolverCalculoCobro(despues, historial, "2026-10-10", { aplicarIPC: true, baseManual: 105000 }).calculo
-  assert.equal(conCobrado.monto, 108150); assert.equal(conCobrado.origen, "manual")
-  // Sin ajuste en la cuota anterior, no hay pregunta.
+  assert.equal(validarCobroIPC(ev, despues, historial), null)
+  // Cuota 2 (vence en octubre): sobre lo cobrado, 105.000 × 1,03.
+  const r = calcularIPCPeriodo(despues, historial, "2026-10-10")
+  assert.equal(r.calculo.base, 105000); assert.equal(r.calculo.monto, 108150)
+  assert.equal(r.calculo.origen, "pago"); assert.equal(r.calculo.cuotaOrigen, 1)
+  assert.equal(preguntaBaseCobrada(despues, historial, "2026-10-10"), null)
+  // El servidor acepta ese cobro como uno normal.
+  assert.equal(validarCobroIPC(despues, cobroCuota2(despues, r.calculo, "2026-10-10"), historial), null)
+  // Con descuento, también: 100.000 × 1,03.
+  const conDescuento = { ...ev, ...cobroCuota1(ev, { aCobrar: 100000 }) }
+  assert.equal(calcularIPCPeriodo(conDescuento, historial, "2026-10-10").calculo.monto, 103000)
+  // Sin ajuste, como siempre: sobre la cifra oficial.
   const sinAjuste = { ...ev, ...cobroCuota1(ev, { aCobrar: 102000 }) }
-  validarCobroIPC(ev, sinAjuste, historial)
-  assert.equal(preguntaBaseCobrada(sinAjuste, historial, "2026-10-10"), null)
+  assert.equal(calcularIPCPeriodo(sinAjuste, historial, "2026-10-10").calculo.monto, 105060)
+})
+
+test("en el mismo mes, la cuota siguiente vale lo último cobrado", () => {
+  const ev = evento()
+  // La cuota 1 se cobra en septiembre por 105.000; la 2 se adelanta y se cobra también en septiembre.
+  const despues = { ...ev, ...cobroCuota1(ev, { aCobrar: 105000 }) }
+  const r = calcularIPCPeriodo(despues, historial, "2026-09-20")
+  assert.equal(r.calculo.monto, 105000); assert.equal(r.calculo.porcentaje, 0)
+  assert.equal(r.calculo.periodo, "2026-09"); assert.equal(r.calculo.cuotaOrigen, 1)
+  assert.equal(validarCobroIPC(despues, cobroCuota2(despues, r.calculo, "2026-09-20"), historial), null)
+  // Y la 3, también en septiembre, vale lo mismo que la 2.
+  const tras2 = { ...despues, ...cobroCuota2(despues, r.calculo, "2026-09-20") }
+  const r3 = calcularIPCPeriodo(tras2, historial, "2026-09-25")
+  assert.equal(r3.calculo.monto, 105000); assert.equal(r3.calculo.cuotaOrigen, 2)
+  // En octubre se le aplica el IPC de octubre a lo último cobrado.
+  assert.equal(calcularIPCPeriodo(tras2, historial, "2026-10-10").calculo.monto, 108150)
 })

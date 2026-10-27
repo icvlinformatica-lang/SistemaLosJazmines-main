@@ -2754,7 +2754,7 @@ function PagosPageContent() {
                   )}
                   {ajusteCobroForm !== 0 && montoACobrarCobro > moraPago && (
                     <p className="text-[11px] leading-tight text-muted-foreground">
-                      {ajusteCobroForm > 0 ? "Cobrás" : "Descontás"} {formatCurrency(Math.abs(ajusteCobroForm))} {ajusteCobroForm > 0 ? "más" : ""} que el sugerido. Es un ajuste solo de esta cuota: el IPC de las siguientes se sigue calculando sobre {formatCurrency(montoCuotaBase)}, y al cobrar la siguiente te preguntamos si querés usar lo cobrado.
+                      {ajusteCobroForm > 0 ? "Cobrás" : "Descontás"} {formatCurrency(Math.abs(ajusteCobroForm))} {ajusteCobroForm > 0 ? "más" : ""} que el sugerido. La cuota siguiente se va a calcular sobre lo que cobres ahora.
                     </p>
                   )}
                 </div>
