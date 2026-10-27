@@ -23,6 +23,7 @@ import { calcularProporcionCajaEventos, repartirEntreCajas, construirMovimientos
 import { estadoDeCuota, objetivoCuota, saldoRestanteCuota } from "@/lib/estado-cuotas"
 import { preguntaBaseCobrada } from "@/lib/ajuste-cobro"
 import { creditoDisponible, hayCuotaSiguiente, repartirPago } from "@/lib/saldo-a-favor"
+import { armarCuotaJunta, cerrarUltimaCuotaJunta, cuotasQueAlcanzan, textoCuotas, type CuotaJunta } from "@/lib/cuotas-juntas"
 import { ContratoPanel } from "@/components/contrato-panel"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
 import { aplicaIPC, calcularIPCPeriodo, etiquetaMesesIPC, fechaNegocio, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
@@ -582,6 +583,8 @@ function PagosPageContent() {
   // Decisión sobre el resto cuando el monto a pagar no cubre el saldo:
   // se puede cambiar mientras la cuota siga sin completarse.
   const [saldoDecisionCobro, setSaldoDecisionCobro] = useState<"acumular" | "aparte" | null>(null)
+  // Si el cliente entrega de más: "vuelto", "favor" o "juntas-N" (pagar N cuotas más; lib/cuotas-juntas.ts).
+  const [eleccionExcedente, setEleccionExcedente] = useState<string | null>(null)
   const [recargoSaldoCobro, setRecargoSaldoCobro] = useState<"acumula" | "congelado" | null>(null)
   const [pasoPago, setPasoPago] = useState<1 | 2 | 3>(1)
   // Monto a cobrar (paso 1, pedido del dueño 27/10/2026): arranca en el
@@ -841,6 +844,7 @@ function PagosPageContent() {
     setMontoACobrarCobro(totalSimulado)
     setPreguntaBase(esParcial || modoHistorico ? null : preguntaBaseCobrada(evento, historialIPC))
     setEleccionBase(null)
+    setEleccionExcedente(null)
     setSaldoDecisionCobro(cuotaDestino.saldoDecision ?? null)
     setRecargoSaldoCobro(cuotaDestino.recargoSaldo ?? null)
     setMoraPago(recargoAtraso)
@@ -971,9 +975,9 @@ function PagosPageContent() {
   // Se puede cobrar más de lo que corresponde mientras haya una cuota
   // siguiente donde descontar lo que sobra; en la última, el tope es lo que falta.
   const hayCuotaSiguienteCobro = destinoCobro != null && hayCuotaSiguiente(selectedEvento?.planDeCuotas, destinoCobro)
-  const topeMontoCobro = hayCuotaSiguienteCobro && !topeParcialCobro
-    ? Number.MAX_SAFE_INTEGER
-    : Math.max(0, Math.round((totalACobrarCobro - creditoCobro) * 100) / 100)
+  const puedeGuardarAFavorCobro = hayCuotaSiguienteCobro && !topeParcialCobro
+  // Efectivo que hace falta para completar esta cuota (con la mora, menos el saldo a favor).
+  const necesarioCobro = Math.max(0, Math.round((totalACobrarCobro - creditoCobro) * 100) / 100)
   const excedenteCobro = Math.max(0, Math.round((pagoForm.monto + creditoCobro - totalACobrarCobro) * 100) / 100)
   // Cambiar el monto a cobrar lleva lo que entrega el cliente al mismo monto
   // (menos el saldo a favor); en el paso 2 se puede cambiar.
@@ -986,7 +990,7 @@ function PagosPageContent() {
   }
 
   const renderSaldoAFavorCobro = () => {
-    if (creditoCobro <= 0 && excedenteCobro <= 0) return null
+    if (creditoCobro <= 0) return null
     return (
       <div className="grid gap-1 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900">
         {creditoCobro > 0 && (
@@ -995,31 +999,81 @@ function PagosPageContent() {
             <span className="shrink-0 font-mono font-semibold">− {formatCurrency(creditoCobro)}</span>
           </p>
         )}
-        {excedenteCobro > 0 && (
-          <p className="flex items-baseline justify-between gap-2">
-            <span>Sobra: queda a favor y se descuenta de la cuota siguiente</span>
-            <span className="shrink-0 font-mono font-semibold">{formatCurrency(excedenteCobro)}</span>
-          </p>
-        )}
       </div>
     )
   }
 
-  const handleAddPago = async () => {
-    if (guardandoPagoRef.current || !selectedEvento || pagoForm.monto < 0 || (pagoForm.monto <= 0 && creditoCobro <= 0) || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim() || destinoCobro == null) return
+  const datosCostosCobro = { insumos: state.insumos || [], insumosBarra: state.insumosBarra || [], recetas: state.recetas || [], cocteles: state.cocteles || [], servicios: state.servicios || [] }
 
+  // Cobra, una por una, las cuotas que se pagan junto con la de hoy. Si una
+  // falla, frena y avisa cuánto quedó sin registrar. Devuelve las cobradas.
+  const cobrarCuotasJuntas = async (eventoId: string, juntas: CuotaJunta[], excedente: number, cuotaHoy: number, nombreEvento: string) => {
+    const cobradas: number[] = []
+    let resto = excedente
+    const movimientosAcumulados = [...movimientosCaja]
+    for (const [i, esperada] of juntas.entries()) {
+      const frenar = (motivo: string) => toast({
+        title: `No se pudo cobrar la cuota ${esperada.numeroCuota}`,
+        description: `${motivo} Quedaron sin registrar ${formatCurrency(resto)}: devolvelos o cobralos de nuevo.`,
+        variant: "destructive",
+      })
+      let fresco: EventoGuardado
+      try {
+        const res = await fetch(`/api/eventos/${encodeURIComponent(eventoId)}`, { cache: "no-store" })
+        if (!res.ok) throw new Error()
+        fresco = await res.json()
+      } catch {
+        frenar("No se pudo leer el evento.")
+        break
+      }
+      const r = armarCuotaJunta(fresco, historialIPC, pagoForm.fecha, {
+        id: generateId(), pagadoPor: pagoForm.pagadoPor, recibidoPor: pagoForm.recibidoPor.trim(),
+        nota: `(pagada junto con la cuota ${cuotaHoy})`,
+      })
+      if (!r.ok) { frenar(r.motivo); break }
+      if (r.cuota.numeroCuota !== esperada.numeroCuota || Math.abs(r.cuota.monto - esperada.monto) > 0.005) {
+        frenar("El monto de la cuota cambió.")
+        break
+      }
+      const restoTras = Math.round((resto - r.cuota.monto) * 100) / 100
+      const ultima = i === juntas.length - 1
+      const cobro = ultima ? cerrarUltimaCuotaJunta(r.cuota.cobro, restoTras, r.cuota.numeroCuota) : r.cuota.cobro
+      const movimientos = construirMovimientosPago(fresco, cobro.etiquetaCaja, cobro.pago.monto, pagoForm.fecha, movimientosAcumulados, datosCostosCobro)
+      const ok = await updateEvento(eventoId, {
+        pagos: cobro.pagos, planCuotas: cobro.planCuotas, montoTotalPlan: cobro.montoTotalPlan, planDeCuotas: cobro.planDeCuotas,
+      }, movimientos, fresco)
+      if (!ok) { frenar("No se pudo guardar."); break }
+      movimientosAcumulados.push(...movimientos)
+      cobradas.push(r.cuota.numeroCuota)
+      resto = ultima ? 0 : restoTras
+      logMoneyActivity(
+        "creado",
+        `Cuota ${r.cuota.numeroCuota} - ${nombreEvento}`,
+        `Pago registrado por ${formatCurrency(cobro.pago.monto)} | Pagada junto con la cuota ${cuotaHoy}${cobro.pago.saldoAFavor ? ` | Quedan ${formatCurrency(cobro.pago.saldoAFavor)} a favor para la cuota siguiente` : ""}${cobro.pago.vuelto ? ` | Vuelto ${formatCurrency(cobro.pago.vuelto)}` : ""} | Pagado por: ${pagoForm.pagadoPor} | Recibido por: ${pagoForm.recibidoPor.trim()}`,
+      )
+    }
+    return cobradas
+  }
+
+  // Arma el pago y el plan de la cuota que se está cobrando, sin guardar.
+  // Lo usan el cobro y la vista previa de las cuotas que se pueden pagar
+  // juntas (con el efectivo justo para esta cuota).
+  const armarCobroActual = (
+    evento: EventoGuardado,
+    destino: number,
+    montoEfectivo: number,
+    extra: { montoRecibido?: number; vuelto?: number; nota?: string } = {},
+  ) => {
     // Releer la cuota destino desde el evento MÁS FRESCO (no desde el momento
     // en que se abrió el formulario), para no duplicar un acumulado si algo
     // cambió entretanto.
-    const cuotaVigente = selectedEvento.planDeCuotas?.cuotas?.find((c) => c.numero === destinoCobro)
+    const cuotaVigente = evento.planDeCuotas?.cuotas?.find((c) => c.numero === destino)
     if (!cuotaVigente && !topeParcialCobro) {
-      toast({ title: "La cuota ya cambió", description: "Volvé a abrir el formulario con el evento actualizado.", variant: "destructive" })
-      return
+      return { ok: false as const, title: "La cuota ya cambió", description: "Volvé a abrir el formulario con el evento actualizado." }
     }
     const estadoVigente = cuotaVigente ? estadoDeCuota(cuotaVigente) : "pendiente"
     if (estadoVigente === "pagada") {
-      toast({ title: "Esa cuota ya está paga", description: "Volvé a abrir el formulario con el evento actualizado.", variant: "destructive" })
-      return
+      return { ok: false as const, title: "Esa cuota ya está paga", description: "Volvé a abrir el formulario con el evento actualizado." }
     }
     const acumuladoVigente = cuotaVigente?.montoPagadoNeto ?? 0
 
@@ -1030,17 +1084,15 @@ function PagosPageContent() {
       calculoCobro = cuotaVigente?.calculoIPC ?? null
       montoOficial = cuotaVigente?.montoCuota ?? montoCuotaBase
     } else {
-      const resuelto = resolverCalculoCobro(selectedEvento, historialIPC, pagoForm.fecha, {
+      const resuelto = resolverCalculoCobro(evento, historialIPC, pagoForm.fecha, {
         aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined,
       })
       if ("error" in resuelto) {
-        toast({ title: "No se puede confirmar el cobro", description: resuelto.error, variant: "destructive" })
-        return
+        return { ok: false as const, title: "No se puede confirmar el cobro", description: resuelto.error }
       }
       calculoCobro = resuelto.calculo
       if (calculoCobro && calculoCobro.monto !== montoCuotaBase) {
-        toast({ title: "El importe cambió", description: "Cerrá el formulario y revisá el nuevo desglose antes de cobrar.", variant: "destructive" })
-        return
+        return { ok: false as const, title: "El importe cambió", description: "Cerrá el formulario y revisá el nuevo desglose antes de cobrar." }
       }
       montoOficial = montoCuotaBase
     }
@@ -1049,36 +1101,29 @@ function PagosPageContent() {
     // cuota parcial sigue con el que ya tenía (lib/ajuste-cobro.ts).
     const ajusteCuota = topeParcialCobro ? (cuotaVigente?.ajusteCobro ?? 0) : ajusteCobroForm
     if (!topeParcialCobro && montoOficial + ajusteCuota <= 0) {
-      toast({ title: "Monto a cobrar inválido", description: "Tiene que cubrir la mora y algo de la cuota.", variant: "destructive" })
-      return
+      return { ok: false as const, title: "Monto a cobrar inválido", description: "Tiene que cubrir la mora y algo de la cuota." }
     }
     const saldoRestanteVigente = saldoRestanteCuota({ montoCuota: montoOficial, montoPagadoNeto: acumuladoVigente, ajusteCobro: ajusteCuota })
     // Cualquier monto (pedido del dueño, 26/10/2026): primero se usa el saldo
     // a favor, el efectivo paga mora y cuota, y lo que sobra queda a favor
     // para la cuota siguiente. La cifra oficial de la cuota no cambia.
     const reparto = repartirPago({
-      monto: pagoForm.monto, mora: moraPago, credito: creditoDisponible(selectedEvento.pagos),
-      saldoCuota: saldoRestanteVigente, hayCuotaSiguiente: hayCuotaSiguiente(selectedEvento.planDeCuotas, destinoCobro),
+      monto: montoEfectivo, mora: moraPago, credito: creditoDisponible(evento.pagos),
+      saldoCuota: saldoRestanteVigente, hayCuotaSiguiente: hayCuotaSiguiente(evento.planDeCuotas, destino),
     })
     if ("error" in reparto) {
-      toast({ title: "Importe inválido", description: reparto.error, variant: "destructive" })
-      return
+      return { ok: false as const, title: "Importe inválido", description: reparto.error }
     }
     const netoAPagar = reparto.neto
     const acumuladoNuevo = Math.round((acumuladoVigente + netoAPagar) * 100) / 100
     const quedaCompleta = acumuladoNuevo >= montoOficial + ajusteCuota - 0.01
     if (!quedaCompleta && (saldoDecisionCobro == null || recargoSaldoCobro == null)) {
-      toast({ title: "Falta una decisión", description: "Elegí qué pasa con el saldo que queda pendiente de esta cuota.", variant: "destructive" })
-      return
+      return { ok: false as const, title: "Falta una decisión", description: "Elegí qué pasa con el saldo que queda pendiente de esta cuota." }
     }
 
-    guardandoPagoRef.current = true
-    setGuardandoPago(true)
-    try {
-    const vueltoCalculado = pagoForm.montoRecibido > pagoForm.monto ? Math.round((pagoForm.montoRecibido - pagoForm.monto) * 100) / 100 : 0
     const newPago: PagoEvento = {
       id: generateId(),
-      monto: pagoForm.monto,
+      monto: montoEfectivo,
       fecha: pagoForm.fecha,
       pagadoPor: pagoForm.pagadoPor,
       dni: pagoForm.dni || undefined,
@@ -1089,24 +1134,24 @@ function PagosPageContent() {
       ...(reparto.creditoAplicado > 0 ? { creditoAplicado: reparto.creditoAplicado } : {}),
       ...(!topeParcialCobro && ajusteCuota !== 0 ? { ajusteCuota } : {}),
       calculoIPC: calculoCobro ?? undefined,
-      notas: pagoForm.notas || undefined,
-      montoRecibido: pagoForm.montoRecibido > 0 ? pagoForm.montoRecibido : undefined,
-      vuelto: vueltoCalculado > 0 ? vueltoCalculado : undefined,
+      notas: [pagoForm.notas, extra.nota].filter(Boolean).join(" ") || undefined,
+      ...(extra.montoRecibido ? { montoRecibido: extra.montoRecibido } : {}),
+      ...(extra.vuelto ? { vuelto: extra.vuelto } : {}),
       recibidoPor: pagoForm.recibidoPor.trim(),
-      numeroCuota: destinoCobro,
+      numeroCuota: destino,
     }
-    const currentPagos = selectedEvento.pagos || []
+    const currentPagos = evento.pagos || []
     const updatedPagos = [...currentPagos, newPago]
 
-    const cuotaPagadaNumero = destinoCobro
-    let updatedPlanDeCuotas = selectedEvento.planDeCuotas
+    const cuotaPagadaNumero = destino
+    let updatedPlanDeCuotas = evento.planDeCuotas
     if (updatedPlanDeCuotas) {
       updatedPlanDeCuotas = {
         ...updatedPlanDeCuotas,
         cuotasPagadas: quedaCompleta
-          ? [...new Set([...(updatedPlanDeCuotas.cuotasPagadas ?? []), destinoCobro])]
-          : (updatedPlanDeCuotas.cuotasPagadas ?? []).filter((n) => n !== destinoCobro),
-        cuotas: updatedPlanDeCuotas.cuotas?.map(c => c.numero === destinoCobro ? {
+          ? [...new Set([...(updatedPlanDeCuotas.cuotasPagadas ?? []), destino])]
+          : (updatedPlanDeCuotas.cuotasPagadas ?? []).filter((n) => n !== destino),
+        cuotas: updatedPlanDeCuotas.cuotas?.map(c => c.numero === destino ? {
           ...c,
           pagada: quedaCompleta,
           estado: quedaCompleta ? "pagada" as const : "parcial" as const,
@@ -1121,13 +1166,108 @@ function PagosPageContent() {
       }
     }
 
+    return {
+      ok: true as const, newPago, updatedPagos, updatedPlanDeCuotas, quedaCompleta, reparto, calculoCobro, montoOficial, ajusteCuota,
+      cuotaPagadaNumero,
+    }
+  }
+
+  // Cuotas enteras que alcanzan con lo que sobra (solo el cobro de hoy, sin
+  // saldo a favor viejo sin usar): se calculan sobre el evento con esta
+  // cuota ya cobrada con el efectivo justo.
+  const opcionesJuntasCobro: CuotaJunta[] = (() => {
+    if (!showPagoDialog || pasoPago < 2 || !selectedEvento || destinoCobro == null || excedenteCobro <= 0.005) return []
+    if (!hayCuotaSiguienteCobro || modoHistorico || pagoForm.fecha !== fechaNegocio()) return []
+    if (creditoDisponible(selectedEvento.pagos) > creditoCobro + 0.005) return []
+    const armado = armarCobroActual(selectedEvento, destinoCobro, necesarioCobro)
+    if (!armado.ok || !armado.quedaCompleta) return []
+    return cuotasQueAlcanzan({ ...selectedEvento, pagos: armado.updatedPagos, planDeCuotas: armado.updatedPlanDeCuotas }, historialIPC, pagoForm.fecha, excedenteCobro)
+  })()
+  const cantidadJuntasElegida = eleccionExcedente?.startsWith("juntas-") ? Number(eleccionExcedente.slice(7)) : 0
+  const eleccionExcedenteValida =
+    eleccionExcedente === "vuelto" ||
+    (eleccionExcedente === "favor" && puedeGuardarAFavorCobro) ||
+    (cantidadJuntasElegida >= 1 && cantidadJuntasElegida <= opcionesJuntasCobro.length)
+      ? eleccionExcedente
+      : null
+  // Lo que entra hoy a las cajas: con vuelto o cuotas juntas, esta cuota se
+  // cobra con el efectivo justo (las cuotas juntas entran aparte).
+  const montoQueEntraCobro = excedenteCobro > 0.005 && eleccionExcedenteValida && eleccionExcedenteValida !== "favor" ? necesarioCobro : pagoForm.monto
+
+  const renderOpcionesExcedente = () => {
+    if (excedenteCobro <= 0.005) return null
+    const opcion = (valor: string, titulo: string, monto: number, detalle?: string) => (
+      <label key={valor} className={`flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-xs ${eleccionExcedente === valor ? "border-primary bg-primary/5" : "border-border/60 bg-background"}`}>
+        <RadioGroupItem value={valor} className="mt-0.5" />
+        <span className="grid flex-1 gap-0.5">
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="font-medium">{titulo}</span>
+            <span className="shrink-0 font-mono font-semibold">{formatCurrency(monto)}</span>
+          </span>
+          {detalle && <span className="text-[11px] leading-tight text-muted-foreground">{detalle}</span>}
+        </span>
+      </label>
+    )
+    return (
+      <fieldset className="grid gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-emerald-800">
+          Sobran {formatCurrency(excedenteCobro)}: ¿qué hacemos?
+        </legend>
+        <RadioGroup value={eleccionExcedente ?? ""} onValueChange={setEleccionExcedente} className="grid gap-2">
+          {opcion("vuelto", "Dar vuelto", excedenteCobro, `Se cobran ${formatCurrency(necesarioCobro)} y se devuelve el resto.`)}
+          {puedeGuardarAFavorCobro &&
+            opcion("favor", "Guardar para la siguiente cuota", excedenteCobro, "Queda a favor y se descuenta solo de la cuota siguiente.")}
+          {opcionesJuntasCobro.map((_, i) => {
+            const elegidas = opcionesJuntasCobro.slice(0, i + 1)
+            const suma = Math.round(elegidas.reduce((t, c) => t + c.monto, 0) * 100) / 100
+            const resto = Math.round((excedenteCobro - suma) * 100) / 100
+            const ultima = elegidas[elegidas.length - 1].numeroCuota
+            const quedaOtra = (selectedEvento?.planDeCuotas?.cuotas ?? []).some((c) => c.numero > ultima && !c.pagada)
+            const recargo = elegidas.reduce((t, c) => t + c.recargo, 0)
+            const detalle = [
+              recargo > 0 ? `Incluye ${formatCurrency(recargo)} de recargo por atraso.` : "",
+              resto > 0.005 ? (quedaOtra ? `Los ${formatCurrency(resto)} que sobran quedan a favor.` : `Vuelto: ${formatCurrency(resto)}.`) : "",
+            ].filter(Boolean).join(" ")
+            return opcion(`juntas-${i + 1}`, `Pagar también ${textoCuotas(elegidas.map((c) => c.numeroCuota))}`, suma, detalle || undefined)
+          })}
+        </RadioGroup>
+      </fieldset>
+    )
+  }
+
+  const handleAddPago = async () => {
+    if (guardandoPagoRef.current || !selectedEvento || pagoForm.monto < 0 || (pagoForm.monto <= 0 && creditoCobro <= 0) || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim() || destinoCobro == null) return
+
+    // Si entrega de más, se elige qué hacer con lo que sobra (lib/cuotas-juntas.ts).
+    const excedente = excedenteCobro
+    const eleccion = excedente > 0.005 ? eleccionExcedenteValida : null
+    if (excedente > 0.005 && !eleccion) {
+      toast({ title: "Falta una decisión", description: "Elegí qué hacemos con lo que sobra.", variant: "destructive" })
+      return
+    }
+    const juntas = eleccion?.startsWith("juntas-") ? opcionesJuntasCobro.slice(0, Number(eleccion.slice(7))) : []
+    const montoEfectivo = eleccion === "favor" || !eleccion ? pagoForm.monto : necesarioCobro
+    const extra = eleccion === "vuelto"
+      ? { montoRecibido: pagoForm.monto, vuelto: excedente }
+      : juntas.length
+        ? { nota: `| Entregó ${formatCurrency(pagoForm.monto)}: también paga ${textoCuotas(juntas.map((j) => j.numeroCuota))}` }
+        : {}
+    const armado = armarCobroActual(selectedEvento, destinoCobro, montoEfectivo, extra)
+    if (!armado.ok) {
+      toast({ title: armado.title, description: armado.description, variant: "destructive" })
+      return
+    }
+    const { newPago, updatedPagos, updatedPlanDeCuotas, reparto, calculoCobro, montoOficial, ajusteCuota, cuotaPagadaNumero } = armado
+
+    guardandoPagoRef.current = true
+    setGuardandoPago(true)
+    try {
     // Concepto único por pago (incluye su id) para poder revertir el
     // movimiento EXACTO de este pago si más tarde se anula, sin depender de
     // heurísticas por monto cuando una misma cuota tiene varios pagos.
     const etiquetaCuota = `Cuota ${destinoCobro} #${newPago.id.slice(0, 8)}`
     const movimientosDelCobro = construirMovimientosPago(
-      selectedEvento, etiquetaCuota, pagoForm.monto, pagoForm.fecha, movimientosCaja,
-      { insumos: state.insumos || [], insumosBarra: state.insumosBarra || [], recetas: state.recetas || [], cocteles: state.cocteles || [], servicios: state.servicios || [] },
+      selectedEvento, etiquetaCuota, montoEfectivo, pagoForm.fecha, movimientosCaja, datosCostosCobro,
     )
 
     const guardado = await updateEvento(selectedEvento.id, {
@@ -1144,7 +1284,7 @@ function PagosPageContent() {
     logMoneyActivity(
       "creado",
       `${etiquetaLog} - ${nombreEventoLog}`,
-      `Pago registrado por ${formatCurrency(pagoForm.monto)}${!topeParcialCobro && ajusteCuota !== 0 ? ` | Monto a cobrar ${formatCurrency(montoOficial + ajusteCuota + moraPago)} (sugerido ${formatCurrency(montoOficial + moraPago)}, ajuste solo de esta cuota)` : ""}${eleccionBase === "cobrado" && preguntaBase ? ` | Sugerido calculado sobre lo cobrado en la cuota ${preguntaBase.numero}` : ""}${reparto.saldoAFavor > 0 ? ` | Quedan ${formatCurrency(reparto.saldoAFavor)} a favor para la cuota siguiente` : ""}${reparto.creditoAplicado > 0 ? ` | Usó ${formatCurrency(reparto.creditoAplicado)} de saldo a favor` : ""}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""} | Recibido por: ${pagoForm.recibidoPor.trim()}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
+      `Pago registrado por ${formatCurrency(montoEfectivo)}${eleccion === "vuelto" ? ` | Entregó ${formatCurrency(pagoForm.monto)}, vuelto ${formatCurrency(excedente)}` : ""}${!topeParcialCobro && ajusteCuota !== 0 ? ` | Monto a cobrar ${formatCurrency(montoOficial + ajusteCuota + moraPago)} (sugerido ${formatCurrency(montoOficial + moraPago)}, ajuste solo de esta cuota)` : ""}${eleccionBase === "cobrado" && preguntaBase ? ` | Sugerido calculado sobre lo cobrado en la cuota ${preguntaBase.numero}` : ""}${reparto.saldoAFavor > 0 ? ` | Quedan ${formatCurrency(reparto.saldoAFavor)} a favor para la cuota siguiente` : ""}${reparto.creditoAplicado > 0 ? ` | Usó ${formatCurrency(reparto.creditoAplicado)} de saldo a favor` : ""}${pagoForm.pagadoPor ? ` | Pagado por: ${pagoForm.pagadoPor}` : ""} | Recibido por: ${pagoForm.recibidoPor.trim()}${selectedEvento.salon ? ` | Ingreso repartido entre Caja Eventos y Caja Jazmines` : ""}`,
     )
     // Cobro hecho con IPC provisorio (último publicado): queda registrado aparte.
     const avisoProvisorioCobro = calculoCobro && !calculoCobro.ipcOmitido ? etiquetaIPCProvisorio(calculoCobro) : null
@@ -1156,7 +1296,7 @@ function PagosPageContent() {
           tipo: "ipc",
           accion: "cobro_provisorio",
           nombre: `${etiquetaLog} - ${nombreEventoLog}`,
-          detalle: `Cobrado el ${pagoForm.fecha} por ${formatCurrency(pagoForm.monto)} con ${avisoProvisorioCobro} | Período del cobro: ${calculoCobro!.periodo}`,
+          detalle: `Cobrado el ${pagoForm.fecha} por ${formatCurrency(montoEfectivo)} con ${avisoProvisorioCobro} | Período del cobro: ${calculoCobro!.periodo}`,
         }),
       }).catch(() => {})
     }
@@ -1167,6 +1307,15 @@ function PagosPageContent() {
       ...selectedEvento,
       pagos: updatedPagos,
       ...(updatedPlanDeCuotas ? { planDeCuotas: updatedPlanDeCuotas } : {}),
+    }
+
+    // Cuotas juntas: cada una es un cobro aparte (el servidor acepta un pago
+    // por operación), armado sobre el evento recién leído de la base.
+    if (juntas.length) {
+      const cobradas = await cobrarCuotasJuntas(selectedEvento.id, juntas, excedente, destinoCobro, nombreEventoLog)
+      if (cobradas.length === juntas.length) {
+        toast({ title: "Cuotas cobradas", description: `Se cobraron la cuota ${destinoCobro} y ${textoCuotas(cobradas)}.` })
+      }
     }
     const siguienteAbierto = modoHistorico && abrirCobroPara(evolucionado)
     if (siguienteAbierto) {
@@ -2625,20 +2774,19 @@ function PagosPageContent() {
                   <Label className="text-xs">El cliente entrega ($)</Label>
                   <MoneyInput
                     value={pagoForm.monto}
-                    onValueChange={(monto) => setPagoForm((prev) => ({ ...prev, monto: Math.max(0, Math.min(monto, topeMontoCobro)) }))}
+                    onValueChange={(monto) => {
+                      setPagoForm((prev) => ({ ...prev, monto: Math.max(0, monto) }))
+                      setEleccionExcedente(null)
+                    }}
                     placeholder="0"
                     className="h-10 text-base font-semibold"
                   />
                   {pagoForm.monto > 0 && pagoForm.monto + creditoCobro <= moraPago && (
                     <p className="text-[11px] text-destructive">Tiene que cubrir la mora y algo de la cuota.</p>
                   )}
-                  {topeMontoCobro < Number.MAX_SAFE_INTEGER && (
-                    <p className="text-[11px] leading-tight text-muted-foreground">
-                      {topeParcialCobro ? "Hasta el saldo pendiente de esta cuota." : "Es la última cuota: no puede sobrar."}
-                    </p>
-                  )}
                 </div>
                 {renderSaldoAFavorCobro()}
+                {renderOpcionesExcedente()}
                 {pagoForm.monto + creditoCobro > 0 && pagoForm.monto + creditoCobro < totalACobrarCobro - 0.01 && renderSaldoDecisionForm()}
               </div>
             )}
@@ -2715,14 +2863,15 @@ function PagosPageContent() {
                         (saltaOrden && !confirmoSaltoMes) || (modoHistorico && errorCalculoCobro != null)
                       )
                     : pagoForm.monto < moraPago || pagoForm.monto + creditoCobro <= moraPago ||
-                      (pagoForm.monto + creditoCobro < totalACobrarCobro - 0.01 && (saldoDecisionCobro == null || recargoSaldoCobro == null))
+                      (pagoForm.monto + creditoCobro < totalACobrarCobro - 0.01 && (saldoDecisionCobro == null || recargoSaldoCobro == null)) ||
+                      (excedenteCobro > 0.005 && !eleccionExcedenteValida)
                 }
               >
                 Siguiente
               </Button>
             ) : (
-              <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto < moraPago || pagoForm.monto + creditoCobro <= moraPago || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim() || (modoHistorico && errorCalculoCobro != null)}>
-                Registrar {formatCurrency(pagoForm.monto)}
+              <Button size="sm" onClick={handleAddPago} disabled={guardandoPago || pagoForm.monto < moraPago || pagoForm.monto + creditoCobro <= moraPago || !pagoForm.pagadoPor || !pagoForm.recibidoPor.trim() || (modoHistorico && errorCalculoCobro != null) || (excedenteCobro > 0.005 && !eleccionExcedenteValida)}>
+                Registrar {formatCurrency(montoQueEntraCobro)}
               </Button>
             )}
           </DialogFooter>
