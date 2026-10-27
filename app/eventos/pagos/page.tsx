@@ -2011,8 +2011,13 @@ function PagosPageContent() {
                 const recargoAtraso = esParcialDestino || recargoAtrasoOmitido ? 0 : diasAtraso * RECARGO_POR_DIA_ATRASO
                 // Cálculo que se va a guardar, según lo tildado (IPC sí/no y base manual si el automático quedó pendiente)
                 const sugerencia = !esParcialDestino && resultadoIPC.estado === "pendiente" ? sugerirBaseManual(freshEvento, historialIPC) : null
+                // Si la cuota anterior se cobró por otro monto, esta vista ya
+                // muestra el sugerido calculado sobre lo cobrado (pedido del
+                // dueño, 27/10/2026). Es solo para mostrar: al registrar el
+                // pago se sigue preguntando sobre qué valor calcularlo.
+                const preguntaPrincipal = !esParcialDestino && !modoHistorico ? preguntaBaseCobrada(freshEvento, historialIPC) : null
                 const resuelto = ajustaPorIPC && !esParcialDestino
-                  ? resolverCalculoCobro(freshEvento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? undefined })
+                  ? resolverCalculoCobro(freshEvento, historialIPC, fechaNegocio(), { aplicarIPC: aplicarIPCCobro, baseManual: baseManualCobro ?? preguntaPrincipal?.cobrado ?? undefined })
                   : { calculo: null }
                 const calculoCobro = "calculo" in resuelto ? resuelto.calculo : null
                 const errorCobro = "error" in resuelto ? resuelto.error : null
@@ -2125,6 +2130,11 @@ function PagosPageContent() {
                             <p className="text-sm text-muted-foreground line-through">{formatCurrency(montoCuotaOriginal)}</p>
                           )}
                           <p className="text-2xl font-bold text-primary">{puedeCobrar ? formatCurrency(totalSimulado) : "A definir"}</p>
+                          {puedeCobrar && ajustaPorIPC && preguntaPrincipal && baseManualCobro == null && aplicarIPCCobro && (
+                            <p className="text-[11px] text-emerald-700 leading-tight max-w-[200px] ml-auto">
+                              Calculado sobre lo cobrado en la cuota {preguntaPrincipal.numero} ({formatCurrency(preguntaPrincipal.cobrado)})
+                            </p>
+                          )}
                           {!puedeCobrar && modoHistorico && (
                             <p className="text-[11px] text-muted-foreground leading-tight max-w-[180px] ml-auto">
                               Se calcula con la fecha de cobro que elijas en el formulario.
@@ -2140,7 +2150,7 @@ function PagosPageContent() {
                           >
                             <Plus className="h-4 w-4 mr-1" /> {esParcialDestino ? "Cobrar saldo" : esPagoUnico ? "Registrar pago" : "Registrar este pago"}
                             {/* Punto verde: al registrar se va a preguntar sobre qué valor calcular el sugerido. */}
-                            {!esParcialDestino && !modoHistorico && preguntaBaseCobrada(freshEvento, historialIPC) && (
+                            {preguntaPrincipal && (
                               <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-emerald-100" aria-label="Hay una pregunta antes de cobrar" />
                             )}
                           </Button>
