@@ -187,7 +187,7 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
                       {confirmandoEliminar === evento.id && (
                         <div className="flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2">
                           <p className="text-sm">
-                            ¿Eliminar el evento de {nombre}? Va a la papelera (se puede restaurar) y deja de figurar en Cobrar cuota.
+                            ¿Eliminar el evento de {nombre}? Pasa a Finalizados, pestaña Eliminados (se puede restaurar), y deja de figurar en Cobrar cuota.
                           </p>
                           <div className="flex flex-wrap gap-2">
                             <Button size="sm" variant="destructive" disabled={eliminando !== null} onClick={() => eliminar(evento)}>
@@ -216,7 +216,7 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
                   <span className="inline-flex items-center gap-1 normal-case"><SalonDot salon={evento.salon} />{salonLabel(evento.salon)}</span>
                 </p>
                 <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-destructive">
-                  <Trash2 className="size-4" />Eliminado (está en la papelera)
+                  <Trash2 className="size-4" />Eliminado (está en Finalizados → Eliminados)
                 </p>
               </li>
             ))}

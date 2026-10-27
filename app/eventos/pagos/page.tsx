@@ -677,6 +677,15 @@ function PagosPageContent() {
       : filtroFecha.trim().length > 0 || filtroSalon !== "todos"
 
   // Search results
+  // El buscador muestra solo los eventos activos: los finalizados (y los
+  // cancelados) salen de Cobrar cuota, pedido del dueño del 27/10/2026. Un
+  // finalizado se sigue abriendo desde Eventos → Finalizados ("Perfil del
+  // evento", con ?evento=), que no pasa por este buscador.
+  const eventosBuscables = useMemo(
+    () => eventos.filter((e) => e.estado !== "completado" && e.estado !== "cancelado"),
+    [eventos],
+  )
+
   const searchResults = useMemo(() => {
     if (searchMode === "texto") {
       if (!searchTerm.trim()) return []
@@ -684,7 +693,7 @@ function PagosPageContent() {
       // Normaliza DNI: quita puntos, espacios y guiones para que "12.345.678" y "12345678" coincidan
       const soloDigitos = (v?: string) => (v || "").replace(/[.\s-]/g, "")
       const termDni = soloDigitos(term)
-      return eventos.filter((e) => {
+      return eventosBuscables.filter((e) => {
         const nameMatch = (e.nombre || "").toLowerCase().includes(term)
         const parejaMatch = (e.nombrePareja || "").toLowerCase().includes(term)
         const dnis = [e.dniNovio1, e.dniNovio2, e.contrato?.dni]
@@ -695,14 +704,14 @@ function PagosPageContent() {
     }
     // Modo fecha + salón: al menos un filtro debe estar activo
     if (!filtroFecha.trim() && filtroSalon === "todos") return []
-    return eventos
+    return eventosBuscables
       .filter((e) => {
         const fechaMatch = !filtroFecha.trim() || e.fecha === filtroFecha
         const salonMatch = filtroSalon === "todos" || e.salon === filtroSalon
         return fechaMatch && salonMatch
       })
       .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""))
-  }, [eventos, searchMode, searchTerm, filtroFecha, filtroSalon])
+  }, [eventosBuscables, searchMode, searchTerm, filtroFecha, filtroSalon])
 
   // El plan guardado desde el generador de contratos (planDeCuotas) es la
   // fuente de verdad: respeta la modalidad de financiación (pago completo /

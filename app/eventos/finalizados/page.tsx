@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useEventos } from "@/lib/use-eventos"
@@ -49,9 +49,18 @@ import {
   FileText,
   User,
   RefreshCw,
+  Archive,
 } from "lucide-react"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { SalonDot } from "@/components/salon-badge"
+import { EventosEliminados } from "@/components/eventos-eliminados"
+
+// Eventos → Finalizados (antes "Archivo"). Desde el 27/10/2026 junta en una
+// sola pantalla los finalizados y los eliminados (la vieja Papelera), pedido
+// del dueño: "no quiero dos sectores de eventos". Cada pestaña tiene su
+// propio camino: los finalizados salen del store; los eliminados, de
+// /api/eventos/papelera (solo Administración y Soporte, como siempre).
+type Pestana = "finalizados" | "eliminados"
 
 export default function EventosFinalizadosPage() {
   const router = useRouter()
@@ -66,6 +75,18 @@ export default function EventosFinalizadosPage() {
   // Evento que se está por sacar del archivo (pide confirmación: sus costos
   // dejan de estar congelados).
   const [eventoASacarId, setEventoASacarId] = useState<string | null>(null)
+  const [pestana, setPestana] = useState<Pestana>("finalizados")
+  const [cantidadEliminados, setCantidadEliminados] = useState<number | null>(null)
+  const alContarEliminados = useCallback((n: number) => setCantidadEliminados(n), [])
+  // /eventos/papelera redirige con ?ver=eliminados. Se lee de la dirección
+  // (sin useSearchParams, que en esta página obligaría a un Suspense).
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("ver") === "eliminados") setPestana("eliminados")
+    } catch {
+      // Sin dirección legible: queda en Finalizados.
+    }
+  }, [])
 
   // Filtrar solo eventos finalizados
   const eventosFiltrados = (eventos || [])
@@ -89,7 +110,7 @@ export default function EventosFinalizadosPage() {
     try {
       await actualizarEvento(eventoId, { estado: "en_preparacion" })
       toast({ 
-        title: "Evento sacado del archivo", 
+        title: "Evento sacado de Finalizados", 
         description: "El evento volvió a En Preparación: sus costos y datos vuelven a actualizarse en vivo." 
       })
       router.push("/eventos/lista")
@@ -103,7 +124,7 @@ export default function EventosFinalizadosPage() {
   }
 
   const handleEliminar = async (eventoId: string) => {
-    if (confirm("¿Eliminar este evento? Va a la papelera: lo podés recuperar desde Eventos → Papelera.")) {
+    if (confirm("¿Eliminar este evento? Pasa a la pestaña Eliminados de esta misma pantalla, de donde se puede restaurar.")) {
       await eliminarEvento(eventoId)
       toast({ title: "Evento eliminado", variant: "destructive" })
     }
@@ -113,7 +134,7 @@ export default function EventosFinalizadosPage() {
   if (selectorAbierto) {
     return (
       <SalonSelectorOverlay
-        titulo="Archivo de eventos"
+        titulo="Finalizados"
         onSelect={(salon) => {
           setFiltroSalon(salon)
           setSelectorAbierto(false)
@@ -128,9 +149,9 @@ export default function EventosFinalizadosPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Archivo</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Finalizados</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {eventosFiltrados.length} evento{eventosFiltrados.length !== 1 ? "s" : ""} archivado{eventosFiltrados.length !== 1 ? "s" : ""} — los datos quedan congelados hasta sacarlos del archivo
+              Los eventos que ya se hicieron y los que se eliminaron, en un solo lugar.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -163,7 +184,33 @@ export default function EventosFinalizadosPage() {
           </div>
         </div>
 
-        {/* Filtros */}
+        {/* Pestañas: finalizados y eliminados */}
+        <div role="tablist" aria-label="Qué eventos ver" className="flex gap-2">
+          {([
+            { valor: "finalizados", label: "Finalizados", icono: Archive, cantidad: eventosFiltrados.length },
+            { valor: "eliminados", label: "Eliminados", icono: Trash2, cantidad: cantidadEliminados },
+          ] as const).map(({ valor, label, icono: Icono, cantidad }) => {
+            const activa = pestana === valor
+            return (
+              <button
+                key={valor}
+                type="button"
+                role="tab"
+                aria-selected={activa}
+                onClick={() => setPestana(valor)}
+                className={`flex h-9 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors ${
+                  activa ? "border-foreground bg-foreground text-background" : "border-input bg-background hover:bg-muted"
+                }`}
+              >
+                <Icono className="h-4 w-4" aria-hidden="true" />
+                {label}
+                {cantidad !== null && <span className="tabular-nums opacity-80">{cantidad}</span>}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Filtros (valen para las dos pestañas) */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -175,21 +222,38 @@ export default function EventosFinalizadosPage() {
                   className="w-full"
                 />
               </div>
-
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setOrdenFecha((o) => (o === "asc" ? "desc" : "asc"))}
+                className="gap-1.5"
+              >
+                {ordenFecha === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                {ordenFecha === "asc" ? "Más viejos primero" : "Más recientes primero"}
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Tabla */}
+        {/* La pestaña Eliminados se monta siempre, para tener su número */}
+        <div hidden={pestana !== "eliminados"}>
+          <EventosEliminados busqueda={searchQuery} salon={filtroSalon} orden={ordenFecha} onCantidad={alContarEliminados} />
+        </div>
+
+        {/* Tabla de finalizados */}
+        <div hidden={pestana !== "finalizados"}>
         <Card>
           <CardHeader>
-            <CardTitle>Eventos archivados</CardTitle>
+            <CardTitle>Eventos finalizados</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {eventosFiltrados.length} evento{eventosFiltrados.length !== 1 ? "s" : ""}: los datos quedan congelados hasta sacarlos de Finalizados
+            </p>
           </CardHeader>
           <CardContent>
             {eventosFiltrados.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <CheckCircle className="h-12 w-12 text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">No hay eventos en el archivo</p>
+                <p className="text-sm text-muted-foreground">No hay eventos finalizados</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -288,7 +352,7 @@ export default function EventosFinalizadosPage() {
                                   className="text-sky-600 focus:text-sky-600"
                                 >
                                   <RotateCcw className="h-4 w-4 mr-2" />
-                                  Sacar del archivo
+                                  Sacar de Finalizados
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -310,12 +374,13 @@ export default function EventosFinalizadosPage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
 
       <AlertDialog open={!!eventoASacarId} onOpenChange={(open) => { if (!open) setEventoASacarId(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Sacar este evento del archivo?</AlertDialogTitle>
+            <AlertDialogTitle>¿Sacar este evento de Finalizados?</AlertDialogTitle>
             <AlertDialogDescription>
               Vuelve a la lista como &quot;En preparación&quot; y sus costos dejan de estar congelados: se vuelven a
               calcular en vivo con los precios de hoy de insumos, servicios y personal.
@@ -331,7 +396,7 @@ export default function EventosFinalizadosPage() {
               }}
               className="bg-sky-600 hover:bg-sky-700 text-white"
             >
-              Sí, sacar del archivo
+              Sí, sacar de Finalizados
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
