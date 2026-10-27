@@ -135,7 +135,9 @@ export function EventosEliminados({ busqueda, salon, orden, onCantidad }: Props)
   const q = busqueda.trim().toLowerCase()
   const eventos = todos
     .filter((e) => !q || nombreEliminado(e).toLowerCase().includes(q) || (e.nombre || "").toLowerCase().includes(q))
-    .filter((e) => salon === "todos" || e.data?.salon === salon)
+    // Los que no tienen salón en la copia (3 al 27/10/2026, eliminados viejos)
+    // se ven en cualquier salón: si no, no aparecerían en ninguno.
+    .filter((e) => salon === "todos" || !e.data?.salon || e.data.salon === salon)
     .sort((a, b) => {
       if (!a.fecha) return 1
       if (!b.fecha) return -1
