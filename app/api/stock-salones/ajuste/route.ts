@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { perfilDesdeRequest, salonesConfigurados, fechaHoraCortaArgentina } from "@/lib/stock-salones-server"
-import { puedeVerConsolidado } from "@/lib/stock-salones"
+import { puedeVerStockSector, sectorConStockActual } from "@/lib/stock-salones"
 import { validarAjusteAlmacen } from "@/lib/stock-ajuste-almacen"
 
 /**
@@ -15,7 +15,8 @@ import { validarAjusteAlmacen } from "@/lib/stock-ajuste-almacen"
  *   items: { salon: string, cantidad: number, sesionId: string (uuid) }[]
  * }
  *
- * Solo Administración y Soporte (los mismos que ven las columnas por salón).
+ * Administración y Soporte (los mismos que ven las columnas por salón), y
+ * Cocina solo para su vajilla y utensilios (puedeVerStockSector).
  * No pide el PIN de carga extraordinaria: quien entra con esos perfiles es
  * quien administra el stock, y queda registrado igual.
  *
@@ -39,13 +40,13 @@ import { validarAjusteAlmacen } from "@/lib/stock-ajuste-almacen"
 export async function POST(req: Request) {
   try {
     const perfil = await perfilDesdeRequest(req)
-    if (!puedeVerConsolidado(perfil)) {
-      return NextResponse.json({ ok: false, error: "Este perfil no puede ajustar el stock por salón" }, { status: 403 })
-    }
-
     const body = await req.json().catch(() => ({}))
     const salones = await salonesConfigurados()
     const v = validarAjusteAlmacen(body, new Set(salones.keys()))
+    // Sin permiso, 403 aunque el resto venga mal: no se le cuenta qué falló.
+    if (!puedeVerStockSector(perfil, v.ok ? v.sector : "cocina")) {
+      return NextResponse.json({ ok: false, error: "Este perfil no puede ajustar el stock por salón" }, { status: 403 })
+    }
     if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 })
     const { sector, insumoId, items } = v
 
@@ -53,7 +54,9 @@ export async function POST(req: Request) {
       ? await sql`SELECT id, descripcion, unidad FROM insumos WHERE id = ${insumoId}`
       : sector === "barra"
         ? await sql`SELECT id, descripcion, unidad FROM insumos_barra WHERE id = ${insumoId}`
-        : await sql`SELECT id, descripcion, unidad FROM insumos_limpieza WHERE id = ${insumoId}`) as unknown as Array<{
+        : sector === "limpieza"
+          ? await sql`SELECT id, descripcion, unidad FROM insumos_limpieza WHERE id = ${insumoId}`
+          : await sql`SELECT id, descripcion, unidad FROM insumos_vajilla WHERE id = ${insumoId}`) as unknown as Array<{
       id: string
       descripcion: string
       unidad: string | null
@@ -75,7 +78,9 @@ export async function POST(req: Request) {
     } catch {
       usuario = ""
     }
-    const cargadoPor = (usuario || (perfil === "soporte" ? "Soporte" : "Administración")).slice(0, 60)
+    const cargadoPor = (
+      usuario || (perfil === "soporte" ? "Soporte" : perfil === "cocina" ? "Cocina" : "Administración")
+    ).slice(0, 60)
     const ahora = new Date()
 
     const resultado = await sql.begin(async (trx) => {
@@ -116,7 +121,7 @@ export async function POST(req: Request) {
         `
 
         const salonNombre = salones.get(it.salon) || it.salon
-        const detalle = `Ajuste desde ${sector === "limpieza" ? "Insumos Limpieza" : "Almacén"} · ${fechaHoraCortaArgentina(ahora)} · ${cargadoPor} · ${insumo.descripcion}: ${
+        const detalle = `Ajuste desde ${sector === "limpieza" ? "Insumos Limpieza" : sector === "vajilla" ? "Vajilla y utensilios" : "Almacén"} · ${fechaHoraCortaArgentina(ahora)} · ${cargadoPor} · ${insumo.descripcion}: ${
           anterior === null ? "sin contar" : anterior
         } → ${it.cantidad}`
         await tx`
@@ -133,8 +138,8 @@ export async function POST(req: Request) {
         WHERE insumo_tipo = ${sector} AND insumo_id = ${insumoId}
       `) as unknown as Array<{ total: string }>
       const suma = Number(total[0]?.total ?? 0)
-      // Limpieza no tiene stock_actual: su total es esta misma suma.
-      if (aplicados > 0 && sector !== "limpieza") {
+      // Limpieza y vajilla no tienen stock_actual: su total es esta misma suma.
+      if (aplicados > 0 && sectorConStockActual(sector)) {
         if (sector === "cocina") {
           await tx`UPDATE insumos SET stock_actual = ${suma}, updated_at = NOW() WHERE id = ${insumoId}`
         } else {

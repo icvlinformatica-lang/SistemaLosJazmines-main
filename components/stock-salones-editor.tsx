@@ -1,8 +1,8 @@
 "use client"
 
-// Campos de stock por salón dentro del lapicito de Almacén (cocina) y
-// Almacén de Barra. Solo para Administración / Soporte, los mismos que ven
-// las columnas por salón. Guarda por /api/stock-salones/ajuste, que usa el
+// Campos de stock por salón dentro del lapicito de Almacén (cocina),
+// Almacén de Barra, Insumos Limpieza y Vajilla y utensilios. Solo para
+// quienes ven las columnas por salón (puedeVerStockSector). Guarda por /api/stock-salones/ajuste, que usa el
 // mismo camino que una carga desde la pantalla de Stock.
 
 import type { ResumenStockInsumo } from "@/lib/stock-salones"
@@ -115,7 +115,7 @@ export function StockPorSalonCampos({
           </span>
         </div>
         <p className="text-xs text-muted-foreground">
-          Queda registrado en Actividad como un ajuste desde Almacén. Un campo vacío no cambia nada.
+          Queda registrado en Actividad como un ajuste. Un campo vacío no cambia nada.
         </p>
       </div>
     </div>
