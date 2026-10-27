@@ -274,13 +274,20 @@ test("servidor acepta destildar IPC en cálculo automático y guarda porcentaje 
 test("servidor recalcula base y rechaza montos manipulados", () => {
   const ev = evento()
   const result = construirCobroCuota(ev, 1, 102000, undefined, [], undefined, [registro(8, 2)], "2026-09-01")
-  assert.equal(validarCobroIPC(ev, result.planUpdate, [registro(8, 2)]), null)
-  result.planUpdate.planDeCuotas.cuotas[0].montoPagadoNeto = 1
-  assert.match(validarCobroIPC(ev, result.planUpdate, [registro(8, 2)]), /cambió/)
+  assert.equal(validarCobroIPC(ev, structuredClone(result.planUpdate), [registro(8, 2)]), null)
+  const manipulado = structuredClone(result.planUpdate); manipulado.planDeCuotas.cuotas[0].montoCuota = 1
+  assert.match(validarCobroIPC(ev, manipulado, [registro(8, 2)]), /cambió/)
+  // Formato viejo del botón rápido (sin pago), por si queda una pestaña abierta.
+  const viejo = { planDeCuotas: structuredClone(result.planUpdate.planDeCuotas) }
+  assert.equal(validarCobroIPC(ev, structuredClone(viejo), [registro(8, 2)]), null)
+  viejo.planDeCuotas.cuotas[0].montoPagadoNeto = 1
+  assert.match(validarCobroIPC(ev, viejo, [registro(8, 2)]), /cambió/)
 })
 test("cobro rápido: no cierra cuotas parciales, no acepta fecha futura y no bloquea cambios sin cobro", () => {
   const ev = evento()
-  const { planUpdate } = construirCobroCuota(ev, 1, 102000, undefined, [], undefined, [registro(8, 2)], "2026-09-01")
+  const { planDeCuotas } = construirCobroCuota(ev, 1, 102000, undefined, [], undefined, [registro(8, 2)], "2026-09-01").planUpdate
+  // Formato viejo del botón rápido (sin pago en pagos[]): lo valida validarCobroRapido.
+  const planUpdate = { planDeCuotas }
   // Cuota que ya tenía un pago parcial: se completa solo desde Cobrar cuota.
   const conParcial = structuredClone(ev); conParcial.planDeCuotas.cuotas[0].montoPagadoNeto = 50000
   assert.match(validarCobroIPC(conParcial, structuredClone(planUpdate), [registro(8, 2)]), /pagos parciales/)
@@ -289,4 +296,19 @@ test("cobro rápido: no cierra cuotas parciales, no acepta fecha futura y no blo
   assert.match(validarCobroIPC(ev, futura, [registro(8, 2)]), /futura/)
   // Guardar el plan sin marcar ninguna cuota nueva como pagada no se valida.
   assert.equal(validarCobroIPC(ev, { planDeCuotas: structuredClone(ev.planDeCuotas) }, [registro(8, 2)]), null)
+})
+test("cobro rápido deja su pago en el evento y el servidor lo valida como un cobro normal", () => {
+  const ev = evento()
+  const { planUpdate } = construirCobroCuota(ev, 1, 102000, undefined, [], undefined, [registro(8, 2)], "2026-09-01")
+  assert.equal(planUpdate.pagos.length, 1)
+  const [pago] = planUpdate.pagos
+  assert.equal(pago.numeroCuota, 1); assert.equal(pago.monto, 102000); assert.equal(pago.montoCuotaNeto, 102000)
+  assert.equal(pago.montoMora, 0); assert.equal(pago.fecha, "2026-09-01"); assert.equal(pago.porcentajeIPC, 2)
+  assert.equal(validarCobroIPC(ev, structuredClone(planUpdate), [registro(8, 2)]), null)
+  // Fecha futura en el pago: rechazada.
+  const futura = structuredClone(planUpdate); futura.pagos[0].fecha = "2999-01-01"
+  assert.match(validarCobroIPC(ev, futura, [registro(8, 2)]), /futura/)
+  // Después del cobro rápido, la cuota 2 del mismo mes vale lo mismo que la 1.
+  const despues = { ...ev, ...structuredClone(planUpdate) }
+  assert.equal(calcular(despues, [registro(8, 2)], "2026-09-20").calculo.monto, 102000)
 })

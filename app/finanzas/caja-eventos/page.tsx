@@ -967,7 +967,8 @@ useStore()
   }
 
   // Marca una cuota como ya cobrada (útil al cargar eventos viejos): la saca de
-  // "por cobrar" y genera el ingreso repartido entre Caja Eventos y Caja Jazmines
+  // "por cobrar", agrega su pago al evento (se ve en Cobrar cuota y en el
+  // recibo) y genera el ingreso repartido entre Caja Eventos y Caja Jazmines
   // según la regla proporcional única (costo + 5% a Eventos, resto a Jazmines),
   // datado en la fecha de vencimiento de la cuota.
   async function confirmarCobroCuota(ing: IngresoPendiente) {
@@ -1001,6 +1002,17 @@ useStore()
       return
     }
     if (!planUpdate || !await guardarOperacion(() => updateEvento(ing.eventoId, planUpdate, movimientos))) return
+    // Queda en Configuración > Actividad, como un cobro de Cobrar cuota.
+    fetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "pago",
+        accion: "creado",
+        nombre: `Cuota ${ing.numeroCuota} - ${ing.eventoNombre}`,
+        detalle: `Marcada cobrada desde Caja Eventos por ${formatCurrency(ing.montoTotal)} | Pago agregado al evento | Ingreso repartido entre Caja Eventos y Caja Jazmines`,
+      }),
+    }).catch(() => {})
     // Cobro hecho con IPC provisorio (último publicado): queda registrado.
     const calculoCobrado = planUpdate.planDeCuotas.cuotas?.find((c) => c.numero === ing.numeroCuota)?.calculoIPC
     if (calculoCobrado?.ipcProvisorio && !calculoCobrado.ipcOmitido) {

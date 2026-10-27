@@ -7,6 +7,7 @@ import {
   calcularSeñaSaldoServicio,
   type EventoGuardado,
   type MovimientoCaja,
+  type PagoEvento,
   type Insumo,
   type InsumoBarra,
   type Receta,
@@ -18,8 +19,8 @@ export interface CobroCuotaResultado {
   error?: string
   /** true si la cuota ya figuraba como cobrada (no se hace nada) */
   yaCobrada: boolean
-  /** patch para updateEvento (marca la cuota en cuotasPagadas) */
-  planUpdate: { planDeCuotas: NonNullable<EventoGuardado["planDeCuotas"]> } | null
+  /** patch para updateEvento (marca la cuota en cuotasPagadas y agrega su pago) */
+  planUpdate: { planDeCuotas: NonNullable<EventoGuardado["planDeCuotas"]>; pagos: PagoEvento[] } | null
   /** movimientos a insertar (repartidos entre Caja Eventos y Caja Jazmines) */
   movimientos: MovimientoCaja[]
 }
@@ -232,17 +233,36 @@ export function construirCobroCuota(
   if (resultado.estado === "pendiente" || (resultado.estado === "listo" && resultado.calculo.monto !== montoCuotaCompleta)) {
     return { yaCobrada: false, planUpdate: null, movimientos: [], error: resultado.estado === "pendiente" ? resultado.motivo : "La cuota cambió. Actualizá el desglose antes de cobrar." }
   }
+  const calculoIPC = resultado.estado === "listo" ? resultado.calculo : undefined
+  // El cobro rápido también deja su pago en el evento (pedido del dueño,
+  // 26/10/2026): antes solo anotaba en las cajas, el pago no aparecía en
+  // Cobrar cuota ni en el recibo, y en agosto dos cuotas se volvieron a
+  // cobrar ahí y entraron dos veces a las cajas. El concepto de los
+  // movimientos lleva el id del pago, como en Cobrar cuota, para que anular
+  // el pago borre exactamente sus movimientos.
+  const pago: PagoEvento = {
+    id: generateId(),
+    monto: montoCuotaCompleta,
+    fecha: fechaReal,
+    pagadoPor: "",
+    porcentajeIPC: calculoIPC && !calculoIPC.ipcOmitido ? calculoIPC.porcentaje : 0,
+    montoCuotaNeto: montoCuotaCompleta,
+    montoMora: 0,
+    calculoIPC,
+    notas: `Cuota ${numeroCuota}/${plan?.numeroCuotas ?? numeroCuota} · marcada cobrada desde Caja Eventos`,
+    numeroCuota,
+  }
   const planUpdate = plan
-    ? { planDeCuotas: { ...plan, cuotasPagadas: [...cuotasPagadas, numeroCuota],
+    ? { pagos: [...(evento.pagos ?? []), pago], planDeCuotas: { ...plan, cuotasPagadas: [...cuotasPagadas, numeroCuota],
       cuotas: plan.cuotas?.map(c => c.numero === numeroCuota ? {
         ...c, pagada: true, estado: "pagada" as const, montoCuota: montoCuotaCompleta, montoPagadoNeto: montoCuotaCompleta,
-        fechaPagoReal: fechaReal, calculoIPC: resultado.estado === "listo" ? resultado.calculo : undefined,
+        fechaPagoReal: fechaReal, calculoIPC,
       } : c),
     } }
     : null
 
   const movimientos = construirMovimientosPago(
-    evento, `Cuota ${numeroCuota}`, montoCuotaCompleta, fechaVencimientoCuota || fechaReal, movimientosCaja, datosCostos,
+    evento, `Cuota ${numeroCuota} #${pago.id.slice(0, 8)}`, montoCuotaCompleta, fechaVencimientoCuota || fechaReal, movimientosCaja, datosCostos,
   )
 
   return { yaCobrada: false, planUpdate, movimientos }
