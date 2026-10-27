@@ -3,12 +3,13 @@
 // Aviso de los lunes para Administración (reglas en lib/aviso-semanal.ts).
 // La ventana se abre sola una vez por semana y por persona; después el mismo
 // contenido queda plegado arriba de todo en Novedades, con punto rojo
-// mientras falte finalizar algún evento del finde anterior.
+// mientras falte finalizar algún evento del finde anterior. Si el evento no
+// se hizo, desde acá también se puede mandar a la papelera.
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import useSWR from "swr"
-import { X, CalendarCheck, CalendarDays, HandCoins, PartyPopper, Check, Loader2 } from "lucide-react"
+import { X, CalendarCheck, CalendarDays, HandCoins, PartyPopper, Check, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SalonDot } from "@/components/salon-badge"
 import { useStore } from "@/lib/store-context"
@@ -26,6 +27,7 @@ import {
   ingresosDeLaSemana,
   lunesDeLaSemana,
   proximoFinde,
+  puedeEliminarDesdeAviso,
 } from "@/lib/aviso-semanal"
 
 function fmt(n: number): string {
@@ -80,7 +82,7 @@ export function useAvisoSemanal(perfilId: string | undefined) {
 
 /** El contenido del aviso: lo usa la ventana y la sección de Novedades. */
 export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
-  const { eventos, updateEvento } = useStore()
+  const { eventos, updateEvento, deleteEvento } = useStore()
   const hoy = fechaNegocio()
   const anterior = findeAnterior(hoy)
   const proximo = proximoFinde(hoy)
@@ -88,6 +90,11 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
   // esta ventana (para que se vea el "Finalizado" en vez de desaparecer).
   const [finalizados, setFinalizados] = useState<Set<string>>(new Set())
   const [finalizando, setFinalizando] = useState<string | null>(null)
+  // Los que se mandaron a la papelera desde acá, con su nombre para seguir
+  // mostrándolos ("Eliminado") aunque ya no estén en el store.
+  const [eliminados, setEliminados] = useState<Array<{ id: string; nombre: string; fecha?: string; salon?: string }>>([])
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState<string | null>(null)
+  const [eliminando, setEliminando] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const pendientes = eventosParaFinalizar(eventos || [], hoy)
   const recienFinalizados = (eventos || []).filter((e) => finalizados.has(e.id) && !pendientes.some((p) => p.id === e.id))
@@ -108,6 +115,21 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
     else setError("No se pudo finalizar. Probá de nuevo o hacelo desde la Lista de eventos.")
   }
 
+  // Mismo camino que "Eliminar" de la Lista: va a la papelera (se puede
+  // restaurar) y deja de figurar en Cobrar cuota y en "Vienen a pagar".
+  const eliminar = async (evento: (typeof pendientes)[number]) => {
+    setEliminando(evento.id)
+    setError(null)
+    const ok = await deleteEvento(evento.id)
+    setEliminando(null)
+    setConfirmandoEliminar(null)
+    if (ok) {
+      setEliminados((prev) => [...prev, { id: evento.id, nombre: evento.nombre || evento.nombrePareja || "Sin nombre", fecha: evento.fecha, salon: evento.salon }])
+    } else {
+      setError("No se pudo eliminar. Probá de nuevo o hacelo desde la Lista de eventos.")
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4 text-foreground">
       <section className="flex flex-col gap-2">
@@ -115,7 +137,7 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
           <CalendarCheck className="size-4 text-[#2d5a3d]" />
           Eventos del finde pasado ({dia(anterior.desde)} al {dia(anterior.hasta)})
         </h3>
-        {delFinde.length === 0 ? (
+        {delFinde.length === 0 && eliminados.length === 0 ? (
           <p className="text-sm text-muted-foreground">No quedan eventos del finde pasado por cerrar.</p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -135,12 +157,12 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
                     </p>
                   ) : (
                     <div className="mt-2 flex flex-col gap-2">
-                      <p className="text-sm text-muted-foreground">¿Querés marcarlo como finalizado?</p>
+                      <p className="text-sm text-muted-foreground">¿Querés marcarlo como finalizado? Si no se hizo, lo podés eliminar.</p>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
                           className="bg-[#2d5a3d] text-[#f5f0e8] hover:bg-[#3a6f4e]"
-                          disabled={finalizando !== null}
+                          disabled={finalizando !== null || eliminando !== null}
                           onClick={() => finalizar(evento.id)}
                         >
                           {finalizando === evento.id ? <Loader2 className="animate-spin" /> : <Check />}
@@ -149,12 +171,55 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
                         <Button asChild size="sm" variant="outline">
                           <Link href={`/eventos/lista?evento=${encodeURIComponent(evento.id)}`} prefetch={false} onClick={onIr}>Ver evento</Link>
                         </Button>
+                        {puedeEliminarDesdeAviso(evento) && confirmandoEliminar !== evento.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={finalizando !== null || eliminando !== null}
+                            onClick={() => setConfirmandoEliminar(evento.id)}
+                          >
+                            <Trash2 />
+                            No se hizo, eliminar
+                          </Button>
+                        )}
                       </div>
+                      {confirmandoEliminar === evento.id && (
+                        <div className="flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2">
+                          <p className="text-sm">
+                            ¿Eliminar el evento de {nombre}? Va a la papelera (se puede restaurar) y deja de figurar en Cobrar cuota.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="destructive" disabled={eliminando !== null} onClick={() => eliminar(evento)}>
+                              {eliminando === evento.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                              Sí, eliminar
+                            </Button>
+                            <Button size="sm" variant="outline" disabled={eliminando !== null} onClick={() => setConfirmandoEliminar(null)}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      {!puedeEliminarDesdeAviso(evento) && (
+                        <p className="text-xs text-muted-foreground">Si no se hizo, eliminalo desde la Lista: ahí elegís si se devuelve el stock.</p>
+                      )}
                     </div>
                   )}
                 </li>
               )
             })}
+            {eliminados.map((evento) => (
+              <li key={evento.id} className="rounded-lg border bg-card p-3 text-card-foreground">
+                <p className="text-sm font-semibold">{evento.nombre}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs capitalize text-muted-foreground">
+                  <span>{evento.fecha ? dia(evento.fecha) : "Sin fecha"}</span>
+                  <span className="inline-flex items-center gap-1 normal-case"><SalonDot salon={evento.salon} />{salonLabel(evento.salon)}</span>
+                </p>
+                <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-destructive">
+                  <Trash2 className="size-4" />Eliminado (está en la papelera)
+                </p>
+              </li>
+            ))}
           </ul>
         )}
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}

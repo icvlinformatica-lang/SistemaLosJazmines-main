@@ -11,7 +11,7 @@ const loaded = { exports: {} }
 new Function('module', 'exports', js)(loaded, loaded.exports)
 const {
   lunesDeLaSemana, findeAnterior, proximoFinde, eventosParaFinalizar, eventosProximoFinde,
-  ingresosDeLaSemana, claveAvisoVisto, debeAbrirAviso,
+  ingresosDeLaSemana, claveAvisoVisto, debeAbrirAviso, puedeEliminarDesdeAviso,
 } = loaded.exports
 
 // 19/10/2026 es lunes.
@@ -66,4 +66,11 @@ test('la ventana se abre una vez por semana y por persona, solo en AdministraciÃ
   assert.equal(debeAbrirAviso(undefined, null, '2026-10-19'), false)
   assert.notEqual(claveAvisoVisto('administracion', 'Diego'), claveAvisoVisto('administracion', 'Leila'))
   assert.equal(claveAvisoVisto('soporte', ''), 'lj_aviso_semanal_soporte')
+})
+
+test('eliminar desde el aviso: solo si no se descontÃ³ el stock', () => {
+  assert.equal(puedeEliminarDesdeAviso({}), true)
+  assert.equal(puedeEliminarDesdeAviso({ stockDescontado: false }), true)
+  // Con el stock descontado se decide en la Lista si se devuelve.
+  assert.equal(puedeEliminarDesdeAviso({ stockDescontado: true }), false)
 })
