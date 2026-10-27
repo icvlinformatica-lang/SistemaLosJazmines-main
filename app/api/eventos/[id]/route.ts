@@ -7,6 +7,8 @@ import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEventoAlEditar, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
 import { validarSaldoAFavor } from "@/lib/saldo-a-favor"
+import { validarAjustesCobro } from "@/lib/ajuste-cobro"
+import { objetivoCuota } from "@/lib/estado-cuotas"
 import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
 import { decidirFechaAlta } from "@/lib/fecha-alta"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
@@ -193,11 +195,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
               const pagosRestantes = updates.pagos.filter((p: any) => numeroCuotaPago(p) === c.numero)
               if (!pagosRestantes.length) {
                 // No queda ningún pago contra esta cuota: se libera del todo, incluida su cifra oficial.
-                const { fechaPagoReal, montoPagadoNeto, calculoIPC, saldoDecision, recargoSaldo, ...resto } = c
+                const { fechaPagoReal, montoPagadoNeto, calculoIPC, saldoDecision, recargoSaldo, ajusteCobro, ...resto } = c
                 return { ...resto, pagada: false, estado: "pendiente" }
               }
               const acumulado = Math.round(pagosRestantes.reduce((s: number, p: any) => s + (p.montoCuotaNeto ?? 0), 0) * 100) / 100
-              const pagada = acumulado >= c.montoCuota - 0.01
+              const pagada = acumulado >= objetivoCuota(c) - 0.01
               return {
                 ...c, montoPagadoNeto: acumulado, pagada, estado: pagada ? "pagada" : "parcial",
                 ...(pagada ? { saldoDecision: undefined, recargoSaldo: undefined } : {}),
@@ -214,6 +216,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Saldo a favor (lib/saldo-a-favor.ts), para eventos con y sin IPC: el
     // excedente de un pago se descuenta en la cuota siguiente y nunca puede
     // quedar negativo (por ejemplo, al anular el pago que lo generó).
+    // Ajuste de cobro (lib/ajuste-cobro.ts): cobrar otro monto que el sugerido, solo en esa cuota.
+    const errorAjuste = validarAjustesCobro(actual, updates)
+    if (errorAjuste) return NextResponse.json({ error: errorAjuste }, { status: 409 })
+
     const errorSaldoAFavor = validarSaldoAFavor(actual, updates)
     if (errorSaldoAFavor) return NextResponse.json({ error: errorSaldoAFavor }, { status: 409 })
 

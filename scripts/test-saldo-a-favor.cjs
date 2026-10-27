@@ -204,3 +204,32 @@ test("servidor: el botón rápido de Caja Eventos deja el pago en el evento y su
   assert.equal((await patch(body)).status, 200)
   assert.equal(row.pagos.length, 1); assert.equal(ledger.length, filas)
 })
+
+// ---------- Monto a cobrar distinto del sugerido (lib/ajuste-cobro.ts) ----------
+
+test("servidor: cobrar $105.000 por una cuota sugerida en $102.000 la deja cobrada y anularlo borra el ajuste", async () => {
+  reset()
+  const body = cobro(1, { monto: 105000, neto: 105000 }, "aj")
+  body.planDeCuotas.cuotas[0].ajusteCobro = 3000
+  body.pagos.at(-1).ajusteCuota = 3000
+  assert.equal((await patch(body)).status, 200)
+  assert.equal(row.plan_de_cuotas.cuotas[0].montoCuota, 102000)
+  assert.equal(row.plan_de_cuotas.cuotas[0].ajusteCobro, 3000)
+  assert.equal(row.plan_de_cuotas.cuotas[0].pagada, true)
+  assert.equal(creditoDisponible(row.pagos), 0)
+  // Anular el pago: la cuota vuelve a pendiente, sin ajuste.
+  const plan = structuredClone(row.plan_de_cuotas)
+  plan.cuotasPagadas = []
+  const r = await patch({ pagos: [], planDeCuotas: plan, _planEsperado: structuredClone(row.plan_de_cuotas), _pagosEsperados: structuredClone(row.pagos) })
+  assert.equal(r.status, 200)
+  assert.equal(row.plan_de_cuotas.cuotas[0].ajusteCobro, undefined)
+  assert.equal(row.plan_de_cuotas.cuotas[0].pagada, false)
+})
+test("servidor: un ajuste que no coincide con el pago se rechaza", async () => {
+  reset()
+  const body = cobro(1, { monto: 105000, neto: 105000 }, "aj2")
+  body.planDeCuotas.cuotas[0].ajusteCobro = 3000
+  const r = await patch(body)
+  assert.equal(r.status, 409)
+  assert.match((await r.json()).error, /no coincide/)
+})
