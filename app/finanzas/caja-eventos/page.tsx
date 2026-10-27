@@ -116,6 +116,7 @@ import { useCajaEventos, calcularCajaEventos } from "@/lib/hooks/use-caja-evento
 import { pagarServicioComoSueldo, revertirServicioPagadoComoSueldo, saldoEsperaSeña } from "@/lib/servicio-sueldo"
 import { fechaHabilitacionSeña, señaBloqueada } from "@/lib/candado-senas"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
+import { mesEsperadoCobro } from "@/lib/mes-cobro"
 import { DetalleDashboardDialog, type FilaDetalle, type SeccionDetalle } from "../caja-jazmines/detalle-dashboard"
 import {
   AvisoSeñaBloqueada,
@@ -1123,13 +1124,14 @@ useStore()
   }
 
   function armarDetalleEv(tipo: TipoDetalleEv) {
-    const ingresosMes = ingresosPendientes.filter((i) => i.fechaVencimiento.slice(0, 7) === mesKeyActual)
+    // Las cuotas atrasadas de meses anteriores también se esperan este mes (lib/mes-cobro.ts).
+    const ingresosMes = ingresosPendientes.filter((i) => mesEsperadoCobro(i.fechaVencimiento, mesKeyActual) === mesKeyActual)
     const egresosMes = egresosPendientes.filter((e) => e.fechaVencimiento.slice(0, 7) === mesKeyActual)
     const nombreMes = mesActualLabel
     if (tipo === "ingresoMes") {
       return {
         titulo: "Ingreso mensual",
-        descripcion: `Cuotas que vencen en ${nombreMes} y faltan cobrar: la parte que entra a Caja Eventos (costo del evento + 5 %).`,
+        descripcion: `Cuotas que vencen en ${nombreMes} o ya vencieron y faltan cobrar: la parte que entra a Caja Eventos (costo del evento + 5 %).`,
         secciones: [
           { titulo: "Ya vencidas, sin cobrar", signo: 1 as const, filas: ingresosMes.filter((i) => i.esVencida).map(filaIngreso), vacio: "Ninguna vencida." },
           { titulo: "Por vencer este mes", signo: 1 as const, filas: ingresosMes.filter((i) => !i.esVencida).map(filaIngreso), vacio: "Nada más por vencer este mes." },

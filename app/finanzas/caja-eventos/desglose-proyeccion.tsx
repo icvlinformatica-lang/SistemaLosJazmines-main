@@ -85,11 +85,11 @@ function DetalleCobrar({ mesLabel, d }: { mesLabel: string; d: DesgloseCobrarMes
       <Encabezado
         icono={<ArrowDownToLine className="h-4 w-4 text-emerald-600" />}
         titulo={`A cobrar · ${mesLabel}`}
-        ayuda="Parte de Caja Eventos de las cuotas que vencen este mes."
+        ayuda="Parte de Caja Eventos: lo que entró este mes (aunque la cuota fuera de otro mes) y lo que falta cobrar, con las cuotas atrasadas."
       />
       <Resumen
         filas={[
-          { label: "Debía ingresar", valor: d.debiaIngresar },
+          { label: "Total del mes", valor: d.debiaIngresar },
           { label: "Ya ingresó", valor: d.yaIngreso, className: "text-emerald-700" },
           { label: "Falta cobrar", valor: d.falta, destacado: true },
         ]}
