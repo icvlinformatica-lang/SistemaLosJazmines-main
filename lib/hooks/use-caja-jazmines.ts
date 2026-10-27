@@ -62,6 +62,13 @@ export interface GastoVariable {
   carpeta?: string
   /** Quién cargó el gasto (Diego, Leila, Ricky, Aylin, Salón, Soporte). Vacío en gastos viejos. */
   cargadoPor?: string
+  /**
+   * Solo para mostrar en la carpeta: el nombre tal como se cargó (`nombre`
+   * le suma el reparto), las notas y el reparto entre salones.
+   */
+  concepto?: string
+  notas?: string
+  reparto?: { salon: string; porcentaje: number }[]
   /** Detalle de la comisión: quién comisionó, sobre qué evento y con qué % */
   comisionDetalle?: {
     vendedor: string
@@ -596,6 +603,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     // ----------------------------------------------------------
     const gastosVariables: GastoVariable[] = costosVariablesStore
       .map((c) => {
+        const original = costosOriginales.get(c.id)
         const fechaVenc = c.fechaVencimiento
           ? parseLocalDate(c.fechaVencimiento)
           : null
@@ -617,6 +625,11 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
           estado,
           carpeta: c.categoria || "varios",
           cargadoPor: c.cargadoPor || undefined,
+          concepto: original?.concepto ?? c.concepto,
+          notas: c.notas || undefined,
+          reparto: (original?.distribucion || [])
+            .filter((d) => d && d.salon && d.porcentaje > 0)
+            .map((d) => ({ salon: d.salon, porcentaje: d.porcentaje })),
         } as GastoVariable
       })
 
