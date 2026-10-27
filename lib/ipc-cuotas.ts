@@ -1,5 +1,5 @@
 import type { EventoGuardado, HistorialIPCEntry, PagoEvento } from "./store"
-import { estadoDeCuota, objetivoCuota, saldoRestanteCuota, type EstadoCuota } from "./estado-cuotas"
+import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota } from "./estado-cuotas"
 
 export type EventoIPC = Pick<EventoGuardado, "planDeCuotas" | "pagos"> & { estado?: string }
 export interface CalculoIPC {
@@ -125,12 +125,6 @@ function netoHistorico(pago: PagoEvento): number | null {
  *   pasó a oficial, toma el oficial).
  * Lo ya cobrado no se recalcula: la base es siempre montoCuota de la cuota
  * pagada, que quedó fija al cobrarla.
- *
- * Monto a cobrar elegido (pedido del dueño, 27/10/2026: "calcula lo
- * sugerido en base al último monto cobrado"): si la cuota se cobró por otro
- * monto que el sugerido (ajusteCobro), la base es lo cobrado
- * (objetivoCuota). Si en el mismo período ya hay una cuota cobrada con
- * ajuste, la siguiente vale lo que se cobró en la última de ese período.
  */
 export function calcularIPCPeriodo(
   evento: EventoIPC,
@@ -157,12 +151,11 @@ export function calcularIPCPeriodo(
   const periodo = periodoCuota(objetivo?.fechaVencimiento, mesCobro)
 
   // Cadena de bases. Con pagos parciales, una cuota puede tener varios
-  // pagos: la base para la cuota SIGUIENTE es siempre la cifra ya fijada de
-  // esta cuota (cuota.montoCuota más su ajusteCobro, si se cobró por otro
-  // monto), nunca la suma de lo efectivamente acreditado (ni el saldo a
-  // favor). netoHistorico(pago) solo sirve de resguardo para datos viejos
-  // sin detalle de cuotas[].
-  const acreditados: Array<{ numero: number; fecha: string; periodo: string; neto: number; ajustada: boolean; ipc?: CalculoIPC }> = []
+  // pagos: la base para la cuota SIGUIENTE es siempre la cifra OFICIAL ya
+  // fijada de esta cuota (cuota.montoCuota), nunca la suma de lo
+  // efectivamente acreditado (ni el saldo a favor). netoHistorico(pago) solo
+  // sirve de resguardo para datos viejos sin detalle de cuotas[].
+  const acreditados: Array<{ numero: number; fecha: string; periodo: string; neto: number; ipc?: CalculoIPC }> = []
   for (const numero of pagadas) {
     const cuota = plan.cuotas?.find(c => c.numero === numero)
     const pagosCuota = pagos
@@ -173,30 +166,20 @@ export function calcularIPCPeriodo(
     // El primer pago cronológico es el que fija la base oficial de la cuota.
     const primerPago = pagosCuota[0]?.pago
     const fechaFijacion = fechaValida(primerPago?.fecha ?? cuota?.fechaPagoReal)
-    const ajustada = cuota?.montoCuota != null && Number.isFinite(cuota.ajusteCobro) && Math.abs(cuota.ajusteCobro!) > 0.005
-    const neto = cuota?.montoCuota != null ? objetivoCuota(cuota) : (primerPago ? netoHistorico(primerPago) : cuota?.montoPagadoNeto)
+    const neto = cuota?.montoCuota ?? (primerPago ? netoHistorico(primerPago) : cuota?.montoPagadoNeto)
     if (!fechaFijacion || !Number.isFinite(neto) || neto! <= 0) return pendiente(`Falta acreditar el importe sin mora o la fecha real de la cuota ${numero}. No se modifican las pendientes.`)
     // Ningún pago acreditado contra esta cuota puede ser posterior a la fecha elegida.
     const fechaMasNueva = pagosCuota.at(-1)?.fecha ?? fechaFijacion
     if (fechaMasNueva > dia) return pendiente("Hay pagos posteriores a la fecha elegida. Revisá la fecha antes de cobrar.")
     acreditados.push({
       numero, fecha: fechaFijacion, periodo: periodoCuota(cuota?.fechaVencimiento, fechaFijacion.slice(0, 7)),
-      neto: neto!, ajustada, ipc: primerPago?.calculoIPC ?? cuota?.calculoIPC,
+      neto: neto!, ipc: primerPago?.calculoIPC ?? cuota?.calculoIPC,
     })
   }
 
   // Ya hay una cuota cobrada para este mismo período: vale lo mismo, con el índice de hoy.
   const delPeriodo = acreditados.filter(p => p.periodo === periodo).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero)
   const primeroDelPeriodo = delPeriodo[0]
-  // Con una cuota del período cobrada por otro monto: vale lo cobrado en la
-  // última de este período (sin IPC: el mes ya está ajustado).
-  const ultimaDelPeriodo = delPeriodo.at(-1)
-  if (ultimaDelPeriodo && delPeriodo.some(p => p.ajustada)) {
-    return { estado: "listo", calculo: {
-      version: "vencimiento-v2", periodo, base: ultimaDelPeriodo.neto, origen: "pago", cuotaOrigen: ultimaDelPeriodo.numero,
-      porcentaje: 0, monto: Math.round(ultimaDelPeriodo.neto), aplicadoEsteMes: true, meses: [],
-    } }
-  }
   if (primeroDelPeriodo) {
     const foto = primeroDelPeriodo.ipc
     if (!foto || (foto.version !== "ultima-cuota-v1" && foto.version !== "vencimiento-v2") || foto.periodo !== periodo) {
