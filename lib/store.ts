@@ -243,6 +243,12 @@ export interface Evento {
       saldoDecision?: import("./estado-cuotas").DecisionSaldoCuota
       /** Si ese saldo pendiente sigue generando IPC/interés o queda congelado. */
       recargoSaldo?: import("./estado-cuotas").RecargoSaldoCuota
+      /**
+       * Diferencia entre lo que se decidió cobrar y lo sugerido (redondeo o
+       * descuento), fijada en el primer pago. La cuota se completa con
+       * montoCuota + ajusteCobro; montoCuota no cambia. Ver lib/estado-cuotas.ts.
+       */
+      ajusteCobro?: number
     }>
   }
 }
@@ -257,6 +263,8 @@ export interface PagoEvento {
   saldoAFavor?: number
   /** Saldo a favor de pagos anteriores que se usó en esta cuota (no es efectivo de hoy). */
   creditoAplicado?: number
+  /** Monto a cobrar elegido menos el sugerido (solo en el primer pago de la cuota): queda en cuota.ajusteCobro. */
+  ajusteCuota?: number
   calculoIPC?: import("./ipc-cuotas").CalculoIPC
   id: string
   monto: number

@@ -120,7 +120,7 @@ export function validarSaldoAFavor(
   const cuotaNueva = plan.cuotas?.find((c) => c.numero === numero)
   if (!cuotaNueva) return conSaldo.length ? "Cuota inválida." : null
   const cuotaAntes = actual.planDeCuotas?.cuotas?.find((c) => c.numero === numero)
-  const saldoCuota = saldoRestanteCuota({ montoCuota: cuotaNueva.montoCuota, montoPagadoNeto: cuotaAntes?.montoPagadoNeto ?? 0 })
+  const saldoCuota = saldoRestanteCuota({ montoCuota: cuotaNueva.montoCuota, montoPagadoNeto: cuotaAntes?.montoPagadoNeto ?? 0, ajusteCobro: cuotaNueva.ajusteCobro })
 
   const credito = num(pago.creditoAplicado)
   const esperado = redondear(Math.max(0, Math.min(disponibleAntes, saldoCuota)))

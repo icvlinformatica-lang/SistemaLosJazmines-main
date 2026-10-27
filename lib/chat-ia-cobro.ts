@@ -449,11 +449,14 @@ export function armarCobroDesdePropuesta(
     calculo = resuelto.calculo
   }
   const acumuladoVigente = cuotaVigente?.montoPagadoNeto ?? 0
-  if (n.neto > saldoRestanteCuota({ montoCuota: montoOficial, montoPagadoNeto: acumuladoVigente }) + 0.01) {
+  // El saldo de una cuota que se empezó a cobrar con otro monto que el
+  // sugerido (ajusteCobro) se completa con ese monto. El chat no crea ajustes.
+  const ajusteVigente = n.esSaldoDeCuota ? (cuotaVigente?.ajusteCobro ?? 0) : 0
+  if (n.neto > saldoRestanteCuota({ montoCuota: montoOficial, montoPagadoNeto: acumuladoVigente, ajusteCobro: ajusteVigente }) + 0.01) {
     return { ok: false, motivo: `El monto supera lo que falta de la cuota. ${otraVez}` }
   }
   const acumuladoNuevo = redondear(acumuladoVigente + n.neto)
-  const quedaCompleta = acumuladoNuevo >= montoOficial - 0.01
+  const quedaCompleta = acumuladoNuevo >= montoOficial + ajusteVigente - 0.01
 
   const notaBase = n.esSaldoDeCuota
     ? `Cuota ${numero}/${n.totalCuotas} (saldo pendiente)`
