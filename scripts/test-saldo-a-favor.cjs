@@ -182,3 +182,25 @@ test("servidor: no se anula un pago cuyo excedente ya se usó", async () => {
   assert.match((await r.json()).error, /ya se usó/)
   assert.equal(row.pagos.length, 2)
 })
+
+// ---------- Botón rápido de Caja Eventos (construirCobroCuota) ----------
+
+test("servidor: el botón rápido de Caja Eventos deja el pago en el evento y su ingreso en las cajas, una sola vez", async () => {
+  reset()
+  const { construirCobroCuota } = require("../lib/cobrar-cuota.ts")
+  const evento = { id: row.id, salon: row.salon, estado: row.estado, pagos: [], planDeCuotas: structuredClone(row.plan_de_cuotas) }
+  const r = construirCobroCuota(evento, 1, 102000, undefined, [], undefined, history())
+  assert.equal(r.error, undefined)
+  const body = { ...r.planUpdate, _planEsperado: structuredClone(row.plan_de_cuotas), _pagosEsperados: [],
+    _operacionCobro: r.movimientos.map(m => m.id).join(":"), _movimientosCobro: r.movimientos }
+  assert.equal((await patch(body)).status, 200)
+  assert.equal(row.pagos.length, 1)
+  assert.equal(row.pagos[0].numeroCuota, 1); assert.equal(row.pagos[0].monto, 102000)
+  assert.equal(row.plan_de_cuotas.cuotas[0].pagada, true)
+  // Sin salón con costos, todo va a una caja; con costos se reparte en dos filas.
+  assert.ok(ledger.length >= 1 && ledger.length <= 2)
+  // Reintento de la misma operación (fetchWithRetry): no duplica ni el pago ni la caja.
+  const filas = ledger.length
+  assert.equal((await patch(body)).status, 200)
+  assert.equal(row.pagos.length, 1); assert.equal(ledger.length, filas)
+})
