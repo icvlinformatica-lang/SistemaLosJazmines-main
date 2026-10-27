@@ -2,7 +2,8 @@
 
 // Columna "Contado en salones" de /admin/almacen (cocina) y /admin/barra:
 // conteo físico que cargan los salones en /stock (tabla stock_salones).
-// SOLO LECTURA y solo para Administración / Soporte. Es independiente de la
+// SOLO LECTURA y solo para Administración / Soporte (y Cocina en Vajilla y
+// utensilios, ver puedeVerStockSector). Es independiente de la
 // columna Stock (stock_actual global), que no se toca: son dos números
 // distintos a propósito y no hay que igualarlos.
 
@@ -12,7 +13,7 @@ import { useStore } from "@/lib/store-context"
 import { salonColor, salonLabel } from "@/lib/store"
 import {
   fechaHoraCortaArgentina,
-  puedeVerConsolidado,
+  puedeVerStockSector,
   type ResumenStockInsumo,
   type SectorStock,
 } from "@/lib/stock-salones"
@@ -32,7 +33,7 @@ interface StockContado {
 
 export function useStockContadoSalones(sector: SectorStock): StockContado {
   const { perfilActivo } = useProfile()
-  const permitido = puedeVerConsolidado(perfilActivo?.id)
+  const permitido = puedeVerStockSector(perfilActivo?.id, sector)
   const [salones, setSalones] = useState<Array<{ id: string; nombre: string }>>([])
   const [porInsumo, setPorInsumo] = useState<Map<string, ResumenStockInsumo>>(new Map())
   const [error, setError] = useState(false)

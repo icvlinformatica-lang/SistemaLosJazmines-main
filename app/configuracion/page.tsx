@@ -32,7 +32,7 @@ import { StockSesionDetalleDialog } from "@/components/stock-sesion-detalle-dial
 
 type ActivityEntry = {
   id: string
-  tipo: "insumo" | "insumo_barra" | "insumo_limpieza" | "receta" | "coctel" | "evento" | "stock_sesion"
+  tipo: "insumo" | "insumo_barra" | "insumo_limpieza" | "insumo_vajilla" | "receta" | "coctel" | "evento" | "stock_sesion"
   accion: "creado" | "eliminado" | "modificado" | "planificado"
   nombre: string
   detalle?: string
@@ -43,6 +43,7 @@ const TIPO_LABELS: Record<string, string> = {
   insumo: "Insumo",
   insumo_barra: "Insumo Barra",
   insumo_limpieza: "Insumo Limpieza",
+  insumo_vajilla: "Vajilla y utensilios",
   receta: "Receta",
   coctel: "Coctel",
   evento: "Evento",
@@ -75,6 +76,7 @@ const TIPO_ICON: Record<string, React.ReactNode> = {
   insumo: <Package className="h-4 w-4 text-amber-600" />,
   insumo_barra: <Wine className="h-4 w-4 text-purple-600" />,
   insumo_limpieza: <SprayCan className="h-4 w-4 text-cyan-600" />,
+  insumo_vajilla: <UtensilsCrossed className="h-4 w-4 text-orange-600" />,
   receta: <ChefHat className="h-4 w-4 text-emerald-600" />,
   coctel: <Wine className="h-4 w-4 text-rose-600" />,
   evento: <CalendarCheck className="h-4 w-4 text-sky-600" />,

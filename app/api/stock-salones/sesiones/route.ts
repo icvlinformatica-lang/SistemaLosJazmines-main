@@ -7,7 +7,7 @@ import {
   salonesConfigurados,
   fechaHoraCortaArgentina,
 } from "@/lib/stock-salones-server"
-import { sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
+import { sectorConStockActual, sectoresPermitidos, type SectorStock } from "@/lib/stock-salones"
 
 /**
  * GET ?salon=Casona&sector=barra — historial de cargas de ese salón y sector
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
  * body: {
  *   sesionId: string (uuid generado por la pantalla al empezar la carga)
  *   salon: string
- *   sector: "cocina" | "barra" | "limpieza"
+ *   sector: "cocina" | "barra" | "limpieza" | "vajilla"
  *   cargadoPor: string (nombre tipeado al iniciar, obligatorio)
  *   iniciadaEn?: string (ISO)
  *   items: { insumoId: string, cantidad: number }[]
@@ -64,7 +64,8 @@ export async function GET(req: Request) {
  * Se puede cargar en cualquier momento y sin PIN (pedido del dueño,
  * 15/10/2026: cada carga es una sesión con fecha y el historial se ve en
  * /stock). Solo el perfil que carga ese sector: Cocina cocina, Barra barra,
- * Mantenimiento limpieza, Administración y Soporte los tres.
+ * Mantenimiento limpieza, Cocina también vajilla y utensilios,
+ * Administración y Soporte todos.
  *
  * El rótulo de la sesión lo decide el SERVIDOR: si hay un evento terminado
  * pendiente de carga en ese salón y sector, queda atada a ese evento
@@ -155,7 +156,9 @@ export async function POST(req: Request) {
       ? await sql`SELECT id, descripcion, unidad FROM insumos WHERE id = ANY(${ids})`
       : sector === "barra"
         ? await sql`SELECT id, descripcion, unidad FROM insumos_barra WHERE id = ANY(${ids})`
-        : await sql`SELECT id, descripcion, unidad FROM insumos_limpieza WHERE id = ANY(${ids})`) as unknown as Array<{
+        : sector === "limpieza"
+          ? await sql`SELECT id, descripcion, unidad FROM insumos_limpieza WHERE id = ANY(${ids})`
+          : await sql`SELECT id, descripcion, unidad FROM insumos_vajilla WHERE id = ANY(${ids})`) as unknown as Array<{
       id: string
       descripcion: string
       unidad: string | null
@@ -238,9 +241,9 @@ export async function POST(req: Request) {
       // Un salón sin fila no aporta nada a la suma: "nadie contó acá" pesa
       // como 0. Es correcto desde la migración inicial, que le dio a cada
       // insumo su fila en Casona.
-      // Limpieza no tiene stock_actual: su total se suma en vivo de
-      // stock_salones (ver scripts/026_stock_limpieza.sql).
-      for (const it of sector === "limpieza" ? [] : itemsBody) {
+      // Limpieza y vajilla no tienen stock_actual: su total se suma en vivo
+      // de stock_salones (ver scripts/026 y 028).
+      for (const it of sectorConStockActual(sector) ? itemsBody : []) {
         const total = (await tx`
           SELECT COALESCE(SUM(cantidad), 0) AS total FROM stock_salones
           WHERE insumo_tipo = ${sector} AND insumo_id = ${it.insumoId}

@@ -1,5 +1,5 @@
 // Ajuste del stock de UN insumo en varios salones, desde el lapicito de
-// Almacén (cocina), Almacén de Barra o Insumos Limpieza. Lógica pura (sin base ni React) para
+// Almacén (cocina), Almacén de Barra, Insumos Limpieza o Vajilla y utensilios. Lógica pura (sin base ni React) para
 // poder probarla en scripts/test-stock-ajuste-almacen.cjs.
 //
 // Por dentro es lo mismo que una carga de la pantalla de Stock: cada salón
@@ -8,7 +8,7 @@
 // stock_salones y el Stock total del insumo pasa a ser la suma de los
 // salones. Ver app/api/stock-salones/ajuste/route.ts.
 
-export type SectorAjuste = "cocina" | "barra" | "limpieza"
+export type SectorAjuste = "cocina" | "barra" | "limpieza" | "vajilla"
 
 export interface ItemAjuste {
   salon: string
@@ -31,7 +31,7 @@ const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function validarAjusteAlmacen(body: unknown, salonesValidos: Set<string>): ResultadoValidacion {
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>
   const sector = b.sector
-  if (sector !== "cocina" && sector !== "barra" && sector !== "limpieza") return { ok: false, error: "Sector inválido" }
+  if (sector !== "cocina" && sector !== "barra" && sector !== "limpieza" && sector !== "vajilla") return { ok: false, error: "Sector inválido" }
   const insumoId = typeof b.insumoId === "string" ? b.insumoId.trim() : ""
   if (!insumoId) return { ok: false, error: "Falta el insumo" }
   const crudos = Array.isArray(b.items) ? b.items : []
