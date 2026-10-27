@@ -2,7 +2,9 @@
 
 // Diálogo "Costos a revisar": encuentra los insumos cuyo costo está mal
 // calculado porque la receta los pide en gramos o cc y ellos se compran por
-// unidad, sin que nadie haya cargado cuánto trae esa unidad.
+// unidad, sin que nadie haya cargado cuánto trae esa unidad. También las
+// recetas y cócteles que piden una unidad de otra familia que la del insumo
+// (cc de algo que se compra por kilo): esas se corrigen en la receta.
 //
 // Se puede resolver desde acá mismo (cargar el contenido arregla de una vez
 // todas las recetas que usan ese insumo), cerrarlo para ir a mirar algo, y
@@ -21,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast"
 import { ContenidoPorUnidadInput } from "@/components/contenido-por-unidad-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { InsumoConProblema, InsumoPendiente } from "@/lib/diagnostico-costos"
+import type { InsumoConProblema, InsumoPendiente, UnidadCruzada } from "@/lib/diagnostico-costos"
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
@@ -171,6 +173,60 @@ function FilaInsumo({
   )
 }
 
+/** Cómo se lee la unidad del insumo en el cartel: "por kilo", "por botella de 1000 grs". */
+function unidadDelInsumo(c: UnidadCruzada): string {
+  const u = c.unidadInsumo
+  if (u === "KG") return "por kilo"
+  if (u === "L" || u === "LT") return "por litro"
+  if (u === "GRS" || u === "GR") return "en gramos"
+  if (u === "CC") return "en cc"
+  if (u === "UN") return c.contenidoUnidad ? `por unidad, con el contenido en ${c.contenidoUnidad === "GRS" ? "gramos" : "cc"}` : "por unidad"
+  return `en ${u.toLowerCase()}`
+}
+
+/** Unidades que sí se pueden usar en la receta para ese insumo. */
+function unidadesQueSirven(c: UnidadCruzada): string {
+  const u = c.unidadInsumo
+  if (u === "KG" || u === "GRS" || u === "GR") return "GRS o KG"
+  if (u === "L" || u === "LT" || u === "CC") return "CC o L"
+  if (u === "UN") return c.contenidoUnidad === "GRS" ? "UN, GRS o KG" : c.contenidoUnidad === "CC" ? "UN, CC o L" : "UN"
+  return u
+}
+
+/**
+ * Una receta o cóctel que pide el insumo en una unidad que no se puede pasar
+ * a la del insumo. No hay nada que cargar acá: se corrige la unidad en la
+ * receta (Recetario o Cócteles).
+ */
+function FilaCruzada({ cruzada }: { cruzada: UnidadCruzada }) {
+  const pantalla = cruzada.sector === "barra" ? "Cócteles" : "Recetario"
+  return (
+    <div className={`rounded-lg border p-3 ${cruzada.urgente ? "border-red-300 bg-red-50/50" : "border-border"}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-semibold text-sm">{cruzada.contenedorNombre}</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          {cruzada.sector === "barra" ? "Barra" : "Cocina"}
+        </span>
+        {cruzada.urgente && (
+          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">Urgente</span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mt-1">
+        Pide <strong>{cruzada.cantidadPedida} {cruzada.unidadPedida}</strong> de{" "}
+        <strong>{cruzada.insumoDescripcion}</strong>, que se compra {unidadDelInsumo(cruzada)}. No se puede convertir,
+        así que cuenta {cruzada.cantidadPedida} {cruzada.unidadInsumo.toLowerCase()}.
+      </p>
+      <p className="text-xs mt-1">
+        <span className="text-red-700 font-medium">Hoy cobra {fmt(cruzada.costoActual)}</span>
+        <span className="text-muted-foreground"> por {cruzada.sector === "barra" ? "trago" : "persona"}</span>
+      </p>
+      <p className="text-xs text-muted-foreground mt-1">
+        Corregilo en <strong>{pantalla}</strong>: abrí {cruzada.contenedorNombre} y pedí {cruzada.insumoDescripcion} en{" "}
+        {unidadesQueSirven(cruzada)}.
+      </p>
+    </div>
+  )
+}
 
 /**
  * Un insumo que todavía no da un costo mal, pero al que le falta el dato.
@@ -244,6 +300,7 @@ function FilaPendiente({ insumo, onResuelto }: { insumo: InsumoPendiente; onResu
 export function CostosARevisar({ pantalla }: { pantalla: "recetario" | "almacen" | "cocteles" | "barra" }) {
   const [insumos, setInsumos] = useState<InsumoConProblema[]>([])
   const [pendientes, setPendientes] = useState<InsumoPendiente[]>([])
+  const [cruzadas, setCruzadas] = useState<UnidadCruzada[]>([])
   const [cargando, setCargando] = useState(true)
   const [abierto, setAbierto] = useState(false)
 
@@ -254,7 +311,9 @@ export function CostosARevisar({ pantalla }: { pantalla: "recetario" | "almacen"
       if (data?.ok) {
         setInsumos(data.insumos || [])
         setPendientes(data.pendientes || [])
-        const hayAlgo = (data.insumos || []).length > 0 || (data.pendientes || []).length > 0
+        setCruzadas(data.cruzadas || [])
+        const hayAlgo =
+          (data.insumos || []).length > 0 || (data.pendientes || []).length > 0 || (data.cruzadas || []).length > 0
         if (abrirSiHay && hayAlgo && !yaSeAbrioHoy(pantalla)) {
           setAbierto(true)
           marcarAbiertoHoy(pantalla)
@@ -271,9 +330,11 @@ export function CostosARevisar({ pantalla }: { pantalla: "recetario" | "almacen"
     traer(true)
   }, [traer])
 
-  if (cargando || (insumos.length === 0 && pendientes.length === 0)) return null
+  if (cargando || (insumos.length === 0 && pendientes.length === 0 && cruzadas.length === 0)) return null
 
-  const urgentes = insumos.filter((i) => i.urgente).length
+  const urgentes = insumos.filter((i) => i.urgente).length + cruzadas.filter((c) => c.urgente).length
+  // Lo que hoy da costos mal: insumos sin contenido y recetas con la unidad cruzada.
+  const malos = insumos.length + cruzadas.length
 
   return (
     <>
@@ -284,14 +345,14 @@ export function CostosARevisar({ pantalla }: { pantalla: "recetario" | "almacen"
         className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
           urgentes > 0
             ? "border-red-300 bg-red-50 text-red-800 hover:bg-red-100"
-            : insumos.length > 0
+            : malos > 0
               ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
               : "border-border bg-muted/50 text-muted-foreground hover:bg-muted"
         }`}
       >
         <AlertTriangle className="h-4 w-4" />
-        {insumos.length > 0
-          ? `${insumos.length} ${insumos.length === 1 ? "costo a revisar" : "costos a revisar"}`
+        {malos > 0
+          ? `${malos} ${malos === 1 ? "costo a revisar" : "costos a revisar"}`
           : `${pendientes.length} ${pendientes.length === 1 ? "insumo a completar" : "insumos a completar"}`}
       </button>
 
@@ -314,6 +375,12 @@ export function CostosARevisar({ pantalla }: { pantalla: "recetario" | "almacen"
               Cargá cuánto trae cada uno y se arregla solo. Podés cerrar esto, ir a mirar la receta, y volver con el
               botón &quot;costos a revisar&quot;.
             </p>
+            {cruzadas.length > 0 && (
+              <p className="mt-1.5">
+                Además hay recetas que piden un insumo en una unidad que <strong>no se puede convertir</strong> (cc de
+                algo que se compra por kilo). Esas se corrigen cambiando la unidad en la receta o el cóctel.
+              </p>
+            )}
           </div>
 
           {urgentes > 0 && (
@@ -323,13 +390,13 @@ export function CostosARevisar({ pantalla }: { pantalla: "recetario" | "almacen"
             </p>
           )}
 
-          <Tabs defaultValue={insumos.length > 0 ? "problemas" : "pendientes"} className="flex-1 flex flex-col min-h-0">
+          <Tabs defaultValue={malos > 0 ? "problemas" : "pendientes"} className="flex-1 flex flex-col min-h-0">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="problemas">
                 Dan costos mal
-                {insumos.length > 0 && (
+                {malos > 0 && (
                   <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
-                    {insumos.length}
+                    {malos}
                   </span>
                 )}
               </TabsTrigger>
@@ -344,16 +411,21 @@ export function CostosARevisar({ pantalla }: { pantalla: "recetario" | "almacen"
             </TabsList>
 
             <TabsContent value="problemas" className="flex-1 overflow-y-auto space-y-2 -mx-1 px-1 mt-3">
-              {insumos.length === 0 ? (
+              {malos === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center">
                   <CheckCircle2 className="h-8 w-8 text-emerald-600 mb-2" />
                   <p className="text-sm font-medium">No hay costos mal calculados</p>
                   <p className="text-xs text-muted-foreground mt-0.5">Todas las recetas están calculando bien.</p>
                 </div>
               ) : (
-                insumos.map((i) => (
-                  <FilaInsumo key={`${i.sector}-${i.insumoId}`} insumo={i} onResuelto={() => traer(false)} />
-                ))
+                <>
+                  {cruzadas.map((c) => (
+                    <FilaCruzada key={`${c.sector}-${c.contenedorId}-${c.insumoId}`} cruzada={c} />
+                  ))}
+                  {insumos.map((i) => (
+                    <FilaInsumo key={`${i.sector}-${i.insumoId}`} insumo={i} onResuelto={() => traer(false)} />
+                  ))}
+                </>
               )}
             </TabsContent>
 
