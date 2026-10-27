@@ -199,3 +199,56 @@ test("escribir y releer da lo mismo", () => {
     assert.deepEqual(otraVez, guardado, `${cant} ${uni} no sobrevivió el ida y vuelta`)
   }
 })
+
+// ─── Unidades de otra familia (la lima del Daiquiri, 27/10/2026) ─────────
+
+const { detectarUnidadesCruzadas, detectarProblemas: detectar } = require(path.join(RAIZ, "lib/diagnostico-costos.ts"))
+const { convertirAUnidadDeStock, normalizeToStockUnit } = require(path.join(RAIZ, "lib/unidades.ts"))
+
+const LIMA = { id: "lima", descripcion: "LIMA", unidad: "KG", precioUnitario: 6000 }
+const ALMIBAR = { id: "almibar", descripcion: "ALMIBAR", unidad: "UN", precioUnitario: 3000, contenidoCantidad: 1000, contenidoUnidad: "GRS" }
+const GIN_CON_CONTENIDO = { id: "gin", descripcion: "GIN GORDON´S 700", unidad: "UN", precioUnitario: 20571, contenidoCantidad: 700, contenidoUnidad: "CC" }
+const ARVEJAS_SIN_CONTENIDO = { id: "arvejas", descripcion: "ARVEJAS", unidad: "UN", precioUnitario: 1000 }
+
+test("cc de algo que se compra por kilo no se puede convertir", () => {
+  assert.equal(convertirAUnidadDeStock(30, "CC", "KG", null), null)
+  assert.equal(convertirAUnidadDeStock(30, "GRS", "KG", null), 0.03, "30 gramos son 0,03 kilos")
+  assert.equal(convertirAUnidadDeStock(15, "CC", "UN", { cantidad: 1000, unidad: "GRS" }), null, "almíbar en gramos pedido en cc")
+  assert.equal(convertirAUnidadDeStock(60, "CC", "UN", { cantidad: 700, unidad: "CC" }), 60 / 700)
+  // normalizeToStockUnit sigue igual: sin conversión deja la cantidad tal cual.
+  const warn = console.warn
+  console.warn = () => {}
+  try {
+    assert.equal(normalizeToStockUnit(30, "CC", "KG", null), 30)
+  } finally {
+    console.warn = warn
+  }
+})
+
+test("el Daiquiri que pide la lima en cc sale como unidad cruzada", () => {
+  const lineas = [
+    { contenedorId: "daiquiri", contenedorNombre: "DAIQUIRI", insumoId: "lima", cantidad: 30, unidadPedida: "CC" },
+    { contenedorId: "mojito", contenedorNombre: "MOJITO", insumoId: "lima", cantidad: 30, unidadPedida: "GRS" },
+    { contenedorId: "daiquiri", contenedorNombre: "DAIQUIRI", insumoId: "almibar", cantidad: 15, unidadPedida: "CC" },
+    { contenedorId: "martini", contenedorNombre: "MARTINI", insumoId: "gin", cantidad: 60, unidadPedida: "CC" },
+    { contenedorId: "ensalada", contenedorNombre: "ENSALADA", insumoId: "arvejas", cantidad: 30, unidadPedida: "GRS" },
+  ]
+  const cruzadas = detectarUnidadesCruzadas("barra", lineas, [LIMA, ALMIBAR, GIN_CON_CONTENIDO, ARVEJAS_SIN_CONTENIDO])
+  assert.deepEqual(cruzadas.map((c) => `${c.contenedorNombre}/${c.insumoDescripcion}`), ["DAIQUIRI/LIMA", "DAIQUIRI/ALMIBAR"])
+  const lima = cruzadas[0]
+  assert.equal(lima.costoActual, 180000, "30 'kilos' de lima a $6.000 por trago")
+  assert.equal(lima.impactoEstimado, 18000000, "en un evento de 100 adultos")
+  assert.equal(lima.urgente, false)
+  assert.equal(cruzadas[1].contenidoUnidad, "GRS")
+  // Las arvejas sin contenido no se repiten: ya las lista detectarProblemas.
+  assert.deepEqual(detectar("barra", lineas, [LIMA, ALMIBAR, GIN_CON_CONTENIDO, ARVEJAS_SIN_CONTENIDO]).map((p) => p.insumoId), ["arvejas"])
+})
+
+test("sin unidad pedida o con la misma unidad no hay nada cruzado", () => {
+  const lineas = [
+    { contenedorId: "a", contenedorNombre: "A", insumoId: "lima", cantidad: 1, unidadPedida: "KG" },
+    { contenedorId: "b", contenedorNombre: "B", insumoId: "lima", cantidad: 1, unidadPedida: undefined },
+    { contenedorId: "c", contenedorNombre: "C", insumoId: "otro", cantidad: 1, unidadPedida: "CC" },
+  ]
+  assert.deepEqual(detectarUnidadesCruzadas("cocina", lineas, [LIMA]), [])
+})
