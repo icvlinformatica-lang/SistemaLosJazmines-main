@@ -2461,6 +2461,45 @@ function EventoPageContent() {
                       </tr>
                     )
                   })}
+
+                  {/* Servicios guardados en el evento que ya no están en el
+                      catálogo (borrados o desactivados): la lista de arriba
+                      sale del catálogo y no los mostraba, pero siguen
+                      contando en Costos del evento y Caja Eventos. Solo con
+                      el catálogo cargado de la base: si falló la carga, todos
+                      parecerían borrados. */}
+                  {serviciosSincronizados && serviciosFueraCatalogo.map((sf) => (
+                    <tr key={`fuera-${sf.servicioId}`} className="border-b border-amber-200 bg-amber-50">
+                      <td className="w-10 px-1.5 py-2.5 text-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-amber-700 hover:text-destructive hover:bg-amber-100"
+                          disabled={sf.tienePagos}
+                          title={sf.tienePagos ? "Tiene pagos en Caja Eventos: deshacelos ahí para poder quitarlo" : "Quitar del evento"}
+                          aria-label={`Quitar ${sf.nombre} del evento`}
+                          onClick={() =>
+                            updateEventoActual({ servicios: quitarServicioFueraDeCatalogo(serviciosEvento, sf.servicioId) })
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="font-medium text-amber-900">{sf.nombre}</span>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Servicio borrado, sin vigencia
+                          {sf.tienePagos && " · tiene pagos en Caja Eventos"}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2.5 hidden sm:table-cell" />
+                      <td className="px-3 py-2.5 text-right tabular-nums text-amber-800">
+                        {formatCurrency(sf.costoGuardado)}
+                        <span className="block text-[11px] text-amber-700">costo cargado</span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
 
                 {/* Footer: resumen seleccionados */}
@@ -2487,55 +2526,6 @@ function EventoPageContent() {
             </div>
           )}
 
-          {/* Servicios guardados en el evento que ya no están en el catálogo
-              (borrados o desactivados): la tabla de arriba no los muestra,
-              pero siguen contando en Costos del evento y Caja Eventos. Solo
-              con el catálogo cargado de la base: si falló la carga, todos
-              parecerían "fuera del catálogo". */}
-          {serviciosSincronizados && serviciosFueraCatalogo.length > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                <p className="text-sm text-amber-900">
-                  {serviciosFueraCatalogo.length === 1
-                    ? "Este servicio ya no está en el catálogo, pero sigue cargado en el evento y cuenta en sus costos."
-                    : "Estos servicios ya no están en el catálogo, pero siguen cargados en el evento y cuentan en sus costos."}
-                </p>
-              </div>
-              {serviciosFueraCatalogo.map((sf) => (
-                <div
-                  key={sf.servicioId}
-                  className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-background px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{sf.nombre}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Costo cargado: {formatCurrency(sf.costoGuardado)}
-                      {sf.tienePagos && " · tiene pagos en Caja Eventos"}
-                    </p>
-                  </div>
-                  {sf.tienePagos ? (
-                    <span className="shrink-0 text-xs text-muted-foreground text-right">
-                      Deshacé el pago en Caja Eventos para quitarlo
-                    </span>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 gap-1.5 bg-transparent"
-                      onClick={() =>
-                        updateEventoActual({ servicios: quitarServicioFueraDeCatalogo(serviciosEvento, sf.servicioId) })
-                      }
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Quitar
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </SectionCard>
 
         {/* ==================== CONTRATO SECTION ==================== */}
