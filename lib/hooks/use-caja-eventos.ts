@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { calcularComprasBarras, calcularComprasSegmentadas, calcularMontoPersonalDelEvento, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
 import { calcularProporcionCajaEventos } from "../cobrar-cuota"
 import { estadoDeCuota, saldoRestanteCuota } from "../estado-cuotas"
+import { mesEsperadoCobro } from "../mes-cobro"
 import { montoSueldoServicio, sePagaComoSueldo } from "../servicio-sueldo"
 import { pagosMenuProveedor, pendienteMenuSinProveedoresPagos, totalPagosMenuProveedor } from "../pago-menu-proveedor"
 
@@ -549,8 +550,10 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
       })
     }
 
+    // Una cuota atrasada de un mes anterior se sigue esperando: suma al mes
+    // actual (lib/mes-cobro.ts), no a un mes que ya no está en la tabla.
     for (const ing of ingresosPendientes) {
-      const key = ing.fechaVencimiento.slice(0, 7)
+      const key = mesEsperadoCobro(ing.fechaVencimiento, mesActualKey)
       const idx = indexPorKey[key]
       if (idx !== undefined) meses[idx].aCobrar += ing.monto
     }

@@ -102,19 +102,64 @@ test("octubre: lo cobrado sale del movimiento real de Caja Eventos y la cuota si
   assert.deepEqual({ monto: c.monto, sinMov: c.sinMovimiento, fecha: c.fechaCobro }, { monto: 105000, sinMov: true, fecha: undefined })
   // B está completado: ni su cuota ni su movimiento cuentan
   assert.equal(oct.cobrados.some((x) => x.eventoId === "B"), false)
-  assert.equal(oct.yaIngreso, 355000)
-  assert.equal(oct.debiaIngresar, 355000)
+  // El parcial de la cuota 2 (vence en noviembre) se cobró el 5/10: cuenta en octubre.
+  const a2 = oct.cobrados.find((x) => x.eventoId === "A" && x.numeroCuota === 2)
+  assert.deepEqual({ monto: a2.monto, fecha: a2.fechaCobro }, { monto: 100000, fecha: "2026-10-05" })
+  assert.equal(oct.yaIngreso, 455000)
+  assert.equal(oct.debiaIngresar, 455000)
 })
 
-test("noviembre: cuota con pago parcial aparece en lo que ya entró y en lo que falta", () => {
+test("noviembre: de la cuota con pago parcial queda lo que falta; lo cobrado figura en el mes en que entró", () => {
   const { porMes, proyeccion } = desglose(state())
   const nov = porMes["2026-11"].cobrar
-  assert.deepEqual(nov.cobrados.map((c) => [c.eventoId, c.numeroCuota, c.monto, c.sinMovimiento]), [["A", 2, 100000, false]])
+  assert.deepEqual(nov.cobrados, [])
   assert.deepEqual(nov.pendientes.map((p) => [p.eventoId, p.numeroCuota, p.parcial, p.vencida, p.cliente]), [["A", 2, true, false, "Ana Pérez"]])
   const prop = calcularProporcionCajaEventos(eventoA, { insumos: [], insumosBarra: [], recetas: [], cocteles: [], servicios: [DJ, FOTO] })
   assert.equal(nov.falta, 600000 * prop)
   assert.equal(nov.falta, proyeccion.find((m) => m.key === "2026-11").aCobrar)
-  assert.equal(nov.debiaIngresar, Math.round((100000 + 600000 * prop) * 100) / 100)
+  assert.equal(nov.debiaIngresar, Math.round(600000 * prop * 100) / 100)
+})
+
+// Pedido del dueño (27/10/2026): una cuota de agosto cobrada en septiembre es
+// ingreso de septiembre, y una cuota atrasada sin cobrar se espera este mes.
+test("cuota atrasada: sin cobrar suma al mes actual; cobrada después cuenta en el mes en que entró", () => {
+  const eventoD = {
+    ...base, id: "D", nombre: "Boda Ruiz", salon: "Salon", fecha: "2027-03-10", estado: "pendiente", servicios: [], costoOperativo: 2000000,
+    planDeCuotas: { montoTotal: 3000000, numeroCuotas: 3, cuotasPagadas: [], cuotas: [
+      { numero: 1, montoCuota: 1000000, fechaVencimiento: "2026-08-10" },
+      { numero: 2, montoCuota: 1000000, fechaVencimiento: "2026-09-10" },
+      { numero: 3, montoCuota: 1000000, fechaVencimiento: "2026-12-10" },
+    ] },
+  }
+  const prop = calcularProporcionCajaEventos(eventoD)
+  // costo $2.000.000 más el 5 %, sobre $3.000.000 = 70 %
+  assert.equal(prop, 0.7)
+  // Hoy 6/10 nada cobrado: agosto y septiembre (vencidas) se esperan en octubre.
+  let r = desglose(state({ eventos: [eventoD], movimientosCaja: [] }))
+  let oct = r.porMes["2026-10"].cobrar
+  assert.deepEqual(oct.pendientes.map((p) => [p.numeroCuota, p.vencida]), [[1, true], [2, true]])
+  assert.equal(oct.falta, 1400000)
+  assert.equal(r.proyeccion[0].aCobrar, 1400000)
+  assert.equal(r.proyeccion.find((m) => m.key === "2026-12").aCobrar, 700000)
+
+  // La cuota 1 (de agosto) se cobra el 5/10: figura como ingreso de octubre.
+  const cobrada = {
+    ...eventoD,
+    pagos: [{ id: "p1", numeroCuota: 1, monto: 1000000, fecha: "2026-10-05", pagadoPor: "X", porcentajeIPC: 0 }],
+    planDeCuotas: { ...eventoD.planDeCuotas, cuotasPagadas: [1], cuotas: eventoD.planDeCuotas.cuotas.map((c) => c.numero === 1 ? { ...c, pagada: true, montoPagadoNeto: 1000000 } : c) },
+  }
+  const movs = [{ id: "d1", fecha: fechaISO("2026-10-05"), tipo: "ingreso", concepto: "Cuota 1 #p1 - Boda Ruiz (Caja Eventos)", monto: 700000, salon: "Salon", eventoId: "D", cajaDestino: "caja_eventos", saldoResultante: 0 }]
+  r = desglose(state({ eventos: [cobrada], movimientosCaja: movs }))
+  oct = r.porMes["2026-10"].cobrar
+  assert.deepEqual(oct.cobrados.map((c) => [c.numeroCuota, c.monto, c.fechaCobro]), [[1, 700000, "2026-10-05"]])
+  assert.deepEqual(oct.pendientes.map((p) => p.numeroCuota), [2])
+  assert.equal(oct.falta, 700000)
+  assert.equal(oct.debiaIngresar, 1400000)
+
+  // Sin movimiento en la caja: va al mes del pago registrado, con el monto estimado.
+  r = desglose(state({ eventos: [cobrada], movimientosCaja: [] }))
+  const sinMov = r.porMes["2026-10"].cobrar.cobrados
+  assert.deepEqual(sinMov.map((c) => [c.numeroCuota, c.monto, c.sinMovimiento]), [[1, 700000, true]])
 })
 
 test("a pagar: seña pagada con el monto real del movimiento; DJ pagado sin movimiento se marca; saldo pendiente en falta", () => {
