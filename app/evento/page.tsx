@@ -122,6 +122,7 @@ import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
 import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
 import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
 import { salonesOcupadosEnFecha } from "@/lib/salones-ocupados"
+import { quitarServicioFueraDeCatalogo, serviciosFueraDeCatalogo } from "@/lib/servicios-fuera-catalogo"
 
 function EventoPageContent() {
   const router = useRouter()
@@ -131,7 +132,7 @@ function EventoPageContent() {
   const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
-  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores, serviciosSincronizados } = useStore()
   // Lo contado en cada salón, para calcular las compras contra el stock del
   // salón del evento en vez del total de los cinco.
   const stockSalones = useStockPorSalon()
@@ -1338,6 +1339,7 @@ function EventoPageContent() {
   const costoTotalMateriaPrima = compras.reduce((sum, c) => sum + c.costoMateriaPrima, 0) + comprasBarras.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
   const presupuestoCompra = compras.reduce((sum, c) => sum + c.costoEstimado, 0) + comprasBarras.reduce((sum, c) => sum + c.costoEstimado, 0)
   const serviciosEvento = evento.servicios || []
+  const serviciosFueraCatalogo = serviciosFueraDeCatalogo(serviciosEvento, catalogoServicios || [])
   const costoServicios = costoPaquetesOficial > 0 ? costoPaquetesOficial : calcularCostoServicios(serviciosEvento, state)
   const costoOperativo = calcularCostosOperativos(evento, costosOperativos || [])
 
@@ -2485,7 +2487,55 @@ function EventoPageContent() {
             </div>
           )}
 
-
+          {/* Servicios guardados en el evento que ya no están en el catálogo
+              (borrados o desactivados): la tabla de arriba no los muestra,
+              pero siguen contando en Costos del evento y Caja Eventos. Solo
+              con el catálogo cargado de la base: si falló la carga, todos
+              parecerían "fuera del catálogo". */}
+          {serviciosSincronizados && serviciosFueraCatalogo.length > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                <p className="text-sm text-amber-900">
+                  {serviciosFueraCatalogo.length === 1
+                    ? "Este servicio ya no está en el catálogo, pero sigue cargado en el evento y cuenta en sus costos."
+                    : "Estos servicios ya no están en el catálogo, pero siguen cargados en el evento y cuentan en sus costos."}
+                </p>
+              </div>
+              {serviciosFueraCatalogo.map((sf) => (
+                <div
+                  key={sf.servicioId}
+                  className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-background px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{sf.nombre}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Costo cargado: {formatCurrency(sf.costoGuardado)}
+                      {sf.tienePagos && " · tiene pagos en Caja Eventos"}
+                    </p>
+                  </div>
+                  {sf.tienePagos ? (
+                    <span className="shrink-0 text-xs text-muted-foreground text-right">
+                      Deshacé el pago en Caja Eventos para quitarlo
+                    </span>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 gap-1.5 bg-transparent"
+                      onClick={() =>
+                        updateEventoActual({ servicios: quitarServicioFueraDeCatalogo(serviciosEvento, sf.servicioId) })
+                      }
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Quitar
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </SectionCard>
 
         {/* ==================== CONTRATO SECTION ==================== */}
