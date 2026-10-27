@@ -162,6 +162,12 @@ test("cobro conserva suma exacta y liga ambos movimientos al ID del evento", () 
   const result = construirCobroCuota(evento("a"), 1, 500, "2026-09-15", [])
   assert.equal(result.movimientos.reduce((sum, m) => sum + m.monto, 0), 500)
   assert.ok(result.movimientos.every((m) => m.eventoId === "a" && m.salon === "Quinta"))
+  // El cobro rápido deja su pago en el evento, y sus movimientos llevan el id del pago
+  // (así, anularlo en Cobrar cuota borra exactamente esos movimientos).
+  const [pago] = result.planUpdate.pagos
+  assert.equal(result.planUpdate.pagos.length, 1)
+  assert.equal(pago.monto, 500); assert.equal(pago.numeroCuota, 1); assert.equal(pago.montoCuotaNeto, 500)
+  assert.ok(result.movimientos.every((m) => m.concepto.startsWith(`Cuota 1 #${pago.id.slice(0, 8)} - `)))
   const reparto = repartirEntreCajas(123.45, 0.33333)
   assert.equal(Math.round((reparto.montoEventos + reparto.montoJazmines) * 100), 12345)
 })

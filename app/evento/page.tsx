@@ -117,10 +117,12 @@ import {
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
 import { ContratoPreviewCard } from "@/components/contrato-preview-card"
+import { cambiosAlImprimirContrato, motivoParaNoImprimir } from "@/lib/generacion-contrato"
 import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
 import { EventoCambiosPanel, detectarCambiosEvento } from "@/components/evento-cambios-panel"
 import { buildVersionContratoHTML, buildContratoEnVivoHTML } from "@/lib/contract-html"
 import { salonesOcupadosEnFecha } from "@/lib/salones-ocupados"
+import { quitarServicioFueraDeCatalogo, serviciosFueraDeCatalogo } from "@/lib/servicios-fuera-catalogo"
 
 function EventoPageContent() {
   const router = useRouter()
@@ -130,7 +132,7 @@ function EventoPageContent() {
   const fromContratos = searchParams?.get("from") === "contratos"
   const { toast } = useToast()
   
-  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores } = useStore()
+  const { state, loading, setEventoActual, updateEventoActual, updateInsumo, updateInsumoBarra, addEventoHistorial, updateEvento, addEvento, eventos, servicios: catalogoServicios, costosOperativos, preciosVenta, paquetesSalones, configuracionCajas, movimientosCaja, addMovimientosCaja, personal, vendedores, serviciosSincronizados } = useStore()
   // Lo contado en cada salón, para calcular las compras contra el stock del
   // salón del evento en vez del total de los cinco.
   const stockSalones = useStockPorSalon()
@@ -248,6 +250,24 @@ function EventoPageContent() {
   // Cerrar o recargar la pestaña con cambios sin guardar: el navegador pide
   // confirmación (no deja poner un texto propio, muestra el suyo).
   const hayCambiosSinGuardar = isEditing && cambiosEnCurso.length > 0
+
+  // El contrato se imprime solo con el evento guardado, y cada impresión
+  // queda anotada en el evento (como en la Lista). Antes la vista previa
+  // dejaba imprimir lo que se estaba escribiendo sin guardarlo, y en el
+  // sistema no quedaba ni el evento ni la impresión.
+  const puedeImprimirContrato = () => {
+    const motivo = motivoParaNoImprimir(cambiosEnCurso.length, originalEvento, evento as EventoGuardado | null)
+    if (motivo) {
+      toast({ title: "Primero guardá el evento", description: motivo, variant: "destructive" })
+      return false
+    }
+    return true
+  }
+  const anotarImpresionContrato = () => {
+    const guardado = editingEventoId ? (state.eventos || []).find((e) => e.id === editingEventoId) : undefined
+    if (!guardado) return
+    void updateEvento(guardado.id, cambiosAlImprimirContrato(guardado, "planificador", state.pagosPersonal || []))
+  }
   useEffect(() => {
     if (!hayCambiosSinGuardar) return
     const avisar = (e: BeforeUnloadEvent) => {
@@ -1319,6 +1339,7 @@ function EventoPageContent() {
   const costoTotalMateriaPrima = compras.reduce((sum, c) => sum + c.costoMateriaPrima, 0) + comprasBarras.reduce((sum, c) => sum + c.costoMateriaPrima, 0)
   const presupuestoCompra = compras.reduce((sum, c) => sum + c.costoEstimado, 0) + comprasBarras.reduce((sum, c) => sum + c.costoEstimado, 0)
   const serviciosEvento = evento.servicios || []
+  const serviciosFueraCatalogo = serviciosFueraDeCatalogo(serviciosEvento, catalogoServicios || [])
   const costoServicios = costoPaquetesOficial > 0 ? costoPaquetesOficial : calcularCostoServicios(serviciosEvento, state)
   const costoOperativo = calcularCostosOperativos(evento, costosOperativos || [])
 
@@ -1464,6 +1485,8 @@ function EventoPageContent() {
             }
             plegada={idx > 0}
             alturaPreview={idx === 0 ? 420 : 340}
+            puedeImprimir={puedeImprimirContrato}
+            alImprimir={anotarImpresionContrato}
           />
         ))
       )}
@@ -1480,6 +1503,8 @@ function EventoPageContent() {
         html={htmlContratoEnVivo || "<!DOCTYPE html><html><body></body></html>"}
         alturaPreview={520}
         acento="#b45309"
+        puedeImprimir={puedeImprimirContrato}
+        alImprimir={anotarImpresionContrato}
       />
     </>
   ) : null
@@ -2436,6 +2461,45 @@ function EventoPageContent() {
                       </tr>
                     )
                   })}
+
+                  {/* Servicios guardados en el evento que ya no están en el
+                      catálogo (borrados o desactivados): la lista de arriba
+                      sale del catálogo y no los mostraba, pero siguen
+                      contando en Costos del evento y Caja Eventos. Solo con
+                      el catálogo cargado de la base: si falló la carga, todos
+                      parecerían borrados. */}
+                  {serviciosSincronizados && serviciosFueraCatalogo.map((sf) => (
+                    <tr key={`fuera-${sf.servicioId}`} className="border-b border-amber-200 bg-amber-50">
+                      <td className="w-10 px-1.5 py-2.5 text-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-amber-700 hover:text-destructive hover:bg-amber-100"
+                          disabled={sf.tienePagos}
+                          title={sf.tienePagos ? "Tiene pagos en Caja Eventos: deshacelos ahí para poder quitarlo" : "Quitar del evento"}
+                          aria-label={`Quitar ${sf.nombre} del evento`}
+                          onClick={() =>
+                            updateEventoActual({ servicios: quitarServicioFueraDeCatalogo(serviciosEvento, sf.servicioId) })
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="font-medium text-amber-900">{sf.nombre}</span>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Servicio borrado, sin vigencia
+                          {sf.tienePagos && " · tiene pagos en Caja Eventos"}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2.5 hidden sm:table-cell" />
+                      <td className="px-3 py-2.5 text-right tabular-nums text-amber-800">
+                        {formatCurrency(sf.costoGuardado)}
+                        <span className="block text-[11px] text-amber-700">costo cargado</span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
 
                 {/* Footer: resumen seleccionados */}
@@ -2461,7 +2525,6 @@ function EventoPageContent() {
               </table>
             </div>
           )}
-
 
         </SectionCard>
 

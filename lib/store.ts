@@ -243,6 +243,12 @@ export interface Evento {
       saldoDecision?: import("./estado-cuotas").DecisionSaldoCuota
       /** Si ese saldo pendiente sigue generando IPC/interés o queda congelado. */
       recargoSaldo?: import("./estado-cuotas").RecargoSaldoCuota
+      /**
+       * Diferencia entre lo que se decidió cobrar y lo sugerido (redondeo o
+       * descuento), fijada en el primer pago. La cuota se completa con
+       * montoCuota + ajusteCobro; montoCuota no cambia. Ver lib/estado-cuotas.ts.
+       */
+      ajusteCobro?: number
     }>
   }
 }
@@ -253,6 +259,12 @@ export interface PagoEvento {
   numeroCuota?: number
   montoCuotaNeto?: number
   montoMora?: number
+  /** Lo que sobró de este pago después de completar la cuota: queda a favor para la próxima (lib/saldo-a-favor.ts). */
+  saldoAFavor?: number
+  /** Saldo a favor de pagos anteriores que se usó en esta cuota (no es efectivo de hoy). */
+  creditoAplicado?: number
+  /** Monto a cobrar elegido menos el sugerido (solo en el primer pago de la cuota): queda en cuota.ajusteCobro. */
+  ajusteCuota?: number
   calculoIPC?: import("./ipc-cuotas").CalculoIPC
   id: string
   monto: number
@@ -708,8 +720,8 @@ export interface GeneracionContrato {
   id: string
   /** ISO timestamp de cuando se genero/imprimio */
   fecha: string
-  /** Desde donde se genero: pantalla de contratos, generador de evento, o lista de eventos */
-  origen: "contratos" | "generador" | "lista"
+  /** Desde donde se genero: pantalla de contratos, generador de evento, lista de eventos, calendario o vista previa del planificador */
+  origen: "contratos" | "generador" | "lista" | "calendario" | "planificador"
   /** Numero de version del contrato vigente al momento de generar (si existia) */
   version?: number
   /** Cantidad de personal asignado incluido en el contrato generado */

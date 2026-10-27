@@ -20,6 +20,7 @@ import {
   type PagoEvento,
 } from "@/lib/store"
 import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
+import { cambiosAlImprimirContrato } from "@/lib/generacion-contrato"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX, ANIO_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { useToast } from "@/hooks/use-toast"
 import { SalonDot } from "@/components/salon-badge"
@@ -1734,6 +1735,14 @@ export default function CalendarioPage() {
                           state.pagosPersonal || [],
                           state.barrasTemplates || [],
                           state.cocteles || [],
+                        )
+                        // Que la impresión quede anotada, como en la Lista. Con
+                        // el evento del store: selectedEvento es una copia que
+                        // no ve las impresiones anteriores de esta misma ventana.
+                        const guardado = (eventosTodos || []).find((e) => e.id === selectedEvento.id) ?? selectedEvento
+                        void updateEvento(
+                          guardado.id,
+                          cambiosAlImprimirContrato(guardado, "calendario", state.pagosPersonal || []),
                         )
                       }}
                     >

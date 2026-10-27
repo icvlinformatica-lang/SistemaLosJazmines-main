@@ -6,6 +6,9 @@ import { logActivity } from "@/lib/activity-logger"
 import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEventoAlEditar, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
+import { validarSaldoAFavor } from "@/lib/saldo-a-favor"
+import { validarAjustesCobro } from "@/lib/ajuste-cobro"
+import { objetivoCuota } from "@/lib/estado-cuotas"
 import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
 import { decidirFechaAlta } from "@/lib/fecha-alta"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
@@ -192,11 +195,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
               const pagosRestantes = updates.pagos.filter((p: any) => numeroCuotaPago(p) === c.numero)
               if (!pagosRestantes.length) {
                 // No queda ningún pago contra esta cuota: se libera del todo, incluida su cifra oficial.
-                const { fechaPagoReal, montoPagadoNeto, calculoIPC, saldoDecision, recargoSaldo, ...resto } = c
+                const { fechaPagoReal, montoPagadoNeto, calculoIPC, saldoDecision, recargoSaldo, ajusteCobro, ...resto } = c
                 return { ...resto, pagada: false, estado: "pendiente" }
               }
               const acumulado = Math.round(pagosRestantes.reduce((s: number, p: any) => s + (p.montoCuotaNeto ?? 0), 0) * 100) / 100
-              const pagada = acumulado >= c.montoCuota - 0.01
+              const pagada = acumulado >= objetivoCuota(c) - 0.01
               return {
                 ...c, montoPagadoNeto: acumulado, pagada, estado: pagada ? "pagada" : "parcial",
                 ...(pagada ? { saldoDecision: undefined, recargoSaldo: undefined } : {}),
@@ -209,6 +212,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         delete updates.planDeCuotas.ipcVigente
       }
     }
+
+    // Saldo a favor (lib/saldo-a-favor.ts), para eventos con y sin IPC: el
+    // excedente de un pago se descuenta en la cuota siguiente y nunca puede
+    // quedar negativo (por ejemplo, al anular el pago que lo generó).
+    // Ajuste de cobro (lib/ajuste-cobro.ts): cobrar otro monto que el sugerido, solo en esa cuota.
+    const errorAjuste = validarAjustesCobro(actual, updates)
+    if (errorAjuste) return NextResponse.json({ error: errorAjuste }, { status: 409 })
+
+    const errorSaldoAFavor = validarSaldoAFavor(actual, updates)
+    if (errorSaldoAFavor) return NextResponse.json({ error: errorSaldoAFavor }, { status: 409 })
 
     // Cuota(s) tocadas por pagos NUEVOS en esta operación (cubre tanto una
     // cuota que recién recibe su primer pago como una cuota ya "parcial" que
@@ -228,7 +241,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const pagosNuevos = pagosNuevosGlobal
       const cuota = updates.planDeCuotas?.cuotas?.find((c: any) => c.numero === cuotasTocadas[0])
       const total = pagosNuevos.length === 1 ? pagosNuevos[0].monto : cuota?.montoPagadoNeto
-      const valido = Array.isArray(movimientosCobro) && movimientosCobro.length > 0 && movimientosCobro.length <= 2 &&
+      // Una cuota que se cubre entera con saldo a favor no trae efectivo: no hay movimientos de caja.
+      const soloSaldoAFavor = pagosNuevos.length === 1 && total === 0 && (pagosNuevos[0].creditoAplicado ?? 0) > 0 &&
+        Array.isArray(movimientosCobro) && movimientosCobro.length === 0 && cuotasTocadas.length === 1
+      const valido = soloSaldoAFavor || Array.isArray(movimientosCobro) && movimientosCobro.length > 0 && movimientosCobro.length <= 2 &&
         cuotasTocadas.length === 1 && Number.isFinite(total) && total > 0 && typeof operacionCobro === "string" && operacionCobro.length <= 200 &&
         new Set(movimientosCobro.map((m: any) => m.cajaDestino)).size === movimientosCobro.length &&
         movimientosCobro.every((m: any) => typeof m.id === "string" && m.id.length > 0 && m.id.length <= 80 &&
@@ -237,7 +253,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           typeof m.fecha === "string" && Number.isFinite(Date.parse(m.fecha))) &&
         Math.abs(movimientosCobro.reduce((s: number, m: any) => s + m.monto, 0) - total) < 0.005
       if (!valido) return NextResponse.json({ error: "El total de caja debe coincidir con la cuota y su mora. Revisá el salón y los importes." }, { status: 400 })
-      updates.planDeCuotas.ultimaOperacionCobro = operacionCobro
+      if (operacionCobro) updates.planDeCuotas.ultimaOperacionCobro = operacionCobro
     }
 
     if ("fecha" in updates) {

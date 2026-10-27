@@ -15,6 +15,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
+import { convertirAUnidadDeStock } from "@/lib/unidades"
 import { BotonCrearBarra } from "@/components/editor-barra"
 import { useProfile } from "@/lib/profile-context"
 import { puedeEditarCocteles, puedeVerCostosCocteles } from "@/lib/cocteles-permisos"
@@ -415,6 +416,11 @@ export default function CoctelesPage() {
                         <div className="mb-4 flex flex-col gap-3">
                           {formData.insumos.map((ing, index) => {
                             const insumo = getInsumoBarraById(ing.insumoBarraId)
+                            // Unidad que no se puede pasar a la del insumo (cc de algo que se
+                            // compra por kilo): el costo cuenta la cantidad tal cual y se infla.
+                            const unidadCruzada =
+                              !!insumo &&
+                              convertirAUnidadDeStock(ing.cantidadPorCoctel, ing.unidadCoctel, insumo.unidad, contenidoDe(insumo)) === null
                             return (
                               <div key={index} className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
                                 <div className="flex-1">
@@ -422,6 +428,13 @@ export default function CoctelesPage() {
                                   <span className="ml-2 text-sm text-muted-foreground">
                                     {ing.cantidadPorCoctel} {ing.unidadCoctel || insumo?.unidad}
                                   </span>
+                                  {unidadCruzada && (
+                                    <p className="mt-1 text-xs font-medium text-red-700">
+                                      {ing.unidadCoctel} no se puede pasar a {insumo?.unidad}: el costo cuenta{" "}
+                                      {ing.cantidadPorCoctel} {insumo?.unidad.toLowerCase()} por trago. Borralo y volvé a
+                                      agregarlo en la unidad correcta.
+                                    </p>
+                                  )}
                                 </div>
                                 <Button
                                   variant="ghost"

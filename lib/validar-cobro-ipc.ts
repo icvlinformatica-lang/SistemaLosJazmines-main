@@ -60,17 +60,39 @@ export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuarda
     if (cuota.montoCuota !== calculo.monto) return "La cuota cambió. Actualizá el desglose antes de confirmar el cobro."
   }
 
-  const saldoRestante = saldoRestanteCuota({ montoCuota: calculo.monto, montoPagadoNeto: acumuladoPrevio })
+  // Ajuste de cobro (lib/estado-cuotas.ts): cobrar otro monto que el
+  // sugerido. Se fija con el primer pago de la cuota y después no cambia.
+  const ajusteEnviado = cuota.ajusteCobro ?? 0
+  const ajustePago = pago.ajusteCuota ?? 0
+  if (!Number.isFinite(ajusteEnviado) || !Number.isFinite(ajustePago)) return "El ajuste del monto a cobrar no es válido."
+  let ajuste: number
+  if (estadoPrevio === "parcial") {
+    ajuste = cuotaActual?.ajusteCobro ?? 0
+    if (ajustePago !== 0 || Math.abs(ajusteEnviado - ajuste) > TOLERANCIA_CENTAVOS) {
+      return "No se puede cambiar el monto a cobrar de una cuota que ya tiene pagos."
+    }
+  } else {
+    ajuste = Math.round(ajusteEnviado * 100) / 100
+    if (Math.abs(ajuste - ajustePago) > TOLERANCIA_CENTAVOS) return "El ajuste del pago no coincide con el de la cuota."
+    if (calculo.monto + ajuste <= 0) return "El monto a cobrar de la cuota tiene que ser mayor a cero."
+  }
+
+  const saldoRestante = saldoRestanteCuota({ montoCuota: calculo.monto, montoPagadoNeto: acumuladoPrevio, ajusteCobro: ajuste })
   const netoPago = pago.montoCuotaNeto
   if (!Number.isFinite(netoPago) || netoPago! <= 0) return "El pago no indica el neto de la cuota (sin mora)."
   if (netoPago! > saldoRestante + TOLERANCIA_CENTAVOS) return "El pago no puede superar el saldo pendiente de la cuota."
   // La mora nunca se paga en partes: siempre completa junto con la porción de cuota del día.
-  if (!Number.isFinite(pago.montoMora) || pago.montoMora! < 0 || pago.monto !== netoPago! + pago.montoMora!) {
+  // Con saldo a favor (lib/saldo-a-favor.ts) el efectivo puede ser más
+  // (sobra para la cuota siguiente) o menos (se usó saldo a favor) que la
+  // cuota más la mora; esa cuenta la controla validarSaldoAFavor.
+  const ajusteSaldo = (pago.saldoAFavor ?? 0) - (pago.creditoAplicado ?? 0)
+  if (!Number.isFinite(pago.montoMora) || pago.montoMora! < 0 || !Number.isFinite(ajusteSaldo) ||
+    (ajusteSaldo === 0 ? pago.monto !== netoPago! + pago.montoMora! : Math.abs(pago.monto - (netoPago! + pago.montoMora! + ajusteSaldo)) > TOLERANCIA_CENTAVOS)) {
     return "El importe debe separar cuota neta y mora."
   }
 
   const acumuladoNuevo = Math.round((acumuladoPrevio + netoPago!) * 100) / 100
-  const quedaCompleta = acumuladoNuevo >= calculo.monto - TOLERANCIA_CENTAVOS
+  const quedaCompleta = acumuladoNuevo >= calculo.monto + ajuste - TOLERANCIA_CENTAVOS
 
   if (!quedaCompleta) {
     // Con saldo pendiente, la decisión sobre qué pasa con ese resto es de
@@ -87,6 +109,8 @@ export function validarCobroIPC(actual: EventoIPC, updates: Partial<EventoGuarda
 
   cuota.calculoIPC = calculo
   cuota.montoCuota = calculo.monto
+  cuota.ajusteCobro = ajuste !== 0 ? ajuste : undefined
+  if (estadoPrevio !== "parcial") pago.ajusteCuota = ajuste !== 0 ? ajuste : undefined
   cuota.montoPagadoNeto = acumuladoNuevo
   cuota.fechaPagoReal = fecha
   cuota.pagada = quedaCompleta
