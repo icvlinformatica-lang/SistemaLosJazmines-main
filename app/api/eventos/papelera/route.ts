@@ -3,6 +3,7 @@ import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { logActivity } from "@/lib/activity-logger"
 import { soloAdministracion } from "@/lib/solo-administracion"
+import { filaPapeleraEvento } from "@/lib/papelera-eventos"
 
 // La papelera de eventos es solo de Administración y Soporte: trae los eventos
 // completos (con DNI y pagos) y vaciarla no tiene vuelta atrás desde la app.
@@ -18,15 +19,7 @@ export async function GET(req: Request) {
       FROM eventos_eliminados
       ORDER BY eliminado_at DESC
     `
-    return NextResponse.json(rows.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      fecha: r.fecha,
-      estado: r.estado,
-      motivo: r.motivo,
-      eliminadoAt: r.eliminado_at,
-      ...(r.evento_data || {}),
-    })))
+    return NextResponse.json(rows.map((r) => filaPapeleraEvento(r as Record<string, unknown>)))
   } catch (err) {
     console.error("[API] Error fetching papelera:", err)
     return NextResponse.json([])

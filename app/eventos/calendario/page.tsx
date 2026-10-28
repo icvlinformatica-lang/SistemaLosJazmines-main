@@ -1876,8 +1876,8 @@ export default function CalendarioPage() {
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
               Se elimina el evento
-              {selectedEvento && ` "${selectedEvento.nombre || selectedEvento.tipoEvento || ""}"`}. Va a la papelera: lo
-              podés recuperar desde Eventos → Papelera.
+              {selectedEvento && ` "${selectedEvento.nombre || selectedEvento.tipoEvento || ""}"`}. Pasa a Eventos →
+              Finalizados, pestaña Eliminados: de ahí lo podés restaurar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

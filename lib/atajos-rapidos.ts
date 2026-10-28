@@ -21,7 +21,7 @@ export const CATALOGO_ATAJOS: Atajo[] = [
   { href: "/eventos/costos", label: "Costos del evento", icono: "Calculator" },
   { href: "/eventos/cotizaciones", label: "Cotizaciones", icono: "FileText" },
   { href: "/eventos/vendedores", label: "Vendedores", icono: "Users" },
-  { href: "/eventos/finalizados", label: "Archivo de eventos", icono: "Archive" },
+  { href: "/eventos/finalizados", label: "Finalizados", icono: "Archive" },
   { href: "/eventos/produccion", label: "Guías de producción", icono: "ClipboardList" },
   { href: "/eventos/staff", label: "Próximos eventos", icono: "Calendar" },
   { href: "/admin/almacen", label: "Insumos Cocina", icono: "Warehouse" },

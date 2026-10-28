@@ -220,7 +220,7 @@ export const PANTALLAS_CHAT = {
   calendario: { etiqueta: "Calendario", href: "/eventos/calendario" },
   cobrar_cuota: { etiqueta: "Cobrar cuota", href: "/eventos/pagos" },
   cotizaciones: { etiqueta: "Cotizaciones", href: "/eventos/cotizaciones" },
-  archivo_eventos: { etiqueta: "Archivo de eventos", href: "/eventos/finalizados" },
+  archivo_eventos: { etiqueta: "Finalizados", href: "/eventos/finalizados" },
   caja_eventos: { etiqueta: "Caja Eventos", href: "/finanzas/caja-eventos" },
   caja_jazmines: { etiqueta: "Caja Jazmines", href: "/finanzas/caja-jazmines" },
   servicios: { etiqueta: "Servicios", href: "/finanzas/servicios" },

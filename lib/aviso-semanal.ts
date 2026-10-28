@@ -107,3 +107,12 @@ export function debeAbrirAviso(perfilId: string | undefined, lunesVisto: string 
   if (!perfilId || !PERFILES_AVISO_SEMANAL.includes(perfilId)) return false
   return lunesVisto !== lunesDeLaSemana(hoy)
 }
+
+/**
+ * Si el aviso puede ofrecer "Se suspendió, eliminar". Un evento con el stock
+ * ya descontado se manda a la Lista: ahí se elige si se devuelve el stock al
+ * borrarlo, y desde el aviso no hay que adivinarlo.
+ */
+export function puedeEliminarDesdeAviso(evento: { stockDescontado?: boolean }): boolean {
+  return !evento.stockDescontado
+}

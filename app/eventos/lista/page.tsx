@@ -1172,10 +1172,10 @@ export default function EventosListaPage() {
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">{syncing ? "Sincronizando..." : "Actualizar"}</span>
             </Button>
-            <Link href="/eventos/papelera">
+            <Link href="/eventos/finalizados?ver=eliminados">
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
                 <Archive className="h-4 w-4" />
-                <span className="hidden sm:inline">Papelera</span>
+                <span className="hidden sm:inline">Eliminados</span>
               </Button>
             </Link>
             <Button
@@ -1563,7 +1563,7 @@ export default function EventosListaPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              El evento va a la papelera: lo podés recuperar desde Eventos → Papelera.
+              El evento pasa a Eventos → Finalizados, pestaña Eliminados: de ahí lo podés restaurar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1749,7 +1749,7 @@ export default function EventosListaPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
-              El evento va a la papelera: lo podés recuperar desde Eventos → Papelera.
+              El evento pasa a Eventos → Finalizados, pestaña Eliminados: de ahí lo podés restaurar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {(() => {
