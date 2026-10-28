@@ -2,8 +2,9 @@
 --
 -- SOLO ADITIVA: crea una tabla nueva y amplía tres controles para aceptar un
 -- valor nuevo ('vajilla'). No modifica ni borra ninguna fila existente.
--- Sin aplicar todavía: la corre el dueño en el SQL Editor de Supabase ANTES
--- de publicar el código que la usa.
+-- Aplicada el 28/10/2026 (la corrió el dueño en el SQL Editor de Supabase;
+-- verificado en information_schema: tabla, RLS, sin permisos para anon ni
+-- authenticated y los tres controles con 'vajilla').
 --
 -- Pedido de Rodrigo (27/10/2026): llevar el inventario de lo que la cocina
 -- tiene guardado para trabajar (platos, cubiertos, tazas, ollas, sartenes,
