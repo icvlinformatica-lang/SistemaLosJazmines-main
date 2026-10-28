@@ -14,6 +14,9 @@ Module._resolveFilename = function (request, ...args) {
 require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText, filename)
+// Las rutas del cotizador piden la sesión del Vendedor (lib/permisos-escritura.ts).
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || "secreto-de-prueba"
+const { signToken } = require("../lib/auth/server.ts")
 
 // Platos del recetario (costo por porción; con 50 % de ganancia: $3.000, $6.000, $5.250 y $1.500).
 const PLATOS = [
@@ -63,16 +66,16 @@ const { POST: guardarCotizacion } = require("../app/api/vendedor/cotizaciones/ro
 const { POST: enviarDesdeLista } = require("../app/api/vendedor/cotizaciones/[id]/enviar/route.ts")
 Module._load = load
 
-function pedido(cuerpo) {
+async function pedido(cuerpo) {
   return new Request("http://local/api/vendedor/cotizaciones", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-lj-session": await signToken("vendedor") },
     body: JSON.stringify({ clienteNombre: "PRUEBA Cliente", salon: "Quinta", adultos: 70, ninos: 10, barraId: null, servicios: [], origenCliente: "instagram", ...cuerpo }),
   })
 }
 async function llamar(cuerpo) {
   consultas = []
-  const res = await guardarCotizacion(pedido(cuerpo))
+  const res = await guardarCotizacion(await pedido(cuerpo))
   return { status: res.status, body: await res.json() }
 }
 const desgloseGuardado = () => {
@@ -128,7 +131,7 @@ async function enviar(update, fila) {
   consultas = []
   respuestaUpdate = update
   filaSelect = fila
-  const res = await enviarDesdeLista(new Request("http://local/x", { method: "POST" }), { params: Promise.resolve({ id: "cot-1" }) })
+  const res = await enviarDesdeLista(new Request("http://local/x", { method: "POST", headers: { "x-lj-session": await signToken("vendedor") } }), { params: Promise.resolve({ id: "cot-1" }) })
   return { status: res.status, body: await res.json() }
 }
 

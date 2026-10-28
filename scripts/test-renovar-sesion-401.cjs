@@ -182,7 +182,8 @@ async function servidor(url, init = {}) {
 
   if (ruta.startsWith("/api/eventos/")) {
     ejecucionesPatch++
-    return PATCH(new Request(`http://localhost${ruta}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: init.body }), {
+    // La ruta recibe el pedido con su sesión, como detrás del middleware real.
+    return PATCH(new Request(`http://localhost${ruta}`, { method: "PATCH", headers: { "Content-Type": "application/json", "x-lj-session": token }, body: init.body }), {
       params: Promise.resolve({ id: "evento-test" }),
     })
   }

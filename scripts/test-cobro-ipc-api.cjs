@@ -11,6 +11,9 @@ Module._resolveFilename = function (request, ...args) {
 require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText, filename)
+// La ruta pide la sesión de quien cobra: Cobrar cuota (lib/permisos-escritura.ts).
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || "secreto-de-prueba"
+const { signToken } = require("../lib/auth/server.ts")
 const { fechaNegocio } = require("../lib/ipc-cuotas.ts")
 let row, ledger, failLedger, consultas, queue = Promise.resolve()
 const history = () => {
@@ -72,8 +75,8 @@ function payload(suffix = "a") {
       tipo: "ingreso", monto: 54000, fecha, cajaDestino, concepto: "Cuota de prueba" })),
   }
 }
-const patch = body => PATCH(new Request("http://localhost/api/eventos/evento-test", {
-  method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+const patch = async body => PATCH(new Request("http://localhost/api/eventos/evento-test", {
+  method: "PATCH", headers: { "Content-Type": "application/json", "x-lj-session": await signToken("cobro") }, body: JSON.stringify(body),
 }), { params: Promise.resolve({ id: "evento-test" }) })
 
 test("servidor confirma cuota, auditoría y dos movimientos en una transacción", async () => {

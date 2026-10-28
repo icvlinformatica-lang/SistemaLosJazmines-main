@@ -11,6 +11,10 @@ Module._resolveFilename = function (request, ...args) {
 require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText, filename)
+// La ruta pide la sesión de quien guarda (lib/permisos-escritura.ts): Cobrar
+// cuota, o Administración para el botón rápido de Caja Eventos.
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || "secreto-de-prueba"
+const { signToken } = require("../lib/auth/server.ts")
 const { fechaNegocio, calcularIPCPeriodo } = require("../lib/ipc-cuotas.ts")
 const { creditoDisponible, repartirPago, validarSaldoAFavor } = require("../lib/saldo-a-favor.ts")
 let row, ledger, failLedger, consultas, queue = Promise.resolve()
@@ -127,8 +131,8 @@ function cobro(numero, { monto, neto = 102000, saldoAFavor, creditoAplicado }, s
     _planEsperado: structuredClone(row.plan_de_cuotas), _pagosEsperados: structuredClone(row.pagos),
     _operacionCobro: movimientos.map(m => m.id).join(":"), _movimientosCobro: movimientos }
 }
-const patch = body => PATCH(new Request("http://localhost/api/eventos/evento-test", {
-  method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+const patch = async (body, perfil = "cobro") => PATCH(new Request("http://localhost/api/eventos/evento-test", {
+  method: "PATCH", headers: { "Content-Type": "application/json", "x-lj-session": await signToken(perfil) }, body: JSON.stringify(body),
 }), { params: Promise.resolve({ id: "evento-test" }) })
 
 test("servidor: se cobra más que la cuota, entra todo a caja y lo que sobra queda a favor", async () => {
@@ -193,7 +197,7 @@ test("servidor: el botón rápido de Caja Eventos deja el pago en el evento y su
   assert.equal(r.error, undefined)
   const body = { ...r.planUpdate, _planEsperado: structuredClone(row.plan_de_cuotas), _pagosEsperados: [],
     _operacionCobro: r.movimientos.map(m => m.id).join(":"), _movimientosCobro: r.movimientos }
-  assert.equal((await patch(body)).status, 200)
+  assert.equal((await patch(body, "administracion")).status, 200)
   assert.equal(row.pagos.length, 1)
   assert.equal(row.pagos[0].numeroCuota, 1); assert.equal(row.pagos[0].monto, 102000)
   assert.equal(row.plan_de_cuotas.cuotas[0].pagada, true)
@@ -201,7 +205,7 @@ test("servidor: el botón rápido de Caja Eventos deja el pago en el evento y su
   assert.ok(ledger.length >= 1 && ledger.length <= 2)
   // Reintento de la misma operación (fetchWithRetry): no duplica ni el pago ni la caja.
   const filas = ledger.length
-  assert.equal((await patch(body)).status, 200)
+  assert.equal((await patch(body, "administracion")).status, 200)
   assert.equal(row.pagos.length, 1); assert.equal(ledger.length, filas)
 })
 

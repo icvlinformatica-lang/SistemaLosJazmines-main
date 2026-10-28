@@ -7,6 +7,8 @@ import { sendEventNotification } from "@/lib/event-notifications"
 import { validarAnioEvento, mensajeAnioEventoInvalido } from "@/lib/validacion-anio-evento"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { camposStaffDesdeFila, columnasStaffParaGuardar } from "@/lib/eventos-campos-staff"
+import { tieneAccesoTotal } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 
 // camelCase → snake_case for DB insert/update
 function toRow(ev: Record<string, unknown>) {
@@ -188,6 +190,10 @@ export async function GET() {
 
 // POST — create new evento
 export async function POST(req: Request) {
+  // Crear eventos: solo Administración y Soporte (lib/permisos-escritura.ts).
+  // Aprobar una cotización llega acá con la sesión de quien aprueba.
+  const prohibido = await exigirPerfil(req, tieneAccesoTotal, "Solo Administración puede crear eventos.", "/api/eventos")
+  if (prohibido) return prohibido
   try {
     const body = await req.json()
     const id = body.id || generateId()

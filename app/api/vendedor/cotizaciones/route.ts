@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
+import { puedeEscribirCotizador, MOTIVO_COTIZADOR } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 import { sql } from "@/lib/db"
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { cotizarEnServidor } from "@/lib/cotizacion-servidor"
@@ -47,6 +49,10 @@ const jsonb = (valor: unknown) => sql.json(valor as Parameters<typeof sql.json>[
 class FaltaOrigen extends Error {}
 
 export async function POST(req: Request) {
+  // Escribir en el cotizador: el Vendedor, Administración y Soporte
+  // (lib/permisos-escritura.ts). Antes cualquier sesión podía.
+  const prohibido = await exigirPerfil(req, puedeEscribirCotizador, MOTIVO_COTIZADOR, "/api/vendedor/cotizaciones")
+  if (prohibido) return prohibido
   try {
     const body = ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>
     const { id, clienteNombre, clienteDni, tipoEvento, fechaEvento } = body

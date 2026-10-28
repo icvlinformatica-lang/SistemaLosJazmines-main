@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { tieneAccesoTotal } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 
 // en_cotizador (scripts/014) se lee con to_jsonb para no romper si la
 // migración todavía no se aplicó: en ese caso vale false.
@@ -26,7 +28,11 @@ export async function GET() {
 }
 
 // POST create new barra template
+// Las barras las arma Administración (Cócteles y el cotizador): Barra y el
+// resto de los perfiles solo las consultan (lib/permisos-escritura.ts).
 export async function POST(request: Request) {
+  const prohibido = await exigirPerfil(request, tieneAccesoTotal, "Solo Administración puede cambiar las barras.", "/api/barra-templates")
+  if (prohibido) return prohibido
   try {
     const body = await request.json()
     const id = generateId()

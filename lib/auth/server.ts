@@ -219,6 +219,40 @@ export async function verifyPaseAdmin(pase: string | undefined | null): Promise<
   return coincide(await hmac(datosPase(exp)), parts[2])
 }
 
+/**
+ * Pase de contrato (PR #359): Cobrar cuota abre el contrato de un evento
+ * con el PIN de Administración (/api/auth/verificar-pin). Hasta ahora eso lo
+ * controlaba solo la pantalla; desde ahora, al acertar el PIN, el servidor
+ * deja este pase en una cookie y PATCH /api/eventos/[id] solo acepta cambios
+ * del contrato de Cobrar cuota si la trae (lib/permisos-escritura.ts).
+ *
+ * - Dura 2 horas y es del perfil de la sesión que puso el PIN.
+ * - La firma incluye el PIN vigente de Administración: cambiar
+ *   PIN_ADMINISTRACION anula los pases. Cerrar sesión borra la cookie.
+ * - Se firma con un texto propio ("pase-contrato:…"): no sirve como sesión
+ *   ni como pase de Administración.
+ */
+export const PASE_CONTRATO_COOKIE = "lj_pase_contrato"
+export const PASE_CONTRATO_DURATION_MS = 1000 * 60 * 60 * 2 // 2 horas
+
+function datosPaseContrato(perfilId: string, exp: number): string {
+  return `pase-contrato:${perfilId}:${exp}:${getPins().administracion ?? ""}`
+}
+
+export async function signPaseContrato(perfilId: string, durationMs: number = PASE_CONTRATO_DURATION_MS): Promise<string> {
+  const exp = Date.now() + durationMs
+  return `pase-contrato.${exp}.${await hmac(datosPaseContrato(perfilId, exp))}`
+}
+
+export async function verifyPaseContrato(pase: string | undefined | null, perfilId: string | null | undefined): Promise<boolean> {
+  if (!pase || !perfilId) return false
+  const parts = pase.split(".")
+  if (parts.length !== 3 || parts[0] !== "pase-contrato") return false
+  const exp = Number(parts[1])
+  if (!Number.isFinite(exp) || Date.now() > exp) return false
+  return coincide(await hmac(datosPaseContrato(perfilId, exp)), parts[2])
+}
+
 export function sessionCookieOptions(maxAgeSeconds: number = SESSION_DURATION_MS / 1000) {
   return {
     httpOnly: true,

@@ -14,6 +14,8 @@ import { decidirFechaAlta } from "@/lib/fecha-alta"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
 import { soloAdministracion } from "@/lib/solo-administracion"
 import { camposStaffDesdeFila, columnasStaffParaGuardar } from "@/lib/eventos-campos-staff"
+import { revisarCambioEvento, tieneAccesoTotal } from "@/lib/permisos-escritura"
+import { exigirPerfil, rechazarEscritura, tienePaseContrato } from "@/lib/permisos-escritura-server"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -144,6 +146,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params
     const updates = await req.json()
+    // Permisos (lib/permisos-escritura.ts): Administración y Soporte guardan
+    // todo; Cobrar cuota, solo lo que mandan sus pantallas (el contrato, con
+    // el pase que deja el PIN de Administración); el resto de los perfiles, nada.
+    const perfil = await perfilDesdeRequest(req)
+    const paseContrato = !tieneAccesoTotal(perfil) && (await tienePaseContrato(req, perfil))
+    const permiso = revisarCambioEvento(perfil, updates, { paseContrato })
+    if (!permiso.ok) {
+      return rechazarEscritura(permiso.motivo, { perfil, metodo: "PATCH", ruta: "/api/eventos/[id]", campo: permiso.campo })
+    }
     return await sql.begin(async (tx) => {
     const db = tx as unknown as typeof sql
     const rows = await db`SELECT id, nombre, fecha, salon, plan_de_cuotas, pagos, estado, (to_jsonb(eventos) ->> 'fecha_alta') AS fecha_alta FROM eventos WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
@@ -375,6 +386,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 // PUT — full replace
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Reemplazar el evento entero: solo Administración y Soporte. Ninguna
+  // pantalla lo usa hoy (guardan con PATCH).
+  const prohibido = await exigirPerfil(req, tieneAccesoTotal, "Solo Administración puede reemplazar un evento.", "/api/eventos/[id]")
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const ev = await req.json()

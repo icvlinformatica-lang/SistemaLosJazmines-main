@@ -14,6 +14,9 @@ Module._resolveFilename = function (request, ...args) {
 require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText, filename)
+// Las rutas del cotizador piden la sesión del Vendedor (lib/permisos-escritura.ts).
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || "secreto-de-prueba"
+const { signToken } = require("../lib/auth/server.ts")
 
 const CONFIG = {
   salon: "Quinta", costoSalon: 1000000, capacidadMaxima: 130,
@@ -52,7 +55,7 @@ async function guardar(cuerpo) {
   consultas = []
   const res = await POST(new Request("http://local/api/vendedor/cotizaciones", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-lj-session": await signToken("vendedor") },
     body: JSON.stringify({ clienteNombre: "PRUEBA Cliente", salon: "Quinta", adultos: 50, ninos: 0, recetas: [], barraId: null, servicios: [], ...cuerpo }),
   }))
   assert.equal(res.status, 200)

@@ -1,12 +1,18 @@
 export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
+import { puedeEscribirCotizador, MOTIVO_COTIZADOR } from "@/lib/permisos-escritura"
+import { exigirPerfil } from "@/lib/permisos-escritura-server"
 import { sql } from "@/lib/db"
 
 // Devuelve una cotización de la papelera a "Mis cotizaciones generadas",
 // tal cual estaba (mismo id, mismo estado). Si paquete_id apuntaba a un
 // paquete que también está borrado, la vuelta falla por la FK — se le avisa
 // al vendedor para que primero restaure el paquete.
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Escribir en el cotizador: el Vendedor, Administración y Soporte
+  // (lib/permisos-escritura.ts). Antes cualquier sesión podía.
+  const prohibido = await exigirPerfil(req, puedeEscribirCotizador, MOTIVO_COTIZADOR, "/api/vendedor/papelera/cotizaciones/[id]/restaurar")
+  if (prohibido) return prohibido
   try {
     const { id } = await params
     const filas = await sql`

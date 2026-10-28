@@ -61,6 +61,8 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useClock } from "@/lib/clock-context"
+import { useProfile } from "@/lib/profile-context"
+import { tieneAccesoTotal } from "@/lib/permisos-escritura"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
 
 interface StoreContextType {
@@ -268,6 +270,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ¿La lista de servicios vino de la base? (ver serviciosSincronizados)
   const [serviciosSincronizados, setServiciosSincronizados] = useState(false)
   const { soloLectura } = useClock()
+  // Las migraciones "one-time" de la carga suben a la base datos viejos del
+  // navegador: solo para los perfiles que pueden escribir esas tablas (desde
+  // el PR #359 el servidor rechaza esas escrituras de los demás, y un
+  // rechazo cortaría la carga). El StoreProvider se monta con el perfil ya
+  // elegido (components/app-shell.tsx).
+  const { perfilActivo } = useProfile()
+  const puedeMigrarDatosLocales = tieneAccesoTotal(perfilActivo?.id)
   const applyRemoteState = useCallback((baseline: AppState, updates: RemoteStoreData, revision: number) => {
     if (soloLectura) return
     setState((prev) => {
@@ -371,7 +380,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const preciosLocal = localState.preciosVenta || {}
         const hayPreciosLocales = Object.keys(preciosLocal).length > 0
         const hayPreciosDB = Object.keys(preciosDB).length > 0
-        if (!hayPreciosDB && hayPreciosLocales) {
+        if (puedeMigrarDatosLocales && !hayPreciosDB && hayPreciosLocales) {
           for (const salon of Object.keys(preciosLocal)) {
             for (const fecha of Object.keys(preciosLocal[salon])) {
               await db.upsertPrecioVenta(salon, fecha, preciosLocal[salon][fecha])
@@ -383,13 +392,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // si Supabase está vacío pero quedaron datos en localStorage, subirlos ahora.
         let paquetesMigrados = paquetesDB
         const paquetesLocales = (localState.paquetesSalones || []).filter((p) => p && p.id)
-        if (paquetesDB.length === 0 && paquetesLocales.length > 0) {
+        if (puedeMigrarDatosLocales && paquetesDB.length === 0 && paquetesLocales.length > 0) {
           await Promise.all(paquetesLocales.map((p) => db.upsertPaqueteSalon(p)))
           paquetesMigrados = paquetesLocales
         }
         let temporadasMigradas = temporadasDB
         const temporadasLocales = (localState.temporadas || []).filter((t) => t && t.id)
-        if (temporadasDB.length === 0 && temporadasLocales.length > 0) {
+        if (puedeMigrarDatosLocales && temporadasDB.length === 0 && temporadasLocales.length > 0) {
           await Promise.all(temporadasLocales.map((t) => db.upsertTemporada(t)))
           temporadasMigradas = temporadasLocales
         }
@@ -399,7 +408,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // A partir de ahí Supabase es la única fuente de verdad (no más localStorage/seed).
         let costosMigrados = costosDB
         const costosLocales = (localState.costosOperativos || []).filter((c) => c && c.id)
-        if (costosDB.length === 0 && costosLocales.length > 0) {
+        if (puedeMigrarDatosLocales && costosDB.length === 0 && costosLocales.length > 0) {
           const subidos = await Promise.all(costosLocales.map((c) => db.upsertCostoOperativo(c)))
           costosMigrados = subidos.filter((c): c is NonNullable<typeof c> => c != null)
         }
@@ -409,19 +418,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // sea la única fuente de verdad (nunca más solo-localStorage).
         let movimientosMigrados = movimientosDB
         const movimientosLocales = (localState.movimientosCaja || []).filter((m) => m && m.id)
-        if (movimientosResultado !== null && movimientosDB.length === 0 && movimientosLocales.length > 0) {
+        if (puedeMigrarDatosLocales && movimientosResultado !== null && movimientosDB.length === 0 && movimientosLocales.length > 0) {
           await Promise.all(movimientosLocales.map((m) => db.insertMovimientoCaja(m)))
           movimientosMigrados = movimientosLocales
         }
         let pagosMigrados = pagosDB
         const pagosLocales = (localState.pagosPersonal || []).filter((p) => p && p.id)
-        if (pagosResultado !== null && pagosDB.length === 0 && pagosLocales.length > 0) {
+        if (puedeMigrarDatosLocales && pagosResultado !== null && pagosDB.length === 0 && pagosLocales.length > 0) {
           await Promise.all(pagosLocales.map((p) => db.upsertPagoPersonal(p)))
           pagosMigrados = pagosLocales
         }
         let serviciosMigrados = serviciosDB
         const serviciosLocales = (localState.servicios || []).filter((s) => s && s.id)
-        if (serviciosResultado !== null && serviciosDB.length === 0 && serviciosLocales.length > 0) {
+        if (puedeMigrarDatosLocales && serviciosResultado !== null && serviciosDB.length === 0 && serviciosLocales.length > 0) {
           // upsertServicio ahora lanza si falla; en esta migración one-time se
           // mantiene el comportamiento de antes (seguir con la carga igual).
           await Promise.all(serviciosLocales.map((s) => db.upsertServicio(s).catch(() => null)))
@@ -429,19 +438,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         let personalMigrado = personalDB
         const personalLocal = (localState.personal || []).filter((p) => p && p.id)
-        if (personalDB.length === 0 && personalLocal.length > 0) {
+        if (puedeMigrarDatosLocales && personalDB.length === 0 && personalLocal.length > 0) {
           await Promise.all(personalLocal.map((p) => db.upsertPersonal(p)))
           personalMigrado = personalLocal
         }
         let archivadosMigrados = archivadosDB
         const archivadosLocales = (localState.gastosArchivados || []).filter((g) => g && g.id)
-        if (archivadosDB.length === 0 && archivadosLocales.length > 0) {
+        if (puedeMigrarDatosLocales && archivadosDB.length === 0 && archivadosLocales.length > 0) {
           await Promise.all(archivadosLocales.map((g) => db.insertGastoArchivado(g)))
           archivadosMigrados = archivadosLocales
         }
         // Configuración de cajas: si la base no tiene config pero local sí, subirla
         let configMigrada = configDB
-        if (Object.keys(configDB).length <= 1 && localState.configuracionCajas) {
+        if (puedeMigrarDatosLocales && Object.keys(configDB).length <= 1 && localState.configuracionCajas) {
           await db.upsertConfiguracionCajas(localState.configuracionCajas)
           configMigrada = localState.configuracionCajas
         }

@@ -17,6 +17,9 @@ require.extensions[".ts"] = (mod, filename) => {
   const result = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } })
   mod._compile(result.outputText, filename)
 }
+// La ruta de cobro pide la sesión de quien cobra; el chat es de Administración (lib/permisos-escritura.ts).
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || "secreto-de-prueba"
+const { signToken } = require("../lib/auth/server.ts")
 
 const { armarPropuestaCobro, armarCobroDesdePropuesta, opcionesCobroChat, eventoCobroDesdeFila, propuestaCobroValida } = require("../lib/chat-ia-cobro.ts")
 const { fechaNegocio, proyectarIPC } = require("../lib/ipc-cuotas.ts")
@@ -332,8 +335,9 @@ test("de punta a punta: lo que arma el chat lo acepta el servidor de Cobrar cuot
     _planEsperado: ev.planDeCuotas, _pagosEsperados: ev.pagos,
     _movimientosCobro: movimientos, _operacionCobro: movimientos.map((x) => x.id).join(":"),
   }
+  const sesion = await signToken("administracion")
   const patch = () => PATCH(new Request("http://localhost/api/eventos/ev-prueba", {
-    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    method: "PATCH", headers: { "Content-Type": "application/json", "x-lj-session": sesion }, body: JSON.stringify(body),
   }), { params: Promise.resolve({ id: "ev-prueba" }) })
   const res = await patch()
   assert.equal(res.status, 200, JSON.stringify(await res.clone().json()))

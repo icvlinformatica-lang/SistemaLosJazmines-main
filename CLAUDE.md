@@ -9,7 +9,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 ## Comandos y línea base (medida el 6/10/2026)
 
 - `pnpm install` al empezar (en la nube no viene `node_modules`).
-- Tests: `node --test scripts/test-*.cjs` → 99 archivos y 910 tests, todos pasan (~8 s; contados el 27/10/2026, con la vajilla y utensilios de cocina, las carpetas de gastos variables de Caja Jazmines, el mes de cobro de la proyección de Caja Eventos, las cuotas juntas y el monto a cobrar a elección en Cobrar cuota, los servicios fuera del catálogo en el planificador, la vista de Clientes y su embudo, el stock de limpieza, "Cargar gastos" por pasos, las impresiones del contrato, el saldo a favor de las cuotas, el IPC por mes de vencimiento, el pago del botón rápido de Caja Eventos y el aviso de unidades cruzadas). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
+- Tests: `node --test scripts/test-*.cjs` → 100 archivos y 939 tests, todos pasan (~8 s; contados el 28/10/2026, con los permisos de escritura por perfil, la pestaña Eliminados de Finalizados, la vajilla y utensilios de cocina, las carpetas de gastos variables de Caja Jazmines, el mes de cobro de la proyección de Caja Eventos, las cuotas juntas y el monto a cobrar a elección en Cobrar cuota, los servicios fuera del catálogo en el planificador, la vista de Clientes y su embudo, el stock de limpieza, "Cargar gastos" por pasos, las impresiones del contrato, el saldo a favor de las cuotas, el IPC por mes de vencimiento, el pago del botón rápido de Caja Eventos y el aviso de unidades cruzadas). Para correr uno: `node --test scripts/test-cobro-ipc-api.cjs`. Ojo: `node --test scripts/` **no funciona**.
 - Tipos: `pnpm exec tsc --noEmit --incremental false`. Hoy da **153 errores preexistentes** (sale con código 2). La regla es **0 errores nuevos**, comparando la lista y no solo el número:
   `pnpm exec tsc --noEmit --incremental false | grep "error TS" | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > <scratchpad>/tsc-antes.txt`. Antes de cambiar nada se guarda `tsc-antes.txt`; al final se repite a `tsc-despues.txt` y se hace `diff`. Sin `--incremental false`, tsc reescribe `tsconfig.tsbuildinfo`, que está versionado.
 - `pnpm build` anda sin variables de entorno, pero **no valida tipos** (`ignoreBuildErrors: true`) y reescribe `next-env.d.ts`. Hay que restaurarlo después con `git checkout next-env.d.ts tsconfig.tsbuildinfo`.
@@ -69,7 +69,16 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 - Los egresos de un evento en Caja Eventos se buscan con `ultimoEgresoEvento` (`lib/egresos-evento.ts`): por evento y principio del concepto ("Pago saldo Torta - "), porque el nombre del evento al final no siempre se escribió igual (Caja Eventos usa `nombrePareja` primero).
 - Los eventos se escriben **solo** por `/api/eventos`, que valida, hace concurrencia, papelera y mails. `fetchEventos`/`upsertEvento`/`deleteEvento` de data-service son código muerto: no usarlos.
 
-**Permisos**: la UI esconde pantallas (`PERFILES[].rutas` en `lib/profile-context.tsx`, `app-shell`, `sidebar`), pero esconder no es seguridad. Lo único que protege son las rutas que chequean el perfil: `perfilDesdeRequest`, `soloAdministracion` y `lib/*-permisos.ts`. El proxy `/api/db` **no filtra por perfil**: cualquier sesión, incluso la de DJ, puede leer y escribir esas tablas (plan en "Pendiente: permisos por perfil"). Una restricción que importe va en una ruta del servidor. Borrar eventos y la papelera de eventos (ver, restaurar, vaciar) son solo de Administración y Soporte desde el 8/10/2026. Dos trampas:
+**Permisos**: la UI esconde pantallas (`PERFILES[].rutas` en `lib/profile-context.tsx`, `app-shell`, `sidebar`), pero esconder no es seguridad. Lo único que protege son las rutas que chequean el perfil: `perfilDesdeRequest`, `soloAdministracion` y `lib/*-permisos.ts`. Una restricción que importe va en una ruta del servidor. Borrar eventos y la papelera de eventos (ver, restaurar, vaciar) son solo de Administración y Soporte desde el 8/10/2026.
+- **Escrituras por perfil (PR #359, pedido del dueño del 16/10/2026; `lib/permisos-escritura.ts`)**: solo Administración y Soporte modifican la base. Leer sigue igual para todos (falta, ver "Pendiente: permisos por perfil").
+  - El proxy `/api/db` deja pasar GET y HEAD. Las escrituras de los demás perfiles dan 403, salvo las de Cobrar cuota (`revisarCobro`): egresos de Caja Jazmines sin evento (retiro y gasto "Ya está pagado"), el archivo del retiro, un gasto variable **nuevo** por pedido (el id no puede existir: lo verifica leyendo la fila) y el borrado de a un movimiento que sea **ingreso de un evento** (anular un pago; también se lee la fila). Si no puede leer la fila, da 503 y no escribe.
+  - `PATCH /api/eventos/[id]` (`revisarCambioEvento`): Cobrar cuota manda solo pagos, plan de cuotas, los campos de control del cobro, `fechaAlta` y la observación vacía. El contrato (`CAMPOS_CONTRATO`) necesita además el **pase de contrato**: la cookie `lj_pase_contrato` (2 horas, `signPaseContrato` en `lib/auth/server.ts`) que deja `/api/auth/verificar-pin` al acertar el PIN de Administración. Crear (`POST /api/eventos`) y reemplazar (`PUT`) son solo de Administración y Soporte.
+  - También frenan por perfil: barras armadas (`/api/barra-templates`, solo Administración y Soporte), `/api/vendedor/*` (Vendedor, Administración y Soporte), cerrar novedades (Cobrar cuota, Administración y Soporte) y vaciar el historial (`DELETE /api/activity-log`). Anotar en el historial (`POST`) sigue abierto a cualquier sesión.
+  - Las migraciones "one-time" del store solo corren para Administración y Soporte (`puedeMigrarDatosLocales` en `lib/store-context.tsx`).
+  - Mantenimiento y Clientes no escriben por el proxy ni guardan eventos: lo suyo va por sus propias rutas, que ya chequean el perfil (`/api/insumos-limpieza`, `/api/stock-salones/*`, `/api/clientes/*`). Cocina lleva la vajilla por `/api/insumos-vajilla`. Un perfil nuevo queda sin escrituras por el proxy hasta que tenga su regla: el test saca la lista de perfiles de `PERFILES`.
+  - Cada rechazo deja en los logs de Vercel `[permisos] escritura rechazada` con el perfil, la ruta y la tabla o el campo. Una pantalla nueva que guarde desde otro perfil necesita su regla o su propia ruta con chequeo; si no, da 403. Test: `test-permisos-escritura`, que también compara lo que mandan las pantallas de Cobrar cuota con lo que acepta el servidor.
+
+Dos trampas:
 - `rutas: []` significa acceso **total**, no "sin acceso".
 - El Vendedor **nunca** recibe costos, ganancias ni márgenes, tampoco en respuestas de la API.
 - La vista de Clientes (`/clientes`) tampoco, y además no recibe nombres del personal ni datos de eventos: cada respuesta de `/api/clientes/*` pasa por `clavesProhibidas` (`lib/clientes-simulador.ts`) y, si aparece una clave de costo, ganancia, margen o tarifa, la ruta responde 500 en vez de mandarla.
@@ -112,7 +121,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 
 **Estado del cliente** (`lib/store-context.tsx`)
 - Carga todo al abrir y lo tiene en memoria. `localStorage` solo guarda estado de UI, porque `saveState` vacía los módulos de datos.
-- Al iniciar corren migraciones "one-time": si una tabla viene **vacía** y el navegador tiene datos viejos, los sube. Por eso:
+- Al iniciar corren migraciones "one-time": si una tabla viene **vacía** y el navegador tiene datos viejos, los sube (solo con Administración o Soporte, desde el PR #359). Por eso:
   - Nunca vaciar una tabla "para empezar de cero".
   - Distinguir error de lista vacía. Ojo: `fetchPersonal` y `fetchCostosOperativos` devuelven `[]` ante un error.
 - Un mutador nuevo del store tiene que ir envuelto en `syncGuard.run(...)`. Si no, el refresco cada 15 s de `useSyncTiempoReal` puede pisar el cambio.
@@ -122,6 +131,7 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 
 **Plata**
 - Cobro de cuota: `PATCH /api/eventos/[id]`. Todo pasa en una transacción con `FOR UPDATE`:
+  - Permisos, antes de abrir la transacción: `revisarCambioEvento` (ver "Permisos"). Un campo nuevo que mande Cobrar cuota va en `CAMPOS_COBRO` de `lib/permisos-escritura.ts`, o da 403.
   - Concurrencia: `_planEsperado`/`_pagosEsperados`, que devuelven 409 si el evento cambió.
   - Idempotencia: `_operacionCobro`.
   - Validación de IPC: `lib/validar-cobro-ipc.ts`.
@@ -221,7 +231,8 @@ Sistema interno **en producción** de "Los Jazmines" (salones de eventos). Lo us
 
 No se arreglan de paso: cada uno va en su propio PR y solo si el dueño lo pide.
 - **Permisos, lo más grave** (plan en "Pendiente: permisos por perfil"):
-  - El proxy `/api/db` no filtra por perfil (ver "Permisos"): un perfil como DJ, con sesión, puede leer y modificar tablas de finanzas como `movimientos_caja`. También puede escribir `eventos` directo (pagos y plan de cuotas), salteando las protecciones de `/api/eventos`.
+  - Las escrituras ya filtran por perfil (PR #359, ver "Permisos"); las **lecturas** no: un perfil como DJ, con sesión, puede leer por el proxy `/api/db` tablas de finanzas como `movimientos_caja`.
+  - Lo que Cobrar cuota sigue pudiendo hacer, porque lo usa su pantalla: reescribir los pagos y el plan de cuotas de un evento (el servidor valida el IPC y los movimientos del cobro, no cada cuota) y borrar ingresos de un evento (anular un pago).
   - Al abrir, la app (`StoreProvider` en `components/app-shell.tsx`) descarga para cualquier perfil las tablas de data-service: cajas, personal, pagos y demás.
   - `GET /api/eventos` le devuelve los DNI y los pagos a cualquier sesión.
   - `getPins()` (`lib/auth/server.ts`) tiene PINs de reserva para cuando falta una variable `PIN_*`, y el repositorio de GitHub es público (7/10/2026).
@@ -246,7 +257,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
 - **El dueño, sin código:** pasar el repositorio de GitHub a privado; revisar en Vercel que estén cargadas `AUTH_SECRET`, `PIN_STOCK_EXTRA` y las doce `PIN_*` por perfil (con `PIN_MANTENIMIENTO`); cambiar los PINs que tenga gente que ya no trabaja con ellos. Nunca pedir ni recibir los valores por el chat.
 - **Código, un PR por paso y con OK del dueño** (es "Plata o permisos"):
   1. Sacar los PINs de reserva de `getPins()`: si falta la variable, ese perfil no entra. Antes, confirmar que estén todas cargadas.
-  2. Permisos en el servidor: el proxy mira el perfil de la sesión y tiene una lista de qué tablas puede leer y cuáles modificar cada perfil; `eventos` deja de escribirse por el proxy (lo que lo hace en data-service es código muerto); `GET /api/eventos` manda DNI y plata solo a los perfiles que los usan; el store carga solo lo de cada perfil.
+  2. Permisos en el servidor. **Las escrituras se hicieron en el PR #359** (pedido del dueño del 16/10/2026: que solo Administración y Soporte modifiquen; ver "Permisos"), con el `eventos` del proxy ya cerrado para los demás perfiles. Faltan las lecturas: que el proxy tenga una lista de qué tablas puede leer cada perfil, que `GET /api/eventos` mande DNI y plata solo a los perfiles que los usan y que el store cargue solo lo de cada perfil.
   3. Activarlo por partes (primero el staff externo, después cocina y barra, al final cobro y vendedor), probando cada perfil pantalla por pantalla en la base local de prueba.
 - **Borrador de quién ve qué**, sacado de `PERFILES[].rutas` (a confirmar con el dueño):
 
@@ -266,6 +277,7 @@ El dueño decidió dejarlo para más adelante. Cuando se retome:
 - **Perfiles** (login por PIN, sesión firmada en `lib/auth/server.ts`, cookie `lj_session` o header `x-lj-session`):
   - La firma de la sesión incluye el PIN vigente del perfil (`datosFirmados`): cambiar una variable `PIN_*` (y volver a publicar) cierra las sesiones y los accesos rápidos de ese perfil. Al publicar ese cambio, el 8/10/2026, todos tuvieron que volver a entrar una vez.
   - Pase de Administración (desde el 14/10/2026): cuando Administración entra con su PIN o su acceso rápido, recibe un pase firmado (`signPaseAdmin`) que guarda la pestaña en sessionStorage. Con él, `/api/auth/login` deja entrar a cualquier perfil sin su PIN, sin dar acceso rápido ni otro pase. Dura 12 horas o hasta cerrar la pestaña o tocar "Bloquear", y cambiar `PIN_ADMINISTRACION` lo anula.
+  - Pase de contrato (desde el PR #359): cuando una sesión acierta el PIN de Administración en `/api/auth/verificar-pin` (lo pide "Editar Contrato" en Cobrar cuota), recibe la cookie `lj_pase_contrato`: firmada para ese perfil, httpOnly, dura 2 horas, la anula cambiar `PIN_ADMINISTRACION` y la borra cerrar sesión. Solo sirve para que Cobrar cuota guarde el contrato (ver "Permisos"). Donde las cookies no viajan (la vista previa en iframe que usa `x-lj-session`), guardar el contrato desde Cobrar cuota da 403.
   - Gestión: administracion, soporte, cobro, coordinacion, vendedor, clientes.
   - Evento: cocina, barra, dj, fotografo, vestido, pantalla, mantenimiento.
   - Mantenimiento (desde el 21/10/2026): `/stock` (solo el sector limpieza, `sectoresPermitidos`) y `/admin/limpieza` (solo agregar artículos). `PIN_MANTENIMIENTO` **no tiene PIN de reserva**: sin la variable nadie entra con PIN (Administración sí, con su pase).
