@@ -139,7 +139,17 @@ function reiniciar() {
   sesionNavegador = null
   avisos = []
 }
-const PERFILES_SIN_ESCRITURA = ["cocina", "barra", "coordinacion", "vendedor", "dj", "fotografo", "vestido", "pantalla"]
+// Todos los perfiles de lib/profile-context.tsx menos los que escriben por el
+// proxy o guardan eventos: un perfil nuevo queda sin esas escrituras hasta que
+// se le arme su regla (Mantenimiento y Clientes guardan por sus propias rutas).
+const PERFILES_SIN_ESCRITURA = [...fs.readFileSync(path.join(RAIZ, "lib/profile-context.tsx"), "utf8").matchAll(/^ {4}id: "([a-z_]+)",$/gm)]
+  .map((m) => m[1])
+  .filter((id) => !["administracion", "soporte", "cobro"].includes(id))
+test("perfiles: la lista de los que no escriben sale de PERFILES e incluye los nuevos", () => {
+  for (const id of ["cocina", "barra", "coordinacion", "vendedor", "dj", "fotografo", "vestido", "pantalla", "mantenimiento", "clientes"]) {
+    assert.ok(PERFILES_SIN_ESCRITURA.includes(id), id)
+  }
+})
 const pedido = (metodo, tabla, { query = "", prefer = "", esquema = "public", cuerpo } = {}) => ({
   metodo, ruta: ["rest", "v1", ...tabla.split("/")], query: new URLSearchParams(query), prefer, esquema, cuerpo,
 })

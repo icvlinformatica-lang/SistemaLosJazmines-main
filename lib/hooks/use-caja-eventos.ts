@@ -4,7 +4,9 @@ import { useMemo } from "react"
 import { calcularComprasBarras, calcularComprasSegmentadas, calcularMontoPersonalDelEvento, calcularSeñaSaldoServicio, type AppState, type MovimientoCaja } from "../store"
 import { calcularProporcionCajaEventos } from "../cobrar-cuota"
 import { estadoDeCuota, saldoRestanteCuota } from "../estado-cuotas"
+import { mesEsperadoCobro } from "../mes-cobro"
 import { montoSueldoServicio, sePagaComoSueldo } from "../servicio-sueldo"
+import { pagosMenuProveedor, pendienteMenuSinProveedoresPagos, totalPagosMenuProveedor } from "../pago-menu-proveedor"
 
 // ============================================================
 // Tipos de salida
@@ -260,7 +262,18 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
         0,
       )
       // Fallback a la foto guardada (que incluía cocina+barra) restándole la barra.
-      const costoMenu = costoMenuLive > 0 ? costoMenuLive : Math.max(0, (evento.costoInsumos ?? 0) - barraLive)
+      const costoMenuEntero = costoMenuLive > 0 ? costoMenuLive : Math.max(0, (evento.costoInsumos ?? 0) - barraLive)
+      // Menú pagado en parte, por proveedor (lib/pago-menu-proveedor.ts): falta
+      // el costo de hoy de los proveedores sin pagar. Con incluirPagados va la
+      // obligación entera: lo ya pagado (fijo) más lo que falta.
+      const pagosProv = pagosMenuProveedor(state.movimientosCaja, evento.id)
+      const pendienteMenu = pendienteMenuSinProveedoresPagos(comprasCocina, pagosProv)
+      const costoMenu =
+        pagosProv.size === 0
+          ? costoMenuEntero
+          : incluirPagados
+            ? totalPagosMenuProveedor(pagosProv) + pendienteMenu
+            : pendienteMenu
       if (costoMenu > 0 && evento.fecha) {
         const fechaEvento = parseLocalDate(evento.fecha)
         // Fecha editada manualmente tiene prioridad; si no, evento - 14 días.
@@ -537,8 +550,10 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
       })
     }
 
+    // Una cuota atrasada de un mes anterior se sigue esperando: suma al mes
+    // actual (lib/mes-cobro.ts), no a un mes que ya no está en la tabla.
     for (const ing of ingresosPendientes) {
-      const key = ing.fechaVencimiento.slice(0, 7)
+      const key = mesEsperadoCobro(ing.fechaVencimiento, mesActualKey)
       const idx = indexPorKey[key]
       if (idx !== undefined) meses[idx].aCobrar += ing.monto
     }

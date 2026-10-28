@@ -21,6 +21,8 @@ export function ContratoPreviewCard({
   plegada = false,
   alturaPreview = 420,
   acento = "#2d5a3d",
+  puedeImprimir,
+  alImprimir,
 }: {
   titulo: string
   subtitulo?: string
@@ -31,6 +33,10 @@ export function ContratoPreviewCard({
   alturaPreview?: number
   /** Color de acento del encabezado. */
   acento?: string
+  /** Si devuelve false, no se imprime (ej. hay cambios sin guardar). */
+  puedeImprimir?: () => boolean
+  /** Se llama después de abrir la impresión, para anotarla en el evento. */
+  alImprimir?: () => void
 }) {
   const [abierta, setAbierta] = useState(!plegada)
   // El HTML se resuelve recien cuando la tarjeta esta abierta (lazy)
@@ -41,6 +47,7 @@ export function ContratoPreviewCard({
   const resolverHtml = () => (typeof html === "string" ? html : html())
 
   const imprimir = () => {
+    if (puedeImprimir && !puedeImprimir()) return
     const contenido = htmlResuelto ?? resolverHtml()
     const win = window.open("", "_blank")
     if (win) {
@@ -50,6 +57,7 @@ export function ContratoPreviewCard({
       setTimeout(() => {
         win.print()
       }, 600)
+      alImprimir?.()
     }
   }
 
@@ -59,9 +67,13 @@ export function ContratoPreviewCard({
     if (siguiente && htmlResuelto === null) setHtmlResuelto(resolverHtml())
   }
 
+  // Cada HTML nuevo va en un iframe nuevo (ver `key` abajo).
+  const [versionHtml, setVersionHtml] = useState(0)
+
   // Si el HTML llega como string y cambio (preview en vivo), reflejarlo
   if (typeof html === "string" && abierta && htmlResuelto !== html) {
     setHtmlResuelto(html)
+    setVersionHtml((v) => v + 1)
   }
 
   return (
@@ -107,7 +119,13 @@ export function ContratoPreviewCard({
           {/* Hoja A4 (~880px de ancho util) escalada al ancho de la columna;
               el contenedor scrollea sobre la altura ya escalada */}
           <div className="relative mx-auto overflow-hidden" style={{ width: 880 * 0.36, height: 4200 * 0.36 }}>
+            {/* key: cambiarle el srcDoc a un iframe ya cargado lo navega y el
+                navegador lo anota en el historial de la pestaña. Con el
+                contrato en vivo eso pasaba en cada cambio, y las flechas de
+                volver (que van "atrás") retrocedían dentro del iframe sin
+                salir de la pantalla. Un iframe nuevo no suma historial. */}
             <iframe
+              key={versionHtml}
               srcDoc={htmlResuelto}
               title={`Vista previa de ${titulo}`}
               className="pointer-events-none origin-top-left border-0"

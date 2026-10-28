@@ -109,7 +109,7 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
     // Compat: eventos viejos sin detalle.montoPagadoNeto (solo cuotasPagadas
     // legado) se tratan como completamente pagados sin pasar por "parcial".
     const montoAcumulado = detalle?.montoPagadoNeto ?? (pagadaLegado ? monto : 0)
-    const estado = estadoDeCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado })
+    const estado = estadoDeCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado, ajusteCobro: detalle?.ajusteCobro })
     return {
       numeroCuota: cuotaNum,
       fechaVencimiento: resolverFecha(cuotaNum),
@@ -117,7 +117,7 @@ export function generarCalendarioCuotas(evento: EventoGuardado): Array<{
       pagada: pagadaLegado || estado === "pagada",
       estado,
       montoAcumulado,
-      saldoRestante: saldoRestanteCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado }),
+      saldoRestante: saldoRestanteCuota({ montoCuota: monto, montoPagadoNeto: montoAcumulado, ajusteCobro: detalle?.ajusteCobro }),
       saldoDecision: detalle?.saldoDecision,
       recargoSaldo: detalle?.recargoSaldo,
     }

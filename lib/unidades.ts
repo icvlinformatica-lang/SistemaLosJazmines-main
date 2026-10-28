@@ -33,6 +33,26 @@ export function normalizeToStockUnit(
    */
   contenido?: ContenidoPorUnidad | null,
 ): number {
+  const convertido = convertirAUnidadDeStock(qty, recipeUnit, stockUnit, contenido)
+  if (convertido !== null) return convertido
+
+  // Incompatible units - return as-is and log warning
+  console.warn(`[v0] Incompatible units: recipe=${recipeUnit}, stock=${stockUnit}`)
+  return qty
+}
+
+/**
+ * La misma conversión, pero devuelve null cuando NO se puede convertir (en
+ * vez de dejar la cantidad tal cual). Sirve para avisar: "30 CC" de un insumo
+ * que se compra por KG se cuenta como 30 kilos y el costo sale mil veces más
+ * caro (pasó con la lima del Daiquiri, 27/10/2026).
+ */
+export function convertirAUnidadDeStock(
+  qty: number,
+  recipeUnit: UnidadReceta | undefined,
+  stockUnit: Unidad,
+  contenido?: ContenidoPorUnidad | null,
+): number | null {
   // If no recipe unit specified, assume same as stock
   if (!recipeUnit) return qty
 
@@ -63,8 +83,8 @@ export function normalizeToStockUnit(
   // una bolsa). Solo se puede convertir si sabemos cuánto trae cada unidad:
   // 30 GRS de arvejas / 200 GRS por lata = 0,15 latas.
   //
-  // Sin ese dato NO se convierte y se devuelve la cantidad tal cual, que es
-  // lo que hacía antes. Ojo: eso significa leer "30 grs" como "30 latas" y
+  // Sin ese dato NO se convierte (y normalizeToStockUnit deja la cantidad tal
+  // cual, que es lo que hacía antes). Ojo: eso significa leer "30 grs" como "30 latas" y
   // multiplicar el costo por 200. Por eso la pantalla de Almacén pide el
   // contenido cuando la unidad es UN, y el recetario avisa cuando falta.
   if (normalizedStock === "UN" && contenido && contenido.cantidad > 0) {
@@ -79,7 +99,5 @@ export function normalizeToStockUnit(
     if (enContenido !== null) return enContenido / contenido.cantidad
   }
 
-  // Incompatible units - return as-is and log warning
-  console.warn(`[v0] Incompatible units: recipe=${recipeUnit}, stock=${stockUnit}`)
-  return qty
+  return null
 }

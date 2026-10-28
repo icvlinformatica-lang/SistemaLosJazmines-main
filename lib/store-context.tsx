@@ -109,7 +109,7 @@ interface StoreContextType {
   updateEventoActual: (updates: Partial<Evento>) => void
   // Eventos (calendario)
   addEvento: (evento: EventoGuardado) => Promise<boolean>
-  updateEvento: (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[]) => Promise<boolean>
+  updateEvento: (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[], previo?: EventoGuardado) => Promise<boolean>
   deleteEvento: (id: string, motivo?: string) => Promise<boolean>
   setEventos: (eventos: EventoGuardado[]) => void
   // Servicios
@@ -272,7 +272,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { soloLectura } = useClock()
   // Las migraciones "one-time" de la carga suben a la base datos viejos del
   // navegador: solo para los perfiles que pueden escribir esas tablas (desde
-  // el 16/10/2026 el servidor rechaza esas escrituras de los demás, y un
+  // el PR #359 el servidor rechaza esas escrituras de los demás, y un
   // rechazo cortaría la carga). El StoreProvider se monta con el perfil ya
   // elegido (components/app-shell.tsx).
   const { perfilActivo } = useProfile()
@@ -303,7 +303,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Mantener el registro global de nombres personalizados de salones al día,
   // para que salonLabel() muestre el nombre elegido en todo el sistema.
-  useEffect(() => {
+  // Se hace durante el render y no en un useEffect: el efecto corre DESPUÉS de
+  // que las pantallas ya se dibujaron, así que las que no vuelven a dibujarse
+  // solas (por ejemplo los encabezados de Stock por salón en Almacén y Barra)
+  // se quedaban con el nombre viejo hasta recargar.
+  useMemo(() => {
     setSalonNombresCustom(state.configuracionCajas)
   }, [state.configuracionCajas])
 
@@ -1501,14 +1505,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const updateEvento = async (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[]) => {
+  // `previo`: el evento tal como está en la base, cuando se encadenan cobros
+  // en la misma operación (cuotas juntas) y el estado todavía no se refrescó.
+  const updateEvento = async (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[], previo?: EventoGuardado) => {
     // --- ARCHIVO: congelar/descongelar costos según el cambio de estado ---
     // Al pasar a "completado" (archivo) se guarda una foto congelada de los
     // costos calculados en ese momento; al sacarlo del archivo se descarta la
     // foto y todo vuelve a calcularse en vivo. Esto centraliza el congelado
     // sin importar desde qué pantalla se archive o reactive el evento.
     let updatesFinal = updates
-    const evPrevio = (state.eventos || []).find((e) => e.id === id)
+    const evPrevio = previo ?? (state.eventos || []).find((e) => e.id === id)
     if (evPrevio && updates.estado && updates.estado !== evPrevio.estado) {
       if (updates.estado === "completado") {
         try {

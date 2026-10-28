@@ -3,7 +3,13 @@ import { estadoDeCuota, saldoRestanteCuota, type EstadoCuota } from "./estado-cu
 
 export type EventoIPC = Pick<EventoGuardado, "planDeCuotas" | "pagos"> & { estado?: string }
 export interface CalculoIPC {
-  version: "ultima-cuota-v1"
+  /**
+   * "ultima-cuota-v1": regla vieja (un ajuste por mes en que se COBRA; los
+   * meses sin cobros no se acumulaban). Queda en los cobros hechos antes del
+   * 26/10/2026. "vencimiento-v2": regla actual (ver calcularIPCPeriodo).
+   */
+  version: "ultima-cuota-v1" | "vencimiento-v2"
+  /** Mes ("YYYY-MM") al que queda ajustada la cuota (el último de `meses`). */
   periodo: string
   base: number
   origen: "plan" | "pago" | "manual"
@@ -22,6 +28,11 @@ export interface CalculoIPC {
   ipcProvisorio?: boolean
   /** "YYYY-MM" del índice realmente usado (solo con ipcProvisorio). */
   periodoIndice?: string
+  /**
+   * Meses de IPC que se aplicaron sobre la base, en orden (solo regla
+   * vencimiento-v2). Con más de uno, `porcentaje` es el acumulado.
+   */
+  meses?: Array<{ periodo: string; porcentaje: number; provisorio?: boolean }>
 }
 export interface OpcionesCobro {
   aplicarIPC: boolean
@@ -96,6 +107,25 @@ function netoHistorico(pago: PagoEvento): number | null {
   return Number.isFinite(importe) && importe >= 0 && pago.monto > importe ? pago.monto - importe : null
 }
 
+/**
+ * Cuánto vale hoy la próxima cuota de un plan con IPC (la cuota más chica
+ * que todavía no recibió ningún pago).
+ *
+ * Regla "vencimiento-v2" (pedido del dueño, 26/10/2026, después del caso de
+ * una cuota pagada tarde que se quedó sin el ajuste de su mes):
+ * - Cada cuota queda ajustada al mes en que VENCE; si se paga antes de
+ *   vencer, al mes en que se paga (adelantar no suma IPC futuro). Ese es su
+ *   "período": el menor entre el mes de vencimiento y el mes de cobro.
+ * - Se parte de la cifra oficial de la última cuota cobrada y se le aplica el
+ *   IPC de CADA mes que pasó desde su período hasta el de esta cuota,
+ *   compuesto. Pagar tarde ya no hace perder meses de ajuste: el atraso se
+ *   cobra aparte con la mora.
+ * - Dos cuotas del mismo período valen lo mismo (no se ajusta dos veces en
+ *   un mes); como antes, se recalcula con el índice de hoy (si el provisorio
+ *   pasó a oficial, toma el oficial).
+ * Lo ya cobrado no se recalcula: la base es siempre montoCuota de la cuota
+ * pagada, que quedó fija al cobrarla.
+ */
 export function calcularIPCPeriodo(
   evento: EventoIPC,
   historial: HistorialIPCEntry[],
@@ -105,25 +135,28 @@ export function calcularIPCPeriodo(
   const pendiente = (motivo: string): ResultadoIPC => ({ estado: "pendiente", motivo })
   const dia = fechaValida(fecha)
   if (!dia) return pendiente("Fecha de cobro inválida.")
-  const periodo = dia.slice(0, 7)
-  const indice = indiceParaPeriodo(historial, periodo)
-  if (!indice) return pendiente(`IPC de ${periodo} pendiente de definición o duplicado. Cargá un único índice antes de cobrar.`)
-  const porcentaje = indice.porcentaje
-  if (!Number.isFinite(porcentaje) || porcentaje <= -100) return pendiente("El porcentaje IPC no es válido.")
-  const marcaIndice = marcaProvisorio(indice)
+  const mesCobro = dia.slice(0, 7)
   const plan = evento.planDeCuotas!
   const pagos = evento.pagos ?? []
   if (pagos.some(p => !numeroCuotaPago(p) && !/^(seña|sena|extra|pago único)/i.test(p.notas ?? ""))) {
     return pendiente("Hay pagos sin cuota identificada. Revisá su importe neto antes de recalcular.")
   }
-  // Cadena de bases mes a mes. Con pagos parciales, una cuota puede tener
-  // varios pagos: la base para la cuota SIGUIENTE es siempre la cifra
-  // OFICIAL ya fijada de esta cuota (cuota.montoCuota), nunca la suma de lo
-  // efectivamente acreditado. Por eso "neto" acá viene de montoCuota, no de
-  // netoHistorico(pago) — ese último solo sirve de resguardo para datos
-  // viejos sin detalle de cuotas[] (antes de esta regla existir).
-  const acreditados: Array<{ numero: number; fecha: string; neto: number; ipc?: CalculoIPC }> = []
-  for (const numero of numerosPagados(evento)) {
+  const pagadas = numerosPagados(evento)
+  // Período de una cuota: el mes en que vence o, si se cobró antes, el mes del cobro.
+  const periodoCuota = (vencimiento: string | undefined, mesPago: string) => {
+    const mesVenc = fechaValida(vencimiento)?.slice(0, 7)
+    return mesVenc && mesVenc < mesPago ? mesVenc : mesPago
+  }
+  const objetivo = [...(plan.cuotas ?? [])].sort((a, b) => a.numero - b.numero).find(c => !pagadas.includes(c.numero))
+  const periodo = periodoCuota(objetivo?.fechaVencimiento, mesCobro)
+
+  // Cadena de bases. Con pagos parciales, una cuota puede tener varios
+  // pagos: la base para la cuota SIGUIENTE es siempre la cifra OFICIAL ya
+  // fijada de esta cuota (cuota.montoCuota), nunca la suma de lo
+  // efectivamente acreditado (ni el saldo a favor). netoHistorico(pago) solo
+  // sirve de resguardo para datos viejos sin detalle de cuotas[].
+  const acreditados: Array<{ numero: number; fecha: string; periodo: string; neto: number; ipc?: CalculoIPC }> = []
+  for (const numero of pagadas) {
     const cuota = plan.cuotas?.find(c => c.numero === numero)
     const pagosCuota = pagos
       .filter(p => numeroCuotaPago(p) === numero)
@@ -138,14 +171,18 @@ export function calcularIPCPeriodo(
     // Ningún pago acreditado contra esta cuota puede ser posterior a la fecha elegida.
     const fechaMasNueva = pagosCuota.at(-1)?.fecha ?? fechaFijacion
     if (fechaMasNueva > dia) return pendiente("Hay pagos posteriores a la fecha elegida. Revisá la fecha antes de cobrar.")
-    acreditados.push({ numero, fecha: fechaFijacion, neto: neto!, ipc: primerPago?.calculoIPC ?? cuota?.calculoIPC })
+    acreditados.push({
+      numero, fecha: fechaFijacion, periodo: periodoCuota(cuota?.fechaVencimiento, fechaFijacion.slice(0, 7)),
+      neto: neto!, ipc: primerPago?.calculoIPC ?? cuota?.calculoIPC,
+    })
   }
-  acreditados.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero)
-  const delMes = acreditados.filter(p => p.fecha.slice(0, 7) === periodo)
-  const primeroDelMes = delMes[0]
-  if (primeroDelMes) {
-    const foto = primeroDelMes.ipc
-    if (!foto || foto.version !== "ultima-cuota-v1" || foto.periodo !== periodo) {
+
+  // Ya hay una cuota cobrada para este mismo período: vale lo mismo, con el índice de hoy.
+  const delPeriodo = acreditados.filter(p => p.periodo === periodo).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero)
+  const primeroDelPeriodo = delPeriodo[0]
+  if (primeroDelPeriodo) {
+    const foto = primeroDelPeriodo.ipc
+    if (!foto || (foto.version !== "ultima-cuota-v1" && foto.version !== "vencimiento-v2") || foto.periodo !== periodo) {
       return pendiente("Hay una cuota cobrada este mes sin base mensual auditada. Confirmá esa base antes de aplicar la nueva regla.")
     }
     // No se audita por id de pago puntual (una cuota puede tener varios
@@ -155,19 +192,80 @@ export function calcularIPCPeriodo(
       return pendiente("La base mensual depende de un pago anulado. Revisá la base antes de cobrar otra cuota.")
     }
     if (!Number.isFinite(foto.base) || foto.base <= 0) return pendiente("La base mensual guardada no es válida.")
+    const ajuste = ajusteDeMeses(historial, foto.meses?.map(m => m.periodo) ?? [foto.periodo])
+    if ("motivo" in ajuste) return pendiente(ajuste.motivo)
     // La marca de provisorio es la del índice de HOY, no la que tenía la foto.
-    const { ipcProvisorio: _p, periodoIndice: _i, ...fotoSinMarca } = foto
-    return { estado: "listo", calculo: { ...fotoSinMarca, porcentaje, monto: Math.round(foto.base * (1 + porcentaje / 100)), aplicadoEsteMes: true, ...marcaIndice } }
+    const { ipcProvisorio: _p, periodoIndice: _i, meses: _m, ...fotoSinMarca } = foto
+    return { estado: "listo", calculo: {
+      ...fotoSinMarca, porcentaje: ajuste.porcentaje, monto: Math.round(foto.base * ajuste.factor), aplicadoEsteMes: true,
+      ...(foto.meses ? { meses: ajuste.meses } : {}), ...ajuste.marca,
+    } }
   }
-  const ultima = acreditados.at(-1)
+
+  const ultima = [...acreditados].sort((a, b) => a.periodo.localeCompare(b.periodo) || a.numero - b.numero).at(-1)
   const base = ultima?.neto ?? plan.montoCuota
   if (!Number.isFinite(base) || base <= 0) return pendiente("La cuota base original del plan no está disponible.")
+  // Sin cuotas cobradas: un solo ajuste, el del período de esta cuota (como siempre).
+  const meses = ultima ? mesesEntre(ultima.periodo, periodo) : [periodo]
+  if (meses.length > MAX_MESES_IPC) return pendiente(`Pasaron más de ${MAX_MESES_IPC} meses desde la última cuota cobrada. Revisá la base a mano.`)
+  const ajuste = ajusteDeMeses(historial, meses)
+  if ("motivo" in ajuste) return pendiente(ajuste.motivo)
   return { estado: "listo", calculo: {
-    version: "ultima-cuota-v1", periodo, base, origen: ultima ? "pago" : "plan",
-    cuotaOrigen: ultima?.numero, porcentaje,
-    monto: Math.round(base * (1 + porcentaje / 100)), aplicadoEsteMes: false,
-    ...marcaIndice,
+    version: "vencimiento-v2", periodo, base, origen: ultima ? "pago" : "plan",
+    cuotaOrigen: ultima?.numero, porcentaje: ajuste.porcentaje,
+    monto: Math.round(base * ajuste.factor), aplicadoEsteMes: meses.length === 0,
+    meses: ajuste.meses, ...ajuste.marca,
   } }
+}
+
+const MAX_MESES_IPC = 36
+
+/** Meses "YYYY-MM" posteriores a `desde` hasta `hasta` inclusive (vacío si hasta <= desde). */
+export function mesesEntre(desde: string, hasta: string): string[] {
+  const [a1, m1] = desde.split("-").map(Number)
+  const [a2, m2] = hasta.split("-").map(Number)
+  const meses: string[] = []
+  for (let n = ordenMes(a1, m1 - 1) + 1; n <= ordenMes(a2, m2 - 1) && meses.length <= MAX_MESES_IPC; n++) {
+    meses.push(`${Math.floor(n / 12)}-${String((n % 12) + 1).padStart(2, "0")}`)
+  }
+  return meses
+}
+
+/**
+ * IPC compuesto de varios meses. Con un solo mes, el porcentaje es el del
+ * índice tal cual (sin cuentas de punto flotante: da lo mismo que antes).
+ */
+function ajusteDeMeses(historial: HistorialIPCEntry[], meses: string[]):
+  | { factor: number; porcentaje: number; meses: NonNullable<CalculoIPC["meses"]>; marca: Pick<CalculoIPC, "ipcProvisorio" | "periodoIndice"> }
+  | { motivo: string } {
+  const detalle: NonNullable<CalculoIPC["meses"]> = []
+  let factor = 1
+  let marca: Pick<CalculoIPC, "ipcProvisorio" | "periodoIndice"> = {}
+  for (const mes of meses) {
+    const indice = indiceParaPeriodo(historial, mes)
+    if (!indice) return { motivo: `IPC de ${mes} pendiente de definición o duplicado. Cargá un único índice antes de cobrar.` }
+    if (!Number.isFinite(indice.porcentaje) || indice.porcentaje <= -100) return { motivo: "El porcentaje IPC no es válido." }
+    factor *= 1 + indice.porcentaje / 100
+    detalle.push({ periodo: mes, porcentaje: indice.porcentaje, ...(indice.provisorio ? { provisorio: true } : {}) })
+    if (indice.provisorio) marca = marcaProvisorio(indice)
+  }
+  const porcentaje = detalle.length === 1 ? detalle[0].porcentaje : detalle.length === 0 ? 0 : (factor - 1) * 100
+  return { factor: detalle.length === 1 ? 1 + porcentaje / 100 : factor, porcentaje, meses: detalle, marca }
+}
+
+const NOMBRES_MES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+/** "octubre de 2026", "septiembre y octubre de 2026", "diciembre de 2026 y enero de 2027". */
+export function etiquetaMesesIPC(calculo: Pick<CalculoIPC, "periodo" | "meses">): string {
+  const meses = mesesDelCalculo(calculo).map(m => m.split("-").map(Number))
+  const mismoAnio = meses.every(([a]) => a === meses[0][0])
+  const partes = meses.map(([a, m], i) => mismoAnio && i < meses.length - 1 ? NOMBRES_MES[m - 1] : `${NOMBRES_MES[m - 1]} de ${a}`)
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes.at(-1)}` : partes[0] ?? ""
+}
+
+/** Meses de IPC de un cálculo, para mostrar ("2026-09", "2026-10"). */
+export function mesesDelCalculo(calculo: Pick<CalculoIPC, "periodo" | "meses">): string[] {
+  return calculo.meses?.length ? calculo.meses.map(m => m.periodo) : [calculo.periodo]
 }
 
 const ordenMes = (anio: number, mes0: number) => anio * 12 + mes0
@@ -251,8 +349,9 @@ export function resolverCalculoCobro(
     if (opciones.baseManual != null && Number.isFinite(opciones.baseManual) && opciones.baseManual > 0 && opciones.baseManual !== calculo.base) {
       const base = opciones.baseManual
       return { calculo: {
-        version: "ultima-cuota-v1", periodo: calculo.periodo, base, origen: "manual", porcentaje: calculo.porcentaje,
+        version: calculo.version, periodo: calculo.periodo, base, origen: "manual", porcentaje: calculo.porcentaje,
         monto: opciones.aplicarIPC ? Math.round(base * (1 + calculo.porcentaje / 100)) : base,
+        ...(calculo.meses ? { meses: calculo.meses } : {}),
         aplicadoEsteMes: false, ipcOmitido: !opciones.aplicarIPC,
         ...marcaProvisorio(calculo.ipcProvisorio ? { provisorio: true, periodoIndice: calculo.periodoIndice! } : null),
       } }

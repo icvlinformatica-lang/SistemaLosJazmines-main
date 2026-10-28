@@ -14,8 +14,11 @@ export const metadata: Metadata = {
   description: "Sistema de gestión de catering profesional para planificación de eventos",
   generator: 'v0.app',
   icons: {
-    icon: "/pwa-icon-512.jpg",
-    apple: "/pwa-icon-512.jpg",
+    icon: [
+      { url: "/favicon-48.png", sizes: "48x48", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: { url: "/apple-touch-icon.png", sizes: "180x180" },
   },
 }
 
@@ -31,7 +34,6 @@ export default function RootLayout({
         <meta name="theme-color" content="#1a3a2a" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-        <link rel="apple-touch-icon" href="/pwa-icon-512.jpg" />
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
         <ProfileProvider>

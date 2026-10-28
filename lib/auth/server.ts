@@ -2,7 +2,8 @@
 // Los PINs NUNCA deben estar en código del cliente: viven aquí (solo servidor)
 // y pueden sobreescribirse con variables de entorno (PIN_COCINA, PIN_BARRA,
 // PIN_ADMINISTRACION, PIN_SOPORTE, PIN_COBRO, PIN_DJ, PIN_FOTOGRAFO,
-// PIN_VESTIDO, PIN_PANTALLA, PIN_COORDINACION, PIN_VENDEDOR) sin tocar el código.
+// PIN_VESTIDO, PIN_PANTALLA, PIN_COORDINACION, PIN_VENDEDOR, PIN_MANTENIMIENTO)
+// sin tocar el código.
 // También vive acá PIN_STOCK_EXTRA, que no es de un perfil sino de una acción
 // (la carga extraordinaria de stock): ver verifyPinStockExtra.
 // Y PIN_MAESTRO, la clave general del dueño: ver esPinMaestro.
@@ -40,6 +41,11 @@ export function getPins(): Record<string, string> {
     pantalla: process.env.PIN_PANTALLA || "9004",
     coordinacion: process.env.PIN_COORDINACION || "9005",
     vendedor: process.env.PIN_VENDEDOR || "9006",
+    // Perfil nuevo (21/10/2026): SIN PIN de reserva, porque el repositorio es
+    // público. Hasta que se cargue PIN_MANTENIMIENTO en Vercel nadie entra con
+    // PIN (verifyPin rechaza un PIN vacío); Administración sí puede pasar con
+    // su pase.
+    mantenimiento: process.env.PIN_MANTENIMIENTO || "",
   }
 }
 
@@ -214,7 +220,7 @@ export async function verifyPaseAdmin(pase: string | undefined | null): Promise<
 }
 
 /**
- * Pase de contrato (16/10/2026): Cobrar cuota abre el contrato de un evento
+ * Pase de contrato (PR #359): Cobrar cuota abre el contrato de un evento
  * con el PIN de Administración (/api/auth/verificar-pin). Hasta ahora eso lo
  * controlaba solo la pantalla; desde ahora, al acertar el PIN, el servidor
  * deja este pase en una cookie y PATCH /api/eventos/[id] solo acepta cambios

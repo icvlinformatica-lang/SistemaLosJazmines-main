@@ -8,13 +8,18 @@
 // - Cobrar cuota: cobrar y anular cuotas, el contrato (con el PIN de
 //   Administración) y los gastos y retiros de Caja Jazmines del botón de
 //   Inicio (components/gasto-rapido-modal.tsx).
-// - Cocina y Barra: el stock, por sus rutas (/api/stock-salones/*).
+// - Cocina y Barra: el stock, por sus rutas (/api/stock-salones/*); Cocina,
+//   también su vajilla y utensilios (/api/insumos-vajilla).
+// - Mantenimiento: la limpieza (/api/stock-salones/* y agregar artículos en
+//   /api/insumos-limpieza).
 // - Vendedor: sus cotizaciones y paquetes (/api/vendedor/*).
+// - Clientes (el simulador): solo sus rutas (/api/clientes/*).
 // - Cada perfil, su anotación de cada evento; Coordinación, el cronograma.
-// Lo de Cocina, Barra, las anotaciones y el cronograma ya lo controlaba cada
-// ruta. Acá están las reglas del proxy de la base (/api/db), por donde pasa
-// el data-service del navegador, y del guardado de eventos: antes los dos
-// dejaban escribir a cualquier sesión, incluida la de DJ.
+// Lo de Cocina, Barra, Mantenimiento, Clientes, las anotaciones y el
+// cronograma ya lo controla cada ruta. Acá están las reglas del proxy de la
+// base (/api/db), por donde pasa el data-service del navegador, y del
+// guardado de eventos: antes los dos dejaban escribir a cualquier sesión,
+// incluida la de DJ.
 //
 // Lógica pura, sin Request ni base, para poder probarla sola
 // (scripts/test-permisos-escritura.cjs).

@@ -13,7 +13,7 @@ import { avisarEscrituraRechazada } from "@/lib/permisos-escritura-server"
  * usamos la service role key SOLO del lado del servidor (nunca viaja al
  * navegador). Así el blindaje de la base se mantiene sin romper la app.
  *
- * Permisos por perfil (16/10/2026, lib/permisos-escritura.ts): las lecturas
+ * Permisos por perfil (PR #359, lib/permisos-escritura.ts): las lecturas
  * pasan como siempre; las escrituras, solo Administración y Soporte, más lo
  * que necesita Cobrar cuota. El resto de los perfiles recibe 403.
  */

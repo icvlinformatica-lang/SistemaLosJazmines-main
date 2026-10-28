@@ -13,6 +13,8 @@ import {
   Monitor,
   Wrench,
   Briefcase,
+  SprayCan,
+  PartyPopper,
   type LucideIcon,
 } from "lucide-react"
 
@@ -57,7 +59,9 @@ export const PERFILES: Perfil[] = [
     // recetas, unidades y precios, que mueven el costo de los eventos, y eso
     // es de Administración. El servidor también lo cierra
     // (lib/recetas-permisos.ts, lib/insumos-permisos.ts, /api/diagnostico-costos).
-    rutas: ["/eventos/produccion", "/stock"],
+    // Sí arma y cuenta su Vajilla y utensilios (/admin/vajilla, pedido de
+    // Rodrigo, 27/10/2026): no tiene precio, no mueve costos ni cajas.
+    rutas: ["/eventos/produccion", "/stock", "/admin/vajilla"],
   },
   {
     id: "barra",
@@ -84,7 +88,8 @@ export const PERFILES: Perfil[] = [
     icon: BarChart2,
     iconColor: NEGRO,
     rutas: ["*"],
-    rutasExcluidas: ["/eventos/produccion"],
+    // La vista de Clientes es solo de Soporte (pedido del 21/10/2026).
+    rutasExcluidas: ["/eventos/produccion", "/clientes"],
   },
   {
     id: "coordinacion",
@@ -115,6 +120,19 @@ export const PERFILES: Perfil[] = [
     // components/sidebar.tsx tratan un array vacío como "acceso total"
     // (mismo criterio que "*"), no como "sin acceso".
     rutas: ["/vendedor", "/vendedor/cotizar", "/vendedor/paquetes", "/vendedor/papelera"],
+  },
+  // Prototipo del simulador "Armá tu fiesta": lo que va a ver un cliente que
+  // llega desde Instagram (lib/clientes-simulador.ts). No tiene PIN propio
+  // (no está en getPins): entra Administración con su pase, o Diego con su
+  // acceso rápido. Por eso el login solo muestra la tarjeta en esos casos.
+  {
+    id: "clientes",
+    nombre: "Clientes",
+    categoria: "gestion",
+    color: DORADO,
+    icon: PartyPopper,
+    iconColor: NEGRO,
+    rutas: ["/clientes"],
   },
   // Perfiles de solo lectura para staff externo: ven el calendario de
   // próximos eventos con su servicio resaltado (ver app/eventos/staff).
@@ -153,6 +171,22 @@ export const PERFILES: Perfil[] = [
     icon: Monitor,
     iconColor: CREMA,
     rutas: ["/eventos/staff"],
+  },
+  {
+    id: "mantenimiento",
+    nombre: "Mantenimiento",
+    categoria: "evento",
+    color: VERDE_EVENTO,
+    icon: SprayCan,
+    iconColor: CREMA,
+    // Pedido de Diego (21/10/2026): la encargada de limpieza y mantenimiento
+    // cuenta lo que hay de limpieza y papelería en cada salón (/stock, solo el
+    // sector limpieza) y agrega artículos nuevos a la lista (/admin/limpieza).
+    // Editar, borrar y corregir un salón con el lapicito queda para
+    // Administración. El servidor también lo cierra (sectoresPermitidos,
+    // puedeAgregarArticuloLimpieza y puedeEditarCatalogoLimpieza en
+    // lib/stock-salones.ts).
+    rutas: ["/stock", "/admin/limpieza"],
   },
   {
     id: "soporte",

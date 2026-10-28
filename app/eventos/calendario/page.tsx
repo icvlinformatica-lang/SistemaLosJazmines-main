@@ -20,6 +20,7 @@ import {
   type PagoEvento,
 } from "@/lib/store"
 import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
+import { cambiosAlImprimirContrato } from "@/lib/generacion-contrato"
 import { validarAnioEvento, mensajeAnioEventoInvalido, FECHA_EVENTO_MIN, FECHA_EVENTO_MAX, ANIO_EVENTO_MAX } from "@/lib/validacion-anio-evento"
 import { useToast } from "@/hooks/use-toast"
 import { SalonDot } from "@/components/salon-badge"
@@ -837,7 +838,7 @@ export default function CalendarioPage() {
     const year = currentDate.getFullYear()
 
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         {Array.from({ length: 12 }, (_, monthIdx) => {
           const daysInMonth = getDaysInMonth(year, monthIdx)
           const firstDay = getFirstDayOfMonth(year, monthIdx)
@@ -851,7 +852,7 @@ export default function CalendarioPage() {
           return (
             <Card
               key={monthIdx}
-              className={`cursor-pointer transition-shadow hover:shadow-md ${
+              className={`gap-0 py-0 cursor-pointer transition-shadow hover:shadow-md ${
                 isCurrentMonth ? "ring-2 ring-primary/30" : ""
               }`}
               onClick={() => {
@@ -1101,8 +1102,8 @@ export default function CalendarioPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-7xl flex items-center gap-4">
+      <header className="border-b border-border bg-background px-6 py-2.5">
+        <div className="flex items-center gap-4">
           <LinkVolver href="/" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
           </LinkVolver>
@@ -1136,28 +1137,107 @@ export default function CalendarioPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6 space-y-6">
-        {/* Qué quiere decir cada símbolo del calendario. */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {referenciaTiposEvento().map((t) => (
-            <span key={t.etiqueta} className="inline-flex items-center gap-1">
-              <span aria-hidden>{t.emoji}</span>
-              {t.etiqueta}
-            </span>
-          ))}
+      <main className="px-4 py-3 sm:px-6 space-y-3">
+        {/* Barra compacta: navegación, vista, panel y Planificar en una fila; salones y
+            referencia de tipos en otra. Así el calendario arranca casi pegado al título
+            y se ve entero apenas se entra, aun en pantallas bajas. En compu (lg) los
+            botones se achican a 32 px, sin el mínimo de 44 px pensado para el dedo. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" className="h-8 w-8 p-0 lg:min-h-0" onClick={() => navigate(-1)} aria-label="Anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 lg:min-h-0" onClick={goToToday}>
+              Hoy
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 w-8 p-0 lg:min-h-0" onClick={() => navigate(1)} aria-label="Siguiente">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <h2 className="text-base font-semibold ml-2 whitespace-nowrap">{viewTitle()}</h2>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {([
+                { key: "anual", label: "Anual" },
+                { key: "trimestre", label: "Trim." },
+                { key: "mes", label: "Mes" },
+                { key: "semana", label: "Semana" },
+                { key: "dia", label: "Dia" },
+              ] as { key: ViewMode; label: string }[]).map((v, i, arr) => (
+                <button
+                  key={v.key}
+                  onClick={() => setViewMode(v.key)}
+                  className={`h-8 lg:min-h-0 px-2.5 text-sm font-medium transition-colors ${
+                    i < arr.length - 1 ? "border-r border-border" : ""
+                  } ${viewMode === v.key ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDashboard(!showDashboard)}
+              className="h-8 gap-1.5 lg:min-h-0"
+              aria-pressed={showDashboard}
+            >
+              {showDashboard ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showDashboard ? "Ocultar panel" : "Mostrar panel"}
+            </Button>
+            <Button size="sm" className="h-8 lg:min-h-0" onClick={handleGoToPlanner}>
+              <Sparkles className="h-4 w-4 mr-1" />
+              Planificar
+            </Button>
+          </div>
         </div>
 
-        {/* Dashboard toggle */}
-        <div className="flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowDashboard(!showDashboard)}
-            className="gap-2"
-          >
-            {showDashboard ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {showDashboard ? "Ocultar panel" : "Mostrar panel"}
-          </Button>
+        {/* Filtro por salón a la izquierda; qué quiere decir cada símbolo, a la derecha. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-muted-foreground font-medium">Salones:</span>
+            {SALONES.map((salon) => {
+              const color = salonColor(salon, configuracionCajas)
+              const activo = salonesFiltrados.length === 0 || salonesFiltrados.includes(salon)
+              return (
+                <button
+                  key={salon}
+                  type="button"
+                  onClick={() => toggleSalonFiltro(salon)}
+                  aria-pressed={salonesFiltrados.includes(salon)}
+                  className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 lg:min-h-0 font-medium transition-all ${
+                    activo
+                      ? "border-transparent text-white"
+                      : "border-border bg-muted text-muted-foreground opacity-50"
+                  }`}
+                  style={activo ? { backgroundColor: color } : undefined}
+                >
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: activo ? "rgba(255,255,255,0.9)" : color }}
+                  />
+                  {salonLabel(salon)}
+                </button>
+              )
+            })}
+            {salonesFiltrados.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSalonesFiltrados([])}
+                className="text-muted-foreground underline underline-offset-2 hover:text-foreground lg:min-h-0"
+              >
+                Ver todos
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground lg:ml-auto">
+            {referenciaTiposEvento().map((t) => (
+              <span key={t.etiqueta} className="inline-flex items-center gap-1">
+                <span aria-hidden>{t.emoji}</span>
+                {t.etiqueta}
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* Search + Today + Upcoming Events */}
@@ -1275,94 +1355,15 @@ export default function CalendarioPage() {
         </div>
         )}
 
-        {/* Controls */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={goToToday}>
-              Hoy
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate(1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <h2 className="text-lg font-semibold ml-2">{viewTitle()}</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-border overflow-hidden">
-              {([
-                { key: "anual", label: "Anual" },
-                { key: "trimestre", label: "Trim." },
-                { key: "mes", label: "Mes" },
-                { key: "semana", label: "Semana" },
-                { key: "dia", label: "Dia" },
-              ] as { key: ViewMode; label: string }[]).map((v, i, arr) => (
-                <button
-                  key={v.key}
-                  onClick={() => setViewMode(v.key)}
-                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                    i < arr.length - 1 ? "border-r border-border" : ""
-                  } ${viewMode === v.key ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
-            <Button onClick={handleGoToPlanner}>
-              <Sparkles className="h-4 w-4 mr-1" />
-              Planificar
-            </Button>
-          </div>
-        </div>
-
-        {/* Filtro por salón */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground font-medium">Salones:</span>
-          {SALONES.map((salon) => {
-            const color = salonColor(salon, configuracionCajas)
-            const activo = salonesFiltrados.length === 0 || salonesFiltrados.includes(salon)
-            return (
-              <button
-                key={salon}
-                type="button"
-                onClick={() => toggleSalonFiltro(salon)}
-                aria-pressed={salonesFiltrados.includes(salon)}
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition-all ${
-                  activo
-                    ? "border-transparent text-white"
-                    : "border-border bg-muted text-muted-foreground opacity-50"
-                }`}
-                style={activo ? { backgroundColor: color } : undefined}
-              >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: activo ? "rgba(255,255,255,0.9)" : color }}
-                />
-                {salonLabel(salon)}
-              </button>
-            )
-          })}
-          {salonesFiltrados.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setSalonesFiltrados([])}
-              className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            >
-              Ver todos
-            </button>
-          )}
-        </div>
-
-        {/* Ocupacion de fines de semana */}
-        <OcupacionFinesDeSemana eventos={eventos} year={currentDate.getFullYear()} />
-
         {/* Calendar View */}
         {viewMode === "anual" && renderYearView()}
         {viewMode === "trimestre" && renderQuarterView()}
         {viewMode === "mes" && renderMonthView()}
         {viewMode === "semana" && renderWeekView()}
         {viewMode === "dia" && renderDayView()}
+        {/* Ocupacion de fines de semana: va abajo del calendario para que el calendario
+            sea lo primero que se ve al entrar. */}
+        <OcupacionFinesDeSemana eventos={eventos} year={currentDate.getFullYear()} />
       </main>
 
       {/* --- Detail / Edit Dialog --- */}
@@ -1734,6 +1735,14 @@ export default function CalendarioPage() {
                           state.pagosPersonal || [],
                           state.barrasTemplates || [],
                           state.cocteles || [],
+                        )
+                        // Que la impresión quede anotada, como en la Lista. Con
+                        // el evento del store: selectedEvento es una copia que
+                        // no ve las impresiones anteriores de esta misma ventana.
+                        const guardado = (eventosTodos || []).find((e) => e.id === selectedEvento.id) ?? selectedEvento
+                        void updateEvento(
+                          guardado.id,
+                          cambiosAlImprimirContrato(guardado, "calendario", state.pagosPersonal || []),
                         )
                       }}
                     >

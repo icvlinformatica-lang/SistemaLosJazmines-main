@@ -23,8 +23,11 @@ import {
   ClipboardList,
   FileText,
   Check,
+  CalendarCheck,
+  ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AvisoSemanalContenido } from "@/components/aviso-semanal"
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Zap,
@@ -59,14 +62,18 @@ interface Novedad {
 interface NovedadesModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Aviso de la semana de Administración (null si al perfil no le toca). */
+  avisoSemanal?: { pendientes: number } | null
 }
 
-export function NovedadesModal({ open, onOpenChange }: NovedadesModalProps) {
+export function NovedadesModal({ open, onOpenChange, avisoSemanal }: NovedadesModalProps) {
   const [novedades, setNovedades] = useState<Novedad[]>([])
   const [isVisible, setIsVisible] = useState(false)
   const [loading, setLoading] = useState(true)
   // ids en proceso de cierre: primero muestra el check animado, después colapsa
   const [cerrando, setCerrando] = useState<Set<string>>(new Set())
+  // El aviso de la semana arranca plegado: se despliega para resolver los eventos.
+  const [avisoAbierto, setAvisoAbierto] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -85,6 +92,7 @@ export function NovedadesModal({ open, onOpenChange }: NovedadesModalProps) {
     } else {
       setIsVisible(false)
       setCerrando(new Set())
+      setAvisoAbierto(false)
     }
   }, [open])
 
@@ -150,6 +158,37 @@ export function NovedadesModal({ open, onOpenChange }: NovedadesModalProps) {
 
         {/* Cards: 3 columnas */}
         <div className="max-h-[72vh] overflow-y-auto pr-1">
+          {avisoSemanal && (
+            <div className="mb-3 rounded-xl bg-[#f5f0e8] shadow-2xl">
+              <button
+                type="button"
+                onClick={() => setAvisoAbierto((v) => !v)}
+                aria-expanded={avisoAbierto}
+                className="flex w-full items-center gap-3 p-4 text-left"
+              >
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#2d5a3d]">
+                  <CalendarCheck className="h-5 w-5 text-[#f5f0e8]" />
+                  {avisoSemanal.pendientes > 0 && (
+                    <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-destructive ring-2 ring-[#f5f0e8]" aria-hidden="true" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[14px] font-bold leading-tight text-[#1a1a1a]">Aviso de la semana</h3>
+                  <p className="mt-1 text-[12.5px] text-[#4a4a4a]">
+                    {avisoSemanal.pendientes > 0
+                      ? `${avisoSemanal.pendientes} ${avisoSemanal.pendientes === 1 ? "evento" : "eventos"} del finde pasado sin finalizar`
+                      : "Eventos del finde pasado cerrados · ingresos de la semana y próximo finde"}
+                  </p>
+                </div>
+                <ChevronDown className={cn("h-5 w-5 shrink-0 text-[#1a1a1a]/50 transition-transform", avisoAbierto && "rotate-180")} />
+              </button>
+              {avisoAbierto && (
+                <div className="border-t border-[#1a1a1a]/10 p-4">
+                  <AvisoSemanalContenido onIr={() => onOpenChange(false)} />
+                </div>
+              )}
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-8 h-8 border-2 border-[#f5f0e8]/30 border-t-[#f5f0e8] rounded-full animate-spin" />

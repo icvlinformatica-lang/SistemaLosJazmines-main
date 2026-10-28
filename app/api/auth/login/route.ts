@@ -15,10 +15,16 @@ import {
 import { usuarioDesdeCookie } from "@/lib/usuario-cookie"
 import { chequearLimite, registrarFallo, registrarExito, obtenerIp } from "@/lib/auth/rate-limit"
 
+// "clientes" (prototipo del simulador) no tiene PIN propio: no está en
+// getPins(), así que verifyPin lo rechaza siempre. Desde el 21/10/2026 se
+// entra solo con el link que arma Soporte (un acceso rápido, ver
+// lib/link-prototipo.ts): ni con el pase de Administración ni con los
+// accesos rápidos que recibe Diego.
+const PERFILES_SIN_PASE = ["clientes"]
 const PERFILES_VALIDOS = [
   "cocina", "barra", "administracion", "soporte", "cobro",
   "dj", "fotografo", "vestido", "pantalla", "coordinacion",
-  "vendedor",
+  "vendedor", "mantenimiento", "clientes",
 ]
 
 // POST { perfilId, pin } — login con PIN
@@ -59,7 +65,7 @@ export async function POST(req: Request) {
     } else if (quickToken) {
       const payload = await verifyToken(quickToken)
       autorizado = payload !== null && payload.perfilId === perfilId
-    } else if (paseAdmin) {
+    } else if (paseAdmin && !PERFILES_SIN_PASE.includes(perfilId)) {
       // Pase de Administración: entra a cualquier perfil sin su PIN.
       autorizado = await verifyPaseAdmin(paseAdmin)
       porPase = autorizado
@@ -96,7 +102,7 @@ export async function POST(req: Request) {
     let accesosRapidos: Record<string, string> | undefined
     if (!porPase && desbloqueaTodosLosPerfiles(perfilId, quien)) {
       accesosRapidos = {}
-      for (const id of PERFILES_VALIDOS) {
+      for (const id of PERFILES_VALIDOS.filter((id) => !PERFILES_SIN_PASE.includes(id))) {
         accesosRapidos[id] = id === perfilId && nuevoQuickToken ? nuevoQuickToken : await signQuickToken(id)
       }
     }

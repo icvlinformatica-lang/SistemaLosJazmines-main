@@ -18,6 +18,7 @@ import {
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
+import { convertirAUnidadDeStock } from "@/lib/unidades"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -578,10 +579,23 @@ export default function RecetarioPage() {
                                   </Select>
                                 </div>
                               </div>
-                              {ing.unidadReceta && insumo && ing.unidadReceta !== insumo.unidad && (
-                                <p className="text-xs text-muted-foreground">
-                                  Se convertira automaticamente a {insumo.unidad} en el stock
+                              {ing.unidadReceta &&
+                                insumo &&
+                                convertirAUnidadDeStock(ing.cantidadBasePorPersona, ing.unidadReceta, insumo.unidad, contenidoDe(insumo)) === null ? (
+                                // Unidad de otra familia (cc de algo que se compra por kilo): el
+                                // costo cuenta la cantidad tal cual y se infla.
+                                <p className="text-xs font-medium text-red-700">
+                                  {ing.unidadReceta} no se puede pasar a {insumo.unidad}: el costo cuenta{" "}
+                                  {ing.cantidadBasePorPersona} {insumo.unidad.toLowerCase()} por persona. Elegí otra unidad.
                                 </p>
+                              ) : (
+                                ing.unidadReceta &&
+                                insumo &&
+                                ing.unidadReceta !== insumo.unidad && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Se convertira automaticamente a {insumo.unidad} en el stock
+                                  </p>
+                                )
                               )}
                             </div>
                           )

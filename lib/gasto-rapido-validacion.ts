@@ -15,6 +15,11 @@ export interface DatosGastoRapido {
   nombre: string
   monto: string
   salon: string
+  /**
+   * Fecha que se exige para agendar. Desde el 22/10/2026 "Cargar gastos" pasa
+   * la fecha del gasto (arranca en hoy) y el vencimiento es opcional; un gasto
+   * viejo sin fecha del gasto pasa su vencimiento.
+   */
   fecha: string
   repartir: boolean
   /** Resultado de repartoValido(distribucion), que calcula el editor de reparto. */
@@ -27,7 +32,7 @@ export const MENSAJE_CAMPO_FALTANTE: Record<CampoGasto, string> = {
   reparto: "Revisá el reparto entre salones.",
   nombre: "Falta el concepto.",
   monto: "Falta el monto.",
-  fecha: "Falta el vencimiento.",
+  fecha: "Falta la fecha del gasto.",
 }
 
 export function camposFaltantesGasto(d: DatosGastoRapido): CampoGasto[] {

@@ -4,6 +4,7 @@ import { sql } from "@/lib/db"
 import {
   detectarProblemas,
   detectarPendientes,
+  detectarUnidadesCruzadas,
   agruparPorInsumo,
   type LineaDiagnostico,
   type InsumoDiagnostico,
@@ -100,6 +101,13 @@ export async function GET(request: Request) {
       ...detectarPendientes("barra", lineasBarra, aInsumo(insumosBarra), yaSonProblema),
     ]
 
+    // Recetas o cócteles que piden una unidad de otra familia que la del
+    // insumo (cc de algo que se compra por kilo): se corrigen en la receta.
+    const cruzadas = [
+      ...detectarUnidadesCruzadas("cocina", lineasCocina, aInsumo(insumosCocina)),
+      ...detectarUnidadesCruzadas("barra", lineasBarra, aInsumo(insumosBarra)),
+    ].sort((a, b) => b.impactoEstimado - a.impactoEstimado)
+
     return NextResponse.json({
       ok: true,
       total: porInsumo.length,
@@ -109,6 +117,7 @@ export async function GET(request: Request) {
       insumos: porInsumo,
       pendientes,
       totalPendientes: pendientes.length,
+      cruzadas,
     })
   } catch (err) {
     console.error("[API] Error en diagnostico-costos GET:", err)

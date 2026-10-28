@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronUp, LockOpen, LogIn } from "lucide-react"
+import { InstalarAppBoton } from "@/components/instalar-app"
 import {
   PERFILES,
   useProfile,
@@ -251,7 +252,12 @@ export default function LoginPage() {
   }
 
   const perfilActual = PERFILES.find((p) => p.id === perfilSeleccionado)
-  const perfilesGestion = PERFILES.filter((p) => p.categoria === "gestion")
+  // "Clientes" no tiene PIN propio: su tarjeta aparece solo si este navegador
+  // tiene su acceso rápido (el que deja el link de Soporte). Ni el pase de
+  // Administración lo abre, así que a los demás no se les ofrece.
+  const perfilesGestion = PERFILES.filter(
+    (p) => p.categoria === "gestion" && (p.id !== "clientes" || !!pinsGuardados[p.id]),
+  )
   const perfilesEvento = PERFILES.filter((p) => p.categoria === "evento")
 
   // El paso "¿Quién ingresa?"/PIN vive en un panel aparte, debajo de toda la
@@ -558,6 +564,9 @@ export default function LoginPage() {
           </button>
         </div>
       </div>
+
+      {/* Instalar la app en el celular: abajo, antes del pie. shrink-0 como el pie. */}
+      <InstalarAppBoton className="shrink-0 mt-4" />
 
       {/* Pie - solo si hay al menos un PIN guardado o los perfiles están
           desbloqueados. shrink-0: altura fija, nunca se recorta ni empuja el

@@ -27,9 +27,12 @@ require.extensions[".ts"] = (mod, filename) => mod._compile(ts.transpileModule(f
 const auth = require(path.join(RAIZ, "lib", "auth", "server.ts"))
 const { POST } = require(path.join(RAIZ, "app", "api", "auth", "login", "route.ts"))
 
+// "clientes" (prototipo del simulador) no está: desde el 21/10/2026 se entra
+// solo con el link que arma Soporte, así que Diego no recibe su acceso rápido.
 const PERFILES = [
   "cocina", "barra", "administracion", "soporte", "cobro",
   "dj", "fotografo", "vestido", "pantalla", "coordinacion", "vendedor",
+  "mantenimiento",
 ]
 
 let ip = 0
@@ -92,6 +95,33 @@ test("con el PIN equivocado, poner Diego no sirve", async () => {
   const { status, data } = await login({ perfilId: "administracion", pin: "000000", quien: "Diego" })
   assert.equal(status, 401)
   assert.equal(data.accesosRapidos, undefined)
+})
+
+test("Clientes no tiene PIN propio: no entra con ningún PIN, ni con el pase de Administración ni con lo de Diego; sí con el link de Soporte", async () => {
+  // Ni un PIN cualquiera, ni el de otro perfil, ni la clave maestra.
+  for (const pin of ["1111", "222222", "0000"]) {
+    const conPin = await login({ perfilId: "clientes", pin })
+    assert.equal(conPin.status, 401, pin)
+  }
+  process.env.PIN_MAESTRO = "48151623"
+  try {
+    assert.equal((await login({ perfilId: "clientes", pin: "48151623" })).status, 401)
+  } finally {
+    delete process.env.PIN_MAESTRO
+  }
+  // Con el pase de Administración, no (desde el 21/10/2026 solo Soporte).
+  const admin = await login({ perfilId: "administracion", pin: "222222" })
+  const conPase = await login({ perfilId: "clientes", paseAdmin: admin.data.paseAdmin })
+  assert.equal(conPase.status, 401)
+  // El pase sigue sirviendo para los demás perfiles.
+  assert.equal((await login({ perfilId: "cocina", paseAdmin: admin.data.paseAdmin })).status, 200)
+  // Diego ya no recibe el acceso de Clientes.
+  const diego = await login({ perfilId: "administracion", pin: "222222", quien: "Diego" })
+  assert.equal(diego.data.accesosRapidos.clientes, undefined)
+  // Con el acceso rápido del link de Soporte, entra.
+  const conAcceso = await login({ perfilId: "clientes", quickToken: await auth.signQuickToken("clientes") })
+  assert.equal(conAcceso.status, 200)
+  assert.equal(conAcceso.data.perfilId, "clientes")
 })
 
 test("entrar con la clave maestra da una sesión válida con la firma de sesiones actual", async () => {

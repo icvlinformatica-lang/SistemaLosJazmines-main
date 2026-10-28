@@ -1,6 +1,6 @@
 // Desglose de cada mes de la "Proyección en 12 meses" de Caja Eventos
-// (app/finanzas/caja-eventos): de lo que vence ese mes, cuánto ya entró o ya
-// se pagó, cuánto falta y de quién.
+// (app/finanzas/caja-eventos): cuánto ya entró o ya se pagó, cuánto falta y
+// de quién.
 //
 // Reglas:
 // - "Falta" sale de la MISMA lista que arma la proyección (calcularCajaEventos),
@@ -10,6 +10,10 @@
 //   pasado no se recalcula con los precios de hoy. Si una cuota o un pago
 //   figura como hecho pero no tiene movimiento en la caja, se muestra el monto
 //   que calcula el sistema y se marca con `sinMovimiento`.
+// - A cobrar (lib/mes-cobro.ts, pedido del dueño 27/10/2026): lo que falta va
+//   en el mes en que vence, y lo atrasado en el mes actual; lo que ya entró va
+//   en el mes en que entró la plata (fecha del movimiento), no en el que vencía
+//   la cuota. Una cuota de agosto cobrada en septiembre es ingreso de septiembre.
 // - Mismo universo que la proyección: sin eventos cancelados ni completados y
 //   con el mismo filtro de salón.
 //
@@ -18,6 +22,7 @@
 import { calcularProporcionCajaEventos, type DatosCostosEvento } from "./cobrar-cuota"
 import type { EgresoPendienteServicio, IngresoPendiente } from "./hooks/use-caja-eventos"
 import type { EventoGuardado, MovimientoCaja } from "./store"
+import { mesDeFecha, mesEsperadoCobro } from "./mes-cobro"
 
 export interface CobroPendienteMes {
   id: string
@@ -126,7 +131,9 @@ function ultimoDia(movs: MovimientoCaja[]): string | undefined {
  * app/eventos/costos al pagar.
  */
 function prefijoPago(g: EgresoPendienteServicio): string {
-  if (g.tipo === "menu") return "Pago menú - "
+  // Sin " - ": también cuenta los pagos por proveedor ("Pago menú (Grido) - …",
+  // lib/pago-menu-proveedor.ts).
+  if (g.tipo === "menu") return "Pago menú"
   if (g.tipo === "barra") return "Pago barra - "
   return `Pago ${g.tipo} ${g.servicioNombre} - `
 }
@@ -164,9 +171,11 @@ export function desglosarProyeccion(
   }
 
   // ---------------- A COBRAR ----------------
-  // Lo que falta: la misma lista y el mismo orden que suma la proyección.
+  // Mes actual: el primero de la proyección (arranca siempre en el de hoy).
+  const mesActual = [...meses].sort()[0] ?? ""
+  // Lo que falta: la misma lista, el mismo orden y el mismo mes que suma la proyección.
   for (const ing of entrada.ingresosPendientes) {
-    const r = resultado[mesDe(ing.fechaVencimiento)]
+    const r = resultado[mesEsperadoCobro(ing.fechaVencimiento, mesActual)]
     if (!r) continue
     r.cobrar.pendientes.push({
       id: ing.id,
@@ -202,25 +211,11 @@ export function desglosarProyeccion(
     if (!plan) continue
     let proporcion: number | null = null // se calcula solo si hace falta estimar
     for (const cuota of plan.cuotas ?? []) {
-      const r = resultado[mesDe(cuota.fechaVencimiento)]
-      if (!r) continue
       const marcadaPagada = cuota.pagada === true || (plan.cuotasPagadas ?? []).includes(cuota.numero)
       const acreditado = cuota.montoPagadoNeto ?? 0
       if (!marcadaPagada && acreditado <= 0) continue
 
-      const movs = cobrosPorCuota.get(`${evento.id}#${cuota.numero}`) ?? []
-      let monto: number
-      let sinMovimiento = false
-      if (movs.length > 0) {
-        monto = dinero(movs.reduce((s, m) => s + m.monto, 0))
-      } else {
-        if (proporcion === null) proporcion = calcularProporcionCajaEventos(evento, entrada.datosCostos)
-        monto = dinero((acreditado > 0 ? acreditado : cuota.montoCuota) * proporcion)
-        sinMovimiento = true
-      }
-      if (monto <= 0) continue
-      r.cobrar.cobrados.push({
-        id: `${evento.id}-cuota-${cuota.numero}`,
+      const datosCuota = {
         eventoId: evento.id,
         // Mismos nombres que usa calcularCajaEventos para los pendientes.
         cliente: evento.contrato?.nombreCompleto || evento.nombrePareja || evento.nombre || "Sin nombre",
@@ -229,10 +224,48 @@ export function desglosarProyeccion(
         numeroCuota: cuota.numero,
         totalCuotas: plan.numeroCuotas,
         fechaVencimiento: cuota.fechaVencimiento || "",
-        monto,
-        fechaCobro: ultimoDia(movs),
-        sinMovimiento,
-      })
+      }
+      const movs = cobrosPorCuota.get(`${evento.id}#${cuota.numero}`) ?? []
+      if (movs.length > 0) {
+        // Cada cobro cuenta en el mes en que entró: una cuota pagada en dos
+        // meses aparece en los dos, cada uno con lo suyo.
+        const porMes = new Map<string, MovimientoCaja[]>()
+        for (const m of movs) {
+          const mes = mesDeFecha(diaLocal(m.fecha))
+          const lista = porMes.get(mes)
+          if (lista) lista.push(m)
+          else porMes.set(mes, [m])
+        }
+        for (const [mes, delMes] of porMes) {
+          const r = resultado[mes]
+          if (!r) continue
+          const monto = dinero(delMes.reduce((s, m) => s + m.monto, 0))
+          if (monto <= 0) continue
+          r.cobrar.cobrados.push({
+            ...datosCuota,
+            id: porMes.size > 1 ? `${evento.id}-cuota-${cuota.numero}-${mes}` : `${evento.id}-cuota-${cuota.numero}`,
+            monto,
+            fechaCobro: ultimoDia(delMes),
+            sinMovimiento: false,
+          })
+          r.cobrar.yaIngreso += monto
+        }
+        continue
+      }
+
+      // Sin movimiento en la caja: se estima el monto y va al mes del último
+      // pago registrado de esa cuota (o, si no hay, al de su vencimiento).
+      const fechaPago = (evento.pagos ?? [])
+        .filter((p) => p.numeroCuota === cuota.numero && p.fecha)
+        .map((p) => p.fecha.slice(0, 10))
+        .sort()
+        .pop()
+      const r = resultado[mesDeFecha(fechaPago || cuota.fechaVencimiento)]
+      if (!r) continue
+      if (proporcion === null) proporcion = calcularProporcionCajaEventos(evento, entrada.datosCostos)
+      const monto = dinero((acreditado > 0 ? acreditado : cuota.montoCuota) * proporcion)
+      if (monto <= 0) continue
+      r.cobrar.cobrados.push({ ...datosCuota, id: `${evento.id}-cuota-${cuota.numero}`, monto, sinMovimiento: true })
       r.cobrar.yaIngreso += monto
     }
   }

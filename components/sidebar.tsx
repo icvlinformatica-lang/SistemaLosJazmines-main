@@ -35,6 +35,8 @@ import {
   Building,
   Building2,
   Calculator,
+  SprayCan,
+  UtensilsCrossed,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -84,6 +86,15 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
     ]
   }
 
+  // Mantenimiento: contar el stock de limpieza de cada salón y agregar
+  // artículos a la lista.
+  if (perfilId === "mantenimiento") {
+    return [
+      { href: "/stock", label: "Contar stock", icon: ClipboardList },
+      { href: "/admin/limpieza", label: "Artículos de limpieza", icon: SprayCan },
+    ]
+  }
+
   // Perfil "Vendedor"
   if (perfilId === "vendedor") {
     return [
@@ -95,11 +106,13 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
 
   // Perfil "Cocina": accesos directos sin carpetas, visibles al instante.
   // Sin Recetas ni Insumos: son de Administración (ver rutas en profile-context).
+  // Vajilla y utensilios sí: es solo stock y lo lleva Cocina.
   if (perfilId === "cocina") {
     return [
       { href: "/", label: "Inicio", icon: Home },
       { href: "/eventos/produccion", label: "Proximos eventos", icon: Calendar },
       { href: "/stock", label: "Stock por salón", icon: ClipboardList },
+      { href: "/admin/vajilla", label: "Vajilla y utensilios", icon: UtensilsCrossed },
     ]
   }
 
@@ -128,6 +141,12 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
       children: [
         { href: "/admin/almacen", label: "Insumos Cocina", icon: Warehouse },
         { href: "/admin/barra", label: "Insumos Bebidas", icon: GlassWater },
+        // Artículos de limpieza y papelería, con lo contado en cada salón
+        // (pedido de Diego, 21/10/2026).
+        { href: "/admin/limpieza", label: "Insumos Limpieza", icon: SprayCan },
+        // Platos, cubiertos, ollas y utensilios de la cocina. Solo stock, sin
+        // precio (pedido de Rodrigo, 27/10/2026).
+        { href: "/admin/vajilla", label: "Vajilla y utensilios", icon: UtensilsCrossed },
         // Carga del conteo físico por salón (contar y enviar, con el
         // historial de cargas). Desde el 15/10/2026 también para
         // Administración y Soporte, para que puedan cargar un salón entero de
@@ -303,6 +322,13 @@ export function Sidebar() {
     router.push("/login")
   }
 
+  // El panel se pliega solo al elegir una pantalla, en todos los perfiles
+  // (pedido del dueño: el 22/10/2026 para Cocina y el 23/10/2026 para todos).
+  // Antes solo se plegaba al sacar el mouse del panel o tocando el fondo
+  // oscuro, y en pantallas táctiles quedaba abierto tapando la pantalla
+  // elegida. Abrir o cerrar una carpeta no lo pliega: hay que elegir adentro.
+  const cerrarAlElegir = () => setSidebarOpen(false)
+
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/"
     return pathname === href || pathname.startsWith(href + "/")
@@ -331,6 +357,7 @@ export function Sidebar() {
   }
 
   const handlePlanificarFiesta = () => {
+    cerrarAlElegir()
     setEventoActual(null)
     setTimeout(() => {
       setEventoActual({
@@ -385,7 +412,7 @@ export function Sidebar() {
       >
         {/* Logo Section */}
         <div className="flex items-start justify-between gap-2 px-5 pt-6 pb-3 bajo:pt-3 bajo:pb-2">
-          <Link href="/" className="block min-w-0">
+          <Link href="/" onClick={cerrarAlElegir} className="block min-w-0">
             <h1 className="text-lg font-bold text-[#f5f0e8] leading-tight">
               Los Jazmines
             </h1>
@@ -476,6 +503,7 @@ export function Sidebar() {
                           <Link
                             key={child.href}
                             href={child.href}
+                            onClick={cerrarAlElegir}
                             className={cn(
                               "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 text-sm bajo:py-1.5",
                               childActive
@@ -501,6 +529,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={cerrarAlElegir}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 bajo:py-2",
                   active
@@ -516,7 +545,7 @@ export function Sidebar() {
         </nav>
 
         {/* Generar Contrato Button (y, solo para Administración, "Cotizar" arriba) */}
-        {!["cocina", "barra", "cobro", "vendedor"].includes(perfilActivo?.id ?? "") && (
+        {!["cocina", "barra", "cobro", "vendedor", "mantenimiento"].includes(perfilActivo?.id ?? "") && (
           <div className="px-3 pb-3 -mt-[10px] space-y-2 bajo:mt-1 bajo:pb-2 bajo:space-y-1.5">
             {perfilActivo?.id === "administracion" && (
               // Abre el cotizador del vendedor. Mismo estilo que "Generar
@@ -524,6 +553,7 @@ export function Sidebar() {
               // (41 px contra 44 px).
               <Link
                 href="/vendedor/cotizar"
+                onClick={cerrarAlElegir}
                 className="flex items-center gap-2 w-full h-[41px] bajo:h-9 px-4 rounded-lg bg-[#d49133] hover:bg-[#e09d40] text-[#1a1a1a] font-semibold text-sm transition-colors shadow-md"
               >
                 <Calculator className="h-5 w-5 shrink-0" />

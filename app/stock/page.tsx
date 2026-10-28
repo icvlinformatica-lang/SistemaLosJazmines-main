@@ -2,8 +2,10 @@
 
 // Stock por salón — pantalla de carga del conteo físico de insumos que
 // quedaron en un salón al terminar un evento. La usan Cocina (solo insumos
-// de cocina), Barra (solo insumos de barra) y Administración/Soporte (los
-// dos), de madrugada y desde el celular. El servidor vuelve a controlar el
+// de cocina), Barra (solo insumos de barra), Mantenimiento (solo artículos de
+// limpieza, desde el 21/10/2026; Cocina también su vajilla y utensilios, desde
+// el 27/10/2026) y Administración/Soporte (todos), de
+// madrugada y desde el celular. El servidor vuelve a controlar el
 // perfil real al guardar.
 //
 // Flujo: elegir salón → menú (un botón por sector "Contar stock" y, debajo,
@@ -53,7 +55,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, ChefHat, ChevronDown, ChevronRight, ClipboardList, History, Loader2, Search, Send, Wine } from "lucide-react"
+import { ArrowLeft, ChefHat, ChevronDown, ChevronRight, ClipboardList, History, Loader2, Search, Send, SprayCan, UtensilsCrossed, Wine } from "lucide-react"
 
 type Paso = "salon" | "menu" | "carga"
 
@@ -75,8 +77,60 @@ interface CargaHistorial {
   cantidadItems: number
 }
 
-const SECTOR_LABEL: Record<SectorStock, string> = { cocina: "cocina", barra: "barra" }
-const SECTOR_ICON: Record<SectorStock, typeof ChefHat> = { cocina: ChefHat, barra: Wine }
+const SECTOR_LABEL: Record<SectorStock, string> = {
+  cocina: "cocina",
+  barra: "barra",
+  limpieza: "limpieza",
+  vajilla: "vajilla y utensilios",
+}
+const SECTOR_ICON: Record<SectorStock, typeof ChefHat> = {
+  cocina: ChefHat,
+  barra: Wine,
+  limpieza: SprayCan,
+  vajilla: UtensilsCrossed,
+}
+
+/**
+ * Artículos de limpieza o de vajilla: no están en el store (no los usa
+ * ninguna otra pantalla), se traen de su ruta solo si el perfil cuenta ese
+ * sector. `articulos` es null mientras carga; el error se muestra en la lista.
+ */
+function useArticulosAparte(activo: boolean, url: string, mensajeError: string) {
+  const [articulos, setArticulos] = useState<InsumoCarga[] | null>(null)
+  const [error, setError] = useState("")
+  useEffect(() => {
+    if (!activo) return
+    let cancelado = false
+    fetch(url)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (cancelado) return
+        if (!res.ok || !data?.ok) {
+          setError(data?.error || mensajeError)
+          setArticulos([])
+          return
+        }
+        setError("")
+        setArticulos(
+          (data.articulos || []).map((a: { id: string; descripcion: string; unidad: string; categoria: string | null }) => ({
+            id: a.id,
+            descripcion: a.descripcion,
+            unidad: a.unidad,
+            categoria: a.categoria || undefined,
+          })),
+        )
+      })
+      .catch(() => {
+        if (cancelado) return
+        setError(mensajeError)
+        setArticulos([])
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [activo, url, mensajeError])
+  return { articulos, error }
+}
 
 function fmtCantidad(n: number): string {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(n)
@@ -142,7 +196,18 @@ export default function StockPorSalonPage() {
   const [busqueda, setBusqueda] = useState("")
   // Cocina: "Los que ya conté acá" (true) o "Todos" (false).
   const [soloContados, setSoloContados] = useState(false)
-  // Barra: categorías plegadas.
+  const limpieza = useArticulosAparte(
+    sectores.includes("limpieza"),
+    "/api/insumos-limpieza",
+    "No se pudieron traer los artículos de limpieza",
+  )
+  const vajilla = useArticulosAparte(
+    sectores.includes("vajilla"),
+    "/api/insumos-vajilla",
+    "No se pudieron traer los artículos de vajilla y utensilios",
+  )
+  const aparte = sector === "limpieza" ? limpieza : sector === "vajilla" ? vajilla : null
+  // Barra, limpieza y vajilla: categorías plegadas.
   const [plegadas, setPlegadas] = useState<Set<string>>(new Set())
   const [confirmando, setConfirmando] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -236,8 +301,10 @@ export default function StockPorSalonPage() {
     if (sector === "cocina") return (state.insumos || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad }))
     if (sector === "barra")
       return (state.insumosBarra || []).map((i) => ({ id: i.id, descripcion: i.descripcion, unidad: i.unidad, categoria: i.categoria }))
+    if (sector === "limpieza") return limpieza.articulos || []
+    if (sector === "vajilla") return vajilla.articulos || []
     return []
-  }, [sector, state.insumos, state.insumosBarra])
+  }, [sector, state.insumos, state.insumosBarra, limpieza.articulos, vajilla.articulos])
 
   const saldos = (sector && estados[sector]?.saldos) || {}
   const contados = useMemo(() => new Set(Object.keys(saldos)), [saldos])
@@ -247,9 +314,9 @@ export default function StockPorSalonPage() {
     [catalogo, busqueda, soloContados, sector, contados, valores],
   )
 
-  // Barra: secciones por categoría (Otros al final).
+  // Barra, limpieza y vajilla: secciones por categoría (Otros al final).
   const grupos = useMemo(() => {
-    if (sector !== "barra") return [{ clave: "", items: visibles }]
+    if (sector === "cocina" || !sector) return [{ clave: "", items: visibles }]
     const m = new Map<string, InsumoCarga[]>()
     for (const i of visibles) {
       const c = i.categoria || "Otros"
@@ -558,7 +625,15 @@ export default function StockPorSalonPage() {
 
         {visibles.length === 0 ? (
           <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            No hay insumos que coincidan.
+            {aparte?.error
+              ? aparte.error
+              : aparte && aparte.articulos === null
+                ? "Cargando artículos..."
+                : sector === "limpieza" && catalogo.length === 0
+                  ? "Todavía no hay artículos de limpieza. Se agregan en Insumos Limpieza (Mantenimiento: Artículos de limpieza)."
+                  : sector === "vajilla" && catalogo.length === 0
+                    ? "Todavía no hay artículos de vajilla y utensilios. Se agregan en Vajilla y utensilios."
+                    : "No hay insumos que coincidan."}
           </p>
         ) : (
           <div className="space-y-3">

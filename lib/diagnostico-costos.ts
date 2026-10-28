@@ -17,6 +17,7 @@
  */
 
 import type { Unidad, UnidadReceta } from "./store"
+import { convertirAUnidadDeStock } from "./unidades"
 
 /** Cuánto se multiplica el costo de un evento de referencia para marcarlo urgente. */
 export const UMBRAL_URGENTE = 50_000_000
@@ -330,4 +331,80 @@ export function agruparPorInsumo(problemas: ProblemaCosto[]): InsumoConProblema[
   }
 
   return [...porInsumo.values()].sort((a, b) => b.impactoTotal - a.impactoTotal)
+}
+
+/**
+ * El otro caso de unidades que no se pueden convertir: la receta pide una
+ * unidad de OTRA familia que la del insumo. El Daiquiri pedía la lima en
+ * "30 CC" y la lima se compra por KG: no se pueden pasar cc a kilos, así que
+ * el sistema contaba 30 kilos por trago ($180.000 en vez de $180).
+ *
+ * Pasa también con un insumo por unidad cuyo contenido está en otra familia
+ * (el almíbar trae "1000 GRS" y los cócteles lo piden en CC), o cuando
+ * alguien cambia la unidad de un insumo que ya estaba en recetas. El editor
+ * de recetas y cócteles solo ofrece unidades compatibles al agregar, pero no
+ * revisa lo que ya estaba cargado.
+ *
+ * No se arregla cargando el contenido (eso es detectarProblemas): hay que
+ * corregir la unidad en la receta o en el cóctel. Por eso va aparte y sin
+ * agrupar por insumo: cada línea se corrige en su receta.
+ */
+export interface UnidadCruzada {
+  sector: Sector
+  contenedorId: string
+  contenedorNombre: string
+  insumoId: string
+  insumoDescripcion: string
+  unidadInsumo: Unidad
+  /** Contenido del envase, si es un insumo por unidad que lo tiene cargado. */
+  contenidoUnidad?: "GRS" | "CC"
+  precioUnitario: number
+  cantidadPedida: number
+  unidadPedida: UnidadReceta
+  /** Lo que el sistema está cobrando hoy por persona/trago. */
+  costoActual: number
+  /** Impacto estimado en un evento de 100 personas. */
+  impactoEstimado: number
+  urgente: boolean
+}
+
+export function detectarUnidadesCruzadas(
+  sector: Sector,
+  lineas: LineaDiagnostico[],
+  insumos: InsumoDiagnostico[],
+): UnidadCruzada[] {
+  const cruzadas: UnidadCruzada[] = []
+
+  for (const linea of lineas) {
+    const insumo = insumos.find((i) => i.id === linea.insumoId)
+    if (!insumo || !linea.unidadPedida) continue
+    // El insumo por unidad sin contenido ya lo lista detectarProblemas.
+    if (lineaEstaMal(insumo, linea.unidadPedida)) continue
+    const contenido =
+      insumo.contenidoCantidad && insumo.contenidoUnidad
+        ? { cantidad: Number(insumo.contenidoCantidad), unidad: insumo.contenidoUnidad }
+        : null
+    if (convertirAUnidadDeStock(linea.cantidad, linea.unidadPedida, insumo.unidad, contenido) !== null) continue
+
+    // Sin conversión, la cantidad se usa tal cual en la unidad del insumo.
+    const costoActual = linea.cantidad * (Number(insumo.precioUnitario) || 0)
+    const impactoEstimado = costoActual * INVITADOS_REFERENCIA
+    cruzadas.push({
+      sector,
+      contenedorId: linea.contenedorId,
+      contenedorNombre: linea.contenedorNombre,
+      insumoId: insumo.id,
+      insumoDescripcion: insumo.descripcion,
+      unidadInsumo: insumo.unidad,
+      contenidoUnidad: contenido?.unidad,
+      precioUnitario: Number(insumo.precioUnitario) || 0,
+      cantidadPedida: linea.cantidad,
+      unidadPedida: linea.unidadPedida,
+      costoActual,
+      impactoEstimado,
+      urgente: impactoEstimado >= UMBRAL_URGENTE,
+    })
+  }
+
+  return cruzadas.sort((a, b) => b.impactoEstimado - a.impactoEstimado)
 }
