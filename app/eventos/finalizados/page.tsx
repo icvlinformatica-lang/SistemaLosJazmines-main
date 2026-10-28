@@ -8,7 +8,7 @@ import { salonLabel } from "@/lib/store"
 import { fechaEventoCorta } from "@/lib/fecha-evento"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
   Table,
@@ -44,7 +44,6 @@ import {
   RotateCcw,
   ArrowUp,
   ArrowDown,
-  ArrowRight,
   Calculator,
   FileText,
   User,
@@ -144,26 +143,24 @@ export default function EventosFinalizadosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Finalizados</h1>
-            <p className="text-sm text-muted-foreground mt-1">
+    <div className="min-h-screen bg-background px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-3">
+        {/* Encabezado en una fila: título a la izquierda, salón y volver a la
+            derecha (pedido del dueño del 28/10/2026: menos espacio vacío). */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight">Finalizados</h1>
+            <p className="text-xs text-muted-foreground">
               Los eventos que ya se hicieron y los que se eliminaron, en un solo lugar.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
-              Cambiar salón
-              <ArrowRight className="h-4 w-4 animate-pulse" aria-hidden="true" />
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setSelectorAbierto(true)}
-              className="group flex h-9 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
+              className="group flex h-8 items-center gap-2 rounded-full border border-input bg-background pl-3 pr-4 text-sm font-medium shadow-sm transition-colors hover:border-purple-400 hover:bg-purple-50"
               aria-label="Cambiar salón: volver al selector de salones"
+              title="Cambiar salón"
             >
               <RefreshCw
                 className="h-4 w-4 text-purple-700 transition-transform duration-500 group-hover:rotate-180"
@@ -178,62 +175,57 @@ export default function EventosFinalizadosPage() {
                 </span>
               )}
             </button>
-            <Button variant="outline" onClick={() => router.push("/eventos/lista")}>
+            <Button variant="outline" size="sm" onClick={() => router.push("/eventos/lista")}>
               Volver a Lista
             </Button>
           </div>
         </div>
 
-        {/* Pestañas: finalizados y eliminados */}
-        <div role="tablist" aria-label="Qué eventos ver" className="flex gap-2">
-          {([
-            { valor: "finalizados", label: "Finalizados", icono: Archive, cantidad: eventosFiltrados.length },
-            { valor: "eliminados", label: "Eliminados", icono: Trash2, cantidad: cantidadEliminados },
-          ] as const).map(({ valor, label, icono: Icono, cantidad }) => {
-            const activa = pestana === valor
-            return (
-              <button
-                key={valor}
-                type="button"
-                role="tab"
-                aria-selected={activa}
-                onClick={() => setPestana(valor)}
-                className={`flex h-9 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors ${
-                  activa ? "border-foreground bg-foreground text-background" : "border-input bg-background hover:bg-muted"
-                }`}
-              >
-                <Icono className="h-4 w-4" aria-hidden="true" />
-                {label}
-                {cantidad !== null && <span className="tabular-nums opacity-80">{cantidad}</span>}
-              </button>
-            )
-          })}
+        {/* Pestañas, buscador y orden en una sola fila (valen para las dos pestañas) */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div role="tablist" aria-label="Qué eventos ver" className="flex shrink-0 gap-1.5">
+            {([
+              { valor: "finalizados", label: "Finalizados", icono: Archive, cantidad: eventosFiltrados.length },
+              { valor: "eliminados", label: "Eliminados", icono: Trash2, cantidad: cantidadEliminados },
+            ] as const).map(({ valor, label, icono: Icono, cantidad }) => {
+              const activa = pestana === valor
+              return (
+                <button
+                  key={valor}
+                  type="button"
+                  role="tab"
+                  aria-selected={activa}
+                  onClick={() => setPestana(valor)}
+                  className={`flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors ${
+                    activa ? "border-foreground bg-foreground text-background" : "border-input bg-background hover:bg-muted"
+                  }`}
+                >
+                  <Icono className="h-4 w-4" aria-hidden="true" />
+                  {label}
+                  {cantidad !== null && <span className="tabular-nums opacity-80">{cantidad}</span>}
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex min-w-0 flex-1 gap-2">
+            <Input
+              placeholder="Buscar por nombre..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-auto min-h-8 min-w-0 flex-1 self-stretch"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOrdenFecha((o) => (o === "asc" ? "desc" : "asc"))}
+              className="shrink-0 gap-1.5"
+            >
+              {ordenFecha === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+              <span className="sm:hidden">{ordenFecha === "asc" ? "Más viejos" : "Recientes"}</span>
+              <span className="hidden sm:inline">{ordenFecha === "asc" ? "Más viejos primero" : "Más recientes primero"}</span>
+            </Button>
+          </div>
         </div>
-
-        {/* Filtros (valen para las dos pestañas) */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex-1">
-                <Input
-                  placeholder="Buscar por nombre..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setOrdenFecha((o) => (o === "asc" ? "desc" : "asc"))}
-                className="gap-1.5"
-              >
-                {ordenFecha === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                {ordenFecha === "asc" ? "Más viejos primero" : "Más recientes primero"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* La pestaña Eliminados se monta siempre, para tener su número */}
         <div hidden={pestana !== "eliminados"}>
@@ -241,18 +233,15 @@ export default function EventosFinalizadosPage() {
         </div>
 
         {/* Tabla de finalizados */}
-        <div hidden={pestana !== "finalizados"}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Eventos finalizados</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {eventosFiltrados.length} evento{eventosFiltrados.length !== 1 ? "s" : ""}: los datos quedan congelados hasta sacarlos de Finalizados
-            </p>
-          </CardHeader>
-          <CardContent>
+        <div hidden={pestana !== "finalizados"} className="space-y-1.5">
+        <p className="text-xs text-muted-foreground">
+          Los datos de los finalizados quedan congelados hasta sacarlos de Finalizados.
+        </p>
+        <Card className="gap-0 py-1">
+          <CardContent className="px-2">
             {eventosFiltrados.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <CheckCircle className="h-12 w-12 text-muted-foreground mb-3" />
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <CheckCircle className="h-8 w-8 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">No hay eventos finalizados</p>
               </div>
             ) : (
@@ -282,11 +271,11 @@ export default function EventosFinalizadosPage() {
                   <TableBody>
                     {eventosFiltrados.map((evento) => {
                       return (
-                        <TableRow key={evento.id} className="opacity-75">
+                        <TableRow key={evento.id}>
                           <TableCell>
                             <div className="flex flex-col gap-0.5">
                               <span className="font-medium text-sm">{evento.nombre}</span>
-                              {evento.nombrePareja && (
+                              {evento.nombrePareja && evento.nombrePareja !== evento.nombre && (
                                 <span className="text-xs text-muted-foreground">{evento.nombrePareja}</span>
                               )}
                             </div>
@@ -298,7 +287,7 @@ export default function EventosFinalizadosPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap items-center gap-1.5">
+                            <div className="flex flex-nowrap items-center gap-1.5">
                               <Button
                                 asChild
                                 variant="outline"

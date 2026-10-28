@@ -195,13 +195,13 @@ export function EventosEliminados({ busqueda, salon, orden, onCantidad }: Props)
   const eventoEliminar = eliminarId ? todos.find((e) => e.id === eliminarId) : null
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {eventos.length} evento{eventos.length !== 1 ? "s" : ""} eliminado{eventos.length !== 1 ? "s" : ""}: {eventos.length !== 1 ? "se pueden" : "se puede"} restaurar.
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchPapelera} disabled={loading} className="gap-2">
+          <Button variant="outline" size="sm" onClick={fetchPapelera} disabled={loading} className="h-7 gap-1.5 px-2 text-xs">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Actualizar
           </Button>
@@ -210,7 +210,7 @@ export function EventosEliminados({ busqueda, salon, orden, onCantidad }: Props)
               variant="destructive"
               size="sm"
               onClick={() => setVaciarDialogOpen(true)}
-              className="gap-2"
+              className="h-7 gap-1.5 px-2 text-xs"
             >
               <Trash2 className="h-4 w-4" />
               Vaciar eliminados
@@ -220,14 +220,14 @@ export function EventosEliminados({ busqueda, salon, orden, onCantidad }: Props)
       </div>
 
         {/* Table */}
-        <Card>
+        <Card className="gap-0 py-1 px-2">
           {loading ? (
-            <CardContent className="py-16 text-center text-muted-foreground">
+            <CardContent className="py-8 text-center text-muted-foreground">
               Cargando...
             </CardContent>
           ) : eventos.length === 0 ? (
-            <CardContent className="py-16 text-center">
-              <Trash2 className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+            <CardContent className="py-8 text-center">
+              <Trash2 className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
               <p className="text-muted-foreground">{todos.length === 0 ? "No hay eventos eliminados" : "Ningún eliminado coincide con la búsqueda o el salón"}</p>
             </CardContent>
           ) : (
