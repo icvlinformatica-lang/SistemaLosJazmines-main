@@ -38,11 +38,13 @@ const { validarAjusteAlmacen } = require("../lib/stock-ajuste-almacen.ts")
 const UUID = "00000000-0000-4000-8000-000000000001"
 
 // ── Permisos ────────────────────────────────────────────────────────────
-test("Mantenimiento cuenta solo limpieza; Administración y Soporte los tres; el resto no suma limpieza", () => {
+// Desde el 27/10/2026 hay un cuarto sector, vajilla (Cocina, Administración
+// y Soporte): ver scripts/test-stock-vajilla.cjs.
+test("Mantenimiento cuenta solo limpieza; Administración y Soporte todos; el resto no suma limpieza", () => {
   assert.deepEqual(sectoresPermitidos("mantenimiento"), ["limpieza"])
-  assert.deepEqual(sectoresPermitidos("administracion"), ["cocina", "barra", "limpieza"])
-  assert.deepEqual(sectoresPermitidos("soporte"), ["cocina", "barra", "limpieza"])
-  assert.deepEqual(sectoresPermitidos("cocina"), ["cocina"])
+  assert.deepEqual(sectoresPermitidos("administracion"), ["cocina", "barra", "limpieza", "vajilla"])
+  assert.deepEqual(sectoresPermitidos("soporte"), ["cocina", "barra", "limpieza", "vajilla"])
+  assert.deepEqual(sectoresPermitidos("cocina"), ["cocina", "vajilla"])
   assert.deepEqual(sectoresPermitidos("barra"), ["barra"])
   assert.deepEqual(sectoresPermitidos("dj"), [])
   assert.deepEqual(sectoresPermitidos("cobro"), [])

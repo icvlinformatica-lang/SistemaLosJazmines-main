@@ -1160,7 +1160,7 @@ export function GastoRapidoModal({ open, onOpenChange, costoAEditar, salonActual
     paso === "que" ? pasoQue : paso === "salones" ? pasoSalones : paso === "fecha" ? pasoFecha : pasoRevisar
 
   const titulo = editando ? "Editar gasto variable" : esRetiro ? "Retiro de caja" : "Cargar gasto"
-  const textoGuardar = editando ? "Guardar cambios" : esRetiro ? "Registrar retiro" : "Agendar gasto"
+  const textoGuardar = editando ? "Guardar cambios" : esRetiro ? "Registrar retiro" : "Agregar gasto"
 
   // ── Historial del día (a la derecha en la compu, plegado en el celular) ──
   const historial = (

@@ -5,7 +5,7 @@ import { perfilDesdeRequest, salonesConfigurados } from "@/lib/stock-salones-ser
 import { esSectorStock, puedeVerConsolidado, type SectorStock } from "@/lib/stock-salones"
 
 /**
- * GET ?sector=cocina|barra|limpieza — vista consolidada del conteo físico por salón.
+ * GET ?sector=cocina|barra|limpieza|vajilla — vista consolidada del conteo físico por salón.
  * Se arma EN VIVO desde stock_salones (sin copias intermedias). Es
  * independiente del stock_actual global de /admin/almacen: son dos números
  * distintos a propósito. Solo Administración / Soporte.
@@ -28,7 +28,9 @@ export async function GET(req: Request) {
       ? await sql`SELECT id, descripcion, unidad FROM insumos ORDER BY descripcion ASC`
       : sector === "barra"
         ? await sql`SELECT id, descripcion, unidad FROM insumos_barra ORDER BY descripcion ASC`
-        : await sql`SELECT id, descripcion, unidad FROM insumos_limpieza ORDER BY descripcion ASC`) as unknown as Array<{
+        : sector === "limpieza"
+          ? await sql`SELECT id, descripcion, unidad FROM insumos_limpieza ORDER BY descripcion ASC`
+          : await sql`SELECT id, descripcion, unidad FROM insumos_vajilla ORDER BY descripcion ASC`) as unknown as Array<{
       id: string
       descripcion: string
       unidad: string | null

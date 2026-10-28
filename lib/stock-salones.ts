@@ -1,14 +1,23 @@
 // Lógica pura del módulo "Stock por salón" (conteo físico de insumos que
-// cargan Cocina / Barra al terminar un evento, y Mantenimiento con los
-// artículos de limpieza). Sin dependencias de React ni
+// cargan Cocina / Barra al terminar un evento, Mantenimiento con los
+// artículos de limpieza y Cocina con su vajilla y utensilios). Sin dependencias de React ni
 // de la base, para poder usarla igual en el servidor y en la pantalla, y
 // probarla sola. NUNCA toca stock_actual (stock global): ver
 // scripts/005_stock_por_salon.sql.
 
-export type SectorStock = "cocina" | "barra" | "limpieza"
+export type SectorStock = "cocina" | "barra" | "limpieza" | "vajilla"
 
-/** Los tres sectores, en el orden en que se muestran. */
-export const SECTORES_STOCK: SectorStock[] = ["cocina", "barra", "limpieza"]
+/** Los cuatro sectores, en el orden en que se muestran. */
+export const SECTORES_STOCK: SectorStock[] = ["cocina", "barra", "limpieza", "vajilla"]
+
+/**
+ * ¿El sector tiene un stock_actual en su catálogo que se recalcula como la
+ * suma de los salones? Solo cocina (insumos) y barra (insumos_barra).
+ * Limpieza y vajilla no lo tienen: su total se suma en vivo de stock_salones.
+ */
+export function sectorConStockActual(sector: SectorStock): sector is "cocina" | "barra" {
+  return sector === "cocina" || sector === "barra"
+}
 
 export function esSectorStock(v: unknown): v is SectorStock {
   return typeof v === "string" && (SECTORES_STOCK as string[]).includes(v)
@@ -142,13 +151,14 @@ export function proximosEventosDelSalon(
 }
 
 /**
- * Sectores que puede cargar cada perfil. Administración y Soporte cargan los
- * tres; Cocina solo cocina, Barra solo barra y Mantenimiento solo limpieza
- * (pedido de Diego, 21/10/2026). El resto, ninguno.
+ * Sectores que puede cargar cada perfil. Administración y Soporte cargan
+ * todos; Cocina sus insumos y su vajilla y utensilios (pedido de Rodrigo,
+ * 27/10/2026), Barra solo barra y Mantenimiento solo limpieza (pedido de
+ * Diego, 21/10/2026). El resto, ninguno.
  */
 export function sectoresPermitidos(perfilId: string | null | undefined): SectorStock[] {
-  if (perfilId === "administracion" || perfilId === "soporte") return ["cocina", "barra", "limpieza"]
-  if (perfilId === "cocina") return ["cocina"]
+  if (perfilId === "administracion" || perfilId === "soporte") return ["cocina", "barra", "limpieza", "vajilla"]
+  if (perfilId === "cocina") return ["cocina", "vajilla"]
   if (perfilId === "barra") return ["barra"]
   if (perfilId === "mantenimiento") return ["limpieza"]
   return []
@@ -177,6 +187,28 @@ export function puedeAgregarArticuloLimpieza(perfilId: string | null | undefined
 /** Perfiles que pueden ver la vista consolidada y el detalle de las sesiones. */
 export function puedeVerConsolidado(perfilId: string | null | undefined): boolean {
   return perfilId === "administracion" || perfilId === "soporte"
+}
+
+/**
+ * Quién arma la lista de vajilla y utensilios (agregar, editar y borrar
+ * artículos en /admin/vajilla). Pedido de Rodrigo (27/10/2026): la lleva la
+ * gente de Cocina; Administración y Soporte también, como todo el stock. No
+ * tiene precio: no mueve costos ni cajas.
+ */
+export function puedeEditarCatalogoVajilla(perfilId: string | null | undefined): boolean {
+  return perfilId === "cocina" || puedeVerConsolidado(perfilId)
+}
+
+/**
+ * Quién ve lo contado en cada salón de un sector y lo corrige con el
+ * lapicito (/api/stock-salones/por-insumo y /ajuste). Administración y
+ * Soporte, todos los sectores; Cocina, además, su vajilla y utensilios (es
+ * quien la lleva). Los insumos de cocina siguen siendo de Administración:
+ * su stock mueve el costo de los eventos.
+ */
+export function puedeVerStockSector(perfilId: string | null | undefined, sector: SectorStock): boolean {
+  if (puedeVerConsolidado(perfilId)) return true
+  return sector === "vajilla" && perfilId === "cocina"
 }
 
 /** "21/10 05:40" en hora argentina. */

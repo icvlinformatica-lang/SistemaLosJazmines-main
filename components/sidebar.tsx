@@ -36,6 +36,7 @@ import {
   Building2,
   Calculator,
   SprayCan,
+  UtensilsCrossed,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store-context"
@@ -105,11 +106,13 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
 
   // Perfil "Cocina": accesos directos sin carpetas, visibles al instante.
   // Sin Recetas ni Insumos: son de Administración (ver rutas en profile-context).
+  // Vajilla y utensilios sí: es solo stock y lo lleva Cocina.
   if (perfilId === "cocina") {
     return [
       { href: "/", label: "Inicio", icon: Home },
       { href: "/eventos/produccion", label: "Proximos eventos", icon: Calendar },
       { href: "/stock", label: "Stock por salón", icon: ClipboardList },
+      { href: "/admin/vajilla", label: "Vajilla y utensilios", icon: UtensilsCrossed },
     ]
   }
 
@@ -141,6 +144,9 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
         // Artículos de limpieza y papelería, con lo contado en cada salón
         // (pedido de Diego, 21/10/2026).
         { href: "/admin/limpieza", label: "Insumos Limpieza", icon: SprayCan },
+        // Platos, cubiertos, ollas y utensilios de la cocina. Solo stock, sin
+        // precio (pedido de Rodrigo, 27/10/2026).
+        { href: "/admin/vajilla", label: "Vajilla y utensilios", icon: UtensilsCrossed },
         // Carga del conteo físico por salón (contar y enviar, con el
         // historial de cargas). Desde el 15/10/2026 también para
         // Administración y Soporte, para que puedan cargar un salón entero de

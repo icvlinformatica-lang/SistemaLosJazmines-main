@@ -21,6 +21,7 @@ const TIPOS: Record<string, string> = {
   insumo: "Insumo de cocina",
   insumo_barra: "Insumo de barra",
   insumo_limpieza: "Artículo de limpieza",
+  insumo_vajilla: "Vajilla y utensilios de cocina",
   receta: "Receta",
   coctel: "Cóctel",
   evento: "Evento",
@@ -94,7 +95,9 @@ export function quienDeRegistro(f: FilaActividad): { quien: string; sector?: str
         ? "Cocina"
         : /—\s*limpieza\s*$/i.test(nombre)
           ? "Limpieza"
-          : undefined
+          : /—\s*vajilla\s*$/i.test(nombre)
+            ? "Vajilla"
+            : undefined
     // "Carga de stock · 21/10 05:40 · Juan · 12 insumos actualizados"
     const partes = detalle.split("·").map((p) => p.trim())
     const cargo = partes.length >= 4 ? partes[2] : ""

@@ -59,7 +59,9 @@ export const PERFILES: Perfil[] = [
     // recetas, unidades y precios, que mueven el costo de los eventos, y eso
     // es de Administración. El servidor también lo cierra
     // (lib/recetas-permisos.ts, lib/insumos-permisos.ts, /api/diagnostico-costos).
-    rutas: ["/eventos/produccion", "/stock"],
+    // Sí arma y cuenta su Vajilla y utensilios (/admin/vajilla, pedido de
+    // Rodrigo, 27/10/2026): no tiene precio, no mueve costos ni cajas.
+    rutas: ["/eventos/produccion", "/stock", "/admin/vajilla"],
   },
   {
     id: "barra",
