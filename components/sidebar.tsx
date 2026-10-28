@@ -131,7 +131,7 @@ const buildMenuItems = (perfilId: string | undefined, hayCotizacionesPendientes:
         // { href: "/eventos/contratos", label: "Contratos", icon: FileText, locked: !tieneAccesoTotal },
         { href: "/eventos/vendedores", label: "Vendedores", icon: Users, locked: !tieneAccesoTotal },
         { href: "/eventos/cotizaciones", label: "Cotizaciones", icon: FileText, locked: !tieneAccesoTotal, badge: tieneAccesoTotal && hayCotizacionesPendientes },
-        { href: "/eventos/finalizados", label: "Archivo", icon: Archive },
+        { href: "/eventos/finalizados", label: "Finalizados", icon: Archive },
       ],
     },
     {

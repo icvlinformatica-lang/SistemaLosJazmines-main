@@ -1,0 +1,389 @@
+"use client"
+
+// Eventos eliminados (la papelera), que desde el 27/10/2026 se ven como la
+// pestaña "Eliminados" de Eventos → Finalizados (pedido del dueño: un solo
+// lugar para lo finalizado y lo eliminado). La lógica es la de la vieja
+// pantalla /eventos/papelera, que ahora redirige acá.
+
+import { useState, useEffect, useCallback } from "react"
+import { useToast } from "@/hooks/use-toast"
+import { useEventos } from "@/lib/use-eventos"
+import { salonLabel } from "@/lib/store"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Trash2,
+  RotateCcw,
+  Calendar,
+  Users,
+  Building2,
+  RefreshCw,
+} from "lucide-react"
+
+interface EventoEliminado {
+  id: string
+  nombre: string
+  fecha: string | null
+  estado: string
+  eliminado_at: string
+  motivo: string | null
+  data: {
+    adultos?: number
+    adolescentes?: number
+    ninos?: number
+    personasDietasEspeciales?: number
+    salon?: string
+    tipoEvento?: string
+    nombrePareja?: string
+  }
+}
+
+const estadoConfig: Record<string, { label: string; className: string }> = {
+  pendiente: { label: "Pendiente", className: "bg-amber-100 text-amber-800 border-amber-300" },
+  en_preparacion: { label: "En Preparacion", className: "bg-sky-100 text-sky-800 border-sky-300" },
+  confirmado: { label: "Confirmado", className: "bg-sky-100 text-sky-800 border-sky-300" },
+  completado: { label: "Completado", className: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  cancelado: { label: "Cancelado", className: "bg-red-100 text-red-800 border-red-300" },
+}
+
+function formatFecha(fecha: string | null) {
+  if (!fecha) return "-"
+  try {
+    const [year, month, day] = fecha.split("-")
+    return `${day}/${month}/${year}`
+  } catch {
+    return fecha
+  }
+}
+
+function formatFechaHora(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("es-AR", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    })
+  } catch {
+    return iso
+  }
+}
+
+/** Mismo nombre que muestra la tabla: el de la pareja o el del evento. */
+function nombreEliminado(e: EventoEliminado): string {
+  return e.data?.nombrePareja || e.nombre || "Sin nombre"
+}
+
+interface Props {
+  /** Filtros de la pantalla Finalizados, para que las dos pestañas se ordenen igual. */
+  busqueda: string
+  salon: string
+  orden: "asc" | "desc"
+  /** Avisa cuántos eliminados hay (para el número de la pestaña). */
+  onCantidad?: (n: number) => void
+}
+
+export function EventosEliminados({ busqueda, salon, orden, onCantidad }: Props) {
+  const { toast } = useToast()
+  // Para que el evento restaurado aparezca enseguida en la Lista y en Cobrar
+  // cuota, sin esperar el refresco de cada 15 segundos.
+  const { fetchEventos } = useEventos()
+  const [todos, setEventos] = useState<EventoEliminado[]>([])
+  const [loading, setLoading] = useState(true)
+  const [restaurarId, setRestaurarId] = useState<string | null>(null)
+  const [eliminarId, setEliminarId] = useState<string | null>(null)
+  const [vaciarDialogOpen, setVaciarDialogOpen] = useState(false)
+
+  const fetchPapelera = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/eventos/papelera")
+      if (res.ok) {
+        const data = await res.json()
+        setEventos(Array.isArray(data) ? data : [])
+      }
+    } catch {
+      setEventos([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchPapelera()
+  }, [fetchPapelera])
+
+  // Mismo filtro y orden que la pestaña Finalizados: nombre, salón y fecha
+  // del evento (los que no tienen fecha van al final).
+  const q = busqueda.trim().toLowerCase()
+  const eventos = todos
+    .filter((e) => !q || nombreEliminado(e).toLowerCase().includes(q) || (e.nombre || "").toLowerCase().includes(q))
+    // Los que no tienen salón en la copia (3 al 27/10/2026, eliminados viejos)
+    // se ven en cualquier salón: si no, no aparecerían en ninguno.
+    .filter((e) => salon === "todos" || !e.data?.salon || e.data.salon === salon)
+    .sort((a, b) => {
+      if (!a.fecha) return 1
+      if (!b.fecha) return -1
+      const cmp = a.fecha.localeCompare(b.fecha)
+      return orden === "asc" ? cmp : -cmp
+    })
+
+  // El número de la pestaña cuenta lo que se ve (salón y búsqueda), como el
+  // de Finalizados.
+  useEffect(() => {
+    onCantidad?.(eventos.length)
+  }, [eventos.length, onCantidad])
+
+  const handleRestaurar = async () => {
+    if (!restaurarId) return
+    try {
+      const res = await fetch(`/api/eventos/papelera/${restaurarId}/restaurar`, { method: "POST" })
+      if (res.ok) {
+        setEventos((prev) => prev.filter((e) => e.id !== restaurarId))
+        void fetchEventos()
+        toast({ title: "Evento restaurado", description: "El evento volvio a la lista activa." })
+      } else {
+        toast({ title: "Error", description: "No se pudo restaurar el evento." })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo restaurar el evento." })
+    }
+    setRestaurarId(null)
+  }
+
+  const handleEliminarDefinitivo = async () => {
+    if (!eliminarId) return
+    try {
+      await fetch(`/api/eventos/papelera?id=${eliminarId}`, { method: "DELETE" })
+      setEventos((prev) => prev.filter((e) => e.id !== eliminarId))
+      toast({ title: "Evento eliminado", description: "El evento fue eliminado permanentemente." })
+    } catch {
+      toast({ title: "Error", description: "No se pudo eliminar el evento." })
+    }
+    setEliminarId(null)
+  }
+
+  const handleVaciar = async () => {
+    try {
+      await fetch("/api/eventos/papelera", { method: "DELETE" })
+      setEventos([])
+      toast({ title: "Eliminados vaciados", description: "Todos los eventos eliminados fueron borrados permanentemente." })
+    } catch {
+      toast({ title: "Error", description: "No se pudo vaciar la papelera." })
+    }
+    setVaciarDialogOpen(false)
+  }
+
+  const eventoRestaurar = restaurarId ? todos.find((e) => e.id === restaurarId) : null
+  const eventoEliminar = eliminarId ? todos.find((e) => e.id === eliminarId) : null
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {eventos.length} evento{eventos.length !== 1 ? "s" : ""} eliminado{eventos.length !== 1 ? "s" : ""}: {eventos.length !== 1 ? "se pueden" : "se puede"} restaurar.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchPapelera} disabled={loading} className="h-7 gap-1.5 px-2 text-xs">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+          {todos.length > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setVaciarDialogOpen(true)}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <Trash2 className="h-4 w-4" />
+              Vaciar eliminados
+            </Button>
+          )}
+        </div>
+      </div>
+
+        {/* Table */}
+        <Card className="gap-0 py-1 px-2">
+          {loading ? (
+            <CardContent className="py-8 text-center text-muted-foreground">
+              Cargando...
+            </CardContent>
+          ) : eventos.length === 0 ? (
+            <CardContent className="py-8 text-center">
+              <Trash2 className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
+              <p className="text-muted-foreground">{todos.length === 0 ? "No hay eventos eliminados" : "Ningún eliminado coincide con la búsqueda o el salón"}</p>
+            </CardContent>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[180px]">Evento</TableHead>
+                    <TableHead className="min-w-[90px]">Fecha</TableHead>
+                    <TableHead className="min-w-[90px]">Salón</TableHead>
+                    <TableHead className="min-w-[80px] text-center">Invitados</TableHead>
+                    <TableHead className="min-w-[110px]">Estado</TableHead>
+                    <TableHead className="min-w-[130px]">Eliminado</TableHead>
+                    <TableHead className="min-w-[100px] text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {eventos.map((evento) => {
+                    const config = estadoConfig[evento.estado] ?? estadoConfig.pendiente
+                    const d = evento.data || {}
+                    const totalInvitados = (d.adultos || 0) + (d.adolescentes || 0) + (d.ninos || 0) + (d.personasDietasEspeciales || 0)
+                    const displayName = d.nombrePareja || evento.nombre || "Sin nombre"
+                    return (
+                      <TableRow key={evento.id} className="group">
+                        <TableCell>
+                          <div className="font-medium text-sm">{displayName}</div>
+                          {d.tipoEvento && (
+                            <div className="text-xs text-muted-foreground">{d.tipoEvento}</div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 text-sm">
+                            <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            {formatFecha(evento.fecha)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {d.salon ? (
+                            <div className="flex items-center gap-1.5 text-sm">
+                              <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              {salonLabel(d.salon)}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {totalInvitados > 0 ? (
+                            <div className="flex items-center justify-center gap-1 text-sm">
+                              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                              {totalInvitados}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`text-xs ${config.className}`}>
+                            {config.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs text-muted-foreground">
+                            {formatFechaHora(evento.eliminado_at)}
+                          </div>
+                          {evento.motivo && (
+                            <div className="text-xs text-muted-foreground/70 mt-0.5 italic">
+                              {evento.motivo}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 text-xs text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                              onClick={() => setRestaurarId(evento.id)}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Restaurar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => setEliminarId(evento.id)}
+                              aria-label="Eliminar para siempre"
+                              title="Eliminar para siempre"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </Card>
+
+      {/* Restaurar Dialog */}
+      <AlertDialog open={!!restaurarId} onOpenChange={(o) => !o && setRestaurarId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restaurar Evento</AlertDialogTitle>
+            <AlertDialogDescription>
+              El evento <strong>{eventoRestaurar?.data?.nombrePareja || eventoRestaurar?.nombre}</strong> volvera a aparecer en la lista activa de eventos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRestaurar} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              Si, Restaurar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Eliminar definitivo Dialog */}
+      <AlertDialog open={!!eliminarId} onOpenChange={(o) => !o && setEliminarId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Permanentemente</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion no se puede deshacer. El evento <strong>{eventoEliminar?.data?.nombrePareja || eventoEliminar?.nombre}</strong> sera eliminado para siempre de la base de datos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleEliminarDefinitivo} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+              Si, Eliminar Para Siempre
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Vaciar papelera Dialog */}
+      <AlertDialog open={vaciarDialogOpen} onOpenChange={setVaciarDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Vaciar eliminados</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion eliminara permanentemente todos los {todos.length} eventos eliminados (de todos los salones). No se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleVaciar} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+              Vaciar Todo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
