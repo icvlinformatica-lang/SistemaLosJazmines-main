@@ -189,20 +189,35 @@ test("API de eventos devuelve error, no una lista vacía exitosa", async () => {
   assert.equal(Array.isArray(await response.json()), false)
 })
 
-test("restauración usa la fila original y una única sentencia parametrizada", async () => {
+test("restauración usa la fila original, todo en una transacción y parametrizado", async () => {
+  // Desde el 30/10/2026 restaurar también vuelve a vincular los movimientos
+  // de caja que se desvincularon al eliminar (lib/plata-al-eliminar.ts), así
+  // que ya no es una sola sentencia: son varias, todas en la misma transacción.
   const calls = []
+  let enTransaccion = false
+  const sql = async (parts, ...values) => {
+    const query = parts.join("?")
+    calls.push({ sql: query, values, enTransaccion })
+    if (query.includes("FROM eventos_eliminados")) {
+      return [{ fila: { evento_json: JSON.stringify({ id: "a", _plataAlEliminar: { movimientos: ["m1", "m2"] } }) } }]
+    }
+    return [{ id: "a", nombre: "Prueba" }]
+  }
+  sql.begin = async (fn) => { enTransaccion = true; try { return await fn(sql) } finally { enTransaccion = false } }
   const route = loadMocked("app/api/eventos/papelera/[id]/restaurar/route.ts", {
-    "@/lib/db": { sql: async (parts, ...values) => { calls.push({ sql: parts.join("?"), values }); return [{ id: "a", nombre: "Prueba" }] } },
+    "@/lib/db": { sql },
     "@/lib/activity-logger": { logActivity: async () => {} },
     // Restaurar es de Administración y Soporte (ver test-papelera-y-transacciones).
     "@/lib/stock-salones-server": { perfilDesdeRequest: async () => "administracion" },
   })
   const response = await route.POST(new Request("http://localhost/test"), { params: Promise.resolve({ id: "a" }) })
   assert.equal(response.status, 200)
-  assert.equal(calls.length, 1)
-  assert.deepEqual(calls[0].values, ["a"])
-  assert.match(calls[0].sql, /deleted_at = NULL/)
-  assert.doesNotMatch(calls[0].sql, /INSERT INTO eventos|DELETE FROM movimientos_caja/)
+  assert.ok(calls.every((c) => c.enTransaccion), "todo dentro de la transacción")
+  const restaurar = calls.find((c) => /deleted_at = NULL/.test(c.sql))
+  assert.deepEqual(restaurar.values, ["a"])
+  const revincular = calls.find((c) => /UPDATE movimientos_caja/.test(c.sql))
+  assert.ok(revincular.values.some((v) => Array.isArray(v) && v.join() === "m1,m2"), "vuelve a vincular los movimientos desvinculados")
+  assert.ok(calls.every((c) => !/INSERT INTO eventos|DELETE FROM movimientos_caja/.test(c.sql)))
 })
 
 test("servicios y pagos fallidos rechazan; el lote de caja usa un solo insert", async () => {

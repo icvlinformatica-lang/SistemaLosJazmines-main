@@ -30,6 +30,8 @@ import { SalonDot } from "@/components/salon-badge"
 import { FaltantesEventoChip } from "@/components/faltantes-evento-aviso"
 import { SalonSelectorOverlay } from "@/components/salon-selector-overlay"
 import { useEventos } from "@/lib/use-eventos"
+import { cobradoDisponibleEnCaja, montoADevolver, type OpcionPlataAlEliminar } from "@/lib/plata-al-eliminar"
+import { ElegirPlataAlEliminar, plataAlEliminarValida } from "@/components/elegir-plata-al-eliminar"
 import { imprimirDocumentoEvento, type DocumentSections } from "@/lib/print-utils"
 import { imprimirUltimaVersionContrato } from "@/lib/contract-html"
 import { Button } from "@/components/ui/button"
@@ -444,7 +446,7 @@ function AccionesEvento({
 export default function EventosListaPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { state, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual, servicios: catalogoServicios } = useStore()
+  const { state, recetas, insumos, insumosBarra, cocteles, barrasTemplates, updateInsumo, setEventoActual, servicios: catalogoServicios, movimientosCaja } = useStore()
   // Lo contado en cada salón: las compras de cada evento se calculan contra
   // el stock de SU salón, no contra el total de los cinco.
   const stockSalones = useStockPorSalon()
@@ -462,6 +464,9 @@ export default function EventosListaPage() {
   const [selectorAbierto, setSelectorAbierto] = useState(true)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [recuperarStockAlEliminar, setRecuperarStockAlEliminar] = useState(false)
+  // Qué pasa con la plata cobrada al eliminar (lib/plata-al-eliminar.ts).
+  const [opcionPlata, setOpcionPlata] = useState<OpcionPlataAlEliminar>("queda")
+  const [parteDevolver, setParteDevolver] = useState(0)
   const [recuperarStockDialogOpen, setRecuperarStockDialogOpen] = useState(false)
   const [selectedEventoId, setSelectedEventoId] = useState<string | null>(null)
   const [imprimirDialogOpen, setImprimirDialogOpen] = useState(false)
@@ -750,6 +755,8 @@ export default function EventosListaPage() {
   const handleEliminar = (eventoId: string) => {
     setSelectedEventoId(eventoId)
     setRecuperarStockAlEliminar(false)
+    setOpcionPlata("queda")
+    setParteDevolver(0)
     setDeleteDialogOpen(true)
   }
 
@@ -807,8 +814,14 @@ export default function EventosListaPage() {
     setSelectedEventoId(null)
   }
 
+  // Lo cobrado al evento que se va a eliminar (el servidor lo vuelve a contar).
+  const cobradoAEliminar = selectedEventoId
+    ? cobradoDisponibleEnCaja(movimientosCaja || [], selectedEventoId)
+    : 0
+  const plataAEliminarOk = cobradoAEliminar <= 0 || plataAlEliminarValida(opcionPlata, parteDevolver, cobradoAEliminar)
+
   const confirmEliminar = async () => {
-    if (!selectedEventoId) return
+    if (!selectedEventoId || !plataAEliminarOk) return
     const evento = eventos.find((e) => e.id === selectedEventoId)
 
     // Si el evento esta en preparacion y el usuario quiere recuperar el stock
@@ -844,7 +857,8 @@ export default function EventosListaPage() {
       }),
     }).catch(() => {})
 
-    await eliminarEventoDB(selectedEventoId, motivo)
+    const devolver = cobradoAEliminar > 0 ? montoADevolver(opcionPlata, parteDevolver, cobradoAEliminar) : 0
+    await eliminarEventoDB(selectedEventoId, motivo, { devolver })
     toast({
       title: "Evento eliminado",
       description: recuperarStockAlEliminar ? "El evento fue eliminado y el stock fue recuperado." : "El evento fue movido a la papelera.",
@@ -1559,17 +1573,27 @@ export default function EventosListaPage() {
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
               El evento pasa a Eventos → Finalizados, pestaña Eliminados: de ahí lo podés restaurar.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {cobradoAEliminar > 0 && (
+            <ElegirPlataAlEliminar
+              cobrado={cobradoAEliminar}
+              opcion={opcionPlata}
+              parte={parteDevolver}
+              onOpcion={setOpcionPlata}
+              onParte={setParteDevolver}
+            />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmEliminar}
+              disabled={!plataAEliminarOk}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               Si, Eliminar
@@ -1745,13 +1769,22 @@ export default function EventosListaPage() {
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Evento</AlertDialogTitle>
             <AlertDialogDescription>
               El evento pasa a Eventos → Finalizados, pestaña Eliminados: de ahí lo podés restaurar.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {cobradoAEliminar > 0 && (
+            <ElegirPlataAlEliminar
+              cobrado={cobradoAEliminar}
+              opcion={opcionPlata}
+              parte={parteDevolver}
+              onOpcion={setOpcionPlata}
+              onParte={setParteDevolver}
+            />
+          )}
           {(() => {
             const evento = selectedEventoId ? eventos.find((e) => e.id === selectedEventoId) : null
             const tieneStockDescontado = evento?.estado === "en_preparacion" && !!evento?.stockDescontado
@@ -1781,6 +1814,7 @@ export default function EventosListaPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmEliminar}
+              disabled={!plataAEliminarOk}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               Si, Eliminar

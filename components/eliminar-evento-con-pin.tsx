@@ -7,10 +7,12 @@
 // se prueba primero con /api/auth/verificar-pin (para decir "PIN incorrecto"
 // sin borrar nada) y después viaja con el borrado, que lo vuelve a verificar
 // en el servidor.
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Trash2 } from "lucide-react"
 import { useStore } from "@/lib/store-context"
 import { motivoNoEliminarDesdePerfil } from "@/lib/eliminar-evento-pin"
+import { cobradoDisponibleEnCaja, montoADevolver, type OpcionPlataAlEliminar } from "@/lib/plata-al-eliminar"
+import { ElegirPlataAlEliminar, plataAlEliminarValida } from "@/components/elegir-plata-al-eliminar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -28,8 +30,17 @@ interface Props {
 }
 
 export function EliminarEventoConPin({ evento, onEliminado }: Props) {
-  const { deleteEvento } = useStore()
+  const { deleteEvento, movimientosCaja } = useStore()
   const [abierto, setAbierto] = useState(false)
+  const [opcionPlata, setOpcionPlata] = useState<OpcionPlataAlEliminar>("queda")
+  const [parteDevolver, setParteDevolver] = useState(0)
+  // Lo que el cliente pagó, según los movimientos de caja del evento (el
+  // servidor lo vuelve a contar y no deja devolver más).
+  const cobrado = useMemo(
+    () => cobradoDisponibleEnCaja(movimientosCaja || [], evento.id),
+    [movimientosCaja, evento.id],
+  )
+  const plataOk = cobrado <= 0 || plataAlEliminarValida(opcionPlata, parteDevolver, cobrado)
   const [pin, setPin] = useState("")
   const [error, setError] = useState("")
   const [eliminando, setEliminando] = useState(false)
@@ -42,10 +53,12 @@ export function EliminarEventoConPin({ evento, onEliminado }: Props) {
     setAbierto(false)
     setPin("")
     setError("")
+    setOpcionPlata("queda")
+    setParteDevolver(0)
   }
 
   const eliminar = async () => {
-    if (!pin.trim() || eliminando || motivoNo) return
+    if (!pin.trim() || eliminando || motivoNo || !plataOk) return
     setEliminando(true)
     setError("")
     try {
@@ -59,7 +72,8 @@ export function EliminarEventoConPin({ evento, onEliminado }: Props) {
         setError(data.error || "PIN incorrecto")
         return
       }
-      const ok = await deleteEvento(evento.id, undefined, { pinAdministracion: pin })
+      const devolver = cobrado > 0 ? montoADevolver(opcionPlata, parteDevolver, cobrado) : 0
+      const ok = await deleteEvento(evento.id, undefined, { pinAdministracion: pin, devolver })
       if (!ok) {
         setError("No se pudo eliminar. Probá de nuevo o hacelo desde la Lista de eventos.")
         return
@@ -87,7 +101,7 @@ export function EliminarEventoConPin({ evento, onEliminado }: Props) {
       </Button>
 
       <Dialog open={abierto} onOpenChange={(open) => { if (!open) cerrar() }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Eliminar evento</DialogTitle>
             <DialogDescription>
@@ -99,7 +113,17 @@ export function EliminarEventoConPin({ evento, onEliminado }: Props) {
           {motivoNo ? (
             <p className="text-sm text-amber-700">{motivoNo}</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {cobrado > 0 && (
+                <ElegirPlataAlEliminar
+                  cobrado={cobrado}
+                  opcion={opcionPlata}
+                  parte={parteDevolver}
+                  onOpcion={setOpcionPlata}
+                  onParte={setParteDevolver}
+                  disabled={eliminando}
+                />
+              )}
               <Input
                 type="password"
                 inputMode="numeric"
@@ -125,7 +149,7 @@ export function EliminarEventoConPin({ evento, onEliminado }: Props) {
               <Button
                 className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                 onClick={eliminar}
-                disabled={!pin.trim() || eliminando}
+                disabled={!pin.trim() || eliminando || !plataOk}
               >
                 {eliminando ? "Eliminando..." : "Sí, eliminar"}
               </Button>
