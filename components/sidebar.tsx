@@ -209,6 +209,13 @@ export function Sidebar() {
   const { perfilActivo, cerrarSesion } = useProfile()
   const { ahora: fechaActual } = useClock()
   const [expandedSections, setExpandedSections] = useState<string[]>([])
+  // Carpetas que la persona cerró a mano. Hace falta porque la carpeta de la
+  // pantalla abierta se abre sola: sin esto, tocarla no la cerraba (pedido
+  // del dueño, 30/10/2026). Al cambiar de pantalla se olvida.
+  const [closedSections, setClosedSections] = useState<string[]>([])
+  useEffect(() => {
+    setClosedSections([])
+  }, [pathname])
 
   // Puntito rojo en "Cotizaciones" cuando hay alguna esperando revisión.
   // Solo se consulta para los perfiles que pueden ver esa pantalla — se
@@ -342,17 +349,20 @@ export function Sidebar() {
     return false
   }
 
-  const toggleSection = (label: string) => {
-    setExpandedSections((prev) => {
-      if (prev.includes(label)) {
-        return prev.filter((s) => s !== label)
-      }
-      // Solo permitir una sección abierta a la vez
-      return [label]
-    })
+  const toggleSection = (item: MenuItem) => {
+    const label = item.label
+    if (isSectionExpanded(item)) {
+      setExpandedSections((prev) => prev.filter((s) => s !== label))
+      setClosedSections((prev) => (prev.includes(label) ? prev : [...prev, label]))
+      return
+    }
+    // Solo permitir una sección abierta a la vez
+    setExpandedSections([label])
+    setClosedSections((prev) => prev.filter((s) => s !== label))
   }
 
   const isSectionExpanded = (item: MenuItem) => {
+    if (closedSections.includes(item.label)) return false
     return expandedSections.includes(item.label) || isSectionActive(item)
   }
 
@@ -466,7 +476,7 @@ export function Sidebar() {
                           ? "bg-[#f5f0e8]/15 text-[#f5f0e8] cursor-pointer"
                           : "text-[#f5f0e8]/80 hover:bg-[#f5f0e8]/10 hover:text-[#f5f0e8] cursor-pointer"
                     )}
-                    onClick={() => !isLocked && toggleSection(item.label)}
+                    onClick={() => !isLocked && toggleSection(item)}
                   >
                     <Icon className="h-5 w-5 shrink-0" />
                     <span className="text-sm font-medium flex-1">{item.label}</span>
