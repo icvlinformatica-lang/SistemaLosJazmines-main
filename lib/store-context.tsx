@@ -62,6 +62,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useClock } from "@/lib/clock-context"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
+import { HEADER_PIN_ELIMINAR_EVENTO } from "@/lib/eliminar-evento-pin"
 
 interface StoreContextType {
   syncGuard: StoreSyncGuard
@@ -108,7 +109,8 @@ interface StoreContextType {
   // Eventos (calendario)
   addEvento: (evento: EventoGuardado) => Promise<boolean>
   updateEvento: (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[], previo?: EventoGuardado) => Promise<boolean>
-  deleteEvento: (id: string, motivo?: string) => Promise<boolean>
+  /** `pinAdministracion`: para borrar desde un perfil que no es de Administración (Perfil del evento). */
+  deleteEvento: (id: string, motivo?: string, opciones?: { pinAdministracion?: string }) => Promise<boolean>
   setEventos: (eventos: EventoGuardado[]) => void
   // Servicios
   addServicio: (servicio: Omit<Servicio, "id">) => void
@@ -1547,10 +1549,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const deleteEvento = async (id: string, motivo?: string) => {
+  const deleteEvento = async (id: string, motivo?: string, opciones?: { pinAdministracion?: string }) => {
     try {
       const url = `/api/eventos/${encodeURIComponent(id)}${motivo ? `?motivo=${encodeURIComponent(motivo)}` : ""}`
-      const res = await fetchWithRetry(url, { method: "DELETE" })
+      const headers: Record<string, string> = opciones?.pinAdministracion
+        ? { [HEADER_PIN_ELIMINAR_EVENTO]: opciones.pinAdministracion }
+        : {}
+      const res = await fetchWithRetry(url, { method: "DELETE", headers })
       if (!res.ok) throw new Error(`Error al eliminar evento (${res.status})`)
       // Se ocultan los movimientos, pero se conservan en la base para restaurar el evento.
       setState((prev) => ({

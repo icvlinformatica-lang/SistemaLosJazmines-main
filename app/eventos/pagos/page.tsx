@@ -25,6 +25,7 @@ import { preguntaBaseCobrada } from "@/lib/ajuste-cobro"
 import { creditoDisponible, hayCuotaSiguiente, repartirPago } from "@/lib/saldo-a-favor"
 import { armarCuotaJunta, cerrarUltimaCuotaJunta, cuotasQueAlcanzan, textoCuotas, type CuotaJunta } from "@/lib/cuotas-juntas"
 import { ContratoPanel } from "@/components/contrato-panel"
+import { EliminarEventoConPin } from "@/components/eliminar-evento-con-pin"
 import { DesgloseIPCPago } from "@/components/desglose-ipc-pago"
 import { aplicaIPC, calcularIPCPeriodo, etiquetaMesesIPC, fechaNegocio, resolverCalculoCobro, sugerirBaseManual } from "@/lib/ipc-cuotas"
 import { PlanillaCuotas } from "@/components/planilla-cuotas"
@@ -1667,7 +1668,8 @@ function PagosPageContent() {
         {/* Selected Event Detail */}
         {selectedEvento && (
           <>
-            {/* Back to search button */}
+            {/* Back to search button y, a la derecha, eliminar con el PIN de Administración */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -1684,6 +1686,19 @@ function PagosPageContent() {
               <ArrowLeft className="h-4 w-4 mr-2" />
               {vieneDeLista ? "Volver a lista de eventos" : "Buscar otro evento"}
             </Button>
+            <EliminarEventoConPin
+              evento={selectedEvento}
+              onEliminado={() => {
+                toast({ title: "Evento eliminado", description: "Pasó a Eventos → Finalizados, pestaña Eliminados." })
+                if (vieneDeLista) {
+                  router.push("/eventos/lista")
+                } else {
+                  setSelectedEvento(null)
+                  setSearchTerm("")
+                }
+              }}
+            />
+            </div>
 
             <div className="grid gap-6 items-start lg:grid-cols-2">
             {/* Left column: Event info, plan de cuotas y próximo pago */}

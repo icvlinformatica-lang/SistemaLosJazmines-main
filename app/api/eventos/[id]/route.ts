@@ -12,7 +12,7 @@ import { objetivoCuota } from "@/lib/estado-cuotas"
 import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
 import { decidirFechaAlta } from "@/lib/fecha-alta"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
-import { soloAdministracion } from "@/lib/solo-administracion"
+import { permisoEliminarEvento } from "@/lib/eliminar-evento-permiso"
 import { camposStaffDesdeFila, columnasStaffParaGuardar } from "@/lib/eventos-campos-staff"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
@@ -470,8 +470,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   // Mandar un evento a la papelera es de Administración y Soporte (son los
   // únicos con Lista y Calendario). Esconder el botón no alcanzaba: cualquier
-  // sesión, incluso la de DJ, podía pegarle a esta ruta.
-  const prohibido = await soloAdministracion(req)
+  // sesión, incluso la de DJ, podía pegarle a esta ruta. Desde el 30/10/2026
+  // también cualquier perfil que mande el PIN de Administración (Perfil del
+  // evento en Cobrar cuota), verificado acá.
+  const prohibido = await permisoEliminarEvento(req)
   if (prohibido) return prohibido
   try {
     const { id } = await params
