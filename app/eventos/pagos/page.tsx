@@ -1513,14 +1513,19 @@ function PagosPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Título y contenido con el mismo ancho, que aprovecha la pantalla de
+          la compu (pedido del dueño, 30/10/2026: el perfil quedaba angosto
+          y el título corrido respecto del contenido). El título deja lugar
+          a la izquierda para el botón redondo de la IA, que arranca ahí;
+          en pantallas muy anchas el contenido ya queda lejos del botón. */}
       <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-4xl flex items-center gap-4">
+        <div className="mx-auto max-w-[1600px] flex items-center gap-4 pl-14 min-[1760px]:pl-0">
           <CreditCard className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">PERFIL DEL EVENTO</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
         {/* Search - hidden when event is selected */}
         {!selectedEvento && (
           <Card>
