@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic'
-import { sql } from "@/lib/db"
+import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 import { respuestaSalonOcupado } from "@/lib/salon-ocupado"
 import { logActivity } from "@/lib/activity-logger"
@@ -9,10 +9,13 @@ import { validarCobroIPC } from "@/lib/validar-cobro-ipc"
 import { validarSaldoAFavor } from "@/lib/saldo-a-favor"
 import { validarAjustesCobro } from "@/lib/ajuste-cobro"
 import { objetivoCuota } from "@/lib/estado-cuotas"
-import { aplicaIPC, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
+import { aplicaIPC, fechaNegocio, numerosPagados, numeroCuotaPago, type EventoIPC } from "@/lib/ipc-cuotas"
 import { decidirFechaAlta } from "@/lib/fecha-alta"
 import { perfilDesdeRequest } from "@/lib/stock-salones-server"
-import { soloAdministracion } from "@/lib/solo-administracion"
+import { permisoEliminarEvento } from "@/lib/eliminar-evento-permiso"
+import {
+  CLAVE_PLATA_AL_ELIMINAR, SUFIJO_EVENTO_ELIMINADO, cobradoDisponible, conceptoDevolucion, refDevolucion, repartirDevolucion, validarDevolucion,
+} from "@/lib/plata-al-eliminar"
 import { camposStaffDesdeFila, columnasStaffParaGuardar } from "@/lib/eventos-campos-staff"
 
 // Helper to safely parse JSON fields that might come as strings from PostgreSQL
@@ -466,12 +469,30 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 
+/** Fila de movimientos_caja → MovimientoCaja, como fetchMovimientosCaja de data-service. */
+function movimientoDesdeFila(m: any) {
+  return {
+    id: String(m.id),
+    salon: m.salon,
+    tipo: m.tipo,
+    monto: Number(m.monto) || 0,
+    concepto: m.concepto,
+    fecha: m.fecha instanceof Date ? m.fecha.toISOString() : m.fecha,
+    eventoId: m.evento_id ?? undefined,
+    saldoResultante: m.saldo_resultante ? Number(m.saldo_resultante) : 0,
+    cajaDestino: m.caja_destino ?? undefined,
+    refId: m.ref_id ?? undefined,
+  }
+}
+
 // DELETE — soft delete
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   // Mandar un evento a la papelera es de Administración y Soporte (son los
   // únicos con Lista y Calendario). Esconder el botón no alcanzaba: cualquier
-  // sesión, incluso la de DJ, podía pegarle a esta ruta.
-  const prohibido = await soloAdministracion(req)
+  // sesión, incluso la de DJ, podía pegarle a esta ruta. Desde el 30/10/2026
+  // también cualquier perfil que mande el PIN de Administración (Perfil del
+  // evento en Cobrar cuota), verificado acá.
+  const prohibido = await permisoEliminarEvento(req)
   if (prohibido) return prohibido
   try {
     const { id } = await params
@@ -492,8 +513,38 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     `
     const row = rows[0]
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    // Ya estaba eliminado (por ejemplo, fetchWithRetry reintentó después de
+    // un borrado que sí salió): no se vuelve a tocar la plata ni la copia.
+    if (row.deleted_at) return NextResponse.json({ success: true, movimientos: [] })
 
-    const eventoData = fromRow(row)
+    // La plata del evento (ver lib/plata-al-eliminar.ts): sus movimientos se
+    // desvinculan para que sigan contando en las cajas, y se devuelve al
+    // cliente lo que eligió quien elimina (?devolver=, 0 si no viene).
+    const url = new URL(req.url)
+    const devolver = Math.round(Number(url.searchParams.get("devolver") ?? 0) * 100) / 100
+    const movsEvento = (await sql`
+      SELECT id, tipo, monto, salon, caja_destino FROM movimientos_caja WHERE evento_id = ${id}
+    `).map((m: any) => ({ id: String(m.id), tipo: m.tipo, monto: Number(m.monto) || 0, salon: m.salon ?? null, cajaDestino: m.caja_destino ?? null }))
+    const devolucionesPrevias = (await sql`
+      SELECT monto FROM movimientos_caja WHERE ref_id = ${refDevolucion(id)}
+    `).map((m: any) => ({ monto: Number(m.monto) || 0 }))
+    const cobrado = cobradoDisponible(movsEvento, devolucionesPrevias)
+    const errorDevolucion = validarDevolucion(devolver, cobrado)
+    if (errorDevolucion) return NextResponse.json({ error: errorDevolucion }, { status: 400 })
+    const nombreEvento = row.nombre_pareja || row.nombre || "Evento"
+    const fechaMov = new Date(`${fechaNegocio()}T12:00:00`).toISOString()
+    // Ids nuevos en cada eliminación: un reintento del mismo borrado no
+    // duplica nada porque arriba ya corta si el evento estaba eliminado.
+    const devoluciones = repartirDevolucion(movsEvento, devolver).map((d) => ({
+      ...d,
+      id: generateId(),
+      concepto: conceptoDevolucion(nombreEvento),
+    }))
+
+    const eventoData = {
+      ...fromRow(row),
+      [CLAVE_PLATA_AL_ELIMINAR]: { movimientos: movsEvento.map((m) => m.id), devoluciones: devoluciones.map((d) => d.id), cobrado, devuelto: devolver },
+    }
 
     try {
       await sql`
@@ -516,8 +567,36 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       }
     }
 
-    await sql`UPDATE eventos SET deleted_at=NOW() WHERE id=${id}`
-    await logActivity("evento", "eliminado", row.nombre || "Sin nombre")
+    // Desvincular, devolver y eliminar van juntos: o pasa todo o nada.
+    const movimientosCambiados = await sql.begin(async (tx: any) => {
+      const desvinculados = movsEvento.length === 0 ? [] : await tx`
+        UPDATE movimientos_caja
+        SET evento_id = NULL,
+            concepto = CASE WHEN concepto LIKE ${"%" + SUFIJO_EVENTO_ELIMINADO} THEN concepto ELSE COALESCE(concepto, '') || ${SUFIJO_EVENTO_ELIMINADO} END
+        WHERE id::text = ANY(${movsEvento.map((m) => m.id)}::text[]) AND evento_id = ${id}
+        RETURNING id, salon, tipo, monto, concepto, fecha, evento_id, caja_destino, saldo_resultante, ref_id
+      `
+      const nuevas = []
+      for (const d of devoluciones) {
+        const r = await tx`
+          INSERT INTO movimientos_caja (id, salon, tipo, monto, concepto, fecha, evento_id, caja_destino, saldo_resultante, ref_id)
+          VALUES (${d.id}, ${d.salon}, 'egreso', ${d.monto}, ${d.concepto}, ${fechaMov}, NULL, ${d.cajaDestino}, 0, ${refDevolucion(id)})
+          ON CONFLICT (id) DO NOTHING
+          RETURNING id, salon, tipo, monto, concepto, fecha, evento_id, caja_destino, saldo_resultante, ref_id
+        `
+        nuevas.push(...r)
+      }
+      await tx`UPDATE eventos SET deleted_at=NOW() WHERE id=${id}`
+      return [...desvinculados, ...nuevas]
+    })
+    await logActivity(
+      "evento", "eliminado", row.nombre || "Sin nombre",
+      cobrado > 0
+        ? devolver > 0
+          ? `Cobrado ${cobrado.toFixed(2)}: se devolvieron ${devolver.toFixed(2)} y el resto queda en las cajas`
+          : `Cobrado ${cobrado.toFixed(2)}: queda en las cajas`
+        : undefined,
+    )
     await sendEventNotification("eliminado", {
       nombre: row.nombre,
       fecha: row.fecha,
@@ -529,7 +608,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       adolescentes: row.adolescentes,
       ninos: row.ninos,
     })
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, movimientos: movimientosCambiados.map(movimientoDesdeFila) })
   } catch (err) {
     console.error("[API] Error deleting evento:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

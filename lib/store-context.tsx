@@ -62,6 +62,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useClock } from "@/lib/clock-context"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
+import { HEADER_PIN_ELIMINAR_EVENTO } from "@/lib/eliminar-evento-pin"
 
 interface StoreContextType {
   syncGuard: StoreSyncGuard
@@ -108,7 +109,8 @@ interface StoreContextType {
   // Eventos (calendario)
   addEvento: (evento: EventoGuardado) => Promise<boolean>
   updateEvento: (id: string, updates: Partial<EventoGuardado>, movimientosCobro?: MovimientoCaja[], previo?: EventoGuardado) => Promise<boolean>
-  deleteEvento: (id: string, motivo?: string) => Promise<boolean>
+  /** `pinAdministracion`: para borrar desde un perfil que no es de Administración (Perfil del evento). `devolver`: cuánto de lo cobrado se le devuelve al cliente (lib/plata-al-eliminar.ts). */
+  deleteEvento: (id: string, motivo?: string, opciones?: { pinAdministracion?: string; devolver?: number }) => Promise<boolean>
   setEventos: (eventos: EventoGuardado[]) => void
   // Servicios
   addServicio: (servicio: Omit<Servicio, "id">) => void
@@ -1547,17 +1549,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const deleteEvento = async (id: string, motivo?: string) => {
+  const deleteEvento = async (id: string, motivo?: string, opciones?: { pinAdministracion?: string; devolver?: number }) => {
     try {
-      const url = `/api/eventos/${encodeURIComponent(id)}${motivo ? `?motivo=${encodeURIComponent(motivo)}` : ""}`
-      const res = await fetchWithRetry(url, { method: "DELETE" })
+      const query = new URLSearchParams()
+      if (motivo) query.set("motivo", motivo)
+      if (opciones?.devolver && opciones.devolver > 0) query.set("devolver", String(opciones.devolver))
+      const url = `/api/eventos/${encodeURIComponent(id)}${query.toString() ? `?${query.toString()}` : ""}`
+      const headers: Record<string, string> = opciones?.pinAdministracion
+        ? { [HEADER_PIN_ELIMINAR_EVENTO]: opciones.pinAdministracion }
+        : {}
+      const res = await fetchWithRetry(url, { method: "DELETE", headers })
       if (!res.ok) throw new Error(`Error al eliminar evento (${res.status})`)
-      // Se ocultan los movimientos, pero se conservan en la base para restaurar el evento.
-      setState((prev) => ({
-        ...prev,
-        eventos: prev.eventos.filter((e) => e.id !== id),
-        movimientosCaja: (prev.movimientosCaja || []).filter((m) => m.eventoId !== id),
-      }))
+      const data = await res.json().catch(() => ({}))
+      // Los movimientos del evento ya no se ocultan: el servidor los
+      // desvinculó (siguen en las cajas, con "(evento eliminado)") y agregó
+      // las devoluciones. Se reemplazan por lo que devolvió el servidor
+      // (lib/plata-al-eliminar.ts).
+      const cambiados: MovimientoCaja[] = Array.isArray(data?.movimientos) ? data.movimientos : []
+      const porId = new Map(cambiados.map((m) => [m.id, m]))
+      setState((prev) => {
+        const actuales = (prev.movimientosCaja || []).map((m) => porId.get(m.id) ?? m)
+        const existentes = new Set(actuales.map((m) => m.id))
+        return {
+          ...prev,
+          eventos: prev.eventos.filter((e) => e.id !== id),
+          movimientosCaja: [...cambiados.filter((m) => !existentes.has(m.id)), ...actuales],
+        }
+      })
       return true
     } catch (err) {
       console.error("[v0] Error deleting evento:", err)

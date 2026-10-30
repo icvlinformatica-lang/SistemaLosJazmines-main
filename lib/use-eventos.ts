@@ -33,8 +33,8 @@ export function useEventos() {
     return await storeUpdate(id, cambios)
   }, [storeUpdate])
 
-  const eliminarEvento = useCallback(async (id: string, motivo?: string): Promise<boolean> => {
-    return await storeDelete(id, motivo)
+  const eliminarEvento = useCallback(async (id: string, motivo?: string, opciones?: { devolver?: number }): Promise<boolean> => {
+    return await storeDelete(id, motivo, opciones)
   }, [storeDelete])
 
   return { eventos: eventos || [], loading: loading ?? false, fetchEventos, crearEvento, actualizarEvento, eliminarEvento }
