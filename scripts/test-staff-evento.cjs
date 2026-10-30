@@ -130,3 +130,21 @@ test("cronograma: línea del perfil", () => {
   assert.equal(s.esMomentoDelPerfil(m, "fotografo"), false)
   assert.equal(s.esMomentoDelPerfil(m, "administracion"), false)
 })
+
+test("resumen del staff plegado en el Perfil del evento", () => {
+  assert.equal(s.resumenStaffPerfil({}), "Sin cargar")
+  assert.equal(s.resumenStaffPerfil({ notaTodos: "   ", notasPerfil: { dj: "  " }, cronograma: [] }), "Sin cargar")
+  assert.equal(
+    s.resumenStaffPerfil({
+      notaTodos: "Llegar 19 hs",
+      notasPerfil: { dj: "Tema de entrada", fotografo: "Fotos en el jardín" },
+      cronograma: JSON.stringify([
+        { hora: "21:00", momento: "Recepción" },
+        { hora: "23:30", momento: "Vals" },
+        { hora: "25:00", momento: "No vale" },
+      ]),
+    }),
+    "Nota para todos · 2 notas de oficio · Cronograma: 2 momentos",
+  )
+  assert.equal(s.resumenStaffPerfil({ notasPerfil: { dj: "x" }, cronograma: [{ hora: "21:00", momento: "Entrada" }] }), "1 nota de oficio · Cronograma: 1 momento")
+})
