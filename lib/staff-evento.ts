@@ -309,3 +309,26 @@ export function cronogramaSugerido(
 
 /** Quién puede guardar el cronograma (lo controla la ruta del servidor). */
 export const PERFILES_EDITAN_CRONOGRAMA = ["administracion", "soporte", "coordinacion"]
+
+// ---------------------------------------------------------------------------
+// Resumen para el título plegado (Perfil del evento)
+// ---------------------------------------------------------------------------
+
+/**
+ * Qué hay cargado para el staff, en una línea corta. Va en el título de
+ * "Notas y cronograma para el staff" del Perfil del evento, que arranca
+ * plegado (pedido del dueño, 30/10/2026: que el perfil entre sin scroll).
+ */
+export function resumenStaffPerfil(datos: {
+  notaTodos?: string | null
+  notasPerfil?: unknown
+  cronograma?: unknown
+}): string {
+  const partes: string[] = []
+  if ((datos.notaTodos ?? "").trim()) partes.push("Nota para todos")
+  const oficios = Object.keys(normalizarNotasStaffPerfil(datos.notasPerfil)).length
+  if (oficios > 0) partes.push(oficios === 1 ? "1 nota de oficio" : `${oficios} notas de oficio`)
+  const momentos = normalizarCronograma(datos.cronograma).length
+  if (momentos > 0) partes.push(momentos === 1 ? "Cronograma: 1 momento" : `Cronograma: ${momentos} momentos`)
+  return partes.length > 0 ? partes.join(" · ") : "Sin cargar"
+}

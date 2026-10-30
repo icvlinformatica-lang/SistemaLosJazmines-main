@@ -60,7 +60,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { CronogramaEvento } from "@/components/cronograma-evento"
-import { PERFILES_STAFF, NOMBRE_PERFIL_STAFF, normalizarNotasStaffPerfil, type NotasStaffPerfil } from "@/lib/staff-evento"
+import { PERFILES_STAFF, NOMBRE_PERFIL_STAFF, normalizarNotasStaffPerfil, resumenStaffPerfil, type NotasStaffPerfil } from "@/lib/staff-evento"
 import {
   ArrowLeft,
   Search,
@@ -77,6 +77,7 @@ import {
   TrendingUp,
   X,
   CheckCircle2,
+  ChevronDown,
 } from "lucide-react"
 
 const ESTADO_CONFIG: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -1518,14 +1519,49 @@ function PagosPageContent() {
           y el título corrido respecto del contenido). El título deja lugar
           a la izquierda para el botón redondo de la IA, que arranca ahí;
           en pantallas muy anchas el contenido ya queda lejos del botón. */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-[1600px] flex items-center gap-4 pl-14 min-[1760px]:pl-0">
+      <header className="border-b border-border bg-background px-6 py-2.5">
+        <div className="mx-auto max-w-[1600px] flex flex-wrap items-center gap-x-4 gap-y-2 pl-14 min-[1760px]:pl-0">
           <CreditCard className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">PERFIL DEL EVENTO</h1>
+          {/* Con un evento abierto, volver y eliminar van en la misma fila
+              del título: así no ocupan una fila propia (pedido del dueño,
+              30/10/2026: que el perfil entre en la pantalla sin scroll). */}
+          {selectedEvento && (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-transparent"
+                onClick={() => {
+                  if (vieneDeLista) {
+                    router.push("/eventos/lista")
+                  } else {
+                    setSelectedEvento(null)
+                    setSearchTerm("")
+                  }
+                }}
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                {vieneDeLista ? "Volver a lista de eventos" : "Buscar otro evento"}
+              </Button>
+              <EliminarEventoConPin
+                evento={selectedEvento}
+                onEliminado={() => {
+                  toast({ title: "Evento eliminado", description: "Pasó a Eventos → Finalizados, pestaña Eliminados." })
+                  if (vieneDeLista) {
+                    router.push("/eventos/lista")
+                  } else {
+                    setSelectedEvento(null)
+                    setSearchTerm("")
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1600px] px-6 pt-3 pb-2 space-y-4">
         {/* Search - hidden when event is selected */}
         {!selectedEvento && (
           <Card>
@@ -1673,43 +1709,11 @@ function PagosPageContent() {
         {/* Selected Event Detail */}
         {selectedEvento && (
           <>
-            {/* Back to search button y, a la derecha, eliminar con el PIN de Administración */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-transparent"
-              onClick={() => {
-                if (vieneDeLista) {
-                  router.push("/eventos/lista")
-                } else {
-                  setSelectedEvento(null)
-                  setSearchTerm("")
-                }
-              }}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              {vieneDeLista ? "Volver a lista de eventos" : "Buscar otro evento"}
-            </Button>
-            <EliminarEventoConPin
-              evento={selectedEvento}
-              onEliminado={() => {
-                toast({ title: "Evento eliminado", description: "Pasó a Eventos → Finalizados, pestaña Eliminados." })
-                if (vieneDeLista) {
-                  router.push("/eventos/lista")
-                } else {
-                  setSelectedEvento(null)
-                  setSearchTerm("")
-                }
-              }}
-            />
-            </div>
-
-            <div className="grid gap-6 items-start lg:grid-cols-2">
+            <div className="grid gap-4 items-start lg:grid-cols-2">
             {/* Left column: Event info, plan de cuotas y próximo pago */}
-            <div className="space-y-6">
+            <div className="space-y-4">
             {/* Event Info Card */}
-            <Card>
+            <Card className="gap-3 py-4">
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1752,7 +1756,7 @@ function PagosPageContent() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">Fecha:</span>
@@ -1791,7 +1795,7 @@ function PagosPageContent() {
                   )}
                 </div>
                 {selectedEvento.notasInternas && (
-                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-xs font-semibold text-amber-800 mb-1">Observaciones del evento</p>
                       <Button
@@ -1814,80 +1818,145 @@ function PagosPageContent() {
                   </div>
                 )}
                 {puedeEditarNotaStaff && (
-                  <div className="mt-4 space-y-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
-                    <div>
-                      <Label className="text-xs font-semibold text-sky-800 mb-1.5 block">
-                        Nota para todo el staff (DJ/Foto/Vestido/Pantalla/Coordinación)
-                      </Label>
-                      <Textarea
-                        value={notaStaffDraft}
-                        onChange={(e) => setNotaStaffDraft(e.target.value)}
-                        placeholder="Instrucciones o info para todo el staff del evento (la ven de solo lectura)..."
-                        className="bg-white text-sm"
-                        rows={2}
-                      />
-                    </div>
-                    {/* Una nota por oficio: lo que es solo para el DJ no lo lee el
-                        fotógrafo. Coordinación las ve todas. */}
-                    <Collapsible defaultOpen={Object.keys(notasPerfilDraft).length > 0}>
-                      <CollapsibleTrigger className="text-xs font-semibold text-sky-800 underline-offset-2 hover:underline">
-                        Notas para un solo oficio
-                        {Object.keys(normalizarNotasStaffPerfil(notasPerfilDraft)).length > 0 &&
-                          ` (${Object.keys(normalizarNotasStaffPerfil(notasPerfilDraft)).length})`}
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-2 space-y-2">
-                        {PERFILES_STAFF.map((p) => (
-                          <div key={p}>
-                            <Label className="mb-1 block text-[11px] font-medium text-sky-800">Solo para {NOMBRE_PERFIL_STAFF[p]}</Label>
-                            <Textarea
-                              value={notasPerfilDraft[p] ?? ""}
-                              onChange={(e) => setNotasPerfilDraft((prev) => ({ ...prev, [p]: e.target.value }))}
-                              className="bg-white text-sm"
-                              rows={1}
-                            />
-                          </div>
-                        ))}
-                      </CollapsibleContent>
-                    </Collapsible>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[11px] text-sky-700/80">
-                        Cada uno ve la nota para todos y la de su oficio en su calendario. Coordinación ve todas.
-                      </p>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 bg-white"
-                        disabled={guardandoNotaStaff || notasStaffSinCambios}
-                        onClick={guardarNotaStaff}
-                      >
-                        {guardandoNotaStaff ? "Guardando..." : "Guardar"}
-                      </Button>
-                    </div>
-                    <div className="rounded-lg border border-sky-200 bg-white p-3">
-                      <CronogramaEvento
-                        eventoId={selectedEvento.id}
-                        tipoEvento={selectedEvento.tipoEvento}
-                        horario={selectedEvento.horario}
-                        cronograma={selectedEvento.cronograma}
-                        editable
-                        onGuardado={(cronograma) => setSelectedEvento({ ...selectedEvento, cronograma })}
-                      />
-                    </div>
-                  </div>
+                  // Plegado al entrar, para que el perfil entre en la pantalla
+                  // sin scroll (pedido del dueño, 30/10/2026). El título dice
+                  // qué hay cargado, así no hace falta abrirlo para saberlo.
+                  <Collapsible className="mt-3 rounded-lg border border-sky-200 bg-sky-50">
+                    <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+                      <span className="text-xs font-semibold text-sky-800">Notas y cronograma para el staff</span>
+                      <span className="flex items-center gap-2 text-[11px] text-sky-700/80">
+                        {resumenStaffPerfil({ notaTodos: notaStaffDraft, notasPerfil: notasPerfilDraft, cronograma: selectedEvento.cronograma })}
+                        <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+                      </span>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-3 px-3 pb-3">
+                        <div>
+                          <Label className="text-xs font-semibold text-sky-800 mb-1.5 block">
+                            Nota para todo el staff (DJ/Foto/Vestido/Pantalla/Coordinación)
+                          </Label>
+                          <Textarea
+                            value={notaStaffDraft}
+                            onChange={(e) => setNotaStaffDraft(e.target.value)}
+                            placeholder="Instrucciones o info para todo el staff del evento (la ven de solo lectura)..."
+                            className="bg-white text-sm"
+                            rows={2}
+                          />
+                        </div>
+                        {/* Una nota por oficio: lo que es solo para el DJ no lo lee el
+                            fotógrafo. Coordinación las ve todas. */}
+                        <Collapsible defaultOpen={Object.keys(notasPerfilDraft).length > 0}>
+                          <CollapsibleTrigger className="text-xs font-semibold text-sky-800 underline-offset-2 hover:underline">
+                            Notas para un solo oficio
+                            {Object.keys(normalizarNotasStaffPerfil(notasPerfilDraft)).length > 0 &&
+                              ` (${Object.keys(normalizarNotasStaffPerfil(notasPerfilDraft)).length})`}
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2 space-y-2">
+                            {PERFILES_STAFF.map((p) => (
+                              <div key={p}>
+                                <Label className="mb-1 block text-[11px] font-medium text-sky-800">Solo para {NOMBRE_PERFIL_STAFF[p]}</Label>
+                                <Textarea
+                                  value={notasPerfilDraft[p] ?? ""}
+                                  onChange={(e) => setNotasPerfilDraft((prev) => ({ ...prev, [p]: e.target.value }))}
+                                  className="bg-white text-sm"
+                                  rows={1}
+                                />
+                              </div>
+                            ))}
+                          </CollapsibleContent>
+                        </Collapsible>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] text-sky-700/80">
+                            Cada uno ve la nota para todos y la de su oficio en su calendario. Coordinación ve todas.
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 bg-white"
+                            disabled={guardandoNotaStaff || notasStaffSinCambios}
+                            onClick={guardarNotaStaff}
+                          >
+                            {guardandoNotaStaff ? "Guardando..." : "Guardar"}
+                          </Button>
+                        </div>
+                        <div className="rounded-lg border border-sky-200 bg-white p-3">
+                          <CronogramaEvento
+                            eventoId={selectedEvento.id}
+                            tipoEvento={selectedEvento.tipoEvento}
+                            horario={selectedEvento.horario}
+                            cronograma={selectedEvento.cronograma}
+                            editable
+                            onGuardado={(cronograma) => setSelectedEvento({ ...selectedEvento, cronograma })}
+                          />
+                        </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 )}
               </CardContent>
             </Card>
 
             {/* Cuotas & Monto Total Config */}
-            <Card>
+            <Card className="gap-3 py-4">
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Plan de Cuotas</CardTitle>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <CardTitle className="text-lg">Plan de Cuotas</CardTitle>
+                    {(() => {
+                      const plan = selectedEvento.planDeCuotas
+                      if (plan && plan.numeroCuotas > 0) {
+                        const modalidad = plan.modalidadPago || "cuotas"
+                        const modalidadLabel =
+                          modalidad === "completo"
+                            ? "Pago completo"
+                            : modalidad === "sena"
+                              ? "Seña + Cuotas"
+                              : "Solo Cuotas"
+                        return (
+                          <CardDescription className="space-y-1">
+                            <span className="block">
+                              <span className="font-semibold text-foreground">{modalidadLabel}</span>
+                              {modalidad === "completo"
+                                ? ` · 1 pago de ${formatCurrency(plan.montoCuota || plan.montoTotal)}`
+                                : ` · ${plan.numeroCuotas} cuotas de ${formatCurrency(plan.montoCuota || 0)}`}
+                            </span>
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              {modalidad === "sena" && (plan.montoSena || 0) > 0 && (
+                                <Badge variant="secondary" className="text-[11px]">
+                                  Seña: {formatCurrency(plan.montoSena!)}
+                                </Badge>
+                              )}
+                              {(plan.porcentajeRecargo || 0) > 0 && (
+                                <Badge variant="secondary" className="text-[11px]">
+                                  Recargo financiación: {plan.porcentajeRecargo}%
+                                </Badge>
+                              )}
+                              {plan.ajustaPorIPC === true && (
+                                <Badge variant="secondary" className="text-[11px] text-amber-700">
+                                  Ajusta por IPC
+                                </Badge>
+                              )}
+                            </span>
+                          </CardDescription>
+                        )
+                      }
+                      if (selectedEvento.planCuotas && selectedEvento.planCuotas > 0) {
+                        return (
+                          <CardDescription>
+                            Plan guardado: {selectedEvento.planCuotas} cuotas de {formatCurrency((selectedEvento.montoTotalPlan || 0) / selectedEvento.planCuotas)}
+                          </CardDescription>
+                        )
+                      }
+                      return (
+                        <CardDescription>
+                          El plan de cuotas y el monto total se configuran desde Contratos. Aquí solo se registran y consultan los pagos.
+                        </CardDescription>
+                      )
+                    })()}
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="bg-transparent"
+                    className="h-8 shrink-0 bg-transparent"
                     onClick={() => {
                       setPinContrato("")
                       setPinContratoError("")
@@ -1898,89 +1967,38 @@ function PagosPageContent() {
                     Editar Contrato
                   </Button>
                 </div>
-                {(() => {
-                  const plan = selectedEvento.planDeCuotas
-                  if (plan && plan.numeroCuotas > 0) {
-                    const modalidad = plan.modalidadPago || "cuotas"
-                    const modalidadLabel =
-                      modalidad === "completo"
-                        ? "Pago completo"
-                        : modalidad === "sena"
-                          ? "Seña + Cuotas"
-                          : "Solo Cuotas"
-                    return (
-                      <CardDescription className="space-y-1">
-                        <span className="block">
-                          <span className="font-semibold text-foreground">{modalidadLabel}</span>
-                          {modalidad === "completo"
-                            ? ` · 1 pago de ${formatCurrency(plan.montoCuota || plan.montoTotal)}`
-                            : ` · ${plan.numeroCuotas} cuotas de ${formatCurrency(plan.montoCuota || 0)}`}
-                        </span>
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          {modalidad === "sena" && (plan.montoSena || 0) > 0 && (
-                            <Badge variant="secondary" className="text-[11px]">
-                              Seña: {formatCurrency(plan.montoSena!)}
-                            </Badge>
-                          )}
-                          {(plan.porcentajeRecargo || 0) > 0 && (
-                            <Badge variant="secondary" className="text-[11px]">
-                              Recargo financiación: {plan.porcentajeRecargo}%
-                            </Badge>
-                          )}
-                          {plan.ajustaPorIPC === true && (
-                            <Badge variant="secondary" className="text-[11px] text-amber-700">
-                              Ajusta por IPC
-                            </Badge>
-                          )}
-                        </span>
-                      </CardDescription>
-                    )
-                  }
-                  if (selectedEvento.planCuotas && selectedEvento.planCuotas > 0) {
-                    return (
-                      <CardDescription>
-                        Plan guardado: {selectedEvento.planCuotas} cuotas de {formatCurrency((selectedEvento.montoTotalPlan || 0) / selectedEvento.planCuotas)}
-                      </CardDescription>
-                    )
-                  }
-                  return (
-                    <CardDescription>
-                      El plan de cuotas y el monto total se configuran desde Contratos. Aquí solo se registran y consultan los pagos.
-                    </CardDescription>
-                  )
-                })()}
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 {montoTotal > 0 && (
                   <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="text-center p-3 rounded-lg bg-muted/50">
+                    <div className="text-center p-2 rounded-lg bg-muted/50">
                       <p className="text-xs text-muted-foreground">Monto Total</p>
-                      <p className="text-lg font-bold">{formatCurrency(montoTotal)}</p>
+                      <p className="text-base font-bold">{formatCurrency(montoTotal)}</p>
                     </div>
-                    <div className="text-center p-3 rounded-lg bg-muted/50">
+                    <div className="text-center p-2 rounded-lg bg-muted/50">
                       <p className="text-xs text-muted-foreground">Cuota ({cuotasTotal}x)</p>
-                      <p className="text-lg font-bold">{formatCurrency(montoPorCuota)}</p>
+                      <p className="text-base font-bold">{formatCurrency(montoPorCuota)}</p>
                     </div>
-                    <div className="text-center p-3 rounded-lg bg-muted/50">
+                    <div className="text-center p-2 rounded-lg bg-muted/50">
                       <p className="text-xs text-muted-foreground">Cuotas Restantes</p>
-                      <p className="text-lg font-bold">{cuotasRestantes} de {cuotasTotal}</p>
+                      <p className="text-base font-bold">{cuotasRestantes} de {cuotasTotal}</p>
                     </div>
                   </div>
                 )}
 
                 {montoTotal > 0 && (
-                  <div className="rounded-lg border-2 border-foreground/10 p-4 space-y-3">
+                  <div className="rounded-lg border-2 border-foreground/10 p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Total Pagado</p>
-                        <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalCubierto)}</p>
+                        <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalCubierto)}</p>
                         {montoSenaPlan > 0 && (
                           <p className="text-xs text-muted-foreground">Incluye seña de {formatCurrency(montoSenaPlan)}</p>
                         )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-muted-foreground">Saldo Pendiente</p>
-                        <p className={`text-xl font-bold ${saldoPendiente > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                        <p className={`text-lg font-bold ${saldoPendiente > 0 ? "text-amber-600" : "text-emerald-600"}`}>
                           {formatCurrency(Math.max(0, saldoPendiente))}
                         </p>
                       </div>
@@ -2007,7 +2025,7 @@ function PagosPageContent() {
             </div>
 
             {/* Right column: próximo pago y pagos registrados */}
-            <div className="space-y-6">
+            <div className="space-y-4">
             {/* Next Pending Payment Card */}
             {(() => {
               // Get the fresh event data from the store to compute next cuota
@@ -2066,7 +2084,7 @@ function PagosPageContent() {
                 const detalleAbierto = mostrarDetalleCalculo
 
                 return (
-                  <Card className="border-2 border-primary/30 bg-primary/5">
+                  <Card className="border-2 border-primary/30 bg-primary/5 gap-3 py-4">
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between gap-2">
                         <CardTitle className="text-lg flex items-center gap-2">
@@ -2358,7 +2376,7 @@ function PagosPageContent() {
             })()}
 
             {/* Payments List */}
-            <Card>
+            <Card className="gap-3 py-4">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <CreditCard className="h-5 w-5" />
@@ -2367,8 +2385,8 @@ function PagosPageContent() {
               </CardHeader>
               <CardContent>
                 {(selectedEvento.pagos || []).length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <CreditCard className="h-12 w-12 text-muted-foreground/40 mb-3" />
+                  <div className="flex flex-col items-center justify-center py-4 text-center">
+                    <CreditCard className="h-8 w-8 text-muted-foreground/40 mb-2" />
                     <p className="text-muted-foreground font-medium">No hay pagos registrados</p>
                     <p className="text-sm text-muted-foreground mt-1">Registra el primer pago para este evento</p>
                   </div>
