@@ -33,7 +33,8 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { SALONES, salonLabel, generateId } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { ConfirmAction } from "@/components/confirm-action"
-import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine } from "lucide-react"
+import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Wallet } from "lucide-react"
+import { avisosSaldoCajaEventos } from "@/lib/avisos-saldo-caja-eventos"
 
 // ============================================================
 // Tipos internos
@@ -43,6 +44,9 @@ interface FilaEvento {
   nombre: string
   salon: string | null
   ingresos: number
+  /** Parte de los ingresos que son señas y cuotas (solo para mostrar). */
+  senas: number
+  cuotas: number
   egresos: number
 }
 
@@ -57,13 +61,36 @@ interface DesgloseData {
   saldo: number
 }
 
+// "2026-09-25" → "25/9/26", para los avisos.
+function fechaCorta(fecha: string): string {
+  const [y, m, d] = fecha.slice(0, 10).split("-")
+  return y && m && d ? `${Number(d)}/${Number(m)}/${y.slice(2)}` : fecha
+}
+
 // ============================================================
 // Componente principal: dos botones + dos diálogos
 // ============================================================
-export function SaldoHerramientasEventos({ salonFiltro }: { salonFiltro: string }) {
+export function SaldoHerramientasEventos({
+  salonFiltro,
+  desgloseAbierto: desgloseControlado,
+  onDesgloseAbiertoChange,
+  onVerPatrimonio,
+}: {
+  salonFiltro: string
+  /** Si se pasa, la página abre el desglose (tocando la tarjeta Saldo actual). */
+  desgloseAbierto?: boolean
+  onDesgloseAbiertoChange?: (abierto: boolean) => void
+  /** Abre la ventana de efectivo + stock y retiros de la página. */
+  onVerPatrimonio?: () => void
+}) {
   const { state, addMovimientosCaja, archivarGasto } = useStore()
   const { toast } = useToast()
-  const [desgloseAbierto, setDesgloseAbierto] = useState(false)
+  const [desgloseLocal, setDesgloseLocal] = useState(false)
+  const desgloseAbierto = desgloseControlado ?? desgloseLocal
+  const setDesgloseAbierto = (v: boolean) => {
+    setDesgloseLocal(v)
+    onDesgloseAbiertoChange?.(v)
+  }
   const [conciliarAbierto, setConciliarAbierto] = useState(false)
 
   // ----------------------------------------------------------
@@ -100,10 +127,15 @@ export function SaldoHerramientasEventos({ salonFiltro }: { salonFiltro: string 
           nombre,
           salon: ev?.salon ?? m.salon ?? null,
           ingresos: 0,
+          senas: 0,
+          cuotas: 0,
           egresos: 0,
         }
-        if (m.tipo === "ingreso") fila.ingresos += monto
-        else fila.egresos += monto
+        if (m.tipo === "ingreso") {
+          fila.ingresos += monto
+          if (/^se[ñn]a\b/i.test(m.concepto || "")) fila.senas += monto
+          else if (/^cuota\s+\d+/i.test(m.concepto || "")) fila.cuotas += monto
+        } else fila.egresos += monto
         porEvento.set(m.eventoId, fila)
         continue
       }
@@ -136,6 +168,19 @@ export function SaldoHerramientasEventos({ salonFiltro }: { salonFiltro: string 
       saldo: totalIngresos - totalEgresos,
     }
   }, [state.movimientosCaja, state.eventos, salonFiltro])
+
+  // Avisos: por qué el saldo del sistema puede no ser la plata que hay.
+  const avisos = useMemo(
+    () =>
+      avisosSaldoCajaEventos(
+        state.movimientosCaja || [],
+        state.eventos || [],
+        salonFiltro !== "todos" ? salonFiltro : null,
+      ),
+    [state.movimientosCaja, state.eventos, salonFiltro],
+  )
+  const hayAvisos =
+    avisos.cuotasRepetidas.length > 0 || avisos.todoACajaEventos.length > 0 || avisos.finalizadosSinPagar.length > 0
 
   // ----------------------------------------------------------
   // CONCILIACIÓN: saldo del sistema por salón + plata contada
@@ -273,7 +318,99 @@ export function SaldoHerramientasEventos({ salonFiltro }: { salonFiltro: string 
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 min-w-0">
+            {/* Cuenta resumida */}
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 flex flex-col gap-1">
+              <div className="flex justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">Entró</span>
+                <span className="font-medium text-emerald-600 tabular-nums">+{formatCurrency(desglose.totalIngresos)}</span>
+              </div>
+              <div className="flex justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">Salió</span>
+                <span className="font-medium text-red-500 tabular-nums">−{formatCurrency(desglose.totalEgresos)}</span>
+              </div>
+              <div className="flex justify-between gap-2 text-base font-bold pt-1 border-t border-border">
+                <span>Saldo según el sistema</span>
+                <span className="tabular-nums">{formatCurrency(desglose.saldo)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                De cada seña y cuota, a Caja Eventos entra solo la parte del costo del evento más el 5 %; el resto va a
+                Caja Jazmines. Si la plata contada no coincide, usá Conciliar.
+              </p>
+            </div>
+
+            {hayAvisos && (
+              <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex flex-col gap-3 dark:bg-amber-950/30 dark:border-amber-800">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  Para revisar: pueden hacer que el saldo no sea la plata real
+                </h3>
+
+                {avisos.cuotasRepetidas.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                      Cuotas anotadas más de una vez ({avisos.cuotasRepetidas.length})
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      La caja tiene más cobros de la cuota que pagos el evento: probablemente sobra una fila.
+                    </p>
+                    {avisos.cuotasRepetidas.map((c) => (
+                      <div key={`${c.eventoId}-${c.numeroCuota}`} className="flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
+                        <span className="min-w-0 truncate">
+                          {c.nombre} {c.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(c.fechaEvento)}</span>} · Cuota {c.numeroCuota}
+                        </span>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {c.montos.map((m) => formatCurrency(m)).join(" + ")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {avisos.todoACajaEventos.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                      Cobros que fueron enteros a Caja Eventos ({avisos.todoACajaEventos.length} ·{" "}
+                      {formatCurrency(avisos.totalTodoACajaEventos)})
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      No le dejaron nada a Caja Jazmines. Antes del 2/11/2026 el costo operativo contaba en el reparto y
+                      muchos eventos mandaban todo acá; lo ya anotado no se reparte de nuevo.
+                    </p>
+                    {avisos.todoACajaEventos.map((c) => (
+                      <div key={c.eventoId} className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate">
+                          {c.nombre} {c.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(c.fechaEvento)}</span>}
+                        </span>
+                        <span className="shrink-0 tabular-nums">{formatCurrency(c.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {avisos.finalizadosSinPagar.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                      Finalizados sin pago de menú o barra ({avisos.finalizadosSinPagar.length})
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      No hay ningún pago de eso en Caja Eventos: si se pagó, no se anotó y esa plata sigue en el saldo.
+                    </p>
+                    {avisos.finalizadosSinPagar.map((f) => (
+                      <div key={f.eventoId} className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate">
+                          {f.nombre} {f.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(f.fechaEvento)}</span>}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {[f.menu && "menú", f.barra && "barra"].filter(Boolean).join(" y ")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* Por evento */}
             <section>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -284,27 +421,42 @@ export function SaldoHerramientasEventos({ salonFiltro }: { salonFiltro: string 
               ) : (
                 <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
                   {desglose.filasEventos.map((f) => (
-                    <div key={f.eventoId} className="flex items-center gap-3 px-3 py-2">
+                    <div key={f.eventoId} className="flex items-start gap-3 px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{f.nombre}</p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                           {f.salon && <SalonDot salon={f.salon} size={7} />}
                           {f.salon ? salonLabel(f.salon) : "Sin salón"}
                         </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs text-emerald-600 flex items-center justify-end gap-1">
-                          <ArrowDownToLine className="h-3 w-3" />
-                          {formatCurrency(f.ingresos)}
+                        {/* Qué entró (señas y cuotas por separado) y qué salió. */}
+                        <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pt-0.5">
+                          {f.senas > 0 && (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                              <ArrowDownToLine className="h-3 w-3" />
+                              Señas {formatCurrency(f.senas)}
+                            </span>
+                          )}
+                          {f.cuotas > 0 && (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                              <ArrowDownToLine className="h-3 w-3" />
+                              Cuotas {formatCurrency(f.cuotas)}
+                            </span>
+                          )}
+                          {f.ingresos - f.senas - f.cuotas > 0.005 && (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                              <ArrowDownToLine className="h-3 w-3" />
+                              Otros {formatCurrency(f.ingresos - f.senas - f.cuotas)}
+                            </span>
+                          )}
+                          {f.egresos > 0 && (
+                            <span className="inline-flex items-center gap-1 text-red-500">
+                              <ArrowUpFromLine className="h-3 w-3" />
+                              Salió {formatCurrency(f.egresos)}
+                            </span>
+                          )}
                         </p>
-                        {f.egresos > 0 && (
-                          <p className="text-xs text-red-500 flex items-center justify-end gap-1">
-                            <ArrowUpFromLine className="h-3 w-3" />
-                            {formatCurrency(f.egresos)}
-                          </p>
-                        )}
                       </div>
-                      <p className="w-28 text-right text-sm font-semibold shrink-0">
+                      <p className="text-right text-sm font-semibold shrink-0 tabular-nums">
                         {formatCurrency(f.ingresos - f.egresos)}
                       </p>
                     </div>
@@ -386,6 +538,33 @@ export function SaldoHerramientasEventos({ salonFiltro }: { salonFiltro: string 
                 <span>Saldo actual</span>
                 <span>{formatCurrency(desglose.saldo)}</span>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                className="flex-1 gap-2"
+                onClick={() => {
+                  setDesgloseAbierto(false)
+                  setConciliarAbierto(true)
+                }}
+              >
+                <Scale className="h-4 w-4" />
+                Conciliar con la plata contada
+              </Button>
+              {onVerPatrimonio && (
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={() => {
+                    setDesgloseAbierto(false)
+                    onVerPatrimonio()
+                  }}
+                >
+                  <Wallet className="h-4 w-4" />
+                  Stock y retiros
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
