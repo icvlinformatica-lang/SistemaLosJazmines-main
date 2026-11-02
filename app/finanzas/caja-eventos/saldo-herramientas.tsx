@@ -35,6 +35,9 @@ import { SalonDot } from "@/components/salon-badge"
 import { ConfirmAction } from "@/components/confirm-action"
 import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Wallet } from "lucide-react"
 import { avisosSaldoCajaEventos } from "@/lib/avisos-saldo-caja-eventos"
+import { tablaSaldoCajaEventos } from "@/lib/tabla-saldo-caja-eventos"
+import { calcularCostoEventoCajaEventos } from "@/lib/costo-evento"
+import type { EventoGuardado } from "@/lib/store"
 
 // ============================================================
 // Tipos internos
@@ -179,6 +182,18 @@ export function SaldoHerramientasEventos({
       ),
     [state.movimientosCaja, state.eventos, salonFiltro],
   )
+  // Tabla por evento: vendido, pagado, costo (la cuenta de Costos del evento)
+  // y lo que entró a Caja Eventos. Se calcula solo con el desglose abierto.
+  const tabla = useMemo(() => {
+    if (!desgloseAbierto) return null
+    return tablaSaldoCajaEventos(
+      state.movimientosCaja || [],
+      state.eventos || [],
+      salonFiltro !== "todos" ? salonFiltro : null,
+      (ev) => calcularCostoEventoCajaEventos(ev as EventoGuardado, state).costoTotalEvento,
+    )
+  }, [desgloseAbierto, state, salonFiltro])
+
   const hayAvisos =
     avisos.cuotasRepetidas.length > 0 || avisos.todoACajaEventos.length > 0 || avisos.finalizadosSinPagar.length > 0
 
@@ -308,7 +323,7 @@ export function SaldoHerramientasEventos({
 
       {/* ══════════════ DIALOG 1: DESGLOSE DEL SALDO ══════════════ */}
       <Dialog open={desgloseAbierto} onOpenChange={setDesgloseAbierto}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Desglose del saldo</DialogTitle>
             <DialogDescription>
@@ -408,6 +423,58 @@ export function SaldoHerramientasEventos({
                     ))}
                   </div>
                 )}
+              </section>
+            )}
+
+            {/* Tabla por evento */}
+            {tabla && tabla.filas.length > 0 && (
+              <section className="min-w-0">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  Cada evento: venta, pagos y costo ({tabla.filas.length})
+                </h3>
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full min-w-[520px] text-xs tabular-nums">
+                    <thead className="bg-muted/50 text-muted-foreground">
+                      <tr>
+                        <th className="sticky left-0 bg-muted px-2 py-2 text-left font-medium">Evento</th>
+                        <th className="px-2 py-2 text-right font-medium">Vendido</th>
+                        <th className="px-2 py-2 text-right font-medium">Lleva pagado</th>
+                        <th className="px-2 py-2 text-right font-medium">Costo</th>
+                        <th className="px-2 py-2 text-right font-medium">Entró a Caja Eventos</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {tabla.filas.map((f) => (
+                        <tr key={f.eventoId}>
+                          <td className="sticky left-0 bg-background px-2 py-1.5 max-w-[130px]">
+                            <span className="block truncate font-medium text-foreground">{f.nombre}</span>
+                            {f.fechaEvento && (
+                              <span className="block text-[11px] text-muted-foreground">{fechaCorta(f.fechaEvento)}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.vendido)}</td>
+                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.pagado)}</td>
+                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.costo)}</td>
+                          <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(f.entroCajaEventos)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t-2 border-border bg-muted/50 font-bold">
+                      <tr>
+                        <td className="sticky left-0 bg-muted px-2 py-2">Total</td>
+                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.vendido)}</td>
+                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.pagado)}</td>
+                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.costo)}</td>
+                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.entroCajaEventos)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  "Lleva pagado" son las señas y cuotas que entraron a las dos cajas. "Costo" es el de Costos del evento
+                  (comida, bebida, servicios y sueldos; el de los finalizados, el guardado al finalizar). "Entró a Caja
+                  Eventos" es la parte de lo pagado que vino a esta caja.
+                </p>
               </section>
             )}
 
