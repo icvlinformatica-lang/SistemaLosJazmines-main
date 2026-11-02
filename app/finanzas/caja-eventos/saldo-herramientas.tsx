@@ -14,7 +14,7 @@
  *    estándar de saldo de apertura / arqueo de caja.
  */
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -199,6 +199,10 @@ export function SaldoHerramientasEventos({
   const hayAvisos = cantidadAvisos > 0
   // Las excepciones arrancan plegadas en un botón (pedido de Rodrigo, 2/11/2026).
   const [verExcepciones, setVerExcepciones] = useState(false)
+  // Cada vez que se abre el desglose, las excepciones vuelven a arrancar plegadas.
+  useEffect(() => {
+    if (desgloseAbierto) setVerExcepciones(false)
+  }, [desgloseAbierto])
 
   // ----------------------------------------------------------
   // CONCILIACIÓN: saldo del sistema por salón + plata contada
