@@ -7,6 +7,13 @@ import { calcularProporcionCajaEventos } from "../cobrar-cuota"
 import { saldoRestanteCuota } from "../estado-cuotas"
 import { deudaDelPeriodo, parteDelSalon } from "../pago-gasto-fijo"
 import { fechaArgentina } from "../resumen-fecha"
+import {
+  armarProyeccionJazmines,
+  type DesgloseMesJaz,
+  type GastoFijoProyeccion,
+  type MesProyeccionJaz,
+  type SueldoProyeccion,
+} from "../proyeccion-jazmines"
 
 // ============================================================
 // Tipos de salida
@@ -119,16 +126,7 @@ export interface EstimacionProximoMes {
   salon?: string | null
   }
 
-export interface MesProyeccionJaz {
-  key: string // YYYY-MM
-  label: string // "junio 2026"
-  aCobrar: number
-  aPagar: number
-  balance: number
-  /** Saldo acumulado: saldo actual de la caja + balances de los meses hasta este inclusive */
-  saldoProyectado: number
-  esActual: boolean
-}
+export type { MesProyeccionJaz, DesgloseMesJaz } from "../proyeccion-jazmines"
 
 /**
  * Un ítem que suma en "Gastos a 30 días": sirve para mostrar de qué se
@@ -162,6 +160,8 @@ export interface CajaJazminData {
   cuotasPorCobrar: CuotaPorCobrar[]
   /** Proyección mes a mes (12 meses): parte Jazmines de cuotas vs gastos fijos+variables */
   proyeccionMensual: MesProyeccionJaz[]
+  /** Desglose de cada mes de la proyección (al tocar A cobrar o A pagar), por clave YYYY-MM. */
+  desgloseProyeccion: Record<string, DesgloseMesJaz>
   /** Estimado de gastos fijos a pagar el mes que viene (mensuales + sueldos + anuales que venzan) */
   gastosFijosProximoMes: number
   /** Desglose por servicio del estimado del mes que viene, según el historial de montos pagados */
@@ -712,67 +712,63 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
     gastosVariables.sort((a, b) => a.fecha.localeCompare(b.fecha))
 
     // ----------------------------------------------------------
-    // 6. PROYECCIÓN MENSUAL (próximos 12 meses incluyendo el actual)
-    //    A cobrar: parte Jazmines de las cuotas pendientes por mes.
-    //    A pagar: fijos mensuales recurrentes + sueldos + anuales en su mes
-    //    + variables agendados en su mes.
+    // 6. PROYECCIÓN MENSUAL (próximos 12 meses incluyendo el actual) y el
+    //    desglose de cada mes (lib/proyeccion-jazmines.ts).
+    //    A cobrar: parte Jazmines de las cuotas pendientes (las atrasadas, en
+    //    el mes actual). A pagar: fijos mensuales + sueldos de vendedores +
+    //    anuales en su mes + variables agendados (los vencidos, en el mes
+    //    actual). En el mes actual, de cada fijo solo lo que falta pagar.
     // ----------------------------------------------------------
     const mesKeyJaz = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
     const mesLabelJaz = (d: Date) => d.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
-    const mesActualKeyJaz = mesKeyJaz(hoy)
 
-    // Recurrentes de todos los meses: fijos mensuales activos + sueldos de vendedores
-    const totalFijosMensuales = costosFijos
-      .filter((c) => c.frecuencia === "Mensual")
-      .reduce((s, c) => s + c.monto, 0)
-    const totalSueldosVendedores = !salonSel
-      ? (state.vendedores || []).reduce((s, v) => s + (v.sueldo && v.sueldo > 0 ? v.sueldo : 0), 0)
-      : 0
-    const recurrenteMensual = totalFijosMensuales + totalSueldosVendedores
-
-    const proyeccionMensual: MesProyeccionJaz[] = []
-    const idxPorKeyJaz: Record<string, number> = {}
+    const mesesProyeccion: { key: string; label: string }[] = []
     for (let i = 0; i < 12; i++) {
       const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1)
-      const key = mesKeyJaz(d)
-      idxPorKeyJaz[key] = proyeccionMensual.length
-      proyeccionMensual.push({
-        key,
-        label: mesLabelJaz(d),
-        aCobrar: 0,
-        aPagar: recurrenteMensual,
-        balance: 0,
-        saldoProyectado: 0,
-        esActual: key === mesActualKeyJaz,
+      mesesProyeccion.push({ key: mesKeyJaz(d), label: mesLabelJaz(d) })
+    }
+    const diaDe = (fecha?: string) => Number((fecha || "").split("-")[2]) || undefined
+    const fijosProyeccion: GastoFijoProyeccion[] = []
+    for (const c of costosFijos) {
+      if (c.frecuencia !== "Mensual" && c.frecuencia !== "Anual") continue
+      const original = costosOriginales.get(c.id) ?? c
+      const parte = salonSel ? parteDelSalon(original, salonSel) : undefined
+      const cubierto = gastoFijoCubierto(c.id, c.frecuencia, gastosArchivados, hoy)
+      fijosProyeccion.push({
+        id: c.id,
+        concepto: c.concepto,
+        salon: c.salon,
+        frecuencia: c.frecuencia,
+        monto: c.monto,
+        faltaMesActual: cubierto ? 0 : deudaDelPeriodo(original, mesDeHoy, parte).monto,
+        fechaVencimiento: c.fechaVencimiento,
+        diaVencimiento: diaDe(c.fechaVencimiento),
       })
     }
-
-    // A cobrar: cuotas pendientes (parte Jazmines) en su mes de vencimiento
-    for (const c of cuotasPorCobrar) {
-      const idx = idxPorKeyJaz[c.fechaVencimiento.slice(0, 7)]
-      if (idx !== undefined) proyeccionMensual[idx].aCobrar += c.montoJazmines
-    }
-    // Fijos anuales: pegan solo en el mes de su vencimiento (cada año dentro de la ventana)
-    for (const c of costosFijos) {
-      if (c.frecuencia !== "Anual" || !c.fechaVencimiento) continue
-      const [, mm] = c.fechaVencimiento.split("-").map(Number)
-      for (const mes of proyeccionMensual) {
-        if (Number(mes.key.slice(5, 7)) === mm) mes.aPagar += c.monto
-      }
-    }
-    // Variables agendados no pagados: en su mes de vencimiento
-    for (const c of costosVariablesStore) {
-      if (c.pagado || !c.fechaVencimiento) continue
-      const idx = idxPorKeyJaz[c.fechaVencimiento.slice(0, 7)]
-      if (idx !== undefined) proyeccionMensual[idx].aPagar += c.monto
-    }
-    // Balance de cada mes + saldo acumulado partiendo del saldo ACTUAL de la
-    // caja: si se extrae/ingresa dinero hoy, toda la proyección se corre sola.
-    let saldoAcumuladoJaz = saldoActual
-    proyeccionMensual.forEach((m) => {
-      m.balance = m.aCobrar - m.aPagar
-      saldoAcumuladoJaz += m.balance
-      m.saldoProyectado = saldoAcumuladoJaz
+    const sueldosProyeccion: SueldoProyeccion[] = !salonSel
+      ? (state.vendedores || [])
+          .filter((v) => v.sueldo && v.sueldo > 0)
+          .map((v) => ({
+            id: `sueldo-vendedor-${v.id}`,
+            concepto: `Sueldo vendedor · ${v.emoji ? `${v.emoji} ` : ""}${v.nombre}`,
+            monto: v.sueldo as number,
+            diaVencimiento: diaDe(v.sueldoFechaPago),
+          }))
+      : []
+    const totalSueldosVendedores = sueldosProyeccion.reduce((s, v) => s + v.monto, 0)
+    const nombresEvento = new Map((state.eventos || []).map((ev) => [ev.id, ev.nombrePareja || ev.nombre || ev.tipoEvento || "Evento"]))
+    const { proyeccionMensual, desglose: desgloseProyeccion } = armarProyeccionJazmines({
+      meses: mesesProyeccion,
+      saldoActual,
+      cuotas: cuotasPorCobrar,
+      fijos: fijosProyeccion,
+      sueldos: sueldosProyeccion,
+      variables: costosVariablesStore
+        .filter((c) => !c.pagado && c.fechaVencimiento)
+        .map((c) => ({ id: c.id, concepto: c.concepto, salon: c.salon, monto: c.monto, fechaVencimiento: c.fechaVencimiento as string })),
+      movimientos,
+      nombreEvento: (id) => nombresEvento.get(id),
+      hoy: mesKeyJaz(hoy) + "-" + String(hoy.getDate()).padStart(2, "0"),
     })
 
     // Estimado de gastos fijos para la tarjeta "servicios a pagar".
@@ -903,6 +899,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       ingresosProyectados30Dias,
       cuotasPorCobrar,
       proyeccionMensual,
+      desgloseProyeccion,
       gastosFijosProximoMes,
       estimacionesProximoMes,
     }
