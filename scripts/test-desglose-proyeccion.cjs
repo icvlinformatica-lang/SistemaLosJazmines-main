@@ -24,7 +24,7 @@ const fechaISO = (dia) => new Date(`${dia}T12:00:00`).toISOString()
 const DJ = { id: "dj", nombre: "DJ, SONIDO, LUCES Y HUMO", categoria: "Otros", unidad: "Fijo", activo: true, margenGanancia: 0, precioVenta: 900000, costoParaCajaEventos: 600000, porcentajeSeña: 30, diasAnticipacionSeña: 30, diasAnticipacionSaldo: 7, sePagaComoSueldo: true }
 const FOTO = { id: "foto", nombre: "FOTOGRAFIA", categoria: "Otros", unidad: "Fijo", activo: true, margenGanancia: 0, precioVenta: 500000, costoParaCajaEventos: 300000, porcentajeSeña: 30, diasAnticipacionSeña: 30, diasAnticipacionSaldo: 7 }
 const srvEv = (cat, patch = {}) => ({ servicioId: cat.id, nombre: cat.nombre, cantidad: 1, unidad: "Fijo", ...patch })
-const base = { adultos: 0, adolescentes: 0, ninos: 0, personasDietasEspeciales: 0, recetasAdultos: [], recetasAdolescentes: [], recetasNinos: [], recetasDietasEspeciales: [], barras: [], personalEvento: [], costoOperativo: 0 }
+const base = { adultos: 0, adolescentes: 0, ninos: 0, personasDietasEspeciales: 0, recetasAdultos: [], recetasAdolescentes: [], recetasNinos: [], recetasDietasEspeciales: [], barras: [], personalEvento: [] }
 
 // Evento A (Quinta, 12/12/2026): 3 cuotas de $1.000.000.
 // Cuota 1 (vence oct) cobrada; cuota 2 (vence nov) con $400.000 acreditados; cuota 3 (vence dic) sin cobrar.
@@ -47,7 +47,7 @@ const eventoB = {
 }
 // Evento C (Casona): cuota de octubre marcada cobrada pero sin movimiento en la caja.
 const eventoC = {
-  ...base, id: "C", nombre: "Cumple López", salon: "Casona", fecha: "2027-01-20", estado: "pendiente", servicios: [], costoOperativo: 200000,
+  ...base, id: "C", nombre: "Cumple López", salon: "Casona", fecha: "2027-01-20", estado: "pendiente", servicios: [], personalEvento: [{ id: "pe-costo", personalId: "fuera-del-plantel", nombre: "Sueldo", funcion: "Mozo", monto: 200000, pagado: true }],
   planDeCuotas: { montoTotal: 1000000, numeroCuotas: 2, cuotasPagadas: [1], cuotas: [
     { numero: 1, montoCuota: 500000, fechaVencimiento: "2026-10-20", pagada: true },
     { numero: 2, montoCuota: 500000, fechaVencimiento: "2026-12-20" },
@@ -124,7 +124,7 @@ test("noviembre: de la cuota con pago parcial queda lo que falta; lo cobrado fig
 // ingreso de septiembre, y una cuota atrasada sin cobrar se espera este mes.
 test("cuota atrasada: sin cobrar suma al mes actual; cobrada después cuenta en el mes en que entró", () => {
   const eventoD = {
-    ...base, id: "D", nombre: "Boda Ruiz", salon: "Salon", fecha: "2027-03-10", estado: "pendiente", servicios: [], costoOperativo: 2000000,
+    ...base, id: "D", nombre: "Boda Ruiz", salon: "Salon", fecha: "2027-03-10", estado: "pendiente", servicios: [], personalEvento: [{ id: "pe-costo", personalId: "fuera-del-plantel", nombre: "Sueldo", funcion: "Mozo", monto: 2000000, pagado: true }],
     planDeCuotas: { montoTotal: 3000000, numeroCuotas: 3, cuotasPagadas: [], cuotas: [
       { numero: 1, montoCuota: 1000000, fechaVencimiento: "2026-08-10" },
       { numero: 2, montoCuota: 1000000, fechaVencimiento: "2026-09-10" },

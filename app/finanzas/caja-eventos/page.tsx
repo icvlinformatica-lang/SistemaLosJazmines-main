@@ -991,6 +991,7 @@ useStore()
         recetas: state.recetas || [],
         cocteles: state.cocteles || [],
         servicios: state.servicios || [],
+        personal: state.personal || [],
       },
       state.historialIPC || [],
     )
@@ -1365,6 +1366,7 @@ useStore()
             recetas: state.recetas || [],
             cocteles: state.cocteles || [],
             servicios: state.servicios || [],
+            personal: state.personal || [],
           },
           ingresosPendientes: data.ingresosPendientes,
           egresosPendientes: data.egresosPendientes,

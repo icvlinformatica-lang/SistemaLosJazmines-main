@@ -23,7 +23,8 @@ const mov = (patch = {}) => ({ id: "mov", eventoId: "evento", tipo: "ingreso", c
 const costo = (patch = {}) => ({ id: "luz", concepto: "Luz", frecuencia: "Mensual", activo: true, monto: 100, fechaVencimiento: "2026-09-10", ...patch })
 
 test("cuotas pendientes usan reparto único y conservan centavos", () => {
-  const r = calc({ eventos: [ev()] })
+  // El costo del evento es un sueldo ya pagado de $100 (el costo operativo no cuenta desde el 2/11/2026).
+  const r = calc({ eventos: [ev({ personalEvento: [{ id: "pe-costo", personalId: "fuera-del-plantel", nombre: "Sueldo", funcion: "Mozo", monto: 100, pagado: true }] })] })
   assert.equal(r.totales.caja_eventos.cuotasPrevistas, 52.5)
   assert.equal(r.totales.caja_jazmines.cuotasPrevistas, 447.5)
   assert.equal(r.totales.caja_eventos.cuotasPendientes, 52.5)

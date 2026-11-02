@@ -1014,7 +1014,7 @@ function PagosPageContent() {
     )
   }
 
-  const datosCostosCobro = { insumos: state.insumos || [], insumosBarra: state.insumosBarra || [], recetas: state.recetas || [], cocteles: state.cocteles || [], servicios: state.servicios || [] }
+  const datosCostosCobro = { insumos: state.insumos || [], insumosBarra: state.insumosBarra || [], recetas: state.recetas || [], cocteles: state.cocteles || [], servicios: state.servicios || [], personal: state.personal || [] }
 
   // Cobra, una por una, las cuotas que se pagan junto con la de hoy. Si una
   // falla, frena y avisa cuánto quedó sin registrar. Devuelve las cobradas.
@@ -1401,6 +1401,7 @@ function PagosPageContent() {
       recetas: state.recetas || [],
       cocteles: state.cocteles || [],
       servicios: state.servicios || [],
+      personal: state.personal || [],
     })
     const objetivoPorCaja: Record<"caja_eventos" | "caja_jazmines", number> = {
       caja_eventos: pago.monto * propEventos,

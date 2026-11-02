@@ -13,6 +13,8 @@ import {
   type Receta,
   type Coctel,
   type Servicio,
+  type PersonalEvento,
+  calcularMontoPersonalDelEvento,
 } from "./store"
 
 export interface CobroCuotaResultado {
@@ -33,6 +35,8 @@ export interface DatosCostosEvento {
   cocteles: Coctel[]
   /** Catálogo de servicios para recalcular su costo EN VIVO (opcional) */
   servicios?: Servicio[]
+  /** Plantel de Finanzas → Personal para el sueldo EN VIVO de cada persona del evento (opcional) */
+  personal?: PersonalEvento[]
 }
 
 /**
@@ -41,8 +45,16 @@ export interface DatosCostosEvento {
  * Regla ÚNICA (proporcional, "costo + 5%") para TODOS los eventos, sin importar
  * cuándo fueron creados: a Caja Eventos va SOLO el costo del evento + 5%,
  * prorrateado proporcionalmente en cada pago (seña y cuotas). El costo se
- * RECALCULA en cada cobro: insumos con precios actuales del almacén (si se
- * pasan `datos`) + servicios + operativos guardados en el evento.
+ * RECALCULA en cada cobro: comida y bebida con precios actuales del almacén
+ * (si se pasan `datos`) + servicios + sueldos del personal del evento.
+ *
+ * Desde el 2/11/2026 (pedido del dueño) el costo operativo (los gastos fijos
+ * de Caja Jazmines repartidos por evento) ya NO cuenta: esos gastos los paga
+ * Caja Jazmines, así que la parte de la cuota que los cubre tiene que ir ahí.
+ * Antes, en 32 eventos ese costo superaba el precio y la cuota entera iba a
+ * Caja Eventos ($0 para Caja Jazmines). Caja Eventos recibe lo que ella misma
+ * paga: menú, barra, proveedores y sueldos del evento. Lo ya cobrado no se
+ * reparte de nuevo (los movimientos de caja quedan como se anotaron).
  *
  * El reparto histórico 50/50 fue erradicado a pedido del negocio (jul 2026):
  * el flag legado `repartoCajas` se ignora por completo.
@@ -68,7 +80,13 @@ export function calcularProporcionCajaEventos(evento: EventoGuardado, datos?: Da
         0,
       )
     : (evento.costoServicios ?? 0)
-  const costoEvento = costoInsumos + costoServicios + (evento.costoOperativo ?? 0)
+  // Sueldos del personal del evento: la misma cuenta que Caja Eventos usa para
+  // pagarlos (tarifa vigente del plantel; sin plantel, el monto guardado).
+  const costoPersonal = (evento.personalEvento ?? []).reduce(
+    (s, pe) => s + calcularMontoPersonalDelEvento(pe, datos?.personal),
+    0,
+  )
+  const costoEvento = costoInsumos + costoServicios + costoPersonal
 
   if (montoTotal <= 0) return 1
   if (costoEvento <= 0) return 0

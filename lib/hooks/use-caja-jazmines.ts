@@ -535,6 +535,7 @@ export function useCajaJazmines(state: AppState, salonFiltro?: string, ahora?: D
       recetas: state.recetas || [],
       cocteles: state.cocteles || [],
       servicios: state.servicios || [],
+      personal: state.personal || [],
     }
     let ingresosProyectados30Dias = 0
     const cuotasPorCobrar: CuotaPorCobrar[] = []

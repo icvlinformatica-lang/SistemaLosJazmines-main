@@ -181,6 +181,7 @@ export function calcularCajaEventos(state: AppState, salonFiltro?: string, ahora
         recetas: state.recetas || [],
         cocteles: state.cocteles || [],
         servicios: state.servicios || [],
+        personal: state.personal || [],
       })
       const contacto: ClienteContacto = {
         nombre: evento.contrato?.nombreCompleto || evento.nombrePareja || evento.nombre || "Sin nombre",

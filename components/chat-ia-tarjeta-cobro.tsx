@@ -82,6 +82,7 @@ export function TarjetaCobroChatIA({
               recetas: state.recetas || [],
               cocteles: state.cocteles || [],
               servicios: state.servicios || [],
+              personal: state.personal || [],
             },
           )
           const guardado = await updateEvento(
