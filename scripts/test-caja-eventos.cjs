@@ -48,7 +48,7 @@ function evento(id, overrides = {}) {
     id, nombre: "Mismo nombre", salon: "Quinta", fecha: "2026-10-20", estado: "pendiente",
     adultos: 0, adolescentes: 0, ninos: 0, personasDietasEspeciales: 0,
     recetasAdultos: [], recetasAdolescentes: [], recetasNinos: [], recetasDietasEspeciales: [],
-    barras: [], servicios: [], personalEvento: [], costoOperativo: 100,
+    barras: [], servicios: [], personalEvento: [{ id: "pe-costo", personalId: "fuera-del-plantel", nombre: "Sueldo", funcion: "Mozo", monto: 100, pagado: true }],
     planDeCuotas: {
       montoTotal: 1000, numeroCuotas: 2, cuotasPagadas: [],
       cuotas: [
