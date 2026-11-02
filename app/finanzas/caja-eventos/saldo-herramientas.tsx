@@ -33,7 +33,7 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { SALONES, salonLabel, generateId } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { ConfirmAction } from "@/components/confirm-action"
-import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Wallet } from "lucide-react"
+import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Wallet, ChevronDown } from "lucide-react"
 import { avisosSaldoCajaEventos } from "@/lib/avisos-saldo-caja-eventos"
 import { tablaSaldoCajaEventos } from "@/lib/tabla-saldo-caja-eventos"
 import { calcularCostoEventoCajaEventos } from "@/lib/costo-evento"
@@ -194,8 +194,11 @@ export function SaldoHerramientasEventos({
     )
   }, [desgloseAbierto, state, salonFiltro])
 
-  const hayAvisos =
-    avisos.cuotasRepetidas.length > 0 || avisos.todoACajaEventos.length > 0 || avisos.finalizadosSinPagar.length > 0
+  const cantidadAvisos =
+    avisos.cuotasRepetidas.length + avisos.todoACajaEventos.length + avisos.finalizadosSinPagar.length
+  const hayAvisos = cantidadAvisos > 0
+  // Las excepciones arrancan plegadas en un botón (pedido de Rodrigo, 2/11/2026).
+  const [verExcepciones, setVerExcepciones] = useState(false)
 
   // ----------------------------------------------------------
   // CONCILIACIÓN: saldo del sistema por salón + plata contada
@@ -355,11 +358,26 @@ export function SaldoHerramientasEventos({
             </div>
 
             {hayAvisos && (
-              <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex flex-col gap-3 dark:bg-amber-950/30 dark:border-amber-800">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setVerExcepciones((v) => !v)}
+                aria-expanded={verExcepciones}
+                className="w-full justify-between gap-2 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200"
+              >
+                <span className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  Para revisar: pueden hacer que el saldo no sea la plata real
-                </h3>
+                  Excepciones ({cantidadAvisos})
+                </span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${verExcepciones ? "rotate-180" : ""}`} />
+              </Button>
+            )}
+
+            {hayAvisos && verExcepciones && (
+              <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex flex-col gap-3 dark:bg-amber-950/30 dark:border-amber-800">
+                <p className="text-xs text-amber-900 dark:text-amber-200">
+                  Pueden hacer que el saldo no sea la plata real. Son para revisar: no se corrigen solas.
+                </p>
 
                 {avisos.cuotasRepetidas.length > 0 && (
                   <div className="flex flex-col gap-1">
