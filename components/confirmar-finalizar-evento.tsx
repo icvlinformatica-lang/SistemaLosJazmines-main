@@ -90,8 +90,8 @@ export function ConfirmarFinalizarEventoDialog({
                   ))}
                 </ul>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Si ya se pagó, marcalo en Costos del evento: así sale de Caja Eventos. Con el evento finalizado, solo se
-                  pueden pagar el menú y la barra.
+                  Si ya se pagó, marcalo en Costos del evento: así sale de Caja Eventos. También se puede después, con el
+                  evento finalizado.
                 </p>
                 <Link
                   href={`/eventos/costos?id=${encodeURIComponent(eventoId)}`}

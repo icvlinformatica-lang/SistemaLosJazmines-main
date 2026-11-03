@@ -347,7 +347,7 @@ export function SaldoHerramientasEventos({
 
       {/* ══════════════ DIALOG 1: DESGLOSE DEL SALDO ══════════════ */}
       <Dialog open={desgloseAbierto} onOpenChange={setDesgloseAbierto}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl lg:max-w-5xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Desglose del saldo</DialogTitle>
             <DialogDescription>
@@ -551,7 +551,7 @@ export function SaldoHerramientasEventos({
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                       Venta, pagos y costo de cada evento ({tabla.filas.length})
                     </h3>
-                    <div className="hidden md:block rounded-lg border border-border">
+                    <div className="hidden lg:block rounded-lg border border-border">
                       <table className="w-full text-xs tabular-nums">
                         <thead className="bg-muted/50 text-muted-foreground">
                           <tr>
@@ -601,11 +601,11 @@ export function SaldoHerramientasEventos({
                       </table>
                     </div>
                     {/* En el celu, una tarjeta por evento: sin scroll de costado. */}
-                    <div className="flex flex-col gap-2 md:hidden">
+                    <div className="grid gap-2 sm:grid-cols-2 lg:hidden">
                       {[...tabla.filas.map((f) => ({ ...f, total: false })), { ...tabla.totales, eventoId: "total", nombre: "Total", fechaEvento: "", total: true }].map((f) => (
                         <div
                           key={f.eventoId}
-                          className={`rounded-lg border border-border px-3 py-2 text-xs tabular-nums ${f.total ? "bg-muted/50 font-bold" : ""}`}
+                          className={`min-w-0 rounded-lg border border-border px-3 py-2 text-xs tabular-nums ${f.total ? "bg-muted/50 font-bold" : ""}`}
                         >
                           <p className="flex items-baseline justify-between gap-2 pb-1">
                             <span className="min-w-0 truncate text-sm font-medium">{f.nombre}</span>
