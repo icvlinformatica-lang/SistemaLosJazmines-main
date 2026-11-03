@@ -194,7 +194,7 @@ function DetallePagar({ mesLabel, d }: { mesLabel: string; d: DesglosePagarMes }
   )
 }
 
-function Encabezado({ icono, titulo, ayuda }: { icono: ReactNode; titulo: string; ayuda: string }) {
+export function Encabezado({ icono, titulo, ayuda }: { icono: ReactNode; titulo: string; ayuda: string }) {
   return (
     // pr-12: deja lugar a la cruz de cerrar de la ventana.
     <div className="shrink-0 border-b py-3 pl-4 pr-12">
@@ -214,7 +214,7 @@ interface FilaResumen {
   destacado?: boolean
 }
 
-function Resumen({
+export function Resumen({
   filas,
   hecho,
   total,
@@ -257,7 +257,7 @@ function Resumen({
   )
 }
 
-function Seccion({ titulo, vacio, children }: { titulo: string; vacio: string; children: ReactNode[] }) {
+export function Seccion({ titulo, vacio, children }: { titulo: string; vacio: string; children: ReactNode[] }) {
   return (
     <section className="py-1.5">
       <h4 className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h4>
@@ -270,7 +270,7 @@ function Seccion({ titulo, vacio, children }: { titulo: string; vacio: string; c
   )
 }
 
-function Linea({
+export function Linea({
   titulo,
   detalle,
   monto,
@@ -297,7 +297,7 @@ function Linea({
 
 // Scroll interno sin barra nativa, con flechas que aparecen solo cuando hay
 // contenido oculto en esa dirección (DESIGN.md, regla 4).
-function ListaConFlechas({ children }: { children: ReactNode }) {
+export function ListaConFlechas({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [hayArriba, setHayArriba] = useState(false)
   const [hayAbajo, setHayAbajo] = useState(false)

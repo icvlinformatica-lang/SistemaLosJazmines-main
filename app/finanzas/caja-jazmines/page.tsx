@@ -2,6 +2,7 @@
 
 import { Children, useState, useRef, useEffect, useMemo } from "react"
 import Link from "next/link"
+import { MontoProyeccionJazmines } from "./desglose-proyeccion"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -1587,6 +1588,7 @@ export default function CajaJazminePage() {
     ingresosProyectados30Dias,
     cuotasPorCobrar,
     proyeccionMensual,
+    desgloseProyeccion,
     gastosFijosProximoMes,
     estimacionesProximoMes,
   } = data
@@ -4234,8 +4236,9 @@ export default function CajaJazminePage() {
           </div>
           <CuerpoTarjeta abierto={abiertaProyeccion12}>
             <p className="text-xs text-muted-foreground mt-1 text-pretty">
-              A cobrar: parte Jazmines de cada cuota. A pagar: gastos fijos, sueldos y variables agendados.
-              El saldo parte del saldo actual de la caja.
+              A cobrar: parte Jazmines de cada cuota (las atrasadas, en el mes actual). A pagar: gastos fijos,
+              sueldos y variables agendados (en el mes actual, solo lo que falta pagar). El saldo parte del saldo
+              actual de la caja. Tocá un monto para ver cuánto ya entró o ya se pagó, cuánto falta y de qué.
             </p>
           </CuerpoTarjeta>
         </CardHeader>
@@ -4259,10 +4262,10 @@ export default function CajaJazminePage() {
                     {m.esActual && <Badge className="ml-2 bg-teal-100 text-teal-700 border-teal-200 text-[10px]">actual</Badge>}
                   </TableCell>
                   <TableCell className="text-center text-emerald-700 font-medium">
-                    {m.aCobrar > 0 ? `+${formatCurrency(m.aCobrar)}` : "—"}
+                    <MontoProyeccionJazmines tipo="cobrar" mesLabel={m.label} monto={m.aCobrar} desglose={desgloseProyeccion[m.key]} />
                   </TableCell>
                   <TableCell className="text-center text-[var(--accent)] font-medium">
-                    {m.aPagar > 0 ? `−${formatCurrency(m.aPagar)}` : "—"}
+                    <MontoProyeccionJazmines tipo="pagar" mesLabel={m.label} monto={m.aPagar} desglose={desgloseProyeccion[m.key]} />
                   </TableCell>
                   <TableCell className={`text-center font-bold ${m.balance >= 0 ? "text-foreground" : "text-red-600"}`}>
                     {m.balance >= 0 ? "+" : ""}{formatCurrency(m.balance)}
