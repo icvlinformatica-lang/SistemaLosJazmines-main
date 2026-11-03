@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,7 +35,8 @@ import { formatCurrency } from "@/lib/utils-financieros"
 import { SALONES, salonLabel, generateId } from "@/lib/store"
 import { SalonDot } from "@/components/salon-badge"
 import { ConfirmAction } from "@/components/confirm-action"
-import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Wallet, ChevronDown } from "lucide-react"
+import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Wallet, ChevronDown, ArrowUpRight } from "lucide-react"
+import { urlCostosDesdeCaja } from "@/lib/volver-desde-costos"
 import { avisosSaldoCajaEventos } from "@/lib/avisos-saldo-caja-eventos"
 import { tablaSaldoCajaEventos } from "@/lib/tabla-saldo-caja-eventos"
 import { calcularCostoEventoCajaEventos } from "@/lib/costo-evento"
@@ -560,6 +562,7 @@ export function SaldoHerramientasEventos({
                             <th className="px-2 py-2 text-right font-medium">Total pagado</th>
                             <th className="px-2 py-2 text-right font-medium">Costo</th>
                             <th className="px-2 py-2 text-right font-medium">Entró a Caja Eventos</th>
+                            <th className="px-2 py-2 text-left font-medium">Ir al evento</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -577,6 +580,9 @@ export function SaldoHerramientasEventos({
                               <td className="px-2 py-1.5 text-right">{formatCurrency(f.pagado)}</td>
                               <td className="px-2 py-1.5 text-right">{formatCurrency(f.costo)}</td>
                               <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(f.entroCajaEventos)}</td>
+                              <td className="px-2 py-1.5">
+                                <LinkCostosEvento eventoId={f.eventoId} />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -589,6 +595,7 @@ export function SaldoHerramientasEventos({
                             <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.pagado)}</td>
                             <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.costo)}</td>
                             <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.entroCajaEventos)}</td>
+                            <td />
                           </tr>
                         </tfoot>
                       </table>
@@ -624,13 +631,19 @@ export function SaldoHerramientasEventos({
                               <dd>{formatCurrency(f.entroCajaEventos)}</dd>
                             </div>
                           </dl>
+                          {!f.total && (
+                            <div className="pt-1.5">
+                              <LinkCostosEvento eventoId={f.eventoId} />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                     <p className="mt-1.5 text-xs text-muted-foreground">
                       "Seña", "Cuotas" y "Total pagado" son lo que entró a las dos cajas. "Costo" es el de Costos del evento
                       (comida, bebida, servicios y sueldos; el de los finalizados, el guardado al finalizar). "Entró a Caja
-                      Eventos" es la parte del total pagado que vino a esta caja.
+                      Eventos" es la parte del total pagado que vino a esta caja. "Ver costos" abre Costos del evento, para marcar
+                      lo que ya se pagó antes de finalizarlo.
                     </p>
                   </section>
                 )}
@@ -879,5 +892,20 @@ function SeccionMovs({
         </button>
       )}
     </section>
+  )
+}
+
+// Lleva a Costos del evento (pedido de Rodrigo, 3/11/2026: "ir a evento y ver
+// costos del evento"). La flecha de volver de esa pantalla regresa a Caja Eventos.
+function LinkCostosEvento({ eventoId }: { eventoId: string }) {
+  return (
+    <Link
+      href={urlCostosDesdeCaja(eventoId, new Date())}
+      prefetch={false}
+      className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline"
+    >
+      Ver costos
+      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+    </Link>
   )
 }

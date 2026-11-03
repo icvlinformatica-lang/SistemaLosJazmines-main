@@ -1861,6 +1861,7 @@ export default function CalendarioPage() {
         open={finalizarDialogOpen}
         onOpenChange={setFinalizarDialogOpen}
         fechaEvento={selectedEvento?.fecha}
+        eventoId={selectedEvento?.id}
         onConfirm={async () => {
           if (!selectedEvento) return
           setFinalizarDialogOpen(false)
