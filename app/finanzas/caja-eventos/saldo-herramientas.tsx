@@ -455,12 +455,14 @@ export function SaldoHerramientasEventos({
                   Cada evento: venta, pagos y costo ({tabla.filas.length})
                 </h3>
                 <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full min-w-[520px] text-xs tabular-nums">
+                  <table className="w-full min-w-[680px] text-xs tabular-nums">
                     <thead className="bg-muted/50 text-muted-foreground">
                       <tr>
                         <th className="sticky left-0 bg-muted px-2 py-2 text-left font-medium">Evento</th>
                         <th className="px-2 py-2 text-right font-medium">Vendido</th>
-                        <th className="px-2 py-2 text-right font-medium">Lleva pagado</th>
+                        <th className="px-2 py-2 text-right font-medium">Seña</th>
+                        <th className="px-2 py-2 text-right font-medium">Cuotas</th>
+                        <th className="px-2 py-2 text-right font-medium">Total pagado</th>
                         <th className="px-2 py-2 text-right font-medium">Costo</th>
                         <th className="px-2 py-2 text-right font-medium">Entró a Caja Eventos</th>
                       </tr>
@@ -475,6 +477,8 @@ export function SaldoHerramientasEventos({
                             )}
                           </td>
                           <td className="px-2 py-1.5 text-right">{formatCurrency(f.vendido)}</td>
+                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.sena)}</td>
+                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.cuotas)}</td>
                           <td className="px-2 py-1.5 text-right">{formatCurrency(f.pagado)}</td>
                           <td className="px-2 py-1.5 text-right">{formatCurrency(f.costo)}</td>
                           <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(f.entroCajaEventos)}</td>
@@ -485,6 +489,8 @@ export function SaldoHerramientasEventos({
                       <tr>
                         <td className="sticky left-0 bg-muted px-2 py-2">Total</td>
                         <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.vendido)}</td>
+                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.sena)}</td>
+                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.cuotas)}</td>
                         <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.pagado)}</td>
                         <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.costo)}</td>
                         <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.entroCajaEventos)}</td>
@@ -493,9 +499,9 @@ export function SaldoHerramientasEventos({
                   </table>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  "Lleva pagado" son las señas y cuotas que entraron a las dos cajas. "Costo" es el de Costos del evento
+                  "Seña", "Cuotas" y "Total pagado" son lo que entró a las dos cajas. "Costo" es el de Costos del evento
                   (comida, bebida, servicios y sueldos; el de los finalizados, el guardado al finalizar). "Entró a Caja
-                  Eventos" es la parte de lo pagado que vino a esta caja.
+                  Eventos" es la parte del total pagado que vino a esta caja.
                 </p>
               </section>
             )}

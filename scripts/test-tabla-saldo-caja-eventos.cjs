@@ -34,6 +34,7 @@ test("vendido, pagado (las dos cajas), costo y lo que entró a Caja Eventos, con
       mov("a", "caja_eventos", "Pago saldo DJ - DAFNE", 1600000, "Quinta", "egreso"),
       mov("b", "caja_eventos", "Cuota 1 #x - NAYLA (Caja Eventos)", 10500000),
       mov("c", "caja_eventos", "Seña - SIN PLAN (Caja Eventos)", 100),
+      mov("c", "caja_jazmines", "Cuota 1 - SIN PLAN (Caja Jazmines)", 50),
       // Otro salón: no entra.
       mov("a", "caja_eventos", "Seña - DAFNE (Caja Eventos)", 999, "Casona"),
     ],
@@ -41,12 +42,14 @@ test("vendido, pagado (las dos cajas), costo y lo que entró a Caja Eventos, con
     "Quinta",
     (e) => costos[e.id],
   )
-  assert.deepEqual(r.filas.map((f) => [f.nombre, f.vendido, f.pagado, f.costo, f.entroCajaEventos]), [
-    ["DAFNE", 8000000, 8000000, 4103607.62, 4308787],
-    ["SIN PLAN", 500, 100, 0, 100],
-    ["NAYLA", 10500000, 10500000, 3021136.74, 10500000],
+  assert.deepEqual(r.filas.map((f) => [f.nombre, f.vendido, f.sena, f.cuotas, f.pagado, f.costo, f.entroCajaEventos]), [
+    ["DAFNE", 8000000, 0, 8000000, 8000000, 4103607.62, 4308787],
+    ["SIN PLAN", 500, 100, 50, 150, 0, 100],
+    ["NAYLA", 10500000, 0, 10500000, 10500000, 3021136.74, 10500000],
   ])
-  assert.deepEqual(r.totales, { vendido: 18500500, pagado: 18500100, costo: 7124744.36, entroCajaEventos: 14808887 })
+  assert.deepEqual(r.totales, {
+    vendido: 18500500, sena: 100, cuotas: 18500050, pagado: 18500150, costo: 7124744.36, entroCajaEventos: 14808887,
+  })
 })
 
 test("sin nada en Caja Eventos o sin el evento cargado, no hay fila", () => {
@@ -60,5 +63,5 @@ test("sin nada en Caja Eventos o sin el evento cargado, no hay fila", () => {
     () => 0,
   )
   assert.deepEqual(r.filas, [])
-  assert.deepEqual(r.totales, { vendido: 0, pagado: 0, costo: 0, entroCajaEventos: 0 })
+  assert.deepEqual(r.totales, { vendido: 0, sena: 0, cuotas: 0, pagado: 0, costo: 0, entroCajaEventos: 0 })
 })
