@@ -75,3 +75,47 @@ test("menú con pagos a proveedores a cuenta", () => {
   // Menos que lo dado a proveedores: no se puede desde acá.
   assert.deepEqual(accionCajaAlCorregir({ pagado: true, egresoMonto: 200000, pagadoAparte: 1000000, montoNuevo: 800000 }), { accion: "imposible", minimo: 1000000, diferencia: 0 })
 })
+
+const { fotoConInsumoCorregido } = require("../lib/correccion-finalizado.ts")
+
+const conCompras = (extra = {}) => ({
+  archivoCongelado: {
+    comprasCocina: [
+      { insumoId: "lima", insumo: { descripcion: "LIMA", unidad: "KG" }, cantidadNecesaria: 30, costoMateriaPrima: 18000000 },
+      { insumoId: "bife", insumo: { descripcion: "BIFE", unidad: "KG" }, cantidadNecesaria: 200, costoMateriaPrima: 3000000 },
+    ],
+    comprasBarra: [{ insumoBarraId: "ron", cantidadNecesaria: 40, costoMateriaPrima: 1200000 }],
+    personal: [],
+    serviciosCalc: [],
+    ...extra,
+  },
+})
+
+test("corrige un insumo de la cocina: solo esa fila, y el total es la suma", () => {
+  const c = conCompras()
+  const r = fotoConInsumoCorregido(c, "cocina", "lima", 0.9, 600)
+  assert.equal(r.costoLinea, 540)
+  assert.equal(r.totalAntes, 21000000)
+  assert.equal(r.totalNuevo, 3000540)
+  const lista = r.costosCalculados.archivoCongelado.comprasCocina
+  assert.equal(lista[0].cantidadNecesaria, 0.9)
+  assert.equal(lista[0].insumo.descripcion, "LIMA")
+  assert.equal(lista[1].costoMateriaPrima, 3000000)
+  assert.equal(r.costosCalculados.archivoCongelado.montoPagadoCocina, 3000540)
+  assert.equal(c.archivoCongelado.comprasCocina[0].cantidadNecesaria, 30) // no toca el original
+})
+
+test("con el rubro ya pagado, el total de antes es lo pagado", () => {
+  const r = fotoConInsumoCorregido(conCompras({ montoPagadoBarra: 900000 }), "barra", "ron", 30, 25000)
+  assert.equal(r.totalAntes, 900000)
+  assert.equal(r.totalNuevo, 750000)
+  assert.equal(r.costosCalculados.archivoCongelado.montoPagadoBarra, 750000)
+})
+
+test("insumo inexistente, sin foto o números inválidos no corrige", () => {
+  assert.equal(fotoConInsumoCorregido(conCompras(), "cocina", "nada", 1, 1), null)
+  assert.equal(fotoConInsumoCorregido(conCompras(), "barra", "lima", 1, 1), null)
+  assert.equal(fotoConInsumoCorregido({}, "cocina", "lima", 1, 1), null)
+  assert.equal(fotoConInsumoCorregido(conCompras(), "cocina", "lima", -1, 1), null)
+  assert.equal(fotoConInsumoCorregido(conCompras(), "cocina", "lima", 1, NaN), null)
+})

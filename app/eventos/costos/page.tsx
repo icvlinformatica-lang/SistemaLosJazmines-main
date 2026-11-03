@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { MoneyInput } from "@/components/ui/money-input"
+import { Input } from "@/components/ui/input"
 import { pagosMenuProveedor, totalPagosMenuProveedor } from "@/lib/pago-menu-proveedor"
 import {
   costosConPagoFinalizado,
@@ -85,7 +86,9 @@ import {
   accionCajaAlCorregir,
   fotoConCostoCorregido,
   fotoConPersonalPagado,
+  fotoConInsumoCorregido,
   type LineaCostoFinalizado,
+  type SectorCompra,
 } from "@/lib/correccion-finalizado"
 import { PieChart, Pie, Cell, Label } from "recharts"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
@@ -156,6 +159,18 @@ function CostosEventoContent() {
     titulo: string
     actual: number
     monto: number
+    /** Corrección de UN insumo de cocina o barra (cantidad y precio por unidad). */
+    insumo?: {
+      sector: SectorCompra
+      id: string
+      unidad: string
+      cantidad: number
+      /** Lo que se escribe en el campo (acepta coma decimal). */
+      cantidadTexto: string
+      precio: number
+      cantidadAntes: number
+      costoAntes: number
+    }
   } | null>(null)
   const [guardandoCorreccion, setGuardandoCorreccion] = useState(false)
 
@@ -450,14 +465,59 @@ function CostosEventoContent() {
   const abrirCorreccion = (linea: LineaCostoFinalizado, titulo: string, actual: number) =>
     setCorreccion({ linea, titulo, actual, monto: Math.round(actual * 100) / 100 })
 
+  // Insumo de cocina o barra de un finalizado: cambia solo esa fila de la foto
+  // (no el Almacén, las recetas, el stock ni otros eventos).
+  const abrirCorreccionInsumo = (
+    sector: SectorCompra,
+    id: string,
+    nombre: string,
+    unidad: string,
+    cantidad: number,
+    costo: number,
+    precioCatalogo?: number,
+  ) => {
+    const precio = cantidad > 0 ? costo / cantidad : (precioCatalogo ?? 0)
+    setCorreccion({
+      linea: { rubro: sector },
+      titulo: nombre,
+      actual: sector === "cocina" ? costoCocina : costoBarra,
+      monto: 0,
+      insumo: {
+        sector,
+        id,
+        unidad,
+        cantidad: Number(cantidad.toFixed(3)),
+        cantidadTexto: String(Number(cantidad.toFixed(3))).replace(".", ","),
+        precio: Math.round(precio * 100) / 100,
+        cantidadAntes: cantidad,
+        costoAntes: costo,
+      },
+    })
+  }
+
+  // Lo que se va a guardar: la foto corregida, el costo nuevo de la línea (o
+  // del rubro, si es un insumo) y el de antes.
+  const resultadoCorreccion = (c: NonNullable<typeof correccion>) => {
+    const costosEvento = evento.costosCalculados as Record<string, unknown> | undefined
+    if (c.insumo) {
+      const r = fotoConInsumoCorregido(costosEvento, c.insumo.sector, c.insumo.id, c.insumo.cantidad, c.insumo.precio)
+      return r ? { costosCalculados: r.costosCalculados, montoNuevo: r.totalNuevo, actual: r.totalAntes, costoLinea: r.costoLinea } : null
+    }
+    const costosCalculados = fotoConCostoCorregido(costosEvento, c.linea, c.monto)
+    return costosCalculados ? { costosCalculados, montoNuevo: c.monto, actual: c.actual, costoLinea: c.monto } : null
+  }
+
   const guardarCorreccion = async () => {
     if (!correccion || guardandoCorreccion) return
-    const { linea, titulo, actual, monto } = correccion
-    const costosCalculados = fotoConCostoCorregido(
-      evento.costosCalculados as Record<string, unknown> | undefined,
-      linea,
-      monto,
-    )
+    const { linea, insumo } = correccion
+    const resultado = resultadoCorreccion(correccion)
+    const costosCalculados = resultado?.costosCalculados
+    const monto = resultado?.montoNuevo ?? 0
+    const actual = resultado?.actual ?? correccion.actual
+    // En el historial: qué insumo y cómo quedó, o la línea corregida.
+    const titulo = insumo
+      ? `${insumo.sector === "cocina" ? "Cocina" : "Barra"}, ${correccion.titulo}: ${Number(insumo.cantidadAntes.toFixed(3))} ${insumo.unidad} (${formatCurrency(insumo.costoAntes)}) → ${insumo.cantidad} ${insumo.unidad} a ${formatCurrency(insumo.precio)} (${formatCurrency(resultado?.costoLinea ?? 0)}); total`
+      : correccion.titulo
     if (!costosCalculados) {
       toast({ title: "No se pudo corregir", description: "No se encontró ese costo en los datos guardados del evento.", variant: "destructive" })
       return
@@ -748,26 +808,85 @@ function CostosEventoContent() {
       <Dialog open={!!correccion} onOpenChange={(abierto) => !abierto && !guardandoCorreccion && setCorreccion(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Corregir {correccion ? correccion.titulo.charAt(0).toLowerCase() + correccion.titulo.slice(1) : ""}</DialogTitle>
+            <DialogTitle>
+              Corregir{" "}
+              {correccion
+                ? correccion.insumo
+                  ? correccion.titulo
+                  : correccion.titulo.charAt(0).toLowerCase() + correccion.titulo.slice(1)
+                : ""}
+            </DialogTitle>
             <DialogDescription>
-              Evento finalizado. El costo guardado es {formatCurrency(correccion?.actual ?? 0)}; poné el que corresponde.
+              {correccion?.insumo
+                ? `Solo para este evento finalizado: no cambia el Almacén, las recetas, el stock ni otros eventos. Hoy figura ${Number(correccion.insumo.cantidadAntes.toFixed(3))} ${correccion.insumo.unidad} por ${formatCurrency(correccion.insumo.costoAntes)}.`
+                : `Evento finalizado. El costo guardado es ${formatCurrency(correccion?.actual ?? 0)}; poné el que corresponde.`}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="monto-correccion" className="text-sm font-medium">
-              Costo correcto
-            </label>
-            <MoneyInput
-              id="monto-correccion"
-              inputMode="decimal"
-              value={correccion?.monto ?? 0}
-              onValueChange={(monto) => setCorreccion((c) => (c ? { ...c, monto } : c))}
-              placeholder="0"
-            />
-          </div>
+          {correccion?.insumo ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="cantidad-insumo" className="text-sm font-medium">
+                  Cantidad ({correccion.insumo.unidad || "unidades"})
+                </label>
+                <Input
+                  id="cantidad-insumo"
+                  inputMode="decimal"
+                  value={correccion.insumo.cantidadTexto}
+                  onChange={(e) => {
+                    const texto = e.target.value.replace(/[^0-9.,]/g, "")
+                    // Con coma, la coma es el decimal (y los puntos, miles); sin coma, el punto es el decimal.
+                    const numero = texto.includes(",") ? Number(texto.replace(/\./g, "").replace(",", ".")) : Number(texto)
+                    setCorreccion((c) =>
+                      c?.insumo
+                        ? { ...c, insumo: { ...c.insumo, cantidadTexto: texto, cantidad: texto === "" ? NaN : numero } }
+                        : c,
+                    )
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="precio-insumo" className="text-sm font-medium">
+                  Precio por {correccion.insumo.unidad || "unidad"}
+                </label>
+                <MoneyInput
+                  id="precio-insumo"
+                  inputMode="decimal"
+                  value={correccion.insumo.precio}
+                  onValueChange={(precio) => setCorreccion((c) => (c?.insumo ? { ...c, insumo: { ...c.insumo, precio } } : c))}
+                  placeholder="0"
+                />
+              </div>
+              {(() => {
+                const r = resultadoCorreccion(correccion)
+                return r ? (
+                  <p className="col-span-2 text-sm">
+                    Esta fila queda en <span className="font-semibold">{formatCurrency(r.costoLinea)}</span> y el total de{" "}
+                    {correccion.insumo.sector === "cocina" ? "cocina" : "barra"} pasa de {formatCurrency(r.actual)} a{" "}
+                    <span className="font-semibold">{formatCurrency(r.montoNuevo)}</span>.
+                  </p>
+                ) : (
+                  <p className="col-span-2 text-xs text-red-600">Poné una cantidad y un precio válidos.</p>
+                )
+              })()}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="monto-correccion" className="text-sm font-medium">
+                Costo correcto
+              </label>
+              <MoneyInput
+                id="monto-correccion"
+                inputMode="decimal"
+                value={correccion?.monto ?? 0}
+                onValueChange={(monto) => setCorreccion((c) => (c ? { ...c, monto } : c))}
+                placeholder="0"
+              />
+            </div>
+          )}
           {correccion &&
+            resultadoCorreccion(correccion) &&
             (() => {
-              const { egreso, accion } = accionCorreccion(correccion.linea, correccion.monto)
+              const { egreso, accion } = accionCorreccion(correccion.linea, resultadoCorreccion(correccion)!.montoNuevo)
               const caja = `Caja Eventos (${salonLabel(evento.salon)})`
               let texto: string
               let tono = "border-border bg-muted/40 text-foreground"
@@ -802,10 +921,12 @@ function CostosEventoContent() {
               disabled={
                 !correccion ||
                 guardandoCorreccion ||
-                !Number.isFinite(correccion.monto) ||
-                correccion.monto < 0 ||
-                Math.abs(correccion.monto - correccion.actual) < 0.005 ||
-                accionCorreccion(correccion.linea, correccion.monto).accion.accion === "imposible"
+                !resultadoCorreccion(correccion) ||
+                (correccion.insumo
+                  ? Math.abs(correccion.insumo.cantidad - correccion.insumo.cantidadAntes) < 0.0005 &&
+                    Math.abs(resultadoCorreccion(correccion)!.costoLinea - correccion.insumo.costoAntes) < 0.005
+                  : Math.abs(correccion.monto - correccion.actual) < 0.005) ||
+                accionCorreccion(correccion.linea, resultadoCorreccion(correccion)!.montoNuevo).accion.accion === "imposible"
               }
             >
               {guardandoCorreccion ? "Guardando..." : "Guardar"}
@@ -1039,7 +1160,25 @@ function CostosEventoContent() {
                         {Number(c.cantidadNecesaria.toFixed(2))} {c.insumo?.unidad || ""}
                       </span>
                     </span>
-                    <span className="shrink-0 font-medium tabular-nums">{formatCurrency(c.costoMateriaPrima)}</span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <span className="font-medium tabular-nums">{formatCurrency(c.costoMateriaPrima)}</span>
+                      {esArchivado && congelado && (
+                        <BotonCorregir
+                          etiqueta={`Corregir ${c.insumo?.descripcion || "insumo"}`}
+                          onClick={() =>
+                            abrirCorreccionInsumo(
+                              "cocina",
+                              c.insumoId,
+                              c.insumo?.descripcion || c.insumoId,
+                              c.insumo?.unidad || "",
+                              c.cantidadNecesaria,
+                              c.costoMateriaPrima,
+                              c.insumo?.precioUnitario,
+                            )
+                          }
+                        />
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1146,7 +1285,25 @@ function CostosEventoContent() {
                         {Number(c.cantidadNecesaria.toFixed(2))} {c.insumoBarra?.unidad || ""}
                       </span>
                     </span>
-                    <span className="shrink-0 font-medium tabular-nums">{formatCurrency(c.costoMateriaPrima)}</span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <span className="font-medium tabular-nums">{formatCurrency(c.costoMateriaPrima)}</span>
+                      {esArchivado && congelado && (
+                        <BotonCorregir
+                          etiqueta={`Corregir ${c.insumoBarra?.descripcion || "insumo"}`}
+                          onClick={() =>
+                            abrirCorreccionInsumo(
+                              "barra",
+                              c.insumoBarraId,
+                              c.insumoBarra?.descripcion || c.insumoBarraId,
+                              c.insumoBarra?.unidad || "",
+                              c.cantidadNecesaria,
+                              c.costoMateriaPrima,
+                              c.insumoBarra?.precioUnitario,
+                            )
+                          }
+                        />
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>

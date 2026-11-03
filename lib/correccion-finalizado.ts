@@ -125,3 +125,59 @@ export function accionCajaAlCorregir(opts: {
   }
   return { accion: "sinEgreso", diferencia: 0 }
 }
+
+export type SectorCompra = "cocina" | "barra"
+
+type LineaCompra = Record<string, unknown> & {
+  insumoId?: string
+  insumoBarraId?: string
+  cantidadNecesaria?: number
+  costoMateriaPrima?: number
+}
+
+/**
+ * Corrige UN insumo de la cocina o la barra de un evento finalizado (pedido
+ * de Rodrigo, 3/11/2026: "insumo por insumo, pero solo para ese evento, sin
+ * que modifique otro ni stock"). Cambia solo esa fila de la foto: no toca el
+ * Almacén, las recetas, el stock ni otros eventos.
+ *
+ * La cantidad va en la unidad del insumo (la que muestra la lista) y el costo
+ * de la fila es cantidad × precio por unidad. El costo del rubro pasa a ser
+ * la suma de las filas (queda en `montoPagadoCocina/Barra`, como al corregir
+ * el total), así lista y total cierran.
+ *
+ * Devuelve la foto nueva con el total de antes y el nuevo, o null si no hay
+ * foto, la fila no está o los números no sirven.
+ */
+export function fotoConInsumoCorregido<T extends Record<string, unknown>>(
+  costosCalculados: T | null | undefined,
+  sector: SectorCompra,
+  id: string,
+  cantidad: number,
+  precioUnitario: number,
+): { costosCalculados: T; totalAntes: number; totalNuevo: number; costoLinea: number } | null {
+  const foto = costosCalculados?.archivoCongelado as (Foto & Record<string, unknown>) | undefined
+  if (!costosCalculados || !foto) return null
+  if (!Number.isFinite(cantidad) || cantidad < 0 || !Number.isFinite(precioUnitario) || precioUnitario < 0) return null
+  const claveLista = sector === "cocina" ? "comprasCocina" : "comprasBarra"
+  const claveId = sector === "cocina" ? "insumoId" : "insumoBarraId"
+  const clavePagado = sector === "cocina" ? "montoPagadoCocina" : "montoPagadoBarra"
+  const lista = (foto[claveLista] as LineaCompra[] | undefined) || []
+  if (!lista.some((c) => c[claveId] === id)) return null
+
+  const sumaAntes = lista.reduce((s, c) => s + (c.costoMateriaPrima || 0), 0)
+  const pagadoGuardado = foto[clavePagado]
+  const totalAntes = redondear(typeof pagadoGuardado === "number" ? pagadoGuardado : sumaAntes)
+  const costoLinea = redondear(cantidad * precioUnitario)
+  const nuevaLista = lista.map((c) =>
+    c[claveId] === id ? { ...c, cantidadNecesaria: cantidad, costoMateriaPrima: costoLinea, costoEstimado: costoLinea } : c,
+  )
+  const totalNuevo = redondear(nuevaLista.reduce((s, c) => s + (c.costoMateriaPrima || 0), 0))
+  const nueva = {
+    ...foto,
+    [claveLista]: nuevaLista,
+    [clavePagado]: totalNuevo,
+    [sector === "cocina" ? "costoCocina" : "costoBarra"]: totalNuevo,
+  }
+  return { costosCalculados: { ...costosCalculados, archivoCongelado: nueva }, totalAntes, totalNuevo, costoLinea }
+}
