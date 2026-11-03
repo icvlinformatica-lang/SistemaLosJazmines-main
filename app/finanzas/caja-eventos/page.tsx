@@ -583,6 +583,8 @@ useStore()
   const data = useCajaEventos(state, salonFiltro, ahora)
   const [clienteSel, setClienteSel] = useState<IngresoPendiente | null>(null)
   const [desgloseOpen, setDesgloseOpen] = useState(false)
+  // Desglose del saldo (de dónde sale y avisos): lo abre la tarjeta Saldo actual.
+  const [saldoDesgloseOpen, setSaldoDesgloseOpen] = useState(false)
 
   // ── Extracción de dinero de la caja (retiro con justificación) ──���───��───
   const [extraerOpen, setExtraerOpen] = useState(false)
@@ -1190,7 +1192,7 @@ useStore()
               monto: saldoActual,
               onClick: () => {
                 setDetalleEv(null)
-                setDesgloseOpen(true)
+                setSaldoDesgloseOpen(true)
               },
             },
             {
@@ -2235,7 +2237,12 @@ useStore()
             </span>
           </h1>
         </div>
-        <SaldoHerramientasEventos salonFiltro={salonFiltro} />
+        <SaldoHerramientasEventos
+          salonFiltro={salonFiltro}
+          desgloseAbierto={saldoDesgloseOpen}
+          onDesgloseAbiertoChange={setSaldoDesgloseOpen}
+          onVerPatrimonio={() => setDesgloseOpen(true)}
+        />
         <div className="flex items-center gap-3 shrink-0">
           <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-purple-700">
             Cambiar salón
@@ -2277,11 +2284,11 @@ useStore()
         <Card
           style={{ backgroundColor: "#ffffff" }}
           className="cursor-pointer rounded-xl border-blue-100 shadow-sm transition-shadow hover:shadow-md"
-          onClick={() => setDesgloseOpen(true)}
+          onClick={() => setSaldoDesgloseOpen(true)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
-              setDesgloseOpen(true)
+              setSaldoDesgloseOpen(true)
             }
           }}
           role="button"
