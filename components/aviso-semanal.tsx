@@ -12,6 +12,7 @@ import useSWR from "swr"
 import { X, CalendarCheck, CalendarDays, HandCoins, PartyPopper, Check, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SalonDot } from "@/components/salon-badge"
+import { ConfirmarFinalizarEventoDialog } from "@/components/confirmar-finalizar-evento"
 import { useStore } from "@/lib/store-context"
 import { salonLabel } from "@/lib/store"
 import { usuarioActivo } from "@/lib/profile-context"
@@ -94,6 +95,9 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
   // mostrándolos ("Eliminado") aunque ya no estén en el store.
   const [eliminados, setEliminados] = useState<Array<{ id: string; nombre: string; fecha?: string; salon?: string }>>([])
   const [confirmandoEliminar, setConfirmandoEliminar] = useState<string | null>(null)
+  // Antes de finalizar se confirma con el mismo diálogo de la Lista, que avisa
+  // qué falta cobrar o marcar como pagado.
+  const [confirmandoFinalizar, setConfirmandoFinalizar] = useState<{ id: string; fecha?: string } | null>(null)
   const [eliminando, setEliminando] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const pendientes = eventosParaFinalizar(eventos || [], hoy)
@@ -132,6 +136,19 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
 
   return (
     <div className="flex flex-col gap-4 text-foreground">
+      <ConfirmarFinalizarEventoDialog
+        open={confirmandoFinalizar !== null}
+        onOpenChange={(abierto) => {
+          if (!abierto) setConfirmandoFinalizar(null)
+        }}
+        fechaEvento={confirmandoFinalizar?.fecha}
+        eventoId={confirmandoFinalizar?.id}
+        onConfirm={() => {
+          const id = confirmandoFinalizar?.id
+          setConfirmandoFinalizar(null)
+          if (id) finalizar(id)
+        }}
+      />
       <section className="flex flex-col gap-2">
         <h3 className="flex items-center gap-2 text-sm font-bold">
           <CalendarCheck className="size-4 text-[#2d5a3d]" />
@@ -163,7 +180,7 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
                           size="sm"
                           className="bg-[#2d5a3d] text-[#f5f0e8] hover:bg-[#3a6f4e]"
                           disabled={finalizando !== null || eliminando !== null}
-                          onClick={() => finalizar(evento.id)}
+                          onClick={() => setConfirmandoFinalizar({ id: evento.id, fecha: evento.fecha })}
                         >
                           {finalizando === evento.id ? <Loader2 className="animate-spin" /> : <Check />}
                           Sí, finalizar

@@ -1607,6 +1607,7 @@ export default function EventosListaPage() {
         open={finalizarDialogOpen}
         onOpenChange={setFinalizarDialogOpen}
         fechaEvento={eventoAFinalizarId ? eventos.find((e) => e.id === eventoAFinalizarId)?.fecha : undefined}
+        eventoId={eventoAFinalizarId ?? undefined}
         onConfirm={confirmFinalizar}
       />
 
