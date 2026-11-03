@@ -96,6 +96,15 @@ export function SaldoHerramientasEventos({
   }
   const [conciliarAbierto, setConciliarAbierto] = useState(false)
 
+  // Costo del stock de cocina (pedido de Rodrigo, 3/11/2026): la misma cuenta
+  // de "Tengo ahora" en la página (stock actual × precio por unidad de cada
+  // insumo). Es de todos los salones: `stockActual` es la suma de los salones.
+  // Solo se muestra, no entra en el saldo.
+  const valorStockCocina = useMemo(
+    () => (state.insumos ?? []).reduce((sum, ins) => sum + (ins.stockActual ?? 0) * (ins.precioUnitario ?? 0), 0),
+    [state.insumos],
+  )
+
   // ----------------------------------------------------------
   // DESGLOSE: agrupa todos los movimientos de caja_eventos
   // ----------------------------------------------------------
@@ -341,6 +350,18 @@ export function SaldoHerramientasEventos({
           </DialogHeader>
 
           <div className="flex flex-col gap-4 min-w-0">
+            {/* Costo del stock de cocina: aparte del saldo */}
+            <div className="rounded-lg border border-border px-3 py-2.5 flex flex-col gap-1">
+              <div className="flex justify-between gap-2 text-sm font-semibold">
+                <span>Stock de cocina (costo)</span>
+                <span className="tabular-nums">{formatCurrency(valorStockCocina)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Lo que hay en el Almacén de cocina, al precio de la última compra de cada insumo
+                {salonFiltro !== "todos" ? ", de todos los salones" : ""}. No está sumado en el saldo.
+              </p>
+            </div>
+
             {/* Cuenta resumida */}
             <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 flex flex-col gap-1">
               <div className="flex justify-between gap-2 text-sm">
