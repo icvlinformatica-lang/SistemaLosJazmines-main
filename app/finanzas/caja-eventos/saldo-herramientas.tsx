@@ -27,6 +27,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useStore } from "@/lib/store-context"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils-financieros"
@@ -209,8 +210,13 @@ export function SaldoHerramientasEventos({
   // Las excepciones arrancan plegadas en un botón (pedido de Rodrigo, 2/11/2026).
   const [verExcepciones, setVerExcepciones] = useState(false)
   // Cada vez que se abre el desglose, las excepciones vuelven a arrancar plegadas.
+  // El desglose se divide en tres pestañas y arranca siempre en Resumen.
+  const [pestanaDesglose, setPestanaDesglose] = useState("resumen")
   useEffect(() => {
-    if (desgloseAbierto) setVerExcepciones(false)
+    if (desgloseAbierto) {
+      setVerExcepciones(false)
+      setPestanaDesglose("resumen")
+    }
   }, [desgloseAbierto])
 
   // ----------------------------------------------------------
@@ -350,311 +356,347 @@ export function SaldoHerramientasEventos({
           </DialogHeader>
 
           <div className="flex flex-col gap-4 min-w-0">
-            {/* Costo del stock de cocina: aparte del saldo */}
-            <div className="rounded-lg border border-border px-3 py-2.5 flex flex-col gap-1">
-              <div className="flex justify-between gap-2 text-sm font-semibold">
-                <span>Stock de cocina (costo)</span>
-                <span className="tabular-nums">{formatCurrency(valorStockCocina)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Lo que hay en el Almacén de cocina, al precio de la última compra de cada insumo
-                {salonFiltro !== "todos" ? ", de todos los salones" : ""}. No está sumado en el saldo.
-              </p>
-            </div>
+            {/* Tres secciones (pedido de Rodrigo, 3/11/2026): resumen, tabla y
+                lista de cuotas por evento. Arranca siempre en Resumen. */}
+            <Tabs value={pestanaDesglose} onValueChange={setPestanaDesglose} className="min-w-0 gap-4">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="resumen">Resumen</TabsTrigger>
+                <TabsTrigger value="tabla">Tabla</TabsTrigger>
+                <TabsTrigger value="cuotas">Cuotas</TabsTrigger>
+              </TabsList>
 
-            {/* Cuenta resumida */}
-            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 flex flex-col gap-1">
-              <div className="flex justify-between gap-2 text-sm">
-                <span className="text-muted-foreground">Entró</span>
-                <span className="font-medium text-emerald-600 tabular-nums">+{formatCurrency(desglose.totalIngresos)}</span>
-              </div>
-              <div className="flex justify-between gap-2 text-sm">
-                <span className="text-muted-foreground">Salió</span>
-                <span className="font-medium text-red-500 tabular-nums">−{formatCurrency(desglose.totalEgresos)}</span>
-              </div>
-              <div className="flex justify-between gap-2 text-base font-bold pt-1 border-t border-border">
-                <span>Saldo según el sistema</span>
-                <span className="tabular-nums">{formatCurrency(desglose.saldo)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground pt-1">
-                De cada seña y cuota, a Caja Eventos entra solo la parte del costo del evento más el 5 %; el resto va a
-                Caja Jazmines. Si la plata contada no coincide, usá Conciliar.
-              </p>
-            </div>
-
-            {hayAvisos && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setVerExcepciones((v) => !v)}
-                aria-expanded={verExcepciones}
-                className="w-full justify-between gap-2 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200"
-              >
-                <span className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  Excepciones ({cantidadAvisos})
-                </span>
-                <ChevronDown className={`h-4 w-4 transition-transform ${verExcepciones ? "rotate-180" : ""}`} />
-              </Button>
-            )}
-
-            {hayAvisos && verExcepciones && (
-              <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex flex-col gap-3 dark:bg-amber-950/30 dark:border-amber-800">
-                <p className="text-xs text-amber-900 dark:text-amber-200">
-                  Pueden hacer que el saldo no sea la plata real. Son para revisar: no se corrigen solas.
-                </p>
-
-                {avisos.cuotasRepetidas.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-                      Cuotas anotadas más de una vez ({avisos.cuotasRepetidas.length})
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      La caja tiene más cobros de la cuota que pagos el evento: probablemente sobra una fila.
-                    </p>
-                    {avisos.cuotasRepetidas.map((c) => (
-                      <div key={`${c.eventoId}-${c.numeroCuota}`} className="flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
-                        <span className="min-w-0 truncate">
-                          {c.nombre} {c.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(c.fechaEvento)}</span>} · Cuota {c.numeroCuota}
-                        </span>
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {c.montos.map((m) => formatCurrency(m)).join(" + ")}
-                        </span>
-                      </div>
-                    ))}
+              <TabsContent value="resumen" className="flex flex-col gap-4 min-w-0">
+                {/* Costo del stock de cocina: aparte del saldo */}
+                <div className="rounded-lg border border-border px-3 py-2.5 flex flex-col gap-1">
+                  <div className="flex justify-between gap-2 text-sm font-semibold">
+                    <span>Stock de cocina (costo)</span>
+                    <span className="tabular-nums">{formatCurrency(valorStockCocina)}</span>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Lo que hay en el Almacén de cocina, al precio de la última compra de cada insumo
+                    {salonFiltro !== "todos" ? ", de todos los salones" : ""}. No está sumado en el saldo.
+                  </p>
+                </div>
+
+                {/* Cuenta resumida */}
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 flex flex-col gap-1">
+                  <div className="flex justify-between gap-2 text-sm">
+                    <span className="text-muted-foreground">Entró</span>
+                    <span className="font-medium text-emerald-600 tabular-nums">+{formatCurrency(desglose.totalIngresos)}</span>
+                  </div>
+                  <div className="flex justify-between gap-2 text-sm">
+                    <span className="text-muted-foreground">Salió</span>
+                    <span className="font-medium text-red-500 tabular-nums">−{formatCurrency(desglose.totalEgresos)}</span>
+                  </div>
+                  <div className="flex justify-between gap-2 text-base font-bold pt-1 border-t border-border">
+                    <span>Saldo según el sistema</span>
+                    <span className="tabular-nums">{formatCurrency(desglose.saldo)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground pt-1">
+                    De cada seña y cuota, a Caja Eventos entra solo la parte del costo del evento más el 5 %; el resto va a
+                    Caja Jazmines. Si la plata contada no coincide, usá Conciliar.
+                  </p>
+                </div>
+
+                {hayAvisos && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setVerExcepciones((v) => !v)}
+                    aria-expanded={verExcepciones}
+                    className="w-full justify-between gap-2 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200"
+                  >
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Excepciones ({cantidadAvisos})
+                    </span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${verExcepciones ? "rotate-180" : ""}`} />
+                  </Button>
                 )}
 
-                {avisos.todoACajaEventos.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-                      Cobros que fueron enteros a Caja Eventos ({avisos.todoACajaEventos.length} ·{" "}
-                      {formatCurrency(avisos.totalTodoACajaEventos)})
+                {hayAvisos && verExcepciones && (
+                  <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex flex-col gap-3 dark:bg-amber-950/30 dark:border-amber-800">
+                    <p className="text-xs text-amber-900 dark:text-amber-200">
+                      Pueden hacer que el saldo no sea la plata real. Son para revisar: no se corrigen solas.
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      No le dejaron nada a Caja Jazmines. Antes del 2/11/2026 el costo operativo contaba en el reparto y
-                      muchos eventos mandaban todo acá; lo ya anotado no se reparte de nuevo.
-                    </p>
-                    {avisos.todoACajaEventos.map((c) => (
-                      <div key={c.eventoId} className="flex items-baseline justify-between gap-2 text-sm">
-                        <span className="min-w-0 truncate">
-                          {c.nombre} {c.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(c.fechaEvento)}</span>}
-                        </span>
-                        <span className="shrink-0 tabular-nums">{formatCurrency(c.monto)}</span>
+
+                    {avisos.cuotasRepetidas.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                          Cuotas anotadas más de una vez ({avisos.cuotasRepetidas.length})
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          La caja tiene más cobros de la cuota que pagos el evento: probablemente sobra una fila.
+                        </p>
+                        {avisos.cuotasRepetidas.map((c) => (
+                          <div key={`${c.eventoId}-${c.numeroCuota}`} className="flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
+                            <span className="min-w-0 truncate">
+                              {c.nombre} {c.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(c.fechaEvento)}</span>} · Cuota {c.numeroCuota}
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {c.montos.map((m) => formatCurrency(m)).join(" + ")}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    )}
+
+                    {avisos.todoACajaEventos.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                          Cobros que fueron enteros a Caja Eventos ({avisos.todoACajaEventos.length} ·{" "}
+                          {formatCurrency(avisos.totalTodoACajaEventos)})
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          No le dejaron nada a Caja Jazmines. Antes del 2/11/2026 el costo operativo contaba en el reparto y
+                          muchos eventos mandaban todo acá; lo ya anotado no se reparte de nuevo.
+                        </p>
+                        {avisos.todoACajaEventos.map((c) => (
+                          <div key={c.eventoId} className="flex items-baseline justify-between gap-2 text-sm">
+                            <span className="min-w-0 truncate">
+                              {c.nombre} {c.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(c.fechaEvento)}</span>}
+                            </span>
+                            <span className="shrink-0 tabular-nums">{formatCurrency(c.monto)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {avisos.finalizadosSinPagar.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                          Finalizados sin pago de menú o barra ({avisos.finalizadosSinPagar.length})
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          No hay ningún pago de eso en Caja Eventos: si se pagó, no se anotó y esa plata sigue en el saldo.
+                        </p>
+                        {avisos.finalizadosSinPagar.map((f) => (
+                          <div key={f.eventoId} className="flex items-baseline justify-between gap-2 text-sm">
+                            <span className="min-w-0 truncate">
+                              {f.nombre} {f.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(f.fechaEvento)}</span>}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {[f.menu && "menú", f.barra && "barra"].filter(Boolean).join(" y ")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
                 )}
 
-                {avisos.finalizadosSinPagar.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-                      Finalizados sin pago de menú o barra ({avisos.finalizadosSinPagar.length})
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      No hay ningún pago de eso en Caja Eventos: si se pagó, no se anotó y esa plata sigue en el saldo.
-                    </p>
-                    {avisos.finalizadosSinPagar.map((f) => (
-                      <div key={f.eventoId} className="flex items-baseline justify-between gap-2 text-sm">
-                        <span className="min-w-0 truncate">
-                          {f.nombre} {f.fechaEvento && <span className="text-xs text-muted-foreground">· {fechaCorta(f.fechaEvento)}</span>}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {[f.menu && "menú", f.barra && "barra"].filter(Boolean).join(" y ")}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                {/* Otros ingresos */}
+                {desglose.otrosIngresos.length > 0 && (
+                  <SeccionMovs
+                    titulo={`Otros ingresos (${desglose.otrosIngresos.length})`}
+                    items={desglose.otrosIngresos}
+                    signo={1}
+                  />
                 )}
-              </section>
-            )}
 
-            {/* Tabla por evento */}
-            {tabla && tabla.filas.length > 0 && (
-              <section className="min-w-0">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                  Cada evento: venta, pagos y costo ({tabla.filas.length})
-                </h3>
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full min-w-[680px] text-xs tabular-nums">
-                    <thead className="bg-muted/50 text-muted-foreground">
-                      <tr>
-                        <th className="sticky left-0 bg-muted px-2 py-2 text-left font-medium">Evento</th>
-                        <th className="px-2 py-2 text-right font-medium">Vendido</th>
-                        <th className="px-2 py-2 text-right font-medium">Seña</th>
-                        <th className="px-2 py-2 text-right font-medium">Cuotas</th>
-                        <th className="px-2 py-2 text-right font-medium">Total pagado</th>
-                        <th className="px-2 py-2 text-right font-medium">Costo</th>
-                        <th className="px-2 py-2 text-right font-medium">Entró a Caja Eventos</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {tabla.filas.map((f) => (
-                        <tr key={f.eventoId}>
-                          <td className="sticky left-0 bg-background px-2 py-1.5 max-w-[130px]">
-                            <span className="block truncate font-medium text-foreground">{f.nombre}</span>
-                            {f.fechaEvento && (
-                              <span className="block text-[11px] text-muted-foreground">{fechaCorta(f.fechaEvento)}</span>
-                            )}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.vendido)}</td>
-                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.sena)}</td>
-                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.cuotas)}</td>
-                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.pagado)}</td>
-                          <td className="px-2 py-1.5 text-right">{formatCurrency(f.costo)}</td>
-                          <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(f.entroCajaEventos)}</td>
-                        </tr>
+                {/* Gastos generales */}
+                {desglose.gastosGenerales.length > 0 && (
+                  <SeccionMovs
+                    titulo={`Gastos pagados (${desglose.gastosGenerales.length})`}
+                    items={desglose.gastosGenerales}
+                    signo={-1}
+                  />
+                )}
+
+                {/* Retiros */}
+                {desglose.retiros.length > 0 && (
+                  <SeccionMovs
+                    titulo={`Retiros (${desglose.retiros.length})`}
+                    items={desglose.retiros}
+                    signo={-1}
+                  />
+                )}
+
+                {/* Ajustes */}
+                {desglose.ajustes.length > 0 && (
+                  <section>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                      Ajustes de saldo ({desglose.ajustes.length})
+                    </h3>
+                    <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                      {desglose.ajustes.map((g, i) => (
+                        <div key={i} className="flex items-center gap-3 px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm truncate">{g.concepto}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              {g.salon && <SalonDot salon={g.salon} size={7} />}
+                              {g.salon ? salonLabel(g.salon) : "General"}
+                            </p>
+                          </div>
+                          <p
+                            className={`text-sm font-semibold shrink-0 ${g.tipo === "ingreso" ? "text-emerald-600" : "text-red-500"}`}
+                          >
+                            {g.tipo === "ingreso" ? "+" : "−"}
+                            {formatCurrency(g.monto)}
+                          </p>
+                        </div>
                       ))}
-                    </tbody>
-                    <tfoot className="border-t-2 border-border bg-muted/50 font-bold">
-                      <tr>
-                        <td className="sticky left-0 bg-muted px-2 py-2">Total</td>
-                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.vendido)}</td>
-                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.sena)}</td>
-                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.cuotas)}</td>
-                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.pagado)}</td>
-                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.costo)}</td>
-                        <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.entroCajaEventos)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  "Seña", "Cuotas" y "Total pagado" son lo que entró a las dos cajas. "Costo" es el de Costos del evento
-                  (comida, bebida, servicios y sueldos; el de los finalizados, el guardado al finalizar). "Entró a Caja
-                  Eventos" es la parte del total pagado que vino a esta caja.
-                </p>
-              </section>
-            )}
-
-            {/* Por evento */}
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                Por evento ({desglose.filasEventos.length})
-              </h3>
-              {desglose.filasEventos.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sin movimientos de eventos.</p>
-              ) : (
-                <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                  {desglose.filasEventos.map((f) => (
-                    <div key={f.eventoId} className="flex items-start gap-3 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{f.nombre}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          {f.salon && <SalonDot salon={f.salon} size={7} />}
-                          {f.salon ? salonLabel(f.salon) : "Sin salón"}
-                        </p>
-                        {/* Qué entró (señas y cuotas por separado) y qué salió. */}
-                        <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pt-0.5">
-                          {f.senas > 0 && (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                              <ArrowDownToLine className="h-3 w-3" />
-                              Señas {formatCurrency(f.senas)}
-                            </span>
-                          )}
-                          {f.cuotas > 0 && (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                              <ArrowDownToLine className="h-3 w-3" />
-                              Cuotas {formatCurrency(f.cuotas)}
-                            </span>
-                          )}
-                          {f.ingresos - f.senas - f.cuotas > 0.005 && (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                              <ArrowDownToLine className="h-3 w-3" />
-                              Otros {formatCurrency(f.ingresos - f.senas - f.cuotas)}
-                            </span>
-                          )}
-                          {f.egresos > 0 && (
-                            <span className="inline-flex items-center gap-1 text-red-500">
-                              <ArrowUpFromLine className="h-3 w-3" />
-                              Salió {formatCurrency(f.egresos)}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <p className="text-right text-sm font-semibold shrink-0 tabular-nums">
-                        {formatCurrency(f.ingresos - f.egresos)}
-                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                  </section>
+                )}
 
-            {/* Otros ingresos */}
-            {desglose.otrosIngresos.length > 0 && (
-              <SeccionMovs
-                titulo={`Otros ingresos (${desglose.otrosIngresos.length})`}
-                items={desglose.otrosIngresos}
-                signo={1}
-              />
-            )}
+              </TabsContent>
 
-            {/* Gastos generales */}
-            {desglose.gastosGenerales.length > 0 && (
-              <SeccionMovs
-                titulo={`Gastos pagados (${desglose.gastosGenerales.length})`}
-                items={desglose.gastosGenerales}
-                signo={-1}
-              />
-            )}
-
-            {/* Retiros */}
-            {desglose.retiros.length > 0 && (
-              <SeccionMovs
-                titulo={`Retiros (${desglose.retiros.length})`}
-                items={desglose.retiros}
-                signo={-1}
-              />
-            )}
-
-            {/* Ajustes */}
-            {desglose.ajustes.length > 0 && (
-              <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                  Ajustes de saldo ({desglose.ajustes.length})
-                </h3>
-                <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                  {desglose.ajustes.map((g, i) => (
-                    <div key={i} className="flex items-center gap-3 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm truncate">{g.concepto}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          {g.salon && <SalonDot salon={g.salon} size={7} />}
-                          {g.salon ? salonLabel(g.salon) : "General"}
-                        </p>
-                      </div>
-                      <p
-                        className={`text-sm font-semibold shrink-0 ${g.tipo === "ingreso" ? "text-emerald-600" : "text-red-500"}`}
-                      >
-                        {g.tipo === "ingreso" ? "+" : "−"}
-                        {formatCurrency(g.monto)}
-                      </p>
+              <TabsContent value="tabla" className="flex flex-col gap-4 min-w-0">
+                {/* Tabla por evento */}
+                {tabla && tabla.filas.length > 0 && (
+                  <section className="min-w-0">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                      Venta, pagos y costo de cada evento ({tabla.filas.length})
+                    </h3>
+                    <div className="hidden md:block rounded-lg border border-border">
+                      <table className="w-full text-xs tabular-nums">
+                        <thead className="bg-muted/50 text-muted-foreground">
+                          <tr>
+                            <th className="bg-muted px-2 py-2 text-left font-medium">Evento</th>
+                            <th className="px-2 py-2 text-right font-medium">Vendido</th>
+                            <th className="px-2 py-2 text-right font-medium">Seña</th>
+                            <th className="px-2 py-2 text-right font-medium">Cuotas</th>
+                            <th className="px-2 py-2 text-right font-medium">Total pagado</th>
+                            <th className="px-2 py-2 text-right font-medium">Costo</th>
+                            <th className="px-2 py-2 text-right font-medium">Entró a Caja Eventos</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {tabla.filas.map((f) => (
+                            <tr key={f.eventoId}>
+                              <td className="bg-background px-2 py-1.5 max-w-[140px]">
+                                <span className="block truncate font-medium text-foreground">{f.nombre}</span>
+                                {f.fechaEvento && (
+                                  <span className="block text-[11px] text-muted-foreground">{fechaCorta(f.fechaEvento)}</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-1.5 text-right">{formatCurrency(f.vendido)}</td>
+                              <td className="px-2 py-1.5 text-right">{formatCurrency(f.sena)}</td>
+                              <td className="px-2 py-1.5 text-right">{formatCurrency(f.cuotas)}</td>
+                              <td className="px-2 py-1.5 text-right">{formatCurrency(f.pagado)}</td>
+                              <td className="px-2 py-1.5 text-right">{formatCurrency(f.costo)}</td>
+                              <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(f.entroCajaEventos)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t-2 border-border bg-muted/50 font-bold">
+                          <tr>
+                            <td className="bg-muted px-2 py-2">Total</td>
+                            <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.vendido)}</td>
+                            <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.sena)}</td>
+                            <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.cuotas)}</td>
+                            <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.pagado)}</td>
+                            <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.costo)}</td>
+                            <td className="px-2 py-2 text-right">{formatCurrency(tabla.totales.entroCajaEventos)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
-                  ))}
-                </div>
-              </section>
-            )}
+                    {/* En el celu, una tarjeta por evento: sin scroll de costado. */}
+                    <div className="flex flex-col gap-2 md:hidden">
+                      {[...tabla.filas.map((f) => ({ ...f, total: false })), { ...tabla.totales, eventoId: "total", nombre: "Total", fechaEvento: "", total: true }].map((f) => (
+                        <div
+                          key={f.eventoId}
+                          className={`rounded-lg border border-border px-3 py-2 text-xs tabular-nums ${f.total ? "bg-muted/50 font-bold" : ""}`}
+                        >
+                          <p className="flex items-baseline justify-between gap-2 pb-1">
+                            <span className="min-w-0 truncate text-sm font-medium">{f.nombre}</span>
+                            {f.fechaEvento && <span className="shrink-0 text-muted-foreground">{fechaCorta(f.fechaEvento)}</span>}
+                          </p>
+                          <dl className="flex flex-col gap-y-0.5">
+                            {(
+                              [
+                                ["Vendido", f.vendido],
+                                ["Seña", f.sena],
+                                ["Cuotas", f.cuotas],
+                                ["Total pagado", f.pagado],
+                                ["Costo", f.costo],
+                              ] as const
+                            ).map(([etiqueta, valor]) => (
+                              <div key={etiqueta} className="flex justify-between gap-2">
+                                <dt className="whitespace-nowrap text-muted-foreground">{etiqueta}</dt>
+                                <dd className="whitespace-nowrap">{formatCurrency(valor)}</dd>
+                              </div>
+                            ))}
+                            <div className="flex justify-between gap-2 border-t border-border pt-1 font-semibold">
+                              <dt>Entró a Caja Eventos</dt>
+                              <dd>{formatCurrency(f.entroCajaEventos)}</dd>
+                            </div>
+                          </dl>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      "Seña", "Cuotas" y "Total pagado" son lo que entró a las dos cajas. "Costo" es el de Costos del evento
+                      (comida, bebida, servicios y sueldos; el de los finalizados, el guardado al finalizar). "Entró a Caja
+                      Eventos" es la parte del total pagado que vino a esta caja.
+                    </p>
+                  </section>
+                )}
 
-            {/* Totales */}
-            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 flex flex-col gap-1">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Total ingresos</span>
-                <span className="font-medium text-emerald-600">
-                  +{formatCurrency(desglose.totalIngresos)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Total egresos</span>
-                <span className="font-medium text-red-500">
-                  −{formatCurrency(desglose.totalEgresos)}
-                </span>
-              </div>
-              <div className="flex justify-between text-base font-bold pt-1 border-t border-border">
-                <span>Saldo actual</span>
-                <span>{formatCurrency(desglose.saldo)}</span>
-              </div>
-            </div>
+                {(!tabla || tabla.filas.length === 0) && (
+                  <p className="text-sm text-muted-foreground">Sin cobros de eventos en esta caja.</p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="cuotas" className="flex flex-col gap-4 min-w-0">
+                {/* Por evento */}
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                    Señas, cuotas y pagos por evento ({desglose.filasEventos.length})
+                  </h3>
+                  {desglose.filasEventos.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sin movimientos de eventos.</p>
+                  ) : (
+                    <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                      {desglose.filasEventos.map((f) => (
+                        <div key={f.eventoId} className="flex items-start gap-3 px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{f.nombre}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              {f.salon && <SalonDot salon={f.salon} size={7} />}
+                              {f.salon ? salonLabel(f.salon) : "Sin salón"}
+                            </p>
+                            {/* Qué entró (señas y cuotas por separado) y qué salió. */}
+                            <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pt-0.5">
+                              {f.senas > 0 && (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                                  <ArrowDownToLine className="h-3 w-3" />
+                                  Señas {formatCurrency(f.senas)}
+                                </span>
+                              )}
+                              {f.cuotas > 0 && (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                                  <ArrowDownToLine className="h-3 w-3" />
+                                  Cuotas {formatCurrency(f.cuotas)}
+                                </span>
+                              )}
+                              {f.ingresos - f.senas - f.cuotas > 0.005 && (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                                  <ArrowDownToLine className="h-3 w-3" />
+                                  Otros {formatCurrency(f.ingresos - f.senas - f.cuotas)}
+                                </span>
+                              )}
+                              {f.egresos > 0 && (
+                                <span className="inline-flex items-center gap-1 text-red-500">
+                                  <ArrowUpFromLine className="h-3 w-3" />
+                                  Salió {formatCurrency(f.egresos)}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <p className="text-right text-sm font-semibold shrink-0 tabular-nums">
+                            {formatCurrency(f.ingresos - f.egresos)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+              </TabsContent>
+            </Tabs>
 
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button
