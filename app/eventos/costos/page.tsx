@@ -79,7 +79,14 @@ import {
   BookOpen,
   RefreshCw,
   Lock,
+  Pencil,
 } from "lucide-react"
+import {
+  accionCajaAlCorregir,
+  fotoConCostoCorregido,
+  fotoConPersonalPagado,
+  type LineaCostoFinalizado,
+} from "@/lib/correccion-finalizado"
 import { PieChart, Pie, Cell, Label } from "recharts"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 
@@ -143,6 +150,14 @@ function CostosEventoContent() {
   // Pago del menú o la barra de un evento finalizado: se confirma viendo (y
   // corrigiendo) el monto (lib/pago-finalizado.ts).
   const [pagoFinalizado, setPagoFinalizado] = useState<{ rubro: RubroFinalizado; monto: number } | null>(null)
+  // Corrección de un costo de un evento finalizado (lib/correccion-finalizado.ts).
+  const [correccion, setCorreccion] = useState<{
+    linea: LineaCostoFinalizado
+    titulo: string
+    actual: number
+    monto: number
+  } | null>(null)
+  const [guardandoCorreccion, setGuardandoCorreccion] = useState(false)
 
   // --- ARCHIVO: foto congelada de costos (si el evento está archivado) ---
   // Mientras el evento esté en el Archivo se muestran los datos guardados al
@@ -349,18 +364,19 @@ function CostosEventoContent() {
 
   const hoyStr = fechaNegocio()
 
-  // Con el evento archivado no se registran ni revierten pagos de servicios
-  // ni de personal: los datos están congelados hasta que se saque el evento
-  // del archivo. El menú y la barra sí (ver pagoFinalizado, más abajo).
+  // Con el evento finalizado los montos salen de la foto guardada al
+  // finalizar (no del catálogo de hoy): se paga y se corrige sobre esa foto
+  // (pedido de Rodrigo, 3/11/2026). Sin foto válida no se toca nada.
   const bloquearPorArchivo = (): boolean => {
-    if (!esArchivado) return false
+    if (!esArchivado || congelado) return false
     toast({
       title: "Evento finalizado",
-      description:
-        "Con el evento finalizado solo se pueden pagar el menú y la barra. Para lo demás, sacalo de Finalizados.",
+      description: "Todavía no se guardaron los costos de este evento finalizado. Esperá unos segundos y probá de nuevo.",
     })
     return true
   }
+  // Seña y saldo de un servicio según la foto (finalizado) o en vivo.
+  const montosServicioFoto = (servicioId: string) => serviciosCalc.find((c) => c.srv.servicioId === servicioId)
 
   // --- Menú o barra de un evento finalizado ---
   // Lo ya dado a proveedores a cuenta del menú (Caja Eventos → Por pagar).
@@ -369,8 +385,8 @@ function CostosEventoContent() {
   const abrirPagoFinalizado = (rubro: RubroFinalizado) => {
     const monto =
       rubro === "cocina"
-        ? montoSugeridoFinalizado(costoCocinaHoy, pagadoProveedoresMenu())
-        : montoSugeridoFinalizado(costoBarraHoy)
+        ? montoSugeridoFinalizado(costoCocina, pagadoProveedoresMenu())
+        : montoSugeridoFinalizado(costoBarra)
     setPagoFinalizado({ rubro, monto })
   }
 
@@ -396,12 +412,10 @@ function CostosEventoContent() {
     setPagoFinalizado(null)
   }
 
+  // Revertir no borra el monto de la foto: queda como el costo del rubro (lo
+  // que se pagó o lo que se corrigió), para no volver a la foto inflada.
   const revertirPagoFinalizado = (rubro: RubroFinalizado) => {
-    const costosCalculados = costosConPagoFinalizado(
-      evento.costosCalculados as Record<string, unknown> | undefined,
-      rubro,
-      null,
-    )
+    const costosCalculados = evento.costosCalculados
     if (rubro === "cocina") {
       updateEvento(evento.id, { cocinaPagada: false, costosCalculados } as Partial<typeof evento>)
       quitarEgreso(prefijoPagoMenu)
@@ -410,6 +424,95 @@ function CostosEventoContent() {
       updateEvento(evento.id, { barraPagada: false, costosCalculados } as Partial<typeof evento>)
       quitarEgreso(prefijoPagoBarra)
       toast({ title: "Pago de la barra revertido" })
+    }
+  }
+
+  // --- Corregir un costo de un evento finalizado ---
+  // Qué está pagado y con qué egreso, para cada línea.
+  const datosLinea = (linea: LineaCostoFinalizado) => {
+    if (linea.rubro === "cocina")
+      return { pagado: !!evento.cocinaPagada, prefijo: prefijoPagoMenu, aparte: pagadoProveedoresMenu() }
+    if (linea.rubro === "barra") return { pagado: !!evento.barraPagada, prefijo: prefijoPagoBarra, aparte: 0 }
+    if (linea.rubro === "sueldo") {
+      const pe = personal.find((p) => p.id === linea.personalId)
+      return { pagado: !!pe?.pagado, prefijo: pe ? prefijoPagoSueldoPersonal(pe.nombre, pe.funcion) : "", aparte: 0 }
+    }
+    const c = montosServicioFoto(linea.servicioId)
+    const pagado = linea.rubro === "seña" ? !!c?.senaPagada : !!c?.saldoPagado
+    const prefijo = c ? (linea.rubro === "seña" ? prefijoPagoSeña(c.srv.nombre) : prefijoPagoSaldo(c.srv.nombre)) : ""
+    return { pagado, prefijo, aparte: 0 }
+  }
+  const accionCorreccion = (linea: LineaCostoFinalizado, montoNuevo: number) => {
+    const { pagado, prefijo, aparte } = datosLinea(linea)
+    const egreso = prefijo ? ultimoEgresoEvento(state.movimientosCaja, evento.id, prefijo) : undefined
+    return { egreso, prefijo, accion: accionCajaAlCorregir({ pagado, egresoMonto: egreso?.monto, pagadoAparte: aparte, montoNuevo }) }
+  }
+  const abrirCorreccion = (linea: LineaCostoFinalizado, titulo: string, actual: number) =>
+    setCorreccion({ linea, titulo, actual, monto: Math.round(actual * 100) / 100 })
+
+  const guardarCorreccion = async () => {
+    if (!correccion || guardandoCorreccion) return
+    const { linea, titulo, actual, monto } = correccion
+    const costosCalculados = fotoConCostoCorregido(
+      evento.costosCalculados as Record<string, unknown> | undefined,
+      linea,
+      monto,
+    )
+    if (!costosCalculados) {
+      toast({ title: "No se pudo corregir", description: "No se encontró ese costo en los datos guardados del evento.", variant: "destructive" })
+      return
+    }
+    const { egreso, prefijo, accion } = accionCorreccion(linea, monto)
+    if (accion.accion === "imposible") return
+    setGuardandoCorreccion(true)
+    try {
+      // Primero la caja: si falla, no se toca la foto. El egreso nuevo se
+      // anota antes de borrar el viejo (si se corta en el medio, queda a la
+      // vista en el historial de Caja Eventos y no se pierde plata).
+      if (accion.accion === "reemplazar" && egreso) {
+        if (accion.montoEgreso > 0.005) {
+          const ok = await addMovimientosCaja([{ ...egreso, id: generateId(), monto: accion.montoEgreso }])
+          if (!ok) throw new Error("no se pudo anotar el pago corregido")
+        }
+        const borrado = await deleteMovimientoCaja(egreso.id)
+        if (!borrado) throw new Error("no se pudo quitar el pago anterior")
+      } else if (accion.accion === "agregar") {
+        registrarEgreso(`${prefijo}${nombreEnCaja}`, accion.montoEgreso)
+      }
+      // Personal: el monto corregido también en el evento (como al pagar).
+      const extra: Partial<typeof evento> = {}
+      if (linea.rubro === "sueldo") {
+        extra.personalEvento = (evento.personalEvento || []).map((p) => (p.id === linea.personalId ? { ...p, monto } : p))
+      }
+      const ok = await updateEvento(evento.id, { ...extra, costosCalculados } as Partial<typeof evento>)
+      if (!ok) throw new Error("no se pudo guardar el costo corregido")
+      fetch("/api/activity-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "evento",
+          accion: "modificado",
+          nombre: nombreEvento,
+          detalle: `Costo corregido (evento finalizado): ${titulo} de ${formatCurrency(actual)} a ${formatCurrency(monto)}${
+            accion.diferencia ? ` · Caja Eventos ${accion.diferencia > 0 ? "pagó" : "recuperó"} ${formatCurrency(Math.abs(accion.diferencia))}` : ""
+          }`,
+        }),
+      }).catch(() => {})
+      toast({
+        title: "Costo corregido",
+        description: accion.diferencia
+          ? `${titulo}: ${formatCurrency(monto)}. Caja Eventos ${accion.diferencia > 0 ? "pagó" : "recuperó"} ${formatCurrency(Math.abs(accion.diferencia))}.`
+          : `${titulo}: ${formatCurrency(monto)}.`,
+      })
+      setCorreccion(null)
+    } catch (err) {
+      toast({
+        title: "No se pudo corregir",
+        description: `${err instanceof Error ? err.message : "Error"}. Revisá el historial de Caja Eventos antes de probar de nuevo.`,
+        variant: "destructive",
+      })
+    } finally {
+      setGuardandoCorreccion(false)
     }
   }
 
@@ -485,10 +588,10 @@ function CostosEventoContent() {
     if (!srv) return
     // Monto EN VIVO desde el catálogo: lo que se registra en caja es lo que
     // se está mostrando en pantalla, no la foto guardada al contratar.
-    const { montoSeña: montoSeñaLive } = calcularSeñaSaldoServicio(
-      { ...srv, estadoPago: "sin_seña" },
-      { servicios: state.servicios ?? [] },
-    )
+    const montoSeñaLive =
+      esArchivado && montosServicioFoto(servicioId)
+        ? montosServicioFoto(servicioId)!.montoSeña
+        : calcularSeñaSaldoServicio({ ...srv, estadoPago: "sin_seña" }, { servicios: state.servicios ?? [] }).montoSeña
     const nuevosServicios = servicios.map((s) => {
       if (s.servicioId !== servicioId) return s
       // Al pagar, fijar el monto pagado como histórico del servicio.
@@ -516,8 +619,11 @@ function CostosEventoContent() {
     }
     if (checked) {
       // Saldo EN VIVO desde el catálogo (costo actual − seña pagada).
-      const { saldoPendiente: saldoLive } = calcularSeñaSaldoServicio(srv, { servicios: state.servicios ?? [] })
-      const monto = saldoLive
+      // Finalizado: el saldo de la foto (el que se ve en pantalla).
+      const monto =
+        esArchivado && montosServicioFoto(servicioId)
+          ? montosServicioFoto(servicioId)!.saldo
+          : calcularSeñaSaldoServicio(srv, { servicios: state.servicios ?? [] }).saldoPendiente
       const nuevosServicios = servicios.map((s) =>
         s.servicioId === servicioId
           ? { ...s, pagado: true, estadoPago: "pagado_total" as const, saldoPendiente: 0, fechaPagoSaldo: hoyStr }
@@ -548,16 +654,29 @@ function CostosEventoContent() {
   // --- Personal ---
   const togglePersonal = (peId: string, checked: boolean) => {
     if (bloquearPorArchivo()) return
-    const pe = (evento.personalEvento || []).find((p) => p.id === peId)
+    // Finalizado: la persona y su sueldo salen de la foto, y el "pagado" se
+    // anota en la foto (que es lo que se muestra) y en el evento.
+    const peFoto = esArchivado ? personal.find((p) => p.id === peId) : undefined
+    const pe = peFoto ?? (evento.personalEvento || []).find((p) => p.id === peId)
     if (!pe) return
     const prefijo = prefijoPagoSueldoPersonal(pe.nombre, pe.funcion)
     // Monto EN VIVO desde el roster: lo que se registra en caja es lo que se
     // muestra en pantalla. Al pagar, ese monto queda fijado como histórico.
-    const montoLive = calcularMontoPersonalDelEvento(pe, state.personal)
+    const montoLive = peFoto ? peFoto.monto || 0 : calcularMontoPersonalDelEvento(pe, state.personal)
     const nuevoPersonal = (evento.personalEvento || []).map((p) =>
       p.id === peId ? (checked ? { ...p, pagado: true, monto: montoLive } : { ...p, pagado: false }) : p,
     )
-    updateEvento(evento.id, { personalEvento: nuevoPersonal })
+    if (peFoto) {
+      const costosCalculados = fotoConPersonalPagado(
+        evento.costosCalculados as Record<string, unknown> | undefined,
+        peId,
+        checked,
+      )
+      if (!costosCalculados) return
+      updateEvento(evento.id, { personalEvento: nuevoPersonal, costosCalculados } as Partial<typeof evento>)
+    } else {
+      updateEvento(evento.id, { personalEvento: nuevoPersonal })
+    }
     if (checked) {
       registrarEgreso(`${prefijo}${nombreEnCaja}`, montoLive)
       toast({ title: `Sueldo de ${pe.nombre} pagado`, description: formatCurrency(montoLive) })
@@ -622,6 +741,74 @@ function CostosEventoContent() {
               disabled={!pagoFinalizado || !montoPagoFinalizadoValido(pagoFinalizado.monto)}
             >
               Pagar {pagoFinalizado ? formatCurrency(pagoFinalizado.monto) : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!correccion} onOpenChange={(abierto) => !abierto && !guardandoCorreccion && setCorreccion(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Corregir {correccion ? correccion.titulo.charAt(0).toLowerCase() + correccion.titulo.slice(1) : ""}</DialogTitle>
+            <DialogDescription>
+              Evento finalizado. El costo guardado es {formatCurrency(correccion?.actual ?? 0)}; poné el que corresponde.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="monto-correccion" className="text-sm font-medium">
+              Costo correcto
+            </label>
+            <MoneyInput
+              id="monto-correccion"
+              inputMode="decimal"
+              value={correccion?.monto ?? 0}
+              onValueChange={(monto) => setCorreccion((c) => (c ? { ...c, monto } : c))}
+              placeholder="0"
+            />
+          </div>
+          {correccion &&
+            (() => {
+              const { egreso, accion } = accionCorreccion(correccion.linea, correccion.monto)
+              const caja = `Caja Eventos (${salonLabel(evento.salon)})`
+              let texto: string
+              let tono = "border-border bg-muted/40 text-foreground"
+              if (accion.accion === "imposible") {
+                texto = `No puede ser menos que ${formatCurrency(accion.minimo)}, lo ya dado a proveedores a cuenta. Eso se revierte desde el historial de Caja Eventos.`
+                tono = "border-red-300 bg-red-50 text-red-800"
+              } else if (accion.accion === "reemplazar") {
+                const fecha = egreso?.fecha ? ` el ${formatFechaCorta(fechaNegocio(new Date(egreso.fecha)))}` : ""
+                texto =
+                  accion.diferencia < 0
+                    ? `Ya se pagó ${formatCurrency(egreso?.monto ?? 0)}${fecha}. Al guardar, ese pago pasa a ${formatCurrency(accion.montoEgreso)} y ${caja} recupera ${formatCurrency(-accion.diferencia)}.`
+                    : `Ya se pagó ${formatCurrency(egreso?.monto ?? 0)}${fecha}. Al guardar, ese pago pasa a ${formatCurrency(accion.montoEgreso)} y salen ${formatCurrency(accion.diferencia)} más de ${caja}.`
+                tono = "border-amber-300 bg-amber-50 text-amber-900"
+              } else if (accion.accion === "agregar") {
+                texto = `Se anota un pago de ${formatCurrency(accion.montoEgreso)} en ${caja}, además de lo ya dado a proveedores.`
+                tono = "border-amber-300 bg-amber-50 text-amber-900"
+              } else if (accion.accion === "sinEgreso") {
+                texto = `Está marcado pagado pero no tiene un pago anotado en Caja Eventos: se corrige el costo y la caja no cambia.`
+              } else if (datosLinea(correccion.linea).pagado) {
+                texto = `El pago ya es de ese monto: la caja no cambia.`
+              } else {
+                texto = `Todavía no se pagó: se corrige el costo y la caja no cambia. Al marcarlo pagado, sale de ${caja} por el monto corregido.`
+              }
+              return <p className={`rounded-md border px-3 py-2 text-sm ${tono}`}>{texto}</p>
+            })()}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setCorreccion(null)} disabled={guardandoCorreccion}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={guardarCorreccion}
+              disabled={
+                !correccion ||
+                guardandoCorreccion ||
+                !Number.isFinite(correccion.monto) ||
+                correccion.monto < 0 ||
+                Math.abs(correccion.monto - correccion.actual) < 0.005 ||
+                accionCorreccion(correccion.linea, correccion.monto).accion.accion === "imposible"
+              }
+            >
+              {guardandoCorreccion ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -862,6 +1049,7 @@ function CostosEventoContent() {
                 hoy={costoCocinaHoy}
                 pagado={!!evento.cocinaPagada}
                 fechaPago={fechaPagoCocina}
+                onCorregir={esArchivado && congelado ? () => abrirCorreccion({ rubro: "cocina" }, "Menú (cocina)", costoCocina) : undefined}
               />
               {!evento.cocinaPagada && pagadoCocina > 0 && (
                 <p className="text-xs text-emerald-700">
@@ -968,6 +1156,7 @@ function CostosEventoContent() {
                 hoy={costoBarraHoy}
                 pagado={!!evento.barraPagada}
                 fechaPago={fechaPagoBarra}
+                onCorregir={esArchivado && congelado ? () => abrirCorreccion({ rubro: "barra" }, "Barra", costoBarra) : undefined}
               />
             </>
           )}
@@ -1024,6 +1213,11 @@ function CostosEventoContent() {
                           }
                           monto={montoSeña}
                           pagado={senaPagada}
+                          onCorregir={
+                            esArchivado && congelado
+                              ? () => abrirCorreccion({ rubro: "seña", servicioId: srv.servicioId }, `Seña de ${srv.nombre}`, montoSeña)
+                              : undefined
+                          }
                         />
                       )}
                       <FilaPago
@@ -1052,6 +1246,11 @@ function CostosEventoContent() {
                         aviso={saldoSinEgreso ? <AvisoSinEgreso /> : undefined}
                         monto={saldo}
                         pagado={saldoPagado}
+                        onCorregir={
+                          esArchivado && congelado && !comoSueldo
+                            ? () => abrirCorreccion({ rubro: "saldo", servicioId: srv.servicioId }, `Saldo de ${srv.nombre}`, saldo)
+                            : undefined
+                        }
                       />
                     </div>
                   </div>
@@ -1103,6 +1302,11 @@ function CostosEventoContent() {
                     }
                     monto={pe.monto || 0}
                     pagado={!!pe.pagado}
+                    onCorregir={
+                      esArchivado && congelado
+                        ? () => abrirCorreccion({ rubro: "sueldo", personalId: pe.id }, `Sueldo de ${pe.nombre}`, pe.monto || 0)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -1249,12 +1453,15 @@ function TotalRubro({
   hoy,
   pagado,
   fechaPago,
+  onCorregir,
 }: {
   etiqueta: string
   total: number
   hoy: number
   pagado: boolean
   fechaPago?: string
+  /** Evento finalizado: lápiz para corregir el costo (lib/correccion-finalizado.ts). */
+  onCorregir?: () => void
 }) {
   const difiere = pagado && Math.abs(total - hoy) >= 0.01
   return (
@@ -1267,7 +1474,10 @@ function TotalRubro({
       )}
       <div className="flex items-center justify-between gap-2 font-semibold">
         <span>{difiere ? `${etiqueta} (pagado)` : etiqueta}</span>
-        <span className={`tabular-nums ${pagado ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(total)}</span>
+        <span className="flex items-center gap-1">
+          <span className={`tabular-nums ${pagado ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(total)}</span>
+          {onCorregir && <BotonCorregir onClick={onCorregir} etiqueta={`Corregir ${etiqueta.toLowerCase()}`} />}
+        </span>
       </div>
       {pagado && fechaPago && (
         <p className="text-xs text-muted-foreground">
@@ -1292,6 +1502,7 @@ function FilaPago({
   monto,
   pagado,
   className = "",
+  onCorregir,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
@@ -1303,6 +1514,8 @@ function FilaPago({
   monto: number
   pagado: boolean
   className?: string
+  /** Evento finalizado: lápiz para corregir el monto (lib/correccion-finalizado.ts). */
+  onCorregir?: () => void
 }) {
   return (
     <label
@@ -1323,7 +1536,33 @@ function FilaPago({
       <span className={`shrink-0 font-medium tabular-nums ${pagado ? "text-emerald-700" : "text-red-600"}`}>
         {formatCurrency(monto)}
       </span>
+      {onCorregir && (
+        <BotonCorregir
+          etiqueta={`Corregir ${typeof titulo === "string" ? titulo.toLowerCase() : "monto"}`}
+          onClick={onCorregir}
+        />
+      )}
     </label>
+  )
+}
+
+// Lápiz para corregir un costo de un evento finalizado. Va dentro de la fila
+// (que es un <label>): frena el clic para no tildar ni destildar el pago.
+function BotonCorregir({ onClick, etiqueta }: { onClick: () => void; etiqueta: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onClick()
+      }}
+      className="-my-1 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+      aria-label={etiqueta}
+      title="Corregir"
+    >
+      <Pencil className="h-3.5 w-3.5" />
+    </button>
   )
 }
 
