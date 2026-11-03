@@ -10,10 +10,20 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { MoneyInput } from "@/components/ui/money-input"
+import { pagosMenuProveedor, totalPagosMenuProveedor } from "@/lib/pago-menu-proveedor"
+import {
+  costosConPagoFinalizado,
+  montoPagoFinalizadoValido,
+  montoSugeridoFinalizado,
+  type RubroFinalizado,
+} from "@/lib/pago-finalizado"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
@@ -129,6 +139,10 @@ function CostosEventoContent() {
   const [señaPidiendoPin, setSeñaPidiendoPin] = useState<
     { servicioId: string; seña: SeñaExtraordinaria } | null
   >(null)
+
+  // Pago del menú o la barra de un evento finalizado: se confirma viendo (y
+  // corrigiendo) el monto (lib/pago-finalizado.ts).
+  const [pagoFinalizado, setPagoFinalizado] = useState<{ rubro: RubroFinalizado; monto: number } | null>(null)
 
   // --- ARCHIVO: foto congelada de costos (si el evento está archivado) ---
   // Mientras el evento esté en el Archivo se muestran los datos guardados al
@@ -335,20 +349,77 @@ function CostosEventoContent() {
 
   const hoyStr = fechaNegocio()
 
-  // Con el evento archivado no se registran ni revierten pagos: los datos
-  // están congelados hasta que se saque el evento del archivo.
+  // Con el evento archivado no se registran ni revierten pagos de servicios
+  // ni de personal: los datos están congelados hasta que se saque el evento
+  // del archivo. El menú y la barra sí (ver pagoFinalizado, más abajo).
   const bloquearPorArchivo = (): boolean => {
     if (!esArchivado) return false
     toast({
-      title: "Evento archivado",
-      description: "Los datos están congelados. Sacá el evento del archivo para modificar pagos.",
+      title: "Evento finalizado",
+      description:
+        "Con el evento finalizado solo se pueden pagar el menú y la barra. Para lo demás, sacalo de Finalizados.",
     })
     return true
   }
 
+  // --- Menú o barra de un evento finalizado ---
+  // Lo ya dado a proveedores a cuenta del menú (Caja Eventos → Por pagar).
+  const pagadoProveedoresMenu = () => totalPagosMenuProveedor(pagosMenuProveedor(state.movimientosCaja, evento.id))
+
+  const abrirPagoFinalizado = (rubro: RubroFinalizado) => {
+    const monto =
+      rubro === "cocina"
+        ? montoSugeridoFinalizado(costoCocinaHoy, pagadoProveedoresMenu())
+        : montoSugeridoFinalizado(costoBarraHoy)
+    setPagoFinalizado({ rubro, monto })
+  }
+
+  const confirmarPagoFinalizado = () => {
+    if (!pagoFinalizado || !montoPagoFinalizadoValido(pagoFinalizado.monto)) return
+    const { rubro, monto } = pagoFinalizado
+    // En la foto queda el total pagado del rubro (con lo dado a cuenta).
+    const totalPagado = rubro === "cocina" ? pagadoProveedoresMenu() + monto : monto
+    const costosCalculados = costosConPagoFinalizado(
+      evento.costosCalculados as Record<string, unknown> | undefined,
+      rubro,
+      totalPagado,
+    )
+    if (rubro === "cocina") {
+      updateEvento(evento.id, { cocinaPagada: true, costosCalculados } as Partial<typeof evento>)
+      registrarEgreso(`${prefijoPagoMenu}${nombreEnCaja}`, monto)
+      toast({ title: "Menú pagado", description: formatCurrency(monto) })
+    } else {
+      updateEvento(evento.id, { barraPagada: true, costosCalculados } as Partial<typeof evento>)
+      registrarEgreso(`${prefijoPagoBarra}${nombreEnCaja}`, monto)
+      toast({ title: "Barra pagada", description: formatCurrency(monto) })
+    }
+    setPagoFinalizado(null)
+  }
+
+  const revertirPagoFinalizado = (rubro: RubroFinalizado) => {
+    const costosCalculados = costosConPagoFinalizado(
+      evento.costosCalculados as Record<string, unknown> | undefined,
+      rubro,
+      null,
+    )
+    if (rubro === "cocina") {
+      updateEvento(evento.id, { cocinaPagada: false, costosCalculados } as Partial<typeof evento>)
+      quitarEgreso(prefijoPagoMenu)
+      toast({ title: "Pago del menú revertido" })
+    } else {
+      updateEvento(evento.id, { barraPagada: false, costosCalculados } as Partial<typeof evento>)
+      quitarEgreso(prefijoPagoBarra)
+      toast({ title: "Pago de la barra revertido" })
+    }
+  }
+
   // --- Cocina ---
   const toggleCocina = (checked: boolean) => {
-    if (bloquearPorArchivo()) return
+    if (esArchivado) {
+      if (checked) abrirPagoFinalizado("cocina")
+      else revertirPagoFinalizado("cocina")
+      return
+    }
     updateEvento(evento.id, { cocinaPagada: checked })
     if (checked) {
       // Si ya se pagó una parte por proveedor (Caja Eventos), sale solo el resto.
@@ -363,7 +434,11 @@ function CostosEventoContent() {
 
   // --- Barra ---
   const toggleBarra = (checked: boolean) => {
-    if (bloquearPorArchivo()) return
+    if (esArchivado) {
+      if (checked) abrirPagoFinalizado("barra")
+      else revertirPagoFinalizado("barra")
+      return
+    }
     updateEvento(evento.id, { barraPagada: checked })
     if (checked) {
       registrarEgreso(`${prefijoPagoBarra}${nombreEnCaja}`, costoBarraHoy)
@@ -508,6 +583,49 @@ function CostosEventoContent() {
 
   return (
     <div className="mx-auto w-full max-w-none px-4 py-6 space-y-5 xl:px-6">
+      <Dialog open={!!pagoFinalizado} onOpenChange={(abierto) => !abierto && setPagoFinalizado(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {pagoFinalizado?.rubro === "barra" ? "Pagar la barra" : "Pagar el menú"} de un evento finalizado
+            </DialogTitle>
+            <DialogDescription>
+              Sale de Caja Eventos ({salonLabel(evento.salon)}) con fecha de hoy. El monto propuesto es el costo guardado al
+              finalizar el evento
+              {pagoFinalizado?.rubro === "cocina" && pagadoProveedoresMenu() > 0
+                ? `, menos ${formatCurrency(pagadoProveedoresMenu())} ya dados a proveedores a cuenta`
+                : ""}
+              . Revisalo y corregilo si lo que se pagó fue otra cifra.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="monto-pago-finalizado" className="text-sm font-medium">
+              Monto pagado
+            </label>
+            <MoneyInput
+              id="monto-pago-finalizado"
+              inputMode="decimal"
+              value={pagoFinalizado?.monto ?? 0}
+              onValueChange={(monto) => setPagoFinalizado((p) => (p ? { ...p, monto } : p))}
+              placeholder="0"
+            />
+            {pagoFinalizado && !montoPagoFinalizadoValido(pagoFinalizado.monto) && (
+              <p className="text-xs text-red-600">Poné un monto mayor a cero.</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPagoFinalizado(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmarPagoFinalizado}
+              disabled={!pagoFinalizado || !montoPagoFinalizadoValido(pagoFinalizado.monto)}
+            >
+              Pagar {pagoFinalizado ? formatCurrency(pagoFinalizado.monto) : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <PinSeñaExtraordinariaDialog
         seña={señaPidiendoPin?.seña ?? null}
         montoTexto={señaPidiendoPin ? formatCurrency(señaPidiendoPin.seña.monto) : ""}
