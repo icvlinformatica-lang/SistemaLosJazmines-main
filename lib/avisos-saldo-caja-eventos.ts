@@ -11,6 +11,9 @@
 //     reparten de nuevo.
 //  3. Eventos finalizados con menú o barra y sin ningún pago de eso en Caja
 //     Eventos: la plata para pagarlos sigue figurando en el saldo.
+//     Solo los que tienen algún cobro en Caja Eventos (pedido de Rodrigo,
+//     3/11/2026): los viejos, de antes de que se anotaran los cobros en las
+//     cajas, no dejaron plata acá y no hay nada que descontar.
 //
 // Es SOLO PARA MOSTRAR: no cambia montos, no escribe nada y no decide qué está
 // mal. Cada aviso dice "revisar", no "corregir".
@@ -160,9 +163,15 @@ export function avisosSaldoCajaEventos(
     if (c.startsWith("pago barra")) p.barra = true
     pagosEvento.set(m.eventoId, p)
   }
+  const conCobroEnCajaEventos = new Set(
+    (movimientos || [])
+      .filter((m) => m.tipo === "ingreso" && m.cajaDestino === "caja_eventos" && m.eventoId)
+      .map((m) => m.eventoId as string),
+  )
   const finalizadosSinPagar: FinalizadoSinPagar[] = []
   for (const ev of eventos || []) {
     if (ev.estado !== "completado" || (salon && ev.salon !== salon)) continue
+    if (!conCobroEnCajaEventos.has(ev.id)) continue
     const tieneMenu =
       (ev.recetasAdultos?.length ?? 0) +
         (ev.recetasAdolescentes?.length ?? 0) +

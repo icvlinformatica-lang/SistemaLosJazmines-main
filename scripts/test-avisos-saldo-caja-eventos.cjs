@@ -88,9 +88,13 @@ test("finalizados con menú o barra sin pago en Caja Eventos", () => {
     { id: "c", nombrePareja: "PROVEEDOR", fecha: "2026-10-20", salon: "Quinta", estado: "completado", recetasAdultos: ["r1"], barras: [] },
     { id: "d", nombrePareja: "PENDIENTE", fecha: "2026-12-01", salon: "Quinta", estado: "pendiente", recetasAdultos: ["r1"] },
     { id: "e", nombrePareja: "SIN MENU", fecha: "2026-09-01", salon: "Quinta", estado: "completado", barras: [{ coctelesIncluidos: [] }] },
+    // Viejo: sin ningún cobro en Caja Eventos, no hay nada que descontar.
+    { id: "f", nombrePareja: "VIEJO", fecha: "2026-04-18", salon: "Quinta", estado: "completado", recetasAdultos: ["r1"] },
   ]
   const r = avisosSaldoCajaEventos(
     [
+      mov("a", "ingreso", "caja_eventos", "Cuota 1 - SIN PAGAR (Caja Eventos)", 4308787),
+      mov("f", "ingreso", "caja_jazmines", "Cuota 1 - VIEJO (Caja Jazmines)", 500000),
       mov("b", "egreso", "caja_eventos", "Pago menú - PAGADO", 678798),
       mov("b", "egreso", "caja_eventos", "Pago barra - PAGADO", 984156),
       mov("c", "egreso", "caja_eventos", "Pago menú (Carnicería) a cuenta - PROVEEDOR", 1000),
