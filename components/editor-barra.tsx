@@ -200,7 +200,14 @@ export function EditorBarra({
  * Botón "Crear barra" para Cócteles: trae los costos de la carta y el margen
  * guardado de /api/administracion/cotizador-config y abre el mismo editor.
  */
-export function BotonCrearBarra({ onCreada }: { onCreada?: (barra: BarraParaEditar) => void } = {}) {
+export function BotonCrearBarra({
+  onCreada,
+  compacto = false,
+}: {
+  onCreada?: (barra: BarraParaEditar) => void
+  /** Solo el "+" (va dentro de la tarjeta "Barras" de Cócteles). */
+  compacto?: boolean
+} = {}) {
   const { toast } = useToast()
   const [abierto, setAbierto] = useState(false)
   const [datos, setDatos] = useState<{ cocteles: CoctelConCosto[]; margenBarra: number } | null>(null)
@@ -228,10 +235,24 @@ export function BotonCrearBarra({ onCreada }: { onCreada?: (barra: BarraParaEdit
 
   return (
     <>
-      <Button variant="outline" onClick={abrir} disabled={cargando}>
-        <Plus className="h-4 w-4 mr-1.5" />
-        {cargando ? "Cargando..." : "Crear barra"}
-      </Button>
+      {compacto ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          onClick={abrir}
+          disabled={cargando}
+          aria-label="Agregar una barra nueva"
+          title="Agregar una barra nueva"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      ) : (
+        <Button variant="outline" onClick={abrir} disabled={cargando}>
+          <Plus className="h-4 w-4 mr-1.5" />
+          {cargando ? "Cargando..." : "Crear barra"}
+        </Button>
+      )}
       {datos && (
         <EditorBarra
           abierto={abierto}

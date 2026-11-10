@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
+import { puedeEditarCocteles, ERROR_SIN_PERMISO_COCTELES } from "@/lib/cocteles-permisos"
 
 // en_cotizador (scripts/014) se lee con to_jsonb para no romper si la
 // migración todavía no se aplicó: en ese caso vale false.
@@ -88,6 +90,11 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Borrar una barra: solo Administración y Soporte (desde el 10/11/2026 se
+  // borra también desde "Ver barras" de Cócteles, adonde entra Barra).
+  if (!puedeEditarCocteles(await perfilDesdeRequest(request))) {
+    return NextResponse.json({ error: ERROR_SIN_PERMISO_COCTELES }, { status: 403 })
+  }
   try {
     const { id } = await params
 

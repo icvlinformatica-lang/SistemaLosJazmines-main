@@ -16,8 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { CostosARevisar } from "@/components/costos-a-revisar"
 import { convertirAUnidadDeStock } from "@/lib/unidades"
-import { BotonCrearBarra } from "@/components/editor-barra"
-import { BotonVerBarras } from "@/components/ver-barras-creadas"
+import { TarjetaBarras } from "@/components/ver-barras-creadas"
 import { useProfile } from "@/lib/profile-context"
 import { puedeEditarCocteles, puedeVerCostosCocteles } from "@/lib/cocteles-permisos"
 import { Input } from "@/components/ui/input"
@@ -47,7 +46,7 @@ import { costoPorTrago } from "@/lib/precio-barra"
 import { cn } from "@/lib/utils"
 
 export default function CoctelesPage() {
-  const { state, addCoctel, updateCoctel, deleteCoctel, setBarrasTemplates } = useStore()
+  const { state, addCoctel, updateCoctel, deleteCoctel } = useStore()
   const [selectedCoctel, setSelectedCoctel] = useState<Coctel | null>(null)
   // Cóctel abierto en el Dialog de detalle. Se busca siempre en
   // state.cocteles, así el detalle refleja las ediciones y se cierra solo si
@@ -258,20 +257,11 @@ export default function CoctelesPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {/* Las barras ya creadas (solo para ver; se editan en
-                Cotizaciones > Configuración > Barras). */}
-            <BotonVerBarras veCostos={veCostos} />
+            {/* Tarjeta "Barras": ver (y borrar) las barras creadas y "+"
+                para crear una, con el editor de Cotizaciones > Configuración. */}
+            <TarjetaBarras veCostos={veCostos} puedeEditar={puedeEditar} />
           {puedeEditar && (
           <>
-            {/* Mismo editor que Cotizaciones > Configuración > Barras. */}
-            <BotonCrearBarra
-              onCreada={(b) =>
-                setBarrasTemplates([
-                  ...(state.barrasTemplates || []).filter((t) => t.id !== b.id),
-                  { id: b.id, nombre: b.nombre, coctelesIncluidos: b.coctelesIncluidos, enCotizador: b.enCotizador },
-                ])
-              }
-            />
             <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" onClick={openConvertDialog}>
