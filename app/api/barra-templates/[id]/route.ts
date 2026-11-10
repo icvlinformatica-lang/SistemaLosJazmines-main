@@ -44,6 +44,11 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Editar una barra: solo Administración y Soporte (desde el 10/11/2026 se
+  // edita también desde Cócteles, adonde entra Barra).
+  if (!puedeEditarCocteles(await perfilDesdeRequest(request))) {
+    return NextResponse.json({ error: ERROR_SIN_PERMISO_COCTELES }, { status: 403 })
+  }
   try {
     const { id } = await params
     const body = await request.json()

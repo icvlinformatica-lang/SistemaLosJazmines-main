@@ -71,7 +71,7 @@ La flecha de volver de arriba lleva a la pantalla de la que se vino (como el "at
 
 ## Producción
 - **Recetas** (/admin/recetario): recetas de cocina con ingredientes, cantidades y "rinde para X personas". El costo por persona de un evento sale de acá.
-- **Cocteles** (/admin/cocteles): recetas de coctelería para la barra. La tarjeta "Barras | +": tocar "Barras" muestra las barras armadas ya creadas, con sus cócteles (y el costo por adulto para Administración), y deja borrarlas (no se borra una barra que use algún evento), y "+" crea una barra nueva. En qué salón aparece cada barra en el cotizador se elige en Cotizaciones > Configuración > Barras.
+- **Cocteles** (/admin/cocteles): recetas de coctelería para la barra. La tarjeta "Barras | +": tocar "Barras" muestra las barras armadas ya creadas, con sus cócteles (y el costo por adulto para Administración), y deja editarlas con el lápiz o borrarlas con el tachito (no se borra una barra que use algún evento; editar una barra no cambia los cócteles ni el costo de los eventos que ya la tienen), y "+" crea una barra nueva. En qué salón aparece cada barra en el cotizador se elige en Cotizaciones > Configuración > Barras.
 - **Guías Producción** (/eventos/produccion): guía de producción de cocina de cada evento (cantidades a producir según cantidad de invitados). Es solo para Cocina y Administración; Barra no entra acá.
 
 ## Próximos eventos del staff (/eventos/staff)

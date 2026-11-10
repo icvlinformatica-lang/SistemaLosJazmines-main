@@ -2,7 +2,7 @@
 
 // Tarjeta "Barras" de Cócteles (pedido de Rodrigo, 10/11/2026): un solo
 // bloque "Barras | +": tocar "Barras" abre las barras armadas ya creadas, con
-// sus cócteles y el tachito para borrarlas; "+" crea una barra nueva
+// sus cócteles, el lápiz para editarlas y el tachito para borrarlas; "+" crea una barra nueva
 // (el mismo editor de Cotizaciones > Configuración > Barras).
 //
 // Ver no guarda nada. El costo por adulto es la misma cuenta de "Crear barra"
@@ -13,7 +13,7 @@
 // cotizador de todos los salones.
 
 import { useMemo, useState } from "react"
-import { GlassWater, Trash2 } from "lucide-react"
+import { GlassWater, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -29,7 +29,7 @@ import { useStore } from "@/lib/store-context"
 import { formatCurrency } from "@/lib/store"
 import { costoPorTrago } from "@/lib/precio-barra"
 import { filasBarrasCreadas, type FilaBarraCreada } from "@/lib/barras-creadas"
-import { BotonCrearBarra } from "@/components/editor-barra"
+import { BotonCrearBarra, EditorBarra, type BarraParaEditar, type CoctelConCosto } from "@/components/editor-barra"
 
 export function TarjetaBarras({ veCostos, puedeEditar }: { veCostos: boolean; puedeEditar: boolean }) {
   const { state, setBarrasTemplates } = useStore()
@@ -37,6 +37,22 @@ export function TarjetaBarras({ veCostos, puedeEditar }: { veCostos: boolean; pu
   const [abierto, setAbierto] = useState(false)
   const [aBorrar, setABorrar] = useState<FilaBarraCreada | null>(null)
   const [borrando, setBorrando] = useState(false)
+  // Barra que se está editando (el mismo editor de "Crear barra").
+  const [editando, setEditando] = useState<BarraParaEditar | null>(null)
+
+  // La carta para el editor, con la misma cuenta de costo por trago.
+  const coctelesEditor = useMemo<CoctelConCosto[]>(
+    () =>
+      state.cocteles
+        .map((c) => ({
+          id: c.id,
+          nombre: c.nombre,
+          categoria: c.categoria || "Con Alcohol",
+          costoPorTrago: veCostos ? costoPorTrago(c, state.insumosBarra) : 0,
+        }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
+    [state.cocteles, state.insumosBarra, veCostos],
+  )
 
   const filas = useMemo(() => {
     const costos = veCostos
@@ -149,6 +165,26 @@ export function TarjetaBarras({ veCostos, puedeEditar }: { veCostos: boolean; pu
                   {puedeEditar && (
                     <button
                       type="button"
+                      onClick={() => {
+                        const t = (state.barrasTemplates || []).find((x) => x.id === f.id)
+                        // Solo los cócteles que siguen en la carta: los borrados no
+                        // se pueden tildar y no suman.
+                        setEditando({
+                          id: f.id,
+                          nombre: f.nombre,
+                          coctelesIncluidos: f.cocteles.map((c) => c.id),
+                          enCotizador: !!t?.enCotizador,
+                        })
+                      }}
+                      className="shrink-0 rounded p-1.5 hover:bg-muted"
+                      aria-label={`Editar ${f.nombre}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
+                  {puedeEditar && (
+                    <button
+                      type="button"
                       onClick={() => setABorrar(f)}
                       className="shrink-0 rounded p-1.5 text-red-600 hover:bg-red-50"
                       aria-label={`Borrar ${f.nombre}`}
@@ -181,6 +217,23 @@ export function TarjetaBarras({ veCostos, puedeEditar }: { veCostos: boolean; pu
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {editando && (
+        <EditorBarra
+          abierto={!!editando}
+          barra={editando}
+          cocteles={coctelesEditor}
+          margenBarra={0}
+          onCerrar={() => setEditando(null)}
+          onGuardada={(g) => {
+            setEditando(null)
+            setBarrasTemplates(
+              (state.barrasTemplates || []).map((t) =>
+                t.id === g.id ? { ...t, nombre: g.nombre, coctelesIncluidos: g.coctelesIncluidos } : t,
+              ),
+            )
+          }}
+        />
+      )}
     </>
   )
 }
