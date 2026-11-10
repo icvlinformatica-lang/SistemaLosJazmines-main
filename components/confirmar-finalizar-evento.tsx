@@ -9,7 +9,15 @@
 // (pedido de Rodrigo, 3/11/2026, para hacer bien los cierres de eventos y
 // que la caja quede con lo que corresponde). Es solo un aviso: se puede
 // finalizar igual. La cuenta es la de Caja Eventos (`calcularCajaEventos`).
-import { useMemo } from "react"
+//
+// Desde el 10/11/2026 (pedido del dueño) también ofrece cubrir los costos
+// antes de finalizar: "Pagar los costos y finalizar" paga de Caja Eventos todo
+// lo de "Falta marcar como pagado", con la misma cuenta y los mismos conceptos
+// de "Marcar como pagado" (lib/cubrir-costos-al-finalizar.ts). Los cambios de
+// pago viajan junto con el estado "completado" en el mismo guardado, así la
+// foto de costos del finalizado queda con todo pagado; después se anotan los
+// egresos, como en Caja Eventos.
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { AlertTriangle, ArrowUpRight, CheckCircle2, HandCoins, Wallet } from "lucide-react"
 import {
@@ -25,9 +33,13 @@ import {
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { avisoEventoTodaviaNoPaso } from "@/lib/lista-eventos"
 import { useStore } from "@/lib/store-context"
+import { useToast } from "@/hooks/use-toast"
+import { planCubrirCostos } from "@/lib/cubrir-costos-al-finalizar"
+import type { EventoGuardado } from "@/lib/store"
 import { calcularCajaEventos } from "@/lib/hooks/use-caja-eventos"
 import { pendientesAlFinalizar } from "@/lib/pendientes-al-finalizar"
 import { formatCurrency } from "@/lib/utils-financieros"
+import { buttonVariants } from "@/components/ui/button"
 
 export function ConfirmarFinalizarEventoDialog({
   open,
@@ -41,15 +53,59 @@ export function ConfirmarFinalizarEventoDialog({
   fechaEvento?: string
   /** Con el id, el diálogo dice qué falta cobrar o pagar de ese evento. */
   eventoId?: string
-  onConfirm: () => void
+  /**
+   * Finaliza el evento. Con `cambiosPago` (al elegir "Pagar los costos y
+   * finalizar") hay que guardarlos junto con el estado "completado" y devolver
+   * si se guardó: recién ahí se anotan los egresos en Caja Eventos.
+   */
+  onConfirm: (cambiosPago?: Partial<EventoGuardado>) => Promise<boolean | void> | boolean | void
 }) {
   const aviso = avisoEventoTodaviaNoPaso(fechaEvento, fechaNegocio())
-  const { state } = useStore()
+  const { state, syncGuard, addMovimientosCaja, updatePagoPersonal } = useStore()
+  const { toast } = useToast()
+  const [pagando, setPagando] = useState(false)
   // Solo se calcula con el diálogo abierto: recorre todos los eventos.
+  const caja = useMemo(() => (open && eventoId ? calcularCajaEventos(state) : null), [open, eventoId, state])
   const pendientes = useMemo(
-    () => (open && eventoId ? pendientesAlFinalizar(calcularCajaEventos(state), eventoId) : null),
-    [open, eventoId, state],
+    () => (caja && eventoId ? pendientesAlFinalizar(caja, eventoId) : null),
+    [caja, eventoId],
   )
+  const plan = useMemo(() => {
+    const evento = eventoId ? state.eventos.find((e) => e.id === eventoId) : undefined
+    if (!caja || !evento || !pendientes || pendientes.porPagar.length === 0) return null
+    return planCubrirCostos({
+      evento,
+      costos: caja.egresosPendientes.filter((e) => e.eventoId === eventoId),
+      movimientosCaja: state.movimientosCaja ?? [],
+      hoy: fechaNegocio(),
+      ahoraISO: new Date().toISOString(),
+    })
+  }, [caja, eventoId, pendientes, state.eventos, state.movimientosCaja])
+
+  // Paga los costos y finaliza: primero el evento (pagos + "completado", en un
+  // solo guardado) y después los egresos, igual que "Marcar como pagado".
+  const pagarYFinalizar = async () => {
+    if (!plan || pagando) return
+    setPagando(true)
+    try {
+      const ok = await onConfirm(plan.cambiosEvento)
+      if (ok === false) return
+      await syncGuard.run(async () => {
+        if (plan.movimientos.length > 0 && !(await addMovimientosCaja(plan.movimientos))) {
+          toast({
+            title: "Operación incompleta: revisar caja",
+            description: "El evento se finalizó con los costos marcados como pagados, pero no se pudieron anotar los pagos en Caja Eventos. Revisá el historial antes de volver a pagar.",
+            variant: "destructive",
+          })
+          return
+        }
+        for (const id of plan.compromisosPersonal) await updatePagoPersonal(id, { estado: "pagado", fechaPago: fechaNegocio() })
+        toast({ title: "Costos pagados", description: `Salieron ${formatCurrency(plan.totalPagado)} de Caja Eventos.` })
+      })
+    } finally {
+      setPagando(false)
+    }
+  }
   const fechaCorta = (f: string) => (f ? f.split("-").reverse().slice(0, 2).join("/") : "")
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -90,9 +146,19 @@ export function ConfirmarFinalizarEventoDialog({
                   ))}
                 </ul>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Si ya se pagó, marcalo en Costos del evento: así sale de Caja Eventos. También se puede después, con el
-                  evento finalizado.
+                  Con "Pagar los costos y finalizar" se pagan ahora desde Caja Eventos, con la fecha de hoy. Si ya se
+                  pagaron por otro lado o el monto es otro, marcalo en Costos del evento.
                 </p>
+                {plan && plan.omitidos.length > 0 && (
+                  <ul className="mt-1 flex flex-col gap-0.5 text-xs text-amber-900">
+                    {plan.omitidos.map((o) => (
+                      <li key={o.costo.id}>
+                        No se paga desde acá: {o.costo.tipo === "seña" ? "seña" : "saldo"} de {o.costo.servicioNombre}{" "}
+                        ({o.motivo === "seña_con_candado" ? "la seña todavía tiene candado: se paga con PIN en Costos del evento" : "primero hay que pagar la seña"}).
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <Link
                   href={`/eventos/costos?id=${encodeURIComponent(eventoId)}`}
                   prefetch={false}
@@ -136,11 +202,28 @@ export function ConfirmarFinalizarEventoDialog({
             )}
           </div>
         )}
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-            {pendientes && !pendientes.alDia ? "Finalizar igual" : "Sí, finalizar"}
+        <AlertDialogFooter className="sm:flex-wrap">
+          <AlertDialogCancel disabled={pagando}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => void onConfirm()}
+            disabled={pagando}
+            className={
+              plan && plan.movimientos.length > 0
+                ? `${buttonVariants({ variant: "outline" })} text-foreground`
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"
+            }
+          >
+            {plan && plan.movimientos.length > 0 ? "Finalizar sin pagar" : pendientes && !pendientes.alDia ? "Finalizar igual" : "Sí, finalizar"}
           </AlertDialogAction>
+          {plan && plan.movimientos.length > 0 && (
+            <AlertDialogAction
+              onClick={() => void pagarYFinalizar()}
+              disabled={pagando}
+              className="h-auto whitespace-normal bg-emerald-600 py-2 text-white hover:bg-emerald-700"
+            >
+              Pagar los costos y finalizar ({formatCurrency(plan.totalPagado)})
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
