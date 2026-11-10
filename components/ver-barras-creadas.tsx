@@ -1,9 +1,9 @@
 "use client"
 
 // Tarjeta "Barras" de Cócteles (pedido de Rodrigo, 10/11/2026): un solo
-// bloque con dos botones adentro, "Ver" (las barras armadas ya creadas, con
-// sus cócteles, y el tachito para borrarlas) y "+" (crear una barra nueva,
-// el mismo editor de Cotizaciones > Configuración > Barras).
+// bloque "Barras | +": tocar "Barras" abre las barras armadas ya creadas, con
+// sus cócteles y el tachito para borrarlas; "+" crea una barra nueva
+// (el mismo editor de Cotizaciones > Configuración > Barras).
 //
 // Ver no guarda nada. El costo por adulto es la misma cuenta de "Crear barra"
 // (1 trago de cada cóctel, lib/precio-barra-cotizador.ts, sin ganancia) y
@@ -70,16 +70,22 @@ export function TarjetaBarras({ veCostos, puedeEditar }: { veCostos: boolean; pu
 
   return (
     <>
-      <div className="flex h-10 items-center gap-1 rounded-md border border-input bg-background pl-3 pr-1 shadow-xs">
-        <GlassWater className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Barras</span>
-        <Badge variant="secondary" className="tabular-nums">
-          {filas.length}
-        </Badge>
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-        <Button size="sm" variant="ghost" className="h-8 px-2.5" onClick={() => setAbierto(true)}>
-          Ver
+      {/* "Barras" mismo abre la lista; el "+" crea una nueva. */}
+      <div className="flex h-10 items-center gap-1 rounded-md border border-input bg-background px-1 shadow-xs">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 gap-2 px-2"
+          onClick={() => setAbierto(true)}
+          aria-label="Ver las barras creadas"
+        >
+          <GlassWater className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Barras</span>
+          <Badge variant="secondary" className="tabular-nums">
+            {filas.length}
+          </Badge>
         </Button>
+        {puedeEditar && <span className="h-5 w-px bg-border" aria-hidden />}
         {puedeEditar && (
           <BotonCrearBarra
             compacto
