@@ -99,8 +99,8 @@ interface StoreContextType {
   updateCoctel: (id: string, coctel: Partial<Coctel>) => void
   deleteCoctel: (id: string) => void
   setCocteles: (cocteles: Coctel[]) => void
-  /** Solo memoria: la pantalla de Cócteles ya guardó en el servidor y avisa
-   *  acá para que el planificador vea las barras al día sin recargar. */
+  /** Solo memoria: "Crear barra" de Cócteles ya guardó en el servidor y avisa
+   *  acá para que "Ver barras" la muestre sin recargar. */
   setBarrasTemplates: (barras: BarraTemplate[]) => void
   // Barras Templates
   addBarraTemplate: (template: Omit<BarraTemplate, "id">) => void

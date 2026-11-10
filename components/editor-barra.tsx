@@ -200,7 +200,7 @@ export function EditorBarra({
  * Botón "Crear barra" para Cócteles: trae los costos de la carta y el margen
  * guardado de /api/administracion/cotizador-config y abre el mismo editor.
  */
-export function BotonCrearBarra() {
+export function BotonCrearBarra({ onCreada }: { onCreada?: (barra: BarraParaEditar) => void } = {}) {
   const { toast } = useToast()
   const [abierto, setAbierto] = useState(false)
   const [datos, setDatos] = useState<{ cocteles: CoctelConCosto[]; margenBarra: number } | null>(null)
@@ -239,7 +239,10 @@ export function BotonCrearBarra() {
           cocteles={datos.cocteles}
           margenBarra={datos.margenBarra}
           onCerrar={() => setAbierto(false)}
-          onGuardada={() => setAbierto(false)}
+          onGuardada={(guardada) => {
+            setAbierto(false)
+            onCreada?.(guardada)
+          }}
         />
       )}
     </>
