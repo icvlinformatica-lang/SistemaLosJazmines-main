@@ -2,20 +2,23 @@ export const dynamic = 'force-dynamic'
 import { sql, generateId } from "@/lib/db"
 import { NextResponse } from "next/server"
 
-// en_cotizador (scripts/014) se lee con to_jsonb para no romper si la
-// migración todavía no se aplicó: en ese caso vale false.
+// en_cotizador (scripts/014) y en_planificador (scripts/029) se leen con
+// to_jsonb para no romper si la migración todavía no se aplicó: en ese caso
+// valen false.
 const aTemplate = (data: Record<string, unknown>) => ({
   id: data.id,
   nombre: data.nombre,
   coctelesIncluidos: (data.cocteles_incluidos as string[] | null) || [],
   enCotizador: data.en_cotizador === true || data.en_cotizador === "true",
+  enPlanificador: data.en_planificador === true || data.en_planificador === "true",
 })
 
 // GET all barra templates
 export async function GET() {
   try {
     const data = await sql`
-      SELECT *, (to_jsonb(barra_templates) ->> 'en_cotizador') AS en_cotizador
+      SELECT *, (to_jsonb(barra_templates) ->> 'en_cotizador') AS en_cotizador,
+        (to_jsonb(barra_templates) ->> 'en_planificador') AS en_planificador
       FROM barra_templates ORDER BY nombre ASC
     `
     return NextResponse.json(data.map(aTemplate))

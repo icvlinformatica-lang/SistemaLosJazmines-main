@@ -1,14 +1,18 @@
 export const dynamic = 'force-dynamic'
 import { sql } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { perfilDesdeRequest } from "@/lib/stock-salones-server"
+import { puedeEditarCocteles, ERROR_SIN_PERMISO_COCTELES } from "@/lib/cocteles-permisos"
 
-// en_cotizador (scripts/014) se lee con to_jsonb para no romper si la
-// migración todavía no se aplicó: en ese caso vale false.
+// en_cotizador (scripts/014) y en_planificador (scripts/029) se leen con
+// to_jsonb para no romper si la migración todavía no se aplicó: en ese caso
+// valen false.
 const aTemplate = (data: Record<string, unknown>) => ({
   id: data.id,
   nombre: data.nombre,
   coctelesIncluidos: (data.cocteles_incluidos as string[] | null) || [],
   enCotizador: data.en_cotizador === true || data.en_cotizador === "true",
+  enPlanificador: data.en_planificador === true || data.en_planificador === "true",
 })
 
 // GET single barra template
@@ -20,7 +24,8 @@ export async function GET(
     const { id } = await params
 
     const [data] = await sql`
-      SELECT *, (to_jsonb(barra_templates) ->> 'en_cotizador') AS en_cotizador
+      SELECT *, (to_jsonb(barra_templates) ->> 'en_cotizador') AS en_cotizador,
+        (to_jsonb(barra_templates) ->> 'en_planificador') AS en_planificador
       FROM barra_templates WHERE id = ${id}
     `
 
@@ -45,6 +50,32 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
+
+    // "Generar contrato" (Cócteles): solo Administración y Soporte. Va
+    // separado del resto para no pisar el nombre ni los cócteles.
+    if (typeof body.enPlanificador === "boolean") {
+      if (!puedeEditarCocteles(await perfilDesdeRequest(request))) {
+        return NextResponse.json({ error: ERROR_SIN_PERMISO_COCTELES }, { status: 403 })
+      }
+      try {
+        const [fila] = await sql`
+          UPDATE barra_templates SET en_planificador = ${body.enPlanificador}, updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING *, (to_jsonb(barra_templates) ->> 'en_cotizador') AS en_cotizador
+        `
+        if (!fila) return NextResponse.json({ error: "Barra template not found" }, { status: 404 })
+        return NextResponse.json(aTemplate(fila))
+      } catch (err) {
+        // 42703 = la columna no existe: falta aplicar scripts/029.
+        if ((err as { code?: string })?.code === "42703") {
+          return NextResponse.json(
+            { error: "Falta aplicar la migración 029 en la base para guardar esto.", faltaMigracion: true },
+            { status: 409 },
+          )
+        }
+        throw err
+      }
+    }
 
     const [actual] = await sql`SELECT nombre, cocteles_incluidos FROM barra_templates WHERE id = ${id}`
     if (!actual) {
