@@ -1566,6 +1566,25 @@ function CostosEventoContent() {
               )}
             </>
           )}
+          {/* Acceso directo a Cobrar cuota con este evento ya elegido (pedido del
+              dueño, 10/11/2026), para registrar ahí las cuotas que pagó el
+              cliente. Con ?evento= también abre los finalizados, que no salen
+              en el buscador. */}
+          {cuotas.length > 0 && (
+            <div className="flex justify-end border-t pt-3">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900"
+              >
+                <Link href={`/eventos/pagos?evento=${encodeURIComponent(evento.id)}`} prefetch={false}>
+                  <HandCoins className="h-4 w-4" />
+                  Registrar cuotas
+                </Link>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1597,16 +1616,6 @@ function CostosEventoContent() {
         </CardContent>
       </Card>
 
-      {/* Acceso directo a Cobrar cuota con este evento ya elegido (pedido del
-          dueño, 10/11/2026): para registrar ahí las cuotas que pagó el
-          cliente. Con ?evento= también abre los finalizados, que no salen en
-          el buscador. */}
-      <Button asChild variant="outline" className="w-full gap-2">
-        <Link href={`/eventos/pagos?evento=${encodeURIComponent(evento.id)}`} prefetch={false}>
-          <HandCoins className="h-4 w-4" />
-          Registrar cuotas en Cobrar cuota
-        </Link>
-      </Button>
     </div>
   )
 }
