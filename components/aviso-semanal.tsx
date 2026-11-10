@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { SalonDot } from "@/components/salon-badge"
 import { ConfirmarFinalizarEventoDialog } from "@/components/confirmar-finalizar-evento"
 import { useStore } from "@/lib/store-context"
-import { salonLabel } from "@/lib/store"
+import { salonLabel, type EventoGuardado } from "@/lib/store"
 import { usuarioActivo } from "@/lib/profile-context"
 import { fechaNegocio } from "@/lib/ipc-cuotas"
 import { CLAVE_VIENEN_A_PAGAR, cargarResumenVienenAPagar } from "@/components/vienen-a-pagar-modal"
@@ -110,13 +110,15 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
 
   // Mismo camino que "Finalizar" de la Lista de eventos: el store congela los
   // costos al pasar a "completado".
-  const finalizar = async (id: string) => {
+  // cambiosPago: los costos pagados al finalizar, en el mismo guardado.
+  const finalizar = async (id: string, cambiosPago?: Partial<EventoGuardado>) => {
     setFinalizando(id)
     setError(null)
-    const ok = await updateEvento(id, { estado: "completado" })
+    const ok = await updateEvento(id, { ...cambiosPago, estado: "completado" })
     setFinalizando(null)
     if (ok) setFinalizados((prev) => new Set(prev).add(id))
     else setError("No se pudo finalizar. Probá de nuevo o hacelo desde la Lista de eventos.")
+    return ok
   }
 
   // Mismo camino que "Eliminar" de la Lista: va a la papelera (se puede
@@ -143,10 +145,10 @@ export function AvisoSemanalContenido({ onIr }: { onIr?: () => void }) {
         }}
         fechaEvento={confirmandoFinalizar?.fecha}
         eventoId={confirmandoFinalizar?.id}
-        onConfirm={() => {
+        onConfirm={(cambiosPago) => {
           const id = confirmandoFinalizar?.id
           setConfirmandoFinalizar(null)
-          if (id) finalizar(id)
+          return id ? finalizar(id, cambiosPago) : false
         }}
       />
       <section className="flex flex-col gap-2">

@@ -39,6 +39,7 @@ import { ListTree, Scale, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Walle
 import { urlCostosDesdeCaja } from "@/lib/volver-desde-costos"
 import { avisosSaldoCajaEventos } from "@/lib/avisos-saldo-caja-eventos"
 import { tablaSaldoCajaEventos } from "@/lib/tabla-saldo-caja-eventos"
+import { eventosNoFinalizados, sinFinalizados } from "@/lib/desglose-sin-finalizados"
 import { calcularCostoEventoCajaEventos } from "@/lib/costo-evento"
 import type { EventoGuardado } from "@/lib/store"
 
@@ -198,13 +199,27 @@ export function SaldoHerramientasEventos({
   // y lo que entró a Caja Eventos. Se calcula solo con el desglose abierto.
   const tabla = useMemo(() => {
     if (!desgloseAbierto) return null
+    // Los finalizados no se listan (lib/desglose-sin-finalizados.ts).
     return tablaSaldoCajaEventos(
       state.movimientosCaja || [],
-      state.eventos || [],
+      eventosNoFinalizados(state.eventos || []),
       salonFiltro !== "todos" ? salonFiltro : null,
       (ev) => calcularCostoEventoCajaEventos(ev as EventoGuardado, state).costoTotalEvento,
     )
   }, [desgloseAbierto, state, salonFiltro])
+
+  // Pestaña Cuotas sin los finalizados; lo que dejaron sigue en el saldo.
+  const cuotasEnCurso = useMemo(
+    () => sinFinalizados(desglose.filasEventos, new Map((state.eventos || []).map((e) => [e.id, e.estado]))),
+    [desglose.filasEventos, state.eventos],
+  )
+  const notaFinalizados =
+    cuotasEnCurso.finalizados > 0 ? (
+      <p className="text-xs text-muted-foreground">
+        No se muestran {cuotasEnCurso.finalizados === 1 ? "el evento finalizado" : `los ${cuotasEnCurso.finalizados} eventos finalizados`}
+        . Lo que {cuotasEnCurso.finalizados === 1 ? "dejó" : "dejaron"} en Caja Eventos ({formatCurrency(cuotasEnCurso.netoFinalizados)}) sigue en el saldo.
+      </p>
+    ) : null
 
   const cantidadAvisos =
     avisos.cuotasRepetidas.length + avisos.todoACajaEventos.length + avisos.finalizadosSinPagar.length
@@ -641,7 +656,7 @@ export function SaldoHerramientasEventos({
                     </div>
                     <p className="mt-1.5 text-xs text-muted-foreground">
                       "Seña", "Cuotas" y "Total pagado" son lo que entró a las dos cajas. "Costo" es el de Costos del evento
-                      (comida, bebida, servicios y sueldos; el de los finalizados, el guardado al finalizar). "Entró a Caja
+                      (comida, bebida, servicios y sueldos). "Entró a Caja
                       Eventos" es la parte del total pagado que vino a esta caja. "Ver costos" abre Costos del evento, para marcar
                       lo que ya se pagó antes de finalizarlo.
                     </p>
@@ -649,21 +664,22 @@ export function SaldoHerramientasEventos({
                 )}
 
                 {(!tabla || tabla.filas.length === 0) && (
-                  <p className="text-sm text-muted-foreground">Sin cobros de eventos en esta caja.</p>
+                  <p className="text-sm text-muted-foreground">Sin cobros de eventos en curso en esta caja.</p>
                 )}
+                {notaFinalizados}
               </TabsContent>
 
               <TabsContent value="cuotas" className="flex flex-col gap-4 min-w-0">
                 {/* Por evento */}
                 <section>
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                    Señas, cuotas y pagos por evento ({desglose.filasEventos.length})
+                    Señas, cuotas y pagos por evento ({cuotasEnCurso.visibles.length})
                   </h3>
-                  {desglose.filasEventos.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Sin movimientos de eventos.</p>
+                  {cuotasEnCurso.visibles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sin movimientos de eventos en curso.</p>
                   ) : (
                     <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                      {desglose.filasEventos.map((f) => (
+                      {cuotasEnCurso.visibles.map((f) => (
                         <div key={f.eventoId} className="flex items-start gap-3 px-3 py-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{f.nombre}</p>
@@ -707,7 +723,7 @@ export function SaldoHerramientasEventos({
                     </div>
                   )}
                 </section>
-
+                {notaFinalizados}
               </TabsContent>
             </Tabs>
 

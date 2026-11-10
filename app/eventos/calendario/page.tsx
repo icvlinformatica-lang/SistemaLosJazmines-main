@@ -1862,12 +1862,15 @@ export default function CalendarioPage() {
         onOpenChange={setFinalizarDialogOpen}
         fechaEvento={selectedEvento?.fecha}
         eventoId={selectedEvento?.id}
-        onConfirm={async () => {
-          if (!selectedEvento) return
+        onConfirm={async (cambiosPago) => {
+          if (!selectedEvento) return false
           setFinalizarDialogOpen(false)
-          await updateEvento(selectedEvento.id, { estado: "completado" })
+          // cambiosPago: los costos pagados al finalizar, en el mismo guardado.
+          const ok = await updateEvento(selectedEvento.id, { ...cambiosPago, estado: "completado" })
+          if (!ok) return false
           toast({ title: "Evento finalizado", description: "El evento fue marcado como completado." })
           setShowDetailDialog(false)
+          return true
         }}
       />
 

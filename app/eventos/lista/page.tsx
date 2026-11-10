@@ -454,7 +454,7 @@ export default function EventosListaPage() {
 
   // Wrapper para actualizar evento en DB + sync local
   const updateEvento = async (id: string, cambios: Partial<EventoGuardado>) => {
-    await actualizarEventoDB(id, cambios)
+    return await actualizarEventoDB(id, cambios)
   }
 
   const [searchQuery, setSearchQuery] = useState("")
@@ -512,13 +512,17 @@ export default function EventosListaPage() {
   const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false)
   const [eventoAFinalizarId, setEventoAFinalizarId] = useState<string | null>(null)
 
-  const handleFinalizar = async (eventoId: string) => {
+  // cambiosPago: los costos pagados al finalizar (ConfirmarFinalizarEventoDialog),
+  // que se guardan junto con el estado para que la foto quede con todo pagado.
+  const handleFinalizar = async (eventoId: string, cambiosPago?: Partial<EventoGuardado>) => {
     setFinalizandoId(eventoId)
-    await updateEvento(eventoId, { estado: "completado" })
+    const ok = await updateEvento(eventoId, { ...cambiosPago, estado: "completado" })
     setFinalizandoId(null)
+    if (!ok) return false
     setFinalizadoAnimacion(eventoId)
     // Mostrar animacion 2.5s luego ocultar la fila
     setTimeout(() => setFinalizadoAnimacion(null), 2500)
+    return true
   }
 
   // Pedimos confirmacion antes de finalizar: un click accidental archivaria
@@ -528,11 +532,12 @@ export default function EventosListaPage() {
     setFinalizarDialogOpen(true)
   }
 
-  const confirmFinalizar = () => {
-    if (!eventoAFinalizarId) return
+  const confirmFinalizar = (cambiosPago?: Partial<EventoGuardado>) => {
+    if (!eventoAFinalizarId) return false
+    const id = eventoAFinalizarId
     setFinalizarDialogOpen(false)
-    handleFinalizar(eventoAFinalizarId)
     setEventoAFinalizarId(null)
+    return handleFinalizar(id, cambiosPago)
   }
 
   // Buscador de eventos en el selector de salón: encuentra por nombre o fecha
