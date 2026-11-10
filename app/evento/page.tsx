@@ -113,9 +113,11 @@ import {
   AlertTriangle,
   ClipboardList,
   TrendingUp,
+  GlassWater,
 } from "lucide-react"
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
+import { atajosBarras, aplicarAtajoBarra } from "@/lib/barras-creadas"
 import { ContratoPreviewCard } from "@/components/contrato-preview-card"
 import { cambiosAlImprimirContrato, motivoParaNoImprimir } from "@/lib/generacion-contrato"
 import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
@@ -1364,12 +1366,24 @@ function EventoPageContent() {
   const coctelesEventoSeleccionados = barras[0]?.coctelesIncluidos || []
 
   const toggleCoctelEvento = (coctelId: string) => {
-    const barraActual = barras[0]
-    const seleccionados = barraActual?.coctelesIncluidos || []
-    const nuevos = seleccionados.includes(coctelId)
-      ? seleccionados.filter((id) => id !== coctelId)
-      : [...seleccionados, coctelId]
+    const seleccionados = barras[0]?.coctelesIncluidos || []
+    setCoctelesEvento(
+      seleccionados.includes(coctelId)
+        ? seleccionados.filter((id) => id !== coctelId)
+        : [...seleccionados, coctelId],
+    )
+  }
 
+  // Atajos de barras (lib/barras-creadas.ts): tocar una barra tilda sus
+  // cócteles, o los saca si ya estaban todos. Solo tilda: misma cuenta.
+  const atajosBarrasEvento = atajosBarras(
+    state.barrasTemplates || [],
+    (state.cocteles || []).map((c) => c.id),
+    coctelesEventoSeleccionados,
+  )
+
+  const setCoctelesEvento = (nuevos: string[]) => {
+    const barraActual = barras[0]
     if (nuevos.length === 0) {
       // Sin cocteles: limpiar las barras del evento
       updateEventoActual({ barras: [] })
@@ -2125,6 +2139,34 @@ function EventoPageContent() {
           editLocked={seccionBloqueadaPorEdicion("barras")}
           onModificar={() => pedirDesbloqueo("barras", "la Barra del Evento")}
         >
+          {atajosBarrasEvento.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                Barras: tocá una para tildar sus cócteles (otra vez, para sacarlos)
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {atajosBarrasEvento.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    disabled={esBloqueado}
+                    aria-pressed={a.activa}
+                    onClick={() => setCoctelesEvento(aplicarAtajoBarra(coctelesEventoSeleccionados, a))}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50
+                      ${a.activa
+                        ? "border-violet-600 bg-violet-600 text-white"
+                        : "border-violet-200 bg-violet-500/5 text-violet-800 hover:border-violet-600"}`}
+                  >
+                    <GlassWater className="h-3.5 w-3.5" />
+                    {a.nombre}
+                    <span className={`text-xs tabular-nums ${a.activa ? "text-white/80" : "text-violet-600"}`}>
+                      {a.cocteles.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <CoctelTable
             cocteles={state.cocteles}
             coctelesSeleccionados={coctelesEventoSeleccionados}
