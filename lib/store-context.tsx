@@ -99,6 +99,9 @@ interface StoreContextType {
   updateCoctel: (id: string, coctel: Partial<Coctel>) => void
   deleteCoctel: (id: string) => void
   setCocteles: (cocteles: Coctel[]) => void
+  /** Solo memoria: "Crear barra" de Cócteles ya guardó en el servidor y avisa
+   *  acá para que "Ver barras" la muestre sin recargar. */
+  setBarrasTemplates: (barras: BarraTemplate[]) => void
   // Barras Templates
   addBarraTemplate: (template: Omit<BarraTemplate, "id">) => void
   updateBarraTemplate: (id: string, template: Partial<BarraTemplate>) => void
@@ -850,6 +853,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setCocteles = (cocteles: Coctel[]) => {
     setState((prev) => ({ ...prev, cocteles }))
+  }
+
+  const setBarrasTemplates = (barrasTemplates: BarraTemplate[]) => {
+    setState((prev) => ({ ...prev, barrasTemplates }))
   }
 
   // === Barras Templates - Synced with API ===
@@ -2011,6 +2018,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateCoctel: (...args) => syncGuard.run(() => updateCoctel(...args)),
         deleteCoctel: (...args) => syncGuard.run(() => deleteCoctel(...args)),
         setCocteles,
+        setBarrasTemplates,
         addBarraTemplate,
         updateBarraTemplate,
         deleteBarraTemplate,
