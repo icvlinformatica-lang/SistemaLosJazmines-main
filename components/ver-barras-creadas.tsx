@@ -127,70 +127,79 @@ export function TarjetaBarras({ veCostos, puedeEditar }: { veCostos: boolean; pu
           {filas.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Todavía no hay barras creadas.</p>
           ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
+            // Cada barra es una tarjeta con la misma grilla: nombre y cantidad a
+            // la izquierda, costo y botones a la derecha, y abajo los cócteles
+            // todos con el mismo estilo (en mayúsculas, como se cargan casi todos).
+            <ul className="space-y-2">
               {filas.map((f) => (
-                <li key={f.id} className="flex items-start gap-2 px-3 py-2.5">
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                      <p className="font-medium">{f.nombre}</p>
-                      <p className="text-xs text-muted-foreground tabular-nums">
+                <li key={f.id} className="rounded-lg border border-border bg-card p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold leading-tight">{f.nombre}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
                         {f.cocteles.length} {f.cocteles.length === 1 ? "cóctel" : "cócteles"}
-                        {veCostos && (
-                          <>
-                            {" · costo "}
-                            <span className="font-semibold text-foreground">{formatCurrency(f.costoPorAdulto)}</span>
-                            {" por adulto"}
-                          </>
-                        )}
                       </p>
                     </div>
-                    {f.cocteles.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {f.cocteles.map((c) => (
-                          <Badge key={c.id} variant="outline" className="font-normal">
-                            {c.nombre}
-                          </Badge>
-                        ))}
+                    {veCostos && (
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold leading-tight tabular-nums">
+                          {formatCurrency(f.costoPorAdulto)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">costo por adulto</p>
                       </div>
-                    ) : (
-                      <p className="text-xs text-amber-700">Sus cócteles ya no están en la carta.</p>
                     )}
-                    {f.borrados > 0 && f.cocteles.length > 0 && (
-                      <p className="text-xs text-amber-700">
-                        {f.borrados === 1 ? "1 cóctel ya no está" : `${f.borrados} cócteles ya no están`} en la carta (no
-                        suma).
-                      </p>
+                    {puedeEditar && (
+                      <div className="flex shrink-0 items-center gap-1 border-l border-border pl-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const t = (state.barrasTemplates || []).find((x) => x.id === f.id)
+                            // Solo los cócteles que siguen en la carta: los borrados no
+                            // se pueden tildar y no suman.
+                            setEditando({
+                              id: f.id,
+                              nombre: f.nombre,
+                              coctelesIncluidos: f.cocteles.map((c) => c.id),
+                              enCotizador: !!t?.enCotizador,
+                            })
+                          }}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                          aria-label={`Editar ${f.nombre}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setABorrar(f)}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-red-600 hover:bg-red-50"
+                          aria-label={`Borrar ${f.nombre}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
-                  {puedeEditar && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const t = (state.barrasTemplates || []).find((x) => x.id === f.id)
-                        // Solo los cócteles que siguen en la carta: los borrados no
-                        // se pueden tildar y no suman.
-                        setEditando({
-                          id: f.id,
-                          nombre: f.nombre,
-                          coctelesIncluidos: f.cocteles.map((c) => c.id),
-                          enCotizador: !!t?.enCotizador,
-                        })
-                      }}
-                      className="shrink-0 rounded p-1.5 hover:bg-muted"
-                      aria-label={`Editar ${f.nombre}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                  {f.cocteles.length > 0 ? (
+                    <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-border pt-2.5">
+                      {f.cocteles.map((c) => (
+                        <span
+                          key={c.id}
+                          className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-foreground/80"
+                        >
+                          {c.nombre}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2.5 border-t border-border pt-2.5 text-xs text-amber-700">
+                      Sus cócteles ya no están en la carta.
+                    </p>
                   )}
-                  {puedeEditar && (
-                    <button
-                      type="button"
-                      onClick={() => setABorrar(f)}
-                      className="shrink-0 rounded p-1.5 text-red-600 hover:bg-red-50"
-                      aria-label={`Borrar ${f.nombre}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  {f.borrados > 0 && f.cocteles.length > 0 && (
+                    <p className="mt-2 text-xs text-amber-700">
+                      {f.borrados === 1 ? "1 cóctel ya no está" : `${f.borrados} cócteles ya no están`} en la carta (no
+                      suma).
+                    </p>
                   )}
                 </li>
               ))}
