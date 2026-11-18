@@ -1,5 +1,6 @@
 "use client"
 
+import { AvisoCargaFallida } from "@/components/aviso-carga-fallida"
 import { useState } from "react"
 import { useStore } from "@/lib/store-context"
 import {
@@ -46,7 +47,7 @@ import { costoPorTrago } from "@/lib/precio-barra"
 import { cn } from "@/lib/utils"
 
 export default function CoctelesPage() {
-  const { state, addCoctel, updateCoctel, deleteCoctel } = useStore()
+  const { state, addCoctel, updateCoctel, deleteCoctel, catalogosSinCargar } = useStore()
   const [selectedCoctel, setSelectedCoctel] = useState<Coctel | null>(null)
   // Cóctel abierto en el Dialog de detalle. Se busca siempre en
   // state.cocteles, así el detalle refleja las ediciones y se cierra solo si
@@ -241,6 +242,7 @@ export default function CoctelesPage() {
   return (
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <AvisoCargaFallida catalogos={["cocteles", "insumosBarra", "barrasTemplates"]} />
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Carta de Cocteles</h1>
@@ -638,7 +640,11 @@ export default function CoctelesPage() {
 
         {filteredCocteles.length === 0 && (
           <p className="py-12 text-center text-sm text-muted-foreground">
-            {state.cocteles.length === 0 ? "Todavía no hay cócteles cargados." : "Ningún cóctel coincide con la búsqueda."}
+            {state.cocteles.length === 0
+              ? catalogosSinCargar.includes("cocteles")
+                ? "No se pudieron cargar los cócteles. Tocá Reintentar arriba."
+                : "Todavía no hay cócteles cargados."
+              : "Ningún cóctel coincide con la búsqueda."}
           </p>
         )}
 

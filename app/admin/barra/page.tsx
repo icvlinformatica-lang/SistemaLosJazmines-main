@@ -1,5 +1,6 @@
 "use client"
 
+import { AvisoCargaFallida } from "@/components/aviso-carga-fallida"
 import { useState, Suspense } from "react"
 
 import { useStore } from "@/lib/store-context"
@@ -192,6 +193,7 @@ function BarraAlmacenContent() {
     // En escritorio (lg) la pantalla usa todo el ancho y la cabecera va en
     // una sola línea, para que la tabla tenga lugar. En el celular queda igual.
     <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 lg:max-w-none lg:py-4">
+      <AvisoCargaFallida catalogos={["insumosBarra"]} />
       <div className="mb-8 lg:mb-3 lg:flex lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2">
         <h1 className="text-2xl font-bold tracking-tight lg:text-xl">Almacen de Insumos de Barra</h1>
             {/* Avisa si hay insumos cuyo costo está mal calculado por
