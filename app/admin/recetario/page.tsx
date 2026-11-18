@@ -1,5 +1,6 @@
 "use client"
 // cache-bust: v6 - isEditMode derived from editingRecetaId
+import { AvisoCargaFallida } from "@/components/aviso-carga-fallida"
 import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useStore } from "@/lib/store-context"
@@ -170,7 +171,7 @@ function CapacityCarousel({
 }
 
 export default function RecetarioPage() {
-  const { state, addReceta, updateReceta, deleteReceta } = useStore()
+  const { state, addReceta, updateReceta, deleteReceta, catalogosSinCargar } = useStore()
   const [selectedReceta, setSelectedReceta] = useState<Receta | null>(null)
   // Receta abierta en el Dialog de detalle. Se busca siempre en state.recetas,
   // así el detalle refleja las ediciones y se cierra solo si se elimina.
@@ -342,6 +343,7 @@ export default function RecetarioPage() {
   return (
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <AvisoCargaFallida catalogos={["recetas", "insumos"]} />
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Laboratorio de Sabores</h1>
@@ -833,7 +835,11 @@ export default function RecetarioPage() {
 
         {recetasFiltradas.length === 0 && (
           <p className="py-12 text-center text-sm text-muted-foreground">
-            {state.recetas.length === 0 ? "Todavía no hay recetas cargadas." : "Ninguna receta coincide con la búsqueda."}
+            {state.recetas.length === 0
+              ? catalogosSinCargar.includes("recetas")
+                ? "No se pudieron cargar las recetas. Tocá Reintentar arriba."
+                : "Todavía no hay recetas cargadas."
+              : "Ninguna receta coincide con la búsqueda."}
           </p>
         )}
 

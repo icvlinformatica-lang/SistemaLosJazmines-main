@@ -62,6 +62,13 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useClock } from "@/lib/clock-context"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
+import {
+  aplicarRecarga,
+  catalogosFallidos,
+  ESPERAS_REINTENTO_CARGA,
+  URL_CATALOGO,
+  type CatalogoCarga,
+} from "@/lib/catalogos-carga"
 import { HEADER_PIN_ELIMINAR_EVENTO } from "@/lib/eliminar-evento-pin"
 
 interface StoreContextType {
@@ -127,6 +134,12 @@ interface StoreContextType {
   serviciosSincronizados: boolean
   /** Vuelve a pedir los servicios a la base. Devuelve true si lo logró. */
   recargarServicios: () => Promise<boolean>
+  /** Catálogos que no llegaron de la base al abrir el sistema (falló la
+   *  conexión). Mientras estén acá, sus pantallas avisan "No se pudo
+   *  conectar" en vez de decir que no hay nada (lib/catalogos-carga.ts). */
+  catalogosSinCargar: CatalogoCarga[]
+  /** Vuelve a pedir los catálogos que faltan. Devuelve true si llegaron todos. */
+  recargarCatalogos: () => Promise<boolean>
   // Costos Operativos
   addCostoOperativo: (costo: Omit<CostoOperativo, "id">) => void
   /**
@@ -272,9 +285,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const guardadosServicio = useRef(new Map<string, Promise<void>>())
   // ¿La lista de servicios vino de la base? (ver serviciosSincronizados)
   const [serviciosSincronizados, setServiciosSincronizados] = useState(false)
+  // Catálogos que no llegaron al abrir (ver catalogosSinCargar)
+  const [catalogosSinCargar, setCatalogosSinCargar] = useState<CatalogoCarga[]>([])
+  const catalogosSinCargarRef = useRef<CatalogoCarga[]>([])
+  catalogosSinCargarRef.current = catalogosSinCargar
+  const recargaCatalogosEnCurso = useRef<Promise<boolean> | null>(null)
   const { soloLectura } = useClock()
   const applyRemoteState = useCallback((baseline: AppState, updates: RemoteStoreData, revision: number) => {
     if (soloLectura) return
+    // Si el refresco de 15 s trajo un catálogo que había fallado al abrir,
+    // deja de estar pendiente (ver catalogosSinCargar).
+    if (syncGuard.isCurrent(revision) && catalogosSinCargarRef.current.length > 0) {
+      const { siguenPendientes } = aplicarRecarga(
+        catalogosSinCargarRef.current,
+        updates as Partial<Record<CatalogoCarga, unknown>>,
+      )
+      if (siguenPendientes.length !== catalogosSinCargarRef.current.length) {
+        catalogosSinCargarRef.current = siguenPendientes
+        setCatalogosSinCargar(siguenPendientes)
+      }
+    }
     setState((prev) => {
       if (!syncGuard.isCurrent(revision)) return prev
       const next = mergeRemoteStore(prev, baseline, updates)
@@ -515,11 +545,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setState({
         ...localState,
-        insumos: insumosRes ?? localState.insumos,
-        insumosBarra: insumosBarraRes ?? localState.insumosBarra,
-        recetas: recetasRes ?? localState.recetas,
-        cocteles: coctelesRes ?? localState.cocteles,
-        barrasTemplates: barraTemplatesRes ?? localState.barrasTemplates,
+        // Si un catálogo no llegó, queda vacío y su pantalla avisa (ver
+        // catalogosSinCargar). No se usa lo del navegador: saveState lo
+        // guarda vacío y, en un navegador nuevo, loadState trae los ejemplos
+        // de fábrica (cócteles a $0) que se confundían con datos reales.
+        insumos: insumosRes ?? [],
+        insumosBarra: insumosBarraRes ?? [],
+        recetas: recetasRes ?? [],
+        cocteles: coctelesRes ?? [],
+        barrasTemplates: barraTemplatesRes ?? [],
         // Eventos — solo desde la API de Postgres (tiene soft delete y papelera)
         eventos: eventosRes ?? localState.eventos,
         // Supabase data (servicios, personal, pagos, costos)
@@ -544,11 +578,79 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ultimoMesIPC: ultimoMesIPCVal ?? localState.ultimoMesIPC,
       })
 
+      // Anotar qué catálogos no llegaron: sus pantallas avisan y se
+      // reintentan solos (efecto de abajo). Ver lib/catalogos-carga.ts.
+      setCatalogosSinCargar(catalogosFallidos({
+        insumos: insumosRes,
+        insumosBarra: insumosBarraRes,
+        recetas: recetasRes,
+        cocteles: coctelesRes,
+        barrasTemplates: barraTemplatesRes,
+      }))
+
       setIsHydrated(true)
     }
 
     initializeData()
   }, [])
+
+  // Vuelve a pedir a la base los catálogos que no llegaron al abrir. Solo
+  // reemplaza esos: los que ya habían cargado no se tocan. Solo lee.
+  const recargarCatalogos = useCallback((): Promise<boolean> => {
+    if (recargaCatalogosEnCurso.current) return recargaCatalogosEnCurso.current
+    const promesa = (async () => {
+      const pendientes = catalogosSinCargarRef.current
+      if (pendientes.length === 0) return true
+      const resultados: Partial<Record<CatalogoCarga, unknown>> = {}
+      await Promise.all(
+        pendientes.map(async (c) => {
+          try {
+            const r = await fetchWithRetry(URL_CATALOGO[c])
+            const data = r.ok ? await r.json() : null
+            resultados[c] = Array.isArray(data) ? data : null
+          } catch {
+            resultados[c] = null
+          }
+        }),
+      )
+      const { cambios, siguenPendientes } = aplicarRecarga(pendientes, resultados)
+      // Las listas vienen de las mismas rutas que la carga inicial.
+      if (Object.keys(cambios).length > 0) setState((prev) => ({ ...prev, ...(cambios as Partial<AppState>) }))
+      catalogosSinCargarRef.current = siguenPendientes
+      setCatalogosSinCargar(siguenPendientes)
+      return siguenPendientes.length === 0
+    })()
+    recargaCatalogosEnCurso.current = promesa
+    promesa.finally(() => {
+      if (recargaCatalogosEnCurso.current === promesa) recargaCatalogosEnCurso.current = null
+    })
+    return promesa
+  }, [])
+
+  // Reintento automático: si al abrir faltó algún catálogo, se vuelve a
+  // pedir solo a los 3 s, 10 s, 30 s y 60 s. Después queda el botón
+  // "Reintentar" de la pantalla.
+  const hayCatalogosSinCargar = catalogosSinCargar.length > 0
+  useEffect(() => {
+    if (!isHydrated || !hayCatalogosSinCargar) return
+    let cancelado = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const intentar = (i: number) => {
+      if (i >= ESPERAS_REINTENTO_CARGA.length) return
+      timer = setTimeout(async () => {
+        if (cancelado) return
+        const listo = await recargarCatalogos()
+        if (!listo && !cancelado) intentar(i + 1)
+      }, ESPERAS_REINTENTO_CARGA[i])
+    }
+    intentar(0)
+    return () => {
+      cancelado = true
+      if (timer) clearTimeout(timer)
+    }
+    // Solo al abrir: los reintentos siguen su propia cadena.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated])
 
   useEffect(() => {
     if (isHydrated) {
@@ -2034,6 +2136,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setServicios,
         serviciosSincronizados,
         recargarServicios,
+        catalogosSinCargar,
+        recargarCatalogos,
         addCostoOperativo: (...args) => syncGuard.run(() => addCostoOperativo(...args)),
         updateCostoOperativo: (...args) => syncGuard.run(() => updateCostoOperativo(...args)),
         deleteCostoOperativo: (...args) => syncGuard.run(() => deleteCostoOperativo(...args)),
