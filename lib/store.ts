@@ -53,7 +53,9 @@ export interface InsumoCoctel {
 
 // "Bebida de mesa" (desde el 23/11/2026): la cerveza y el vino de la mesa. No
 // entran en el promedio de la barra; se suman aparte (lib/barra-por-promedio.ts).
-export type CategoriaCoctel = "Con Alcohol" | "Sin Alcohol" | "Bebida de mesa"
+// "Bebidas sin alcohol" (desde el 23/11/2026): gaseosa y agua de todos los
+// invitados, 1 por persona, también fuera del promedio.
+export type CategoriaCoctel = "Con Alcohol" | "Sin Alcohol" | "Bebida de mesa" | "Bebidas sin alcohol"
 
 export interface Coctel {
   id: string
