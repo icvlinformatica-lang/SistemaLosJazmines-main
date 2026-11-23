@@ -8,8 +8,8 @@
 //
 // La barra es una REFERENCIA DE PRECIO para el cotizador: 1 trago de cada
 // cóctel por adulto (lib/precio-barra-cotizador.ts). Los tragos reales del
-// evento se eligen después en el planificador, y su costo lo sigue
-// calculando calcularComprasBarras(), que no cambia.
+// evento se eligen después en el planificador, y su costo lo calcula
+// calcularComprasBarras() con su propia regla (lib/barra-por-promedio.ts).
 
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Plus } from "lucide-react"

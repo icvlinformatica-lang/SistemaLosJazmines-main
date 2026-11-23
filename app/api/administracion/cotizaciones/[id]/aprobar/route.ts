@@ -9,8 +9,9 @@ import { ID_BARRA_PERSONALIZADA } from "@/lib/precio-barra"
 /**
  * tragosPorPersona de la barra del evento: el valor que usa el planificador
  * por defecto (y 114 de los 117 eventos con barra). El costo de la barra NO
- * lo usa: calcularComprasBarras() cuenta 1 trago de cada cóctel por adulto,
- * que es la misma regla de "paquete" con la que se cotizó la barra.
+ * lo usa: calcularComprasBarras() cuenta 4 tragos con alcohol por adulto,
+ * repartidos entre los cócteles elegidos, más la bebida de mesa aparte
+ * (lib/barra-por-promedio.ts, desde el 23/11/2026).
  */
 const TRAGOS_POR_PERSONA_EVENTO = 2
 

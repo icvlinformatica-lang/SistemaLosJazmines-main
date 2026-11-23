@@ -12,8 +12,9 @@
 //     promedio" se sacó para que no queden dos.
 //
 // OJO: el costo interno de la barra de un evento ya cargado lo sigue
-// calculando calcularComprasBarras() de lib/store.ts (1 trago por adulto por
-// cada cóctel), que no se tocó.
+// calculando calcularComprasBarras() de lib/store.ts: desde el 23/11/2026,
+// 4 tragos con alcohol por adulto repartidos entre los elegidos, más la
+// bebida de mesa aparte (lib/barra-por-promedio.ts). El precio de acá no cambió.
 //
 // Lógica pura.
 
