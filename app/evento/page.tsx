@@ -118,7 +118,7 @@ import {
 import { MenuTable } from "@/components/menu-table"
 import { CoctelTable } from "@/components/coctel-table"
 import { atajosBarras, aplicarAtajoBarra } from "@/lib/barras-creadas"
-import { esCoctelDeMesa, TRAGOS_POR_ADULTO } from "@/lib/barra-por-promedio"
+import { esBebidaAparte, esCoctelDeMesa, TRAGOS_POR_ADULTO } from "@/lib/barra-por-promedio"
 import { ContratoPreviewCard } from "@/components/contrato-preview-card"
 import { cambiosAlImprimirContrato, motivoParaNoImprimir } from "@/lib/generacion-contrato"
 import { FaltantesEventoAviso } from "@/components/faltantes-evento-aviso"
@@ -1366,12 +1366,13 @@ function EventoPageContent() {
   // con calcularComprasBarras (que necesita tragosPorPersona).
   const coctelesEventoSeleccionados = barras[0]?.coctelesIncluidos || []
 
-  // Bebida de mesa (lib/barra-por-promedio.ts, desde el 23/11/2026): va arriba
-  // en la tarjeta de Barra, separada de la lista de cócteles, porque no entra
-  // en el promedio × 4: se suma aparte, 1 por adulto. Se guarda en la misma
-  // lista de cócteles del evento de siempre.
-  const coctelesDeMesa = (state.cocteles || []).filter((c) => esCoctelDeMesa(c))
-  const coctelesDeBarra = (state.cocteles || []).filter((c) => !esCoctelDeMesa(c))
+  // Bebida de mesa y bebidas sin alcohol (lib/barra-por-promedio.ts, desde el
+  // 23/11/2026): van arriba en la tarjeta de Barra, separadas de la lista de
+  // cócteles, porque no entran en el promedio × 4: la de mesa suma 1 por
+  // adulto y las sin alcohol 1 por persona. Se guardan en la misma lista de
+  // cócteles del evento de siempre.
+  const coctelesDeMesa = (state.cocteles || []).filter((c) => esBebidaAparte(c))
+  const coctelesDeBarra = (state.cocteles || []).filter((c) => !esBebidaAparte(c))
   const idsDeMesa = new Set(coctelesDeMesa.map((c) => c.id))
   const costoBebidaDeMesa = calcularComprasBarras(
     { ...evento, barras: [{ id: "mesa", barraTemplateId: "", coctelesIncluidos: coctelesEventoSeleccionados.filter((id) => idsDeMesa.has(id)), tragosPorPersona: 0 }] },
@@ -2156,7 +2157,7 @@ function EventoPageContent() {
         >
           {coctelesDeMesa.length > 0 && (
             <div className="mb-4 space-y-2 border-b border-border pb-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Bebida de mesa</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Bebidas de la mesa</p>
               {coctelesDeMesa.map((c) => {
                 const elegida = coctelesEventoSeleccionados.includes(c.id)
                 return (
@@ -2176,7 +2177,11 @@ function EventoPageContent() {
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium text-foreground">{c.nombre}</span>
-                      <span className="block text-xs text-muted-foreground">1 por adulto, aparte del promedio de los cócteles</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {esCoctelDeMesa(c)
+                          ? "1 por adulto, aparte del promedio de los cócteles"
+                          : "1 por persona (adultos y chicos), aparte del promedio de los cócteles"}
+                      </span>
                     </span>
                   </button>
                 )
@@ -2230,15 +2235,16 @@ function EventoPageContent() {
               <span className="font-medium text-foreground">{TRAGOS_POR_ADULTO} tragos con alcohol en total</span>, repartidos
               entre los cócteles elegidos, sean 3 o 15: el costo es el{" "}
               <span className="font-medium text-foreground">promedio de los cócteles elegidos × {TRAGOS_POR_ADULTO} × adultos</span>.
-              La <span className="font-medium text-foreground">bebida de mesa</span> va aparte, 1 por adulto. Los cócteles sin
-              alcohol cuentan 1 por adolescente y niño de cada uno. Los insumos se toman a precio actual del almacén de barra.
+              La <span className="font-medium text-foreground">bebida de mesa</span> va aparte, 1 por adulto, y las{" "}
+              <span className="font-medium text-foreground">bebidas sin alcohol</span>, 1 por persona (adultos y chicos). Los
+              cócteles de categoría Sin Alcohol cuentan 1 por adolescente y niño de cada uno. Los insumos se toman a precio actual del almacén de barra.
             </p>
             {coctelesEventoSeleccionados.length > 0 && (
               <p className="text-xs mt-2 text-violet-700">
                 {`${evento.adultos || 0} adulto${(evento.adultos || 0) === 1 ? "" : "s"} → `}
                 {costoBebidaDeMesa > 0 && (
                   <>
-                    bebida de mesa <span className="font-semibold tabular-nums">{formatCurrency(costoBebidaDeMesa)}</span>
+                    bebidas de la mesa <span className="font-semibold tabular-nums">{formatCurrency(costoBebidaDeMesa)}</span>
                     {" + cócteles "}
                     <span className="font-semibold tabular-nums">{formatCurrency(costoBarraTotal - costoBebidaDeMesa)}</span>
                     {" = "}
