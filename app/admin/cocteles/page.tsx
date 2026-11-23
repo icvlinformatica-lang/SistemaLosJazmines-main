@@ -396,6 +396,8 @@ export default function CoctelesPage() {
                           <SelectContent>
                             <SelectItem value="Con Alcohol">Con Alcohol</SelectItem>
                             <SelectItem value="Sin Alcohol">Sin Alcohol</SelectItem>
+                            {/* Cerveza y vino de la mesa: fuera del promedio de la barra, 1 por adulto. */}
+                            <SelectItem value="Bebida de mesa">Bebida de mesa</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -556,7 +558,7 @@ export default function CoctelesPage() {
                   <span className="text-xs text-muted-foreground">{coctelesBuscados.length}</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuSeparator />
-                {(["Con Alcohol", "Sin Alcohol"] as const).map((cat) => (
+                {(["Con Alcohol", "Sin Alcohol", "Bebida de mesa"] as const).map((cat) => (
                   <DropdownMenuRadioItem key={cat} value={cat} className="justify-between">
                     <span>{cat}</span>
                     <span className="text-xs text-muted-foreground">

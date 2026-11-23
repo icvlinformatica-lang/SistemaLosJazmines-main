@@ -51,7 +51,9 @@ export interface InsumoCoctel {
   detallePreparacion?: string
 }
 
-export type CategoriaCoctel = "Con Alcohol" | "Sin Alcohol"
+// "Bebida de mesa" (desde el 23/11/2026): la cerveza y el vino de la mesa. No
+// entran en el promedio de la barra; se suman aparte (lib/barra-por-promedio.ts).
+export type CategoriaCoctel = "Con Alcohol" | "Sin Alcohol" | "Bebida de mesa"
 
 export interface Coctel {
   id: string
@@ -2175,6 +2177,7 @@ export function calcularCostosOperativos(
 // Movidas a lib/unidades.ts (sin "use client") para poder usarlas también en
 // el servidor. Se re-exportan acá para que nada más tenga que cambiar.
 import { contenidoDe, normalizeToStockUnit, type ContenidoPorUnidad } from "./unidades"
+import { tragosPorCoctelEvento } from "./barra-por-promedio"
 export { contenidoDe, normalizeToStockUnit, type ContenidoPorUnidad }
 
 /**
@@ -2415,39 +2418,35 @@ export function calcularComprasBarras(
 
   const comprasMap: Record<string, { cantidadNecesaria: number }> = {}
 
-  barras.forEach((barra) => {
-    if (barra.coctelesIncluidos.length === 0) return
+  // Cuántos tragos se cuentan de cada cóctel (lib/barra-por-promedio.ts, desde
+  // el 23/11/2026): con alcohol, 4 por adulto repartidos entre los elegidos;
+  // la bebida de mesa aparte, 1 por adulto; sin alcohol, 1 por menor de cada uno.
+  const tragosPorCoctel = tragosPorCoctelEvento(
+    evento,
+    barras.flatMap((barra) => barra?.coctelesIncluidos || []),
+    cocteles,
+  )
 
-    barra.coctelesIncluidos.forEach((coctelId) => {
-      const coctel = cocteles.find((c) => c.id === coctelId)
-      if (!coctel) return
+  tragosPorCoctel.forEach((tragos, coctelId) => {
+    const coctel = cocteles.find((c) => c.id === coctelId)
+    if (!coctel || tragos <= 0) return
 
-      // Regla de cálculo de la barra:
-      // - Cóctel CON alcohol: 1 trago por ADULTO de cada cóctel alcohólico.
-      // - Cóctel SIN alcohol: 1 trago por ADOLESCENTE y NIÑO de cada cóctel sin alcohol.
-      const esSinAlcohol = (coctel.categoria || "Con Alcohol") === "Sin Alcohol"
-      const tragosPorCoctel = esSinAlcohol
-        ? (evento.adolescentes || 0) + (evento.ninos || 0)
-        : evento.adultos || 0
-      if (tragosPorCoctel <= 0) return
+    coctel.insumos.forEach((insumoCoctel) => {
+      const insumo = insumosBarra.find((i) => i.id === insumoCoctel.insumoBarraId)
+      if (!insumo) return
 
-      coctel.insumos.forEach((insumoCoctel) => {
-        const insumo = insumosBarra.find((i) => i.id === insumoCoctel.insumoBarraId)
-        if (!insumo) return
+      const normalizedQty = normalizeToStockUnit(
+        insumoCoctel.cantidadPorCoctel,
+        insumoCoctel.unidadCoctel,
+        insumo.unidad,
+        contenidoDe(insumo),
+      )
+      const cantidad = normalizedQty * tragos
 
-        const normalizedQty = normalizeToStockUnit(
-          insumoCoctel.cantidadPorCoctel,
-          insumoCoctel.unidadCoctel,
-          insumo.unidad,
-          contenidoDe(insumo),
-        )
-        const cantidad = normalizedQty * tragosPorCoctel
-
-        if (!comprasMap[insumoCoctel.insumoBarraId]) {
-          comprasMap[insumoCoctel.insumoBarraId] = { cantidadNecesaria: 0 }
-        }
-        comprasMap[insumoCoctel.insumoBarraId].cantidadNecesaria += cantidad
-      })
+      if (!comprasMap[insumoCoctel.insumoBarraId]) {
+        comprasMap[insumoCoctel.insumoBarraId] = { cantidadNecesaria: 0 }
+      }
+      comprasMap[insumoCoctel.insumoBarraId].cantidadNecesaria += cantidad
     })
   })
 

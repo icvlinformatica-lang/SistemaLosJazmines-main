@@ -105,7 +105,9 @@ test("mismo costo de barra con el atajo que tildando a mano", () => {
   const [atajo] = atajosBarras([{ id: "b", nombre: "B", coctelesIncluidos: ["m", "l"] }], ["m", "l"], [])
   const ev = (ids) => ({ adultos: 100, adolescentes: 10, ninos: 5, barras: [{ id: "x", barraTemplateId: "", coctelesIncluidos: ids, tragosPorPersona: 2 }] })
   const costo = (e) => calcularComprasBarras(e, cocteles, insumosBarra).reduce((s, c) => s + c.costoMateriaPrima, 0)
-  // Mojito: 100 adultos × 50 cc × $10 = $50.000. Limonada: 15 chicos × 100 cc × $2 = $3.000.
-  assert.equal(costo(ev(aplicarAtajoBarra([], atajo))), 53000)
-  assert.equal(costo(ev(["m", "l"])), 53000)
+  // Mojito, único trago con alcohol: 4 por adulto (lib/barra-por-promedio.ts,
+  // desde el 23/11/2026) → 100 adultos × 4 × 50 cc × $10 = $200.000.
+  // Limonada: 15 chicos × 100 cc × $2 = $3.000.
+  assert.equal(costo(ev(aplicarAtajoBarra([], atajo))), 203000)
+  assert.equal(costo(ev(["m", "l"])), 203000)
 })

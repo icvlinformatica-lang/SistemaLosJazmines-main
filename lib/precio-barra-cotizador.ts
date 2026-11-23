@@ -1,7 +1,8 @@
 // Precio de referencia de una barra armada (barra_templates) para el
 // cotizador rápido. Es solo una REFERENCIA DE PRECIO: los tragos reales del
 // evento se eligen después en el planificador, y el costo interno de la barra
-// lo sigue calculando calcularComprasBarras() de lib/store.ts, que no cambia.
+// lo calcula calcularComprasBarras() de lib/store.ts con su propia regla
+// (lib/barra-por-promedio.ts). Este precio no depende de esa regla.
 //
 // Regla: 1 trago de cada cóctel por adulto. Precio por adulto = suma de los
 // precios por trago de los cócteles de la barra; precio por trago = costo ×
